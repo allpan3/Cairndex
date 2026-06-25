@@ -1,0 +1,105 @@
+:root {
+  /* Dark, desktop-class palette (AGENTS.md §8). Refined into design tokens in
+     the Phase 3 UI milestone; this is a minimal foundation theme. */
+  --bg: #16171d;
+  --surface: #1f2028;
+  --border: #2e303a;
+  --text: #c7cad1;
+  --text-strong: #f3f4f6;
+  --text-muted: #8a8f9a;
+  --accent: #c084fc;
+  --ok: #4ade80;
+  --error: #f87171;
+  --pending: #fbbf24;
+  --code-bg: #2a2c36;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+.shell {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.shell__card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: rgba(0, 0, 0, 0.35) 0 10px 30px -10px;
+}
+
+.shell__title {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  color: var(--text-strong);
+}
+
+.shell__tagline {
+  margin: 4px 0 24px;
+  color: var(--text-muted);
+}
+
+.shell__note {
+  margin: 24px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.status {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.status--pending {
+  color: var(--pending);
+}
+.status--ok {
+  color: var(--ok);
+}
+.status--error {
+  color: var(--error);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--code-bg);
+  color: var(--text-strong);
+}
