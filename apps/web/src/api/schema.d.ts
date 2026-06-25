@@ -22,6 +22,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundles/browse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browse Bundles */
+        get: operations["browse_bundles_api_v1_bundles_browse_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundles/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bundle View Counts */
+        get: operations["bundle_view_counts_api_v1_bundles_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundles/{bundle_id}": {
         parameters: {
             query?: never;
@@ -161,6 +195,23 @@ export interface paths {
         put?: never;
         /** Create Folder */
         post: operations["create_folder_api_v1_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/folders/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Folder Counts */
+        get: operations["folder_counts_api_v1_folders_counts_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -455,6 +506,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BundleBrowsePage */
+        BundleBrowsePage: {
+            /** Items */
+            items: components["schemas"]["BundleSummary"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /** BundleCreate */
         BundleCreate: {
             /** Note */
@@ -504,6 +566,43 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * BundleSort
+         * @enum {string}
+         */
+        BundleSort: "date_added" | "title" | "rating" | "size" | "file_count";
+        /** BundleSummary */
+        BundleSummary: {
+            /**
+             * Date Added
+             * Format: date-time
+             */
+            date_added: string;
+            /** Duration */
+            duration: number | null;
+            /** Extension */
+            extension: string | null;
+            /** File Count */
+            file_count: number;
+            /** Has Cover */
+            has_cover: boolean;
+            /** Has Missing */
+            has_missing: boolean;
+            /** Height */
+            height: number | null;
+            /** Id */
+            id: string;
+            /** Media Kind */
+            media_kind: string | null;
+            /** Rating */
+            rating: number | null;
+            /** Title */
+            title: string | null;
+            /** Total Size */
+            total_size: number;
+            /** Width */
+            width: number | null;
         };
         /** BundleTags */
         BundleTags: {
@@ -617,6 +716,13 @@ export interface components {
          * @enum {string}
          */
         FileRole: "primary_video" | "video_part" | "alternate_version" | "cover" | "image" | "screenshot" | "album_image" | "subtitle" | "attachment" | "generated_derivative" | "other";
+        /** FolderCounts */
+        FolderCounts: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+        };
         /** FolderCreate */
         FolderCreate: {
             /** Name */
@@ -825,6 +931,11 @@ export interface components {
             /** Read Only */
             read_only?: boolean | null;
         };
+        /**
+         * SystemView
+         * @enum {string}
+         */
+        SystemView: "all" | "recent" | "uncategorized" | "untagged" | "missing";
         /** TagCreate */
         TagCreate: {
             /** Color */
@@ -915,6 +1026,19 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** ViewCounts */
+        ViewCounts: {
+            /** All */
+            all: number;
+            /** Missing */
+            missing: number;
+            /** Recent */
+            recent: number;
+            /** Uncategorized */
+            uncategorized: number;
+            /** Untagged */
+            untagged: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -985,6 +1109,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_bundles_api_v1_bundles_browse_get: {
+        parameters: {
+            query?: {
+                view?: components["schemas"]["SystemView"];
+                folder_id?: string | null;
+                include_descendants?: boolean;
+                sort?: components["schemas"]["BundleSort"];
+                order?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleBrowsePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bundle_view_counts_api_v1_bundles_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ViewCounts"];
                 };
             };
         };
@@ -1374,6 +1555,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    folder_counts_api_v1_folders_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderCounts"];
                 };
             };
         };
