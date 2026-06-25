@@ -1,51 +1,83 @@
 # Data model
 
-> Status: skeleton (Phase 0). No migrations exist yet — this document is a
-> placeholder that points to the canonical source and will be filled in
-> during `feature/core-domain-model` (Phase 1) alongside the first Alembic
-> migration and a dedicated ADR for any schema detail not already settled.
+> Status: Phase 1 — the core schema below is implemented (SQLAlchemy models in
+> `apps/server/src/cairndex/persistence/models.py`, first Alembic migration
+> `core schema`). Decisions are recorded in
+> [ADR-0002](adr/0002-core-schema-identity-and-hierarchy.md). `AGENTS.md` §4
+> remains the conceptual source of truth.
 
-## Canonical source
+## Conventions (ADR-0002)
 
-`AGENTS.md` §4 ("Canonical domain model") is the authoritative description
-of entities and relationships until Phase 1 migrations land. Do not treat
-this file as authoritative until it has real tables and an ADR reference.
+- **Primary keys**: ULID stored as `CHAR(26)` (`UlidPk`), generated in the app
+  layer (`core/ids.py`). Time-sortable → doubles as a pagination tie-breaker.
+- **Timestamps**: timezone-aware UTC via the `UtcDateTime` type decorator
+  (`persistence/types.py`), defaulted in the app layer (`core/time.py`).
+  `created_at`/`imported_at` set on insert; `updated_at` also on update.
+- **Enums**: stored as strings with a CHECK constraint
+  (`Enum(..., native_enum=False)`), defined in `domain/enums.py`.
+- **Hierarchy**: adjacency list (`parent_id` self-FK) + recursive CTE for
+  descendants (tags and folders).
+- **FK enforcement**: `PRAGMA foreign_keys=ON` per connection; WAL mode.
 
-## Planned entities (tracking `AGENTS.md` §4 / the product brief's §"Initial data model to refine")
+## Tables
 
-- `storage_roots`
-- `asset_bundles`
-- `asset_files`
-- `tags`
-- `tag_groups`
-- `tag_group_memberships`
-- `asset_bundle_tags`
-- `folders`
-- `asset_bundle_folders`
-- `smart_folders`
-- subtitle/media track table(s) — exact shape is an open design question,
-  see `AGENTS.md` §4.9
-- `jobs`
+### `storage_roots`
+`id`, `name` (unique), `canonical_path` (absolute server path — never
+client-supplied), `read_only` (default true), `status`
+(`available`/`unavailable`), `scan_config` (JSON, nullable — shape defined in
+Phase 2), `created_at`, `updated_at`, `last_scanned_at` (nullable).
 
-## What Phase 1 must decide and document here
+### `asset_bundles`
+`id`, `title` (nullable), `note`, `source_url`, `rating` (nullable int, CHECK
+0–5; NULL = unrated), `cover_file_id` / `primary_file_id` (FK → `asset_files`,
+`SET NULL`, nullable; `use_alter` to break the FK cycle), `extra_metadata`
+(JSON), `created_at`, `imported_at`, `updated_at`.
 
-- Final column lists and types for each table above (ER diagram or table-by-
-  table reference).
-- Tag hierarchy implementation: adjacency list with recursive CTE vs.
-  closure table (`AGENTS.md` §4.5 requires this choice to be recorded in an
-  ADR with descendant-query tests).
-- Identity/fingerprint columns on `asset_files` (size, mtime, quick hash,
-  optional full hash) and how they interact with rescan/dedup logic
-  (`AGENTS.md` §5.1).
-- Subtitle/media-track table shape (`AGENTS.md` §4.9) — external file
-  reference vs. embedded stream index, in one table or two.
-- Index plan, justified by the query patterns introduced in Phase 1/2/5
-  (`AGENTS.md` §11 — "database indexes justified by real queries").
-- Migration/rollback approach for SQLite (`Alembic` batch mode where
-  `ALTER TABLE` support is limited).
+### `asset_files`
+`id`, `bundle_id` (FK → `asset_bundles`, **CASCADE** — metadata-only bundle
+deletion removes file rows, never the physical file), `storage_root_id`
+(FK → `storage_roots`, **RESTRICT** — can't delete a root with linked files),
+`relative_path`, `original_filename`, `display_title`, `note`, `source_url`,
+`role` (`FileRole`), `media_kind` (`MediaKind`), `mime_type`, `sequence`,
+`size_bytes`/`mtime`/`quick_fingerprint`/`full_hash`/`tech_metadata` (nullable,
+filled by the Phase 2 scanner), `availability` (`available`/`missing`),
+`created_at`, `updated_at`. **Unique** `(storage_root_id, relative_path)` — one
+physical file is linked at most once.
 
-## Cross-references
+### `tags`
+`id`, `parent_id` (self-FK, `SET NULL`), `name`, `color`, `sort_order`,
+timestamps. **Unique** `(parent_id, name)`.
 
-- `docs/filter-language.md` — the filter AST that queries this schema.
-- `docs/adr/` — schema-shaping decisions get their own ADR, linked from here
-  once they exist.
+### `tag_groups`
+`id`, `name` (unique), `sort_order`, timestamps.
+
+### `tag_group_memberships` (M:N tags ↔ groups)
+`group_id` + `tag_id` (composite PK, both CASCADE), `sort_order`. A group is
+**not** a hierarchy parent (ADR-0002 / `AGENTS.md` §4.6).
+
+### `folders`
+`id`, `parent_id` (self-FK, `SET NULL`), `name`, `sort_order`, timestamps.
+**Unique** `(parent_id, name)`.
+
+### `asset_bundle_tags` / `asset_bundle_folders` (M:N)
+Composite PK of the two FKs, both CASCADE.
+
+### `smart_folders`
+`id`, `name` (unique), `filter_version`, `filter_json` (JSON AST — see
+`docs/filter-language.md`; never SQL), `default_sort`, `default_layout`,
+`sort_order`, timestamps.
+
+## Deferred to later phases
+
+- **Subtitle/media tracks** (`AGENTS.md` §4.9) — Phase 6. `asset_files` already
+  carries `role=subtitle`; the track-linking table lands with playback.
+- **Jobs** (scans, ffprobe, thumbnails) — Phase 2.
+
+## Still open
+
+- Index plan beyond PK/unique constraints — added in Phase 2/5 when the real
+  query patterns (scan lookups, filter compilation) exist, justified per
+  `AGENTS.md` §11.
+- Tag/folder delete semantics at the service layer (DB default is `SET NULL`
+  on the parent FK → children float to root; the service may later offer
+  reparent/cascade).
