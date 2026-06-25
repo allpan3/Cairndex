@@ -45,8 +45,8 @@ cached thumbnails landed (outside the source tree). Originals are never
 touched. Requires ffmpeg (`brew install ffmpeg`).
 
 ```bash
-cd apps/server
-uv run python ../../demo/phase2_walkthrough.py
+./demo/run_phase2.sh      # wraps the walkthrough below
+# or: cd apps/server && uv run python ../../demo/phase2_walkthrough.py
 ```
 
 Interactive: `./demo/run_phase1.sh` serves the API; the Phase 2 endpoints
@@ -56,19 +56,17 @@ serves a generated cover.
 
 ## Phase 3 — desktop library UI (the app itself)
 
-From Phase 3 on, the web app *is* the demo. Seed a library, run the backend,
-and run the Vite dev server, then browse it:
+From Phase 3 on, the web app *is* the demo. One command seeds a library and
+starts **both** the backend and the web UI:
 
 ```bash
-# 1. backend with a seeded demo library (from apps/server)
-cd apps/server
-export CAIRNDEX_DATABASE_URL="sqlite:///$(pwd)/var/demo.db"
-uv run alembic upgrade head && uv run python -m cairndex.devtools.seed --bundles 2000
-uv run uvicorn cairndex.main:app --port 8000
-
-# 2. frontend (from apps/web, separate terminal) — open http://localhost:5173
-npm run dev
+./demo/run_phase3.sh           # then open http://localhost:5173  (http, not https)
+./demo/run_phase3.sh 500       # fewer bundles
 ```
+
+Ctrl-C stops both. (Manual equivalent: run `uvicorn` in `apps/server` and
+`npm run dev` in `apps/web` in two terminals, pointing the backend at a seeded
+`CAIRNDEX_DATABASE_URL`.)
 
 Try: the system views and folder tree in the sidebar (with counts), the
 grid / list / justified layout switcher and zoom slider in the toolbar, and
