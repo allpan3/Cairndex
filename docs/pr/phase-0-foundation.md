@@ -50,7 +50,7 @@ checked foundation. No domain model, scanner, or browsing UI is in scope here.
 | Frontend | `lint`, `format:check`, `typecheck`, `test`, `build` | ✅ 3 unit passed, build ok |
 | Frontend e2e | `playwright test` (Chromium) | ✅ 1 passed |
 | Integration | both servers up; `curl :5173/api/v1/health` via Vite proxy | ✅ `status: ok` |
-| Docker build | `docker compose build` | ⚠️ not run locally (no daemon) — validated in CI |
+| Docker | `docker compose build` + `up` | ✅ both images build; health on `:8000`, proxy `:5173/api` → `server:8000` across the compose net, server container `HEALTHCHECK` `healthy`, clean `down` |
 
 ## Acceptance criteria (Phase 0)
 
@@ -90,9 +90,9 @@ None — no database or migrations in Phase 0.
 
 ## Follow-ups (explicitly out of scope)
 
-- **Action for the owner**: install Docker daemon + Compose v2 plugin to run
-  the stack locally; install `ffmpeg`/`ffprobe` before Phase 2. Drop the
-  remaining Eagle screenshots into `docs/reference/eagle/` (git-ignored).
+- **Action for the owner**: install `ffmpeg`/`ffprobe` before Phase 2
+  (Docker Desktop is now installed and the stack is verified locally). Drop
+  the remaining Eagle screenshots into `docs/reference/eagle/` (git-ignored).
 - **Next milestone**: Phase 1 — Core domain and storage roots
   (`feature/core-domain-model`).
 

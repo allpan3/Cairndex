@@ -43,16 +43,16 @@ All passing:
   (1 passed, Chromium).
 - Integration: started both servers and verified the Vite dev proxy forwards
   `:5173/api/v1/health` to the backend (`status: ok`).
-- Not run locally: `docker compose build` (no Docker daemon on the dev
-  machine — see below); validated in CI instead.
+- Docker (verified locally after Docker Desktop was installed): `docker
+  compose build` (both images), `docker compose up` → backend health on
+  `:8000`, frontend on `:5173`, the Vite proxy forwarding `:5173/api` to
+  `server:8000` across the compose network, and the server container's
+  `HEALTHCHECK` reporting `healthy`; `docker compose down` cleans up.
+- Also validated by CI on PR #1 (backend, frontend, and `docker compose
+  build` jobs all green).
 
 ## Known issues / environment gaps
 
-- The development machine's Docker CLI has **no running daemon** and **no
-  Compose v2 plugin** installed (`docker compose` is not recognized). Image
-  builds and `docker compose up` could not be verified locally in this
-  session — they are exercised in CI instead. See the PR-style summary for
-  exactly what to install.
 - `ffmpeg`/`ffprobe` are not installed on the dev machine. Not required
   until Phase 2 (scanner/media metadata), but worth installing now
   (`brew install ffmpeg`) so Phase 2 isn't blocked on environment setup.
