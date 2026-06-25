@@ -1,0 +1,102 @@
+"""Tag domain service: hierarchy (adjacency list) independent of tag groups."""
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.core.time import utcnow
+from cairndex.persistence.models import Tag
+from cairndex.services.hierarchy import descendant_ids, is_descendant
+from cairndex.services.pagination import keyset_page
+
+
+def get_tag(session: Session, tag_id: str) -> Tag:
+    tag = session.get(Tag, tag_id)
+    if tag is None:
+        raise NotFoundError(f"tag {tag_id!r} not found")
+    return tag
+
+
+def _require_parent(session: Session, parent_id: str | None) -> None:
+    if parent_id is not None and session.get(Tag, parent_id) is None:
+        raise ValidationError(f"parent tag {parent_id!r} does not exist")
+
+
+def create_tag(
+    session: Session,
+    *,
+    name: str,
+    parent_id: str | None = None,
+    color: str | None = None,
+) -> Tag:
+    name = name.strip()
+    if not name:
+        raise ValidationError("name must not be empty")
+    _require_parent(session, parent_id)
+
+    tag = Tag(name=name, parent_id=parent_id, color=color)
+    session.add(tag)
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        raise ConflictError(
+            f"a sibling tag named {name!r} already exists under this parent"
+        ) from exc
+    return tag
+
+
+def list_tags(session: Session, *, limit: int, cursor: str | None) -> tuple[list[Tag], str | None]:
+    return keyset_page(session, select(Tag), Tag.id, limit, cursor)
+
+
+def update_tag(
+    session: Session,
+    tag_id: str,
+    *,
+    name: str | None = None,
+    parent_id: str | None = None,
+    set_parent: bool = False,
+    color: str | None = None,
+    set_color: bool = False,
+) -> Tag:
+    """Update a tag. ``set_parent``/``set_color`` distinguish "set to null"
+    from "leave unchanged" for the nullable fields."""
+    tag = get_tag(session, tag_id)
+
+    if name is not None:
+        cleaned = name.strip()
+        if not cleaned:
+            raise ValidationError("name must not be empty")
+        tag.name = cleaned
+
+    if set_parent:
+        if parent_id == tag_id:
+            raise ValidationError("a tag cannot be its own parent")
+        if parent_id is not None:
+            _require_parent(session, parent_id)
+            if is_descendant(session, Tag, candidate_id=parent_id, of_id=tag_id):
+                raise ValidationError("cannot move a tag under its own descendant")
+        tag.parent_id = parent_id
+
+    if set_color:
+        tag.color = color
+
+    tag.updated_at = utcnow()
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        raise ConflictError("a sibling tag with that name already exists") from exc
+    return tag
+
+
+def delete_tag(session: Session, tag_id: str) -> None:
+    """Delete a tag (metadata only). Children float to root (DB SET NULL);
+    group memberships and bundle associations cascade."""
+    session.delete(get_tag(session, tag_id))
+    session.flush()
+
+
+def tag_descendant_ids(session: Session, tag_id: str, *, include_self: bool = True) -> list[str]:
+    get_tag(session, tag_id)
+    return descendant_ids(session, Tag, tag_id, include_self=include_self)
