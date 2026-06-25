@@ -45,14 +45,13 @@ var/cache/
 var/thumbnails/
 var/media/
 
-# --- Common media extensions (defense in depth; app data should already be excluded above) ---
-*.mp4
-*.mkv
-*.avi
-*.mov
-*.wmv
-*.ts
-*.m3u8
+# Note: we deliberately do NOT blanket-ignore media extensions at the repo
+# root. `*.ts` would shadow TypeScript source, and globs like `*.mp4` would
+# shadow the small synthetic media fixtures generated for tests (AGENTS.md
+# §15). Real source media never lives in the repo — it stays under mounted
+# storage roots and the app-data/cache directories ignored above. Anything
+# that must be excluded belongs in one of those directories, not matched by
+# extension. Review diffs before committing regardless (AGENTS.md §12).
 
 # --- Editors / OS ---
 .DS_Store
