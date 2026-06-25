@@ -50,14 +50,14 @@ def get_engine() -> Engine:
 
 
 @lru_cache
-def _get_sessionmaker() -> sessionmaker[Session]:
+def get_sessionmaker() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)
 
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
     """Transactional session context: commit on success, roll back on error."""
-    session = _get_sessionmaker()()
+    session = get_sessionmaker()()
     try:
         yield session
         session.commit()

@@ -28,6 +28,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
+    JobStatus,
+    JobType,
     MediaKind,
     StorageRootStatus,
 )
@@ -276,3 +278,33 @@ class SmartFolder(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+
+
+class Job(Base):
+    """A resumable background job (scan, ffprobe, thumbnail, …).
+
+    Backs the in-process worker (ADR-0001 — a DB-backed queue, not Celery).
+    ``cancel_requested`` is a cooperative flag the running handler polls.
+    """
+
+    __tablename__ = "jobs"
+
+    id: Mapped[UlidPk]
+    type: Mapped[JobType] = mapped_column(Enum(JobType, native_enum=False, length=32))
+    status: Mapped[JobStatus] = mapped_column(
+        Enum(JobStatus, native_enum=False, length=16),
+        default=JobStatus.QUEUED,
+    )
+    # Free-form job parameters (e.g. {"storage_root_id": "..."}).
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Progress counters; total is unknown until discovery completes.
+    processed: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(default=False)
+
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
+    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

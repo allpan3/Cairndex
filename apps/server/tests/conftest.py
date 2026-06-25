@@ -22,9 +22,12 @@ def _isolate_data_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None
     """
     data_dir = tmp_path_factory.mktemp("cairndex-data")
     os.environ["CAIRNDEX_DATA_DIR"] = str(data_dir)
+    # Drive jobs deterministically in tests; no background polling thread.
+    os.environ["CAIRNDEX_WORKER_ENABLED"] = "false"
     get_settings.cache_clear()
     yield
     os.environ.pop("CAIRNDEX_DATA_DIR", None)
+    os.environ.pop("CAIRNDEX_WORKER_ENABLED", None)
     get_settings.cache_clear()
 
 
@@ -45,9 +48,14 @@ def engine(tmp_path: "os.PathLike[str]") -> Iterator[Engine]:
 
 
 @pytest.fixture
-def session(engine: Engine) -> Iterator[Session]:
-    maker = sessionmaker(bind=engine, expire_on_commit=False, future=True)
-    with maker() as db_session:
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    """A sessionmaker bound to the test engine, for driving the job worker."""
+    return sessionmaker(bind=engine, expire_on_commit=False, future=True)
+
+
+@pytest.fixture
+def session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    with session_factory() as db_session:
         yield db_session
 
 
