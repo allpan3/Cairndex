@@ -1,13 +1,12 @@
-// Minimal typed API client for Phase 0. The richer data layer (TanStack Query
-// + a generated client) is introduced in Phase 3 alongside real endpoints;
-// for now a single hand-written fetch keeps the foundation lean
-// (AGENTS.md §14 — avoid speculative abstractions).
+// Minimal typed API client. Types are sourced from the backend's OpenAPI
+// schema via `npm run gen:api` (see schema.d.ts), so the frontend and backend
+// contracts cannot silently drift. The richer data layer (TanStack Query +
+// per-endpoint hooks) arrives in Phase 3; for now a single hand-written fetch
+// keeps the foundation lean (AGENTS.md §14).
 
-export interface HealthStatus {
-  status: string
-  app_name: string
-  environment: string
-}
+import type { components } from './schema'
+
+export type HealthStatus = components['schemas']['HealthStatus']
 
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
   const response = await fetch('/api/v1/health', { signal })

@@ -2,13 +2,20 @@
 
 ## Current branch / latest commit
 
-Branch: `chore/project-foundation` (not yet merged to `main`).
-Latest commit: see `git log -1` — this file is updated at each meaningful
-checkpoint, not retroactively reconciled against git after the fact.
+Branch: `feature/core-domain-model` (Phase 1), stacked on
+`chore/project-foundation` (Phase 0, open as PR #1). Latest commit: see
+`git log -1`.
 
 ## Current milestone
 
-**Phase 0 — Repository audit and foundation** (`chore/project-foundation`).
+**Phase 1 — Core domain and storage roots** (`feature/core-domain-model`).
+Implemented: SQLAlchemy schema + Alembic migration; path-safety module;
+domain services + `/api/v1` CRUD for storage roots, bundles (metadata-only
+file linking, cover/primary, tag/folder assignment), tags, tag groups, and
+folders; keyset pagination; structured errors; recursive-CTE descendant
+queries; synthetic seeder; generated frontend API types. Backend: 64 tests
+passing, ruff + mypy clean, migration round-trip + `alembic check` clean.
+See `docs/pr/phase-1-core-domain.md`. **Phase 0** is complete (PR #1).
 
 ## Completed in this milestone
 
@@ -61,10 +68,15 @@ All passing:
 
 ## Next recommended task
 
-**Phase 1 — Core domain and storage roots** (`feature/core-domain-model`):
-storage-root/bundle/file/tag/tag-group/folder/smart-folder migrations,
-domain/service layer, CRUD APIs, path-safety tests. See `AGENTS.md` and the
-product brief's "Phase 1" section for full acceptance criteria.
+**Phase 2 — Scanner, indexing, and media metadata**
+(`feature/library-scanner`): manual incremental storage-root scan as a
+resumable background job, quick fingerprint + lazy full hash, ffprobe
+metadata extraction, thumbnail extraction/cache, and missing-file state.
+Requires `ffmpeg`/`ffprobe` installed (`brew install ffmpeg`). See the
+product brief's "Phase 2" section for acceptance criteria.
+
+Smart Folders have a table but no filter compiler yet — that is Phase 5
+(`docs/filter-language.md`).
 
 ## Unresolved decisions
 
