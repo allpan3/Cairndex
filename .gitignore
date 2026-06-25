@@ -1,0 +1,66 @@
+# --- Secrets and local config ---
+.env
+.env.*
+!.env.example
+*.local
+
+# --- Python (apps/server) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Node / frontend (apps/web) ---
+node_modules/
+apps/web/dist/
+apps/web/build/
+.vite/
+playwright-report/
+test-results/
+blob-report/
+
+# --- Eagle UI reference screenshots: kept locally for reference, never committed ---
+# The folder is tracked via its README only; any images dropped in stay local.
+docs/reference/eagle/*
+!docs/reference/eagle/README.md
+
+# --- Application data: never commit media, databases, caches, thumbnails ---
+data/
+storage/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+var/cache/
+var/thumbnails/
+var/media/
+
+# --- Common media extensions (defense in depth; app data should already be excluded above) ---
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.ts
+*.m3u8
+
+# --- Editors / OS ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# --- Logs ---
+*.log
+logs/
