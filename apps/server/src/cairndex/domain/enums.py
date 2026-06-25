@@ -57,3 +57,10 @@ class JobStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class Grouping(StrEnum):
+    """How fast-add groups selected files into bundles."""
+
+    PER_FILE = "per_file"  # one bundle per file (the scan default)
+    SINGLE_BUNDLE = "single_bundle"  # one bundle holding all selected files

@@ -10,6 +10,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 2 — scanner, indexing, and media metadata.**
+  - DB-backed background job framework: `jobs` table + migration, a polled
+    in-process `Worker` (started via the app lifespan) with cooperative
+    cancellation and progress, and `GET /api/v1/jobs`, `/jobs/{id}`,
+    `POST /jobs/{id}/cancel`.
+  - Incremental, idempotent, non-destructive storage-root scanner: quick
+    fingerprint (size+mtime, never a full hash on the scan path), missing-file
+    state (rows preserved, not deleted), unreachable-root handling.
+  - ffprobe adapter + `tech_metadata` extraction (dimensions/duration/codecs/
+    streams), exposed on the file API.
+  - Thumbnail generation (ffmpeg) cached outside source dirs with cover
+    fallback, served via `GET /api/v1/bundles/{id}/thumbnail`.
+  - `POST /api/v1/storage-roots/{id}/scan|probe|thumbnails` (async jobs) and
+    `/fast-add` (manual linking with per-file / single-bundle grouping).
+  - `demo/phase2_walkthrough.py` showing real ffprobe metadata + thumbnails.
 - **Phase 1 — core domain and storage roots.** SQLAlchemy 2.0 schema +
   first Alembic migration for storage roots, asset bundles, asset files,
   tags, tag groups (+ membership), folders, and smart folders, plus the

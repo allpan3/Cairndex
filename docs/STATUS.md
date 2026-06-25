@@ -2,69 +2,66 @@
 
 ## Current branch / latest commit
 
-Branch: `feature/core-domain-model` (Phase 1), based on `main`. Latest
-commit: see `git log -1`.
+Branch: `feature/library-scanner` (Phase 2), based on `main`. Latest commit:
+see `git log -1`.
 
 ## Current milestone
 
-**Phase 1 — Core domain and storage roots** (`feature/core-domain-model`).
-Implemented: SQLAlchemy schema + Alembic migration; path-safety module;
-domain services + `/api/v1` CRUD for storage roots, bundles (metadata-only
-file linking, cover/primary, tag/folder assignment), tags, tag groups, and
-folders; keyset pagination; structured errors; recursive-CTE descendant
-queries; synthetic seeder; generated frontend API types. Backend: 64 tests
-passing, ruff + mypy clean, migration round-trip + `alembic check` clean.
-The GitHub PR (#2) description has the full summary. **Phase 0** is
-merged to `main` (PR #3).
+**Phase 2 — Scanner, indexing, and media metadata** (`feature/library-scanner`).
+Implemented: DB-backed background job framework + worker; incremental,
+idempotent, non-destructive storage-root scanner (quick fingerprint, missing-
+file state); ffprobe technical-metadata extraction; thumbnail generation +
+cache + cover fallback + serving; async scan/probe/thumbnail endpoints; manual
+fast-add with grouping. Backend: 94 tests passing, ruff + mypy clean,
+migration round-trip + `alembic check` clean. **Phases 0 and 1** are merged to
+`main` (PRs #3, #2).
 
 ## Completed in this milestone
 
-- SQLAlchemy 2.0 schema + first Alembic migration for all 10 core tables
-  (ADR-0002: ULID PKs, tz-aware UTC timestamps, adjacency-list hierarchy,
-  SQLite WAL/foreign-keys pragmas).
-- Path-safety module (`core/paths`): normalizes client relative paths and
-  rejects absolute/traversal/symlink-escape — the single choke point for
-  storage-root path resolution.
-- Domain services + `/api/v1` CRUD for storage roots, bundles (metadata-only
-  file linking/unlinking, cover/primary selection, tag/folder assignment),
-  tags, tag groups (multi-membership), and folders; keyset pagination;
-  structured errors; recursive-CTE descendant queries.
-- Synthetic library generator + seed CLI (`python -m cairndex.devtools.seed`).
-- Frontend API types generated from the OpenAPI schema and wired into the
-  client (`npm run gen:api`).
+- Background jobs: `jobs` table + migration; an in-process polled `Worker`
+  (app-lifespan managed) with cooperative cancellation and progress
+  checkpoints; `GET /jobs`, `/jobs/{id}`, `POST /jobs/{id}/cancel`.
+- Scanner (`scanning/`): batched, idempotent upsert keyed on
+  `(root, relative_path)`; quick fingerprint (size+mtime) only — full hash is
+  lazy and never on the scan path; unseen files marked `missing` (not
+  deleted); unreachable root marks its files missing; nothing on disk touched.
+- ffprobe adapter + probe service (`media/ffprobe`, `media/probe_service`):
+  normalized `tech_metadata` (dimensions/duration/codecs/streams), exposed on
+  the file API; runs as a cancellable PROBE job.
+- Thumbnails (`media/thumbnails`): ffmpeg frame/downscale to a deterministic
+  cache path outside source dirs, cover fallback, dedup; THUMBNAIL job; served
+  via `GET /bundles/{id}/thumbnail` (lazy, 404/503 fallbacks).
+- Endpoints: `POST /storage-roots/{id}/scan|probe|thumbnails` (async jobs) and
+  `/fast-add` (per-file / single-bundle grouping; directories expanded).
+- `demo/phase2_walkthrough.py` (real ffprobe metadata + thumbnails).
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
 - Backend (`apps/server`): `ruff format --check`, `ruff check`, `mypy src`,
-  and `pytest` (**64 passed**); Alembic upgrade/downgrade/upgrade round-trip
-  and `alembic check` — clean.
-- Frontend (`apps/web`): `lint`, `format:check`, `typecheck`, `test` (3) —
-  verifies the generated `schema.d.ts` compiles and the client consumes it.
-- CI green on PR #2 (backend, frontend, Docker build).
+  `pytest` (**94 passed**); Alembic round-trip + `alembic check` clean. ffmpeg
+  8.1.2 present, so scanner/probe/thumbnail tests run (they skip where ffmpeg
+  is absent; CI installs it).
+- The Phase 2 demo runs end-to-end (scan → probe → thumbnails) on generated
+  media, originals untouched.
 
 ## Known issues / environment gaps
 
-- `ffmpeg`/`ffprobe` are not installed on the dev machine. Required from
-  Phase 2 (scanner/media metadata) — install with `brew install ffmpeg`.
-- No scanner or browsing UI yet (Phases 2 and 3); Smart Folders have a table
-  but no filter compiler yet (Phase 5).
+- No browsing UI yet (Phase 3). Smart Folders have a table but no filter
+  compiler yet (Phase 5).
+- Subtitle/media-track table and jobs-driven transcoding are later phases
+  (6/later); `asset_files` already carries `role=subtitle`.
 
 ## Next recommended task
 
-**Phase 2 — Scanner, indexing, and media metadata**
-(`feature/library-scanner`): manual incremental storage-root scan as a
-resumable background job, quick fingerprint + lazy full hash, ffprobe
-metadata extraction, thumbnail extraction/cache, and missing-file state.
-Requires `ffmpeg`/`ffprobe` installed (`brew install ffmpeg`). See the
-product brief's "Phase 2" section for acceptance criteria.
-
-Smart Folders have a table but no filter compiler yet — that is Phase 5
-(`docs/filter-language.md`).
+**Phase 3 — Desktop app shell and browsing views** (`feature/desktop-library-ui`):
+the Eagle-inspired three-pane shell (sidebar / virtualized browser /
+inspector), system views, counted folder tree, justified + grid + list
+layouts, search/sort/zoom, and bundle cards backed by the Phase 1/2 APIs
+(including `/bundles/{id}/thumbnail`). See the product brief's "Phase 3".
 
 ## Unresolved decisions
 
-- None blocking. Open design questions for later phases are tracked inline
-  in `docs/data-model.md` ("What Phase 1 must decide") and
-  `docs/filter-language.md` ("Open questions for Phase 5").
+- None blocking. Open design questions for later phases are tracked inline in
+  `docs/data-model.md` and `docs/filter-language.md`.
