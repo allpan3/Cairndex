@@ -28,10 +28,19 @@ class Settings(BaseSettings):
     # database lives at ``{data_dir}/cairndex.db``.
     database_url: str | None = None
 
+    # Run the in-process background worker on app startup. Disabled in tests so
+    # jobs are driven deterministically instead of by a polling thread.
+    worker_enabled: bool = True
+
     def resolved_database_url(self) -> str:
         if self.database_url is not None:
             return self.database_url
         return f"sqlite:///{(self.data_dir / 'cairndex.db').as_posix()}"
+
+    @property
+    def cache_dir(self) -> Path:
+        """Directory for derived media (thumbnails), kept outside any root."""
+        return self.data_dir / "cache"
 
 
 @lru_cache

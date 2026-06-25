@@ -4,6 +4,7 @@ from cairndex.api.v1 import (
     bundles,
     folders,
     health,
+    jobs,
     storage_roots,
     tag_groups,
     tags,
@@ -16,3 +17,4 @@ router.include_router(bundles.router)
 router.include_router(tags.router)
 router.include_router(tag_groups.router)
 router.include_router(folders.router)
+router.include_router(jobs.router)
