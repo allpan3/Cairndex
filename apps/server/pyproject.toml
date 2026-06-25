@@ -2,7 +2,6 @@
 name = "cairndex-server"
 version = "0.1.0"
 description = "Cairndex backend: FastAPI service for a local-first media asset manager."
-readme = "../../README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
