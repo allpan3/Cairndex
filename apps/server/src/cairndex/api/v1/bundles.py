@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import DbSession, Pagination
+from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
     BundleCreate,
     BundleFolders,
@@ -15,13 +18,51 @@ from cairndex.api.schemas.bundles import (
 from cairndex.api.schemas.common import Page
 from cairndex.core.errors import NotFoundError
 from cairndex.media import thumbnails
+from cairndex.services import browse as browse_service
 from cairndex.services import bundles as service
+from cairndex.services.browse import BundleSort, SystemView
+from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
 
 
 def _thumbnail_response(path: object) -> FileResponse:
     return FileResponse(str(path), media_type="image/jpeg")
+
+
+# --- Browse (declared before /{bundle_id} so the static paths win) -----------
+@router.get("/browse", response_model=BundleBrowsePage)
+def browse_bundles(
+    db: DbSession,
+    view: SystemView = SystemView.ALL,
+    folder_id: Annotated[str | None, Query()] = None,
+    include_descendants: bool = False,
+    sort: BundleSort = BundleSort.DATE_ADDED,
+    order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
+) -> BundleBrowsePage:
+    page = browse_service.browse_bundles(
+        db,
+        view=view,
+        folder_id=folder_id,
+        include_descendants=include_descendants,
+        sort=sort,
+        descending=order == "desc",
+        offset=offset,
+        limit=limit,
+    )
+    return BundleBrowsePage(
+        items=[BundleSummary(**vars(s)) for s in page.items],
+        total=page.total,
+        offset=page.offset,
+        limit=page.limit,
+    )
+
+
+@router.get("/counts", response_model=ViewCounts)
+def bundle_view_counts(db: DbSession) -> ViewCounts:
+    return ViewCounts(**browse_service.view_counts(db))
 
 
 @router.post("", response_model=BundleRead, status_code=status.HTTP_201_CREATED)

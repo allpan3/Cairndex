@@ -1,6 +1,37 @@
 {
   "components": {
     "schemas": {
+      "BundleBrowsePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BundleSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "BundleBrowsePage",
+        "type": "object"
+      },
       "BundleCreate": {
         "properties": {
           "note": {
@@ -176,6 +207,140 @@
           "updated_at"
         ],
         "title": "BundleRead",
+        "type": "object"
+      },
+      "BundleSort": {
+        "enum": [
+          "date_added",
+          "title",
+          "rating",
+          "size",
+          "file_count"
+        ],
+        "title": "BundleSort",
+        "type": "string"
+      },
+      "BundleSummary": {
+        "properties": {
+          "date_added": {
+            "format": "date-time",
+            "title": "Date Added",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "has_cover": {
+            "title": "Has Cover",
+            "type": "boolean"
+          },
+          "has_missing": {
+            "title": "Has Missing",
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "total_size": {
+            "title": "Total Size",
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rating",
+          "file_count",
+          "total_size",
+          "has_missing",
+          "has_cover",
+          "media_kind",
+          "width",
+          "height",
+          "duration",
+          "extension",
+          "date_added"
+        ],
+        "title": "BundleSummary",
         "type": "object"
       },
       "BundleTags": {
@@ -538,6 +703,22 @@
         ],
         "title": "FileRole",
         "type": "string"
+      },
+      "FolderCounts": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "title": "FolderCounts",
+        "type": "object"
       },
       "FolderCreate": {
         "properties": {
@@ -1155,6 +1336,17 @@
         "title": "StorageRootUpdate",
         "type": "object"
       },
+      "SystemView": {
+        "enum": [
+          "all",
+          "recent",
+          "uncategorized",
+          "untagged",
+          "missing"
+        ],
+        "title": "SystemView",
+        "type": "string"
+      },
       "TagCreate": {
         "properties": {
           "color": {
@@ -1423,6 +1615,39 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "ViewCounts": {
+        "properties": {
+          "all": {
+            "title": "All",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "recent": {
+            "title": "Recent",
+            "type": "integer"
+          },
+          "uncategorized": {
+            "title": "Uncategorized",
+            "type": "integer"
+          },
+          "untagged": {
+            "title": "Untagged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "recent",
+          "uncategorized",
+          "untagged",
+          "missing"
+        ],
+        "title": "ViewCounts",
+        "type": "object"
       }
     }
   },
@@ -1527,6 +1752,138 @@
           }
         },
         "summary": "Create Bundle",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/bundles/browse": {
+      "get": {
+        "operationId": "browse_bundles_api_v1_bundles_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SystemView",
+              "default": "all"
+            }
+          },
+          {
+            "in": "query",
+            "name": "folder_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Folder Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_descendants",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Descendants",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/BundleSort",
+              "default": "date_added"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "pattern": "^(asc|desc)$",
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleBrowsePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Bundles",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/bundles/counts": {
+      "get": {
+        "operationId": "bundle_view_counts_api_v1_bundles_counts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bundle View Counts",
         "tags": [
           "bundles"
         ]
@@ -2086,6 +2443,27 @@
           }
         },
         "summary": "Create Folder",
+        "tags": [
+          "folders"
+        ]
+      }
+    },
+    "/api/v1/folders/counts": {
+      "get": {
+        "operationId": "folder_counts_api_v1_folders_counts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Folder Counts",
         "tags": [
           "folders"
         ]
