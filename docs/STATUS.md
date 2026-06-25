@@ -12,8 +12,8 @@ checkpoint, not retroactively reconciled against git after the fact.
 
 ## Completed in this milestone
 
-- Repository audit (see PR-style summary in the branch handoff message —
-  repo was empty except `AGENTS.md`/`CLAUDE.md`).
+- Repository audit (the GitHub PR description has the full summary — repo
+  was empty except `AGENTS.md`/`CLAUDE.md`).
 - Monorepo layout: `apps/server`, `apps/web`, `infra/docker`, `docs/`.
 - Documentation skeleton: `docs/architecture.md`, `docs/development.md`,
   `docs/deployment.md`, `docs/data-model.md`, `docs/filter-language.md`,
