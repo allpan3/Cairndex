@@ -2,10 +2,13 @@ import os
 from collections.abc import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.api.deps import get_db
 from cairndex.core.config import get_settings
+from cairndex.main import create_app
 from cairndex.persistence import models  # noqa: F401  (register metadata)
 from cairndex.persistence.base import Base
 from cairndex.persistence.engine import create_app_engine
@@ -46,3 +49,26 @@ def session(engine: Engine) -> Iterator[Session]:
     maker = sessionmaker(bind=engine, expire_on_commit=False, future=True)
     with maker() as db_session:
         yield db_session
+
+
+@pytest.fixture
+def client(session: Session) -> Iterator[TestClient]:
+    """A TestClient whose DB dependency is bound to the test session.
+
+    Requests share the fixture session and commit on success, so writes from
+    one request are visible to the next (and to direct session assertions).
+    """
+    app = create_app()
+
+    def _override_get_db() -> Iterator[Session]:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+
+    app.dependency_overrides[get_db] = _override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
