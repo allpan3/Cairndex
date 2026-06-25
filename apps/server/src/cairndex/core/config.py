@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,5 +17,12 @@ class Settings(BaseSettings):
     environment: str = "development"
 
 
+@lru_cache
 def get_settings() -> Settings:
+    """Return a cached Settings instance.
+
+    Settings are read from the environment once per process (the idiomatic
+    FastAPI pattern). Tests that need to vary configuration should call
+    ``get_settings.cache_clear()`` after mutating the environment.
+    """
     return Settings()
