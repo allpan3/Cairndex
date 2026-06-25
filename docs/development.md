@@ -51,6 +51,43 @@ npm run test              # vitest run
 npm run test:e2e          # playwright (boots its own dev server)
 ```
 
+## Database migrations
+
+The backend uses Alembic over SQLite (WAL). From `apps/server`:
+
+```bash
+uv run alembic upgrade head            # apply migrations to the configured DB
+uv run alembic revision --autogenerate -m "describe change"  # after model edits
+uv run alembic downgrade -1            # roll back one revision
+```
+
+The database URL comes from settings (`CAIRNDEX_DATABASE_URL`, or
+`{CAIRNDEX_DATA_DIR}/cairndex.db` by default). Seed a synthetic library for
+UI/manual testing (synthetic metadata only — no real media is created):
+
+```bash
+uv run alembic upgrade head
+uv run python -m cairndex.devtools.seed --bundles 2000
+```
+
+## Frontend API types (generated from OpenAPI)
+
+The frontend's request/response types are generated from the backend's
+OpenAPI schema so the two cannot drift. To regenerate after backend API
+changes:
+
+```bash
+# 1. dump the schema from the backend (apps/server)
+uv run python -m cairndex.devtools.openapi > ../web/src/api/openapi.json
+# 2. generate TypeScript types (apps/web)
+npm run gen:api          # writes src/api/schema.d.ts
+```
+
+Both `openapi.json` and `schema.d.ts` are committed (generated, excluded from
+lint/format). `gen:api` uses `npx openapi-typescript` rather than a pinned
+devDependency because that tool's TypeScript peer range does not yet include
+TS 6.
+
 ## Running both together without Docker
 
 Run the two `dev` commands above in separate terminals. The Vite dev server

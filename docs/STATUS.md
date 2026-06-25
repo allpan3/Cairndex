@@ -2,69 +2,66 @@
 
 ## Current branch / latest commit
 
-Branch: `chore/project-foundation` (not yet merged to `main`).
-Latest commit: see `git log -1` — this file is updated at each meaningful
-checkpoint, not retroactively reconciled against git after the fact.
+Branch: `feature/core-domain-model` (Phase 1), based on `main`. Latest
+commit: see `git log -1`.
 
 ## Current milestone
 
-**Phase 0 — Repository audit and foundation** (`chore/project-foundation`).
+**Phase 1 — Core domain and storage roots** (`feature/core-domain-model`).
+Implemented: SQLAlchemy schema + Alembic migration; path-safety module;
+domain services + `/api/v1` CRUD for storage roots, bundles (metadata-only
+file linking, cover/primary, tag/folder assignment), tags, tag groups, and
+folders; keyset pagination; structured errors; recursive-CTE descendant
+queries; synthetic seeder; generated frontend API types. Backend: 64 tests
+passing, ruff + mypy clean, migration round-trip + `alembic check` clean.
+The GitHub PR (#2) description has the full summary. **Phase 0** is
+merged to `main` (PR #3).
 
 ## Completed in this milestone
 
-- Repository audit (the GitHub PR description has the full summary — repo
-  was empty except `AGENTS.md`/`CLAUDE.md`).
-- Monorepo layout: `apps/server`, `apps/web`, `infra/docker`, `docs/`.
-- Documentation skeleton: `docs/architecture.md`, `docs/development.md`,
-  `docs/deployment.md`, `docs/data-model.md`, `docs/filter-language.md`,
-  this file, `docs/adr/` with a template and ADR-0001.
-- `CHANGELOG.md` with an `Unreleased` section.
-- `.gitignore` covering Python/Node toolchains, databases, caches, thumbnails,
-  app-data directories, and secrets (media is excluded by directory, not by
-  extension — see the `.gitignore` policy note).
-- FastAPI backend shell (`apps/server`) with `GET /api/v1/health`, Ruff
-  format/lint, mypy strict, and pytest — see `docs/development.md`.
-- React/Vite/TypeScript (strict mode) frontend shell (`apps/web`) that probes
-  the health endpoint with loading/online/unreachable states; ESLint flat
-  config, Prettier, Vitest component tests, and a Playwright e2e smoke test.
-- `infra/docker/server.Dockerfile`, `infra/docker/web.Dockerfile`, root
-  `docker-compose.yml` for local dev.
-- `.github/workflows/ci.yml` running both apps' checks plus a `docker compose
-  build` validation.
+- SQLAlchemy 2.0 schema + first Alembic migration for all 10 core tables
+  (ADR-0002: ULID PKs, tz-aware UTC timestamps, adjacency-list hierarchy,
+  SQLite WAL/foreign-keys pragmas).
+- Path-safety module (`core/paths`): normalizes client relative paths and
+  rejects absolute/traversal/symlink-escape — the single choke point for
+  storage-root path resolution.
+- Domain services + `/api/v1` CRUD for storage roots, bundles (metadata-only
+  file linking/unlinking, cover/primary selection, tag/folder assignment),
+  tags, tag groups (multi-membership), and folders; keyset pagination;
+  structured errors; recursive-CTE descendant queries.
+- Synthetic library generator + seed CLI (`python -m cairndex.devtools.seed`).
+- Frontend API types generated from the OpenAPI schema and wired into the
+  client (`npm run gen:api`).
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
-- Backend (`apps/server`): `uv run ruff format --check .`, `uv run ruff check
-  .`, `uv run mypy src`, `uv run pytest` (2 passed).
-- Frontend (`apps/web`): `npm run lint`, `npm run format:check`, `npm run
-  typecheck`, `npm run test` (3 passed), `npm run build`, `npm run test:e2e`
-  (1 passed, Chromium).
-- Integration: started both servers and verified the Vite dev proxy forwards
-  `:5173/api/v1/health` to the backend (`status: ok`).
-- Docker (verified locally after Docker Desktop was installed): `docker
-  compose build` (both images), `docker compose up` → backend health on
-  `:8000`, frontend on `:5173`, the Vite proxy forwarding `:5173/api` to
-  `server:8000` across the compose network, and the server container's
-  `HEALTHCHECK` reporting `healthy`; `docker compose down` cleans up.
-- Also validated by CI on PR #1 (backend, frontend, and `docker compose
-  build` jobs all green).
+- Backend (`apps/server`): `ruff format --check`, `ruff check`, `mypy src`,
+  and `pytest` (**64 passed**); Alembic upgrade/downgrade/upgrade round-trip
+  and `alembic check` — clean.
+- Frontend (`apps/web`): `lint`, `format:check`, `typecheck`, `test` (3) —
+  verifies the generated `schema.d.ts` compiles and the client consumes it.
+- CI green on PR #2 (backend, frontend, Docker build).
 
 ## Known issues / environment gaps
 
-- `ffmpeg`/`ffprobe` are not installed on the dev machine. Not required
-  until Phase 2 (scanner/media metadata), but worth installing now
-  (`brew install ffmpeg`) so Phase 2 isn't blocked on environment setup.
-- No domain model, scanner, or browsing UI exists yet — Phase 0 is
-  intentionally foundation-only.
+- `ffmpeg`/`ffprobe` are not installed on the dev machine. Required from
+  Phase 2 (scanner/media metadata) — install with `brew install ffmpeg`.
+- No scanner or browsing UI yet (Phases 2 and 3); Smart Folders have a table
+  but no filter compiler yet (Phase 5).
 
 ## Next recommended task
 
-**Phase 1 — Core domain and storage roots** (`feature/core-domain-model`):
-storage-root/bundle/file/tag/tag-group/folder/smart-folder migrations,
-domain/service layer, CRUD APIs, path-safety tests. See `AGENTS.md` and the
-product brief's "Phase 1" section for full acceptance criteria.
+**Phase 2 — Scanner, indexing, and media metadata**
+(`feature/library-scanner`): manual incremental storage-root scan as a
+resumable background job, quick fingerprint + lazy full hash, ffprobe
+metadata extraction, thumbnail extraction/cache, and missing-file state.
+Requires `ffmpeg`/`ffprobe` installed (`brew install ffmpeg`). See the
+product brief's "Phase 2" section for acceptance criteria.
+
+Smart Folders have a table but no filter compiler yet — that is Phase 5
+(`docs/filter-language.md`).
 
 ## Unresolved decisions
 

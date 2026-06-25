@@ -20,3 +20,4 @@ design, subtitle modeling, and similar structural choices called out in
 | ADR | Title | Status |
 | --- | --- | --- |
 | [0001](0001-stack-and-database-choice.md) | Stack and database choice | accepted |
+| [0002](0002-core-schema-identity-and-hierarchy.md) | Core schema — identity, hierarchy, and ORM access | accepted |
