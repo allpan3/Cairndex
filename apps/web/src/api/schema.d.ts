@@ -76,6 +76,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundles/{bundle_id}/files/{file_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get File Thumbnail */
+        get: operations["get_file_thumbnail_api_v1_bundles__bundle_id__files__file_id__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundles/{bundle_id}/folders": {
         parameters: {
             query?: never;
@@ -103,6 +120,28 @@ export interface paths {
         get?: never;
         /** Set Tags */
         put: operations["set_tags_api_v1_bundles__bundle_id__tags_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundles/{bundle_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bundle Thumbnail
+         * @description Serve the bundle's cover thumbnail (generated on first request).
+         *
+         *     404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
+         */
+        get: operations["get_bundle_thumbnail_api_v1_bundles__bundle_id__thumbnail_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -164,6 +203,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_v1_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_v1_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Job */
+        post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-roots": {
         parameters: {
             query?: never;
@@ -199,6 +289,74 @@ export interface paths {
         head?: never;
         /** Update Storage Root */
         patch: operations["update_storage_root_api_v1_storage_roots__root_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}/fast-add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fast Add Files */
+        post: operations["fast_add_files_api_v1_storage_roots__root_id__fast_add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe Root */
+        post: operations["probe_root_api_v1_storage_roots__root_id__probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Root */
+        post: operations["scan_root_api_v1_storage_roots__root_id__scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage-roots/{root_id}/thumbnails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Thumbnails Root */
+        post: operations["thumbnails_root_api_v1_storage_roots__root_id__thumbnails_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tag-groups": {
@@ -369,6 +527,24 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** FastAddRequest */
+        FastAddRequest: {
+            /** Bundle Title */
+            bundle_title?: string | null;
+            /** @default per_file */
+            grouping: components["schemas"]["Grouping"];
+            /** Paths */
+            paths: string[];
+        };
+        /** FastAddResponse */
+        FastAddResponse: {
+            /** Bundles Created */
+            bundles_created: number;
+            /** Files Linked */
+            files_linked: number;
+            /** Skipped */
+            skipped: number;
+        };
         /**
          * FileAvailability
          * @description File presence on disk. Distinct from metadata deletion (ADR-0002).
@@ -425,6 +601,10 @@ export interface components {
             size_bytes: number | null;
             /** Storage Root Id */
             storage_root_id: string;
+            /** Tech Metadata */
+            tech_metadata: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Updated At
              * Format: date-time
@@ -472,6 +652,12 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /**
+         * Grouping
+         * @description How fast-add groups selected files into bundles.
+         * @enum {string}
+         */
+        Grouping: "per_file" | "single_bundle";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -486,6 +672,50 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** JobRead */
+        JobRead: {
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Processed */
+            processed: number;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["JobStatus"];
+            /** Total */
+            total: number | null;
+            type: components["schemas"]["JobType"];
+        };
+        /**
+         * JobStatus
+         * @description Lifecycle state of a background job.
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /**
+         * JobType
+         * @description Kind of background job (AGENTS.md §4.10/§5.2).
+         * @enum {string}
+         */
+        JobType: "scan" | "probe" | "thumbnail";
         /**
          * MediaKind
          * @description Coarse media classification, independent of the in-bundle role.
@@ -503,6 +733,13 @@ export interface components {
         Page_FolderRead_: {
             /** Items */
             items: components["schemas"]["FolderRead"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[JobRead] */
+        Page_JobRead_: {
+            /** Items */
+            items: components["schemas"]["JobRead"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -943,6 +1180,38 @@ export interface operations {
             };
         };
     };
+    get_file_thumbnail_api_v1_bundles__bundle_id__files__file_id__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_folders_api_v1_bundles__bundle_id__folders_put: {
         parameters: {
             query?: never;
@@ -1000,6 +1269,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleTags"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bundle_thumbnail_api_v1_bundles__bundle_id__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -1193,6 +1493,100 @@ export interface operations {
             };
         };
     };
+    list_jobs_api_v1_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_JobRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_v1_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_v1_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_storage_roots_api_v1_storage_roots_get: {
         parameters: {
             query?: {
@@ -1340,6 +1734,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StorageRootRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fast_add_files_api_v1_storage_roots__root_id__fast_add_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FastAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FastAddResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_root_api_v1_storage_roots__root_id__probe_post: {
+        parameters: {
+            query?: {
+                reprobe?: boolean;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_root_api_v1_storage_roots__root_id__scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    thumbnails_root_api_v1_storage_roots__root_id__thumbnails_post: {
+        parameters: {
+            query?: {
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
                 };
             };
             /** @description Validation Error */

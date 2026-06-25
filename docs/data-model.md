@@ -67,11 +67,19 @@ Composite PK of the two FKs, both CASCADE.
 `docs/filter-language.md`; never SQL), `default_sort`, `default_layout`,
 `sort_order`, timestamps.
 
+### `jobs` (Phase 2)
+`id`, `type` (`scan`/`probe`/`thumbnail`), `status`
+(`queued`/`running`/`succeeded`/`failed`/`cancelled`), `payload` (JSON),
+`processed`/`total` (progress), `result` (JSON), `error`, `cancel_requested`
+(cooperative cancel flag), timestamps + `started_at`/`finished_at`. Backs the
+in-process worker (ADR-0001). Asset-file fields `size_bytes`, `mtime`,
+`quick_fingerprint`, and `tech_metadata` are now populated by the scanner/probe
+jobs (full hash stays lazy/unused until a dedup/repair feature needs it).
+
 ## Deferred to later phases
 
 - **Subtitle/media tracks** (`AGENTS.md` §4.9) — Phase 6. `asset_files` already
   carries `role=subtitle`; the track-linking table lands with playback.
-- **Jobs** (scans, ffprobe, thumbnails) — Phase 2.
 
 ## Still open
 
