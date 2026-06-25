@@ -48,7 +48,7 @@ def test_system_views_filter(session: Session) -> None:
     # b1: in a folder, tagged-not; b2: uncategorized + untagged; b3: has missing file.
     b1 = bundle_service.create_bundle(session, title="b1")
     bundle_service.set_bundle_folders(session, b1.id, [folder.id])
-    b2 = bundle_service.create_bundle(session, title="b2")
+    bundle_service.create_bundle(session, title="b2")  # uncategorized + untagged
     b3 = bundle_service.create_bundle(session, title="b3")
     mf = bundle_service.add_file(
         session,
