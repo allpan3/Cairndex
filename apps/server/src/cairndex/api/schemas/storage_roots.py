@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cairndex.domain.enums import StorageRootStatus
+from cairndex.domain.enums import Grouping, StorageRootStatus
 
 
 class StorageRootCreate(BaseModel):
@@ -28,3 +28,15 @@ class StorageRootRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_scanned_at: datetime | None
+
+
+class FastAddRequest(BaseModel):
+    paths: list[str] = Field(min_length=1)
+    grouping: Grouping = Grouping.PER_FILE
+    bundle_title: str | None = Field(default=None, max_length=1024)
+
+
+class FastAddResponse(BaseModel):
+    bundles_created: int
+    files_linked: int
+    skipped: int

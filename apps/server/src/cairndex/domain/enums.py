@@ -39,3 +39,28 @@ class FileAvailability(StrEnum):
 
     AVAILABLE = "available"
     MISSING = "missing"
+
+
+class JobType(StrEnum):
+    """Kind of background job (AGENTS.md §4.10/§5.2)."""
+
+    SCAN = "scan"
+    PROBE = "probe"
+    THUMBNAIL = "thumbnail"
+
+
+class JobStatus(StrEnum):
+    """Lifecycle state of a background job."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Grouping(StrEnum):
+    """How fast-add groups selected files into bundles."""
+
+    PER_FILE = "per_file"  # one bundle per file (the scan default)
+    SINGLE_BUNDLE = "single_bundle"  # one bundle holding all selected files
