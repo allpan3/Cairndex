@@ -52,17 +52,24 @@ Phase 0 only implements `core/` (app factory, settings) and a single
 
 ## 3. Frontend (`apps/web`)
 
-Phase 0 ships an app shell only (no routing, no data fetching beyond an
-optional health check). The target shape, introduced incrementally from
-Phase 3 onward:
+Eagle-inspired dark, three-pane desktop UI (introduced in Phase 3):
 
 ```text
 src/
-  app/          router setup, layout shell (sidebar / toolbar / browser / inspector)
-  features/     bundle browser, inspector, tag picker, folder tree, smart folders
-  api/          generated/typed client over /api/v1, TanStack Query hooks
-  components/   shared UI primitives (Radix-based)
+  api/        typed client over /api/v1 (types generated from OpenAPI) +
+              TanStack Query hooks (incl. an infinite browse query)
+  app/        shell pieces — Sidebar, Toolbar, Browser, Inspector, BundleCard,
+              and the grid/justified/list layout packing (layout.ts)
+  state/      usePersistentState (localStorage for layout/zoom/pane widths)
+  lib/        formatting helpers
 ```
+
+Server state lives in TanStack Query; view state (selection, current
+view/folder, search) is local React state; durable preferences persist to
+localStorage. The browser is **virtualized** (TanStack Virtual) over packed
+rows so thousands of bundles stay responsive. A typed router is deliberately
+deferred while the app is a single browse view (see `docs/STATUS.md`).
+Bundle thumbnails come from `GET /api/v1/bundles/{id}/thumbnail`.
 
 ## 4. Storage and path safety — **TBD (Phase 1)**
 

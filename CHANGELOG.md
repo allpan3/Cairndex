@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 3 — desktop app shell and browsing views.**
+  - Bundle browse API: `GET /api/v1/bundles/browse` (card summaries, system
+    views, folder filter with descendants, sort with stable tie-breaker,
+    offset pagination + total) and `/bundles/counts`, `/folders/counts`.
+  - Eagle-inspired dark three-pane web UI (resizable sidebar / browser /
+    inspector) on TanStack Query + generated OpenAPI types.
+  - Counted system views + hierarchical folder tree; toolbar with search,
+    sort, layout switcher, and zoom.
+  - Grid, list/table, and justified browsing layouts, all virtualized
+    (TanStack Virtual) so thousands of bundles stay responsive; bundle cards
+    with thumbnails/badges; inspector with metadata + file list.
+  - Keyboard navigation; layout/zoom/pane-width persisted to localStorage.
+  - Vitest component tests + Playwright e2e (API-mocked).
 - **Phase 2 — scanner, indexing, and media metadata.**
   - DB-backed background job framework: `jobs` table + migration, a polled
     in-process `Worker` (started via the app lifespan) with cooperative
