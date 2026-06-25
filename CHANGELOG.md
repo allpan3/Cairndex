@@ -20,12 +20,15 @@ grouped under `Unreleased` until the first tagged release.
 - FastAPI backend shell (`apps/server`) with a versioned health endpoint
   (`GET /api/v1/health`), uv-managed Python 3.12+ project, Ruff formatting
   and linting, mypy strict type checking, and a pytest smoke test.
-- React + TypeScript frontend shell (`apps/web`) built with Vite, ESLint +
-  Prettier, Vitest smoke test, and a minimal Playwright end-to-end check.
+- React + TypeScript (strict mode) frontend shell (`apps/web`) built with
+  Vite, ESLint (flat config) + Prettier, a Vitest component test suite, and a
+  Playwright end-to-end smoke test. The shell probes `GET /api/v1/health` and
+  renders loading/online/unreachable states; the Vite dev server proxies
+  `/api` to the backend so development needs no CORS.
 - Docker development environment: `infra/docker/server.Dockerfile`,
   `infra/docker/web.Dockerfile`, and root `docker-compose.yml`.
 - GitHub Actions CI workflow running backend and frontend checks plus a
-  Docker image build validation on every push/PR.
+  `docker compose build` validation on every push/PR.
 
 ### Changed
 
@@ -33,7 +36,9 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
-- N/A
+- `.gitignore` no longer blanket-ignores media extensions at the repo root.
+  The `*.ts` glob silently shadowed all TypeScript source; source media is
+  kept out via directory ignores (`data/`, `storage/`, `var/`) instead.
 
 ### Removed
 
@@ -45,4 +50,7 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
-- N/A
+- Enforced TypeScript strict mode (`strict`, `noUncheckedIndexedAccess`) in
+  both frontend tsconfigs, which the Vite scaffold omitted (AGENTS.md §9).
+- `get_settings()` memoizes the `Settings` instance (`lru_cache`) so config
+  is read from the environment once per process.

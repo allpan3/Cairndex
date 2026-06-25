@@ -20,22 +20,31 @@ checkpoint, not retroactively reconciled against git after the fact.
   this file, `docs/adr/` with a template and ADR-0001.
 - `CHANGELOG.md` with an `Unreleased` section.
 - `.gitignore` covering Python/Node toolchains, databases, caches, thumbnails,
-  media, and secrets.
+  app-data directories, and secrets (media is excluded by directory, not by
+  extension — see the `.gitignore` policy note).
 - FastAPI backend shell (`apps/server`) with `GET /api/v1/health`, Ruff
-  format/lint, mypy, and pytest — see `docs/development.md`.
-- React/Vite/TypeScript frontend shell (`apps/web`) with ESLint, Prettier,
-  Vitest, and a minimal Playwright check.
+  format/lint, mypy strict, and pytest — see `docs/development.md`.
+- React/Vite/TypeScript (strict mode) frontend shell (`apps/web`) that probes
+  the health endpoint with loading/online/unreachable states; ESLint flat
+  config, Prettier, Vitest component tests, and a Playwright e2e smoke test.
 - `infra/docker/server.Dockerfile`, `infra/docker/web.Dockerfile`, root
   `docker-compose.yml` for local dev.
-- `.github/workflows/ci.yml` running both apps' checks plus a Docker build
-  validation.
+- `.github/workflows/ci.yml` running both apps' checks plus a `docker compose
+  build` validation.
 
-## Tests run
+## Tests run (this session, on macOS)
 
-See the PR-style summary delivered with this branch for exact commands and
-output. In short: `ruff format --check`, `ruff check`, `mypy`, `pytest`
-(backend); `eslint`, `prettier --check`, `tsc --noEmit`, `vitest run`,
-`playwright test` (frontend).
+All passing:
+
+- Backend (`apps/server`): `uv run ruff format --check .`, `uv run ruff check
+  .`, `uv run mypy src`, `uv run pytest` (2 passed).
+- Frontend (`apps/web`): `npm run lint`, `npm run format:check`, `npm run
+  typecheck`, `npm run test` (3 passed), `npm run build`, `npm run test:e2e`
+  (1 passed, Chromium).
+- Integration: started both servers and verified the Vite dev proxy forwards
+  `:5173/api/v1/health` to the backend (`status: ok`).
+- Not run locally: `docker compose build` (no Docker daemon on the dev
+  machine — see below); validated in CI instead.
 
 ## Known issues / environment gaps
 
