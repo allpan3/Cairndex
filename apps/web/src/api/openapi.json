@@ -274,6 +274,62 @@
         "title": "BundleUpdate",
         "type": "object"
       },
+      "FastAddRequest": {
+        "properties": {
+          "bundle_title": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Title"
+          },
+          "grouping": {
+            "$ref": "#/components/schemas/Grouping",
+            "default": "per_file"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "FastAddRequest",
+        "type": "object"
+      },
+      "FastAddResponse": {
+        "properties": {
+          "bundles_created": {
+            "title": "Bundles Created",
+            "type": "integer"
+          },
+          "files_linked": {
+            "title": "Files Linked",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundles_created",
+          "files_linked",
+          "skipped"
+        ],
+        "title": "FastAddResponse",
+        "type": "object"
+      },
       "FileAvailability": {
         "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).",
         "enum": [
@@ -427,6 +483,18 @@
             "title": "Storage Root Id",
             "type": "string"
           },
+          "tech_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tech Metadata"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -446,6 +514,7 @@
           "sequence",
           "size_bytes",
           "availability",
+          "tech_metadata",
           "created_at",
           "updated_at"
         ],
@@ -573,6 +642,15 @@
         "title": "FolderUpdate",
         "type": "object"
       },
+      "Grouping": {
+        "description": "How fast-add groups selected files into bundles.",
+        "enum": [
+          "per_file",
+          "single_bundle"
+        ],
+        "title": "Grouping",
+        "type": "string"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -608,6 +686,134 @@
         ],
         "title": "HealthStatus",
         "type": "object"
+      },
+      "JobRead": {
+        "properties": {
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JobType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "status",
+          "payload",
+          "processed",
+          "total",
+          "result",
+          "error",
+          "cancel_requested",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "JobRead",
+        "type": "object"
+      },
+      "JobStatus": {
+        "description": "Lifecycle state of a background job.",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "JobType": {
+        "description": "Kind of background job (AGENTS.md \u00a74.10/\u00a75.2).",
+        "enum": [
+          "scan",
+          "probe",
+          "thumbnail"
+        ],
+        "title": "JobType",
+        "type": "string"
       },
       "MediaKind": {
         "description": "Coarse media classification, independent of the in-bundle role.",
@@ -673,6 +879,33 @@
           "items"
         ],
         "title": "Page[FolderRead]",
+        "type": "object"
+      },
+      "Page_JobRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[JobRead]",
         "type": "object"
       },
       "Page_StorageRootRead_": {
@@ -1564,6 +1797,55 @@
         ]
       }
     },
+    "/api/v1/bundles/{bundle_id}/files/{file_id}/thumbnail": {
+      "get": {
+        "operationId": "get_file_thumbnail_api_v1_bundles__bundle_id__files__file_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get File Thumbnail",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/bundles/{bundle_id}/folders": {
       "put": {
         "operationId": "set_folders_api_v1_bundles__bundle_id__folders_put",
@@ -1663,6 +1945,47 @@
           }
         },
         "summary": "Set Tags",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/bundles/{bundle_id}/thumbnail": {
+      "get": {
+        "description": "Serve the bundle's cover thumbnail (generated on first request).\n\n404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.",
+        "operationId": "get_bundle_thumbnail_api_v1_bundles__bundle_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Bundle Thumbnail",
         "tags": [
           "bundles"
         ]
@@ -1914,6 +2237,151 @@
         ]
       }
     },
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_JobRead_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_v1_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/storage-roots": {
       "get": {
         "operationId": "list_storage_roots_api_v1_storage_roots_get",
@@ -2134,6 +2602,204 @@
           }
         },
         "summary": "Update Storage Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/fast-add": {
+      "post": {
+        "operationId": "fast_add_files_api_v1_storage_roots__root_id__fast_add_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FastAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FastAddResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fast Add Files",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/probe": {
+      "post": {
+        "operationId": "probe_root_api_v1_storage_roots__root_id__probe_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reprobe",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Reprobe",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Probe Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/scan": {
+      "post": {
+        "operationId": "scan_root_api_v1_storage_roots__root_id__scan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scan Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/thumbnails": {
+      "post": {
+        "operationId": "thumbnails_root_api_v1_storage_roots__root_id__thumbnails_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Thumbnails Root",
         "tags": [
           "storage-roots"
         ]

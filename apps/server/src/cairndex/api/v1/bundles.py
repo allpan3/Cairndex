@@ -1,4 +1,5 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import FileResponse
 
 from cairndex.api.deps import DbSession, Pagination
 from cairndex.api.schemas.bundles import (
@@ -12,9 +13,15 @@ from cairndex.api.schemas.bundles import (
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
+from cairndex.core.errors import NotFoundError
+from cairndex.media import thumbnails
 from cairndex.services import bundles as service
 
 router = APIRouter(prefix="/bundles", tags=["bundles"])
+
+
+def _thumbnail_response(path: object) -> FileResponse:
+    return FileResponse(str(path), media_type="image/jpeg")
 
 
 @router.post("", response_model=BundleRead, status_code=status.HTTP_201_CREATED)
@@ -91,3 +98,28 @@ def set_tags(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleTag
 def set_folders(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleFolders:
     bundle = service.set_bundle_folders(db, bundle_id, payload.ids)
     return BundleFolders(bundle_id=bundle.id, folder_ids=[f.id for f in bundle.folders])
+
+
+# --- Thumbnails (generated lazily and cached) --------------------------------
+@router.get("/{bundle_id}/thumbnail")
+def get_bundle_thumbnail(bundle_id: str, db: DbSession) -> FileResponse:
+    """Serve the bundle's cover thumbnail (generated on first request).
+
+    404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
+    """
+    try:
+        path = thumbnails.generate_for_bundle(db, bundle_id)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if path is None:
+        raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
+    return _thumbnail_response(path)
+
+
+@router.get("/{bundle_id}/files/{file_id}/thumbnail")
+def get_file_thumbnail(bundle_id: str, file_id: str, db: DbSession) -> FileResponse:
+    try:
+        path = thumbnails.generate_for_file(db, file_id)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return _thumbnail_response(path)

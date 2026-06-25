@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,6 +68,9 @@ class FileRead(BaseModel):
     sequence: int
     size_bytes: int | None
     availability: FileAvailability
+    # Normalized ffprobe output (dimensions/duration/codecs/streams), or null
+    # until the file has been probed (Phase 2 scanner/probe jobs).
+    tech_metadata: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
 

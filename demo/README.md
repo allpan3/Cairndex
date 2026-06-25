@@ -36,12 +36,28 @@ Good things to try in the docs: `GET /api/v1/bundles` (paginated — note
 `next_cursor`), `GET /api/v1/tags`, `GET /api/v1/folders`, and
 `GET /api/v1/bundles/{id}/files`.
 
+## Phase 2 — scanner, ffprobe metadata, thumbnails (backend)
+
+Generates a tiny real library with ffmpeg, then runs the scanner, ffprobe
+metadata extraction, and thumbnail generation in-process — printing the
+discovered files with their **real dimensions/duration/codecs** and where the
+cached thumbnails landed (outside the source tree). Originals are never
+touched. Requires ffmpeg (`brew install ffmpeg`).
+
+```bash
+cd apps/server
+uv run python ../../demo/phase2_walkthrough.py
+```
+
+Interactive: `./demo/run_phase1.sh` serves the API; the Phase 2 endpoints
+`POST /api/v1/storage-roots/{id}/scan|probe|thumbnails` run these as background
+jobs (poll `GET /api/v1/jobs/{id}`), and `GET /api/v1/bundles/{id}/thumbnail`
+serves a generated cover.
+
 ## Convention for later phases
 
 Each phase adds a `demo/phaseN_*.py` (or `.sh`) plus a section here:
 
-- **Phase 2** (scanner/ffprobe/thumbnails): scan a generated fixture tree and
-  show extracted dimensions/duration/codecs and a generated thumbnail.
 - **Phase 3** (desktop UI): the web app itself becomes the demo — seed a
   library and browse it.
 - Later phases: filtering/Smart Folders, playback/subtitles, etc.
