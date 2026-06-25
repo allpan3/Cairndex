@@ -1,0 +1,37 @@
+# Local development stack for Cairndex.
+#
+# This is a developer convenience (source bind-mounts + hot reload), NOT the
+# NAS production deployment — that is documented as Phase 8 work in
+# docs/deployment.md. Start with: `docker compose up --build`.
+
+services:
+  server:
+    build:
+      context: ./apps/server
+      dockerfile: ../../infra/docker/server.Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      CAIRNDEX_ENVIRONMENT: development
+    volumes:
+      # Live-reload source. The virtualenv lives at /opt/venv (outside this
+      # mount), so host code changes don't clobber installed dependencies.
+      - ./apps/server:/app
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: ../../infra/docker/web.Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # The Vite dev proxy forwards /api to the backend service over the
+      # compose network instead of localhost.
+      VITE_API_PROXY_TARGET: http://server:8000
+    volumes:
+      - ./apps/web:/app
+      # Anonymous volume keeps the container's node_modules from being shadowed
+      # by the host bind-mount above.
+      - /app/node_modules
+    depends_on:
+      - server
