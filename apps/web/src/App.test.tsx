@@ -1,45 +1,54 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+
 import App from './App'
-import type { HealthStatus } from './api/client'
 
-afterEach(() => {
-  vi.restoreAllMocks()
-})
+// jsdom has no layout, so the virtualized grid (which needs a measured width)
+// renders nothing here — card/grid rendering is covered by the Playwright e2e.
+// These tests verify the shell structure, data wiring, and the empty state.
 
-function mockFetchOnce(body: HealthStatus, ok = true) {
+function mockApi(overrides: Record<string, unknown> = {}) {
+  const responses: Record<string, unknown> = {
+    '/api/v1/bundles/counts': { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 },
+    '/api/v1/folders/counts': { counts: {} },
+    '/api/v1/folders': { items: [], next_cursor: null },
+    browse: { items: [], total: 0, offset: 0, limit: 100 },
+    ...overrides,
+  }
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue({
-      ok,
-      status: ok ? 200 : 500,
-      json: () => Promise.resolve(body),
+    vi.fn((url: string) => {
+      const key = url.includes('/bundles/browse')
+        ? 'browse'
+        : (Object.keys(responses).find((k) => url.includes(k)) ?? '')
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(responses[key]) })
     }),
   )
 }
 
-test('renders the app title and tagline', () => {
-  mockFetchOnce({ status: 'ok', app_name: 'Cairndex', environment: 'test' })
-  render(<App />)
+afterEach(() => vi.restoreAllMocks())
 
-  expect(screen.getByRole('heading', { name: 'Cairndex' })).toBeInTheDocument()
-  expect(screen.getByText('Local-first media asset manager')).toBeInTheDocument()
+function renderApp() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <App />
+    </QueryClientProvider>,
+  )
+}
+
+test('renders the shell with the brand and the system views', () => {
+  mockApi()
+  renderApp()
+  expect(screen.getByText('Cairndex')).toBeInTheDocument()
+  expect(screen.getByText('Recently Added')).toBeInTheDocument()
+  expect(screen.getByText('Uncategorized')).toBeInTheDocument()
+  expect(screen.getByText('Missing Files')).toBeInTheDocument()
 })
 
-test('shows backend-online status once the health probe resolves', async () => {
-  mockFetchOnce({ status: 'ok', app_name: 'Cairndex', environment: 'test' })
-  render(<App />)
-
-  await waitFor(() => {
-    expect(screen.getByText(/Backend online/)).toHaveTextContent('Cairndex (test)')
-  })
-})
-
-test('shows an error status when the backend is unreachable', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
-  render(<App />)
-
-  await waitFor(() => {
-    expect(screen.getByText(/Backend unreachable/)).toHaveTextContent('network down')
-  })
+test('shows the empty state when there are no bundles', async () => {
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Nothing here yet.')).toBeInTheDocument())
 })
