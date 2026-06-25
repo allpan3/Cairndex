@@ -1,8 +1,10 @@
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import DbSession, Pagination
+from cairndex.api.schemas.browse import FolderCounts
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import FolderCreate, FolderRead, FolderUpdate
+from cairndex.services import browse as browse_service
 from cairndex.services import folders as service
 
 router = APIRouter(prefix="/folders", tags=["folders"])
@@ -18,6 +20,11 @@ def create_folder(payload: FolderCreate, db: DbSession) -> FolderRead:
 def list_folders(db: DbSession, page: Pagination) -> Page[FolderRead]:
     rows, next_cursor = service.list_folders(db, limit=page.limit, cursor=page.cursor)
     return Page(items=[FolderRead.model_validate(f) for f in rows], next_cursor=next_cursor)
+
+
+@router.get("/counts", response_model=FolderCounts)
+def folder_counts(db: DbSession) -> FolderCounts:
+    return FolderCounts(counts=browse_service.folder_counts(db))
 
 
 @router.get("/{folder_id}", response_model=FolderRead)

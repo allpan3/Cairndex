@@ -2,66 +2,56 @@
 
 ## Current branch / latest commit
 
-Branch: `feature/library-scanner` (Phase 2), based on `main`. Latest commit:
-see `git log -1`.
+Branch: `feature/desktop-library-ui` (Phase 3), based on `main`. Latest
+commit: see `git log -1`.
 
 ## Current milestone
 
-**Phase 2 — Scanner, indexing, and media metadata** (`feature/library-scanner`).
-Implemented: DB-backed background job framework + worker; incremental,
-idempotent, non-destructive storage-root scanner (quick fingerprint, missing-
-file state); ffprobe technical-metadata extraction; thumbnail generation +
-cache + cover fallback + serving; async scan/probe/thumbnail endpoints; manual
-fast-add with grouping. Backend: 94 tests passing, ruff + mypy clean,
-migration round-trip + `alembic check` clean. **Phases 0 and 1** are merged to
-`main` (PRs #3, #2).
+**Phase 3 — Desktop app shell and browsing views** (`feature/desktop-library-ui`).
+Eagle-inspired dark three-pane web UI over the Phase 1/2 APIs, plus the bundle
+browse backend it needs. **Phases 0–2** are merged to `main`.
 
 ## Completed in this milestone
 
-- Background jobs: `jobs` table + migration; an in-process polled `Worker`
-  (app-lifespan managed) with cooperative cancellation and progress
-  checkpoints; `GET /jobs`, `/jobs/{id}`, `POST /jobs/{id}/cancel`.
-- Scanner (`scanning/`): batched, idempotent upsert keyed on
-  `(root, relative_path)`; quick fingerprint (size+mtime) only — full hash is
-  lazy and never on the scan path; unseen files marked `missing` (not
-  deleted); unreachable root marks its files missing; nothing on disk touched.
-- ffprobe adapter + probe service (`media/ffprobe`, `media/probe_service`):
-  normalized `tech_metadata` (dimensions/duration/codecs/streams), exposed on
-  the file API; runs as a cancellable PROBE job.
-- Thumbnails (`media/thumbnails`): ffmpeg frame/downscale to a deterministic
-  cache path outside source dirs, cover fallback, dedup; THUMBNAIL job; served
-  via `GET /bundles/{id}/thumbnail` (lazy, 404/503 fallbacks).
-- Endpoints: `POST /storage-roots/{id}/scan|probe|thumbnails` (async jobs) and
-  `/fast-add` (per-file / single-bundle grouping; directories expanded).
-- `demo/phase2_walkthrough.py` (real ffprobe metadata + thumbnails).
+- Browse backend (`services/browse`): card summaries (file count, size,
+  missing/cover state, primary-derived dims/duration/extension); system views
+  (all/recent/uncategorized/untagged/missing); folder filter w/ descendants;
+  sort with a ULID tie-breaker; offset pagination + total; view/folder counts.
+  Endpoints `GET /bundles/browse`, `/bundles/counts`, `/folders/counts`.
+- Frontend (`apps/web`): TanStack Query data layer + typed client/hooks;
+  resizable three-pane shell; counted system views + folder tree; toolbar
+  (search, sort, layout, zoom); grid/list/justified layouts, all virtualized
+  (TanStack Virtual); bundle cards; inspector (metadata + files); keyboard
+  navigation; layout/zoom/pane-width persisted.
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
-- Backend (`apps/server`): `ruff format --check`, `ruff check`, `mypy src`,
-  `pytest` (**94 passed**); Alembic round-trip + `alembic check` clean. ffmpeg
-  8.1.2 present, so scanner/probe/thumbnail tests run (they skip where ffmpeg
-  is absent; CI installs it).
-- The Phase 2 demo runs end-to-end (scan → probe → thumbnails) on generated
-  media, originals untouched.
+- Backend: `ruff`/`mypy`/`pytest` (**100 passed**); Alembic round-trip clean.
+- Frontend: `lint`, `format:check`, `typecheck`, `vitest` (2), `build`,
+  Playwright e2e (3 — shell+browse, select→inspector, layout persists).
+- Verified live in a real browser (Vite + seeded backend, 500 bundles):
+  grid/list/justified render, virtualization windows to ~30 DOM nodes,
+  selection opens the inspector, sidebar counts populate.
 
 ## Known issues / environment gaps
 
-- No browsing UI yet (Phase 3). Smart Folders have a table but no filter
-  compiler yet (Phase 5).
-- Subtitle/media-track table and jobs-driven transcoding are later phases
-  (6/later); `asset_files` already carries `role=subtitle`.
+- Search is client-side over loaded items; server-side full-text search +
+  Smart Folders are Phase 5. The "Show subfolder contents" toggle defaults on
+  for folder views (no explicit UI toggle yet).
+- Bundle editing (tags/folders/cover/rating from the UI) is Phase 4; the
+  inspector is read-only this phase.
 
 ## Next recommended task
 
-**Phase 3 — Desktop app shell and browsing views** (`feature/desktop-library-ui`):
-the Eagle-inspired three-pane shell (sidebar / virtualized browser /
-inspector), system views, counted folder tree, justified + grid + list
-layouts, search/sort/zoom, and bundle cards backed by the Phase 1/2 APIs
-(including `/bundles/{id}/thumbnail`). See the product brief's "Phase 3".
+**Phase 4 — Bundle editing and organization** (`feature/bundle-editor`):
+edit title/note/URL/rating; manage files in a bundle (add/remove/reorder,
+choose primary/cover); tag editor (hierarchy, groups, include/exclude);
+folder assignment; batch selection + batch tag/folder ops.
 
 ## Unresolved decisions
 
-- None blocking. Open design questions for later phases are tracked inline in
-  `docs/data-model.md` and `docs/filter-language.md`.
+- None blocking. A typed router (TanStack Router) was deferred this phase —
+  the app is a single browse view driven by state + localStorage; revisit if
+  multi-route/deep-link needs arise.

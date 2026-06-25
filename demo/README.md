@@ -54,10 +54,28 @@ Interactive: `./demo/run_phase1.sh` serves the API; the Phase 2 endpoints
 jobs (poll `GET /api/v1/jobs/{id}`), and `GET /api/v1/bundles/{id}/thumbnail`
 serves a generated cover.
 
+## Phase 3 — desktop library UI (the app itself)
+
+From Phase 3 on, the web app *is* the demo. Seed a library, run the backend,
+and run the Vite dev server, then browse it:
+
+```bash
+# 1. backend with a seeded demo library (from apps/server)
+cd apps/server
+export CAIRNDEX_DATABASE_URL="sqlite:///$(pwd)/var/demo.db"
+uv run alembic upgrade head && uv run python -m cairndex.devtools.seed --bundles 2000
+uv run uvicorn cairndex.main:app --port 8000
+
+# 2. frontend (from apps/web, separate terminal) — open http://localhost:5173
+npm run dev
+```
+
+Try: the system views and folder tree in the sidebar (with counts), the
+grid / list / justified layout switcher and zoom slider in the toolbar, and
+click a bundle to open the inspector. Layout/zoom persist across reloads.
+
 ## Convention for later phases
 
-Each phase adds a `demo/phaseN_*.py` (or `.sh`) plus a section here:
-
-- **Phase 3** (desktop UI): the web app itself becomes the demo — seed a
-  library and browse it.
-- Later phases: filtering/Smart Folders, playback/subtitles, etc.
+Each phase adds a `demo/phaseN_*.py` (or `.sh`) or extends the app, plus a
+section here — later phases: editing/organization, filtering/Smart Folders,
+playback/subtitles, etc.
