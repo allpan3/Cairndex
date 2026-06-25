@@ -10,6 +10,22 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 1 — core domain and storage roots.** SQLAlchemy 2.0 schema +
+  first Alembic migration for storage roots, asset bundles, asset files,
+  tags, tag groups (+ membership), folders, and smart folders, plus the
+  bundle↔tag / bundle↔folder joins (ADR-0002: ULID PKs, tz-aware UTC
+  timestamps, adjacency-list hierarchy, SQLite WAL/foreign-keys pragmas).
+- Path-safety module (`core/paths`) — normalizes client relative paths and
+  rejects absolute/traversal/symlink-escape; the single choke point for all
+  storage-root path resolution.
+- Domain services + `/api/v1` CRUD for storage roots, bundles (with
+  metadata-only file linking/unlinking, cover/primary selection, and
+  tag/folder assignment), tags, tag groups, and folders — with keyset
+  pagination, structured errors, and recursive-CTE descendant queries.
+- Synthetic library generator (`devtools/synthetic`) and seed CLI
+  (`python -m cairndex.devtools.seed`) for tests and scaled UI dev.
+- Generated frontend API types from the backend OpenAPI schema
+  (`apps/web/src/api/schema.d.ts`, `npm run gen:api`).
 - Repository foundation: monorepo layout (`apps/server`, `apps/web`,
   `infra/docker`, `docs/`), `.gitignore`, ADR process, and documentation
   skeleton (`docs/architecture.md`, `docs/development.md`,
