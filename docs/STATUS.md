@@ -2,60 +2,66 @@
 
 ## Current branch / latest commit
 
-Branch: `feature/eagle-import` (Phase 7), based on `main`. Latest commit:
+Branch: `feature/release-hardening` (Phase 8), based on `main`. Latest commit:
 see `git log -1`.
 
 ## Current milestone
 
-**Phase 7 — Eagle migration** (`feature/eagle-import`). One-way, read-only,
-idempotent import from an Eagle `.library` into Asset Bundles (ADR-0004).
-**Phases 0–6** are merged to `main`.
+**Phase 8 — packaging / deployment hardening** (`feature/release-hardening`,
+ADR-0005). A single hardened container that serves the API and the built SPA,
+ready for NAS/self-host. **Phases 0–7** are merged to `main`.
 
 ## Completed in this milestone
 
-- `eagle/reader.py`: read-only parser of an Eagle `.library` (nested folders →
-  flat, tag groups, per-item metadata) into frozen dataclasses; malformed
-  items are skipped + reported, never fatal. The library is never written to.
-- `eagle/planner.py`: `plan_import()` produces a dry-run `ImportPlan` (counts +
-  advisory merge suggestions) with no DB writes.
-- `services/eagle.py`: `import_library()` ensures a storage root at the
-  library's `images/` dir, creates/reuses folders/tags/groups by name, maps
-  each non-deleted item → one bundle + one linked file, and records
-  `import_records` (`UNIQUE(provider, external_id)`) so re-imports are no-ops.
-- API: `POST /eagle/preview` (dry run) + `POST /eagle/import` (commit).
-- Desktop "Import from Eagle" dialog (⇪ in the sidebar): path → Preview report
-  → Import, then the browse-facing queries refresh.
+- Backend serves the built frontend when `CAIRNDEX_STATIC_DIR` is set
+  (`api/static_site.py`): `/api/v1` still wins, hashed assets are served
+  directly, other paths fall back to `index.html` (deep links survive a
+  refresh). Unset in dev.
+- `infra/docker/production.Dockerfile`: multi-stage (build SPA + install locked
+  backend) → slim `python:3.12-slim` runtime, non-root UID 10001, with
+  `ffmpeg`/`ffprobe`. Root `.dockerignore` keeps the context free of
+  data/secrets.
+- `docker-compose.prod.yml`: read-only rootfs + `tmpfs`, media mounted
+  read-only at `/storage/media`, writable app-data volume at `/data`,
+  `no-new-privileges`; `.env.example` for the host knobs.
+- `infra/backup.sh`: WAL-safe online SQLite backup + integrity check.
+- ADR-0005 + rewritten `docs/deployment.md` (topology, env-var table,
+  backup/restore, remote-access security). CI builds the production image.
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
-- Backend: `ruff`/`mypy`/`pytest` (**149 passed**) — incl. `test_eagle_reader.py`,
-  `test_eagle_planner.py`, `test_eagle_import.py` (mapping, **idempotent
-  re-import creates no new rows**, preview→import→preview API, 422 on bad path).
-- Frontend: `lint`, `typecheck`, `vitest` (2), `build`, Playwright e2e (9 —
-  adds the Eagle preview→import flow).
-- Verified live in a real browser against a synthetic Eagle library: previewed
-  4 new bundles (1 deleted skipped, a part1/part2 merge hint), imported, and
-  the grid + folder tree updated — no console errors.
+- Backend: `ruff`/`ruff format`/`mypy`/`pytest` (**155 passed**, +6 new
+  `test_static_site.py`: SPA shell, deep-link fallback, hashed asset, root
+  file, `/api` still wins, unknown `/api` stays JSON 404).
+- **Built and ran the production image end-to-end**: container reports
+  `healthy`, runs as non-root (uid 10001), serves `/api/v1/health`
+  (`environment=production`) and the SPA + deep-link fallback, read-only rootfs
+  rejects writes, `ffprobe`/`ffmpeg` on PATH, WAL DB written to the `/data`
+  volume. `docker compose -f docker-compose.prod.yml config` validates.
+- `infra/backup.sh` verified against a real WAL database (100 rows copied,
+  integrity `ok`).
 
 ## Known issues / environment gaps
 
-- Merge suggestions are advisory only — the MVP maps one Eagle item → one
-  bundle; combining suggested groups into a single bundle is a later manual
-  step (no destructive auto-merge, per §7).
-- Imported tags are flat (Eagle tags are flat strings); hierarchy isn't
-  inferred. Eagle smart folders are not imported (filter dialects differ).
-- Tested against a synthetic library matching the documented on-disk format;
-  real Eagle libraries may carry version-specific fields not yet handled.
+- **No authentication yet** (`AGENTS.md` §12). Compose binds to `127.0.0.1` by
+  default; direct public-internet exposure is unsupported — use a private
+  network/Tailscale or an authenticating reverse proxy. Optional single-owner
+  auth is a documented follow-up.
+- Single uvicorn worker by design (in-process job worker + single SQLite
+  writer, ADR-0001); scale by process supervision, not threads.
+- Reverse-proxy/TLS termination and Tailscale setup are documented but not
+  scripted.
 
 ## Next recommended task
 
-**Phase 8 — packaging / deployment hardening** (per `AGENTS.md` §12/§13): the
-remaining roadmap items (e.g. remote access, background-scan scheduling, and
-release packaging). Smaller follow-ups: import Eagle smart folders, infer tag
-hierarchy, and apply merge suggestions in-app.
+The Phase 0–8 roadmap is complete. Candidate follow-ups (each its own branch):
+optional single-owner authentication (gating before remote exposure);
+scheduled background scans; apply Eagle merge suggestions in-app; import Eagle
+smart folders; metadata sidecar export (`AGENTS.md` §13).
 
 ## Unresolved decisions
 
-- None blocking. A typed router remains deferred (single browse view).
+- Authentication mechanism (single shared secret vs. per-user) deferred until
+  remote access is actually wired up; schema already leaves room (§13).
