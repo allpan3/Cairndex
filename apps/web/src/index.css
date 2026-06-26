@@ -847,3 +847,59 @@ code {
   color: #ffb454;
   margin-left: 4px;
 }
+
+/* --- Eagle import (Phase 7) ------------------------------------------------ */
+.sidebar__brand {
+  position: relative;
+}
+.sidebar__import {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+}
+.sidebar__import:hover {
+  color: var(--text-strong);
+}
+.import-report {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.import-report--done {
+  color: var(--text);
+  font-size: 13px;
+}
+.import-report__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.import-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+}
+.import-stat__v {
+  font-size: 18px;
+  color: var(--text-strong);
+}
+.import-stat__k {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.import-report__hint {
+  font-size: 12px;
+  color: var(--accent);
+}
+.import-report__warn {
+  font-size: 12px;
+  color: #ffb454;
+}
