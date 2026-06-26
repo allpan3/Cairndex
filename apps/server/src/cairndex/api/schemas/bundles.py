@@ -10,7 +10,6 @@ from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 class BundleCreate(BaseModel):
     title: str | None = Field(default=None, max_length=1024)
     note: str | None = None
-    source_url: str | None = None
     rating: int | None = Field(default=None, ge=0, le=5)
 
 
@@ -19,7 +18,6 @@ class BundleUpdate(BaseModel):
     # null clears a field (e.g. unrate, untitle, deselect cover).
     title: str | None = Field(default=None, max_length=1024)
     note: str | None = None
-    source_url: str | None = None
     rating: int | None = Field(default=None, ge=0, le=5)
     cover_file_id: str | None = None
     primary_file_id: str | None = None
@@ -31,7 +29,6 @@ class BundleRead(BaseModel):
     id: str
     title: str | None
     note: str | None
-    source_url: str | None
     rating: int | None
     cover_file_id: str | None
     primary_file_id: str | None
@@ -49,14 +46,15 @@ class FileLink(BaseModel):
     display_title: str | None = Field(default=None, max_length=1024)
     sequence: int = 0
     note: str | None = None
-    source_url: str | None = None
+    # File origin: a URL, magnet:, ed2k:, etc. (not necessarily an http link).
+    source: str | None = None
     mime_type: str | None = Field(default=None, max_length=255)
 
 
 class FileUpdate(BaseModel):
     display_title: str | None = Field(default=None, max_length=1024)
     note: str | None = None
-    source_url: str | None = None
+    source: str | None = None
     role: FileRole | None = None
     sequence: int | None = None
 

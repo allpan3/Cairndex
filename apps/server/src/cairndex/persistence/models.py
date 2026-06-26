@@ -122,7 +122,6 @@ class AssetBundle(Base):
     id: Mapped[UlidPk]
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -178,7 +177,8 @@ class AssetFile(Base):
     original_filename: Mapped[str] = mapped_column(String(1024))
     display_title: Mapped[str] = mapped_column(String(1024))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The file's origin — a URL, magnet:, ed2k:, etc. (not necessarily http).
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     role: Mapped[FileRole] = mapped_column(Enum(FileRole, native_enum=False, length=32))
     media_kind: Mapped[MediaKind] = mapped_column(Enum(MediaKind, native_enum=False, length=16))

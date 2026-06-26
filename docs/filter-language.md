@@ -58,7 +58,7 @@ product brief's "Filter expression contract")
 | Field | Operators |
 | --- | --- |
 | `title` / `name` | `contains`, `not_contains`, `equals`, `starts_with` |
-| `note`, `source_url`, `filename` | `contains`, `not_contains` |
+| `note`, `source` (file origin), `filename` | `contains`, `not_contains` |
 | `tags` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `folders` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `rating` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
