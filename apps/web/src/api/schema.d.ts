@@ -1178,11 +1178,6 @@ export interface components {
             filter: components["schemas"]["FilterExpression-Input"];
             /** Name */
             name: string;
-            /**
-             * Sort Order
-             * @default 0
-             */
-            sort_order: number;
         };
         /** SmartFolderRead */
         SmartFolderRead: {

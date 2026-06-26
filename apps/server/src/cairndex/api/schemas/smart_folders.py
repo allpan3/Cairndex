@@ -12,7 +12,6 @@ class SmartFolderCreate(BaseModel):
     filter: FilterExpression
     default_sort: str | None = None
     default_layout: str | None = None
-    sort_order: int = 0
 
 
 class SmartFolderUpdate(BaseModel):

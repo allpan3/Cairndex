@@ -41,7 +41,6 @@ def create_smart_folder(payload: SmartFolderCreate, db: DbSession) -> SmartFolde
         filter_expr=payload.filter,
         default_sort=payload.default_sort,
         default_layout=payload.default_layout,
-        sort_order=payload.sort_order,
     )
     return _read(sf)
 
