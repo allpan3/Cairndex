@@ -20,6 +20,8 @@ from sqlalchemy import Select, exists, func, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.filters.ast import FilterExpression
+from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -147,18 +149,21 @@ def browse_bundles(
     descending: bool = True,
     offset: int = 0,
     limit: int = 100,
+    filter_expr: FilterExpression | None = None,
 ) -> BundlePage:
-    base = _apply_view(select(AssetBundle.id), session, view, folder_id, include_descendants)
+    # A saved Smart Folder and a simple toolbar filter both arrive here as the
+    # same compiled predicate, so they share one ranking/pagination code path.
+    predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
+
+    def _scoped(stmt: Select[Any]) -> Select[Any]:
+        stmt = _apply_view(stmt, session, view, folder_id, include_descendants)
+        return stmt.where(predicate) if predicate is not None else stmt
+
+    base = _scoped(select(AssetBundle.id))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     page_stmt = (
-        _apply_sort(
-            _apply_view(select(AssetBundle), session, view, folder_id, include_descendants),
-            sort,
-            descending,
-        )
-        .offset(offset)
-        .limit(limit)
+        _apply_sort(_scoped(select(AssetBundle)), sort, descending).offset(offset).limit(limit)
     )
     bundles = list(session.scalars(page_stmt))
 

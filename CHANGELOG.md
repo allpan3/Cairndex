@@ -10,6 +10,22 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 5 — filtering and Smart Folders.**
+  - Canonical, versioned, JSON-serializable filter AST (`filters/ast.py`)
+    shared by simple filters and Smart Folders, validated by Pydantic and
+    compiled to **parameterized** SQLAlchemy (`filters/compiler.py`) against
+    an allowlist of fields/operators — a malformed or hostile expression is
+    rejected with HTTP 422 and never reaches SQL.
+  - `POST /filters/preview` (compile AST → match count) and
+    `POST /bundles/browse` (filtered browse) so toolbar filters and Smart
+    Folders share one code path; `smart_folders` service + CRUD at
+    `/api/v1/smart-folders` (the stored AST is validated on write).
+  - Desktop UI: an Eagle-style FilterBuilder (match all/any condition group;
+    text/number/bool/date inputs plus tag/folder pickers with an
+    include-descendants toggle), a Smart Folder editor with a live match
+    count, and a "Smart Folders" sidebar section that browses saved filters.
+  - Removed the bundle-level hyperlink; renamed the file-level `source_url`
+    to `source` (an origin URL, `magnet:`, `ed2k:`, …).
 - **Phase 4 — bundle editing and organization.**
   - Backend: `PATCH /bundles/{id}/files/{fid}` (file-level title/note/link/
     role/sequence), `PUT /bundles/{id}/files/order` (reorder),

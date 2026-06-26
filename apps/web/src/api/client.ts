@@ -17,6 +17,11 @@ export type BundlePatch = components['schemas']['BundleUpdate']
 export type FilePatch = components['schemas']['FileUpdate']
 export type BatchUpdate = components['schemas']['BatchUpdate']
 
+export type FilterExpression = components['schemas']['FilterExpression-Input']
+export type SmartFolderRead = components['schemas']['SmartFolderRead']
+export type SmartFolderCreate = components['schemas']['SmartFolderCreate']
+export type SmartFolderUpdate = components['schemas']['SmartFolderUpdate']
+
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
 export type SortOrder = 'asc' | 'desc'
@@ -55,12 +60,27 @@ export interface BrowseParams {
   order: SortOrder
   offset: number
   limit: number
+  filter?: FilterExpression | null
 }
 
 export function browseBundles(
   params: BrowseParams,
   signal?: AbortSignal,
 ): Promise<BundleBrowsePage> {
+  // A filter AST can't ride in a query string, so filtered browsing POSTs the
+  // whole request; the unfiltered path stays a cacheable GET.
+  if (params.filter) {
+    return sendSignal<BundleBrowsePage>('/api/v1/bundles/browse', 'POST', signal, {
+      view: params.view,
+      folder_id: params.folderId ?? null,
+      include_descendants: params.includeDescendants ?? false,
+      sort: params.sort,
+      order: params.order,
+      offset: params.offset,
+      limit: params.limit,
+      filter: params.filter,
+    })
+  }
   const q = new URLSearchParams({
     view: params.view,
     sort: params.sort,
@@ -74,6 +94,42 @@ export function browseBundles(
   }
   return getJson<BundleBrowsePage>(`/api/v1/bundles/browse?${q.toString()}`, signal)
 }
+
+async function sendSignal<T>(
+  url: string,
+  method: string,
+  signal: AbortSignal | undefined,
+  body: unknown,
+): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!response.ok) {
+    throw new Error(`Request failed (HTTP ${response.status}) for ${url}`)
+  }
+  return (await response.json()) as T
+}
+
+export function previewFilter(filter: FilterExpression, signal?: AbortSignal): Promise<number> {
+  return sendSignal<{ count: number }>('/api/v1/filters/preview', 'POST', signal, { filter }).then(
+    (r) => r.count,
+  )
+}
+
+// --- Smart Folders -----------------------------------------------------------
+export const fetchSmartFolders = (signal?: AbortSignal) =>
+  getJson<SmartFolderRead[]>('/api/v1/smart-folders', signal)
+
+export const createSmartFolder = (payload: SmartFolderCreate) =>
+  send<SmartFolderRead>('/api/v1/smart-folders', 'POST', payload)
+
+export const updateSmartFolder = (id: string, payload: SmartFolderUpdate) =>
+  send<SmartFolderRead>(`/api/v1/smart-folders/${id}`, 'PATCH', payload)
+
+export const deleteSmartFolder = (id: string) => send<void>(`/api/v1/smart-folders/${id}`, 'DELETE')
 
 export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>('/api/v1/bundles/counts', signal)
