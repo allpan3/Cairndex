@@ -59,6 +59,12 @@ WORKDIR /app
 COPY --from=server /opt/venv /opt/venv
 COPY --from=server /app /app
 COPY --from=web /web/dist /app/web
+# Operator scripts (build context is the repo root, so infra/ is available
+# here even though the server stage's /app only holds apps/server). The
+# entrypoint applies migrations; backup.sh is the documented backup tool.
+COPY infra/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY infra/backup.sh /app/infra/backup.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh
 
 # Writable app-data dir (SQLite DB + derived-media cache) — a mounted volume in
 # production, owned by the non-root user. Kept outside any storage root.
@@ -71,6 +77,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -fsS http://localhost:8000/api/v1/health || exit 1
 
-# No --reload in production; a single worker keeps the in-process job worker and
-# SQLite writer simple (ADR-0001). Scale by process supervision, not threads.
+# Apply DB migrations on startup, then serve. No --reload in production; a single
+# worker keeps the in-process job worker and SQLite writer simple (ADR-0001).
+# Scale by process supervision, not threads.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "cairndex.main:app", "--host", "0.0.0.0", "--port", "8000"]
