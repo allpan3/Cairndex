@@ -1,6 +1,78 @@
 {
   "components": {
     "schemas": {
+      "AndNode-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AndNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/OrNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/NotNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/PredicateNode"
+                }
+              ]
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "op": {
+            "const": "and",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "children"
+        ],
+        "title": "AndNode",
+        "type": "object"
+      },
+      "AndNode-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AndNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/OrNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/NotNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/PredicateNode"
+                }
+              ]
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "op": {
+            "const": "and",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "children"
+        ],
+        "title": "AndNode",
+        "type": "object"
+      },
       "BatchResult": {
         "properties": {
           "updated": {
@@ -57,6 +129,66 @@
           "bundle_ids"
         ],
         "title": "BatchUpdate",
+        "type": "object"
+      },
+      "BrowseRequest": {
+        "description": "Filtered browse \u2014 the same params as GET /browse plus an optional AST.",
+        "properties": {
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Id"
+          },
+          "include_descendants": {
+            "default": false,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "order": {
+            "default": "desc",
+            "pattern": "^(asc|desc)$",
+            "title": "Order",
+            "type": "string"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/BundleSort",
+            "default": "date_added"
+          },
+          "view": {
+            "$ref": "#/components/schemas/SystemView",
+            "default": "all"
+          }
+        },
+        "title": "BrowseRequest",
         "type": "object"
       },
       "BundleBrowsePage": {
@@ -823,6 +955,99 @@
         "title": "FileUpdate",
         "type": "object"
       },
+      "FilterExpression-Input": {
+        "additionalProperties": false,
+        "description": "A complete, versioned filter expression (the stored/transmitted form).",
+        "properties": {
+          "root": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AndNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/OrNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/NotNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/PredicateNode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "FilterExpression",
+        "type": "object"
+      },
+      "FilterExpression-Output": {
+        "additionalProperties": false,
+        "description": "A complete, versioned filter expression (the stored/transmitted form).",
+        "properties": {
+          "root": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AndNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/OrNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/NotNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/PredicateNode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "FilterExpression",
+        "type": "object"
+      },
+      "FilterPreviewRequest": {
+        "properties": {
+          "filter": {
+            "$ref": "#/components/schemas/FilterExpression-Input"
+          }
+        },
+        "required": [
+          "filter"
+        ],
+        "title": "FilterPreviewRequest",
+        "type": "object"
+      },
+      "FilterPreviewResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "FilterPreviewResponse",
+        "type": "object"
+      },
       "FolderCreate": {
         "properties": {
           "name": {
@@ -1111,6 +1336,144 @@
         "title": "MediaKind",
         "type": "string"
       },
+      "NotNode-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "child": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AndNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/OrNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/NotNode-Input"
+              },
+              {
+                "$ref": "#/components/schemas/PredicateNode"
+              }
+            ],
+            "title": "Child"
+          },
+          "op": {
+            "const": "not",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "child"
+        ],
+        "title": "NotNode",
+        "type": "object"
+      },
+      "NotNode-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "child": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AndNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/OrNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/NotNode-Output"
+              },
+              {
+                "$ref": "#/components/schemas/PredicateNode"
+              }
+            ],
+            "title": "Child"
+          },
+          "op": {
+            "const": "not",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "child"
+        ],
+        "title": "NotNode",
+        "type": "object"
+      },
+      "OrNode-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AndNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/OrNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/NotNode-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/PredicateNode"
+                }
+              ]
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "op": {
+            "const": "or",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "children"
+        ],
+        "title": "OrNode",
+        "type": "object"
+      },
+      "OrNode-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "children": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AndNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/OrNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/NotNode-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/PredicateNode"
+                }
+              ]
+            },
+            "title": "Children",
+            "type": "array"
+          },
+          "op": {
+            "const": "or",
+            "title": "Op",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "children"
+        ],
+        "title": "OrNode",
+        "type": "object"
+      },
       "Page_BundleRead_": {
         "properties": {
           "items": {
@@ -1273,6 +1636,33 @@
         "title": "Page[TagRead]",
         "type": "object"
       },
+      "PredicateNode": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "include_descendants": {
+            "default": false,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "operator": {
+            "title": "Operator",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "operator"
+        ],
+        "title": "PredicateNode",
+        "type": "object"
+      },
       "SetIdsRequest": {
         "properties": {
           "ids": {
@@ -1303,6 +1693,168 @@
           "tag_ids"
         ],
         "title": "SetTagsRequest",
+        "type": "object"
+      },
+      "SmartFolderCreate": {
+        "properties": {
+          "default_layout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Layout"
+          },
+          "default_sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sort"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterExpression-Input"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "filter"
+        ],
+        "title": "SmartFolderCreate",
+        "type": "object"
+      },
+      "SmartFolderRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "default_layout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Layout"
+          },
+          "default_sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sort"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/FilterExpression-Output"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filter",
+          "default_sort",
+          "default_layout",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SmartFolderRead",
+        "type": "object"
+      },
+      "SmartFolderUpdate": {
+        "properties": {
+          "default_layout": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Layout"
+          },
+          "default_sort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Sort"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "title": "SmartFolderUpdate",
         "type": "object"
       },
       "StorageRootCreate": {
@@ -2010,6 +2562,46 @@
         "tags": [
           "bundles"
         ]
+      },
+      "post": {
+        "description": "Browse with a filter AST \u2014 the shared path for toolbar filters and\nSmart Folders. Equivalent to GET /browse when ``filter`` is null.",
+        "operationId": "browse_bundles_filtered_api_v1_bundles_browse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleBrowsePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse Bundles Filtered",
+        "tags": [
+          "bundles"
+        ]
       }
     },
     "/api/v1/bundles/counts": {
@@ -2687,6 +3279,47 @@
         ]
       }
     },
+    "/api/v1/filters/preview": {
+      "post": {
+        "operationId": "preview_api_v1_filters_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FilterPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilterPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
     "/api/v1/folders": {
       "get": {
         "operationId": "list_folders_api_v1_folders_get",
@@ -3096,6 +3729,195 @@
         "summary": "Cancel Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/smart-folders": {
+      "get": {
+        "operationId": "list_smart_folders_api_v1_smart_folders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SmartFolderRead"
+                  },
+                  "title": "Response List Smart Folders Api V1 Smart Folders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Smart Folders",
+        "tags": [
+          "smart-folders"
+        ]
+      },
+      "post": {
+        "operationId": "create_smart_folder_api_v1_smart_folders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartFolderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartFolderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Smart Folder",
+        "tags": [
+          "smart-folders"
+        ]
+      }
+    },
+    "/api/v1/smart-folders/{smart_folder_id}": {
+      "delete": {
+        "operationId": "delete_smart_folder_api_v1_smart_folders__smart_folder_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "smart_folder_id",
+            "required": true,
+            "schema": {
+              "title": "Smart Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Smart Folder",
+        "tags": [
+          "smart-folders"
+        ]
+      },
+      "get": {
+        "operationId": "get_smart_folder_api_v1_smart_folders__smart_folder_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "smart_folder_id",
+            "required": true,
+            "schema": {
+              "title": "Smart Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartFolderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Smart Folder",
+        "tags": [
+          "smart-folders"
+        ]
+      },
+      "patch": {
+        "operationId": "update_smart_folder_api_v1_smart_folders__smart_folder_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "smart_folder_id",
+            "required": true,
+            "schema": {
+              "title": "Smart Folder Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartFolderUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SmartFolderRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Smart Folder",
+        "tags": [
+          "smart-folders"
         ]
       }
     },

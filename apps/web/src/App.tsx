@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useBrowse, useFolderCounts, useFolders, useViewCounts } from './api/hooks'
+import type { SmartFolderRead } from './api/client'
+import { useBrowse, useFolderCounts, useFolders, useSmartFolders, useViewCounts } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
+import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
+import { SmartFolderEditor } from './app/SmartFolderEditor'
 import { Toolbar } from './app/Toolbar'
 import { DEFAULT_PREFS, SYSTEM_VIEWS, type BrowsePrefs, type Selection } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
+
+interface EditorState {
+  existing?: SmartFolderRead | null
+  initialDraft?: FilterDraft
+}
 
 function Resizer({
   side,
@@ -59,10 +67,17 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
   const [search, setSearch] = useState('')
+  const [editor, setEditor] = useState<EditorState | null>(null)
 
   const counts = useViewCounts()
   const folders = useFolders()
   const folderCounts = useFolderCounts()
+  const smartFolders = useSmartFolders()
+
+  // A selected Smart Folder drives browsing through its saved filter AST, which
+  // compiles via the exact path POST /bundles/browse uses for ad-hoc filters.
+  const activeSmartFolder =
+    smartFolders.data?.find((sf) => sf.id === selection.smartFolderId) ?? null
 
   const browse = useBrowse({
     view: selection.view,
@@ -71,6 +86,7 @@ export default function App() {
     sort: prefs.sort,
     order: prefs.order,
     limit: 100,
+    filter: activeSmartFolder?.filter ?? null,
   })
 
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -82,11 +98,12 @@ export default function App() {
   }, [items, search])
 
   const title = useMemo(() => {
+    if (activeSmartFolder) return activeSmartFolder.name
     if (selection.folderId) {
       return folders.data?.find((f) => f.id === selection.folderId)?.name ?? 'Folder'
     }
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
-  }, [selection, folders.data])
+  }, [selection, folders.data, activeSmartFolder])
 
   const select = useCallback((id: string, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -162,6 +179,9 @@ export default function App() {
         counts={counts.data}
         folders={folders.data ?? []}
         folderCounts={folderCounts.data}
+        smartFolders={smartFolders.data ?? []}
+        onNewSmartFolder={() => setEditor({ initialDraft: emptyDraft() })}
+        onEditSmartFolder={(sf) => setEditor({ existing: sf })}
       />
 
       <div className="center">
@@ -194,6 +214,19 @@ export default function App() {
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+
+      {editor && (
+        <SmartFolderEditor
+          existing={editor.existing}
+          initialDraft={editor.initialDraft}
+          onClose={() => setEditor(null)}
+          onSaved={(sf) => {
+            setEditor(null)
+            setSelection({ view: 'all', folderId: null, smartFolderId: sf.id })
+            clearSelection()
+          }}
+        />
+      )}
     </div>
   )
 }

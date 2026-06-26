@@ -1,10 +1,11 @@
 # Filter language
 
-> Status: skeleton (Phase 0). The full contract is implemented and tested in
-> `feature/smart-filters` (Phase 5), but the shape below is fixed by
-> `AGENTS.md` and the product brief now so that earlier phases (toolbar
-> filters in Phase 3, tag/folder pickers in Phase 4) don't paint themselves
-> into a corner.
+> Status: **implemented (Phase 5)**. The AST, validator, and SQL compiler live
+> in `apps/server/src/cairndex/filters/` with tests in `tests/test_filters.py`
+> and `tests/test_smart_folders.py`. The desktop FilterBuilder
+> (`apps/web/src/app/filterModel.ts` + `FilterBuilder.tsx`) produces and
+> round-trips this exact shape. The allowlist below is the long-term target;
+> the currently implemented subset is listed under "Implemented fields".
 
 ## Goals
 
@@ -72,6 +73,36 @@ product brief's "Filter expression contract")
 This table will move into generated/tested documentation (e.g. derived from
 the Pydantic field/operator registry) once Phase 5 implements the compiler,
 so the two cannot drift.
+
+## Implemented fields (Phase 5)
+
+The compiler (`filters/compiler.py`) currently supports the following. Each
+is exercised by `tests/test_filters.py`; the desktop FilterBuilder exposes
+exactly this set.
+
+| Field | Operators | Value |
+| --- | --- | --- |
+| `title` / `name`, `note`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `note`/`source`/`filename` use contains/not_contains in the UI) | string |
+| `extension` | `equals`, `in`, `not_in` | string / list |
+| `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
+| `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
+| `tags`, `folders` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
+| `has_cover`, `has_missing` | `equals` | boolean |
+
+Node shapes are disambiguated structurally (`extra="forbid"` + Pydantic's
+smart union): logical nodes carry `op` (`and`/`or` over `children`, `not`
+over a single `child`); predicate nodes carry `field`. A `null`/absent `root`
+matches everything.
+
+## Endpoints
+
+- `POST /api/v1/filters/preview` — `{ "filter": <expr> }` → `{ "count": n }`.
+- `POST /api/v1/bundles/browse` — same params as `GET /browse` plus an
+  optional `filter`; this is the shared path for ad-hoc filters and Smart
+  Folders, so equivalent expressions return identical results.
+- `GET|POST|PATCH|DELETE /api/v1/smart-folders` — persisted named filters.
+  The stored AST is validated and compiled on write, so an unsupported filter
+  is rejected at save time, never at browse.
 
 ## Compilation contract
 

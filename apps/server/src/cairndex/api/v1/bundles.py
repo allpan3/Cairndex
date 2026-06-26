@@ -20,6 +20,7 @@ from cairndex.api.schemas.bundles import (
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
+from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
 from cairndex.media import thumbnails
 from cairndex.services import browse as browse_service
@@ -35,6 +36,16 @@ def _thumbnail_response(path: object) -> FileResponse:
 
 
 # --- Browse (declared before /{bundle_id} so the static paths win) -----------
+def _browse_page(db: DbSession, **kwargs: object) -> BundleBrowsePage:
+    page = browse_service.browse_bundles(db, **kwargs)  # type: ignore[arg-type]
+    return BundleBrowsePage(
+        items=[BundleSummary(**vars(s)) for s in page.items],
+        total=page.total,
+        offset=page.offset,
+        limit=page.limit,
+    )
+
+
 @router.get("/browse", response_model=BundleBrowsePage)
 def browse_bundles(
     db: DbSession,
@@ -46,7 +57,7 @@ def browse_bundles(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
 ) -> BundleBrowsePage:
-    page = browse_service.browse_bundles(
+    return _browse_page(
         db,
         view=view,
         folder_id=folder_id,
@@ -56,11 +67,22 @@ def browse_bundles(
         offset=offset,
         limit=limit,
     )
-    return BundleBrowsePage(
-        items=[BundleSummary(**vars(s)) for s in page.items],
-        total=page.total,
-        offset=page.offset,
-        limit=page.limit,
+
+
+@router.post("/browse", response_model=BundleBrowsePage)
+def browse_bundles_filtered(payload: BrowseRequest, db: DbSession) -> BundleBrowsePage:
+    """Browse with a filter AST — the shared path for toolbar filters and
+    Smart Folders. Equivalent to GET /browse when ``filter`` is null."""
+    return _browse_page(
+        db,
+        view=payload.view,
+        folder_id=payload.folder_id,
+        include_descendants=payload.include_descendants,
+        sort=payload.sort,
+        descending=payload.order == "desc",
+        offset=payload.offset,
+        limit=payload.limit,
+        filter_expr=payload.filter,
     )
 
 

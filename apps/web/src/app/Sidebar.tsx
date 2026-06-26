@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import type { FolderRead, ViewCounts } from '../api/client'
+import type { FolderRead, SmartFolderRead, ViewCounts } from '../api/client'
 import { SYSTEM_VIEWS, type Selection } from './types'
 
 interface SidebarProps {
@@ -9,6 +9,9 @@ interface SidebarProps {
   counts?: ViewCounts
   folders: FolderRead[]
   folderCounts?: Record<string, number>
+  smartFolders: SmartFolderRead[]
+  onNewSmartFolder: () => void
+  onEditSmartFolder: (sf: SmartFolderRead) => void
 }
 
 interface TreeNode {
@@ -31,7 +34,16 @@ function buildTree(folders: FolderRead[]): TreeNode[] {
   return make(null)
 }
 
-export function Sidebar({ selection, onSelect, counts, folders, folderCounts }: SidebarProps) {
+export function Sidebar({
+  selection,
+  onSelect,
+  counts,
+  folders,
+  folderCounts,
+  smartFolders,
+  onNewSmartFolder,
+  onEditSmartFolder,
+}: SidebarProps) {
   const tree = useMemo(() => buildTree(folders), [folders])
 
   return (
@@ -53,6 +65,44 @@ export function Sidebar({ selection, onSelect, counts, folders, folderCounts }: 
               <span className="nav-item__label">{v.label}</span>
               {counts && <span className="nav-item__count">{counts[v.view]}</span>}
             </button>
+          )
+        })}
+      </div>
+
+      <div className="sidebar__section">
+        <div className="sidebar__heading sidebar__heading--row">
+          Smart Folders
+          <button className="sidebar__add" onClick={onNewSmartFolder} aria-label="New smart folder">
+            +
+          </button>
+        </div>
+        {smartFolders.map((sf) => {
+          const active = selection.smartFolderId === sf.id
+          return (
+            <div
+              key={sf.id}
+              className={`nav-item${active ? ' nav-item--active' : ''}`}
+              onClick={() => onSelect({ view: 'all', folderId: null, smartFolderId: sf.id })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ')
+                  onSelect({ view: 'all', folderId: null, smartFolderId: sf.id })
+              }}
+            >
+              <span className="nav-item__icon">⚙</span>
+              <span className="nav-item__label">{sf.name}</span>
+              <button
+                className="nav-item__edit"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onEditSmartFolder(sf)
+                }}
+                aria-label={`Edit ${sf.name}`}
+              >
+                ✎
+              </button>
+            </div>
           )
         })}
       </div>
