@@ -28,17 +28,19 @@ client-supplied), `read_only` (default true), `status`
 Phase 2), `created_at`, `updated_at`, `last_scanned_at` (nullable).
 
 ### `asset_bundles`
-`id`, `title` (nullable), `note`, `source_url`, `rating` (nullable int, CHECK
-0–5; NULL = unrated), `cover_file_id` / `primary_file_id` (FK → `asset_files`,
-`SET NULL`, nullable; `use_alter` to break the FK cycle), `extra_metadata`
-(JSON), `created_at`, `imported_at`, `updated_at`.
+`id`, `title` (nullable), `note`, `rating` (nullable int, CHECK 0–5; NULL =
+unrated), `cover_file_id` / `primary_file_id` (FK → `asset_files`, `SET NULL`,
+nullable; `use_alter` to break the FK cycle), `extra_metadata` (JSON),
+`created_at`, `imported_at`, `updated_at`. (Bundles carry no hyperlink — a
+source belongs to the individual file.)
 
 ### `asset_files`
 `id`, `bundle_id` (FK → `asset_bundles`, **CASCADE** — metadata-only bundle
 deletion removes file rows, never the physical file), `storage_root_id`
 (FK → `storage_roots`, **RESTRICT** — can't delete a root with linked files),
-`relative_path`, `original_filename`, `display_title`, `note`, `source_url`,
-`role` (`FileRole`), `media_kind` (`MediaKind`), `mime_type`, `sequence`,
+`relative_path`, `original_filename`, `display_title`, `note`, `source`
+(origin — a URL, `magnet:`, `ed2k:`, etc.), `role` (`FileRole`),
+`media_kind` (`MediaKind`), `mime_type`, `sequence`,
 `size_bytes`/`mtime`/`quick_fingerprint`/`full_hash`/`tech_metadata` (nullable,
 filled by the Phase 2 scanner), `availability` (`available`/`missing`),
 `created_at`, `updated_at`. **Unique** `(storage_root_id, relative_path)` — one

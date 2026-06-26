@@ -595,8 +595,6 @@ export interface components {
             note?: string | null;
             /** Rating */
             rating?: number | null;
-            /** Source Url */
-            source_url?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -629,8 +627,6 @@ export interface components {
             primary_file_id: string | null;
             /** Rating */
             rating: number | null;
-            /** Source Url */
-            source_url: string | null;
             /** Title */
             title: string | null;
             /**
@@ -693,8 +689,6 @@ export interface components {
             primary_file_id?: string | null;
             /** Rating */
             rating?: number | null;
-            /** Source Url */
-            source_url?: string | null;
             /** Title */
             title?: string | null;
         };
@@ -749,8 +743,8 @@ export interface components {
              * @default 0
              */
             sequence: number;
-            /** Source Url */
-            source_url?: string | null;
+            /** Source */
+            source?: string | null;
             /** Storage Root Id */
             storage_root_id: string;
         };
@@ -812,8 +806,8 @@ export interface components {
             role?: components["schemas"]["FileRole"] | null;
             /** Sequence */
             sequence?: number | null;
-            /** Source Url */
-            source_url?: string | null;
+            /** Source */
+            source?: string | null;
         };
         /** FolderCreate */
         FolderCreate: {
