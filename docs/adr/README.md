@@ -21,3 +21,6 @@ design, subtitle modeling, and similar structural choices called out in
 | --- | --- | --- |
 | [0001](0001-stack-and-database-choice.md) | Stack and database choice | accepted |
 | [0002](0002-core-schema-identity-and-hierarchy.md) | Core schema — identity, hierarchy, and ORM access | accepted |
+| [0003](0003-subtitle-track-model.md) | Subtitle track model | accepted |
+| [0004](0004-eagle-import.md) | Eagle library import (read-only, idempotent) | accepted |
+| [0005](0005-packaging-and-deployment.md) | Packaging and deployment (single hardened container) | accepted |
