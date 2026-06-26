@@ -30,10 +30,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "AndNode",
         "type": "object"
       },
@@ -66,10 +63,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "AndNode",
         "type": "object"
       },
@@ -80,9 +74,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "updated"
-        ],
+        "required": ["updated"],
         "title": "BatchResult",
         "type": "object"
       },
@@ -125,9 +117,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_ids"
-        ],
+        "required": ["bundle_ids"],
         "title": "BatchUpdate",
         "type": "object"
       },
@@ -213,12 +203,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total",
-          "offset",
-          "limit"
-        ],
+        "required": ["items", "total", "offset", "limit"],
         "title": "BundleBrowsePage",
         "type": "object"
       },
@@ -278,10 +263,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_id",
-          "folder_ids"
-        ],
+        "required": ["bundle_id", "folder_ids"],
         "title": "BundleFolders",
         "type": "object"
       },
@@ -377,13 +359,7 @@
         "type": "object"
       },
       "BundleSort": {
-        "enum": [
-          "date_added",
-          "title",
-          "rating",
-          "size",
-          "file_count"
-        ],
+        "enum": ["date_added", "title", "rating", "size", "file_count"],
         "title": "BundleSort",
         "type": "string"
       },
@@ -524,10 +500,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_id",
-          "tag_ids"
-        ],
+        "required": ["bundle_id", "tag_ids"],
         "title": "BundleTags",
         "type": "object"
       },
@@ -606,9 +579,7 @@
             "type": "object"
           }
         },
-        "required": [
-          "counts"
-        ],
+        "required": ["counts"],
         "title": "CountsResponse",
         "type": "object"
       },
@@ -639,9 +610,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "paths"
-        ],
+        "required": ["paths"],
         "title": "FastAddRequest",
         "type": "object"
       },
@@ -660,20 +629,13 @@
             "type": "integer"
           }
         },
-        "required": [
-          "bundles_created",
-          "files_linked",
-          "skipped"
-        ],
+        "required": ["bundles_created", "files_linked", "skipped"],
         "title": "FastAddResponse",
         "type": "object"
       },
       "FileAvailability": {
         "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).",
-        "enum": [
-          "available",
-          "missing"
-        ],
+        "enum": ["available", "missing"],
         "title": "FileAvailability",
         "type": "string"
       },
@@ -746,12 +708,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "storage_root_id",
-          "relative_path",
-          "role",
-          "media_kind"
-        ],
+        "required": ["storage_root_id", "relative_path", "role", "media_kind"],
         "title": "FileLink",
         "type": "object"
       },
@@ -870,9 +827,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "ordered_ids"
-        ],
+        "required": ["ordered_ids"],
         "title": "FileReorder",
         "type": "object"
       },
@@ -1029,9 +984,7 @@
             "$ref": "#/components/schemas/FilterExpression-Input"
           }
         },
-        "required": [
-          "filter"
-        ],
+        "required": ["filter"],
         "title": "FilterPreviewRequest",
         "type": "object"
       },
@@ -1042,9 +995,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "count"
-        ],
+        "required": ["count"],
         "title": "FilterPreviewResponse",
         "type": "object"
       },
@@ -1068,9 +1019,7 @@
             "title": "Parent Id"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "FolderCreate",
         "type": "object"
       },
@@ -1110,14 +1059,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "parent_id",
-          "name",
-          "sort_order",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "parent_id", "name", "sort_order", "created_at", "updated_at"],
         "title": "FolderRead",
         "type": "object"
       },
@@ -1153,10 +1095,7 @@
       },
       "Grouping": {
         "description": "How fast-add groups selected files into bundles.",
-        "enum": [
-          "per_file",
-          "single_bundle"
-        ],
+        "enum": ["per_file", "single_bundle"],
         "title": "Grouping",
         "type": "string"
       },
@@ -1188,11 +1127,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "status",
-          "app_name",
-          "environment"
-        ],
+        "required": ["status", "app_name", "environment"],
         "title": "HealthStatus",
         "type": "object"
       },
@@ -1304,35 +1239,19 @@
       },
       "JobStatus": {
         "description": "Lifecycle state of a background job.",
-        "enum": [
-          "queued",
-          "running",
-          "succeeded",
-          "failed",
-          "cancelled"
-        ],
+        "enum": ["queued", "running", "succeeded", "failed", "cancelled"],
         "title": "JobStatus",
         "type": "string"
       },
       "JobType": {
         "description": "Kind of background job (AGENTS.md \u00a74.10/\u00a75.2).",
-        "enum": [
-          "scan",
-          "probe",
-          "thumbnail"
-        ],
+        "enum": ["scan", "probe", "thumbnail"],
         "title": "JobType",
         "type": "string"
       },
       "MediaKind": {
         "description": "Coarse media classification, independent of the in-bundle role.",
-        "enum": [
-          "video",
-          "image",
-          "subtitle",
-          "audio",
-          "other"
-        ],
+        "enum": ["video", "image", "subtitle", "audio", "other"],
         "title": "MediaKind",
         "type": "string"
       },
@@ -1362,10 +1281,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "child"
-        ],
+        "required": ["op", "child"],
         "title": "NotNode",
         "type": "object"
       },
@@ -1395,10 +1311,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "child"
-        ],
+        "required": ["op", "child"],
         "title": "NotNode",
         "type": "object"
       },
@@ -1431,10 +1344,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "OrNode",
         "type": "object"
       },
@@ -1467,10 +1377,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "OrNode",
         "type": "object"
       },
@@ -1495,9 +1402,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[BundleRead]",
         "type": "object"
       },
@@ -1522,9 +1427,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[FolderRead]",
         "type": "object"
       },
@@ -1549,9 +1452,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[JobRead]",
         "type": "object"
       },
@@ -1576,9 +1477,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[StorageRootRead]",
         "type": "object"
       },
@@ -1603,9 +1502,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[TagGroupRead]",
         "type": "object"
       },
@@ -1630,10 +1527,108 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[TagRead]",
+        "type": "object"
+      },
+      "PlayableVideo": {
+        "properties": {
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "playable": {
+            "title": "Playable",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "stream_url": {
+            "title": "Stream Url",
+            "type": "string"
+          },
+          "subtitles": {
+            "items": {
+              "$ref": "#/components/schemas/SubtitleTrackRead"
+            },
+            "title": "Subtitles",
+            "type": "array"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "file_id",
+          "display_title",
+          "playable",
+          "reason",
+          "mime_type",
+          "stream_url",
+          "width",
+          "height",
+          "duration",
+          "subtitles"
+        ],
+        "title": "PlayableVideo",
+        "type": "object"
+      },
+      "PlaybackManifest": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/PlayableVideo"
+            },
+            "title": "Videos",
+            "type": "array"
+          }
+        },
+        "required": ["bundle_id", "videos"],
+        "title": "PlaybackManifest",
         "type": "object"
       },
       "PredicateNode": {
@@ -1656,10 +1651,7 @@
             "title": "Value"
           }
         },
-        "required": [
-          "field",
-          "operator"
-        ],
+        "required": ["field", "operator"],
         "title": "PredicateNode",
         "type": "object"
       },
@@ -1673,9 +1665,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "ids"
-        ],
+        "required": ["ids"],
         "title": "SetIdsRequest",
         "type": "object"
       },
@@ -1689,9 +1679,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "tag_ids"
-        ],
+        "required": ["tag_ids"],
         "title": "SetTagsRequest",
         "type": "object"
       },
@@ -1727,10 +1715,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name",
-          "filter"
-        ],
+        "required": ["name", "filter"],
         "title": "SmartFolderCreate",
         "type": "object"
       },
@@ -1876,10 +1861,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "name",
-          "canonical_path"
-        ],
+        "required": ["name", "canonical_path"],
         "title": "StorageRootCreate",
         "type": "object"
       },
@@ -1942,10 +1924,7 @@
       },
       "StorageRootStatus": {
         "description": "Whether a storage root's canonical path is currently reachable.",
-        "enum": [
-          "available",
-          "unavailable"
-        ],
+        "enum": ["available", "unavailable"],
         "title": "StorageRootStatus",
         "type": "string"
       },
@@ -1991,14 +1970,68 @@
         "title": "StorageRootUpdate",
         "type": "object"
       },
+      "SubtitleTrackRead": {
+        "properties": {
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "is_forced": {
+            "title": "Is Forced",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "src": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Src"
+          }
+        },
+        "required": ["id", "language", "label", "format", "is_default", "is_forced", "kind", "src"],
+        "title": "SubtitleTrackRead",
+        "type": "object"
+      },
       "SystemView": {
-        "enum": [
-          "all",
-          "recent",
-          "uncategorized",
-          "untagged",
-          "missing"
-        ],
+        "enum": ["all", "recent", "uncategorized", "untagged", "missing"],
         "title": "SystemView",
         "type": "string"
       },
@@ -2034,9 +2067,7 @@
             "title": "Parent Id"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "TagCreate",
         "type": "object"
       },
@@ -2049,9 +2080,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "TagGroupCreate",
         "type": "object"
       },
@@ -2080,13 +2109,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "name",
-          "sort_order",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "name", "sort_order", "created_at", "updated_at"],
         "title": "TagGroupRead",
         "type": "object"
       },
@@ -2104,10 +2127,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "group_id",
-          "tag_ids"
-        ],
+        "required": ["group_id", "tag_ids"],
         "title": "TagGroupTags",
         "type": "object"
       },
@@ -2177,15 +2197,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "parent_id",
-          "name",
-          "color",
-          "sort_order",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "parent_id", "name", "color", "sort_order", "created_at", "updated_at"],
         "title": "TagRead",
         "type": "object"
       },
@@ -2263,11 +2275,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError",
         "type": "object"
       },
@@ -2294,13 +2302,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "all",
-          "recent",
-          "uncategorized",
-          "untagged",
-          "missing"
-        ],
+        "required": ["all", "recent", "uncategorized", "untagged", "missing"],
         "title": "ViewCounts",
         "type": "object"
       }
@@ -2368,9 +2370,7 @@
           }
         },
         "summary": "List Bundles",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "operationId": "create_bundle_api_v1_bundles_post",
@@ -2407,9 +2407,7 @@
           }
         },
         "summary": "Create Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/batch": {
@@ -2448,9 +2446,7 @@
           }
         },
         "summary": "Batch Update",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/browse": {
@@ -2559,9 +2555,7 @@
           }
         },
         "summary": "Browse Bundles",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "description": "Browse with a filter AST \u2014 the shared path for toolbar filters and\nSmart Folders. Equivalent to GET /browse when ``filter`` is null.",
@@ -2599,9 +2593,7 @@
           }
         },
         "summary": "Browse Bundles Filtered",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/counts": {
@@ -2620,9 +2612,7 @@
           }
         },
         "summary": "Bundle View Counts",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}": {
@@ -2655,9 +2645,7 @@
           }
         },
         "summary": "Delete Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "get": {
         "operationId": "get_bundle_api_v1_bundles__bundle_id__get",
@@ -2695,9 +2683,7 @@
           }
         },
         "summary": "Get Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "patch": {
         "operationId": "update_bundle_api_v1_bundles__bundle_id__patch",
@@ -2745,9 +2731,7 @@
           }
         },
         "summary": "Update Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/files": {
@@ -2791,9 +2775,7 @@
           }
         },
         "summary": "List Files",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "operationId": "add_file_api_v1_bundles__bundle_id__files_post",
@@ -2841,9 +2823,7 @@
           }
         },
         "summary": "Add File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/files/order": {
@@ -2897,9 +2877,7 @@
           }
         },
         "summary": "Reorder Files",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/files/{file_id}": {
@@ -2941,9 +2919,7 @@
           }
         },
         "summary": "Remove File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "patch": {
         "operationId": "update_file_api_v1_bundles__bundle_id__files__file_id__patch",
@@ -3000,9 +2976,7 @@
           }
         },
         "summary": "Update File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/files/{file_id}/thumbnail": {
@@ -3049,9 +3023,7 @@
           }
         },
         "summary": "Get File Thumbnail",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/folders": {
@@ -3091,9 +3063,7 @@
           }
         },
         "summary": "Get Folders",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "put": {
         "operationId": "set_folders_api_v1_bundles__bundle_id__folders_put",
@@ -3141,9 +3111,47 @@
           }
         },
         "summary": "Set Folders",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
+      }
+    },
+    "/api/v1/bundles/{bundle_id}/playback": {
+      "get": {
+        "operationId": "playback_manifest_api_v1_bundles__bundle_id__playback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Playback Manifest",
+        "tags": ["playback"]
       }
     },
     "/api/v1/bundles/{bundle_id}/tags": {
@@ -3183,9 +3191,7 @@
           }
         },
         "summary": "Get Tags",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "put": {
         "operationId": "set_tags_api_v1_bundles__bundle_id__tags_put",
@@ -3233,9 +3239,7 @@
           }
         },
         "summary": "Set Tags",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/bundles/{bundle_id}/thumbnail": {
@@ -3274,9 +3278,46 @@
           }
         },
         "summary": "Get Bundle Thumbnail",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
+      }
+    },
+    "/api/v1/files/{file_id}/stream": {
+      "get": {
+        "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).",
+        "operationId": "stream_file_api_v1_files__file_id__stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream File",
+        "tags": ["playback"]
       }
     },
     "/api/v1/filters/preview": {
@@ -3315,9 +3356,7 @@
           }
         },
         "summary": "Preview",
-        "tags": [
-          "filters"
-        ]
+        "tags": ["filters"]
       }
     },
     "/api/v1/folders": {
@@ -3376,9 +3415,7 @@
           }
         },
         "summary": "List Folders",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       },
       "post": {
         "operationId": "create_folder_api_v1_folders_post",
@@ -3415,9 +3452,7 @@
           }
         },
         "summary": "Create Folder",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       }
     },
     "/api/v1/folders/counts": {
@@ -3436,9 +3471,7 @@
           }
         },
         "summary": "Folder Counts",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       }
     },
     "/api/v1/folders/{folder_id}": {
@@ -3471,9 +3504,7 @@
           }
         },
         "summary": "Delete Folder",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       },
       "get": {
         "operationId": "get_folder_api_v1_folders__folder_id__get",
@@ -3511,9 +3542,7 @@
           }
         },
         "summary": "Get Folder",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       },
       "patch": {
         "operationId": "update_folder_api_v1_folders__folder_id__patch",
@@ -3561,9 +3590,7 @@
           }
         },
         "summary": "Update Folder",
-        "tags": [
-          "folders"
-        ]
+        "tags": ["folders"]
       }
     },
     "/api/v1/health": {
@@ -3582,9 +3609,7 @@
           }
         },
         "summary": "Get Health",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/api/v1/jobs": {
@@ -3643,9 +3668,7 @@
           }
         },
         "summary": "List Jobs",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/jobs/{job_id}": {
@@ -3685,9 +3708,7 @@
           }
         },
         "summary": "Get Job",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/jobs/{job_id}/cancel": {
@@ -3727,9 +3748,7 @@
           }
         },
         "summary": "Cancel Job",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/smart-folders": {
@@ -3752,9 +3771,7 @@
           }
         },
         "summary": "List Smart Folders",
-        "tags": [
-          "smart-folders"
-        ]
+        "tags": ["smart-folders"]
       },
       "post": {
         "operationId": "create_smart_folder_api_v1_smart_folders_post",
@@ -3791,9 +3808,7 @@
           }
         },
         "summary": "Create Smart Folder",
-        "tags": [
-          "smart-folders"
-        ]
+        "tags": ["smart-folders"]
       }
     },
     "/api/v1/smart-folders/{smart_folder_id}": {
@@ -3826,9 +3841,7 @@
           }
         },
         "summary": "Delete Smart Folder",
-        "tags": [
-          "smart-folders"
-        ]
+        "tags": ["smart-folders"]
       },
       "get": {
         "operationId": "get_smart_folder_api_v1_smart_folders__smart_folder_id__get",
@@ -3866,9 +3879,7 @@
           }
         },
         "summary": "Get Smart Folder",
-        "tags": [
-          "smart-folders"
-        ]
+        "tags": ["smart-folders"]
       },
       "patch": {
         "operationId": "update_smart_folder_api_v1_smart_folders__smart_folder_id__patch",
@@ -3916,9 +3927,7 @@
           }
         },
         "summary": "Update Smart Folder",
-        "tags": [
-          "smart-folders"
-        ]
+        "tags": ["smart-folders"]
       }
     },
     "/api/v1/storage-roots": {
@@ -3977,9 +3986,7 @@
           }
         },
         "summary": "List Storage Roots",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       },
       "post": {
         "operationId": "create_storage_root_api_v1_storage_roots_post",
@@ -4016,9 +4023,7 @@
           }
         },
         "summary": "Create Storage Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       }
     },
     "/api/v1/storage-roots/{root_id}": {
@@ -4051,9 +4056,7 @@
           }
         },
         "summary": "Delete Storage Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       },
       "get": {
         "operationId": "get_storage_root_api_v1_storage_roots__root_id__get",
@@ -4091,9 +4094,7 @@
           }
         },
         "summary": "Get Storage Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       },
       "patch": {
         "operationId": "update_storage_root_api_v1_storage_roots__root_id__patch",
@@ -4141,9 +4142,7 @@
           }
         },
         "summary": "Update Storage Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       }
     },
     "/api/v1/storage-roots/{root_id}/fast-add": {
@@ -4193,9 +4192,7 @@
           }
         },
         "summary": "Fast Add Files",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       }
     },
     "/api/v1/storage-roots/{root_id}/probe": {
@@ -4245,9 +4242,7 @@
           }
         },
         "summary": "Probe Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       }
     },
     "/api/v1/storage-roots/{root_id}/scan": {
@@ -4287,9 +4282,7 @@
           }
         },
         "summary": "Scan Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
       }
     },
     "/api/v1/storage-roots/{root_id}/thumbnails": {
@@ -4339,9 +4332,46 @@
           }
         },
         "summary": "Thumbnails Root",
-        "tags": [
-          "storage-roots"
-        ]
+        "tags": ["storage-roots"]
+      }
+    },
+    "/api/v1/subtitles/{track_id}/vtt": {
+      "get": {
+        "description": "Serve an external subtitle as WebVTT (converted + cached on first hit).",
+        "operationId": "subtitle_vtt_api_v1_subtitles__track_id__vtt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Subtitle Vtt",
+        "tags": ["playback"]
       }
     },
     "/api/v1/tag-groups": {
@@ -4400,9 +4430,7 @@
           }
         },
         "summary": "List Tag Groups",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "post": {
         "operationId": "create_tag_group_api_v1_tag_groups_post",
@@ -4439,9 +4467,7 @@
           }
         },
         "summary": "Create Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/tag-groups/{group_id}": {
@@ -4474,9 +4500,7 @@
           }
         },
         "summary": "Delete Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "get": {
         "operationId": "get_tag_group_api_v1_tag_groups__group_id__get",
@@ -4514,9 +4538,7 @@
           }
         },
         "summary": "Get Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "patch": {
         "operationId": "update_tag_group_api_v1_tag_groups__group_id__patch",
@@ -4564,9 +4586,7 @@
           }
         },
         "summary": "Update Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/tag-groups/{group_id}/tags": {
@@ -4606,9 +4626,7 @@
           }
         },
         "summary": "Get Group Tags",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "put": {
         "operationId": "set_group_tags_api_v1_tag_groups__group_id__tags_put",
@@ -4656,9 +4674,7 @@
           }
         },
         "summary": "Set Group Tags",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/tags": {
@@ -4717,9 +4733,7 @@
           }
         },
         "summary": "List Tags",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "post": {
         "operationId": "create_tag_api_v1_tags_post",
@@ -4756,9 +4770,7 @@
           }
         },
         "summary": "Create Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     },
     "/api/v1/tags/counts": {
@@ -4777,9 +4789,7 @@
           }
         },
         "summary": "Tag Counts",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     },
     "/api/v1/tags/{tag_id}": {
@@ -4812,9 +4822,7 @@
           }
         },
         "summary": "Delete Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "get": {
         "operationId": "get_tag_api_v1_tags__tag_id__get",
@@ -4852,9 +4860,7 @@
           }
         },
         "summary": "Get Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "patch": {
         "operationId": "update_tag_api_v1_tags__tag_id__patch",
@@ -4902,9 +4908,7 @@
           }
         },
         "summary": "Update Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     }
   }

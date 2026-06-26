@@ -22,6 +22,10 @@ export type SmartFolderRead = components['schemas']['SmartFolderRead']
 export type SmartFolderCreate = components['schemas']['SmartFolderCreate']
 export type SmartFolderUpdate = components['schemas']['SmartFolderUpdate']
 
+export type PlaybackManifest = components['schemas']['PlaybackManifest']
+export type PlayableVideo = components['schemas']['PlayableVideo']
+export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
+
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
 export type SortOrder = 'asc' | 'desc'
@@ -130,6 +134,9 @@ export const updateSmartFolder = (id: string, payload: SmartFolderUpdate) =>
   send<SmartFolderRead>(`/api/v1/smart-folders/${id}`, 'PATCH', payload)
 
 export const deleteSmartFolder = (id: string) => send<void>(`/api/v1/smart-folders/${id}`, 'DELETE')
+
+export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
+  getJson<PlaybackManifest>(`/api/v1/bundles/${bundleId}/playback`, signal)
 
 export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>('/api/v1/bundles/counts', signal)
