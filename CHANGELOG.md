@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 4 — bundle editing and organization.**
+  - Backend: `PATCH /bundles/{id}/files/{fid}` (file-level title/note/link/
+    role/sequence), `PUT /bundles/{id}/files/order` (reorder),
+    `POST /bundles/batch` (add/remove tags+folders across many bundles),
+    `GET /bundles/{id}/tags`+`/folders`, and `GET /tags/counts`.
+  - Inspector is now editable: title, note, source URL, and star rating
+    (TanStack Query mutations + cache invalidation; edits survive reload).
+  - Tag editor (chips + popover with group tabs, search, hierarchy, counts)
+    and hierarchical folder assignment.
+  - File management: reorder, choose primary/cover, and remove a file from a
+    bundle (metadata only — the file is never deleted on disk).
+  - Multi-select (cmd/ctrl/shift-click) + a batch bar for adding tags/folders
+    across a selection. Playwright e2e for the edit flows.
 - **Phase 3 — desktop app shell and browsing views.**
   - Bundle browse API: `GET /api/v1/bundles/browse` (card summaries, system
     views, folder filter with descendants, sort with stable tie-breaker,

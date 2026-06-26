@@ -92,8 +92,8 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
   await page.locator('.card').first().click()
-  // Inspector shows the bundle's details + its files.
-  await expect(page.locator('.inspector').getByText('Movie 0')).toBeVisible()
+  // Inspector shows the bundle's (editable) title + its files.
+  await expect(page.locator('.inspector input[aria-label="Title"]')).toHaveValue('Movie 0')
   await expect(page.getByText('movie.mp4')).toBeVisible()
 })
 
