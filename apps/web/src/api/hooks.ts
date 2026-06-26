@@ -18,6 +18,7 @@ import {
   fetchBundleFolders,
   fetchBundleTags,
   fetchFolderCounts,
+  fetchPlaybackManifest,
   fetchSmartFolders,
   fetchTagCounts,
   fetchTagGroupTags,
@@ -60,6 +61,14 @@ export function useFilterPreview(filter: FilterExpression | null) {
     queryKey: ['filter-preview', filter],
     queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
     enabled: filter !== null,
+  })
+}
+
+export function usePlaybackManifest(bundleId: string | null) {
+  return useQuery({
+    queryKey: ['playback', bundleId],
+    queryFn: ({ signal }) => fetchPlaybackManifest(bundleId!, signal),
+    enabled: bundleId !== null,
   })
 }
 
