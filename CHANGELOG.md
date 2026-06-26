@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 7 — Eagle migration (one-way, read-only, idempotent).**
+  - Read-only parser for an Eagle `.library` directory (folders, tag groups,
+    per-item metadata) — ADR-0004; the Eagle library is never written to.
+  - Dry-run planner (`POST /eagle/preview`) reports new/skipped/folders/tags
+    plus advisory merge suggestions, with no DB writes; the executor
+    (`POST /eagle/import`) maps each item → one bundle + linked file
+    (title/note/rating/source/tags/folders), registers the library as a
+    storage root, and records `import_records` so re-imports skip existing
+    items (`UNIQUE(provider, external_id)`).
+  - Desktop "Import from Eagle" dialog: enter a library path, preview the
+    report, then commit.
 - **Phase 6 — subtitles and direct playback.**
   - `subtitle_tracks` table + ADR-0003: each track is exactly one of an
     external subtitle `AssetFile` or an embedded `ffprobe` stream, linked to a
