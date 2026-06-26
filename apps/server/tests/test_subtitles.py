@@ -123,6 +123,35 @@ def test_auto_link_matches_same_dir_basename(session: Session) -> None:
     assert len(sub_service.list_tracks(session, bundle.id)) == 2
 
 
+def test_sync_embedded_tracks_from_metadata(session: Session) -> None:
+    _root, bundle, video = _bundle_with_files(session)
+    video.tech_metadata = {
+        "embedded_subtitles": [
+            {"index": 2, "codec": "subrip", "language": "eng"},
+            {"index": 3, "codec": "ass", "language": None},
+        ]
+    }
+    session.flush()
+
+    created = sub_service.sync_embedded_tracks(session, video)
+    assert {t.embedded_index for t in created} == {2, 3}
+    assert created[0].language == "eng"
+    assert created[0].format == "subrip"
+    assert all(t.video_file_id == video.id for t in created)
+
+    # Idempotent across a reprobe.
+    assert sub_service.sync_embedded_tracks(session, video) == []
+    assert len(sub_service.list_tracks_for_video(session, video.id)) == 2
+
+
+def test_classify_recognizes_subtitle_extensions() -> None:
+    from cairndex.domain.enums import MediaKind as MK
+    from cairndex.scanning.media_types import classify
+
+    assert classify("movie.srt") == (MK.SUBTITLE, FileRole.SUBTITLE)
+    assert classify("movie.sbv") == (MK.SUBTITLE, FileRole.SUBTITLE)
+
+
 def test_attach_and_delete(session: Session) -> None:
     root, bundle, video = _bundle_with_files(session)
     sub = bundle_service.add_file(

@@ -20,6 +20,7 @@ from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.ffprobe import ProbeError, normalize_metadata, run_ffprobe
 from cairndex.persistence.models import AssetFile
 from cairndex.services.storage_roots import get_storage_root
+from cairndex.services.subtitles import sync_embedded_tracks
 
 ProgressFn = Callable[[int, int | None], None]
 _PROBEABLE = (MediaKind.VIDEO, MediaKind.IMAGE, MediaKind.AUDIO)
@@ -42,6 +43,8 @@ def probe_asset_file(session: Session, file_id: str) -> AssetFile:
     asset_file.tech_metadata = normalize_metadata(run_ffprobe(abs_path))
     asset_file.updated_at = utcnow()
     session.flush()
+    if asset_file.media_kind == MediaKind.VIDEO:
+        sync_embedded_tracks(session, asset_file)
     return asset_file
 
 
@@ -71,6 +74,8 @@ def probe_storage_root(
                 abs_path = resolve_within_root(root.canonical_path, asset_file.relative_path)
                 asset_file.tech_metadata = normalize_metadata(run_ffprobe(Path(abs_path)))
                 asset_file.updated_at = utcnow()
+                if asset_file.media_kind == MediaKind.VIDEO:
+                    sync_embedded_tracks(session, asset_file)
                 probed += 1
             except (ProbeError, PathSafetyError, OSError):
                 failed += 1

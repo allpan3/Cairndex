@@ -136,6 +136,39 @@ def delete_track(session: Session, track_id: str) -> None:
     session.flush()
 
 
+def sync_embedded_tracks(session: Session, video_file: AssetFile) -> list[SubtitleTrack]:
+    """Create tracks for embedded subtitle streams found by ffprobe.
+
+    Reads ``tech_metadata['embedded_subtitles']`` (populated by the probe step)
+    and adds one track per not-yet-seen stream index. Idempotent, so a reprobe
+    never duplicates tracks.
+    """
+    meta = video_file.tech_metadata or {}
+    streams = meta.get("embedded_subtitles") or []
+    existing = {
+        t.embedded_index
+        for t in list_tracks_for_video(session, video_file.id)
+        if t.embedded_index is not None
+    }
+    created: list[SubtitleTrack] = []
+    for stream in streams:
+        index = stream.get("index")
+        if index is None or index in existing:
+            continue
+        created.append(
+            create_embedded_track(
+                session,
+                bundle_id=video_file.bundle_id,
+                video_file_id=video_file.id,
+                embedded_index=index,
+                language=stream.get("language"),
+                format=stream.get("codec"),
+            )
+        )
+        existing.add(index)
+    return created
+
+
 def auto_link_external_subtitles(session: Session, bundle_id: str) -> list[SubtitleTrack]:
     """Create tracks for unlinked external subtitle files in a bundle.
 
