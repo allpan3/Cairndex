@@ -154,6 +154,45 @@ def add_file(
     return asset_file
 
 
+_FILE_SCALAR_FIELDS = ("display_title", "note", "source_url")
+
+
+def update_file(
+    session: Session, bundle_id: str, file_id: str, changes: dict[str, Any]
+) -> AssetFile:
+    """Update file-level metadata (display title/note/link/role/order).
+
+    Only the on-bundle membership and metadata change — the physical file is
+    never touched."""
+    asset_file = session.get(AssetFile, file_id)
+    if asset_file is None or asset_file.bundle_id != bundle_id:
+        raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
+    for field in _FILE_SCALAR_FIELDS:
+        if field in changes:
+            setattr(asset_file, field, changes[field])
+    if "role" in changes:
+        asset_file.role = changes["role"]
+    if "sequence" in changes:
+        asset_file.sequence = changes["sequence"]
+    asset_file.updated_at = utcnow()
+    session.flush()
+    return asset_file
+
+
+def reorder_files(session: Session, bundle_id: str, ordered_ids: list[str]) -> list[AssetFile]:
+    """Set each file's ``sequence`` from its position in ``ordered_ids``.
+
+    ``ordered_ids`` must be exactly the bundle's current files."""
+    files = list_files(session, bundle_id)
+    by_id = {f.id: f for f in files}
+    if set(ordered_ids) != set(by_id):
+        raise ValidationError("ordered ids must be exactly the bundle's current files")
+    for sequence, file_id in enumerate(ordered_ids):
+        by_id[file_id].sequence = sequence
+    session.flush()
+    return [by_id[file_id] for file_id in ordered_ids]
+
+
 def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     """Unlink a file from its bundle (metadata only; the file stays on disk).
 
@@ -181,6 +220,40 @@ def set_bundle_folders(session: Session, bundle_id: str, folder_ids: list[str]) 
     bundle.updated_at = utcnow()
     session.flush()
     return bundle
+
+
+def batch_update_bundles(
+    session: Session,
+    *,
+    bundle_ids: list[str],
+    add_tag_ids: list[str] | None = None,
+    remove_tag_ids: list[str] | None = None,
+    add_folder_ids: list[str] | None = None,
+    remove_folder_ids: list[str] | None = None,
+) -> int:
+    """Add/remove tags and folders across many bundles. Returns the count.
+
+    Adds and removes are applied as set operations per bundle, so the call is
+    idempotent (re-adding an existing tag is a no-op)."""
+    bundles = [get_bundle(session, bundle_id) for bundle_id in bundle_ids]
+    add_tags = _resolve_all(session, Tag, add_tag_ids or [], label="tag")
+    add_folders = _resolve_all(session, Folder, add_folder_ids or [], label="folder")
+    remove_tag_set = set(remove_tag_ids or [])
+    remove_folder_set = set(remove_folder_ids or [])
+
+    for bundle in bundles:
+        tags = {t.id: t for t in bundle.tags if t.id not in remove_tag_set}
+        tags.update({t.id: t for t in add_tags})
+        bundle.tags = list(tags.values())
+
+        folders = {f.id: f for f in bundle.folders if f.id not in remove_folder_set}
+        folders.update({f.id: f for f in add_folders})
+        bundle.folders = list(folders.values())
+
+        bundle.updated_at = utcnow()
+
+    session.flush()
+    return len(bundles)
 
 
 # --- helpers -----------------------------------------------------------------
