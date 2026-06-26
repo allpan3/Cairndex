@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from cairndex.api.errors import register_exception_handlers
+from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
 from cairndex.core.config import get_settings
 from cairndex.jobs.registry import build_registry
@@ -31,6 +32,11 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
     register_exception_handlers(app)
     app.include_router(api_v1_router)
+    # Mounted last so the explicit /api/v1 routes always win; only present in
+    # production single-container deployments where CAIRNDEX_STATIC_DIR points
+    # at the built frontend (docs/deployment.md).
+    if settings.static_dir is not None and settings.static_dir.is_dir():
+        mount_static_site(app, settings.static_dir)
     return app
 
 
