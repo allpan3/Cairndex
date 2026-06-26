@@ -4,6 +4,7 @@ import type { SmartFolderRead } from './api/client'
 import { useBrowse, useFolderCounts, useFolders, useSmartFolders, useViewCounts } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
+import { EagleImport } from './app/EagleImport'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
@@ -68,6 +69,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [importing, setImporting] = useState(false)
 
   const counts = useViewCounts()
   const folders = useFolders()
@@ -182,6 +184,7 @@ export default function App() {
         smartFolders={smartFolders.data ?? []}
         onNewSmartFolder={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartFolder={(sf) => setEditor({ existing: sf })}
+        onImport={() => setImporting(true)}
       />
 
       <div className="center">
@@ -214,6 +217,8 @@ export default function App() {
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+
+      {importing && <EagleImport onClose={() => setImporting(false)} />}
 
       {editor && (
         <SmartFolderEditor
