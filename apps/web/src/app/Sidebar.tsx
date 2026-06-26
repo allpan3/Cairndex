@@ -12,6 +12,7 @@ interface SidebarProps {
   smartFolders: SmartFolderRead[]
   onNewSmartFolder: () => void
   onEditSmartFolder: (sf: SmartFolderRead) => void
+  onImport: () => void
 }
 
 interface TreeNode {
@@ -43,6 +44,7 @@ export function Sidebar({
   smartFolders,
   onNewSmartFolder,
   onEditSmartFolder,
+  onImport,
 }: SidebarProps) {
   const tree = useMemo(() => buildTree(folders), [folders])
 
@@ -50,6 +52,14 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar__brand">
         <span>🍃</span> Cairndex
+        <button
+          className="sidebar__import"
+          onClick={onImport}
+          aria-label="Import from Eagle"
+          title="Import from Eagle"
+        >
+          ⇪
+        </button>
       </div>
 
       <div className="sidebar__section">

@@ -20,6 +20,8 @@ import {
   fetchFolderCounts,
   fetchPlaybackManifest,
   fetchSmartFolders,
+  previewEagleImport,
+  runEagleImport,
   fetchTagCounts,
   fetchTagGroupTags,
   fetchTagGroups,
@@ -62,6 +64,28 @@ export function useFilterPreview(filter: FilterExpression | null) {
     queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
     enabled: filter !== null,
   })
+}
+
+export function useEagleImport() {
+  const qc = useQueryClient()
+  return {
+    preview: useMutation({ mutationFn: (path: string) => previewEagleImport(path) }),
+    run: useMutation({
+      mutationFn: (path: string) => runEagleImport(path),
+      onSuccess: () => {
+        // A bulk import touches every browse-facing query.
+        for (const key of [
+          'browse',
+          'view-counts',
+          'folders',
+          'folder-counts',
+          'tags',
+          'tag-counts',
+        ])
+          qc.invalidateQueries({ queryKey: [key] })
+      },
+    }),
+  }
 }
 
 export function usePlaybackManifest(bundleId: string | null) {

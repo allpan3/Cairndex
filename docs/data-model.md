@@ -90,6 +90,12 @@ by two CHECK constraints; uniqueness on `(video_file_id, embedded_index)` and
 basename (language/forced parsed from the suffix); unmatched ones stay unlinked
 for manual attachment.
 
+### `import_records` (Phase 7, ADR-0004)
+`id`, `provider` (e.g. `eagle`), `external_id`, `bundle_id` (FK, CASCADE),
+`imported_at`, with `UNIQUE(provider, external_id)`. Maps an external item to
+the bundle it produced so re-running an import skips already-imported items
+(idempotency). Generic columns keep it reusable for future importers.
+
 ## Deferred to later phases
 
 - **Generalized media tracks / embedded-stream extraction** — a future

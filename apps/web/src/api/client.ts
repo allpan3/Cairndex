@@ -26,6 +26,9 @@ export type PlaybackManifest = components['schemas']['PlaybackManifest']
 export type PlayableVideo = components['schemas']['PlayableVideo']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
 
+export type ImportPlanRead = components['schemas']['ImportPlanRead']
+export type ImportResultRead = components['schemas']['ImportResultRead']
+
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
 export type SortOrder = 'asc' | 'desc'
@@ -137,6 +140,12 @@ export const deleteSmartFolder = (id: string) => send<void>(`/api/v1/smart-folde
 
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   getJson<PlaybackManifest>(`/api/v1/bundles/${bundleId}/playback`, signal)
+
+export const previewEagleImport = (libraryPath: string) =>
+  send<ImportPlanRead>('/api/v1/eagle/preview', 'POST', { library_path: libraryPath })
+
+export const runEagleImport = (libraryPath: string) =>
+  send<ImportResultRead>('/api/v1/eagle/import', 'POST', { library_path: libraryPath })
 
 export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>('/api/v1/bundles/counts', signal)
