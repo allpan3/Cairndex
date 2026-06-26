@@ -43,26 +43,45 @@ async function mockApi(page: Page) {
   )
   await page.route('**/api/v1/bundles/browse**', (r) =>
     r.fulfill({
-      json: { items: [summary('b0', 'Movie 0'), summary('b1', 'Movie 1')], total: 2, offset: 0, limit: 100 },
+      json: {
+        items: [summary('b0', 'Movie 0'), summary('b1', 'Movie 1')],
+        total: 2,
+        offset: 0,
+        limit: 100,
+      },
     }),
   )
-  await page.route('**/api/v1/folders?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/api/v1/folders?*', (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
   await page.route('**/api/v1/folders/counts', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/tags?*', (r) =>
     r.fulfill({
       json: {
         items: [
-          { id: 't1', parent_id: null, name: 'Action', color: null, sort_order: 0, created_at: 'x', updated_at: 'x' },
+          {
+            id: 't1',
+            parent_id: null,
+            name: 'Action',
+            color: null,
+            sort_order: 0,
+            created_at: 'x',
+            updated_at: 'x',
+          },
         ],
         next_cursor: null,
       },
     }),
   )
-  await page.route('**/api/v1/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/api/v1/tag-groups?*', (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
   await page.route('**/api/v1/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 0 } } }))
 
   await page.route('**/api/v1/bundles/b0/files', (r) => r.fulfill({ json: [] }))
-  await page.route('**/api/v1/bundles/b0/folders', (r) => r.fulfill({ json: { bundle_id: 'b0', folder_ids: [] } }))
+  await page.route('**/api/v1/bundles/b0/folders', (r) =>
+    r.fulfill({ json: { bundle_id: 'b0', folder_ids: [] } }),
+  )
   await page.route('**/api/v1/bundles/b0/tags', async (r) => {
     if (r.request().method() === 'PUT') {
       state.tagIds = (r.request().postDataJSON() as { ids: string[] }).ids
@@ -100,6 +119,9 @@ test('multi-select shows the batch bar', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
   await page.locator('.card').nth(0).click()
-  await page.locator('.card').nth(1).click({ modifiers: ['Meta'] })
+  await page
+    .locator('.card')
+    .nth(1)
+    .click({ modifiers: ['Meta'] })
   await expect(page.locator('.batchbar')).toContainText('2 selected')
 })
