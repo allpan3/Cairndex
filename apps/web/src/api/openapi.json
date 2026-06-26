@@ -1725,11 +1725,6 @@
           "name": {
             "title": "Name",
             "type": "string"
-          },
-          "sort_order": {
-            "default": 0,
-            "title": "Sort Order",
-            "type": "integer"
           }
         },
         "required": [
