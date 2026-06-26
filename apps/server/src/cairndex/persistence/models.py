@@ -1,9 +1,9 @@
 """SQLAlchemy ORM models for the Cairndex core domain (ADR-0002).
 
-Table set matches the Phase 1 scope in AGENTS.md §4: storage roots, asset
-bundles, asset files, tags, tag groups (+ membership), folders, and smart
-folders, plus the bundle↔tag and bundle↔folder join tables. Subtitle/media
-tracks (Phase 6) and the jobs table (Phase 2) are intentionally deferred.
+Covers storage roots, asset bundles, asset files, tags, tag groups (+
+membership), folders, and smart folders, plus the bundle↔tag and bundle↔folder
+join tables (Phase 1); the jobs table (Phase 2); and subtitle tracks
+(Phase 6, ADR-0003).
 """
 
 from __future__ import annotations
@@ -278,6 +278,52 @@ class SmartFolder(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+
+
+class SubtitleTrack(Base):
+    """A subtitle track for a video — external file or embedded stream (ADR-0003).
+
+    Exactly one of ``source_file_id`` (an external subtitle ``AssetFile``) or
+    ``embedded_index`` (an ``ffprobe`` stream index inside ``video_file_id``'s
+    container) is set; embedded tracks always name their host video.
+    """
+
+    __tablename__ = "subtitle_tracks"
+
+    id: Mapped[UlidPk]
+    bundle_id: Mapped[UlidFk] = mapped_column(ForeignKey("asset_bundles.id", ondelete="CASCADE"))
+    video_file_id: Mapped[str | None] = mapped_column(
+        ForeignKey("asset_files.id", ondelete="CASCADE"), nullable=True
+    )
+    source_file_id: Mapped[str | None] = mapped_column(
+        ForeignKey("asset_files.id", ondelete="SET NULL"), nullable=True
+    )
+    embedded_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    language: Mapped[str | None] = mapped_column(String(35), nullable=True)  # BCP-47
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    format: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_default: Mapped[bool] = mapped_column(default=False)
+    is_forced: Mapped[bool] = mapped_column(default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
+
+    __table_args__ = (
+        # Exactly one source: external file XOR embedded stream index.
+        CheckConstraint(
+            "(source_file_id IS NOT NULL) <> (embedded_index IS NOT NULL)",
+            name="subtitle_one_source",
+        ),
+        # An embedded stream must name the video that contains it.
+        CheckConstraint(
+            "embedded_index IS NULL OR video_file_id IS NOT NULL",
+            name="subtitle_embedded_has_video",
+        ),
+        UniqueConstraint("video_file_id", "embedded_index", name="subtitle_embedded_unique"),
+        UniqueConstraint("source_file_id", name="subtitle_source_unique"),
+    )
 
 
 class Job(Base):
