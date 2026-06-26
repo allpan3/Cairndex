@@ -88,7 +88,6 @@ def create_bundle(payload: BundleCreate, db: DbSession) -> BundleRead:
         db,
         title=payload.title,
         note=payload.note,
-        source_url=payload.source_url,
         rating=payload.rating,
     )
     return BundleRead.model_validate(bundle)
@@ -134,7 +133,7 @@ def add_file(bundle_id: str, payload: FileLink, db: DbSession) -> FileRead:
         display_title=payload.display_title,
         sequence=payload.sequence,
         note=payload.note,
-        source_url=payload.source_url,
+        source=payload.source,
         mime_type=payload.mime_type,
     )
     return FileRead.model_validate(asset_file)

@@ -53,9 +53,8 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
 
   const [title, setTitle] = useState(bundle.title ?? '')
   const [note, setNote] = useState(bundle.note ?? '')
-  const [sourceUrl, setSourceUrl] = useState(bundle.source_url ?? '')
 
-  const commit = (field: 'title' | 'note' | 'source_url', value: string) => {
+  const commit = (field: 'title' | 'note', value: string) => {
     if (value === (bundle[field] ?? '')) return
     update.mutate({ [field]: value === '' ? null : value })
   }
@@ -97,16 +96,6 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
         <span className="prop__k">Date Added</span>
         <span className="prop__v">{formatDate(bundle.created_at)}</span>
       </div>
-
-      <label className="field-label">Source URL</label>
-      <input
-        className="edit"
-        value={sourceUrl}
-        placeholder="http://"
-        onChange={(e) => setSourceUrl(e.target.value)}
-        onBlur={() => commit('source_url', sourceUrl)}
-        aria-label="Source URL"
-      />
 
       <label className="field-label">Note</label>
       <textarea
