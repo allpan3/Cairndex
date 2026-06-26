@@ -6,6 +6,7 @@ from cairndex.api.v1 import (
     folders,
     health,
     jobs,
+    playback,
     smart_folders,
     storage_roots,
     tag_groups,
@@ -21,4 +22,5 @@ router.include_router(tag_groups.router)
 router.include_router(folders.router)
 router.include_router(smart_folders.router)
 router.include_router(filters.router)
+router.include_router(playback.router)
 router.include_router(jobs.router)
