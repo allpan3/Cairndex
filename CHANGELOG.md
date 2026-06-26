@@ -10,6 +10,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 8 — packaging and deployment hardening** (ADR-0005).
+  - The backend serves the built SPA when `CAIRNDEX_STATIC_DIR` is set, so a
+    single container ships both halves: FastAPI keeps owning `/api/v1` and
+    serves `index.html` (with deep-link fallback) and hashed assets for
+    everything else. Unset in dev — Vite serves the frontend separately.
+  - Hardened production image (`infra/docker/production.Dockerfile`):
+    multi-stage build (SPA + locked backend) into a slim non-root runtime
+    (UID 10001) with `ffmpeg`/`ffprobe` for scan/thumbnail/subtitle work.
+  - `docker-compose.prod.yml`: read-only container rootfs + `tmpfs`, media
+    mounted **read-only** at `/storage/media`, a writable app-data volume at
+    `/data`, `no-new-privileges`; `.env.example` documents the host knobs.
+  - `infra/backup.sh`: WAL-safe online SQLite backup with an integrity check.
+  - Production deployment guide (`docs/deployment.md`): topology, env-var
+    reference, backup/restore, and the no-auth/not-public-internet stance. CI
+    now also builds the production image.
 - **Phase 7 — Eagle migration (one-way, read-only, idempotent).**
   - Read-only parser for an Eagle `.library` directory (folders, tag groups,
     per-item metadata) — ADR-0004; the Eagle library is never written to.
