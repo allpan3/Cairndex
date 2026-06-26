@@ -71,5 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build images
+      - name: Build dev images
         run: docker compose build
+      - name: Build production image
+        run: docker build -f infra/docker/production.Dockerfile -t cairndex:ci .

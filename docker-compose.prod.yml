@@ -1,0 +1,46 @@
+# Cairndex production stack (single hardened container).
+#
+# This is the NAS/self-host deployment — NOT the dev stack in
+# docker-compose.yml (which bind-mounts source and hot-reloads). One container
+# serves the API and the built SPA on port 8000. See docs/deployment.md.
+#
+#   cp .env.example .env      # then edit MEDIA_HOST_PATH etc.
+#   docker compose -f docker-compose.prod.yml up --build -d
+#
+# Do NOT expose this directly to the public internet — there is no
+# authentication yet (AGENTS.md §12). Reach it over a private network/Tailscale.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: infra/docker/production.Dockerfile
+    image: cairndex:latest
+    restart: unless-stopped
+    ports:
+      # Bind to localhost by default; a reverse proxy / Tailscale fronts it.
+      - "${CAIRNDEX_BIND_ADDR:-127.0.0.1}:${CAIRNDEX_PORT:-8000}:8000"
+    environment:
+      CAIRNDEX_ENVIRONMENT: production
+      # The built SPA and app-data dir are baked into the image; override only
+      # if you remap the volumes below.
+      CAIRNDEX_STATIC_DIR: /app/web
+      CAIRNDEX_DATA_DIR: /data
+    volumes:
+      # Writable app-data: SQLite DB (WAL) + derived-media cache (thumbnails,
+      # converted subtitles). The only state to back up — see infra/backup.sh.
+      - cairndex-data:/data
+      # Your media library, mounted READ-ONLY (AGENTS.md §3 — metadata-only,
+      # never mutate originals). Register a storage root in the app whose
+      # canonical path is the in-container target, e.g. /storage/media.
+      - "${MEDIA_HOST_PATH:-./media}:/storage/media:ro"
+    # Defense in depth: the app only writes under /data (a volume), so the rest
+    # of the container filesystem can be read-only.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cairndex-data:
