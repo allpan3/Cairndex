@@ -2,9 +2,11 @@ from fastapi import APIRouter
 
 from cairndex.api.v1 import (
     bundles,
+    filters,
     folders,
     health,
     jobs,
+    smart_folders,
     storage_roots,
     tag_groups,
     tags,
@@ -17,4 +19,6 @@ router.include_router(bundles.router)
 router.include_router(tags.router)
 router.include_router(tag_groups.router)
 router.include_router(folders.router)
+router.include_router(smart_folders.router)
+router.include_router(filters.router)
 router.include_router(jobs.router)
