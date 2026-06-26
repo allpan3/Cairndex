@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # jobs are driven deterministically instead of by a polling thread.
     worker_enabled: bool = True
 
+    # Directory of the built frontend (apps/web/dist). When set and present the
+    # backend serves the SPA so a single production container ships both halves
+    # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.
+    static_dir: Path | None = None
+
     def resolved_database_url(self) -> str:
         if self.database_url is not None:
             return self.database_url

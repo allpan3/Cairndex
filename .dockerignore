@@ -1,0 +1,41 @@
+# Build context for infra/docker/production.Dockerfile is the repo root.
+# Keep it small and never ship local data, secrets, or build artifacts —
+# everything is rebuilt inside the image (AGENTS.md §12).
+
+.git
+.github
+**/.venv
+**/node_modules
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+
+# Frontend/build outputs (rebuilt in the image)
+apps/web/dist
+apps/web/build
+**/.vite
+
+# App data, databases, caches, media — never copy into an image
+var/
+apps/server/var/
+data/
+storage/
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+
+# Tests, docs, demos, and reference assets aren't needed at runtime
+**/tests
+e2e
+playwright-report
+test-results
+docs/reference
+demo
