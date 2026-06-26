@@ -2,56 +2,58 @@
 
 ## Current branch / latest commit
 
-Branch: `feature/desktop-library-ui` (Phase 3), based on `main`. Latest
-commit: see `git log -1`.
+Branch: `feature/bundle-editor` (Phase 4), based on `main`. Latest commit:
+see `git log -1`.
 
 ## Current milestone
 
-**Phase 3 — Desktop app shell and browsing views** (`feature/desktop-library-ui`).
-Eagle-inspired dark three-pane web UI over the Phase 1/2 APIs, plus the bundle
-browse backend it needs. **Phases 0–2** are merged to `main`.
+**Phase 4 — Bundle editing and organization** (`feature/bundle-editor`).
+The inspector becomes interactive and the browser gains multi-select + batch
+operations. **Phases 0–3** are merged to `main`.
 
 ## Completed in this milestone
 
-- Browse backend (`services/browse`): card summaries (file count, size,
-  missing/cover state, primary-derived dims/duration/extension); system views
-  (all/recent/uncategorized/untagged/missing); folder filter w/ descendants;
-  sort with a ULID tie-breaker; offset pagination + total; view/folder counts.
-  Endpoints `GET /bundles/browse`, `/bundles/counts`, `/folders/counts`.
-- Frontend (`apps/web`): TanStack Query data layer + typed client/hooks;
-  resizable three-pane shell; counted system views + folder tree; toolbar
-  (search, sort, layout, zoom); grid/list/justified layouts, all virtualized
-  (TanStack Virtual); bundle cards; inspector (metadata + files); keyboard
-  navigation; layout/zoom/pane-width persisted.
+- Backend editing endpoints: file PATCH (display title/note/link/role/seq),
+  file reorder, `POST /bundles/batch` (add/remove tags+folders across many
+  bundles), `GET /bundles/{id}/tags`+`/folders`, `GET /tags/counts`. Most
+  editing primitives already existed from Phase 1.
+- Editable inspector (TanStack Query mutations + invalidation): title, note,
+  source URL, star rating.
+- Tag editor (chips + popover: group tabs, search, hierarchy, counts) and
+  hierarchical folder assignment.
+- File management in the inspector: reorder, set primary/cover, remove from
+  bundle (metadata only — never deletes the file on disk).
+- Multi-select (cmd/ctrl/shift-click) + batch bar for tag/folder assignment.
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
-- Backend: `ruff`/`mypy`/`pytest` (**100 passed**); Alembic round-trip clean.
-- Frontend: `lint`, `format:check`, `typecheck`, `vitest` (2), `build`,
-  Playwright e2e (3 — shell+browse, select→inspector, layout persists).
-- Verified live in a real browser (Vite + seeded backend, 500 bundles):
-  grid/list/justified render, virtualization windows to ~30 DOM nodes,
-  selection opens the inspector, sidebar counts populate.
+- Backend: `ruff`/`mypy`/`pytest` (**106 passed**).
+- Frontend: `lint`, `typecheck`, `vitest` (2), `build`, Playwright e2e (6 —
+  browse, inspector, layout-persist, rating edit, tag assignment, multi-select
+  batch bar).
+- Verified live in a real browser: editing a rating persisted across refetch;
+  the tag picker opened with group tabs/search/hierarchy and toggled
+  assignment; file actions and the editable fields render.
 
 ## Known issues / environment gaps
 
-- Search is client-side over loaded items; server-side full-text search +
-  Smart Folders are Phase 5. The "Show subfolder contents" toggle defaults on
-  for folder views (no explicit UI toggle yet).
-- Bundle editing (tags/folders/cover/rating from the UI) is Phase 4; the
-  inspector is read-only this phase.
+- Adding *new* files to a bundle from the UI is not wired yet (fast-add covers
+  bulk linking; the inspector currently reorders/removes/repurposes existing
+  files). Choosing a video *frame* as a cover (vs. an existing file) is
+  deferred — the thumbnail already auto-extracts a frame as a fallback.
+- Search is still client-side over loaded items; server-side search + Smart
+  Folders are Phase 5.
 
 ## Next recommended task
 
-**Phase 4 — Bundle editing and organization** (`feature/bundle-editor`):
-edit title/note/URL/rating; manage files in a bundle (add/remove/reorder,
-choose primary/cover); tag editor (hierarchy, groups, include/exclude);
-folder assignment; batch selection + batch tag/folder ops.
+**Phase 5 — Filtering and Smart Folders** (`feature/smart-filters`): the
+canonical filter AST + server validator/compiler, the tag/folder filter
+pickers (include/exclude, any/all, descendants), the Smart Folder editor
+(field/operator/value rows with live counts), and saved Smart Folders in the
+sidebar. See `docs/filter-language.md`.
 
 ## Unresolved decisions
 
-- None blocking. A typed router (TanStack Router) was deferred this phase —
-  the app is a single browse view driven by state + localStorage; revisit if
-  multi-route/deep-link needs arise.
+- None blocking. A typed router remains deferred (single browse view).

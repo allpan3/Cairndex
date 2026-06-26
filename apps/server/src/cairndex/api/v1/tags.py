@@ -1,11 +1,18 @@
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import DbSession, Pagination
+from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import TagCreate, TagRead, TagUpdate
+from cairndex.services import browse as browse_service
 from cairndex.services import tags as service
 
 router = APIRouter(prefix="/tags", tags=["tags"])
+
+
+@router.get("/counts", response_model=CountsResponse)
+def tag_counts(db: DbSession) -> CountsResponse:
+    return CountsResponse(counts=browse_service.tag_counts(db))
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)

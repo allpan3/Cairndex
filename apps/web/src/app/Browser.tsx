@@ -15,8 +15,8 @@ interface BrowserProps {
   total: number
   layout: LayoutMode
   zoom: number
-  selectedId: string | null
-  onSelect: (id: string) => void
+  selectedIds: Set<string>
+  onSelect: (id: string, e: React.MouseEvent) => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -26,7 +26,7 @@ interface BrowserProps {
 }
 
 export function Browser(props: BrowserProps) {
-  const { items, layout, zoom, selectedId, onSelect } = props
+  const { items, layout, zoom, selectedIds, onSelect } = props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -110,7 +110,7 @@ export function Browser(props: BrowserProps) {
                       <ListRow
                         key={c.item.id}
                         item={c.item}
-                        selected={c.item.id === selectedId}
+                        selected={selectedIds.has(c.item.id)}
                         onSelect={onSelect}
                       />
                     ))
@@ -126,7 +126,7 @@ export function Browser(props: BrowserProps) {
                       >
                         <BundleCard
                           item={c.item}
-                          selected={c.item.id === selectedId}
+                          selected={selectedIds.has(c.item.id)}
                           showMeta={layout === 'grid'}
                           onSelect={onSelect}
                         />
@@ -161,13 +161,13 @@ function ListRow({
 }: {
   item: BundleSummary
   selected: boolean
-  onSelect: (id: string) => void
+  onSelect: (id: string, e: React.MouseEvent) => void
 }) {
   return (
     <div
       className={`list-row${selected ? ' list-row--selected' : ''}`}
       style={{ height: 40, width: '100%' }}
-      onClick={() => onSelect(item.id)}
+      onClick={(e) => onSelect(item.id, e)}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}

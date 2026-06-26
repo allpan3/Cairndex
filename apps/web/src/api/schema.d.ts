@@ -22,6 +22,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundles/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Update */
+        post: operations["batch_update_api_v1_bundles_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundles/browse": {
         parameters: {
             query?: never;
@@ -93,6 +110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bundles/{bundle_id}/files/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Reorder Files */
+        put: operations["reorder_files_api_v1_bundles__bundle_id__files_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bundles/{bundle_id}/files/{file_id}": {
         parameters: {
             query?: never;
@@ -107,7 +141,8 @@ export interface paths {
         delete: operations["remove_file_api_v1_bundles__bundle_id__files__file_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update File */
+        patch: operations["update_file_api_v1_bundles__bundle_id__files__file_id__patch"];
         trace?: never;
     };
     "/api/v1/bundles/{bundle_id}/files/{file_id}/thumbnail": {
@@ -134,7 +169,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Folders */
+        get: operations["get_folders_api_v1_bundles__bundle_id__folders_get"];
         /** Set Folders */
         put: operations["set_folders_api_v1_bundles__bundle_id__folders_put"];
         post?: never;
@@ -151,7 +187,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Tags */
+        get: operations["get_tags_api_v1_bundles__bundle_id__tags_get"];
         /** Set Tags */
         put: operations["set_tags_api_v1_bundles__bundle_id__tags_put"];
         post?: never;
@@ -483,6 +520,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tags/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tag Counts */
+        get: operations["tag_counts_api_v1_tags_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tags/{tag_id}": {
         parameters: {
             query?: never;
@@ -506,6 +560,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BatchResult */
+        BatchResult: {
+            /** Updated */
+            updated: number;
+        };
+        /** BatchUpdate */
+        BatchUpdate: {
+            /** Add Folder Ids */
+            add_folder_ids?: string[];
+            /** Add Tag Ids */
+            add_tag_ids?: string[];
+            /** Bundle Ids */
+            bundle_ids: string[];
+            /** Remove Folder Ids */
+            remove_folder_ids?: string[];
+            /** Remove Tag Ids */
+            remove_tag_ids?: string[];
+        };
         /** BundleBrowsePage */
         BundleBrowsePage: {
             /** Items */
@@ -626,6 +698,16 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * CountsResponse
+         * @description Generic id → bundle-count map (folders, tags).
+         */
+        CountsResponse: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+        };
         /** FastAddRequest */
         FastAddRequest: {
             /** Bundle Title */
@@ -710,18 +792,28 @@ export interface components {
              */
             updated_at: string;
         };
+        /** FileReorder */
+        FileReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
         /**
          * FileRole
          * @description Role of an asset file within its bundle (AGENTS.md §4.3).
          * @enum {string}
          */
         FileRole: "primary_video" | "video_part" | "alternate_version" | "cover" | "image" | "screenshot" | "album_image" | "subtitle" | "attachment" | "generated_derivative" | "other";
-        /** FolderCounts */
-        FolderCounts: {
-            /** Counts */
-            counts: {
-                [key: string]: number;
-            };
+        /** FileUpdate */
+        FileUpdate: {
+            /** Display Title */
+            display_title?: string | null;
+            /** Note */
+            note?: string | null;
+            role?: components["schemas"]["FileRole"] | null;
+            /** Sequence */
+            sequence?: number | null;
+            /** Source Url */
+            source_url?: string | null;
         };
         /** FolderCreate */
         FolderCreate: {
@@ -1113,6 +1205,39 @@ export interface operations {
             };
         };
     };
+    batch_update_api_v1_bundles_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     browse_bundles_api_v1_bundles_browse_get: {
         parameters: {
             query?: {
@@ -1331,6 +1456,41 @@ export interface operations {
             };
         };
     };
+    reorder_files_api_v1_bundles__bundle_id__files_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     remove_file_api_v1_bundles__bundle_id__files__file_id__delete: {
         parameters: {
             query?: never;
@@ -1349,6 +1509,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_file_api_v1_bundles__bundle_id__files__file_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -1393,6 +1589,37 @@ export interface operations {
             };
         };
     };
+    get_folders_api_v1_bundles__bundle_id__folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleFolders"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_folders_api_v1_bundles__bundle_id__folders_put: {
         parameters: {
             query?: never;
@@ -1415,6 +1642,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleFolders"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tags_api_v1_bundles__bundle_id__tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleTags"];
                 };
             };
             /** @description Validation Error */
@@ -1574,7 +1832,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FolderCounts"];
+                    "application/json": components["schemas"]["CountsResponse"];
                 };
             };
         };
@@ -2367,6 +2625,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tag_counts_api_v1_tags_counts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CountsResponse"];
                 };
             };
         };
