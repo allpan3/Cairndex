@@ -5,25 +5,33 @@ import {
   type BrowseParams,
   type BundlePatch,
   type FilePatch,
+  type FilterExpression,
+  type SmartFolderCreate,
+  type SmartFolderUpdate,
   batchUpdate,
   browseBundles,
+  createSmartFolder,
+  deleteSmartFolder,
   fetchAllFolders,
   fetchBundle,
   fetchBundleFiles,
   fetchBundleFolders,
   fetchBundleTags,
   fetchFolderCounts,
+  fetchSmartFolders,
   fetchTagCounts,
   fetchTagGroupTags,
   fetchTagGroups,
   fetchTags,
   fetchViewCounts,
+  previewFilter,
   removeFile,
   reorderFiles,
   setBundleFolders,
   setBundleTags,
   updateBundle,
   updateFile,
+  updateSmartFolder,
 } from './client'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
@@ -44,6 +52,42 @@ export function useBrowse(query: BrowseQuery) {
 
 export function useViewCounts() {
   return useQuery({ queryKey: ['view-counts'], queryFn: ({ signal }) => fetchViewCounts(signal) })
+}
+
+/** Live match-count for a draft filter, debounced by query key (the AST). */
+export function useFilterPreview(filter: FilterExpression | null) {
+  return useQuery({
+    queryKey: ['filter-preview', filter],
+    queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
+    enabled: filter !== null,
+  })
+}
+
+export function useSmartFolders() {
+  return useQuery({
+    queryKey: ['smart-folders'],
+    queryFn: ({ signal }) => fetchSmartFolders(signal),
+  })
+}
+
+export function useSmartFolderMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['smart-folders'] })
+  return {
+    create: useMutation({
+      mutationFn: (payload: SmartFolderCreate) => createSmartFolder(payload),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: ({ id, payload }: { id: string; payload: SmartFolderUpdate }) =>
+        updateSmartFolder(id, payload),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteSmartFolder(id),
+      onSuccess: invalidate,
+    }),
+  }
 }
 
 export function useFolders() {
