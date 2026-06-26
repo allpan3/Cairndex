@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useBrowse, useFolderCounts, useFolders, useViewCounts } from './api/hooks'
+import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
@@ -55,7 +56,8 @@ export default function App() {
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
   const [selection, setSelection] = useState<Selection>({ view: 'all', folderId: null })
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
   const [search, setSearch] = useState('')
 
   const counts = useViewCounts()
@@ -86,21 +88,41 @@ export default function App() {
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
   }, [selection, folders.data])
 
-  // Linear keyboard navigation over the loaded set.
+  const select = useCallback((id: string, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    } else {
+      setSelectedIds(new Set([id]))
+    }
+    setActiveId(id)
+  }, [])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setActiveId(null)
+  }, [])
+
+  // Linear keyboard navigation over the loaded set (single-selects).
   const moveSelection = useCallback(
     (delta: number) => {
       if (filtered.length === 0) return
-      const idx = filtered.findIndex((i) => i.id === selectedId)
+      const idx = filtered.findIndex((i) => i.id === activeId)
       const next = Math.max(0, Math.min(filtered.length - 1, idx < 0 ? 0 : idx + delta))
       const target = filtered[next]
       if (target) {
-        setSelectedId(target.id)
+        setSelectedIds(new Set([target.id]))
+        setActiveId(target.id)
         document
           .querySelector(`[data-bundle-id="${target.id}"]`)
           ?.scrollIntoView({ block: 'nearest' })
       }
     },
-    [filtered, selectedId],
+    [filtered, activeId],
   )
 
   useEffect(() => {
@@ -114,12 +136,12 @@ export default function App() {
         e.preventDefault()
         moveSelection(-1)
       } else if (e.key === 'Escape') {
-        setSelectedId(null)
+        clearSelection()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveSelection])
+  }, [moveSelection, clearSelection])
 
   return (
     <div
@@ -135,7 +157,7 @@ export default function App() {
         selection={selection}
         onSelect={(s) => {
           setSelection(s)
-          setSelectedId(null)
+          clearSelection()
         }}
         counts={counts.data}
         folders={folders.data ?? []}
@@ -151,13 +173,14 @@ export default function App() {
           prefs={prefs}
           onPrefs={setPrefs}
         />
+        {selectedIds.size >= 2 && <BatchBar ids={[...selectedIds]} onClear={clearSelection} />}
         <Browser
           items={filtered}
           total={total}
           layout={prefs.layout}
           zoom={prefs.zoom}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
+          selectedIds={selectedIds}
+          onSelect={select}
           isLoading={browse.isLoading}
           isError={browse.isError}
           error={browse.error}
@@ -167,7 +190,7 @@ export default function App() {
         />
       </div>
 
-      <Inspector bundleId={selectedId} />
+      <Inspector bundleId={activeId} />
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />

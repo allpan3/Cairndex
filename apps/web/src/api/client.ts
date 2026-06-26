@@ -11,6 +11,11 @@ export type ViewCounts = components['schemas']['ViewCounts']
 export type FolderRead = components['schemas']['FolderRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
+export type TagRead = components['schemas']['TagRead']
+export type TagGroupRead = components['schemas']['TagGroupRead']
+export type BundlePatch = components['schemas']['BundleUpdate']
+export type FilePatch = components['schemas']['FileUpdate']
+export type BatchUpdate = components['schemas']['BatchUpdate']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
@@ -22,6 +27,24 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     throw new Error(`Request failed (HTTP ${response.status}) for ${url}`)
   }
   return (await response.json()) as T
+}
+
+async function send<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method,
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      detail = ((await response.json()) as { message?: string }).message ?? ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`Request failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`)
+  }
+  return (response.status === 204 ? undefined : await response.json()) as T
 }
 
 export interface BrowseParams {
@@ -90,6 +113,64 @@ export function fetchBundleFiles(id: string, signal?: AbortSignal): Promise<File
 export function thumbnailUrl(bundleId: string): string {
   return `/api/v1/bundles/${bundleId}/thumbnail`
 }
+
+// --- Taxonomy (for the tag editor) ------------------------------------------
+async function fetchAllPaged<T>(path: string, signal?: AbortSignal): Promise<T[]> {
+  const out: T[] = []
+  let cursor: string | null = null
+  do {
+    const url = `${path}?limit=200${cursor ? `&cursor=${cursor}` : ''}`
+    const page: Page<T> = await getJson<Page<T>>(url, signal)
+    out.push(...page.items)
+    cursor = page.next_cursor
+  } while (cursor)
+  return out
+}
+
+export const fetchTags = (signal?: AbortSignal) => fetchAllPaged<TagRead>('/api/v1/tags', signal)
+export const fetchTagGroups = (signal?: AbortSignal) =>
+  fetchAllPaged<TagGroupRead>('/api/v1/tag-groups', signal)
+
+export function fetchTagCounts(signal?: AbortSignal): Promise<Record<string, number>> {
+  return getJson<{ counts: Record<string, number> }>('/api/v1/tags/counts', signal).then(
+    (r) => r.counts,
+  )
+}
+
+export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promise<string[]> {
+  return getJson<{ group_id: string; tag_ids: string[] }>(
+    `/api/v1/tag-groups/${groupId}/tags`,
+    signal,
+  ).then((r) => r.tag_ids)
+}
+
+// --- Mutations ---------------------------------------------------------------
+export const updateBundle = (id: string, patch: BundlePatch) =>
+  send<BundleRead>(`/api/v1/bundles/${id}`, 'PATCH', patch)
+
+export const setBundleTags = (id: string, ids: string[]) =>
+  send<unknown>(`/api/v1/bundles/${id}/tags`, 'PUT', { ids })
+
+export const setBundleFolders = (id: string, ids: string[]) =>
+  send<unknown>(`/api/v1/bundles/${id}/folders`, 'PUT', { ids })
+
+export const fetchBundleTags = (id: string, signal?: AbortSignal) =>
+  getJson<{ bundle_id: string; tag_ids: string[] }>(`/api/v1/bundles/${id}/tags`, signal)
+
+export const fetchBundleFolders = (id: string, signal?: AbortSignal) =>
+  getJson<{ bundle_id: string; folder_ids: string[] }>(`/api/v1/bundles/${id}/folders`, signal)
+
+export const updateFile = (bundleId: string, fileId: string, patch: FilePatch) =>
+  send<FileRead>(`/api/v1/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch)
+
+export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
+  send<FileRead[]>(`/api/v1/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
+
+export const removeFile = (bundleId: string, fileId: string) =>
+  send<void>(`/api/v1/bundles/${bundleId}/files/${fileId}`, 'DELETE')
+
+export const batchUpdate = (payload: BatchUpdate) =>
+  send<{ updated: number }>('/api/v1/bundles/batch', 'POST', payload)
 
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
   return getJson<HealthStatus>('/api/v1/health', signal)
