@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Phase 6 — subtitles and direct playback.**
+  - `subtitle_tracks` table + ADR-0003: each track is exactly one of an
+    external subtitle `AssetFile` or an embedded `ffprobe` stream, linked to a
+    video. Auto-linking matches a same-directory subtitle to its video by
+    basename (parsing a trailing language/forced suffix); embedded streams are
+    detected on probe. Ambiguous subtitles stay unlinked for manual attachment.
+  - Direct playback: `GET /bundles/{id}/playback` (manifest of videos +
+    tracks, each with a `playable` flag/reason), `GET /files/{id}/stream`
+    (HTTP Range / 206), and `GET /subtitles/{id}/vtt` (external SRT converted
+    to cached WebVTT). Browser playability is reported per video so MKV/HEVC
+    show a fallback instead of failing silently.
+  - Player modal in the desktop UI: range-streamed `<video>` with WebVTT
+    subtitle tracks, a playlist for multi-video bundles, and a fallback state.
 - **Phase 5 — filtering and Smart Folders.**
   - Canonical, versioned, JSON-serializable filter AST (`filters/ast.py`)
     shared by simple filters and Smart Folders, validated by Pydantic and

@@ -765,3 +765,85 @@ code {
   opacity: 0.3;
   cursor: default;
 }
+
+/* --- Player (Phase 6) ------------------------------------------------------ */
+.inspector__cover {
+  position: relative;
+}
+.inspector__play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.inspector__cover:hover .inspector__play {
+  opacity: 1;
+}
+.inspector__play:hover {
+  background: var(--accent);
+}
+
+.modal--player {
+  width: min(960px, 94vw);
+}
+.player__video {
+  width: 100%;
+  max-height: 70vh;
+  background: #000;
+  border-radius: 8px;
+}
+.player__subs {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.player__fallback {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 24px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+.player__fallback-icon {
+  font-size: 24px;
+}
+.player__fallback p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.player__fallback-hint {
+  font-size: 12px;
+}
+.player__playlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.player__item {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.player__item.is-active {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+.player__badge {
+  color: #ffb454;
+  margin-left: 4px;
+}

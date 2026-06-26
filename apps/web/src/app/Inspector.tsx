@@ -4,6 +4,7 @@ import { type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
 import { FolderPicker } from './FolderPicker'
+import { Player } from './Player'
 import { TagEditor } from './TagEditor'
 
 function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -53,6 +54,9 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
 
   const [title, setTitle] = useState(bundle.title ?? '')
   const [note, setNote] = useState(bundle.note ?? '')
+  const [playing, setPlaying] = useState(false)
+
+  const hasVideo = files.some((f) => f.media_kind === 'video')
 
   const commit = (field: 'title' | 'note', value: string) => {
     if (value === (bundle[field] ?? '')) return
@@ -64,7 +68,19 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
       <div
         className="inspector__cover"
         style={{ backgroundImage: `url(${thumbnailUrl(bundleId)})` }}
-      />
+      >
+        {hasVideo && (
+          <button
+            className="inspector__play"
+            onClick={() => setPlaying(true)}
+            aria-label="Play"
+            title="Play"
+          >
+            ▶
+          </button>
+        )}
+      </div>
+      {playing && <Player bundleId={bundleId} onClose={() => setPlaying(false)} />}
 
       <input
         className="edit edit--title"

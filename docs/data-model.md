@@ -78,10 +78,23 @@ in-process worker (ADR-0001). Asset-file fields `size_bytes`, `mtime`,
 `quick_fingerprint`, and `tech_metadata` are now populated by the scanner/probe
 jobs (full hash stays lazy/unused until a dedup/repair feature needs it).
 
+### `subtitle_tracks` (Phase 6, ADR-0003)
+`id`, `bundle_id` (FK, CASCADE), `video_file_id` (FK `asset_files`, CASCADE,
+nullable), `source_file_id` (FK `asset_files`, SET NULL, nullable),
+`embedded_index` (nullable), `language`, `label`, `format`, `is_default`,
+`is_forced`, `sort_order`, timestamps. A track is **exactly one** of external
+(an external subtitle `AssetFile` in `source_file_id`) or embedded (an
+`ffprobe` stream `embedded_index` inside `video_file_id`'s container), enforced
+by two CHECK constraints; uniqueness on `(video_file_id, embedded_index)` and
+`source_file_id`. External subtitles auto-link to a same-directory video by
+basename (language/forced parsed from the suffix); unmatched ones stay unlinked
+for manual attachment.
+
 ## Deferred to later phases
 
-- **Subtitle/media tracks** (`AGENTS.md` §4.9) — Phase 6. `asset_files` already
-  carries `role=subtitle`; the track-linking table lands with playback.
+- **Generalized media tracks / embedded-stream extraction** — a future
+  `media_tracks` table and ffmpeg-extracted embedded subtitles (the §6.2
+  transcode/fallback milestone).
 
 ## Still open
 
