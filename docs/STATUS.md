@@ -2,60 +2,59 @@
 
 ## Current branch / latest commit
 
-Branch: `feature/subtitle-playback` (Phase 6), based on `main`. Latest commit:
+Branch: `feature/eagle-import` (Phase 7), based on `main`. Latest commit:
 see `git log -1`.
 
 ## Current milestone
 
-**Phase 6 — Subtitles and direct playback** (`feature/subtitle-playback`).
-First-class subtitle tracks (ADR-0003) and HTTP-Range direct playback with a
-browser player. **Phases 0–5** are merged to `main`.
+**Phase 7 — Eagle migration** (`feature/eagle-import`). One-way, read-only,
+idempotent import from an Eagle `.library` into Asset Bundles (ADR-0004).
+**Phases 0–6** are merged to `main`.
 
 ## Completed in this milestone
 
-- `subtitle_tracks` table + ADR-0003: each track is exactly one of an external
-  subtitle `AssetFile` or an embedded `ffprobe` stream (two CHECK constraints),
-  linked to a video. `services/subtitles.py` covers CRUD, embedded-stream sync
-  on probe, and `auto_link_external_subtitles` (same-dir basename match parsing
-  a trailing language/forced suffix; ambiguous subtitles stay unlinked).
-- Direct playback (`media/playback.py` + `api/v1/playback.py`):
-  `GET /bundles/{id}/playback` manifest, `GET /files/{id}/stream` (HTTP Range /
-  206 via Starlette `FileResponse`), `GET /subtitles/{id}/vtt` (SRT→cached
-  WebVTT). Per-video `playable` flag/reason so MKV/HEVC show a fallback.
-- Desktop player modal: range-streamed `<video>` + WebVTT `<track>`s, a
-  multi-video playlist, and a fallback panel; opened from a ▶ on the inspector
-  cover.
+- `eagle/reader.py`: read-only parser of an Eagle `.library` (nested folders →
+  flat, tag groups, per-item metadata) into frozen dataclasses; malformed
+  items are skipped + reported, never fatal. The library is never written to.
+- `eagle/planner.py`: `plan_import()` produces a dry-run `ImportPlan` (counts +
+  advisory merge suggestions) with no DB writes.
+- `services/eagle.py`: `import_library()` ensures a storage root at the
+  library's `images/` dir, creates/reuses folders/tags/groups by name, maps
+  each non-deleted item → one bundle + one linked file, and records
+  `import_records` (`UNIQUE(provider, external_id)`) so re-imports are no-ops.
+- API: `POST /eagle/preview` (dry run) + `POST /eagle/import` (commit).
+- Desktop "Import from Eagle" dialog (⇪ in the sidebar): path → Preview report
+  → Import, then the browse-facing queries refresh.
 
 ## Tests run (this session, on macOS)
 
 All passing:
 
-- Backend: `ruff`/`mypy`/`pytest` (**142 passed**) — incl. `test_subtitles.py`
-  (parsing, model invariants, auto-link, embedded sync) and `test_playback.py`
-  (capability detection, srt→vtt, **range request 206 + Content-Range**,
-  manifest, VTT endpoint).
-- Frontend: `lint`, `typecheck`, `vitest` (2), `build`, Playwright e2e (8 —
-  adds the player flow: video src, subtitle `<track>` src, fallback).
-- Verified live in a real browser: a real ffmpeg-generated H.264 `.mp4` + an
-  external `.srt`, scanned/probed/auto-linked, **played end-to-end** through
-  range streaming (seekable, 0:03) with the SRT served as WebVTT and shown in
-  the player — no console errors.
+- Backend: `ruff`/`mypy`/`pytest` (**149 passed**) — incl. `test_eagle_reader.py`,
+  `test_eagle_planner.py`, `test_eagle_import.py` (mapping, **idempotent
+  re-import creates no new rows**, preview→import→preview API, 422 on bad path).
+- Frontend: `lint`, `typecheck`, `vitest` (2), `build`, Playwright e2e (9 —
+  adds the Eagle preview→import flow).
+- Verified live in a real browser against a synthetic Eagle library: previewed
+  4 new bundles (1 deleted skipped, a part1/part2 merge hint), imported, and
+  the grid + folder tree updated — no console errors.
 
 ## Known issues / environment gaps
 
-- Embedded subtitle streams are detected and listed, but not yet *served* as
-  standalone VTT (needs ffmpeg extraction — the §6.2 fallback milestone). The
-  player attaches external `.srt`/`.vtt` tracks only.
-- Direct playback only (§6.1). Remux/transcode for MKV/HEVC etc. is the §6.2
-  fallback milestone; those videos currently show a fallback state.
-- ASS/SSA subtitles are recognized but not converted to VTT yet (styling port).
+- Merge suggestions are advisory only — the MVP maps one Eagle item → one
+  bundle; combining suggested groups into a single bundle is a later manual
+  step (no destructive auto-merge, per §7).
+- Imported tags are flat (Eagle tags are flat strings); hierarchy isn't
+  inferred. Eagle smart folders are not imported (filter dialects differ).
+- Tested against a synthetic library matching the documented on-disk format;
+  real Eagle libraries may carry version-specific fields not yet handled.
 
 ## Next recommended task
 
-**Phase 7 — Eagle migration** (per `AGENTS.md` §7): one-way, read-only import
-from an Eagle library into Asset Bundles, with dry-run + reviewable report and
-idempotent re-imports. Smaller Phase 6 follow-ups if desired: ffmpeg extraction
-of embedded subtitle streams to VTT, and ASS/SSA → VTT conversion.
+**Phase 8 — packaging / deployment hardening** (per `AGENTS.md` §12/§13): the
+remaining roadmap items (e.g. remote access, background-scan scheduling, and
+release packaging). Smaller follow-ups: import Eagle smart folders, infer tag
+hierarchy, and apply merge suggestions in-app.
 
 ## Unresolved decisions
 
