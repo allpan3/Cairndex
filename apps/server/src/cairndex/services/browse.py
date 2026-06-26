@@ -24,6 +24,7 @@ from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
     Folder,
+    Tag,
     asset_bundle_folders,
     asset_bundle_tags,
 )
@@ -262,4 +263,15 @@ def folder_counts(session: Session) -> dict[str, int]:
     # Ensure every folder appears (zero if empty).
     for (folder_id,) in session.execute(select(Folder.id)).all():
         counts.setdefault(folder_id, 0)
+    return counts
+
+
+def tag_counts(session: Session) -> dict[str, int]:
+    """Bundle count per tag id (direct membership), for the tag picker."""
+    rows = session.execute(
+        select(asset_bundle_tags.c.tag_id, func.count()).group_by(asset_bundle_tags.c.tag_id)
+    ).all()
+    counts = {tag_id: count for tag_id, count in rows}
+    for (tag_id,) in session.execute(select(Tag.id)).all():
+        counts.setdefault(tag_id, 0)
     return counts

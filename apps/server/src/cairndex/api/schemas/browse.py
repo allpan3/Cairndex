@@ -34,5 +34,7 @@ class ViewCounts(BaseModel):
     missing: int
 
 
-class FolderCounts(BaseModel):
+class CountsResponse(BaseModel):
+    """Generic id → bundle-count map (folders, tags)."""
+
     counts: dict[str, int]

@@ -1,6 +1,64 @@
 {
   "components": {
     "schemas": {
+      "BatchResult": {
+        "properties": {
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "BatchResult",
+        "type": "object"
+      },
+      "BatchUpdate": {
+        "properties": {
+          "add_folder_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Add Folder Ids",
+            "type": "array"
+          },
+          "add_tag_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Add Tag Ids",
+            "type": "array"
+          },
+          "bundle_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Bundle Ids",
+            "type": "array"
+          },
+          "remove_folder_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Remove Folder Ids",
+            "type": "array"
+          },
+          "remove_tag_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Remove Tag Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bundle_ids"
+        ],
+        "title": "BatchUpdate",
+        "type": "object"
+      },
       "BundleBrowsePage": {
         "properties": {
           "items": {
@@ -439,6 +497,23 @@
         "title": "BundleUpdate",
         "type": "object"
       },
+      "CountsResponse": {
+        "description": "Generic id \u2192 bundle-count map (folders, tags).",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "title": "CountsResponse",
+        "type": "object"
+      },
       "FastAddRequest": {
         "properties": {
           "bundle_title": {
@@ -686,6 +761,23 @@
         "title": "FileRead",
         "type": "object"
       },
+      "FileReorder": {
+        "properties": {
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Ordered Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "FileReorder",
+        "type": "object"
+      },
       "FileRole": {
         "description": "Role of an asset file within its bundle (AGENTS.md \u00a74.3).",
         "enum": [
@@ -704,20 +796,65 @@
         "title": "FileRole",
         "type": "string"
       },
-      "FolderCounts": {
+      "FileUpdate": {
         "properties": {
-          "counts": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Counts",
-            "type": "object"
+          "display_title": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Title"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
           }
         },
-        "required": [
-          "counts"
-        ],
-        "title": "FolderCounts",
+        "title": "FileUpdate",
         "type": "object"
       },
       "FolderCreate": {
@@ -1757,6 +1894,47 @@
         ]
       }
     },
+    "/api/v1/bundles/batch": {
+      "post": {
+        "operationId": "batch_update_api_v1_bundles_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batch Update",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/bundles/browse": {
       "get": {
         "operationId": "browse_bundles_api_v1_bundles_browse_get",
@@ -2110,6 +2288,62 @@
         ]
       }
     },
+    "/api/v1/bundles/{bundle_id}/files/order": {
+      "put": {
+        "operationId": "reorder_files_api_v1_bundles__bundle_id__files_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileRead"
+                  },
+                  "title": "Response Reorder Files Api V1 Bundles  Bundle Id  Files Order Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Files",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/bundles/{bundle_id}/files/{file_id}": {
       "delete": {
         "operationId": "remove_file_api_v1_bundles__bundle_id__files__file_id__delete",
@@ -2149,6 +2383,65 @@
           }
         },
         "summary": "Remove File",
+        "tags": [
+          "bundles"
+        ]
+      },
+      "patch": {
+        "operationId": "update_file_api_v1_bundles__bundle_id__files__file_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update File",
         "tags": [
           "bundles"
         ]
@@ -2204,6 +2497,46 @@
       }
     },
     "/api/v1/bundles/{bundle_id}/folders": {
+      "get": {
+        "operationId": "get_folders_api_v1_bundles__bundle_id__folders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleFolders"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Folders",
+        "tags": [
+          "bundles"
+        ]
+      },
       "put": {
         "operationId": "set_folders_api_v1_bundles__bundle_id__folders_put",
         "parameters": [
@@ -2256,6 +2589,46 @@
       }
     },
     "/api/v1/bundles/{bundle_id}/tags": {
+      "get": {
+        "operationId": "get_tags_api_v1_bundles__bundle_id__tags_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleTags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tags",
+        "tags": [
+          "bundles"
+        ]
+      },
       "put": {
         "operationId": "set_tags_api_v1_bundles__bundle_id__tags_put",
         "parameters": [
@@ -2456,7 +2829,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FolderCounts"
+                  "$ref": "#/components/schemas/CountsResponse"
                 }
               }
             },
@@ -3595,6 +3968,27 @@
           }
         },
         "summary": "Create Tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/v1/tags/counts": {
+      "get": {
+        "operationId": "tag_counts_api_v1_tags_counts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Tag Counts",
         "tags": [
           "tags"
         ]
