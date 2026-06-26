@@ -49,7 +49,12 @@ export interface paths {
         /** Browse Bundles */
         get: operations["browse_bundles_api_v1_bundles_browse_get"];
         put?: never;
-        post?: never;
+        /**
+         * Browse Bundles Filtered
+         * @description Browse with a filter AST — the shared path for toolbar filters and
+         *     Smart Folders. Equivalent to GET /browse when ``filter`` is null.
+         */
+        post: operations["browse_bundles_filtered_api_v1_bundles_browse_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -220,6 +225,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/filters/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_v1_filters_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/folders": {
         parameters: {
             query?: never;
@@ -340,6 +362,43 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/smart-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Smart Folders */
+        get: operations["list_smart_folders_api_v1_smart_folders_get"];
+        put?: never;
+        /** Create Smart Folder */
+        post: operations["create_smart_folder_api_v1_smart_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/smart-folders/{smart_folder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Smart Folder */
+        get: operations["get_smart_folder_api_v1_smart_folders__smart_folder_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Smart Folder */
+        delete: operations["delete_smart_folder_api_v1_smart_folders__smart_folder_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Smart Folder */
+        patch: operations["update_smart_folder_api_v1_smart_folders__smart_folder_id__patch"];
         trace?: never;
     };
     "/api/v1/storage-roots": {
@@ -560,6 +619,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AndNode */
+        "AndNode-Input": {
+            /** Children */
+            children: (components["schemas"]["AndNode-Input"] | components["schemas"]["OrNode-Input"] | components["schemas"]["NotNode-Input"] | components["schemas"]["PredicateNode"])[];
+            /**
+             * Op
+             * @constant
+             */
+            op: "and";
+        };
+        /** AndNode */
+        "AndNode-Output": {
+            /** Children */
+            children: (components["schemas"]["AndNode-Output"] | components["schemas"]["OrNode-Output"] | components["schemas"]["NotNode-Output"] | components["schemas"]["PredicateNode"])[];
+            /**
+             * Op
+             * @constant
+             */
+            op: "and";
+        };
         /** BatchResult */
         BatchResult: {
             /** Updated */
@@ -577,6 +656,39 @@ export interface components {
             remove_folder_ids?: string[];
             /** Remove Tag Ids */
             remove_tag_ids?: string[];
+        };
+        /**
+         * BrowseRequest
+         * @description Filtered browse — the same params as GET /browse plus an optional AST.
+         */
+        BrowseRequest: {
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /** Folder Id */
+            folder_id?: string | null;
+            /**
+             * Include Descendants
+             * @default false
+             */
+            include_descendants: boolean;
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /**
+             * Order
+             * @default desc
+             */
+            order: string;
+            /** @default date_added */
+            sort: components["schemas"]["BundleSort"];
+            /** @default all */
+            view: components["schemas"]["SystemView"];
         };
         /** BundleBrowsePage */
         BundleBrowsePage: {
@@ -809,6 +921,43 @@ export interface components {
             /** Source */
             source?: string | null;
         };
+        /**
+         * FilterExpression
+         * @description A complete, versioned filter expression (the stored/transmitted form).
+         */
+        "FilterExpression-Input": {
+            /** Root */
+            root?: components["schemas"]["AndNode-Input"] | components["schemas"]["OrNode-Input"] | components["schemas"]["NotNode-Input"] | components["schemas"]["PredicateNode"] | null;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+        };
+        /**
+         * FilterExpression
+         * @description A complete, versioned filter expression (the stored/transmitted form).
+         */
+        "FilterExpression-Output": {
+            /** Root */
+            root?: components["schemas"]["AndNode-Output"] | components["schemas"]["OrNode-Output"] | components["schemas"]["NotNode-Output"] | components["schemas"]["PredicateNode"] | null;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+        };
+        /** FilterPreviewRequest */
+        FilterPreviewRequest: {
+            filter: components["schemas"]["FilterExpression-Input"];
+        };
+        /** FilterPreviewResponse */
+        FilterPreviewResponse: {
+            /** Count */
+            count: number;
+        };
         /** FolderCreate */
         FolderCreate: {
             /** Name */
@@ -914,6 +1063,46 @@ export interface components {
          * @enum {string}
          */
         MediaKind: "video" | "image" | "subtitle" | "audio" | "other";
+        /** NotNode */
+        "NotNode-Input": {
+            /** Child */
+            child: components["schemas"]["AndNode-Input"] | components["schemas"]["OrNode-Input"] | components["schemas"]["NotNode-Input"] | components["schemas"]["PredicateNode"];
+            /**
+             * Op
+             * @constant
+             */
+            op: "not";
+        };
+        /** NotNode */
+        "NotNode-Output": {
+            /** Child */
+            child: components["schemas"]["AndNode-Output"] | components["schemas"]["OrNode-Output"] | components["schemas"]["NotNode-Output"] | components["schemas"]["PredicateNode"];
+            /**
+             * Op
+             * @constant
+             */
+            op: "not";
+        };
+        /** OrNode */
+        "OrNode-Input": {
+            /** Children */
+            children: (components["schemas"]["AndNode-Input"] | components["schemas"]["OrNode-Input"] | components["schemas"]["NotNode-Input"] | components["schemas"]["PredicateNode"])[];
+            /**
+             * Op
+             * @constant
+             */
+            op: "or";
+        };
+        /** OrNode */
+        "OrNode-Output": {
+            /** Children */
+            children: (components["schemas"]["AndNode-Output"] | components["schemas"]["OrNode-Output"] | components["schemas"]["NotNode-Output"] | components["schemas"]["PredicateNode"])[];
+            /**
+             * Op
+             * @constant
+             */
+            op: "or";
+        };
         /** Page[BundleRead] */
         Page_BundleRead_: {
             /** Items */
@@ -956,6 +1145,20 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** PredicateNode */
+        PredicateNode: {
+            /** Field */
+            field: string;
+            /**
+             * Include Descendants
+             * @default false
+             */
+            include_descendants: boolean;
+            /** Operator */
+            operator: string;
+            /** Value */
+            value?: unknown;
+        };
         /** SetIdsRequest */
         SetIdsRequest: {
             /** Ids */
@@ -965,6 +1168,57 @@ export interface components {
         SetTagsRequest: {
             /** Tag Ids */
             tag_ids: string[];
+        };
+        /** SmartFolderCreate */
+        SmartFolderCreate: {
+            /** Default Layout */
+            default_layout?: string | null;
+            /** Default Sort */
+            default_sort?: string | null;
+            filter: components["schemas"]["FilterExpression-Input"];
+            /** Name */
+            name: string;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** SmartFolderRead */
+        SmartFolderRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Default Layout */
+            default_layout: string | null;
+            /** Default Sort */
+            default_sort: string | null;
+            filter: components["schemas"]["FilterExpression-Output"];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Sort Order */
+            sort_order: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SmartFolderUpdate */
+        SmartFolderUpdate: {
+            /** Default Layout */
+            default_layout?: string | null;
+            /** Default Sort */
+            default_sort?: string | null;
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /** Name */
+            name?: string | null;
+            /** Sort Order */
+            sort_order?: number | null;
         };
         /** StorageRootCreate */
         StorageRootCreate: {
@@ -1248,6 +1502,39 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleBrowsePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browse_bundles_filtered_api_v1_bundles_browse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowseRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1746,6 +2033,39 @@ export interface operations {
             };
         };
     };
+    preview_api_v1_filters_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FilterPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilterPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_folders_api_v1_folders_get: {
         parameters: {
             query?: {
@@ -2027,6 +2347,154 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_smart_folders_api_v1_smart_folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderRead"][];
+                };
+            };
+        };
+    };
+    create_smart_folder_api_v1_smart_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_smart_folder_api_v1_smart_folders__smart_folder_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                smart_folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_smart_folder_api_v1_smart_folders__smart_folder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                smart_folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_smart_folder_api_v1_smart_folders__smart_folder_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                smart_folder_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartFolderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderRead"];
                 };
             };
             /** @description Validation Error */
