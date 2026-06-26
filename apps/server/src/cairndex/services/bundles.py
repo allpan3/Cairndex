@@ -32,7 +32,7 @@ from cairndex.persistence.models import (
 from cairndex.services.pagination import keyset_page
 
 _RATING_MIN, _RATING_MAX = 0, 5
-_BUNDLE_SCALAR_FIELDS = {"title", "note", "source_url"}
+_BUNDLE_SCALAR_FIELDS = {"title", "note"}
 
 
 def get_bundle(session: Session, bundle_id: str) -> AssetBundle:
@@ -47,11 +47,10 @@ def create_bundle(
     *,
     title: str | None = None,
     note: str | None = None,
-    source_url: str | None = None,
     rating: int | None = None,
 ) -> AssetBundle:
     _validate_rating(rating)
-    bundle = AssetBundle(title=title, note=note, source_url=source_url, rating=rating)
+    bundle = AssetBundle(title=title, note=note, rating=rating)
     session.add(bundle)
     session.flush()
     return bundle
@@ -115,7 +114,7 @@ def add_file(
     display_title: str | None = None,
     sequence: int = 0,
     note: str | None = None,
-    source_url: str | None = None,
+    source: str | None = None,
     mime_type: str | None = None,
 ) -> AssetFile:
     """Link an existing on-disk file into the bundle without copying it."""
@@ -140,7 +139,7 @@ def add_file(
         original_filename=filename,
         display_title=display_title or filename,
         note=note,
-        source_url=source_url,
+        source=source,
         role=role,
         media_kind=media_kind,
         mime_type=mime_type,
@@ -154,7 +153,7 @@ def add_file(
     return asset_file
 
 
-_FILE_SCALAR_FIELDS = ("display_title", "note", "source_url")
+_FILE_SCALAR_FIELDS = ("display_title", "note", "source")
 
 
 def update_file(
