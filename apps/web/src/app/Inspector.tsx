@@ -1,20 +1,31 @@
-import { thumbnailUrl } from '../api/client'
-import { useBundle, useBundleFiles } from '../api/hooks'
-import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
+import { useState } from 'react'
 
-function Stars({ rating }: { rating: number | null }) {
-  const value = rating ?? 0
+import { type BundleRead, thumbnailUrl } from '../api/client'
+import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
+import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
+import { FolderPicker } from './FolderPicker'
+import { TagEditor } from './TagEditor'
+
+function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <span className={`stars${value === 0 ? ' stars--empty' : ''}`}>
-      {'★★★★★'.slice(0, value)}
-      {'☆☆☆☆☆'.slice(0, 5 - value)}
+    <span className="stars" role="radiogroup" aria-label="Rating">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          className="star-btn"
+          aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          aria-pressed={n <= value}
+          onClick={() => onChange(n === value ? 0 : n)} // clicking current rating clears it
+        >
+          {n <= value ? '★' : '☆'}
+        </button>
+      ))}
     </span>
   )
 }
 
 export function Inspector({ bundleId }: { bundleId: string | null }) {
   const { data: bundle } = useBundle(bundleId)
-  const { data: files } = useBundleFiles(bundleId)
 
   if (bundleId === null) {
     return (
@@ -23,6 +34,31 @@ export function Inspector({ bundleId }: { bundleId: string | null }) {
       </aside>
     )
   }
+  if (!bundle) {
+    return (
+      <aside className="inspector">
+        <div className="state">Loading…</div>
+      </aside>
+    )
+  }
+  // Keyed by id so draft fields re-initialize when the selection changes
+  // (no setState-in-effect needed).
+  return <BundleEditor key={bundle.id} bundle={bundle} />
+}
+
+function BundleEditor({ bundle }: { bundle: BundleRead }) {
+  const bundleId = bundle.id
+  const { data: files = [] } = useBundleFiles(bundleId)
+  const update = useUpdateBundle(bundleId)
+
+  const [title, setTitle] = useState(bundle.title ?? '')
+  const [note, setNote] = useState(bundle.note ?? '')
+  const [sourceUrl, setSourceUrl] = useState(bundle.source_url ?? '')
+
+  const commit = (field: 'title' | 'note' | 'source_url', value: string) => {
+    if (value === (bundle[field] ?? '')) return
+    update.mutate({ [field]: value === '' ? null : value })
+  }
 
   return (
     <aside className="inspector">
@@ -30,65 +66,148 @@ export function Inspector({ bundleId }: { bundleId: string | null }) {
         className="inspector__cover"
         style={{ backgroundImage: `url(${thumbnailUrl(bundleId)})` }}
       />
-      <h2 className="inspector__title">{bundle?.title ?? 'Untitled'}</h2>
+
+      <input
+        className="edit edit--title"
+        value={title}
+        placeholder="Untitled"
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={() => commit('title', title)}
+        aria-label="Title"
+      />
 
       <div className="prop">
         <span className="prop__k">Rating</span>
-        <span className="prop__v">
-          <Stars rating={bundle?.rating ?? null} />
-        </span>
+        <StarRating
+          value={bundle.rating ?? 0}
+          onChange={(v) => update.mutate({ rating: v === 0 ? null : v })}
+        />
       </div>
-      {bundle?.source_url && (
-        <div className="prop">
-          <span className="prop__k">Source</span>
-          <a className="prop__v" href={bundle.source_url} target="_blank" rel="noreferrer">
-            link
-          </a>
-        </div>
-      )}
       <div className="prop">
         <span className="prop__k">Files</span>
-        <span className="prop__v">{files?.length ?? 0}</span>
+        <span className="prop__v">{files.length}</span>
       </div>
       <div className="prop">
         <span className="prop__k">Size</span>
         <span className="prop__v">
-          {formatBytes(files?.reduce((sum, f) => sum + (f.size_bytes ?? 0), 0) ?? 0)}
+          {formatBytes(files.reduce((s, f) => s + (f.size_bytes ?? 0), 0))}
         </span>
       </div>
-      {bundle && (
-        <div className="prop">
-          <span className="prop__k">Date Added</span>
-          <span className="prop__v">{formatDate(bundle.created_at)}</span>
-        </div>
-      )}
-      {bundle?.note && (
-        <div className="prop" style={{ display: 'block' }}>
-          <div className="prop__k">Note</div>
-          <div style={{ marginTop: 4 }}>{bundle.note}</div>
-        </div>
-      )}
+      <div className="prop">
+        <span className="prop__k">Date Added</span>
+        <span className="prop__v">{formatDate(bundle.created_at)}</span>
+      </div>
 
-      <div className="files">
-        <div className="sidebar__heading" style={{ padding: '4px 0' }}>
-          Files in bundle
-        </div>
-        {files?.map((f) => {
-          const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
-          const dims = formatDimensions(meta.width as number, meta.height as number)
-          const dur = formatDuration(meta.duration as number)
-          return (
-            <div className="file-row" key={f.id}>
-              <div>
-                <div>{f.display_title}</div>
-                <div className="file-row__role">
-                  {f.role} · {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
-                </div>
+      <label className="field-label">Source URL</label>
+      <input
+        className="edit"
+        value={sourceUrl}
+        placeholder="http://"
+        onChange={(e) => setSourceUrl(e.target.value)}
+        onBlur={() => commit('source_url', sourceUrl)}
+        aria-label="Source URL"
+      />
+
+      <label className="field-label">Note</label>
+      <textarea
+        className="edit edit--note"
+        value={note}
+        placeholder="Add a note…"
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={() => commit('note', note)}
+        aria-label="Note"
+        rows={3}
+      />
+
+      <TagEditor bundleId={bundleId} />
+      <FolderPicker bundleId={bundleId} />
+
+      <FileList
+        bundleId={bundleId}
+        coverId={bundle.cover_file_id ?? null}
+        primaryId={bundle.primary_file_id ?? null}
+      />
+    </aside>
+  )
+}
+
+function FileList({
+  bundleId,
+  coverId,
+  primaryId,
+}: {
+  bundleId: string
+  coverId: string | null
+  primaryId: string | null
+}) {
+  const { data: files = [] } = useBundleFiles(bundleId)
+  const update = useUpdateBundle(bundleId)
+  const { reorder, remove } = useFileMutations(bundleId)
+
+  const move = (index: number, delta: number) => {
+    const target = index + delta
+    const ids = files.map((f) => f.id)
+    const a = ids[index]
+    const b = ids[target]
+    if (a === undefined || b === undefined) return
+    ids[index] = b
+    ids[target] = a
+    reorder.mutate(ids)
+  }
+
+  return (
+    <div className="files">
+      <div className="sidebar__heading" style={{ padding: '4px 0' }}>
+        Files in bundle ({files.length})
+      </div>
+      {files.map((f, i) => {
+        const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
+        const dims = formatDimensions(meta.width as number, meta.height as number)
+        const dur = formatDuration(meta.duration as number)
+        const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
+        return (
+          <div className="file-row" key={f.id}>
+            <div className="file-row__main">
+              <div className="file-row__name">
+                {f.id === primaryId && <span title="Primary">▶</span>}
+                {f.id === coverId && <span title="Cover">★</span>} {f.display_title}
+              </div>
+              <div className="file-row__role">
+                {f.role} · {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
               </div>
             </div>
-          )
-        })}
-      </div>
-    </aside>
+            <div className="file-row__actions">
+              <button title="Move up" onClick={() => move(i, -1)} disabled={i === 0}>
+                ↑
+              </button>
+              <button
+                title="Move down"
+                onClick={() => move(i, 1)}
+                disabled={i === files.length - 1}
+              >
+                ↓
+              </button>
+              <button
+                title="Set as primary"
+                onClick={() => update.mutate({ primary_file_id: f.id })}
+              >
+                ▶
+              </button>
+              {thumbnailable && (
+                <button title="Set as cover" onClick={() => update.mutate({ cover_file_id: f.id })}>
+                  ★
+                </button>
+              )}
+              <button
+                title="Remove from bundle (keeps the file on disk)"
+                onClick={() => remove.mutate(f.id)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }

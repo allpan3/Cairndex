@@ -53,6 +53,30 @@ class FileLink(BaseModel):
     mime_type: str | None = Field(default=None, max_length=255)
 
 
+class FileUpdate(BaseModel):
+    display_title: str | None = Field(default=None, max_length=1024)
+    note: str | None = None
+    source_url: str | None = None
+    role: FileRole | None = None
+    sequence: int | None = None
+
+
+class FileReorder(BaseModel):
+    ordered_ids: list[str] = Field(min_length=1)
+
+
+class BatchUpdate(BaseModel):
+    bundle_ids: list[str] = Field(min_length=1)
+    add_tag_ids: list[str] = Field(default_factory=list)
+    remove_tag_ids: list[str] = Field(default_factory=list)
+    add_folder_ids: list[str] = Field(default_factory=list)
+    remove_folder_ids: list[str] = Field(default_factory=list)
+
+
+class BatchResult(BaseModel):
+    updated: int
+
+
 class FileRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
