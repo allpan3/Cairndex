@@ -2,110 +2,100 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/collections-and-file-view`, based on `main`. Latest commit: see
-`git log -1`.
+Branch: `feat/collections-and-file-view`. Latest commit: see `git log -1`.
+
+This branch is ahead of the merge base for the Collections + File View refactor
+and should be updated/rebased against current `main` before merge. In particular,
+`AGENTS.md` on current `main` already contains the collection/file-view/default-app
+instructions; if the branch is rebased normally, keep the current `main` version
+of `AGENTS.md`.
 
 ## Current milestone
 
-**Collections + read-only File View refactor** (in progress). Splits browsing
-into a logical, bundle-first **Collection View** (the old "folder" concept,
-renamed) and a physical, storage-root-scoped read-only **File View**, and
-teaches the scanner to repair high-confidence moved files.
+**Collections + read-only File View refactor** — complete through Phase 8 on this
+branch, pending final local/CI validation and rebase/update against current
+`main`.
 
-Done so far on this branch:
+This milestone splits browsing into two surfaces:
 
-- Phase 1 — backend DB/model rename `Folder` → `Collection` (+ data-preserving
-  Alembic migration).
-- Phase 2 — public API/schema/filter rename to `collections`; Smart Folders →
-  Smart Collections; OpenAPI + frontend types regenerated.
-- Phase 3 — frontend rename to Collections / Smart Collections.
-- Phase 4 — read-only File View backend
-  (`GET /api/v1/storage-roots/{root_id}/entries`, `services/file_view.py`).
-- Phase 5 — read-only File View UI (sidebar mode toggle, `FileView` +
-  `FileInspector`); Playwright `e2e/file-view.spec.ts`.
-- Phase 6 — scanner identity + moved-file repair (ADR-0006); same-volume moves
-  preserve `AssetFile.id` and bundle metadata.
+- logical, bundle-first **Collection View** — the old virtual folder concept,
+  renamed at the DB/model/API/frontend/docs level;
+- physical, storage-root-scoped **File View** — a read-only in-app filesystem
+  browser for the first milestone.
 
-Remaining: File View host-integration planning (Phase 7), final audit
-(Phase 8).
-
-## Previously merged
-
-**In-bundle view** — open a bundle to browse and inspect the files inside it.
-Merged to `main`. **Phases 0–8** (original roadmap) are also merged to `main`.
+It also teaches the scanner to repair high-confidence moved files while
+preserving `AssetFile.id` and bundle metadata.
 
 ## Completed in this milestone
 
-- Inline **album view** in the center pane: double-click a bundle (grid card or
-  list row) to replace the library grid with a thumbnail grid of its files,
-  plus a back-to-library breadcrumb (`apps/web/src/app/BundleAlbum.tsx`).
-- Fullscreen **file viewer / lightbox** (`apps/web/src/app/FileViewer.tsx`):
-  full-resolution image or inline video, prev/next via chevrons and ←/→,
-  info-card fallback for non-renderable files, layered Esc (viewer → album →
-  library).
-- New `GET /api/v1/files/{file_id}/content` (`api/v1/playback.py`) serves a
-  file's original bytes — path-safe, HTTP Range-capable, mime guessed from the
-  filename. The video-only resolver was generalized into `resolve_file_path`
-  in `media/playback.py`.
-- `.gitignore` now also excludes `apps/server/var/` (the prior `var/*` patterns
-  were anchored to the repo root and missed the server's runtime data dir); a
-  stray committed thumbnail under it was removed from the index.
+- Phase 0 — orientation and scope captured in the PR description.
+- Phase 1 — backend DB/model rename `Folder` → `Collection`, with a
+  data-preserving Alembic migration from `folders` /
+  `asset_bundle_folders` to `collections` / `asset_bundle_collections`.
+- Phase 2 — public API/schema/filter rename to `collections`; Smart Folders →
+  Smart Collections; OpenAPI + frontend types regenerated.
+- Phase 3 — frontend rename to Collections / Smart Collections, including the
+  collection picker, sidebar labels, filter builder, hooks, and e2e tests.
+- Phase 4 — read-only File View backend:
+  `GET /api/v1/storage-roots/{root_id}/entries`, `services/file_view.py`, and
+  backend tests for path scoping, hidden entries, unsupported files, and symlink
+  safety.
+- Phase 5 — read-only File View UI: sidebar mode toggle, `FileView`,
+  `FileInspector`, and Playwright `e2e/file-view.spec.ts`.
+- Phase 6 — scanner identity + moved-file repair, documented in ADR-0006;
+  same-volume moves preserve `AssetFile.id` and logical bundle metadata.
+- Phase 7 — future File View host integration/default-app handoff plan,
+  documented in ADR-0007.
+- Phase 8 — final docs/consistency audit: current-state docs, changelog, and PR
+  description updated.
 
-## Previous milestone — Phase 8 (packaging / deployment hardening, ADR-0005)
+## Tests and validation
 
-- Backend serves the built frontend when `CAIRNDEX_STATIC_DIR` is set
-  (`api/static_site.py`): `/api/v1` still wins, hashed assets are served
-  directly, other paths fall back to `index.html` (deep links survive a
-  refresh). Unset in dev.
-- `infra/docker/production.Dockerfile`: multi-stage (build SPA + install locked
-  backend) → slim `python:3.12-slim` runtime, non-root UID 10001, with
-  `ffmpeg`/`ffprobe`. Root `.dockerignore` keeps the context free of
-  data/secrets.
-- `docker-compose.prod.yml`: read-only rootfs + `tmpfs`, media mounted
-  read-only at `/storage/media`, writable app-data volume at `/data`,
-  `no-new-privileges`; `.env.example` for the host knobs.
-- `infra/backup.sh`: WAL-safe online SQLite backup + integrity check.
-- ADR-0005 + rewritten `docs/deployment.md` (topology, env-var table,
-  backup/restore, remote-access security). CI builds the production image.
+Reported by the implementation phases on this branch:
 
-## Tests run (this session, on macOS)
+- backend checks: `ruff`, `ruff format --check`, `mypy`, and `pytest`;
+- frontend checks: TypeScript typecheck, lint, Vitest, and Playwright coverage
+  for the new File View path.
 
-All passing:
-
-- Backend: `ruff`/`ruff format`/`mypy`/`pytest` (**156 passed**, +1 new
-  `test_playback.py::test_file_content_serves_image_with_guessed_mime`:
-  `/files/{id}/content` returns the bytes with `image/png`, and 404s for an
-  unknown file).
-- Frontend: `tsc -b` typecheck, `eslint`, `vitest` (2 passed), and `prettier`
-  all clean.
-- **Verified in the browser** against a real seeded library (a "Vacation Album"
-  bundle of on-disk images): double-click opened the album grid, all per-file
-  thumbnails rendered, the lightbox showed full-resolution images via
-  `/files/{id}/content`, prev/next worked, and Esc stepped back correctly
-  (viewer → album → library).
+Not rerun by the ChatGPT connector while adding the Phase 7/8 docs-only cleanup.
+Run the full backend/frontend suites again after rebasing/updating this branch
+against current `main`.
 
 ## Known issues / environment gaps
 
-- **No authentication yet** (`AGENTS.md` §12). Compose binds to `127.0.0.1` by
+- The branch currently diverges from current `main`; update/rebase before merge.
+- `AGENTS.md` is stale on this branch until it is rebased with current `main` or
+  manually synchronized. Current `main` is the desired source for AGENTS.md.
+- File View is intentionally read-only in this milestone. Write mode and native
+  desktop file handoff require a later host integration (ADR-0007).
+- Cross-filesystem moved-file repair and ambiguous repair candidates remain
+  future work; same-volume high-confidence repair is implemented (ADR-0006).
+- No authentication yet (`AGENTS.md` §12). Compose binds to `127.0.0.1` by
   default; direct public-internet exposure is unsupported — use a private
-  network/Tailscale or an authenticating reverse proxy. Optional single-owner
-  auth is a documented follow-up.
-- Single uvicorn worker by design (in-process job worker + single SQLite
-  writer, ADR-0001); scale by process supervision, not threads.
+  network/Tailscale or an authenticating reverse proxy.
+- Single uvicorn worker by design (in-process job worker + single SQLite writer,
+  ADR-0001); scale by process supervision, not threads.
 - Reverse-proxy/TLS termination and Tailscale setup are documented but not
   scripted.
 
-## Next recommended task
+## Next recommended tasks
 
-The Phase 0–8 roadmap is complete and the in-bundle view is in. Candidate
-follow-ups (each its own branch): per-file metadata editing from the viewer
-(title/note/source); transcoded playback for non-browser-playable video (§6.2)
-so the viewer can play MKV/HEVC instead of the fallback card; optional
-single-owner authentication (gating before remote exposure); scheduled
-background scans; apply Eagle merge suggestions in-app; import Eagle smart
-folders; metadata sidecar export (`AGENTS.md` §13).
+After merging this refactor, candidate follow-ups include:
+
+- update/rebase branch and resolve any conflicts with current `main`;
+- optional single-owner authentication before remote exposure;
+- scheduled background scans;
+- server-side text search / SQLite FTS5;
+- browse-query performance/indexing for larger libraries;
+- File View write-mode design and host integration from ADR-0007;
+- cross-filesystem repair candidate UI;
+- apply Eagle merge suggestions in-app;
+- metadata sidecar export.
 
 ## Unresolved decisions
 
 - Authentication mechanism (single shared secret vs. per-user) deferred until
-  remote access is actually wired up; schema already leaves room (§13).
+  remote access is actually wired up; schema already leaves room.
+- First host-integration path for native file handoff: macOS/native app, Tauri
+  shell, local companion helper, or another explicit desktop integration
+  (ADR-0007).

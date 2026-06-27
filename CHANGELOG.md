@@ -21,9 +21,9 @@ grouped under `Unreleased` until the first tagged release.
   media classification, a `supported` (natively previewable) flag, and a cheap
   `linked`/`bundle_id` hint. Strictly read-only — no move/rename/delete. OpenAPI
   and frontend types regenerated.
-- **Read-only File View UI (Phase 5).** A sidebar mode toggle switches the
-  center pane between the bundle-first **Collection View** and a new **File
-  View** (`FileView`): a storage-root selector, breadcrumb navigation,
+- **Read-only File View UI (Phase 5).** A sidebar mode toggle switches the center
+  pane between the bundle-first **Collection View** and a new **File View**
+  (`FileView`): a storage-root selector, breadcrumb navigation,
   directories-first listing, and `openable`/`unsupported`/`linked` badges, with
   loading/empty/error states. Selecting a file shows its path/size/MIME/openable
   details in a dedicated `FileInspector` (not the bundle inspector); File View
@@ -41,7 +41,10 @@ grouped under `Unreleased` until the first tagged release.
   subtitle path resolution now re-checks existence at access time and marks a
   vanished file `missing`. No full hashing on the scan path. Migration backfills
   identity lazily on the next scan.
-
+- **File View host-integration plan (Phase 7, ADR-0007).** Documents future
+  `open with default app`, reveal-in-file-manager, and write-mode support as a
+  native/desktop-client milestone, not part of the first read-only web File View.
+  The first File View implementation remains read-only.
 - **In-bundle view — open a bundle to browse and inspect its files.**
   - Double-clicking a bundle (grid card or list row) opens an inline **album
     view** in the center pane: a thumbnail grid of every file in the bundle,
@@ -51,17 +54,17 @@ grouped under `Unreleased` until the first tagged release.
     fallback for files the browser can't render, and Esc to step back out
     (viewer → album → library).
   - New `GET /api/v1/files/{file_id}/content` serves a file's original bytes
-    (path-safe, HTTP Range-capable, mime guessed from the filename) so the
-    viewer can show full-size images; the video-only path resolver in
-    `media/playback.py` was generalized into `resolve_file_path`.
+    (path-safe, HTTP Range-capable, mime guessed from the filename) so the viewer
+    can show full-size images; the video-only path resolver in `media/playback.py`
+    was generalized into `resolve_file_path`.
 - **Phase 8 — packaging and deployment hardening** (ADR-0005).
   - The backend serves the built SPA when `CAIRNDEX_STATIC_DIR` is set, so a
-    single container ships both halves: FastAPI keeps owning `/api/v1` and
-    serves `index.html` (with deep-link fallback) and hashed assets for
-    everything else. Unset in dev — Vite serves the frontend separately.
-  - Hardened production image (`infra/docker/production.Dockerfile`):
-    multi-stage build (SPA + locked backend) into a slim non-root runtime
-    (UID 10001) with `ffmpeg`/`ffprobe` for scan/thumbnail/subtitle work.
+    single container ships both halves: FastAPI keeps owning `/api/v1` and serves
+    `index.html` (with deep-link fallback) and hashed assets for everything else.
+    Unset in dev — Vite serves the frontend separately.
+  - Hardened production image (`infra/docker/production.Dockerfile`): multi-stage
+    build (SPA + locked backend) into a slim non-root runtime (UID 10001) with
+    `ffmpeg`/`ffprobe` for scan/thumbnail/subtitle work.
   - `docker-compose.prod.yml`: read-only container rootfs + `tmpfs`, media
     mounted **read-only** at `/storage/media`, a writable app-data volume at
     `/data`, `no-new-privileges`; `.env.example` documents the host knobs.
@@ -72,156 +75,60 @@ grouped under `Unreleased` until the first tagged release.
 - **Phase 7 — Eagle migration (one-way, read-only, idempotent).**
   - Read-only parser for an Eagle `.library` directory (folders, tag groups,
     per-item metadata) — ADR-0004; the Eagle library is never written to.
-  - Dry-run planner (`POST /eagle/preview`) reports new/skipped/folders/tags
-    plus advisory merge suggestions, with no DB writes; the executor
+  - Dry-run planner (`POST /eagle/preview`) reports new/skipped/folders/tags plus
+    advisory merge suggestions, with no DB writes; the executor
     (`POST /eagle/import`) maps each item → one bundle + linked file
-    (title/note/rating/source/tags/folders), registers the library as a
-    storage root, and records `import_records` so re-imports skip existing
-    items (`UNIQUE(provider, external_id)`).
-  - Desktop "Import from Eagle" dialog: enter a library path, preview the
-    report, then commit.
-- **Phase 6 — subtitles and direct playback.**
-  - `subtitle_tracks` table + ADR-0003: each track is exactly one of an
-    external subtitle `AssetFile` or an embedded `ffprobe` stream, linked to a
-    video. Auto-linking matches a same-directory subtitle to its video by
-    basename (parsing a trailing language/forced suffix); embedded streams are
-    detected on probe. Ambiguous subtitles stay unlinked for manual attachment.
-  - Direct playback: `GET /bundles/{id}/playback` (manifest of videos +
-    tracks, each with a `playable` flag/reason), `GET /files/{id}/stream`
-    (HTTP Range / 206), and `GET /subtitles/{id}/vtt` (external SRT converted
-    to cached WebVTT). Browser playability is reported per video so MKV/HEVC
-    show a fallback instead of failing silently.
-  - Player modal in the desktop UI: range-streamed `<video>` with WebVTT
-    subtitle tracks, a playlist for multi-video bundles, and a fallback state.
-- **Phase 5 — filtering and Smart Folders.**
-  - Canonical, versioned, JSON-serializable filter AST (`filters/ast.py`)
-    shared by simple filters and Smart Folders, validated by Pydantic and
-    compiled to **parameterized** SQLAlchemy (`filters/compiler.py`) against
-    an allowlist of fields/operators — a malformed or hostile expression is
-    rejected with HTTP 422 and never reaches SQL.
-  - `POST /filters/preview` (compile AST → match count) and
-    `POST /bundles/browse` (filtered browse) so toolbar filters and Smart
-    Folders share one code path; `smart_folders` service + CRUD at
-    `/api/v1/smart-folders` (the stored AST is validated on write).
-  - Desktop UI: an Eagle-style FilterBuilder (match all/any condition group;
-    text/number/bool/date inputs plus tag/folder pickers with an
-    include-descendants toggle), a Smart Folder editor with a live match
-    count, and a "Smart Folders" sidebar section that browses saved filters.
-  - Clarified source/link storage in the schema: removed the bundle-level
-    hyperlink and renamed the file-level `source_url` to `source` (an origin
-    URL, `magnet:`, `ed2k:`, …).
-- **Phase 4 — bundle editing and organization.**
-  - Backend: `PATCH /bundles/{id}/files/{fid}` (file-level title/note/source/
-    role/sequence), `PUT /bundles/{id}/files/order` (reorder),
-    `POST /bundles/batch` (add/remove tags+folders across many bundles),
-    `GET /bundles/{id}/tags`+`/folders`, and `GET /tags/counts`.
-  - Inspector is now editable for bundle title, note, and star rating
-    (TanStack Query mutations + cache invalidation; edits survive reload).
-  - Tag editor (chips + popover with group tabs, search, hierarchy, counts)
-    and hierarchical folder assignment.
-  - File management: reorder, choose primary/cover, and remove a file from a
-    bundle (metadata only — the file is never deleted on disk).
-  - Multi-select (cmd/ctrl/shift-click) + a batch bar for adding tags/folders
-    across a selection. Playwright e2e for the edit flows.
-- **Phase 3 — desktop app shell and browsing views.**
-  - Bundle browse API: `GET /api/v1/bundles/browse` (card summaries, system
-    views, folder filter with descendants, sort with stable tie-breaker,
-    offset pagination + total) and `/bundles/counts`, `/folders/counts`.
-  - Eagle-inspired dark three-pane web UI (resizable sidebar / browser /
-    inspector) on TanStack Query + generated OpenAPI types.
-  - Counted system views + hierarchical folder tree; toolbar with search,
-    sort, layout switcher, and zoom.
-  - Grid, list/table, and justified browsing layouts, all virtualized
-    (TanStack Virtual) so thousands of bundles stay responsive; bundle cards
-    with thumbnails/badges; inspector with metadata + file list.
-  - Keyboard navigation; layout/zoom/pane-width persisted to localStorage.
-  - Vitest component tests + Playwright e2e (API-mocked).
-- **Phase 2 — scanner, indexing, and media metadata.**
-  - DB-backed background job framework: `jobs` table + migration, a polled
-    in-process `Worker` (started via the app lifespan) with cooperative
-    cancellation and progress, and `GET /api/v1/jobs`, `/jobs/{id}`,
-    `POST /jobs/{id}/cancel`.
-  - Incremental, idempotent, non-destructive storage-root scanner: quick
-    fingerprint (size+mtime, never a full hash on the scan path), missing-file
-    state (rows preserved, not deleted), unreachable-root handling.
-  - ffprobe adapter + `tech_metadata` extraction (dimensions/duration/codecs/
-    streams), exposed on the file API.
-  - Thumbnail generation (ffmpeg) cached outside source dirs with cover
-    fallback, served via `GET /api/v1/bundles/{id}/thumbnail`.
-  - `POST /api/v1/storage-roots/{id}/scan|probe|thumbnails` (async jobs) and
-    `/fast-add` (manual linking with per-file / single-bundle grouping).
-  - `demo/phase2_walkthrough.py` showing real ffprobe metadata + thumbnails.
-- **Phase 1 — core domain and storage roots.** SQLAlchemy 2.0 schema +
-  first Alembic migration for storage roots, asset bundles, asset files,
-  tags, tag groups (+ membership), folders, and smart folders, plus the
-  bundle↔tag / bundle↔folder joins (ADR-0002: ULID PKs, tz-aware UTC
-  timestamps, adjacency-list hierarchy, SQLite WAL/foreign-keys pragmas).
-- Path-safety module (`core/paths`) — normalizes client relative paths and
-  rejects absolute/traversal/symlink-escape; the single choke point for all
-  storage-root path resolution.
-- Domain services + `/api/v1` CRUD for storage roots, bundles (with
-  metadata-only file linking/unlinking, cover/primary selection, and
-  tag/folder assignment), tags, tag groups, and folders — with keyset
-  pagination, structured errors, and recursive-CTE descendant queries.
-- Synthetic library generator (`devtools/synthetic`) and seed CLI
-  (`python -m cairndex.devtools.seed`) for tests and scaled UI dev.
-- Generated frontend API types from the backend OpenAPI schema
-  (`apps/web/src/api/schema.d.ts`, `npm run gen:api`).
-- Repository foundation: monorepo layout (`apps/server`, `apps/web`,
-  `infra/docker`, `docs/`), `.gitignore`, ADR process, and documentation
-  skeleton (`docs/architecture.md`, `docs/development.md`,
-  `docs/deployment.md`, `docs/data-model.md`, `docs/filter-language.md`,
-  `docs/STATUS.md`).
-- `docs/adr/0001-stack-and-database-choice.md` recording the backend/frontend
-  stack and SQLite-with-WAL decision.
-- FastAPI backend shell (`apps/server`) with a versioned health endpoint
-  (`GET /api/v1/health`), uv-managed Python 3.12+ project, Ruff formatting
-  and linting, mypy strict type checking, and a pytest smoke test.
-- React + TypeScript (strict mode) frontend shell (`apps/web`) built with
-  Vite, ESLint (flat config) + Prettier, a Vitest component test suite, and a
-  Playwright end-to-end smoke test. The shell probes `GET /api/v1/health` and
-  renders loading/online/unreachable states; the Vite dev server proxies
-  `/api` to the backend so development needs no CORS.
-- Docker development environment: `infra/docker/server.Dockerfile`,
-  `infra/docker/web.Dockerfile`, and root `docker-compose.yml`.
-- GitHub Actions CI workflow running backend and frontend checks plus a
-  `docker compose build` validation on every push/PR.
+    (title/note/rating/source/tags/folders), registers the library as a storage
+    root, and records `import_records` so re-imports skip existing items
+    (`UNIQUE(provider, external_id)`).
+  - Desktop "Import from Eagle" dialog: enter a library path, preview the report,
+    then commit.
+- **Phase 6 — subtitles and direct playback.** Subtitle tracks, direct playback,
+  range streaming, external SRT→WebVTT conversion, and a player modal are
+  implemented; remux/transcode fallback remains a later milestone.
+- **Phase 5 — filtering and Smart Folders.** Canonical filter AST, compiler,
+  Smart Folder CRUD, preview, filtered browse, and an Eagle-style editor were
+  implemented. The Collections refactor renames this feature to Smart
+  Collections in code/API/UI while keeping the legacy `smart_folders` table name.
+- **Phase 4 — bundle editing and organization.** Bundle/file editing, tag and
+  collection assignment, file reorder/cover/primary controls, metadata-only file
+  removal, and batch metadata edits are implemented.
+- **Phase 3 — desktop app shell and browsing views.** Eagle-inspired three-pane
+  UI, virtualized grid/list/justified layouts, sidebar counts, toolbar controls,
+  keyboard navigation, and persisted layout preferences are implemented.
+- **Phase 2 — scanner, indexing, and media metadata.** DB-backed jobs,
+  incremental scanner, ffprobe metadata, thumbnail generation, async root jobs,
+  and fast-add are implemented.
+- **Phase 1 — core domain and storage roots.** SQLAlchemy schema, first Alembic
+  migration, path safety, domain services, CRUD APIs, synthetic seeding, OpenAPI
+  types, repository foundation, Docker development environment, and CI are
+  implemented.
 
 ### Changed
 
-- **Collections + File View refactor (in progress).** Renaming the logical
-  grouping concept from "folder" to **collection**, to free "folder/file" for a
-  new physical, storage-root-scoped **File View**.
-  - *Backend DB/model rename (Phase 1):* the `folders` table is now
-    `collections` and `asset_bundle_folders` is now `asset_bundle_collections`
-    (`folder_id` → `collection_id`); the ORM model `Folder` is `Collection` and
-    `AssetBundle.folders` is `AssetBundle.collections`. A data-preserving Alembic
-    migration copies hierarchy, parent-child links, and bundle memberships
-    across verbatim (every id preserved); no physical files are touched. The
-    domain service moved from `services/folders.py` to `services/collections.py`.
-    The public `/api/v1/folders*` routes and the `folders` filter field keep
-    their names in this phase and are renamed to `collections` next.
-  - *API/schema/filter rename (Phase 2, breaking — early private app, no
-    aliases):* `/api/v1/folders*` → `/api/v1/collections*`, `/folders/counts` →
-    `/collections/counts`, `/bundles/{id}/folders` → `/bundles/{id}/collections`;
-    the browse `folder_id` query param → `collection_id`; the filter field
-    `folders` → `collections`. Smart Folders are now **Smart Collections**:
-    model `SmartFolder` → `SmartCollection`, routes `/smart-folders` →
-    `/smart-collections`, schemas `SmartFolder*` → `SmartCollection*` (table
-    still `smart_folders`). Schemas `Folder{Create,Update,Read}` →
-    `Collection{Create,Update,Read}`, `BundleFolders` → `BundleCollections`
-    (`folder_ids` → `collection_ids`), batch `add/remove_folder_ids` →
-    `add/remove_collection_ids`. OpenAPI and the generated frontend API types
-    were regenerated.
-  - *Frontend rename (Phase 3):* the desktop UI now presents logical grouping as
-    **Collections** and saved filters as **Smart Collections** — sidebar
-    headings/labels ("Collections", "Smart Collections", "+ Collection", "Search
-    collections…"), the inspector picker (`FolderPicker` → `CollectionPicker`),
-    the editor (`SmartFolderEditor` → `SmartCollectionEditor`), the filter field,
-    and the API client/hooks (`useCollections`, `useCollectionCounts`,
-    `useBundleCollections`, `useSetBundleCollections`, `useSmartCollections`).
-    View state is `collectionId`/`smartCollectionId`. (This is the logical
-    Collection View; a physical File View follows.)
+- **Collections + File View refactor (complete through Phase 8 on
+  `feat/collections-and-file-view`).** The logical grouping concept formerly
+  called "folder" is now **collection** to reserve file/folder terminology for
+  the physical File View.
+  - *Backend DB/model rename (Phase 1):* `folders` → `collections`,
+    `asset_bundle_folders` → `asset_bundle_collections`, `folder_id` →
+    `collection_id`; ORM `Folder` → `Collection`; service module
+    `services/folders.py` → `services/collections.py`. Data-preserving migration;
+    every existing ID and membership is preserved.
+  - *API/schema/filter rename (Phase 2, breaking — no aliases):*
+    `/api/v1/folders*` → `/api/v1/collections*`, `/bundles/{id}/folders` →
+    `/bundles/{id}/collections`, browse `folder_id` → `collection_id`, filter
+    field `folders` → `collections`, Smart Folders → Smart Collections, and
+    `Folder*`/`BundleFolders` schemas → `Collection*`/`BundleCollections`.
+    OpenAPI and generated frontend API types were regenerated.
+  - *Frontend rename (Phase 3):* sidebar, picker, editor, filter builder, hooks,
+    state names, tests, and labels now use Collection / Smart Collection
+    terminology.
+  - *Final docs audit (Phase 8):* README, architecture, data model, status,
+    changelog, ADRs, and PR description were reviewed/updated.
+    `feat/collections-and-file-view` still needs to be updated/rebased against
+    current `main` before merge because current `main` has the latest
+    `AGENTS.md`.
 - Refreshed current-state documentation after the Phase 0–8 roadmap: README,
   architecture, data model, status, and agent instructions now describe the
   implemented app instead of the old Phase 0/TBD skeleton, and clarify the
@@ -229,9 +136,9 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
-- `.gitignore` no longer blanket-ignores media extensions at the repo root.
-  The `*.ts` glob silently shadowed all TypeScript source; source media is
-  kept out via directory ignores (`data/`, `storage/`, `var/`) instead.
+- `.gitignore` no longer blanket-ignores media extensions at the repo root. The
+  `*.ts` glob silently shadowed all TypeScript source; source media is kept out
+  via directory ignores (`data/`, `storage/`, `var/`) instead.
 
 ### Removed
 
@@ -243,7 +150,7 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
-- Enforced TypeScript strict mode (`strict`, `noUncheckedIndexedAccess`) in
-  both frontend tsconfigs, which the Vite scaffold omitted (AGENTS.md §9).
-- `get_settings()` memoizes the `Settings` instance (`lru_cache`) so config
-  is read from the environment once per process.
+- Enforced TypeScript strict mode (`strict`, `noUncheckedIndexedAccess`) in both
+  frontend tsconfigs, which the Vite scaffold omitted (AGENTS.md §9).
+- `get_settings()` memoizes the `Settings` instance (`lru_cache`) so config is
+  read from the environment once per process.
