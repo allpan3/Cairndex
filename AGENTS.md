@@ -40,7 +40,8 @@ Unless the product owner explicitly changes them, treat these as settled:
 - A native macOS app is not required for the first release; a Tauri shell may be evaluated later.
 - The application links to files already on disk and stores metadata separately.
 - Asset bundle metadata is shared across the bundle.
-- Individual files may have a display title, note, and hyperlink in the schema; those file-level editing controls may be deferred.
+- Individual files may have a display title, note, and source/origin hyperlink in the schema; those file-level editing controls may be deferred.
+- The current MVP stores source/link metadata at the file level only. Add a first-class bundle-level link/source field later only through an explicit product decision and migration.
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
@@ -80,13 +81,14 @@ Bundle-level metadata includes:
 - stable ID, preferably UUID or ULID;
 - displayed asset title;
 - shared note;
-- shared source URL/hyperlink;
 - shared rating;
 - selected cover file;
 - selected primary playable file;
 - creation, import, and update timestamps;
 - aggregate media properties where useful;
 - optional extensible metadata JSON for non-core fields.
+
+Current MVP note: the implemented schema does not include a first-class bundle-level hyperlink/source column. File origin/source metadata lives on `AssetFile.source` (URL, `magnet:`, `ed2k:`, etc.). If the product needs logical asset-level source pages independent of physical-file origins, add a bundle-level field or link table via migration rather than overloading file-level source or `extra_metadata` ad hoc.
 
 ### 4.3 Asset file
 
@@ -98,7 +100,7 @@ Required concepts:
 - storage root ID and relative path;
 - original filename;
 - display title defaulting to the filename;
-- optional file-level note and hyperlink, even if their UI is deferred;
+- optional file-level note and source/origin hyperlink, even if their UI is deferred;
 - media kind and MIME type;
 - file role;
 - order/sequence within the bundle;
@@ -182,29 +184,31 @@ A Smart Folder is a named, saved filter expression plus optional view preference
 
 Store a versioned structured expression, not raw SQL and not an opaque UI string.
 
-Suggested shape:
+Implemented shape:
 
 ```json
 {
   "version": 1,
-  "op": "and",
-  "children": [
-    {
-      "field": "tags",
-      "operator": "contains_all",
-      "value": ["tag-id-1", "tag-id-2"],
-      "include_descendants": true
-    },
-    {
-      "field": "rating",
-      "operator": "gte",
-      "value": 4
-    }
-  ]
+  "root": {
+    "op": "and",
+    "children": [
+      {
+        "field": "tags",
+        "operator": "contains_all",
+        "value": ["tag-id-1", "tag-id-2"],
+        "include_descendants": true
+      },
+      {
+        "field": "rating",
+        "operator": "gte",
+        "value": 4
+      }
+    ]
+  }
 }
 ```
 
-The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model should permit nested `and`, `or`, and `not` groups later.
+The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model permits nested `and`, `or`, and `not` groups later.
 
 ### 4.9 Subtitle tracks
 
@@ -220,7 +224,7 @@ Support:
 - manual correction/attachment;
 - conversion to a browser-compatible cached format where necessary.
 
-A useful model may use a `SubtitleTrack` or generalized `MediaTrack` table with either an external file reference or an embedded stream index. Document the final design before implementation.
+The implemented model uses `SubtitleTrack` with either an external file reference or an embedded stream index. Embedded stream extraction/serving is deferred to the remux/transcode fallback milestone.
 
 ## 5. File discovery, linking, and identity
 
@@ -258,8 +262,6 @@ Do not run full library scans in request handlers.
 When a linked path disappears, preserve the Asset File row as missing. Provide later repair logic using path candidates, filename, size, timestamps, quick hashes, and full hashes when needed.
 
 ### 5.4 Optional managed imports
-
-Copy/move into an app-managed directory is a future optional mode, not an MVP requirement. Do not couple core IDs or lookup logic to a hash-directory layout.
 
 ## 6. Media processing and playback
 
@@ -385,14 +387,13 @@ The inspector should expose bundle-level fields first:
 - cover;
 - title;
 - note;
-- hyperlink;
 - tags;
 - folders;
 - rating;
 - aggregate properties;
 - files in the bundle.
 
-Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/link controls.
+Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls. If the product later adds bundle-level links, expose them with the other bundle-level fields.
 
 ### 8.5 Tag selector
 
@@ -438,7 +439,7 @@ The initial editor should follow the supplied Eagle reference:
 
 Typed field examples:
 
-- title/name, note, URL: contains, not contains, equals, starts with, regex later;
+- title/name, note, URL/source: contains, not contains, equals, starts with, regex later;
 - tags/folders: contains any, contains all, contains none, exact set later, descendant toggle;
 - rating: equals, greater/less than;
 - type/extension/codec: fixed-option multi-select;
@@ -479,7 +480,7 @@ Do not introduce Redis, Celery, Postgres, Elasticsearch, or a separate search se
 
 ### Search and filters
 
-- SQLite FTS5 for title, notes, links, and filename search where appropriate;
+- SQLite FTS5 for title, notes, links/source, and filename search where appropriate;
 - relational indexes for tag/folder/rating/date/type filters;
 - server-side filtering, sorting, and pagination;
 - no client-side loading of the full library.
