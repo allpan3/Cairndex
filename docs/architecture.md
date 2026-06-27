@@ -56,7 +56,7 @@ jobs/        DB-backed job registry + worker loop
 ```
 
 API routes currently cover health, storage roots, bundles/files, tags, tag
-groups, folders, Smart Folders, filter preview, playback/subtitles, Eagle
+groups, collections, Smart Collections, filter preview, playback/subtitles, Eagle
 import, and jobs.
 
 ## 3. Frontend (`apps/web`)
@@ -105,7 +105,7 @@ The implemented schema is documented in `docs/data-model.md` and recorded in
 ADR-0002/0003/0004. The core object graph is:
 
 - `StorageRoot` — server-visible mounted root with scan status/timestamps.
-- `AssetBundle` — primary user-facing item shown in browse/search/folders/tags.
+- `AssetBundle` — primary user-facing item shown in browse/search/collections/tags.
 - `AssetFile` — one physical file linked into one bundle by
   `storage_root_id + relative_path`, with role, media kind, order,
   availability, fingerprint/hash placeholders, and technical metadata.
@@ -114,7 +114,8 @@ ADR-0002/0003/0004. The core object graph is:
 - `Collection` — hierarchical virtual grouping (formerly "folder"); bundle
   membership is many-to-many and never moves files on disk. This is the logical
   surface (Collection View), distinct from the physical File View.
-- `SmartFolder` — saved, versioned filter AST plus optional view defaults.
+- `SmartCollection` — saved, versioned filter AST plus optional view defaults
+  (table still named `smart_folders`).
 - `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to
   a video file.
 - `ImportRecord` — provider/external ID mapping for idempotent imports.
@@ -144,7 +145,7 @@ metadata into `AssetFile.tech_metadata`. Thumbnail generation uses `ffmpeg` and
 writes reproducible derived files under the app cache directory, outside any
 storage root.
 
-## 7. Filtering and Smart Folders
+## 7. Filtering and Smart Collections
 
 The filter system uses a canonical JSON AST (`version`, logical nodes, and
 predicate nodes), not raw SQL. Incoming expressions are validated by Pydantic
@@ -153,9 +154,10 @@ The same compiler path powers:
 
 - live count preview at `POST /api/v1/filters/preview`;
 - filtered browse at `POST /api/v1/bundles/browse`;
-- saved Smart Folder CRUD and browse.
+- saved Smart Collection CRUD and browse.
 
-The current Smart Folder editor exposes one Eagle-style all/any condition group.
+The current Smart Collection editor exposes one Eagle-style all/any condition
+group.
 The AST supports nested `and`/`or`/`not` groups for a later richer editor.
 
 Current gap: toolbar text search in the frontend filters the already-loaded
@@ -197,7 +199,8 @@ The Eagle importer is one-way, read-only, and idempotent:
 - `eagle.planner` produces a dry-run report with counts and advisory merge
   suggestions.
 - `services.eagle.import_library()` registers the Eagle `images/` directory as a
-  read-only storage root, creates/reuses folders/tags/tag groups, maps each new
+  read-only storage root, creates/reuses collections/tags/tag groups (Eagle
+  folders become collections), maps each new
   live Eagle item to one bundle + linked file, and records `ImportRecord` rows
   so reruns skip existing items.
 

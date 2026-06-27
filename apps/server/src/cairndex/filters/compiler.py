@@ -213,8 +213,7 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
             model=Tag,
             node=node,
         )
-    if field == "folders":
-        # Field string stays "folders" until Phase 2 renames it to "collections".
+    if field == "collections":
         return _membership(
             session,
             bundle_col=asset_bundle_collections.c.bundle_id,

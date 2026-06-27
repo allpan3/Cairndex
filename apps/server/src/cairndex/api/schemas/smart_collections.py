@@ -1,4 +1,4 @@
-"""Request/response schemas for Smart Folder CRUD."""
+"""Request/response schemas for Smart Collection CRUD."""
 
 from datetime import datetime
 
@@ -7,14 +7,14 @@ from pydantic import BaseModel
 from cairndex.filters.ast import FilterExpression
 
 
-class SmartFolderCreate(BaseModel):
+class SmartCollectionCreate(BaseModel):
     name: str
     filter: FilterExpression
     default_sort: str | None = None
     default_layout: str | None = None
 
 
-class SmartFolderUpdate(BaseModel):
+class SmartCollectionUpdate(BaseModel):
     name: str | None = None
     filter: FilterExpression | None = None
     default_sort: str | None = None
@@ -22,7 +22,7 @@ class SmartFolderUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class SmartFolderRead(BaseModel):
+class SmartCollectionRead(BaseModel):
     id: str
     name: str
     filter: FilterExpression

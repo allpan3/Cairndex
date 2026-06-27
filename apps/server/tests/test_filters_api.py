@@ -45,31 +45,31 @@ def test_browse_post_no_filter_matches_all(client: TestClient, session: Session)
     assert r.json()["total"] == 2
 
 
-def test_smart_folder_crud(client: TestClient, session: Session) -> None:
+def test_smart_collection_crud(client: TestClient, session: Session) -> None:
     created = client.post(
-        "/api/v1/smart-folders",
+        "/api/v1/smart-collections",
         json={"name": "Highly rated", "filter": _HIGH_RATED},
     )
     assert created.status_code == 201
-    sf = created.json()
-    assert sf["name"] == "Highly rated"
-    assert sf["filter"]["root"]["field"] == "rating"
+    sc = created.json()
+    assert sc["name"] == "Highly rated"
+    assert sc["filter"]["root"]["field"] == "rating"
 
-    listed = client.get("/api/v1/smart-folders")
-    assert [x["id"] for x in listed.json()] == [sf["id"]]
+    listed = client.get("/api/v1/smart-collections")
+    assert [x["id"] for x in listed.json()] == [sc["id"]]
 
-    patched = client.patch(f"/api/v1/smart-folders/{sf['id']}", json={"name": "Renamed"})
+    patched = client.patch(f"/api/v1/smart-collections/{sc['id']}", json={"name": "Renamed"})
     assert patched.status_code == 200
     assert patched.json()["name"] == "Renamed"
 
-    deleted = client.delete(f"/api/v1/smart-folders/{sf['id']}")
+    deleted = client.delete(f"/api/v1/smart-collections/{sc['id']}")
     assert deleted.status_code == 204
-    assert client.get(f"/api/v1/smart-folders/{sf['id']}").status_code == 404
+    assert client.get(f"/api/v1/smart-collections/{sc['id']}").status_code == 404
 
 
-def test_smart_folder_invalid_filter_is_422(client: TestClient) -> None:
+def test_smart_collection_invalid_filter_is_422(client: TestClient) -> None:
     r = client.post(
-        "/api/v1/smart-folders",
+        "/api/v1/smart-collections",
         json={
             "name": "bad",
             "filter": {"version": 1, "root": {"field": "nope", "operator": "eq", "value": 1}},

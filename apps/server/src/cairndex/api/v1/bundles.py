@@ -8,8 +8,8 @@ from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCou
 from cairndex.api.schemas.bundles import (
     BatchResult,
     BatchUpdate,
+    BundleCollections,
     BundleCreate,
-    BundleFolders,
     BundleRead,
     BundleTags,
     BundleUpdate,
@@ -50,7 +50,7 @@ def _browse_page(db: DbSession, **kwargs: object) -> BundleBrowsePage:
 def browse_bundles(
     db: DbSession,
     view: SystemView = SystemView.ALL,
-    folder_id: Annotated[str | None, Query()] = None,
+    collection_id: Annotated[str | None, Query()] = None,
     include_descendants: bool = False,
     sort: BundleSort = BundleSort.DATE_ADDED,
     order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
@@ -60,7 +60,7 @@ def browse_bundles(
     return _browse_page(
         db,
         view=view,
-        folder_id=folder_id,
+        collection_id=collection_id,
         include_descendants=include_descendants,
         sort=sort,
         descending=order == "desc",
@@ -72,11 +72,11 @@ def browse_bundles(
 @router.post("/browse", response_model=BundleBrowsePage)
 def browse_bundles_filtered(payload: BrowseRequest, db: DbSession) -> BundleBrowsePage:
     """Browse with a filter AST — the shared path for toolbar filters and
-    Smart Folders. Equivalent to GET /browse when ``filter`` is null."""
+    Smart Collections. Equivalent to GET /browse when ``filter`` is null."""
     return _browse_page(
         db,
         view=payload.view,
-        folder_id=payload.folder_id,
+        collection_id=payload.collection_id,
         include_descendants=payload.include_descendants,
         sort=payload.sort,
         descending=payload.order == "desc",
@@ -98,8 +98,8 @@ def batch_update(payload: BatchUpdate, db: DbSession) -> BatchResult:
         bundle_ids=payload.bundle_ids,
         add_tag_ids=payload.add_tag_ids,
         remove_tag_ids=payload.remove_tag_ids,
-        add_collection_ids=payload.add_folder_ids,
-        remove_collection_ids=payload.remove_folder_ids,
+        add_collection_ids=payload.add_collection_ids,
+        remove_collection_ids=payload.remove_collection_ids,
     )
     return BatchResult(updated=updated)
 
@@ -178,7 +178,7 @@ def remove_file(bundle_id: str, file_id: str, db: DbSession) -> None:
     service.remove_file(db, bundle_id, file_id)
 
 
-# --- Tag / folder assignment -------------------------------------------------
+# --- Tag / collection assignment ---------------------------------------------
 @router.get("/{bundle_id}/tags", response_model=BundleTags)
 def get_tags(bundle_id: str, db: DbSession) -> BundleTags:
     bundle = service.get_bundle(db, bundle_id)
@@ -191,16 +191,16 @@ def set_tags(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleTag
     return BundleTags(bundle_id=bundle.id, tag_ids=[t.id for t in bundle.tags])
 
 
-@router.get("/{bundle_id}/folders", response_model=BundleFolders)
-def get_folders(bundle_id: str, db: DbSession) -> BundleFolders:
+@router.get("/{bundle_id}/collections", response_model=BundleCollections)
+def get_collections(bundle_id: str, db: DbSession) -> BundleCollections:
     bundle = service.get_bundle(db, bundle_id)
-    return BundleFolders(bundle_id=bundle.id, folder_ids=[c.id for c in bundle.collections])
+    return BundleCollections(bundle_id=bundle.id, collection_ids=[c.id for c in bundle.collections])
 
 
-@router.put("/{bundle_id}/folders", response_model=BundleFolders)
-def set_folders(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleFolders:
+@router.put("/{bundle_id}/collections", response_model=BundleCollections)
+def set_collections(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleCollections:
     bundle = service.set_bundle_collections(db, bundle_id, payload.ids)
-    return BundleFolders(bundle_id=bundle.id, folder_ids=[c.id for c in bundle.collections])
+    return BundleCollections(bundle_id=bundle.id, collection_ids=[c.id for c in bundle.collections])
 
 
 # --- Thumbnails (generated lazily and cached) --------------------------------

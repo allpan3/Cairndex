@@ -68,7 +68,7 @@ def test_system_views_filter(session: Session) -> None:
     assert browse_bundles(session, view=SystemView.UNTAGGED).total == 3
     missing = browse_bundles(session, view=SystemView.MISSING)
     assert missing.total == 1 and missing.items[0].id == b3.id
-    assert browse_bundles(session, folder_id=collection.id).items[0].id == b1.id
+    assert browse_bundles(session, collection_id=collection.id).items[0].id == b1.id
 
 
 def test_sort_and_offset_pagination(session: Session) -> None:
@@ -107,10 +107,10 @@ def test_browse_endpoint_and_counts_routing(client: TestClient) -> None:
     assert counts.json()["all"] == 1
 
 
-def test_folder_counts_endpoint(client: TestClient) -> None:
-    folder_id = client.post("/api/v1/folders", json={"name": "F"}).json()["id"]
+def test_collection_counts_endpoint(client: TestClient) -> None:
+    collection_id = client.post("/api/v1/collections", json={"name": "F"}).json()["id"]
     bundle_id = client.post("/api/v1/bundles", json={"title": "x"}).json()["id"]
-    client.put(f"/api/v1/bundles/{bundle_id}/folders", json={"ids": [folder_id]})
+    client.put(f"/api/v1/bundles/{bundle_id}/collections", json={"ids": [collection_id]})
 
-    counts = client.get("/api/v1/folders/counts").json()["counts"]
-    assert counts[folder_id] == 1
+    counts = client.get("/api/v1/collections/counts").json()["counts"]
+    assert counts[collection_id] == 1

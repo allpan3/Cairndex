@@ -276,9 +276,11 @@ class Collection(Base):
     __table_args__ = (UniqueConstraint("parent_id", "name", name="parent_name"),)
 
 
-class SmartFolder(Base):
-    # Renamed to SmartCollection in Phase 2 along with its service/API; the
-    # table name stays ``smart_folders``.
+class SmartCollection(Base):
+    """A named, saved filter expression — a "Smart Collection" (formerly Smart
+    Folder). The table keeps its legacy name ``smart_folders`` to avoid a
+    second data migration; the domain/API surface is Smart Collection."""
+
     __tablename__ = "smart_folders"
 
     id: Mapped[UlidPk]

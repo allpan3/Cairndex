@@ -1,8 +1,8 @@
-"""Smart Folder CRUD + filter preview + simple/smart browse equivalence.
+"""Smart Collection CRUD + filter preview + simple/smart browse equivalence.
 
-The acceptance criterion (AGENTS.md §4.8): a saved Smart Folder and an
+The acceptance criterion (AGENTS.md §4.8): a saved Smart Collection and an
 equivalent toolbar filter compile to the same predicate and return identical
-results, and saved folders survive a restart (re-read from the DB).
+results, and saved collections survive a restart (re-read from the DB).
 """
 
 import pytest
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ValidationError
 from cairndex.filters.ast import FilterExpression
 from cairndex.services import bundles as bundle_service
-from cairndex.services import smart_folders as sf_service
+from cairndex.services import smart_collections as sc_service
 from cairndex.services.browse import BundleSort, SystemView, browse_bundles
 
 _HIGH_RATED = {
@@ -29,13 +29,13 @@ def _seed(session: Session) -> tuple[str, str]:
 
 # --- CRUD --------------------------------------------------------------------
 def test_create_and_get_roundtrip(session: Session) -> None:
-    sf = sf_service.create_smart_folder(
+    sc = sc_service.create_smart_collection(
         session,
         name="Highly rated",
         filter_expr=FilterExpression.model_validate(_HIGH_RATED),
     )
     session.commit()
-    got = sf_service.get_smart_folder(session, sf.id)
+    got = sc_service.get_smart_collection(session, sc.id)
     assert got.name == "Highly rated"
     # Stored as the canonical, validated AST (defaults filled in).
     assert FilterExpression.model_validate(got.filter_json) == FilterExpression.model_validate(
@@ -45,14 +45,14 @@ def test_create_and_get_roundtrip(session: Session) -> None:
 
 
 def test_duplicate_name_conflicts(session: Session) -> None:
-    sf_service.create_smart_folder(
+    sc_service.create_smart_collection(
         session, name="dup", filter_expr=FilterExpression.model_validate(_HIGH_RATED)
     )
     session.commit()
     from cairndex.core.errors import ConflictError
 
     with pytest.raises(ConflictError):
-        sf_service.create_smart_folder(
+        sc_service.create_smart_collection(
             session, name="dup", filter_expr=FilterExpression.model_validate(_HIGH_RATED)
         )
 
@@ -62,23 +62,23 @@ def test_invalid_filter_rejected_at_save(session: Session) -> None:
         {"version": 1, "root": {"field": "nope", "operator": "eq", "value": 1}}
     )
     with pytest.raises(ValidationError):
-        sf_service.create_smart_folder(session, name="bad", filter_expr=bad)
+        sc_service.create_smart_collection(session, name="bad", filter_expr=bad)
 
 
 def test_update_filter_and_name(session: Session) -> None:
-    sf = sf_service.create_smart_folder(
+    sc = sc_service.create_smart_collection(
         session, name="a", filter_expr=FilterExpression.model_validate(_HIGH_RATED)
     )
     session.commit()
     new_filter = {"version": 1, "root": {"field": "title", "operator": "contains", "value": "x"}}
-    sf_service.update_smart_folder(
+    sc_service.update_smart_collection(
         session,
-        sf.id,
+        sc.id,
         name="b",
         filter_expr=FilterExpression.model_validate(new_filter),
     )
     session.commit()
-    got = sf_service.get_smart_folder(session, sf.id)
+    got = sc_service.get_smart_collection(session, sc.id)
     assert got.name == "b"
     assert FilterExpression.model_validate(got.filter_json) == FilterExpression.model_validate(
         new_filter
@@ -86,16 +86,16 @@ def test_update_filter_and_name(session: Session) -> None:
 
 
 def test_delete(session: Session) -> None:
-    sf = sf_service.create_smart_folder(
+    sc = sc_service.create_smart_collection(
         session, name="gone", filter_expr=FilterExpression.model_validate(_HIGH_RATED)
     )
     session.commit()
-    sf_service.delete_smart_folder(session, sf.id)
+    sc_service.delete_smart_collection(session, sc.id)
     session.commit()
     from cairndex.core.errors import NotFoundError
 
     with pytest.raises(NotFoundError):
-        sf_service.get_smart_folder(session, sf.id)
+        sc_service.get_smart_collection(session, sc.id)
 
 
 # --- equivalence -------------------------------------------------------------
@@ -106,10 +106,10 @@ def test_simple_and_smart_filter_are_equivalent(session: Session) -> None:
     # "Toolbar filter": pass the AST straight to browse.
     direct = browse_bundles(session, filter_expr=expr)
 
-    # "Smart Folder": save it, re-read filter_json from the DB, then browse.
-    sf = sf_service.create_smart_folder(session, name="hr", filter_expr=expr)
+    # "Smart Collection": save it, re-read filter_json from the DB, then browse.
+    sc = sc_service.create_smart_collection(session, name="hr", filter_expr=expr)
     session.commit()
-    reloaded = sf_service.get_smart_folder(session, sf.id)
+    reloaded = sc_service.get_smart_collection(session, sc.id)
     saved = browse_bundles(
         session, filter_expr=FilterExpression.model_validate(reloaded.filter_json)
     )

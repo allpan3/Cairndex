@@ -185,7 +185,7 @@ def test_tags_any_all_none_with_descendants(session: Session) -> None:
     assert b_other.id not in none and b_child.id in none
 
 
-def test_folders_and_file_predicates(session: Session) -> None:
+def test_collections_and_file_predicates(session: Session) -> None:
     root = root_service.create_storage_root(session, name="r", canonical_path="/mnt/r")
     collection = collection_service.create_collection(session, name="F")
     session.flush()
@@ -217,7 +217,7 @@ def test_folders_and_file_predicates(session: Session) -> None:
         session,
         {
             "version": 1,
-            "root": {"field": "folders", "operator": "contains_any", "value": [collection.id]},
+            "root": {"field": "collections", "operator": "contains_any", "value": [collection.id]},
         },
     ) == {in_folder.id}
     assert _matches(

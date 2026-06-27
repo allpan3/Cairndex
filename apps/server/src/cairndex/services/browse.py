@@ -95,14 +95,14 @@ def _apply_view(
     stmt: Select[Any],
     session: Session,
     view: SystemView,
-    folder_id: str | None,
+    collection_id: str | None,
     include_descendants: bool,
 ) -> Select[Any]:
-    if folder_id is not None:
+    if collection_id is not None:
         ids = (
-            collection_descendant_ids(session, folder_id, include_self=True)
+            collection_descendant_ids(session, collection_id, include_self=True)
             if include_descendants
-            else [folder_id]
+            else [collection_id]
         )
         stmt = stmt.where(
             exists().where(
@@ -143,7 +143,7 @@ def browse_bundles(
     session: Session,
     *,
     view: SystemView = SystemView.ALL,
-    folder_id: str | None = None,
+    collection_id: str | None = None,
     include_descendants: bool = False,
     sort: BundleSort = BundleSort.DATE_ADDED,
     descending: bool = True,
@@ -151,12 +151,12 @@ def browse_bundles(
     limit: int = 100,
     filter_expr: FilterExpression | None = None,
 ) -> BundlePage:
-    # A saved Smart Folder and a simple toolbar filter both arrive here as the
-    # same compiled predicate, so they share one ranking/pagination code path.
+    # A saved Smart Collection and a simple toolbar filter both arrive here as
+    # the same compiled predicate, so they share one ranking/pagination path.
     predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
-        stmt = _apply_view(stmt, session, view, folder_id, include_descendants)
+        stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
         return stmt.where(predicate) if predicate is not None else stmt
 
     base = _scoped(select(AssetBundle.id))
