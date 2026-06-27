@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useBundleFolders, useFolderCounts, useFolders, useSetBundleFolders } from '../api/hooks'
 import { flattenHierarchy, usePopover } from './usePopover'
@@ -8,7 +9,7 @@ export function FolderPicker({ bundleId }: { bundleId: string }) {
   const { data: folders = [] } = useFolders()
   const { data: counts = {} } = useFolderCounts()
   const setFolders = useSetBundleFolders(bundleId)
-  const { open, setOpen, ref } = usePopover()
+  const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
 
   const assigned = new Set(bundleFolders?.folder_ids ?? [])
@@ -44,33 +45,40 @@ export function FolderPicker({ bundleId }: { bundleId: string }) {
           <button className="add-btn" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             + Folder
           </button>
-          {open && (
-            <div className="picker__panel">
-              <input
-                className="edit picker__search"
-                placeholder="Search folders…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-                aria-label="Search folders"
-              />
-              {rows.length === 0 && <div className="pick-group">No matching folders</div>}
-              {rows.map(({ item, depth }) => (
-                <div
-                  key={item.id}
-                  className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
-                  style={{ paddingLeft: 6 + depth * 14 }}
-                  onClick={() => toggle(item.id)}
-                  role="option"
-                  aria-selected={assigned.has(item.id)}
-                >
-                  <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
-                  <span>🗀 {item.name}</span>
-                  <span className="pick-row__count">{counts[item.id] ?? 0}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {open &&
+            pos &&
+            createPortal(
+              <div
+                className="picker__panel"
+                ref={panelRef}
+                style={{ top: pos.top, right: pos.right }}
+              >
+                <input
+                  className="edit picker__search"
+                  placeholder="Search folders…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  autoFocus
+                  aria-label="Search folders"
+                />
+                {rows.length === 0 && <div className="pick-group">No matching folders</div>}
+                {rows.map(({ item, depth }) => (
+                  <div
+                    key={item.id}
+                    className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
+                    style={{ paddingLeft: 6 + depth * 14 }}
+                    onClick={() => toggle(item.id)}
+                    role="option"
+                    aria-selected={assigned.has(item.id)}
+                  >
+                    <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
+                    <span>🗀 {item.name}</span>
+                    <span className="pick-row__count">{counts[item.id] ?? 0}</span>
+                  </div>
+                ))}
+              </div>,
+              document.body,
+            )}
         </div>
       </div>
     </>
