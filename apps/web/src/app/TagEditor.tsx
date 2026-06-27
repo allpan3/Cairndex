@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   useBundleTags,
@@ -17,7 +18,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
   const { data: groups = [] } = useTagGroups()
   const { data: memberships = {} } = useTagGroupMemberships()
   const setTags = useSetBundleTags(bundleId)
-  const { open, setOpen, ref } = usePopover()
+  const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
 
@@ -56,52 +57,59 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
           <button className="add-btn" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             + Tag
           </button>
-          {open && (
-            <div className="picker__panel">
-              <input
-                className="edit picker__search"
-                placeholder="Search tags…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                autoFocus
-                aria-label="Search tags"
-              />
-              {groups.length > 0 && (
-                <div className="chips">
-                  <button
-                    className={`add-btn${groupFilter === null ? ' is-active' : ''}`}
-                    onClick={() => setGroupFilter(null)}
-                  >
-                    All
-                  </button>
-                  {groups.map((g) => (
+          {open &&
+            pos &&
+            createPortal(
+              <div
+                className="picker__panel"
+                ref={panelRef}
+                style={{ top: pos.top, right: pos.right }}
+              >
+                <input
+                  className="edit picker__search"
+                  placeholder="Search tags…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  autoFocus
+                  aria-label="Search tags"
+                />
+                {groups.length > 0 && (
+                  <div className="chips">
                     <button
-                      key={g.id}
-                      className={`add-btn${groupFilter === g.id ? ' is-active' : ''}`}
-                      onClick={() => setGroupFilter(g.id)}
+                      className={`add-btn${groupFilter === null ? ' is-active' : ''}`}
+                      onClick={() => setGroupFilter(null)}
                     >
-                      {g.name}
+                      All
                     </button>
-                  ))}
-                </div>
-              )}
-              {rows.length === 0 && <div className="pick-group">No matching tags</div>}
-              {rows.map(({ item, depth }) => (
-                <div
-                  key={item.id}
-                  className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
-                  style={{ paddingLeft: 6 + depth * 14 }}
-                  onClick={() => toggle(item.id)}
-                  role="option"
-                  aria-selected={assigned.has(item.id)}
-                >
-                  <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
-                  <span>{item.name}</span>
-                  <span className="pick-row__count">{counts[item.id] ?? 0}</span>
-                </div>
-              ))}
-            </div>
-          )}
+                    {groups.map((g) => (
+                      <button
+                        key={g.id}
+                        className={`add-btn${groupFilter === g.id ? ' is-active' : ''}`}
+                        onClick={() => setGroupFilter(g.id)}
+                      >
+                        {g.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {rows.length === 0 && <div className="pick-group">No matching tags</div>}
+                {rows.map(({ item, depth }) => (
+                  <div
+                    key={item.id}
+                    className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
+                    style={{ paddingLeft: 6 + depth * 14 }}
+                    onClick={() => toggle(item.id)}
+                    role="option"
+                    aria-selected={assigned.has(item.id)}
+                  >
+                    <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
+                    <span>{item.name}</span>
+                    <span className="pick-row__count">{counts[item.id] ?? 0}</span>
+                  </div>
+                ))}
+              </div>,
+              document.body,
+            )}
         </div>
       </div>
     </>
