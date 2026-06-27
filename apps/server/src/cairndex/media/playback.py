@@ -69,17 +69,23 @@ def assess_playability(asset_file: AssetFile) -> Playability:
     return Playability(True, "", mime)
 
 
-def resolve_video_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
-    """Path-safe absolute path of a video AssetFile, for streaming."""
+def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
+    """Path-safe absolute path of any available AssetFile, for serving."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
-    if asset_file.media_kind != MediaKind.VIDEO:
-        raise ValidationError("only video files are streamable")
     if asset_file.availability != FileAvailability.AVAILABLE:
         raise NotFoundError("file is missing on disk")
     abs_path = resolve_within_root(asset_file.storage_root.canonical_path, asset_file.relative_path)
     return Path(abs_path), asset_file
+
+
+def resolve_video_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
+    """Path-safe absolute path of a video AssetFile, for streaming."""
+    path, asset_file = resolve_file_path(session, file_id)
+    if asset_file.media_kind != MediaKind.VIDEO:
+        raise ValidationError("only video files are streamable")
+    return path, asset_file
 
 
 # --- External subtitle → WebVTT ---------------------------------------------

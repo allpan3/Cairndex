@@ -92,6 +92,33 @@ def test_stream_supports_range_requests(
     assert len(partial.content) == 10
 
 
+def test_file_content_serves_image_with_guessed_mime(
+    client: TestClient, session: Session, tmp_path: Path
+) -> None:
+    media = tmp_path / "lib"
+    media.mkdir()
+    (media / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + bytes(range(64)))
+    root = root_service.create_storage_root(session, name="lib", canonical_path=str(media))
+    bundle = bundle_service.create_bundle(session, title="Album")
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        storage_root_id=root.id,
+        relative_path="photo.png",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+
+    resp = client.get(f"/api/v1/files/{image.id}/content")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content.startswith(b"\x89PNG")
+
+    missing = client.get("/api/v1/files/does-not-exist/content")
+    assert missing.status_code == 404
+
+
 def test_playback_manifest_lists_videos_and_subtitles(
     client: TestClient, session: Session, tmp_path: Path
 ) -> None:

@@ -6,6 +6,8 @@ Streaming is delegated to Starlette's `FileResponse`, which honors HTTP Range
 (206 + Content-Range). Subtitles are served as browser-native WebVTT.
 """
 
+import mimetypes
+
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -76,6 +78,18 @@ def stream_file(file_id: str, db: DbSession) -> FileResponse:
     path, asset_file = playback.resolve_video_path(db, file_id)
     cap = playback.assess_playability(asset_file)
     return FileResponse(str(path), media_type=cap.mime_type, filename=asset_file.original_filename)
+
+
+@router.get("/files/{file_id}/content")
+def file_content(file_id: str, db: DbSession) -> FileResponse:
+    """Serve a file's original bytes (e.g. full-resolution images for the viewer).
+
+    Path-safe and read-only; FileResponse honors HTTP Range so large images and
+    media stream incrementally. The mime type is guessed from the filename.
+    """
+    path, asset_file = playback.resolve_file_path(db, file_id)
+    media_type = mimetypes.guess_type(asset_file.original_filename)[0] or "application/octet-stream"
+    return FileResponse(str(path), media_type=media_type, filename=asset_file.original_filename)
 
 
 @router.get("/subtitles/{track_id}/vtt")

@@ -44,6 +44,10 @@ storage/
 var/cache/
 var/thumbnails/
 var/media/
+# The server keeps its runtime data dir at apps/server/var (DB, caches,
+# thumbnails, seeded demo media). The patterns above are anchored to the repo
+# root, so cover that path explicitly too.
+apps/server/var/
 
 # Note: we deliberately do NOT blanket-ignore media extensions at the repo
 # root. `*.ts` would shadow TypeScript source, and globs like `*.mp4` would

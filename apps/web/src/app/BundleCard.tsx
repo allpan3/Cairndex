@@ -7,13 +7,15 @@ interface BundleCardProps {
   selected: boolean
   showMeta: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
+  onOpen: (id: string) => void
 }
 
-export function BundleCard({ item, selected, showMeta, onSelect }: BundleCardProps) {
+export function BundleCard({ item, selected, showMeta, onSelect, onOpen }: BundleCardProps) {
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
       onClick={(e) => onSelect(item.id, e)}
+      onDoubleClick={() => onOpen(item.id)}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}
