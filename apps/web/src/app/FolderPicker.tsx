@@ -118,7 +118,7 @@ export function FolderPicker({ bundleId }: { bundleId: string }) {
                       aria-label={collapsed.has(item.id) ? 'Expand' : 'Collapse'}
                       tabIndex={hasChildren ? 0 : -1}
                     >
-                      {hasChildren ? (collapsed.has(item.id) ? '▸' : '▾') : ''}
+                      {hasChildren ? (collapsed.has(item.id) ? '►' : '▼') : ''}
                     </button>
                     <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
                     <span>🗀 {item.name}</span>

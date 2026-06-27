@@ -191,7 +191,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
                         onClick={() => toggleSection(section.key)}
                         aria-expanded={!collapsed}
                       >
-                        <span className="pick-row__toggle">{collapsed ? '▸' : '▾'}</span>
+                        <span className="pick-row__toggle">{collapsed ? '►' : '▼'}</span>
                         {section.title}
                       </button>
                       {!collapsed && section.rows.map(renderRow)}
