@@ -1,8 +1,9 @@
 """Eagle import executor (ADR-0004, AGENTS.md §7).
 
 Applies a parsed library idempotently: the library's ``images/`` directory
-becomes a (reused) storage root, folders/tags/groups are created-or-reused by
-name, and each not-yet-imported, non-deleted item becomes one bundle + one
+becomes a (reused) storage root, collections/tags/groups are created-or-reused
+by name (Eagle folders import into collections), and each not-yet-imported,
+non-deleted item becomes one bundle + one
 linked file. Every item is recorded in ``import_records`` so re-running is
 safe. The Eagle library itself is never modified.
 """

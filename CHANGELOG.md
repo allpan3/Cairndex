@@ -169,6 +169,18 @@ grouped under `Unreleased` until the first tagged release.
     domain service moved from `services/folders.py` to `services/collections.py`.
     The public `/api/v1/folders*` routes and the `folders` filter field keep
     their names in this phase and are renamed to `collections` next.
+  - *API/schema/filter rename (Phase 2, breaking — early private app, no
+    aliases):* `/api/v1/folders*` → `/api/v1/collections*`, `/folders/counts` →
+    `/collections/counts`, `/bundles/{id}/folders` → `/bundles/{id}/collections`;
+    the browse `folder_id` query param → `collection_id`; the filter field
+    `folders` → `collections`. Smart Folders are now **Smart Collections**:
+    model `SmartFolder` → `SmartCollection`, routes `/smart-folders` →
+    `/smart-collections`, schemas `SmartFolder*` → `SmartCollection*` (table
+    still `smart_folders`). Schemas `Folder{Create,Update,Read}` →
+    `Collection{Create,Update,Read}`, `BundleFolders` → `BundleCollections`
+    (`folder_ids` → `collection_ids`), batch `add/remove_folder_ids` →
+    `add/remove_collection_ids`. OpenAPI and the generated frontend API types
+    were regenerated.
 - Refreshed current-state documentation after the Phase 0–8 roadmap: README,
   architecture, data model, status, and agent instructions now describe the
   implemented app instead of the old Phase 0/TBD skeleton, and clarify the

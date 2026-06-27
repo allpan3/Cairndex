@@ -24,7 +24,7 @@ class BrowseRequest(BaseModel):
     """Filtered browse — the same params as GET /browse plus an optional AST."""
 
     view: SystemView = SystemView.ALL
-    folder_id: str | None = None
+    collection_id: str | None = None
     include_descendants: bool = False
     sort: BundleSort = BundleSort.DATE_ADDED
     order: str = Field(default="desc", pattern="^(asc|desc)$")

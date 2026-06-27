@@ -1,9 +1,10 @@
-"""Smart Folder domain service: saved filter expressions (AGENTS.md §4.8).
+"""Smart Collection domain service: saved filter expressions (AGENTS.md §4.8).
 
-A Smart Folder is a named, persisted filter AST plus presentation defaults.
-The stored ``filter_json`` is validated as a ``FilterExpression`` *and* compiled
-once on write, so a structurally-valid-but-unsupported filter (unknown field,
-bad operator) is rejected at save time rather than surfacing later at browse.
+A Smart Collection (formerly "Smart Folder") is a named, persisted filter AST
+plus presentation defaults. The stored ``filter_json`` is validated as a
+``FilterExpression`` *and* compiled once on write, so a structurally-valid-but-
+unsupported filter (unknown field, bad operator) is rejected at save time rather
+than surfacing later at browse.
 """
 
 from sqlalchemy import select
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
-from cairndex.persistence.models import SmartFolder
+from cairndex.persistence.models import SmartCollection
 
 
 def _validate(session: Session, filter_expr: FilterExpression) -> None:
@@ -21,19 +22,19 @@ def _validate(session: Session, filter_expr: FilterExpression) -> None:
     compile_expression(session, filter_expr)
 
 
-def get_smart_folder(session: Session, smart_folder_id: str) -> SmartFolder:
-    sf = session.get(SmartFolder, smart_folder_id)
-    if sf is None:
-        raise NotFoundError(f"smart folder {smart_folder_id!r} not found")
-    return sf
+def get_smart_collection(session: Session, smart_collection_id: str) -> SmartCollection:
+    sc = session.get(SmartCollection, smart_collection_id)
+    if sc is None:
+        raise NotFoundError(f"smart collection {smart_collection_id!r} not found")
+    return sc
 
 
-def list_smart_folders(session: Session) -> list[SmartFolder]:
-    stmt = select(SmartFolder).order_by(SmartFolder.sort_order, SmartFolder.created_at)
+def list_smart_collections(session: Session) -> list[SmartCollection]:
+    stmt = select(SmartCollection).order_by(SmartCollection.sort_order, SmartCollection.created_at)
     return list(session.scalars(stmt))
 
 
-def create_smart_folder(
+def create_smart_collection(
     session: Session,
     *,
     name: str,
@@ -41,13 +42,13 @@ def create_smart_folder(
     default_sort: str | None = None,
     default_layout: str | None = None,
     sort_order: int = 0,
-) -> SmartFolder:
+) -> SmartCollection:
     name = name.strip()
     if not name:
         raise ValidationError("name must not be empty")
     _validate(session, filter_expr)
 
-    sf = SmartFolder(
+    sc = SmartCollection(
         name=name,
         filter_version=filter_expr.version,
         filter_json=filter_expr.model_dump(mode="json"),
@@ -55,17 +56,17 @@ def create_smart_folder(
         default_layout=default_layout,
         sort_order=sort_order,
     )
-    session.add(sf)
+    session.add(sc)
     try:
         session.flush()
     except IntegrityError as exc:
-        raise ConflictError(f"a smart folder named {name!r} already exists") from exc
-    return sf
+        raise ConflictError(f"a smart collection named {name!r} already exists") from exc
+    return sc
 
 
-def update_smart_folder(
+def update_smart_collection(
     session: Session,
-    smart_folder_id: str,
+    smart_collection_id: str,
     *,
     name: str | None = None,
     filter_expr: FilterExpression | None = None,
@@ -74,33 +75,33 @@ def update_smart_folder(
     default_layout: str | None = None,
     set_default_layout: bool = False,
     sort_order: int | None = None,
-) -> SmartFolder:
-    sf = get_smart_folder(session, smart_folder_id)
+) -> SmartCollection:
+    sc = get_smart_collection(session, smart_collection_id)
 
     if name is not None:
         cleaned = name.strip()
         if not cleaned:
             raise ValidationError("name must not be empty")
-        sf.name = cleaned
+        sc.name = cleaned
     if filter_expr is not None:
         _validate(session, filter_expr)
-        sf.filter_version = filter_expr.version
-        sf.filter_json = filter_expr.model_dump(mode="json")
+        sc.filter_version = filter_expr.version
+        sc.filter_json = filter_expr.model_dump(mode="json")
     if set_default_sort:
-        sf.default_sort = default_sort
+        sc.default_sort = default_sort
     if set_default_layout:
-        sf.default_layout = default_layout
+        sc.default_layout = default_layout
     if sort_order is not None:
-        sf.sort_order = sort_order
+        sc.sort_order = sort_order
 
     try:
         session.flush()
     except IntegrityError as exc:
-        raise ConflictError(f"a smart folder named {sf.name!r} already exists") from exc
-    return sf
+        raise ConflictError(f"a smart collection named {sc.name!r} already exists") from exc
+    return sc
 
 
-def delete_smart_folder(session: Session, smart_folder_id: str) -> None:
-    sf = get_smart_folder(session, smart_folder_id)
-    session.delete(sf)
+def delete_smart_collection(session: Session, smart_collection_id: str) -> None:
+    sc = get_smart_collection(session, smart_collection_id)
+    session.delete(sc)
     session.flush()

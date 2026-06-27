@@ -2,7 +2,7 @@
 
 Verifies the bundle is metadata-only and non-destructive: linking/unlinking
 files and deleting bundles never touches files on disk, while shared metadata,
-multi-file bundles, hierarchical tags/folders, and cover/primary selection all
+multi-file bundles, hierarchical tags/collections, and cover/primary selection all
 work.
 """
 
@@ -84,13 +84,15 @@ def test_full_bundle_acceptance_flow(client: TestClient, tmp_path: Path) -> None
     )
     assert set(tags_resp.json()["tag_ids"]) == {genre["id"], thriller["id"]}
 
-    # Multiple hierarchical folders.
-    f_root = client.post("/api/v1/folders", json={"name": "Films"}).json()
-    f_sub = client.post("/api/v1/folders", json={"name": "2026", "parent_id": f_root["id"]}).json()
-    folders_resp = client.put(
-        f"/api/v1/bundles/{bundle_id}/folders", json={"ids": [f_root["id"], f_sub["id"]]}
+    # Multiple hierarchical collections.
+    c_root = client.post("/api/v1/collections", json={"name": "Films"}).json()
+    c_sub = client.post(
+        "/api/v1/collections", json={"name": "2026", "parent_id": c_root["id"]}
+    ).json()
+    collections_resp = client.put(
+        f"/api/v1/bundles/{bundle_id}/collections", json={"ids": [c_root["id"], c_sub["id"]]}
     )
-    assert set(folders_resp.json()["folder_ids"]) == {f_root["id"], f_sub["id"]}
+    assert set(collections_resp.json()["collection_ids"]) == {c_root["id"], c_sub["id"]}
 
     # --- metadata-only guarantees ---
     # Unlink a file: row gone, physical file still present.

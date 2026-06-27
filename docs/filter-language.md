@@ -2,7 +2,7 @@
 
 > Status: **implemented (Phase 5)**. The AST, validator, and SQL compiler live
 > in `apps/server/src/cairndex/filters/` with tests in `tests/test_filters.py`
-> and `tests/test_smart_folders.py`. The desktop FilterBuilder
+> and `tests/test_smart_collections.py`. The desktop FilterBuilder
 > (`apps/web/src/app/filterModel.ts` + `FilterBuilder.tsx`) produces and
 > round-trips this exact shape. The allowlist below is the long-term target;
 > the currently implemented subset is listed under "Implemented fields".
@@ -10,7 +10,7 @@
 ## Goals
 
 - One canonical, versioned, JSON-serializable filter AST used by **both**
-  the simple top-toolbar filters and the Smart Folder editor — they must
+  the simple top-toolbar filters and the Smart Collection editor — they must
   compile to the same model and return identical results for equivalent
   expressions (`AGENTS.md` §4.8, product brief Phase 5 acceptance criteria).
 - Server-side validation against an allowlist of fields/operators. The AST
@@ -61,7 +61,7 @@ product brief's "Filter expression contract")
 | `title` / `name` | `contains`, `not_contains`, `equals`, `starts_with` |
 | `note`, `source` (file origin), `filename` | `contains`, `not_contains` |
 | `tags` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
-| `folders` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
+| `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `rating` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
 | `extension` / `container` / `codec` | `equals`, `in`, `not_in` |
 | `duration`, `size_bytes`, `file_count` | `eq`, `gt`, `gte`, `lt`, `lte`, `between` |
@@ -86,7 +86,7 @@ exactly this set.
 | `extension` | `equals`, `in`, `not_in` | string / list |
 | `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
 | `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
-| `tags`, `folders` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
+| `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
 | `has_cover`, `has_missing` | `equals` | boolean |
 
 Node shapes are disambiguated structurally (`extra="forbid"` + Pydantic's
@@ -99,8 +99,8 @@ matches everything.
 - `POST /api/v1/filters/preview` — `{ "filter": <expr> }` → `{ "count": n }`.
 - `POST /api/v1/bundles/browse` — same params as `GET /browse` plus an
   optional `filter`; this is the shared path for ad-hoc filters and Smart
-  Folders, so equivalent expressions return identical results.
-- `GET|POST|PATCH|DELETE /api/v1/smart-folders` — persisted named filters.
+  Collections, so equivalent expressions return identical results.
+- `GET|POST|PATCH|DELETE /api/v1/smart-collections` — persisted named filters.
   The stored AST is validated and compiled on write, so an unsupported filter
   is rejected at save time, never at browse.
 
@@ -113,13 +113,13 @@ matches everything.
   error — they must never reach SQL.
 - Compilation step: AST → SQLAlchemy `ColumnElement`/`Select` construction,
   not string concatenation.
-- `include_descendants` on `tags`/`folders` resolves against the hierarchy
+- `include_descendants` on `tags`/`collections` resolves against the hierarchy
   (recursive CTE or closure table — see `docs/data-model.md`) before the
   containment check runs.
 
 ## Open questions for Phase 5
 
-- Exact typed-value/autocomplete contract per field (tag/folder ID
+- Exact typed-value/autocomplete contract per field (tag/collection ID
   resolution vs. display-name resolution in the API payload).
 - Whether `version` bumps require a migration of stored `smart_folders.
   filter_json`, or whether old versions are interpreted forever

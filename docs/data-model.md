@@ -84,9 +84,12 @@ physical File View.
 Composite PK of the two FKs, both CASCADE. Collection membership is virtual and
 never moves files on disk.
 
-### `smart_folders`
+### `smart_folders` (model `SmartCollection`)
 
-`id`, `name` (unique), `filter_version`, `filter_json` (versioned JSON AST — see
+Saved **Smart Collections** (formerly "Smart Folders"). The ORM model is
+`SmartCollection` and the API is `/api/v1/smart-collections`; the table keeps the
+legacy name `smart_folders` to avoid a second data migration. `id`, `name`
+(unique), `filter_version`, `filter_json` (versioned JSON AST — see
 `docs/filter-language.md`; never SQL), `default_sort`, `default_layout`,
 `sort_order`, timestamps.
 
