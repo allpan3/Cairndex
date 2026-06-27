@@ -223,7 +223,42 @@ There is no application authentication yet. Production compose binds to
 `127.0.0.1` by default and is intended to sit behind a private network/Tailscale
 or an authenticating reverse proxy, not the public internet.
 
-## 12. Known architectural debt
+## 12. Browsing surfaces: Collection View and File View
+
+Cairndex has two distinct browsing surfaces:
+
+- **Collection View** — logical, metadata-first, bundle-based. The visible item
+  is an `AssetBundle`; Collections are hierarchical virtual groupings and a
+  bundle may belong to zero or many. Collection membership never moves files.
+  This is everything described in §5–§7.
+- **File View** — physical, filesystem-first, storage-root-scoped. The visible
+  items are real directories and files under a configured storage root. The
+  first milestone is **read-only**.
+
+The read-only File View backend is `services/file_view.py`, exposed as
+`GET /api/v1/storage-roots/{root_id}/entries?path=...`:
+
+- input is only `storage_root_id + relative_path` (omitted = the root itself) —
+  never an absolute server path; absolute paths, `..` traversal, NUL bytes, and
+  symlink escapes are rejected via `core.paths` and a per-entry real-path
+  containment check;
+- hidden entries are excluded (dotfiles/dot-directories cover `.git`, `.DS_Store`,
+  `.env`, etc., plus a small denylist of non-dot cruft like `__pycache__`,
+  `node_modules`, `Thumbs.db`);
+- directories are returned first, then files, each sorted case-insensitively;
+- each entry carries name, relative path, kind (directory/file), size, modified
+  time, extension, a cheap MIME guess, the app's media classification, a
+  `supported` flag (can the app preview/play it natively — reuses
+  `scanning.media_types.classify`), and a cheap `linked`/`bundle_id` hint when
+  the exact path is already linked into a bundle;
+- it never moves, renames, deletes, or rewrites anything.
+
+No write endpoints exist yet. The module funnels all resolution through the
+storage-root allowlist so later write-mode operations (open-with-default-app,
+reveal, guarded rename/move/delete) can be added without a rewrite — the
+future host-integration design is recorded in ADR-0006.
+
+## 13. Known architectural debt
 
 These are the most important architecture follow-ups after the Phase 0–8 MVP
 foundation:

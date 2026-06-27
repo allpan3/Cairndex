@@ -19,10 +19,12 @@ Done so far on this branch:
 - Phase 2 — public API/schema/filter rename to `collections`; Smart Folders →
   Smart Collections; OpenAPI + frontend types regenerated.
 - Phase 3 — frontend rename to Collections / Smart Collections.
+- Phase 4 — read-only File View backend
+  (`GET /api/v1/storage-roots/{root_id}/entries`, `services/file_view.py`).
 
-Remaining: read-only File View backend (Phase 4) + UI (Phase 5), scanner
-moved-file repair (Phase 6), File View host-integration planning (Phase 7),
-final audit (Phase 8).
+Remaining: read-only File View UI (Phase 5), scanner moved-file repair
+(Phase 6), File View host-integration planning (Phase 7), final audit
+(Phase 8).
 
 ## Previously merged
 
