@@ -13,6 +13,7 @@ function mockApi(overrides: Record<string, unknown> = {}) {
     '/api/v1/bundles/counts': { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 },
     '/api/v1/collections/counts': { counts: {} },
     '/api/v1/collections': { items: [], next_cursor: null },
+    '/api/v1/storage-roots': { items: [], next_cursor: null },
     browse: { items: [], total: 0, offset: 0, limit: 100 },
     ...overrides,
   }

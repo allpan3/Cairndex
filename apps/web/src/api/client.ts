@@ -9,6 +9,9 @@ export type BundleSummary = components['schemas']['BundleSummary']
 export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
 export type CollectionRead = components['schemas']['CollectionRead']
+export type StorageRootRead = components['schemas']['StorageRootRead']
+export type FileViewEntry = components['schemas']['FileViewEntryRead']
+export type FileViewListing = components['schemas']['FileViewListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type TagRead = components['schemas']['TagRead']
@@ -173,6 +176,19 @@ export async function fetchAllCollections(signal?: AbortSignal): Promise<Collect
     cursor = page.next_cursor
   } while (cursor)
   return collections
+}
+
+// --- File View (read-only filesystem browsing) -------------------------------
+export const fetchStorageRoots = (signal?: AbortSignal): Promise<StorageRootRead[]> =>
+  fetchAllPaged<StorageRootRead>('/api/v1/storage-roots', signal)
+
+export function fetchFileViewEntries(
+  rootId: string,
+  path: string | null,
+  signal?: AbortSignal,
+): Promise<FileViewListing> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : ''
+  return getJson<FileViewListing>(`/api/v1/storage-roots/${rootId}/entries${q}`, signal)
 }
 
 export function fetchBundle(id: string, signal?: AbortSignal): Promise<BundleRead> {
