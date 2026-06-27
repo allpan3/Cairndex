@@ -258,11 +258,26 @@ The read-only File View backend is `services/file_view.py`, exposed as
 - it never moves, renames, deletes, or rewrites anything.
 
 On the frontend, a sidebar mode toggle ("Collections" / "Files") switches the
-center pane between the virtualized bundle browser and `FileView` — a storage-
-root selector + breadcrumbs + a directory/file table with openable, unsupported,
-and linked badges, plus loading/empty/error states. File View selection is kept
-entirely separate from Collection/bundle selection, and the right pane shows
-`FileInspector` rather than the bundle inspector.
+center pane between the virtualized bundle browser and `FileView` — a library
+selector + breadcrumbs + a directory/file table with `openable`, `unsupported`,
+and `linked` badges, plus loading/empty/error states (including a friendly "this
+library is currently unavailable" state when a root's directory is offline or
+moved). File View selection is kept entirely separate from Collection/bundle
+selection, and the right pane shows `FileInspector` (path/size/mtime/MIME/
+openable/linked facts) — not the bundle inspector — so a filesystem entry is
+never mistaken for a bundle. There are no move/rename/delete controls in this
+milestone.
+
+Storage roots are presented in the UI as **Libraries** (`LibraryManager`): add
+one by absolute server path with directory autocomplete and an optional
+"create if missing" toggle, and see each library's available/unavailable status.
+Autocomplete is backed by `GET /api/v1/storage-roots/path-suggestions`, which
+lists *directories only* (capped, dotfiles skipped) that the server process can
+see — host filesystem, or only up to the image root inside a container. Because
+that lists directories outside any storage root, it is **owner-configuration
+tooling**, consistent with the single-owner, no-public-internet stance (§11); it
+never returns file contents and creating a library directory is the only write
+the otherwise metadata-only app performs.
 
 No write endpoints exist yet. The module funnels all resolution through the
 storage-root allowlist so later write-mode operations can share path validation.

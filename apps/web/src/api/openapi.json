@@ -1899,6 +1899,23 @@
         "title": "Page[TagRead]",
         "type": "object"
       },
+      "PathSuggestions": {
+        "description": "Directory autocompletions for the add-library form.",
+        "properties": {
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "PathSuggestions",
+        "type": "object"
+      },
       "PlayableVideo": {
         "properties": {
           "display_title": {
@@ -2229,6 +2246,11 @@
             "minLength": 1,
             "title": "Canonical Path",
             "type": "string"
+          },
+          "create_if_missing": {
+            "default": false,
+            "title": "Create If Missing",
+            "type": "boolean"
           },
           "name": {
             "maxLength": 255,
@@ -4657,6 +4679,50 @@
           }
         },
         "summary": "Create Storage Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/path-suggestions": {
+      "get": {
+        "description": "Directory autocompletions for the add-library form (owner setup only).",
+        "operationId": "path_suggestions_api_v1_storage_roots_path_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathSuggestions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Path Suggestions",
         "tags": [
           "storage-roots"
         ]

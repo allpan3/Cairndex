@@ -42,11 +42,18 @@ def create_storage_root(
     name: str,
     canonical_path: str,
     read_only: bool = True,
+    create_if_missing: bool = False,
 ) -> StorageRoot:
     name = name.strip()
     if not name:
         raise ValidationError("name must not be empty")
     normalized_path = _normalize_canonical_path(canonical_path)
+
+    if create_if_missing and not Path(normalized_path).exists():
+        try:
+            Path(normalized_path).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ValidationError(f"could not create directory {normalized_path!r}: {exc}") from exc
 
     root = StorageRoot(
         name=name,
@@ -60,6 +67,51 @@ def create_storage_root(
     except IntegrityError as exc:
         raise ConflictError(f"a storage root named {name!r} already exists") from exc
     return root
+
+
+_MAX_SUGGESTIONS = 50
+
+
+def suggest_paths(prefix: str) -> list[str]:
+    """Directory autocompletions for an absolute path prefix (owner setup only).
+
+    Lists real directories the server process can see — the host filesystem, or
+    only up to the image root inside a container. This intentionally lists server
+    directories *outside* any storage root, so it is owner-configuration tooling,
+    not a general browse API: it returns directories only, never file contents,
+    and is capped. An empty/relative prefix lists the filesystem root.
+    """
+    if "\x00" in prefix:
+        raise ValidationError("null byte in path")
+
+    raw = prefix.strip()
+    if not raw or not raw.startswith("/"):
+        base, partial = Path("/"), ""
+    elif raw.endswith("/"):
+        base, partial = Path(raw), ""
+    else:
+        p = Path(raw)
+        base, partial = p.parent, p.name
+
+    try:
+        children = sorted(
+            entry
+            for entry in base.iterdir()
+            if not entry.name.startswith(".") and entry.name.lower().startswith(partial.lower())
+        )
+    except OSError:
+        return []  # unreadable/nonexistent base — nothing to suggest
+
+    out: list[str] = []
+    for entry in children:
+        try:
+            if entry.is_dir():
+                out.append(entry.as_posix())
+        except OSError:
+            continue  # skip entries we can't stat (e.g. permission denied)
+        if len(out) >= _MAX_SUGGESTIONS:
+            break
+    return out
 
 
 def get_storage_root(session: Session, root_id: str) -> StorageRoot:

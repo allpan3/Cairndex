@@ -10,6 +10,7 @@ export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
 export type CollectionRead = components['schemas']['CollectionRead']
 export type StorageRootRead = components['schemas']['StorageRootRead']
+export type StorageRootCreate = components['schemas']['StorageRootCreate']
 export type FileViewEntry = components['schemas']['FileViewEntryRead']
 export type FileViewListing = components['schemas']['FileViewListingRead']
 export type FileRead = components['schemas']['FileRead']
@@ -39,7 +40,16 @@ export type SortOrder = 'asc' | 'desc'
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal })
   if (!response.ok) {
-    throw new Error(`Request failed (HTTP ${response.status}) for ${url}`)
+    // Surface the server's structured `{message}` when present so callers can
+    // show a friendly reason (e.g. "storage root is not currently available")
+    // instead of a bare HTTP status.
+    let detail = ''
+    try {
+      detail = ((await response.json()) as { message?: string }).message ?? ''
+    } catch {
+      /* non-JSON body */
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status}) for ${url}`)
   }
   return (await response.json()) as T
 }
@@ -178,9 +188,24 @@ export async function fetchAllCollections(signal?: AbortSignal): Promise<Collect
   return collections
 }
 
-// --- File View (read-only filesystem browsing) -------------------------------
+// --- Libraries (storage roots) -----------------------------------------------
 export const fetchStorageRoots = (signal?: AbortSignal): Promise<StorageRootRead[]> =>
   fetchAllPaged<StorageRootRead>('/api/v1/storage-roots', signal)
+
+export const createStorageRoot = (payload: StorageRootCreate) =>
+  send<StorageRootRead>('/api/v1/storage-roots', 'POST', payload)
+
+export const deleteStorageRoot = (id: string) => send<void>(`/api/v1/storage-roots/${id}`, 'DELETE')
+
+export function fetchPathSuggestions(path: string, signal?: AbortSignal): Promise<string[]> {
+  const q = `?path=${encodeURIComponent(path)}`
+  return getJson<{ suggestions: string[] }>(
+    `/api/v1/storage-roots/path-suggestions${q}`,
+    signal,
+  ).then((r) => r.suggestions)
+}
+
+// --- File View (read-only filesystem browsing) -------------------------------
 
 export function fetchFileViewEntries(
   rootId: string,
