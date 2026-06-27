@@ -1,9 +1,13 @@
 """SQLAlchemy ORM models for the Cairndex core domain (ADR-0002).
 
 Covers storage roots, asset bundles, asset files, tags, tag groups (+
-membership), folders, and smart folders, plus the bundle↔tag and bundle↔folder
-join tables (Phase 1); the jobs table (Phase 2); and subtitle tracks
-(Phase 6, ADR-0003).
+membership), collections, and smart collections, plus the bundle↔tag and
+bundle↔collection join tables (Phase 1); the jobs table (Phase 2); and subtitle
+tracks (Phase 6, ADR-0003).
+
+Note: the logical grouping concept is a **Collection** (formerly "folder"). The
+physical filesystem File View is a separate, storage-root-scoped surface and is
+not modeled here.
 """
 
 from __future__ import annotations
@@ -55,8 +59,8 @@ asset_bundle_tags = Table(
     ),
 )
 
-asset_bundle_folders = Table(
-    "asset_bundle_folders",
+asset_bundle_collections = Table(
+    "asset_bundle_collections",
     Base.metadata,
     Column(
         "bundle_id",
@@ -65,9 +69,9 @@ asset_bundle_folders = Table(
         primary_key=True,
     ),
     Column(
-        "folder_id",
+        "collection_id",
         String(26),
-        ForeignKey("folders.id", ondelete="CASCADE"),
+        ForeignKey("collections.id", ondelete="CASCADE"),
         primary_key=True,
     ),
 )
@@ -158,7 +162,7 @@ class AssetBundle(Base):
         foreign_keys=[primary_file_id], post_update=True
     )
     tags: Mapped[list[Tag]] = relationship(secondary=asset_bundle_tags)
-    folders: Mapped[list[Folder]] = relationship(secondary=asset_bundle_folders)
+    collections: Mapped[list[Collection]] = relationship(secondary=asset_bundle_collections)
 
     __table_args__ = (CheckConstraint("rating >= 0 AND rating <= 5", name="rating_range"),)
 
@@ -245,12 +249,18 @@ class TagGroup(Base):
     tags: Mapped[list[Tag]] = relationship(secondary=tag_group_memberships, back_populates="groups")
 
 
-class Folder(Base):
-    __tablename__ = "folders"
+class Collection(Base):
+    """A hierarchical virtual grouping of bundles (AGENTS.md §4.7).
+
+    Formerly "folder". Membership is many-to-many and never moves files on disk;
+    this is purely logical and independent of the physical File View.
+    """
+
+    __tablename__ = "collections"
 
     id: Mapped[UlidPk]
     parent_id: Mapped[str | None] = mapped_column(
-        String(26), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True
+        String(26), ForeignKey("collections.id", ondelete="SET NULL"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(255))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -258,13 +268,17 @@ class Folder(Base):
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
 
-    parent: Mapped[Folder | None] = relationship(back_populates="children", remote_side="Folder.id")
-    children: Mapped[list[Folder]] = relationship(back_populates="parent")
+    parent: Mapped[Collection | None] = relationship(
+        back_populates="children", remote_side="Collection.id"
+    )
+    children: Mapped[list[Collection]] = relationship(back_populates="parent")
 
     __table_args__ = (UniqueConstraint("parent_id", "name", name="parent_name"),)
 
 
 class SmartFolder(Base):
+    # Renamed to SmartCollection in Phase 2 along with its service/API; the
+    # table name stays ``smart_folders``.
     __tablename__ = "smart_folders"
 
     id: Mapped[UlidPk]

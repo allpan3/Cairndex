@@ -25,7 +25,7 @@ from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
-    Folder,
+    Collection,
     StorageRoot,
     Tag,
 )
@@ -204,7 +204,7 @@ def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     session.flush()
 
 
-# --- Tag / folder assignment -------------------------------------------------
+# --- Tag / collection assignment ---------------------------------------------
 def set_bundle_tags(session: Session, bundle_id: str, tag_ids: list[str]) -> AssetBundle:
     bundle = get_bundle(session, bundle_id)
     bundle.tags = _resolve_all(session, Tag, tag_ids, label="tag")
@@ -213,9 +213,11 @@ def set_bundle_tags(session: Session, bundle_id: str, tag_ids: list[str]) -> Ass
     return bundle
 
 
-def set_bundle_folders(session: Session, bundle_id: str, folder_ids: list[str]) -> AssetBundle:
+def set_bundle_collections(
+    session: Session, bundle_id: str, collection_ids: list[str]
+) -> AssetBundle:
     bundle = get_bundle(session, bundle_id)
-    bundle.folders = _resolve_all(session, Folder, folder_ids, label="folder")
+    bundle.collections = _resolve_all(session, Collection, collection_ids, label="collection")
     bundle.updated_at = utcnow()
     session.flush()
     return bundle
@@ -227,27 +229,29 @@ def batch_update_bundles(
     bundle_ids: list[str],
     add_tag_ids: list[str] | None = None,
     remove_tag_ids: list[str] | None = None,
-    add_folder_ids: list[str] | None = None,
-    remove_folder_ids: list[str] | None = None,
+    add_collection_ids: list[str] | None = None,
+    remove_collection_ids: list[str] | None = None,
 ) -> int:
-    """Add/remove tags and folders across many bundles. Returns the count.
+    """Add/remove tags and collections across many bundles. Returns the count.
 
     Adds and removes are applied as set operations per bundle, so the call is
     idempotent (re-adding an existing tag is a no-op)."""
     bundles = [get_bundle(session, bundle_id) for bundle_id in bundle_ids]
     add_tags = _resolve_all(session, Tag, add_tag_ids or [], label="tag")
-    add_folders = _resolve_all(session, Folder, add_folder_ids or [], label="folder")
+    add_collections = _resolve_all(
+        session, Collection, add_collection_ids or [], label="collection"
+    )
     remove_tag_set = set(remove_tag_ids or [])
-    remove_folder_set = set(remove_folder_ids or [])
+    remove_collection_set = set(remove_collection_ids or [])
 
     for bundle in bundles:
         tags = {t.id: t for t in bundle.tags if t.id not in remove_tag_set}
         tags.update({t.id: t for t in add_tags})
         bundle.tags = list(tags.values())
 
-        folders = {f.id: f for f in bundle.folders if f.id not in remove_folder_set}
-        folders.update({f.id: f for f in add_folders})
-        bundle.folders = list(folders.values())
+        collections = {c.id: c for c in bundle.collections if c.id not in remove_collection_set}
+        collections.update({c.id: c for c in add_collections})
+        bundle.collections = list(collections.values())
 
         bundle.updated_at = utcnow()
 
@@ -270,7 +274,7 @@ def _validate_member_file(session: Session, bundle: AssetBundle, file_id: str | 
     return file_id
 
 
-def _resolve_all[M: (Tag, Folder)](
+def _resolve_all[M: (Tag, Collection)](
     session: Session, model: type[M], ids: list[str], *, label: str
 ) -> list[M]:
     unique_ids = list(dict.fromkeys(ids))

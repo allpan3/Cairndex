@@ -2,7 +2,7 @@
 
 Powers the desktop library browser. Returns card-ready ``BundleSummary`` rows
 (cover/primary-derived dimensions, duration, size, file count, missing state)
-with server-side filtering by system view or folder, sorting with a stable
+with server-side filtering by system view or collection, sorting with a stable
 tie-breaker, and offset pagination + a total for virtualization. Counts feed
 the sidebar.
 
@@ -25,18 +25,18 @@ from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
-    Folder,
+    Collection,
     Tag,
-    asset_bundle_folders,
+    asset_bundle_collections,
     asset_bundle_tags,
 )
-from cairndex.services.folders import folder_descendant_ids
+from cairndex.services.collections import collection_descendant_ids
 
 
 class SystemView(StrEnum):
     ALL = "all"
     RECENT = "recent"  # all, default-sorted by date added
-    UNCATEGORIZED = "uncategorized"  # in no folder
+    UNCATEGORIZED = "uncategorized"  # in no collection
     UNTAGGED = "untagged"  # has no tags
     MISSING = "missing"  # has at least one missing file
 
@@ -100,20 +100,20 @@ def _apply_view(
 ) -> Select[Any]:
     if folder_id is not None:
         ids = (
-            folder_descendant_ids(session, folder_id, include_self=True)
+            collection_descendant_ids(session, folder_id, include_self=True)
             if include_descendants
             else [folder_id]
         )
         stmt = stmt.where(
             exists().where(
-                (asset_bundle_folders.c.bundle_id == AssetBundle.id)
-                & asset_bundle_folders.c.folder_id.in_(ids)
+                (asset_bundle_collections.c.bundle_id == AssetBundle.id)
+                & asset_bundle_collections.c.collection_id.in_(ids)
             )
         )
         return stmt
 
     if view is SystemView.UNCATEGORIZED:
-        stmt = stmt.where(~exists().where(asset_bundle_folders.c.bundle_id == AssetBundle.id))
+        stmt = stmt.where(~exists().where(asset_bundle_collections.c.bundle_id == AssetBundle.id))
     elif view is SystemView.UNTAGGED:
         stmt = stmt.where(~exists().where(asset_bundle_tags.c.bundle_id == AssetBundle.id))
     elif view is SystemView.MISSING:
@@ -223,7 +223,7 @@ def view_counts(session: Session) -> dict[str, int]:
         session.scalar(
             select(func.count())
             .select_from(AssetBundle)
-            .where(~exists().where(asset_bundle_folders.c.bundle_id == AssetBundle.id))
+            .where(~exists().where(asset_bundle_collections.c.bundle_id == AssetBundle.id))
         )
         or 0
     )
@@ -257,17 +257,17 @@ def view_counts(session: Session) -> dict[str, int]:
     }
 
 
-def folder_counts(session: Session) -> dict[str, int]:
-    """Direct (non-recursive) bundle count per folder id, for the sidebar tree."""
+def collection_counts(session: Session) -> dict[str, int]:
+    """Direct (non-recursive) bundle count per collection id, for the sidebar."""
     rows = session.execute(
-        select(asset_bundle_folders.c.folder_id, func.count()).group_by(
-            asset_bundle_folders.c.folder_id
+        select(asset_bundle_collections.c.collection_id, func.count()).group_by(
+            asset_bundle_collections.c.collection_id
         )
     ).all()
-    counts = {folder_id: count for folder_id, count in rows}
-    # Ensure every folder appears (zero if empty).
-    for (folder_id,) in session.execute(select(Folder.id)).all():
-        counts.setdefault(folder_id, 0)
+    counts = {collection_id: count for collection_id, count in rows}
+    # Ensure every collection appears (zero if empty).
+    for (collection_id,) in session.execute(select(Collection.id)).all():
+        counts.setdefault(collection_id, 0)
     return counts
 
 

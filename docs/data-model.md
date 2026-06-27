@@ -1,6 +1,7 @@
 # Data model
 
-> Status: current through Phase 8. The core schema is implemented in
+> Status: current through Phase 8, plus the Collections/File View refactor
+> (logical "folders" are now **collections**). The core schema is implemented in
 > `apps/server/src/cairndex/persistence/models.py` and evolved by Alembic
 > migrations. Decisions are recorded in ADR-0002 (core schema/identity),
 > ADR-0003 (subtitle tracks), and ADR-0004 (Eagle import). `AGENTS.md` remains
@@ -17,7 +18,7 @@
 - **Enums**: stored as strings with CHECK-like validation through
   `Enum(..., native_enum=False)`, defined in `domain/enums.py`.
 - **Hierarchy**: adjacency list (`parent_id` self-FK) + recursive CTE for
-  descendants (tags and folders).
+  descendants (tags and collections).
 - **FK enforcement**: `PRAGMA foreign_keys=ON` per SQLite connection; WAL mode
   is enabled for the file database.
 
@@ -70,15 +71,18 @@ timestamps. **Unique** `(parent_id, name)`.
 `group_id` + `tag_id` (composite PK, both CASCADE), `sort_order`. A group is
 **not** a hierarchy parent (ADR-0002 / `AGENTS.md` §4.6).
 
-### `folders`
+### `collections`
 
-`id`, `parent_id` (self-FK, `SET NULL`), `name`, `sort_order`, timestamps.
-**Unique** `(parent_id, name)`.
+Hierarchical virtual groupings of bundles (formerly "folders" — renamed in the
+Collections/File View refactor; the table was `folders`). `id`, `parent_id`
+(self-FK, `SET NULL`), `name`, `sort_order`, timestamps. **Unique**
+`(parent_id, name)`. Collections are purely logical and independent of the
+physical File View.
 
-### `asset_bundle_tags` / `asset_bundle_folders` (M:N)
+### `asset_bundle_tags` / `asset_bundle_collections` (M:N)
 
-Composite PK of the two FKs, both CASCADE. Folder membership is virtual and never
-moves files on disk.
+Composite PK of the two FKs, both CASCADE. Collection membership is virtual and
+never moves files on disk.
 
 ### `smart_folders`
 
@@ -132,8 +136,8 @@ Generic columns keep it reusable for future importers.
 ## Still open
 
 - Index plan beyond PK/unique constraints, especially for server-side text
-  search/SQLite FTS5, browse-summary aggregation, tag/folder membership queries,
-  and larger synthetic-library benchmarks.
-- Tag/folder delete semantics at the service layer (DB default is `SET NULL` on
+  search/SQLite FTS5, browse-summary aggregation, tag/collection membership
+  queries, and larger synthetic-library benchmarks.
+- Tag/collection delete semantics at the service layer (DB default is `SET NULL` on
   the parent FK → children float to root; the service may later offer
   reparent/cascade choices).
