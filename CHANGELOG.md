@@ -21,6 +21,14 @@ grouped under `Unreleased` until the first tagged release.
   media classification, a `supported` (natively previewable) flag, and a cheap
   `linked`/`bundle_id` hint. Strictly read-only — no move/rename/delete. OpenAPI
   and frontend types regenerated.
+- **Read-only File View UI (Phase 5).** A sidebar mode toggle switches the
+  center pane between the bundle-first **Collection View** and a new **File
+  View** (`FileView`): a storage-root selector, breadcrumb navigation,
+  directories-first listing, and `openable`/`unsupported`/`linked` badges, with
+  loading/empty/error states. Selecting a file shows its path/size/MIME/openable
+  details in a dedicated `FileInspector` (not the bundle inspector); File View
+  selection never collides with Collection/bundle selection. No move/rename/
+  delete controls. Covered by a Playwright e2e (`e2e/file-view.spec.ts`).
 
 - **In-bundle view — open a bundle to browse and inspect its files.**
   - Double-clicking a bundle (grid card or list row) opens an inline **album

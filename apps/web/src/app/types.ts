@@ -2,10 +2,19 @@ import type { BundleSort, SortOrder, SystemView } from '../api/client'
 
 export type LayoutMode = 'grid' | 'justified' | 'list'
 
+// The two browsing surfaces: logical (bundle-first) vs. physical (filesystem).
+export type AppMode = 'collection' | 'file'
+
 export interface Selection {
   view: SystemView
   collectionId: string | null
   smartCollectionId?: string | null
+}
+
+// File View navigation: which storage root + relative directory is open.
+export interface FileLocation {
+  rootId: string | null
+  path: string // '' = the storage root itself
 }
 
 export interface BrowsePrefs {

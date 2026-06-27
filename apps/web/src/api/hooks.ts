@@ -18,7 +18,9 @@ import {
   fetchBundleCollections,
   fetchBundleTags,
   fetchCollectionCounts,
+  fetchFileViewEntries,
   fetchPlaybackManifest,
+  fetchStorageRoots,
   fetchSmartCollections,
   previewEagleImport,
   runEagleImport,
@@ -121,6 +123,23 @@ export function useSmartCollectionMutations() {
       onSuccess: invalidate,
     }),
   }
+}
+
+// --- File View (read-only filesystem browsing) -------------------------------
+export function useStorageRoots() {
+  return useQuery({
+    queryKey: ['storage-roots'],
+    queryFn: ({ signal }) => fetchStorageRoots(signal),
+  })
+}
+
+/** List directory entries for a storage root + relative path (null = root). */
+export function useFileView(rootId: string | null, path: string | null) {
+  return useQuery({
+    queryKey: ['file-view', rootId, path ?? ''],
+    queryFn: ({ signal }) => fetchFileViewEntries(rootId as string, path, signal),
+    enabled: rootId !== null,
+  })
 }
 
 export function useCollections() {

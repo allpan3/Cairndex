@@ -69,7 +69,7 @@ src/
               TanStack Query hooks, including an infinite browse query
   app/        shell pieces: Sidebar, Toolbar, Browser, Inspector, BundleCard,
               FilterBuilder, CollectionPicker, SmartCollectionEditor, Player,
-              EagleImport, layouts
+              EagleImport, FileView, FileInspector, layouts
   state/      usePersistentState (localStorage for layout/zoom/pane widths)
   lib/        formatting helpers
 ```
@@ -252,6 +252,15 @@ The read-only File View backend is `services/file_view.py`, exposed as
   `scanning.media_types.classify`), and a cheap `linked`/`bundle_id` hint when
   the exact path is already linked into a bundle;
 - it never moves, renames, deletes, or rewrites anything.
+
+On the frontend, a sidebar mode toggle ("Collections" / "Files") switches the
+center pane between the virtualized bundle browser and `FileView` — a storage-
+root selector + breadcrumbs + a directory/file table with `openable`,
+`unsupported`, and `linked` badges, plus loading/empty/error states. File View
+selection is kept entirely separate from Collection/bundle selection, and the
+right pane shows `FileInspector` (path/size/mtime/MIME/openable/linked facts) —
+not the bundle inspector — so a filesystem entry is never mistaken for a bundle.
+There are no move/rename/delete controls in this milestone.
 
 No write endpoints exist yet. The module funnels all resolution through the
 storage-root allowlist so later write-mode operations (open-with-default-app,

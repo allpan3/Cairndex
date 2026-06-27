@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 
 import type { CollectionRead, SmartCollectionRead, ViewCounts } from '../api/client'
-import { SYSTEM_VIEWS, type Selection } from './types'
+import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 
 interface SidebarProps {
+  mode: AppMode
+  onMode: (mode: AppMode) => void
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -36,6 +38,8 @@ function buildTree(collections: CollectionRead[]): TreeNode[] {
 }
 
 export function Sidebar({
+  mode,
+  onMode,
   selection,
   onSelect,
   counts,
@@ -59,6 +63,25 @@ export function Sidebar({
           title="Import from Eagle"
         >
           ⇪
+        </button>
+      </div>
+
+      <div className="sidebar__modes" role="tablist" aria-label="Browsing surface">
+        <button
+          role="tab"
+          aria-selected={mode === 'collection'}
+          className={`mode-tab${mode === 'collection' ? ' mode-tab--active' : ''}`}
+          onClick={() => onMode('collection')}
+        >
+          Collections
+        </button>
+        <button
+          role="tab"
+          aria-selected={mode === 'file'}
+          className={`mode-tab${mode === 'file' ? ' mode-tab--active' : ''}`}
+          onClick={() => onMode('file')}
+        >
+          Files
         </button>
       </div>
 

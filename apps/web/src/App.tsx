@@ -1,23 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { SmartCollectionRead } from './api/client'
+import type { FileViewEntry, SmartCollectionRead } from './api/client'
 import {
   useBrowse,
   useCollectionCounts,
   useCollections,
   useSmartCollections,
+  useStorageRoots,
   useViewCounts,
 } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { EagleImport } from './app/EagleImport'
+import { FileInspector } from './app/FileInspector'
+import { FileView } from './app/FileView'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
-import { DEFAULT_PREFS, SYSTEM_VIEWS, type BrowsePrefs, type Selection } from './app/types'
+import {
+  DEFAULT_PREFS,
+  SYSTEM_VIEWS,
+  type AppMode,
+  type BrowsePrefs,
+  type FileLocation,
+  type Selection,
+} from './app/types'
 import { usePersistentState } from './state/usePersistentState'
 
 interface EditorState {
@@ -79,10 +89,28 @@ export default function App() {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [importing, setImporting] = useState(false)
 
+  // File View state is kept separate from Collection/bundle selection so the
+  // two surfaces never collide.
+  const [mode, setMode] = useState<AppMode>('collection')
+  const [fileLoc, setFileLoc] = useState<FileLocation>({ rootId: null, path: '' })
+  const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+
   const counts = useViewCounts()
   const collections = useCollections()
   const collectionCounts = useCollectionCounts()
   const smartCollections = useSmartCollections()
+  const storageRoots = useStorageRoots()
+
+  const enterMode = useCallback(
+    (next: AppMode) => {
+      setMode(next)
+      if (next === 'file' && fileLoc.rootId === null) {
+        const first = storageRoots.data?.[0]?.id ?? null
+        setFileLoc({ rootId: first, path: '' })
+      }
+    },
+    [fileLoc.rootId, storageRoots.data],
+  )
 
   // A selected Smart Collection drives browsing through its saved filter AST,
   // which compiles via the exact path POST /bundles/browse uses for ad-hoc
@@ -190,8 +218,11 @@ export default function App() {
       }
     >
       <Sidebar
+        mode={mode}
+        onMode={enterMode}
         selection={selection}
         onSelect={(s) => {
+          setMode('collection')
           setSelection(s)
           clearSelection()
           setOpenBundleId(null)
@@ -206,39 +237,58 @@ export default function App() {
       />
 
       <div className="center">
-        <Toolbar
-          title={title}
-          total={total}
-          search={search}
-          onSearch={setSearch}
-          prefs={prefs}
-          onPrefs={setPrefs}
-        />
-        {selectedIds.size >= 2 && !openBundleId && (
-          <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
-        )}
-        {openBundleId ? (
-          <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
-        ) : (
-          <Browser
-            items={filtered}
-            total={total}
-            layout={prefs.layout}
-            zoom={prefs.zoom}
-            selectedIds={selectedIds}
-            onSelect={select}
-            onOpen={open}
-            isLoading={browse.isLoading}
-            isError={browse.isError}
-            error={browse.error}
-            hasNextPage={browse.hasNextPage}
-            isFetchingNextPage={browse.isFetchingNextPage}
-            fetchNextPage={browse.fetchNextPage}
+        {mode === 'file' ? (
+          <FileView
+            roots={storageRoots.data ?? []}
+            location={fileLoc}
+            selectedPath={fileEntry?.relative_path ?? null}
+            onChangeRoot={(rootId) => {
+              setFileLoc({ rootId, path: '' })
+              setFileEntry(null)
+            }}
+            onNavigate={(path) => {
+              setFileLoc((loc) => ({ ...loc, path }))
+              setFileEntry(null)
+            }}
+            onSelectEntry={setFileEntry}
           />
+        ) : (
+          <>
+            <Toolbar
+              title={title}
+              total={total}
+              search={search}
+              onSearch={setSearch}
+              prefs={prefs}
+              onPrefs={setPrefs}
+            />
+            {selectedIds.size >= 2 && !openBundleId && (
+              <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
+            )}
+            {openBundleId ? (
+              <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
+            ) : (
+              <Browser
+                items={filtered}
+                total={total}
+                layout={prefs.layout}
+                zoom={prefs.zoom}
+                selectedIds={selectedIds}
+                onSelect={select}
+                onOpen={open}
+                isLoading={browse.isLoading}
+                isError={browse.isError}
+                error={browse.error}
+                hasNextPage={browse.hasNextPage}
+                isFetchingNextPage={browse.isFetchingNextPage}
+                fetchNextPage={browse.fetchNextPage}
+              />
+            )}
+          </>
         )}
       </div>
 
-      <Inspector bundleId={activeId} />
+      {mode === 'file' ? <FileInspector entry={fileEntry} /> : <Inspector bundleId={activeId} />}
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
