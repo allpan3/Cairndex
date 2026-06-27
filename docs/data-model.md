@@ -53,7 +53,9 @@ deletion removes file rows, never the physical file), `storage_root_id` (FK →
 a URL, `magnet:`, `ed2k:`, etc.), `role` (`FileRole`), `media_kind`
 (`MediaKind`), `mime_type`, `sequence`,
 `size_bytes`/`mtime`/`quick_fingerprint`/`full_hash`/`tech_metadata` (nullable,
-filled by scan/probe jobs where available), `availability`
+filled by scan/probe jobs where available),
+`filesystem_device`/`filesystem_inode`/`identity_available` (filesystem identity
+captured by the scanner for moved-file repair — ADR-0006), `availability`
 (`available`/`missing`), `created_at`, `updated_at`. **Unique**
 `(storage_root_id, relative_path)` — one physical file is linked at most once.
 
@@ -133,8 +135,10 @@ Generic columns keep it reusable for future importers.
 - **Bundle-level links/sources** — current MVP stores source at the file level;
   add a bundle-level column or link table only if the product needs logical
   asset pages independent of physical-file origins.
-- **Moved-file repair state** — missing rows exist now, but candidate matching,
-  repair suggestions, and full-hash verification are future workflow work.
+- **Moved-file repair** — implemented (ADR-0006): same-volume moves are repaired
+  in place during scans using filesystem identity + quick fingerprint, preserving
+  `AssetFile.id`. Still future: cross-filesystem repair, candidate suggestions
+  for ambiguous cases, and optional full-hash verification.
 
 ## Still open
 

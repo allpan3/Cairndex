@@ -23,9 +23,11 @@ Done so far on this branch:
   (`GET /api/v1/storage-roots/{root_id}/entries`, `services/file_view.py`).
 - Phase 5 — read-only File View UI (sidebar mode toggle, `FileView` +
   `FileInspector`); Playwright `e2e/file-view.spec.ts`.
+- Phase 6 — scanner identity + moved-file repair (ADR-0006); same-volume moves
+  preserve `AssetFile.id` and bundle metadata.
 
-Remaining: scanner moved-file repair (Phase 6), File View host-integration
-planning (Phase 7), final audit (Phase 8).
+Remaining: File View host-integration planning (Phase 7), final audit
+(Phase 8).
 
 ## Previously merged
 

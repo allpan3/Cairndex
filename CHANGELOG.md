@@ -29,6 +29,18 @@ grouped under `Unreleased` until the first tagged release.
   details in a dedicated `FileInspector` (not the bundle inspector); File View
   selection never collides with Collection/bundle selection. No move/rename/
   delete controls. Covered by a Playwright e2e (`e2e/file-view.spec.ts`).
+- **Moved-file repair during scans (Phase 6, ADR-0006).** The scanner now
+  captures cheap filesystem identity (`st_dev`/`st_ino` → new `asset_files`
+  columns `filesystem_device`/`filesystem_inode`/`identity_available`) and, on a
+  re-scan, repairs high-confidence moves **in place** before creating new
+  bundles: an appeared path is matched 1:1 to a disappeared row by filesystem
+  identity (survives content edits on the same volume) or by quick fingerprint +
+  basename, preserving `AssetFile.id` and the bundle's collections, tags, rating,
+  note, cover/primary, and subtitle links. Ambiguous matches and copies are never
+  auto-repaired or merged; same-path edits remain updates. Streaming/thumbnail/
+  subtitle path resolution now re-checks existence at access time and marks a
+  vanished file `missing`. No full hashing on the scan path. Migration backfills
+  identity lazily on the next scan.
 
 - **In-bundle view — open a bundle to browse and inspect its files.**
   - Double-clicking a bundle (grid card or list row) opens an inline **album

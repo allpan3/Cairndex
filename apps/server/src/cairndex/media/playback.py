@@ -70,14 +70,23 @@ def assess_playability(asset_file: AssetFile) -> Playability:
 
 
 def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
-    """Path-safe absolute path of any available AssetFile, for serving."""
+    """Path-safe absolute path of an available AssetFile, for serving.
+
+    Re-validates existence at access time: if the file has vanished since the
+    last scan, the row is marked ``missing`` and a clear error is raised.
+    Automatic repair is left to scan/rescan (AGENTS.md §5.3)."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
     if asset_file.availability != FileAvailability.AVAILABLE:
         raise NotFoundError("file is missing on disk")
     abs_path = resolve_within_root(asset_file.storage_root.canonical_path, asset_file.relative_path)
-    return Path(abs_path), asset_file
+    path = Path(abs_path)
+    if not path.exists():
+        asset_file.availability = FileAvailability.MISSING
+        session.flush()
+        raise NotFoundError("file is missing on disk")
+    return path, asset_file
 
 
 def resolve_video_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:

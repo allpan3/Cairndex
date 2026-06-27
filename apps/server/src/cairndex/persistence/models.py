@@ -198,6 +198,13 @@ class AssetFile(Base):
     )
     quick_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
     full_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Filesystem identity (st_dev/st_ino), captured by the scanner. The strongest
+    # moved-file repair signal on a single volume — survives content edits that
+    # change size/mtime/hash. ``identity_available`` flags whether the values are
+    # trustworthy (some network filesystems report unstable/zero inodes).
+    filesystem_device: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    filesystem_inode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    identity_available: Mapped[bool] = mapped_column(default=False)
     tech_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[CreatedAt]
