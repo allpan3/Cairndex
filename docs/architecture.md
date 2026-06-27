@@ -132,9 +132,12 @@ ad hoc values in `extra_metadata`.
 
 `scan_storage_root()` walks a storage root, links classifiable media files,
 updates existing rows by relative path, and marks disappeared files `missing`
-instead of deleting metadata. It computes only the quick fingerprint used by the
-MVP scan path (`size + mtime`), commits in batches, and reports progress through
-the job checkpoint hook.
+instead of deleting metadata. It computes only the quick fingerprint (`size +
+mtime`) plus cheap filesystem identity (`st_dev`/`st_ino`) used for moved-file
+repair — never a full hash — commits in batches, and reports progress through
+the job checkpoint hook. Before creating new bundles it repairs high-confidence
+moves in place (preserving `AssetFile.id` and all bundle metadata); see ADR-0006
+and §12's File View note for the read-only physical browser that complements it.
 
 `fast_add()` manually links selected files or directories and supports either
 one bundle per file or a single bundle for the whole selection. It skips already
@@ -265,7 +268,7 @@ There are no move/rename/delete controls in this milestone.
 No write endpoints exist yet. The module funnels all resolution through the
 storage-root allowlist so later write-mode operations (open-with-default-app,
 reveal, guarded rename/move/delete) can be added without a rewrite — the
-future host-integration design is recorded in ADR-0006.
+future host-integration design is recorded in ADR-0007.
 
 ## 13. Known architectural debt
 
@@ -278,8 +281,8 @@ foundation:
   libraries;
 - first-class merge/split/move-file workflows for multi-file bundles and Eagle
   merge suggestions;
-- moved-file repair using path candidates, filename, size, timestamps, quick
-  hashes, and optional full hashes;
+- cross-filesystem moved-file repair and candidate suggestions for ambiguous
+  cases (same-volume repair is implemented — ADR-0006);
 - scheduled scans and stronger scan/probe/thumbnail job scheduling;
 - single-owner authentication before real remote exposure;
 - remux/transcode fallback and embedded subtitle extraction for unsupported

@@ -109,8 +109,10 @@ def test_scan_can_be_cancelled_and_retried(
     with session_factory() as session:
         root_id, _ = _make_root(session, tmp_path)
 
-    # Run a scan job with batch_size=1 and cancellation requested up front:
-    # the handler aborts at the first checkpoint, keeping the first file.
+    # Run a scan job with batch_size=1 and cancellation requested up front: the
+    # handler aborts at the first checkpoint during the walk. New-bundle creation
+    # is deferred until after the full walk (so moved-file repair sees every
+    # appeared/disappeared path), so a mid-walk cancel commits no new bundles.
     with session_factory() as session:
         job = job_service.create_job(
             session, type=JobType.SCAN, payload={"storage_root_id": root_id, "batch_size": 1}
@@ -124,8 +126,7 @@ def test_scan_can_be_cancelled_and_retried(
     status = execute_job(session_factory, cancel_job_id, build_registry())
     assert status == JobStatus.CANCELLED
     with session_factory() as session:
-        partial = _file_count(session)
-        assert 1 <= partial < 4  # some, but not all, committed before cancel
+        assert _file_count(session) == 0  # creation is atomic-after-walk; nothing partial
 
     # Retry: a fresh scan job completes and reaches the full set (idempotent).
     with session_factory() as session:
