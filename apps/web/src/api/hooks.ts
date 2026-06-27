@@ -6,20 +6,20 @@ import {
   type BundlePatch,
   type FilePatch,
   type FilterExpression,
-  type SmartFolderCreate,
-  type SmartFolderUpdate,
+  type SmartCollectionCreate,
+  type SmartCollectionUpdate,
   batchUpdate,
   browseBundles,
-  createSmartFolder,
-  deleteSmartFolder,
-  fetchAllFolders,
+  createSmartCollection,
+  deleteSmartCollection,
+  fetchAllCollections,
   fetchBundle,
   fetchBundleFiles,
-  fetchBundleFolders,
+  fetchBundleCollections,
   fetchBundleTags,
-  fetchFolderCounts,
+  fetchCollectionCounts,
   fetchPlaybackManifest,
-  fetchSmartFolders,
+  fetchSmartCollections,
   previewEagleImport,
   runEagleImport,
   fetchTagCounts,
@@ -30,11 +30,11 @@ import {
   previewFilter,
   removeFile,
   reorderFiles,
-  setBundleFolders,
+  setBundleCollections,
   setBundleTags,
   updateBundle,
   updateFile,
-  updateSmartFolder,
+  updateSmartCollection,
 } from './client'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
@@ -77,8 +77,8 @@ export function useEagleImport() {
         for (const key of [
           'browse',
           'view-counts',
-          'folders',
-          'folder-counts',
+          'collections',
+          'collection-counts',
           'tags',
           'tag-counts',
         ])
@@ -96,41 +96,44 @@ export function usePlaybackManifest(bundleId: string | null) {
   })
 }
 
-export function useSmartFolders() {
+export function useSmartCollections() {
   return useQuery({
-    queryKey: ['smart-folders'],
-    queryFn: ({ signal }) => fetchSmartFolders(signal),
+    queryKey: ['smart-collections'],
+    queryFn: ({ signal }) => fetchSmartCollections(signal),
   })
 }
 
-export function useSmartFolderMutations() {
+export function useSmartCollectionMutations() {
   const qc = useQueryClient()
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['smart-folders'] })
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['smart-collections'] })
   return {
     create: useMutation({
-      mutationFn: (payload: SmartFolderCreate) => createSmartFolder(payload),
+      mutationFn: (payload: SmartCollectionCreate) => createSmartCollection(payload),
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: ({ id, payload }: { id: string; payload: SmartFolderUpdate }) =>
-        updateSmartFolder(id, payload),
+      mutationFn: ({ id, payload }: { id: string; payload: SmartCollectionUpdate }) =>
+        updateSmartCollection(id, payload),
       onSuccess: invalidate,
     }),
     remove: useMutation({
-      mutationFn: (id: string) => deleteSmartFolder(id),
+      mutationFn: (id: string) => deleteSmartCollection(id),
       onSuccess: invalidate,
     }),
   }
 }
 
-export function useFolders() {
-  return useQuery({ queryKey: ['folders'], queryFn: ({ signal }) => fetchAllFolders(signal) })
+export function useCollections() {
+  return useQuery({
+    queryKey: ['collections'],
+    queryFn: ({ signal }) => fetchAllCollections(signal),
+  })
 }
 
-export function useFolderCounts() {
+export function useCollectionCounts() {
   return useQuery({
-    queryKey: ['folder-counts'],
-    queryFn: ({ signal }) => fetchFolderCounts(signal),
+    queryKey: ['collection-counts'],
+    queryFn: ({ signal }) => fetchCollectionCounts(signal),
   })
 }
 
@@ -186,10 +189,10 @@ export function useBundleTags(id: string | null) {
   })
 }
 
-export function useBundleFolders(id: string | null) {
+export function useBundleCollections(id: string | null) {
   return useQuery({
-    queryKey: ['bundle-folders', id],
-    queryFn: ({ signal }) => fetchBundleFolders(id as string, signal),
+    queryKey: ['bundle-collections', id],
+    queryFn: ({ signal }) => fetchBundleCollections(id as string, signal),
     enabled: id !== null,
   })
 }
@@ -222,13 +225,13 @@ export function useSetBundleTags(id: string) {
   })
 }
 
-export function useSetBundleFolders(id: string) {
+export function useSetBundleCollections(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleFolders(id, ids),
+    mutationFn: (ids: string[]) => setBundleCollections(id, ids),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['bundle-folders', id] })
-      qc.invalidateQueries({ queryKey: ['folder-counts'] })
+      qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
       qc.invalidateQueries({ queryKey: ['browse'] })
     },
@@ -266,7 +269,7 @@ export function useBatchUpdate() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
-      qc.invalidateQueries({ queryKey: ['folder-counts'] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
     },
   })

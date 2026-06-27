@@ -1,6 +1,12 @@
 import { useState } from 'react'
 
-import { useBatchUpdate, useFolderCounts, useFolders, useTagCounts, useTags } from '../api/hooks'
+import {
+  useBatchUpdate,
+  useCollectionCounts,
+  useCollections,
+  useTagCounts,
+  useTags,
+} from '../api/hooks'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 interface AddPickerProps {
@@ -56,8 +62,8 @@ export function BatchBar({ ids, onClear }: { ids: string[]; onClear: () => void 
   const batch = useBatchUpdate()
   const { data: tags = [] } = useTags()
   const { data: tagCounts = {} } = useTagCounts()
-  const { data: folders = [] } = useFolders()
-  const { data: folderCounts = {} } = useFolderCounts()
+  const { data: collections = [] } = useCollections()
+  const { data: collectionCounts = {} } = useCollectionCounts()
 
   return (
     <div className="batchbar">
@@ -69,10 +75,12 @@ export function BatchBar({ ids, onClear }: { ids: string[]; onClear: () => void 
         onPick={(tagId) => batch.mutate({ bundle_ids: ids, add_tag_ids: [tagId] })}
       />
       <AddPicker
-        label="+ Folder"
-        rows={flattenHierarchy(folders)}
-        counts={folderCounts}
-        onPick={(folderId) => batch.mutate({ bundle_ids: ids, add_folder_ids: [folderId] })}
+        label="+ Collection"
+        rows={flattenHierarchy(collections)}
+        counts={collectionCounts}
+        onPick={(collectionId) =>
+          batch.mutate({ bundle_ids: ids, add_collection_ids: [collectionId] })
+        }
       />
       <span className="toolbar__spacer" />
       <button className="add-btn" onClick={onClear}>

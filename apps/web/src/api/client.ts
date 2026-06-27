@@ -8,7 +8,7 @@ export type HealthStatus = components['schemas']['HealthStatus']
 export type BundleSummary = components['schemas']['BundleSummary']
 export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
-export type FolderRead = components['schemas']['FolderRead']
+export type CollectionRead = components['schemas']['CollectionRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type TagRead = components['schemas']['TagRead']
@@ -18,9 +18,9 @@ export type FilePatch = components['schemas']['FileUpdate']
 export type BatchUpdate = components['schemas']['BatchUpdate']
 
 export type FilterExpression = components['schemas']['FilterExpression-Input']
-export type SmartFolderRead = components['schemas']['SmartFolderRead']
-export type SmartFolderCreate = components['schemas']['SmartFolderCreate']
-export type SmartFolderUpdate = components['schemas']['SmartFolderUpdate']
+export type SmartCollectionRead = components['schemas']['SmartCollectionRead']
+export type SmartCollectionCreate = components['schemas']['SmartCollectionCreate']
+export type SmartCollectionUpdate = components['schemas']['SmartCollectionUpdate']
 
 export type PlaybackManifest = components['schemas']['PlaybackManifest']
 export type PlayableVideo = components['schemas']['PlayableVideo']
@@ -61,7 +61,7 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<T> 
 
 export interface BrowseParams {
   view: SystemView
-  folderId?: string | null
+  collectionId?: string | null
   includeDescendants?: boolean
   sort: BundleSort
   order: SortOrder
@@ -79,7 +79,7 @@ export function browseBundles(
   if (params.filter) {
     return sendSignal<BundleBrowsePage>('/api/v1/bundles/browse', 'POST', signal, {
       view: params.view,
-      folder_id: params.folderId ?? null,
+      collection_id: params.collectionId ?? null,
       include_descendants: params.includeDescendants ?? false,
       sort: params.sort,
       order: params.order,
@@ -95,8 +95,8 @@ export function browseBundles(
     offset: String(params.offset),
     limit: String(params.limit),
   })
-  if (params.folderId) {
-    q.set('folder_id', params.folderId)
+  if (params.collectionId) {
+    q.set('collection_id', params.collectionId)
     q.set('include_descendants', String(params.includeDescendants ?? false))
   }
   return getJson<BundleBrowsePage>(`/api/v1/bundles/browse?${q.toString()}`, signal)
@@ -126,17 +126,18 @@ export function previewFilter(filter: FilterExpression, signal?: AbortSignal): P
   )
 }
 
-// --- Smart Folders -----------------------------------------------------------
-export const fetchSmartFolders = (signal?: AbortSignal) =>
-  getJson<SmartFolderRead[]>('/api/v1/smart-folders', signal)
+// --- Smart Collections -------------------------------------------------------
+export const fetchSmartCollections = (signal?: AbortSignal) =>
+  getJson<SmartCollectionRead[]>('/api/v1/smart-collections', signal)
 
-export const createSmartFolder = (payload: SmartFolderCreate) =>
-  send<SmartFolderRead>('/api/v1/smart-folders', 'POST', payload)
+export const createSmartCollection = (payload: SmartCollectionCreate) =>
+  send<SmartCollectionRead>('/api/v1/smart-collections', 'POST', payload)
 
-export const updateSmartFolder = (id: string, payload: SmartFolderUpdate) =>
-  send<SmartFolderRead>(`/api/v1/smart-folders/${id}`, 'PATCH', payload)
+export const updateSmartCollection = (id: string, payload: SmartCollectionUpdate) =>
+  send<SmartCollectionRead>(`/api/v1/smart-collections/${id}`, 'PATCH', payload)
 
-export const deleteSmartFolder = (id: string) => send<void>(`/api/v1/smart-folders/${id}`, 'DELETE')
+export const deleteSmartCollection = (id: string) =>
+  send<void>(`/api/v1/smart-collections/${id}`, 'DELETE')
 
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   getJson<PlaybackManifest>(`/api/v1/bundles/${bundleId}/playback`, signal)
@@ -151,8 +152,8 @@ export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>('/api/v1/bundles/counts', signal)
 }
 
-export function fetchFolderCounts(signal?: AbortSignal): Promise<Record<string, number>> {
-  return getJson<{ counts: Record<string, number> }>('/api/v1/folders/counts', signal).then(
+export function fetchCollectionCounts(signal?: AbortSignal): Promise<Record<string, number>> {
+  return getJson<{ counts: Record<string, number> }>('/api/v1/collections/counts', signal).then(
     (r) => r.counts,
   )
 }
@@ -162,16 +163,16 @@ interface Page<T> {
   next_cursor: string | null
 }
 
-export async function fetchAllFolders(signal?: AbortSignal): Promise<FolderRead[]> {
-  const folders: FolderRead[] = []
+export async function fetchAllCollections(signal?: AbortSignal): Promise<CollectionRead[]> {
+  const collections: CollectionRead[] = []
   let cursor: string | null = null
   do {
-    const url = `/api/v1/folders?limit=200${cursor ? `&cursor=${cursor}` : ''}`
-    const page: Page<FolderRead> = await getJson<Page<FolderRead>>(url, signal)
-    folders.push(...page.items)
+    const url = `/api/v1/collections?limit=200${cursor ? `&cursor=${cursor}` : ''}`
+    const page: Page<CollectionRead> = await getJson<Page<CollectionRead>>(url, signal)
+    collections.push(...page.items)
     cursor = page.next_cursor
   } while (cursor)
-  return folders
+  return collections
 }
 
 export function fetchBundle(id: string, signal?: AbortSignal): Promise<BundleRead> {
@@ -235,14 +236,17 @@ export const updateBundle = (id: string, patch: BundlePatch) =>
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`/api/v1/bundles/${id}/tags`, 'PUT', { ids })
 
-export const setBundleFolders = (id: string, ids: string[]) =>
-  send<unknown>(`/api/v1/bundles/${id}/folders`, 'PUT', { ids })
+export const setBundleCollections = (id: string, ids: string[]) =>
+  send<unknown>(`/api/v1/bundles/${id}/collections`, 'PUT', { ids })
 
 export const fetchBundleTags = (id: string, signal?: AbortSignal) =>
   getJson<{ bundle_id: string; tag_ids: string[] }>(`/api/v1/bundles/${id}/tags`, signal)
 
-export const fetchBundleFolders = (id: string, signal?: AbortSignal) =>
-  getJson<{ bundle_id: string; folder_ids: string[] }>(`/api/v1/bundles/${id}/folders`, signal)
+export const fetchBundleCollections = (id: string, signal?: AbortSignal) =>
+  getJson<{ bundle_id: string; collection_ids: string[] }>(
+    `/api/v1/bundles/${id}/collections`,
+    signal,
+  )
 
 export const updateFile = (bundleId: string, fileId: string, patch: FilePatch) =>
   send<FileRead>(`/api/v1/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch)

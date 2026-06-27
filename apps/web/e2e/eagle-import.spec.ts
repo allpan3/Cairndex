@@ -9,12 +9,12 @@ async function mockApi(page: Page) {
   await page.route('**/api/v1/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
-  await page.route('**/api/v1/folders?*', (r) =>
+  await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/api/v1/folders/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/api/v1/smart-folders', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/v1/smart-collections', (r) => r.fulfill({ json: [] }))
 
   await page.route('**/api/v1/eagle/preview', (r) =>
     r.fulfill({
@@ -36,7 +36,7 @@ async function mockApi(page: Page) {
     r.fulfill({
       json: {
         bundles_created: 10,
-        folders_created: 3,
+        collections_created: 3,
         tags_created: 5,
         tag_groups_created: 2,
         skipped: 2,

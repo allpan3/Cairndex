@@ -68,14 +68,15 @@ src/
   api/        typed client over /api/v1 (generated OpenAPI types) +
               TanStack Query hooks, including an infinite browse query
   app/        shell pieces: Sidebar, Toolbar, Browser, Inspector, BundleCard,
-              FilterBuilder, SmartFolderEditor, Player, EagleImport, layouts
+              FilterBuilder, CollectionPicker, SmartCollectionEditor, Player,
+              EagleImport, layouts
   state/      usePersistentState (localStorage for layout/zoom/pane widths)
   lib/        formatting helpers
 ```
 
 Server state lives in TanStack Query. View state such as selection, active
-folder/system view, Smart Folder selection, and toolbar search is local React
-state; durable browse preferences persist to localStorage. The browser is
+collection/system view, Smart Collection selection, and toolbar search is local
+React state; durable browse preferences persist to localStorage. The browser is
 virtualized with TanStack Virtual over packed grid/list/justified rows so large
 loaded windows stay responsive. A typed router remains deferred while the app is
 a single browse surface with modals.

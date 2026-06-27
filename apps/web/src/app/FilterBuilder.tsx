@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { useFolders, useTags } from '../api/hooks'
+import { useCollections, useTags } from '../api/hooks'
 import {
   type Condition,
   type FieldDef,
@@ -114,7 +114,7 @@ function ValueEditor({
   def: FieldDef
   onChange: (patch: Partial<Condition>) => void
 }) {
-  if (def.kind === 'tags' || def.kind === 'folders') {
+  if (def.kind === 'tags' || def.kind === 'collections') {
     return (
       <span className="filter-row__val">
         <HierPicker
@@ -184,15 +184,15 @@ function HierPicker({
   selected,
   onChange,
 }: {
-  kind: 'tags' | 'folders'
+  kind: 'tags' | 'collections'
   selected: string[]
   onChange: (ids: string[]) => void
 }) {
   const tags = useTags()
-  const folders = useFolders()
+  const collections = useCollections()
   const items = useMemo(
-    () => (kind === 'tags' ? tags.data : folders.data) ?? [],
-    [kind, tags.data, folders.data],
+    () => (kind === 'tags' ? tags.data : collections.data) ?? [],
+    [kind, tags.data, collections.data],
   )
   const { open, setOpen, ref } = usePopover()
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
