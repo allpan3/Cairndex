@@ -11,24 +11,28 @@ The product is not primarily a Plex/Jellyfin replacement and must not drift into
 - asset bundles composed of multiple related files;
 - custom covers and generated thumbnails;
 - hierarchical tags plus tag groups;
-- hierarchical virtual folders with multi-folder membership;
-- notes, hyperlinks, ratings, titles, and technical metadata;
-- fast filtering, saved Smart Folders, and multiple browsing layouts;
+- hierarchical collections with multi-collection membership;
+- a separate read-only file view for browsing configured storage-root directories;
+- notes, source/origin hyperlinks, ratings, titles, and technical metadata;
+- fast filtering, saved Smart Collections, and multiple browsing layouts;
 - metadata-only linking to existing files without copying them;
+- robust missing-file and moved-file repair so logical organization survives filesystem changes;
 - a polished desktop-class web interface, followed later by TV/mobile clients.
 
 The first product target is the computer-side web application. Android TV support comes after the core library, organization, filtering, and playback experience are stable.
 
 ## 2. Product principles
 
-1. **The visible item is an Asset Bundle, not a file.** One card may represent a cover, several videos, subtitle files, screenshots, album images, and attachments.
-2. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-3. **Metadata-only and non-destructive first.** The MVP must not rename, move, delete, or overwrite original files.
-4. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, and the web.
-5. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN. Tailscale access may be added without changing the core architecture.
-6. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naïve full scans, full hashing, or non-virtualized rendering are unacceptable.
-7. **One source of truth.** The application database is authoritative for app metadata. Eagle migration is one-way initially; do not implement bidirectional synchronization.
-8. **Progressive capability.** Direct playback comes first; remux/transcoding, write-mode file operations, native wrappers, and multi-user behavior come later.
+1. **The visible library item is an Asset Bundle, not a file.** One card may represent a cover, several videos, subtitle files, screenshots, album images, and attachments.
+2. **Collections are logical; directories are physical.** Collection View is the metadata-first bundle browser. File View is an in-app browser over configured storage roots. Collection membership must never imply a file move.
+3. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
+4. **Metadata-only and non-destructive first.** The MVP must not rename, move, delete, or overwrite original files. In-app physical moves are a later explicit write-mode feature.
+5. **Logical organization must survive filesystem moves.** If a linked path changes externally, Cairndex should preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata, and repair the existing file row when it can do so confidently.
+6. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, read-only file browsing, and the web.
+7. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN. Tailscale access may be added without changing the core architecture.
+8. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naïve full scans, full hashing, or non-virtualized rendering are unacceptable.
+9. **One source of truth.** The application database is authoritative for app metadata. Eagle migration is one-way initially; do not implement bidirectional synchronization.
+10. **Progressive capability.** Direct playback comes first; remux/transcoding, write-mode file operations, native wrappers, and multi-user behavior come later.
 
 ## 3. Fixed product decisions
 
@@ -44,16 +48,23 @@ Unless the product owner explicitly changes them, treat these as settled:
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
-- Folders are hierarchical virtual collections. A bundle may belong to zero, one, or many folders.
-- Selecting a tag or folder parent can include descendants; the UI exposes a toggle.
-- The first user is a single owner. Avoid choices that make later multi-user support require a full rewrite.
+- The old product/API/model concept named `folder` must be renamed at all levels to `collection`.
+- Collections are hierarchical logical groupings. A bundle may belong to zero, one, or many collections.
+- Collections contain bundles only, not loose files.
+- Selecting a tag or collection parent can include descendants; the UI exposes a toggle.
+- Smart Folders should be renamed to Smart Collections / saved collection filters, using the same canonical filter-expression model.
+- File View browses only configured storage roots. It is read-only for now, hides hidden files/directories, shows all other files/directories, and visually distinguishes files that Cairndex can open natively from unsupported files.
 - Start with metadata-only removal. File rename/move/delete capabilities come later under an explicit write mode.
+- Move repair is automatic during scan/rescan/reconciliation when confidence is high. Do not require a separate normal user workflow for repair.
+- Duplicate detection is deferred. If a still-present file is also found at another path, treat that as an unresolved duplicate/copy candidate later, not as an automatic bundle merge.
+- Bundles remain flexible logical objects. A bundle does not require a canonical physical folder and may contain files from different directories or storage roots.
 - Both embedded and external subtitles must be supported.
 - Begin with the desktop/computer experience. A TV web UI may reuse the same frontend later.
+- The first user is a single owner. Avoid choices that make later multi-user support require a full rewrite.
 
 ## 4. Canonical domain model
 
-Names may evolve, but the concepts and relationships must remain clear.
+Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until the collection refactor replaces them.
 
 ### 4.1 Storage root
 
@@ -69,11 +80,11 @@ Required concepts:
 - availability/status;
 - scan settings and timestamps.
 
-Store file locations as `storage_root_id + relative_path` whenever possible. Never expose arbitrary unrestricted server paths through the API.
+Store file locations as `storage_root_id + relative_path` whenever possible. Never expose arbitrary unrestricted server paths through the API. File View must browse through this storage-root abstraction, not through unrestricted absolute server paths.
 
 ### 4.2 Asset bundle
 
-An `AssetBundle` is the primary user-facing object shown in grids, lists, search results, folders, tags, and Smart Folders.
+An `AssetBundle` is the primary user-facing object shown in grids, lists, search results, collections, tags, and Smart Collections.
 
 Bundle-level metadata includes:
 
@@ -87,12 +98,15 @@ Bundle-level metadata includes:
 - aggregate media properties where useful;
 - optional extensible metadata JSON for non-core fields.
 
+A bundle is logical, not necessarily a physical folder. Do not make bundle identity or collection membership depend on a bundle-root directory. An optional representative directory may be added later only for convenience, not as the source of truth.
+
 ### 4.3 Asset file
 
 An `AssetFile` is a physical file linked into one Asset Bundle.
 
 Required concepts:
 
+- stable file ID that survives path repair;
 - bundle ID;
 - storage root ID and relative path;
 - original filename;
@@ -102,8 +116,9 @@ Required concepts:
 - file role;
 - order/sequence within the bundle;
 - size and modified timestamp;
-- availability/missing state;
+- availability/missing/stale state;
 - quick fingerprint and optional full hash;
+- optional filesystem identity such as device/inode/file ID when reliable;
 - extracted technical metadata;
 - import/source metadata.
 
@@ -121,7 +136,9 @@ Suggested roles:
 - `generated_derivative`
 - `other`
 
-One physical file should normally have one owning bundle. Do not add cross-bundle aliases until a real use case requires them.
+One physical path should normally have one owning bundle. Do not add cross-bundle aliases until a real use case requires them.
+
+When a file is moved and repaired, update the existing `AssetFile` row rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/primary references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
 
 ### 4.4 Covers and thumbnails
 
@@ -161,23 +178,25 @@ Required behavior:
 - tag search independent of group selection;
 - the same tag may appear in multiple groups without duplication in the underlying tag table.
 
-### 4.7 Virtual folders
+### 4.7 Collections
 
-Folders are hierarchical virtual collections, not physical filesystem directories.
+Collections are hierarchical virtual groupings, not physical filesystem directories.
 
 Required behavior:
 
 - parent-child nesting;
-- many-to-many membership between bundles and folders;
-- zero-folder bundles appear under `Uncategorized`;
-- folder counts;
-- `Show subfolder contents` / `Include descendants` toggle;
+- many-to-many membership between bundles and collections;
+- zero-collection bundles appear under `Uncategorized` or another clearly named system view;
+- collection counts;
+- `Show subcollection contents` / `Include descendants` toggle;
 - drag-and-drop assignment in a later UI milestone;
-- no file movement when folder membership changes.
+- no file movement when collection membership changes.
 
-### 4.8 Smart folders
+The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle or to ordinary filesystem directories in File View.
 
-A Smart Folder is a named, saved filter expression plus optional view preferences.
+### 4.8 Smart Collections
+
+A Smart Collection is a named, saved filter expression plus optional view preferences. It replaces the old Smart Folder terminology.
 
 Store a versioned structured expression, not raw SQL and not an opaque UI string.
 
@@ -205,7 +224,7 @@ Implemented shape:
 }
 ```
 
-The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model permits nested `and`, `or`, and `not` groups later.
+The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model permits nested `and`, `or`, and `not` groups later. Collection conditions must target collection IDs and support descendant inclusion in the same way direct Collection View browsing does.
 
 ### 4.9 Subtitle tracks
 
@@ -223,6 +242,23 @@ Support:
 
 The implemented model uses `SubtitleTrack` with either an external file reference or an embedded stream index. Embedded stream extraction/serving is deferred to the remux/transcode fallback milestone.
 
+### 4.10 File view
+
+File View is a read-only in-app browser over configured storage roots.
+
+Required behavior:
+
+- browse only configured storage roots;
+- display directories and all non-hidden files, not just media files;
+- hide hidden dotfiles/dot-directories and platform-hidden files where practical;
+- validate every requested path through the storage-root path-safety layer;
+- never expose unrestricted absolute server paths;
+- visually separate files Cairndex can open natively from unsupported files;
+- allow later actions such as fast-add/link-to-bundle/create-bundle from selected files;
+- do not move, rename, delete, or rewrite source files in the first File View milestone.
+
+A supported/openable file means a file that the current app can preview or play natively through the web UI. Recognized-but-not-openable files may still be shown, linked, or treated as attachments where the bundle model permits it. PDF preview is optional future support; do not mark PDFs as natively supported until a real viewer path exists.
+
 ## 5. File discovery, linking, and identity
 
 ### 5.1 Fast add
@@ -236,9 +272,9 @@ Initial identity/fingerprint inputs may include:
 - storage root and normalized relative path;
 - file size;
 - high-resolution modified time;
-- optional sampled/quick hash;
-- optional inode/device data when reliable;
-- lazy full hash for duplicate verification or repair.
+- sampled/quick hash where cheap;
+- filesystem identity such as inode/device/file ID when reliable;
+- lazy full hash only for duplicate verification, ambiguous repair, or explicit user-requested integrity work.
 
 ### 5.2 Scanning
 
@@ -250,15 +286,41 @@ Network filesystems may not provide reliable file watcher events. The applicatio
 - batched database writes;
 - progress reporting;
 - cancellation;
-- missing-file detection without immediately deleting metadata.
+- missing-file detection without immediately deleting metadata;
+- automatic high-confidence moved-file repair during reconciliation.
 
 Do not run full library scans in request handlers.
 
+The scanner is the reconciliation mechanism between the filesystem and the metadata database. It should walk storage roots, observe current files, update known paths, mark absent paths missing/stale, and repair old `AssetFile` rows to new paths before creating replacement bundles for newly discovered files.
+
 ### 5.3 Moved-file repair
 
-When a linked path disappears, preserve the Asset File row as missing. Provide later repair logic using path candidates, filename, size, timestamps, quick hashes, and full hashes when needed.
+When a linked path disappears, preserve the Asset File row as missing/stale. On the same scan or a later rescan, try to identify whether a newly observed path is the same physical file.
+
+Repair must:
+
+- update the existing `AssetFile.storage_root_id` and `relative_path` rather than creating a new file row;
+- keep the `AssetFile.id` stable;
+- preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, subtitle links, and import records;
+- run automatically as part of scan/rescan/reconciliation for high-confidence matches;
+- avoid destructive changes and avoid merging duplicates.
+
+Confidence signals may include:
+
+- same platform file identity (`st_dev`/`st_ino` or equivalent) when reliable;
+- same storage root or clearly equivalent root alias;
+- same filename and extension;
+- same size and high-resolution mtime;
+- same sampled/quick hash;
+- optional full hash only when needed for ambiguous candidates and only outside hot request paths.
+
+A same-path content edit is not a move. For example, annotating a PDF may change size, mtime, sampled hash, and full hash while the logical file remains the same because the path and/or filesystem identity are stable. A cross-filesystem move followed by an edit may not be confidently repairable; keep the old file missing and expose a later manual repair/candidate workflow rather than guessing.
+
+If the old path still exists and a similar or identical new path appears, do not auto-merge. Treat that as a future duplicate/copy candidate. Duplicate detection is out of scope for the first collection/file-view refactor.
 
 ### 5.4 Optional managed imports
+
+Copy/move into an app-managed directory is a future optional mode, not an MVP requirement. Do not couple core IDs or lookup logic to a hash-directory layout.
 
 ## 6. Media processing and playback
 
@@ -279,6 +341,8 @@ The processing pipeline should eventually provide:
 The server must support HTTP range requests and correct content headers.
 
 Do not claim universal format support merely because a file can be served. Browser support for WMV, AVI, MOV, H.264, and H.265 varies. Detect capability and show a clear fallback state.
+
+When opening/streaming/thumbnailing a file, re-check that the resolved path still exists. If it no longer exists, mark the file stale/missing and rely on the scanner to repair it on the next reconciliation when possible.
 
 ### 6.2 Fallback playback
 
@@ -301,6 +365,7 @@ Rules:
 - never write into Eagle's internal library;
 - always support dry run and review before commit;
 - preserve Eagle tags, tag groups, folders, titles, notes, links, ratings, and file references where available;
+- map Eagle folders to Cairndex collections;
 - initially map each Eagle item to one Asset Bundle;
 - suggest merges for likely video/cover/subtitle/part relationships;
 - never auto-merge destructively without a reviewable report;
@@ -336,10 +401,10 @@ Store copies under `docs/reference/eagle/` when available. Do not commit private
 
 Recommended layout:
 
-- left sidebar: system views, Smart Folders, hierarchical virtual folder tree, tag entry points;
+- left sidebar: system views, Smart Collections, hierarchical collection tree, file-view entry points, tag entry points;
 - top toolbar: breadcrumbs, filter categories, search, sort, view controls, zoom/density control;
-- center: virtualized bundle browser;
-- right inspector: selected bundle metadata and files;
+- center: virtualized bundle browser in Collection View; storage-root directory browser in File View;
+- right inspector: selected bundle metadata and files, or selected file/directory details in File View;
 - modal/detail viewer: media preview and playback.
 
 System views should include, where useful:
@@ -355,7 +420,7 @@ System views should include, where useful:
 
 ### 8.2 Browsing layouts
 
-Plan for:
+Plan for Collection View:
 
 - justified layout similar to Eagle/Google Photos;
 - fixed grid;
@@ -364,6 +429,13 @@ Plan for:
 - persistent layout, zoom, sort, and filter preferences per view where practical.
 
 All large collections must be virtualized or paginated. Never render an entire large library into the DOM.
+
+Plan for File View:
+
+- directory list/tree navigation scoped to storage roots;
+- file table/list layout with name, type, size, modified time, support/openable state, and linked/missing state where known;
+- no hidden files by default;
+- no write actions in the first milestone.
 
 ### 8.3 Bundle cards
 
@@ -374,7 +446,7 @@ A bundle card should communicate:
 - media/file count when greater than one;
 - primary duration or image dimensions;
 - rating and lightweight status indicators where useful;
-- missing/offline state;
+- missing/offline/stale state;
 - selection state.
 
 ### 8.4 Inspector
@@ -385,7 +457,7 @@ The inspector should expose bundle-level fields first:
 - title;
 - note;
 - tags;
-- folders;
+- collections;
 - rating;
 - aggregate properties;
 - files in the bundle.
@@ -408,21 +480,36 @@ The tag selector should combine the useful Eagle group picker with the new hiera
 
 Do not make right-click the only way to exclude; provide an accessible alternative.
 
-### 8.6 Folder view
+### 8.6 Collection view
 
-Inside a folder, show:
+Inside a collection, show:
 
 - breadcrumb/title;
-- direct subfolder selector/count;
-- `Show subfolder contents` toggle;
+- direct subcollection selector/count;
+- `Show subcollection contents` toggle;
 - normal filters and views;
-- folder counts in the sidebar.
+- collection counts in the sidebar.
 
-### 8.7 Smart Folder editor
+### 8.7 File view
+
+Inside File View, show:
+
+- storage-root selector;
+- filesystem breadcrumbs;
+- directories first, then files;
+- all non-hidden files/directories;
+- support/openable state;
+- linked-to-bundle state when known;
+- missing/stale indicators when a previously linked path is gone;
+- read-only affordances until explicit write mode exists.
+
+File View is not a replacement for Collection View. It is a filesystem browser and linking/diagnostic surface. Collection View remains the primary organization and browsing surface.
+
+### 8.8 Smart Collection editor
 
 The initial editor should follow the supplied Eagle reference:
 
-- Smart Folder name;
+- Smart Collection name;
 - top-level `all` or `any` selector;
 - top-level true/false inversion;
 - repeatable condition rows;
@@ -437,14 +524,14 @@ The initial editor should follow the supplied Eagle reference:
 Typed field examples:
 
 - title/name, note, URL/source: contains, not contains, equals, starts with, regex later;
-- tags/folders: contains any, contains all, contains none, exact set later, descendant toggle;
+- tags/collections: contains any, contains all, contains none, exact set later, descendant toggle;
 - rating: equals, greater/less than;
 - type/extension/codec: fixed-option multi-select;
 - duration/size/dates: range operators;
 - file count and missing state;
 - subtitle presence.
 
-The simple filter toolbar and Smart Folder editor must compile to the same canonical filter expression model.
+The simple filter toolbar and Smart Collection editor must compile to the same canonical filter expression model.
 
 ## 9. Suggested implementation stack
 
@@ -478,7 +565,7 @@ Do not introduce Redis, Celery, Postgres, Elasticsearch, or a separate search se
 ### Search and filters
 
 - SQLite FTS5 for title, notes, links/source, and filename search where appropriate;
-- relational indexes for tag/folder/rating/date/type filters;
+- relational indexes for tag/collection/rating/date/type filters;
 - server-side filtering, sorting, and pagination;
 - no client-side loading of the full library.
 
@@ -506,14 +593,16 @@ Adapt to existing repository conventions rather than reorganizing without reason
 - Version public endpoints, for example `/api/v1/...`.
 - Publish and validate OpenAPI.
 - Use stable IDs, not paths, as resource identifiers.
+- Use collection terminology in public APIs and schemas. Do not add new `/folders` APIs after the collection refactor.
 - Keep path resolution server-side.
-- Paginate all collection endpoints.
+- Paginate all list endpoints.
 - Support deterministic sorting with a stable tie-breaker.
 - Return structured errors.
 - Validate filter expressions against an allowlist of fields/operators.
 - Defend against path traversal, symlink escape, and unauthorized storage-root access.
 - Separate metadata removal from physical file deletion.
 - Make long-running operations asynchronous jobs with status endpoints.
+- File View endpoints must accept only `storage_root_id + relative_path` and must reject absolute paths, traversal, and symlink escapes.
 
 ## 11. Performance and reliability requirements
 
@@ -523,6 +612,7 @@ Required practices:
 
 - lazy full hashing;
 - incremental scans;
+- moved-file repair before creating duplicate replacement bundles;
 - batched inserts/updates;
 - bounded worker concurrency;
 - virtualized UI;
@@ -546,6 +636,7 @@ Profile before adding complex infrastructure. Record performance baselines for r
 - Never commit secrets, databases, thumbnails, caches, or source media.
 - Use a non-root container user where practical.
 - Validate all file paths against configured storage roots.
+- File View must not become an unrestricted server filesystem browser.
 - Consider optional single-owner authentication before remote/Tailscale use.
 - Clearly document that direct public internet exposure is unsupported unless hardened separately.
 
@@ -560,6 +651,7 @@ Avoid schema choices that block these later features:
 - Tauri desktop shell;
 - app-managed imports;
 - metadata sidecar export;
+- duplicate detection and manual duplicate/copy resolution;
 - plugin/import adapters;
 - additional asset types.
 
@@ -585,13 +677,16 @@ Add tests with every non-trivial feature.
 Minimum coverage areas:
 
 - storage-root path normalization and traversal rejection;
+- File View path scoping, hidden-file exclusion, and symlink escape rejection;
 - asset bundle/file relationships;
 - tag hierarchy and descendant behavior;
 - tag group many-to-many behavior;
-- folder hierarchy and descendant inclusion;
+- collection hierarchy and descendant behavior;
+- collection membership preserving bundle metadata;
 - filter AST validation and SQL compilation;
-- Smart Folder preview counts;
+- Smart Collection preview counts;
 - scanner idempotency and missing-file behavior;
+- automatic high-confidence moved-file repair preserving `AssetFile.id`;
 - quick fingerprint/full-hash transitions;
 - subtitle matching and track selection;
 - range requests and playback headers;
@@ -614,7 +709,9 @@ Use a dedicated branch for each meaningful feature or fix, for example:
 - `feat/storage-scanner`
 - `feat/bundle-browser`
 - `feat/tag-filtering`
-- `feat/smart-folders`
+- `feat/smart-collections`
+- `feat/file-view`
+- `feat/moved-file-repair`
 - `feat/subtitle-playback`
 - `feat/eagle-import`
 - `fix/path-normalization`
@@ -752,9 +849,10 @@ Do not spend MVP time on:
 - full multi-user RBAC;
 - bidirectional Eagle synchronization;
 - destructive file management enabled by default;
+- duplicate detection or automatic duplicate merging;
 - native macOS or Android TV applications;
 - a general plugin marketplace;
 - a complex distributed job system;
 - premature replacement of SQLite.
 
-The first release succeeds when the owner can link an existing NAS library, group related files into bundles, assign covers/tags/folders/metadata, filter and browse quickly in an Eagle-like interface, and play supported media with correctly linked subtitles without modifying the source files.
+The first release succeeds when the owner can link an existing NAS library, group related files into bundles, assign covers/tags/collections/metadata, browse both logical collections and read-only filesystem directories, filter quickly in an Eagle-like interface, survive external filesystem moves through scan-based repair where possible, and play supported media with correctly linked subtitles without modifying the source files.
