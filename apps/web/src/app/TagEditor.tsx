@@ -15,6 +15,7 @@ import { flattenHierarchy, usePopover } from './usePopover'
 interface TagRow {
   item: TagRead
   depth: number
+  label?: string
 }
 
 interface Section {
@@ -34,9 +35,31 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
   const [filterExpanded, setFilterExpanded] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
 
   const assigned = new Set(bundleTags?.tag_ids ?? [])
   const byId = new Map(tags.map((t) => [t.id, t]))
+
+  const toggleSection = (key: string) =>
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
+  /** Full hierarchical path, e.g. "genre/comedy". */
+  const pathOf = (t: TagRead): string => {
+    const parts = [t.name]
+    let parentId = t.parent_id
+    while (parentId) {
+      const parent = byId.get(parentId)
+      if (!parent) break
+      parts.unshift(parent.name)
+      parentId = parent.parent_id
+    }
+    return parts.join('/')
+  }
 
   const toggle = (id: string) => {
     const next = new Set(assigned)
@@ -49,13 +72,19 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
   const flat = flattenHierarchy(tags)
   const groupedIds = new Set(Object.values(memberships).flat())
 
-  // First section: the currently selected tags (shown flat for quick removal).
-  // They also stay visible/highlighted in their group sections below.
+  // First section: the currently selected tags, shown flat with their full
+  // hierarchical path (e.g. "genre/comedy") for quick removal. They also stay
+  // highlighted in their group sections below. When a group is filtered, only
+  // selected tags belonging to that group are shown here.
   const sections: Section[] = []
+  const filterMember = groupFilter !== null ? new Set(memberships[groupFilter] ?? []) : null
   const selectedRows = [...assigned]
     .map((id) => byId.get(id))
-    .filter((t): t is TagRead => t !== undefined && match(t))
-    .map((item) => ({ item, depth: 0 }))
+    .filter(
+      (t): t is TagRead =>
+        t !== undefined && match(t) && (filterMember === null || filterMember.has(t.id)),
+    )
+    .map((item) => ({ item, depth: 0, label: pathOf(item) }))
   if (selectedRows.length > 0)
     sections.push({ key: '__selected', title: 'Selected', rows: selectedRows })
 
@@ -73,7 +102,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
     if (rows.length > 0) sections.push({ key: '__others', title: 'Others', rows })
   }
 
-  const renderRow = ({ item, depth }: TagRow) => (
+  const renderRow = ({ item, depth, label }: TagRow) => (
     <div
       key={item.id}
       className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
@@ -83,7 +112,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
       aria-selected={assigned.has(item.id)}
     >
       <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
-      <span>{item.name}</span>
+      <span>{label ?? item.name}</span>
       <span className="pick-row__count">{counts[item.id] ?? 0}</span>
     </div>
   )
@@ -153,12 +182,22 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
                   </div>
                 )}
                 {sections.length === 0 && <div className="pick-group">No matching tags</div>}
-                {sections.map((section) => (
-                  <section className="pick-section" key={section.key}>
-                    <div className="pick-section__title">{section.title}</div>
-                    {section.rows.map(renderRow)}
-                  </section>
-                ))}
+                {sections.map((section) => {
+                  const collapsed = collapsedSections.has(section.key)
+                  return (
+                    <section className="pick-section" key={section.key}>
+                      <button
+                        className="pick-section__title"
+                        onClick={() => toggleSection(section.key)}
+                        aria-expanded={!collapsed}
+                      >
+                        <span className="pick-row__toggle">{collapsed ? '▸' : '▾'}</span>
+                        {section.title}
+                      </button>
+                      {!collapsed && section.rows.map(renderRow)}
+                    </section>
+                  )
+                })}
               </div>,
               document.body,
             )}
