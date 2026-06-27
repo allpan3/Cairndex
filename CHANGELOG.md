@@ -63,14 +63,15 @@ grouped under `Unreleased` until the first tagged release.
     text/number/bool/date inputs plus tag/folder pickers with an
     include-descendants toggle), a Smart Folder editor with a live match
     count, and a "Smart Folders" sidebar section that browses saved filters.
-  - Removed the bundle-level hyperlink; renamed the file-level `source_url`
-    to `source` (an origin URL, `magnet:`, `ed2k:`, …).
+  - Clarified source/link storage in the schema: removed the bundle-level
+    hyperlink and renamed the file-level `source_url` to `source` (an origin
+    URL, `magnet:`, `ed2k:`, …).
 - **Phase 4 — bundle editing and organization.**
-  - Backend: `PATCH /bundles/{id}/files/{fid}` (file-level title/note/link/
+  - Backend: `PATCH /bundles/{id}/files/{fid}` (file-level title/note/source/
     role/sequence), `PUT /bundles/{id}/files/order` (reorder),
     `POST /bundles/batch` (add/remove tags+folders across many bundles),
     `GET /bundles/{id}/tags`+`/folders`, and `GET /tags/counts`.
-  - Inspector is now editable: title, note, source URL, and star rating
+  - Inspector is now editable for bundle title, note, and star rating
     (TanStack Query mutations + cache invalidation; edits survive reload).
   - Tag editor (chips + popover with group tabs, search, hierarchy, counts)
     and hierarchical folder assignment.
@@ -144,7 +145,10 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
-- N/A
+- Refreshed current-state documentation after the Phase 0–8 roadmap: README,
+  architecture, data model, status, and agent instructions now describe the
+  implemented app instead of the old Phase 0/TBD skeleton, and clarify the
+  current file-level source/link metadata model.
 
 ### Fixed
 

@@ -12,16 +12,25 @@ the canonical engineering rules that govern this repository.
 
 ## Status
 
-This repository is in **Phase 0 (project foundation)**. There is no domain
-model, scanner, or browsing UI yet — see [docs/STATUS.md](docs/STATUS.md) for
-the current milestone and next steps.
+Cairndex is past the project-foundation phase. The `main` branch currently
+contains the Phase 0–8 MVP foundation: core domain schema and storage-root CRUD,
+scan/probe/thumbnail jobs, an Eagle-inspired desktop web browser, filtering and
+Smart Folders, direct playback with subtitle tracks, one-way Eagle import, and a
+hardened single-container production deployment.
+
+The app is still pre-1.0 and should not be exposed directly to the public
+internet. Important follow-ups include single-owner authentication, server-side
+text search/FTS, browse-query performance/indexing, bundle merge/repair
+workflows, scheduled scans, and media fallback/remux/transcoding. See
+[docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
+recommended next tasks.
 
 ## Repository layout
 
 ```text
 apps/
   server/   # FastAPI backend (Python 3.12+, SQLAlchemy, Alembic, SQLite/WAL)
-  web/      # React + TypeScript frontend (Vite, TanStack Query/Router)
+  web/      # React + TypeScript frontend (Vite, TanStack Query/Virtual)
 docs/
   adr/                # Architecture Decision Records
   reference/eagle/    # Eagle UI reference screenshots (not committed media)
@@ -59,7 +68,8 @@ docker compose up --build
 This starts the backend (`:8000`) and frontend dev server (`:5173`). Requires
 Docker with the Compose v2 plugin (Docker Desktop on macOS, or `docker-ce` +
 `docker-compose-plugin` on Linux). See
-[docs/deployment.md](docs/deployment.md) for NAS deployment notes.
+[docs/deployment.md](docs/deployment.md) for NAS deployment notes and
+`docker-compose.prod.yml` for the hardened single-container production stack.
 
 ## Documentation
 
