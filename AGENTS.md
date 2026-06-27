@@ -41,7 +41,6 @@ Unless the product owner explicitly changes them, treat these as settled:
 - The application links to files already on disk and stores metadata separately.
 - Asset bundle metadata is shared across the bundle.
 - Individual files may have a display title, note, and source/origin hyperlink in the schema; those file-level editing controls may be deferred.
-- The current MVP stores source/link metadata at the file level only. Add a first-class bundle-level link/source field later only through an explicit product decision and migration.
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
@@ -87,8 +86,6 @@ Bundle-level metadata includes:
 - creation, import, and update timestamps;
 - aggregate media properties where useful;
 - optional extensible metadata JSON for non-core fields.
-
-Current MVP note: the implemented schema does not include a first-class bundle-level hyperlink/source column. File origin/source metadata lives on `AssetFile.source` (URL, `magnet:`, `ed2k:`, etc.). If the product needs logical asset-level source pages independent of physical-file origins, add a bundle-level field or link table via migration rather than overloading file-level source or `extra_metadata` ad hoc.
 
 ### 4.3 Asset file
 
