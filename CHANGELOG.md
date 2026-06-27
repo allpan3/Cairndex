@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **In-bundle view — open a bundle to browse and inspect its files.**
+  - Double-clicking a bundle (grid card or list row) opens an inline **album
+    view** in the center pane: a thumbnail grid of every file in the bundle,
+    with a back-to-library breadcrumb. Clicking a file opens a fullscreen
+    **viewer** (lightbox) showing the full-resolution image or an inline video,
+    with prev/next navigation (on-screen chevrons and ←/→), an info-card
+    fallback for files the browser can't render, and Esc to step back out
+    (viewer → album → library).
+  - New `GET /api/v1/files/{file_id}/content` serves a file's original bytes
+    (path-safe, HTTP Range-capable, mime guessed from the filename) so the
+    viewer can show full-size images; the video-only path resolver in
+    `media/playback.py` was generalized into `resolve_file_path`.
 - **Phase 8 — packaging and deployment hardening** (ADR-0005).
   - The backend serves the built SPA when `CAIRNDEX_STATIC_DIR` is set, so a
     single container ships both halves: FastAPI keeps owning `/api/v1` and

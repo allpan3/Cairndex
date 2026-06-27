@@ -17,6 +17,7 @@ interface BrowserProps {
   zoom: number
   selectedIds: Set<string>
   onSelect: (id: string, e: React.MouseEvent) => void
+  onOpen: (id: string) => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -26,7 +27,7 @@ interface BrowserProps {
 }
 
 export function Browser(props: BrowserProps) {
-  const { items, layout, zoom, selectedIds, onSelect } = props
+  const { items, layout, zoom, selectedIds, onSelect, onOpen } = props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -112,6 +113,7 @@ export function Browser(props: BrowserProps) {
                         item={c.item}
                         selected={selectedIds.has(c.item.id)}
                         onSelect={onSelect}
+                        onOpen={onOpen}
                       />
                     ))
                   : row.cards.map((c) => (
@@ -129,6 +131,7 @@ export function Browser(props: BrowserProps) {
                           selected={selectedIds.has(c.item.id)}
                           showMeta={layout === 'grid'}
                           onSelect={onSelect}
+                          onOpen={onOpen}
                         />
                       </div>
                     ))}
@@ -158,16 +161,19 @@ function ListRow({
   item,
   selected,
   onSelect,
+  onOpen,
 }: {
   item: BundleSummary
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
+  onOpen: (id: string) => void
 }) {
   return (
     <div
       className={`list-row${selected ? ' list-row--selected' : ''}`}
       style={{ height: 40, width: '100%' }}
       onClick={(e) => onSelect(item.id, e)}
+      onDoubleClick={() => onOpen(item.id)}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}

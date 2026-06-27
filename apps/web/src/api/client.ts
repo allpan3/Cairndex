@@ -186,6 +186,18 @@ export function thumbnailUrl(bundleId: string): string {
   return `/api/v1/bundles/${bundleId}/thumbnail`
 }
 
+export function fileThumbnailUrl(bundleId: string, fileId: string): string {
+  return `/api/v1/bundles/${bundleId}/files/${fileId}/thumbnail`
+}
+
+export function fileContentUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/content`
+}
+
+export function fileStreamUrl(fileId: string): string {
+  return `/api/v1/files/${fileId}/stream`
+}
+
 // --- Taxonomy (for the tag editor) ------------------------------------------
 async function fetchAllPaged<T>(path: string, signal?: AbortSignal): Promise<T[]> {
   const out: T[] = []

@@ -4,6 +4,7 @@ import type { SmartFolderRead } from './api/client'
 import { useBrowse, useFolderCounts, useFolders, useSmartFolders, useViewCounts } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
+import { BundleAlbum } from './app/BundleAlbum'
 import { EagleImport } from './app/EagleImport'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
@@ -67,6 +68,7 @@ export default function App() {
   const [selection, setSelection] = useState<Selection>({ view: 'all', folderId: null })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
+  const [openBundleId, setOpenBundleId] = useState<string | null>(null) // album view
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [importing, setImporting] = useState(false)
@@ -121,6 +123,12 @@ export default function App() {
     setActiveId(id)
   }, [])
 
+  const open = useCallback((id: string) => {
+    setSelectedIds(new Set([id]))
+    setActiveId(id)
+    setOpenBundleId(id)
+  }, [])
+
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set())
     setActiveId(null)
@@ -148,6 +156,8 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+      // While the album view is open it owns keyboard navigation (incl. Esc).
+      if (openBundleId !== null) return
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
         moveSelection(1)
@@ -160,7 +170,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveSelection, clearSelection])
+  }, [moveSelection, clearSelection, openBundleId])
 
   return (
     <div
@@ -177,6 +187,7 @@ export default function App() {
         onSelect={(s) => {
           setSelection(s)
           clearSelection()
+          setOpenBundleId(null)
         }}
         counts={counts.data}
         folders={folders.data ?? []}
@@ -196,21 +207,28 @@ export default function App() {
           prefs={prefs}
           onPrefs={setPrefs}
         />
-        {selectedIds.size >= 2 && <BatchBar ids={[...selectedIds]} onClear={clearSelection} />}
-        <Browser
-          items={filtered}
-          total={total}
-          layout={prefs.layout}
-          zoom={prefs.zoom}
-          selectedIds={selectedIds}
-          onSelect={select}
-          isLoading={browse.isLoading}
-          isError={browse.isError}
-          error={browse.error}
-          hasNextPage={browse.hasNextPage}
-          isFetchingNextPage={browse.isFetchingNextPage}
-          fetchNextPage={browse.fetchNextPage}
-        />
+        {selectedIds.size >= 2 && !openBundleId && (
+          <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
+        )}
+        {openBundleId ? (
+          <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
+        ) : (
+          <Browser
+            items={filtered}
+            total={total}
+            layout={prefs.layout}
+            zoom={prefs.zoom}
+            selectedIds={selectedIds}
+            onSelect={select}
+            onOpen={open}
+            isLoading={browse.isLoading}
+            isError={browse.isError}
+            error={browse.error}
+            hasNextPage={browse.hasNextPage}
+            isFetchingNextPage={browse.isFetchingNextPage}
+            fetchNextPage={browse.fetchNextPage}
+          />
+        )}
       </div>
 
       <Inspector bundleId={activeId} />
