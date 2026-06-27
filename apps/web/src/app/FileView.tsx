@@ -10,6 +10,7 @@ interface FileViewProps {
   onChangeRoot: (rootId: string) => void
   onNavigate: (path: string) => void
   onSelectEntry: (entry: FileViewEntry | null) => void
+  onManageLibraries: () => void
 }
 
 /** Breadcrumb segments for a root-relative POSIX path. */
@@ -31,10 +32,12 @@ export function FileView({
   onChangeRoot,
   onNavigate,
   onSelectEntry,
+  onManageLibraries,
 }: FileViewProps) {
   const { rootId, path } = location
   const query = useFileView(rootId, path)
   const activeRoot = roots.find((r) => r.id === rootId) ?? null
+  const unavailable = activeRoot?.status === 'unavailable'
 
   return (
     <div className="file-view">
@@ -43,15 +46,18 @@ export function FileView({
           className="edit file-view__root"
           value={rootId ?? ''}
           onChange={(e) => onChangeRoot(e.target.value)}
-          aria-label="Storage root"
+          aria-label="Library"
         >
-          {roots.length === 0 && <option value="">No storage roots</option>}
+          {roots.length === 0 && <option value="">No libraries</option>}
           {roots.map((r) => (
             <option key={r.id} value={r.id}>
               {r.name}
             </option>
           ))}
         </select>
+        <button className="add-btn" onClick={onManageLibraries}>
+          + Library
+        </button>
         <nav className="file-view__crumbs" aria-label="Breadcrumb">
           <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
             {activeRoot?.name ?? 'Root'}
@@ -69,7 +75,20 @@ export function FileView({
 
       <div className="file-view__body">
         {rootId === null ? (
-          <div className="empty">Add a storage root to browse files.</div>
+          <div className="empty">
+            <p>No libraries yet.</p>
+            <button className="btn btn--primary" onClick={onManageLibraries}>
+              Add a library
+            </button>
+          </div>
+        ) : unavailable ? (
+          <div className="empty empty--error">
+            <p>This library is currently unavailable.</p>
+            <p className="empty__hint">
+              Its folder may be offline or was moved or renamed. Reconnect it (or fix the path in
+              Libraries), then rescan.
+            </p>
+          </div>
         ) : query.isLoading ? (
           <div className="empty">Loading…</div>
         ) : query.isError ? (

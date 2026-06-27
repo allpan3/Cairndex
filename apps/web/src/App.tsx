@@ -15,6 +15,7 @@ import { BundleAlbum } from './app/BundleAlbum'
 import { EagleImport } from './app/EagleImport'
 import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
+import { LibraryManager } from './app/LibraryManager'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
@@ -94,6 +95,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('collection')
   const [fileLoc, setFileLoc] = useState<FileLocation>({ rootId: null, path: '' })
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+  const [libraries, setLibraries] = useState(false)
 
   const counts = useViewCounts()
   const collections = useCollections()
@@ -101,16 +103,15 @@ export default function App() {
   const smartCollections = useSmartCollections()
   const storageRoots = useStorageRoots()
 
-  const enterMode = useCallback(
-    (next: AppMode) => {
-      setMode(next)
-      if (next === 'file' && fileLoc.rootId === null) {
-        const first = storageRoots.data?.[0]?.id ?? null
-        setFileLoc({ rootId: first, path: '' })
-      }
-    },
-    [fileLoc.rootId, storageRoots.data],
-  )
+  // Keep the File View pointed at a real library without storing a stale id:
+  // fall back to the first available root when none is chosen or the chosen one
+  // was removed. Derived (not an effect) so it stays consistent during render.
+  const fileRootId = useMemo(() => {
+    const roots = storageRoots.data ?? []
+    if (fileLoc.rootId && roots.some((r) => r.id === fileLoc.rootId)) return fileLoc.rootId
+    return roots[0]?.id ?? null
+  }, [storageRoots.data, fileLoc.rootId])
+  const filePath = fileRootId === fileLoc.rootId ? fileLoc.path : ''
 
   // A selected Smart Collection drives browsing through its saved filter AST,
   // which compiles via the exact path POST /bundles/browse uses for ad-hoc
@@ -219,7 +220,7 @@ export default function App() {
     >
       <Sidebar
         mode={mode}
-        onMode={enterMode}
+        onMode={setMode}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
@@ -240,17 +241,18 @@ export default function App() {
         {mode === 'file' ? (
           <FileView
             roots={storageRoots.data ?? []}
-            location={fileLoc}
+            location={{ rootId: fileRootId, path: filePath }}
             selectedPath={fileEntry?.relative_path ?? null}
             onChangeRoot={(rootId) => {
               setFileLoc({ rootId, path: '' })
               setFileEntry(null)
             }}
             onNavigate={(path) => {
-              setFileLoc((loc) => ({ ...loc, path }))
+              setFileLoc({ rootId: fileRootId, path })
               setFileEntry(null)
             }}
             onSelectEntry={setFileEntry}
+            onManageLibraries={() => setLibraries(true)}
           />
         ) : (
           <>
@@ -294,6 +296,8 @@ export default function App() {
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
       {importing && <EagleImport onClose={() => setImporting(false)} />}
+
+      {libraries && <LibraryManager onClose={() => setLibraries(false)} />}
 
       {editor && (
         <SmartCollectionEditor

@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Library management UI + path autocomplete.** Storage roots are surfaced in
+  the UI as **Libraries**. A new manager (the "+ Library" button in File View,
+  or the "Add a library" call-to-action when none exist) lists existing libraries
+  with an available/unavailable badge and lets you add one by absolute server
+  path — with **Jellyfin-style directory autocomplete** (`GET
+  /api/v1/storage-roots/path-suggestions?path=...`, which lists only directories
+  the server process can see) and an optional **"create the folder if it doesn't
+  exist"** toggle (`StorageRootCreate.create_if_missing`, owner setup only). When
+  a library's directory is offline/moved, File View now shows a clear "This
+  library is currently unavailable" state instead of a raw HTTP error (the API
+  client surfaces the server's structured message). Covered by backend tests and
+  a Playwright e2e (`e2e/libraries.spec.ts`).
+
 - **Read-only File View backend (Phase 4).** A new physical, storage-root-scoped
   filesystem browser, distinct from the logical Collection View:
   `GET /api/v1/storage-roots/{root_id}/entries?path=...`

@@ -9,6 +9,7 @@ from cairndex.api.schemas.jobs import JobRead
 from cairndex.api.schemas.storage_roots import (
     FastAddRequest,
     FastAddResponse,
+    PathSuggestions,
     StorageRootCreate,
     StorageRootRead,
     StorageRootUpdate,
@@ -35,6 +36,7 @@ def create_storage_root(payload: StorageRootCreate, db: DbSession) -> StorageRoo
         name=payload.name,
         canonical_path=payload.canonical_path,
         read_only=payload.read_only,
+        create_if_missing=payload.create_if_missing,
     )
     return StorageRootRead.model_validate(root)
 
@@ -46,6 +48,13 @@ def list_storage_roots(db: DbSession, page: Pagination) -> Page[StorageRootRead]
         items=[StorageRootRead.model_validate(r) for r in roots],
         next_cursor=next_cursor,
     )
+
+
+# Declared before /{root_id} so the static segment wins the route match.
+@router.get("/path-suggestions", response_model=PathSuggestions)
+def path_suggestions(path: Annotated[str, Query()] = "") -> PathSuggestions:
+    """Directory autocompletions for the add-library form (owner setup only)."""
+    return PathSuggestions(suggestions=service.suggest_paths(path))
 
 
 @router.get("/{root_id}", response_model=StorageRootRead)

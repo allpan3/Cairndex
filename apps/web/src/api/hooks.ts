@@ -10,8 +10,11 @@ import {
   type SmartCollectionUpdate,
   batchUpdate,
   browseBundles,
+  type StorageRootCreate,
   createSmartCollection,
+  createStorageRoot,
   deleteSmartCollection,
+  deleteStorageRoot,
   fetchAllCollections,
   fetchBundle,
   fetchBundleFiles,
@@ -125,12 +128,27 @@ export function useSmartCollectionMutations() {
   }
 }
 
-// --- File View (read-only filesystem browsing) -------------------------------
+// --- Libraries (storage roots) + File View -----------------------------------
 export function useStorageRoots() {
   return useQuery({
     queryKey: ['storage-roots'],
     queryFn: ({ signal }) => fetchStorageRoots(signal),
   })
+}
+
+export function useLibraryMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['storage-roots'] })
+  return {
+    create: useMutation({
+      mutationFn: (payload: StorageRootCreate) => createStorageRoot(payload),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteStorageRoot(id),
+      onSuccess: invalidate,
+    }),
+  }
 }
 
 /** List directory entries for a storage root + relative path (null = root). */
