@@ -571,7 +571,61 @@ button {
   color: var(--text-muted);
   font-size: 12px;
 }
+.pick-row__toggle {
+  width: 14px;
+  flex: 0 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  text-align: center;
+}
 .pick-group {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 8px 6px 2px;
+}
+
+/* Group-filter row in the tag picker: a single clipped row by default, with a
+   chevron to expand into a wrapping multi-row layout. */
+.pick-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.pick-filter__chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+.pick-filter--expanded .pick-filter__chips {
+  flex-wrap: wrap;
+}
+.pick-filter__toggle {
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 4px;
+  font-size: 12px;
+}
+
+/* Sections in the tag picker (Selected / each group / Others), separated by
+   horizontal rules like Eagle. */
+.pick-section + .pick-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.pick-section__title {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
