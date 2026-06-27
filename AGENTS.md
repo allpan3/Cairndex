@@ -610,13 +610,13 @@ Keep `main` stable and reviewable.
 
 Use a dedicated branch for each meaningful feature or fix, for example:
 
-- `feature/core-domain-model`
-- `feature/storage-scanner`
-- `feature/bundle-browser`
-- `feature/tag-filtering`
-- `feature/smart-folders`
-- `feature/subtitle-playback`
-- `feature/eagle-import`
+- `feat/core-domain-model`
+- `feat/storage-scanner`
+- `feat/bundle-browser`
+- `feat/tag-filtering`
+- `feat/smart-folders`
+- `feat/subtitle-playback`
+- `feat/eagle-import`
 - `fix/path-normalization`
 - `docs/architecture`
 
@@ -656,6 +656,7 @@ When no hosted PR system is available, create a PR-style markdown summary under 
 ### Rebase and force push
 
 - Never force-push `main`.
+- Before rebasing into main, check whether the local `main` is up to date.
 - Rebase feature branches as needed.
 - Force-push only non-main branches and use `--force-with-lease`.
 - Avoid rewriting a shared branch without communicating the intent.
