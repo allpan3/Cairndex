@@ -532,6 +532,29 @@ export interface paths {
         patch: operations["update_storage_root_api_v1_storage_roots__root_id__patch"];
         trace?: never;
     };
+    "/api/v1/storage-roots/{root_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List File View Entries
+         * @description List non-hidden directories/files under ``path`` in a storage root.
+         *
+         *     Read-only. ``path`` is root-relative (omitted = the root itself); absolute
+         *     paths, traversal, NUL bytes, and symlink escapes are rejected.
+         */
+        get: operations["list_file_view_entries_api_v1_storage_roots__root_id__entries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-roots/{root_id}/fast-add": {
         parameters: {
             query?: never;
@@ -1074,6 +1097,40 @@ export interface components {
             sequence?: number | null;
             /** Source */
             source?: string | null;
+        };
+        /** FileViewEntryRead */
+        FileViewEntryRead: {
+            /** Bundle Id */
+            bundle_id: string | null;
+            /** Extension */
+            extension: string | null;
+            /** Kind */
+            kind: string;
+            /** Linked */
+            linked: boolean;
+            /** Media Kind */
+            media_kind: string | null;
+            /** Mime Type */
+            mime_type: string | null;
+            /** Modified At */
+            modified_at: string | null;
+            /** Name */
+            name: string;
+            /** Relative Path */
+            relative_path: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Supported */
+            supported: boolean;
+        };
+        /** FileViewListingRead */
+        FileViewListingRead: {
+            /** Entries */
+            entries: components["schemas"]["FileViewEntryRead"][];
+            /** Path */
+            path: string;
+            /** Root Id */
+            root_id: string;
         };
         /**
          * FilterExpression
@@ -3020,6 +3077,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StorageRootRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_file_view_entries_api_v1_storage_roots__root_id__entries_get: {
+        parameters: {
+            query?: {
+                path?: string | null;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileViewListingRead"];
                 };
             };
             /** @description Validation Error */

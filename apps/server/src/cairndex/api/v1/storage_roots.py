@@ -1,7 +1,10 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import DbSession, Pagination
 from cairndex.api.schemas.common import Page
+from cairndex.api.schemas.file_view import FileViewEntryRead, FileViewListingRead
 from cairndex.api.schemas.jobs import JobRead
 from cairndex.api.schemas.storage_roots import (
     FastAddRequest,
@@ -12,6 +15,7 @@ from cairndex.api.schemas.storage_roots import (
 )
 from cairndex.domain.enums import JobType
 from cairndex.scanning.fast_add import fast_add
+from cairndex.services import file_view as file_view_service
 from cairndex.services import jobs as job_service
 from cairndex.services import storage_roots as service
 
@@ -47,6 +51,26 @@ def list_storage_roots(db: DbSession, page: Pagination) -> Page[StorageRootRead]
 @router.get("/{root_id}", response_model=StorageRootRead)
 def get_storage_root(root_id: str, db: DbSession) -> StorageRootRead:
     return StorageRootRead.model_validate(service.get_storage_root(db, root_id))
+
+
+# --- Read-only File View: storage-root filesystem browsing -------------------
+@router.get("/{root_id}/entries", response_model=FileViewListingRead)
+def list_file_view_entries(
+    root_id: str,
+    db: DbSession,
+    path: Annotated[str | None, Query()] = None,
+) -> FileViewListingRead:
+    """List non-hidden directories/files under ``path`` in a storage root.
+
+    Read-only. ``path`` is root-relative (omitted = the root itself); absolute
+    paths, traversal, NUL bytes, and symlink escapes are rejected.
+    """
+    listing = file_view_service.list_entries(db, root_id, path=path)
+    return FileViewListingRead(
+        root_id=listing.root_id,
+        path=listing.path,
+        entries=[FileViewEntryRead(**vars(e)) for e in listing.entries],
+    )
 
 
 @router.patch("/{root_id}", response_model=StorageRootRead)

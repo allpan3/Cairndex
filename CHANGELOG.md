@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Read-only File View backend (Phase 4).** A new physical, storage-root-scoped
+  filesystem browser, distinct from the logical Collection View:
+  `GET /api/v1/storage-roots/{root_id}/entries?path=...`
+  (`services/file_view.py`). Input is only `storage_root_id + relative_path`
+  (omitted = the root); absolute paths, `..` traversal, NUL bytes, and symlink
+  escapes are rejected. Hidden entries (dotfiles/dot-dirs, `__pycache__`,
+  `node_modules`, `Thumbs.db`) are excluded; directories sort before files. Each
+  entry reports name/relative-path/kind/size/mtime/extension/MIME, the app's
+  media classification, a `supported` (natively previewable) flag, and a cheap
+  `linked`/`bundle_id` hint. Strictly read-only — no move/rename/delete. OpenAPI
+  and frontend types regenerated.
+
 - **In-bundle view — open a bundle to browse and inspect its files.**
   - Double-clicking a bundle (grid card or list row) opens an inline **album
     view** in the center pane: a thumbnail grid of every file in the bundle,

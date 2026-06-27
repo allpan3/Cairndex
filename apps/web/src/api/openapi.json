@@ -1071,6 +1071,138 @@
         "title": "FileUpdate",
         "type": "object"
       },
+      "FileViewEntryRead": {
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "relative_path",
+          "kind",
+          "size_bytes",
+          "modified_at",
+          "extension",
+          "mime_type",
+          "media_kind",
+          "supported",
+          "linked",
+          "bundle_id"
+        ],
+        "title": "FileViewEntryRead",
+        "type": "object"
+      },
+      "FileViewListingRead": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FileViewEntryRead"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "root_id": {
+            "title": "Root Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_id",
+          "path",
+          "entries"
+        ],
+        "title": "FileViewListingRead",
+        "type": "object"
+      },
       "FilterExpression-Input": {
         "additionalProperties": false,
         "description": "A complete, versioned filter expression (the stored/transmitted form).",
@@ -4650,6 +4782,65 @@
           }
         },
         "summary": "Update Storage Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/entries": {
+      "get": {
+        "description": "List non-hidden directories/files under ``path`` in a storage root.\n\nRead-only. ``path`` is root-relative (omitted = the root itself); absolute\npaths, traversal, NUL bytes, and symlink escapes are rejected.",
+        "operationId": "list_file_view_entries_api_v1_storage_roots__root_id__entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileViewListingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List File View Entries",
         "tags": [
           "storage-roots"
         ]
