@@ -181,6 +181,15 @@ grouped under `Unreleased` until the first tagged release.
     (`folder_ids` → `collection_ids`), batch `add/remove_folder_ids` →
     `add/remove_collection_ids`. OpenAPI and the generated frontend API types
     were regenerated.
+  - *Frontend rename (Phase 3):* the desktop UI now presents logical grouping as
+    **Collections** and saved filters as **Smart Collections** — sidebar
+    headings/labels ("Collections", "Smart Collections", "+ Collection", "Search
+    collections…"), the inspector picker (`FolderPicker` → `CollectionPicker`),
+    the editor (`SmartFolderEditor` → `SmartCollectionEditor`), the filter field,
+    and the API client/hooks (`useCollections`, `useCollectionCounts`,
+    `useBundleCollections`, `useSetBundleCollections`, `useSmartCollections`).
+    View state is `collectionId`/`smartCollectionId`. (This is the logical
+    Collection View; a physical File View follows.)
 - Refreshed current-state documentation after the Phase 0–8 roadmap: README,
   architecture, data model, status, and agent instructions now describe the
   implemented app instead of the old Phase 0/TBD skeleton, and clarify the

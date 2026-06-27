@@ -65,7 +65,7 @@ export function EagleImport({ onClose }: { onClose: () => void }) {
               <Stat label="New bundles" value={plan.new_bundles} />
               <Stat label="Already imported" value={plan.skipped_existing} />
               <Stat label="Deleted (skipped)" value={plan.skipped_deleted} />
-              <Stat label="Folders" value={plan.folders} />
+              <Stat label="Collections" value={plan.folders} />
               <Stat label="Tags" value={plan.tags} />
               <Stat label="Tag groups" value={plan.tag_groups} />
             </div>
@@ -84,7 +84,8 @@ export function EagleImport({ onClose }: { onClose: () => void }) {
         {result && (
           <div className="import-report import-report--done" role="status">
             Imported {result.bundles_created} bundle{result.bundles_created === 1 ? '' : 's'} (
-            {result.folders_created} folders, {result.tags_created} tags). {result.skipped} skipped.
+            {result.collections_created} collections, {result.tags_created} tags). {result.skipped}{' '}
+            skipped.
           </div>
         )}
 

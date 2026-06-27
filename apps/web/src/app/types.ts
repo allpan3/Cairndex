@@ -4,8 +4,8 @@ export type LayoutMode = 'grid' | 'justified' | 'list'
 
 export interface Selection {
   view: SystemView
-  folderId: string | null
-  smartFolderId?: string | null
+  collectionId: string | null
+  smartCollectionId?: string | null
 }
 
 export interface BrowsePrefs {

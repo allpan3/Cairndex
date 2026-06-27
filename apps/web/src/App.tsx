@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { SmartFolderRead } from './api/client'
-import { useBrowse, useFolderCounts, useFolders, useSmartFolders, useViewCounts } from './api/hooks'
+import type { SmartCollectionRead } from './api/client'
+import {
+  useBrowse,
+  useCollectionCounts,
+  useCollections,
+  useSmartCollections,
+  useViewCounts,
+} from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
@@ -9,13 +15,13 @@ import { EagleImport } from './app/EagleImport'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
-import { SmartFolderEditor } from './app/SmartFolderEditor'
+import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { DEFAULT_PREFS, SYSTEM_VIEWS, type BrowsePrefs, type Selection } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
 
 interface EditorState {
-  existing?: SmartFolderRead | null
+  existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
 }
 
@@ -65,7 +71,7 @@ export default function App() {
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
-  const [selection, setSelection] = useState<Selection>({ view: 'all', folderId: null })
+  const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
   const [openBundleId, setOpenBundleId] = useState<string | null>(null) // album view
@@ -74,23 +80,24 @@ export default function App() {
   const [importing, setImporting] = useState(false)
 
   const counts = useViewCounts()
-  const folders = useFolders()
-  const folderCounts = useFolderCounts()
-  const smartFolders = useSmartFolders()
+  const collections = useCollections()
+  const collectionCounts = useCollectionCounts()
+  const smartCollections = useSmartCollections()
 
-  // A selected Smart Folder drives browsing through its saved filter AST, which
-  // compiles via the exact path POST /bundles/browse uses for ad-hoc filters.
-  const activeSmartFolder =
-    smartFolders.data?.find((sf) => sf.id === selection.smartFolderId) ?? null
+  // A selected Smart Collection drives browsing through its saved filter AST,
+  // which compiles via the exact path POST /bundles/browse uses for ad-hoc
+  // filters.
+  const activeSmartCollection =
+    smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
 
   const browse = useBrowse({
     view: selection.view,
-    folderId: selection.folderId,
-    includeDescendants: selection.folderId !== null,
+    collectionId: selection.collectionId,
+    includeDescendants: selection.collectionId !== null,
     sort: prefs.sort,
     order: prefs.order,
     limit: 100,
-    filter: activeSmartFolder?.filter ?? null,
+    filter: activeSmartCollection?.filter ?? null,
   })
 
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -102,12 +109,12 @@ export default function App() {
   }, [items, search])
 
   const title = useMemo(() => {
-    if (activeSmartFolder) return activeSmartFolder.name
-    if (selection.folderId) {
-      return folders.data?.find((f) => f.id === selection.folderId)?.name ?? 'Folder'
+    if (activeSmartCollection) return activeSmartCollection.name
+    if (selection.collectionId) {
+      return collections.data?.find((c) => c.id === selection.collectionId)?.name ?? 'Collection'
     }
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
-  }, [selection, folders.data, activeSmartFolder])
+  }, [selection, collections.data, activeSmartCollection])
 
   const select = useCallback((id: string, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -190,11 +197,11 @@ export default function App() {
           setOpenBundleId(null)
         }}
         counts={counts.data}
-        folders={folders.data ?? []}
-        folderCounts={folderCounts.data}
-        smartFolders={smartFolders.data ?? []}
-        onNewSmartFolder={() => setEditor({ initialDraft: emptyDraft() })}
-        onEditSmartFolder={(sf) => setEditor({ existing: sf })}
+        collections={collections.data ?? []}
+        collectionCounts={collectionCounts.data}
+        smartCollections={smartCollections.data ?? []}
+        onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
+        onEditSmartCollection={(sc) => setEditor({ existing: sc })}
         onImport={() => setImporting(true)}
       />
 
@@ -239,13 +246,13 @@ export default function App() {
       {importing && <EagleImport onClose={() => setImporting(false)} />}
 
       {editor && (
-        <SmartFolderEditor
+        <SmartCollectionEditor
           existing={editor.existing}
           initialDraft={editor.initialDraft}
           onClose={() => setEditor(null)}
-          onSaved={(sf) => {
+          onSaved={(sc) => {
             setEditor(null)
-            setSelection({ view: 'all', folderId: null, smartFolderId: sf.id })
+            setSelection({ view: 'all', collectionId: null, smartCollectionId: sc.id })
             clearSelection()
           }}
         />

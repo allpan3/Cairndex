@@ -1,37 +1,37 @@
 import { useMemo, useState } from 'react'
 
-import type { FolderRead, SmartFolderRead, ViewCounts } from '../api/client'
+import type { CollectionRead, SmartCollectionRead, ViewCounts } from '../api/client'
 import { SYSTEM_VIEWS, type Selection } from './types'
 
 interface SidebarProps {
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
-  folders: FolderRead[]
-  folderCounts?: Record<string, number>
-  smartFolders: SmartFolderRead[]
-  onNewSmartFolder: () => void
-  onEditSmartFolder: (sf: SmartFolderRead) => void
+  collections: CollectionRead[]
+  collectionCounts?: Record<string, number>
+  smartCollections: SmartCollectionRead[]
+  onNewSmartCollection: () => void
+  onEditSmartCollection: (sc: SmartCollectionRead) => void
   onImport: () => void
 }
 
 interface TreeNode {
-  folder: FolderRead
+  collection: CollectionRead
   children: TreeNode[]
 }
 
-function buildTree(folders: FolderRead[]): TreeNode[] {
-  const byParent = new Map<string | null, FolderRead[]>()
-  for (const f of folders) {
-    const key = f.parent_id ?? null
+function buildTree(collections: CollectionRead[]): TreeNode[] {
+  const byParent = new Map<string | null, CollectionRead[]>()
+  for (const c of collections) {
+    const key = c.parent_id ?? null
     const list = byParent.get(key) ?? []
-    list.push(f)
+    list.push(c)
     byParent.set(key, list)
   }
   const make = (parent: string | null): TreeNode[] =>
     (byParent.get(parent) ?? [])
       .sort((a, b) => a.name.localeCompare(b.name))
-      .map((folder) => ({ folder, children: make(folder.id) }))
+      .map((collection) => ({ collection, children: make(collection.id) }))
   return make(null)
 }
 
@@ -39,14 +39,14 @@ export function Sidebar({
   selection,
   onSelect,
   counts,
-  folders,
-  folderCounts,
-  smartFolders,
-  onNewSmartFolder,
-  onEditSmartFolder,
+  collections,
+  collectionCounts,
+  smartCollections,
+  onNewSmartCollection,
+  onEditSmartCollection,
   onImport,
 }: SidebarProps) {
-  const tree = useMemo(() => buildTree(folders), [folders])
+  const tree = useMemo(() => buildTree(collections), [collections])
 
   return (
     <aside className="sidebar">
@@ -64,12 +64,12 @@ export function Sidebar({
 
       <div className="sidebar__section">
         {SYSTEM_VIEWS.map((v) => {
-          const active = selection.folderId === null && selection.view === v.view
+          const active = selection.collectionId === null && selection.view === v.view
           return (
             <button
               key={v.view}
               className={`nav-item${active ? ' nav-item--active' : ''}`}
-              onClick={() => onSelect({ view: v.view, folderId: null })}
+              onClick={() => onSelect({ view: v.view, collectionId: null })}
             >
               <span className="nav-item__icon">{v.icon}</span>
               <span className="nav-item__label">{v.label}</span>
@@ -81,34 +81,40 @@ export function Sidebar({
 
       <div className="sidebar__section">
         <div className="sidebar__heading sidebar__heading--row">
-          Smart Folders
-          <button className="sidebar__add" onClick={onNewSmartFolder} aria-label="New smart folder">
+          Smart Collections
+          <button
+            className="sidebar__add"
+            onClick={onNewSmartCollection}
+            aria-label="New smart collection"
+          >
             +
           </button>
         </div>
-        {smartFolders.map((sf) => {
-          const active = selection.smartFolderId === sf.id
+        {smartCollections.map((sc) => {
+          const active = selection.smartCollectionId === sc.id
           return (
             <div
-              key={sf.id}
+              key={sc.id}
               className={`nav-item${active ? ' nav-item--active' : ''}`}
-              onClick={() => onSelect({ view: 'all', folderId: null, smartFolderId: sf.id })}
+              onClick={() =>
+                onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
+              }
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ')
-                  onSelect({ view: 'all', folderId: null, smartFolderId: sf.id })
+                  onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
               }}
             >
               <span className="nav-item__icon">⚙</span>
-              <span className="nav-item__label">{sf.name}</span>
+              <span className="nav-item__label">{sc.name}</span>
               <button
                 className="nav-item__edit"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onEditSmartFolder(sf)
+                  onEditSmartCollection(sc)
                 }}
-                aria-label={`Edit ${sf.name}`}
+                aria-label={`Edit ${sc.name}`}
               >
                 ✎
               </button>
@@ -118,16 +124,16 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__section">
-        <div className="sidebar__heading">Folders</div>
-        {tree.length === 0 && <div className="sidebar__heading">No folders yet</div>}
+        <div className="sidebar__heading">Collections</div>
+        {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
         {tree.map((node) => (
-          <FolderBranch
-            key={node.folder.id}
+          <CollectionBranch
+            key={node.collection.id}
             node={node}
             depth={0}
             selection={selection}
             onSelect={onSelect}
-            folderCounts={folderCounts}
+            collectionCounts={collectionCounts}
           />
         ))}
       </div>
@@ -135,34 +141,34 @@ export function Sidebar({
   )
 }
 
-function FolderBranch({
+function CollectionBranch({
   node,
   depth,
   selection,
   onSelect,
-  folderCounts,
+  collectionCounts,
 }: {
   node: TreeNode
   depth: number
   selection: Selection
   onSelect: (selection: Selection) => void
-  folderCounts?: Record<string, number>
+  collectionCounts?: Record<string, number>
 }) {
   const [expanded, setExpanded] = useState(depth < 1)
-  const active = selection.folderId === node.folder.id
+  const active = selection.collectionId === node.collection.id
   const hasChildren = node.children.length > 0
 
   return (
     <>
       <div
-        className={`nav-item folder-row${active ? ' nav-item--active' : ''}`}
+        className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => onSelect({ view: 'all', folderId: node.folder.id })}
+        onClick={() => onSelect({ view: 'all', collectionId: node.collection.id })}
         role="treeitem"
         aria-selected={active}
       >
         <button
-          className="folder-row__toggle"
+          className="collection-row__toggle"
           onClick={(e) => {
             e.stopPropagation()
             setExpanded((v) => !v)
@@ -172,18 +178,18 @@ function FolderBranch({
           {hasChildren ? (expanded ? '▾' : '▸') : ''}
         </button>
         <span className="nav-item__icon">🗀</span>
-        <span className="nav-item__label">{node.folder.name}</span>
-        <span className="nav-item__count">{folderCounts?.[node.folder.id] ?? ''}</span>
+        <span className="nav-item__label">{node.collection.name}</span>
+        <span className="nav-item__count">{collectionCounts?.[node.collection.id] ?? ''}</span>
       </div>
       {expanded &&
         node.children.map((child) => (
-          <FolderBranch
-            key={child.folder.id}
+          <CollectionBranch
+            key={child.collection.id}
             node={child}
             depth={depth + 1}
             selection={selection}
             onSelect={onSelect}
-            folderCounts={folderCounts}
+            collectionCounts={collectionCounts}
           />
         ))}
     </>

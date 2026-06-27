@@ -2,12 +2,32 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/in-bundle-view`, based on `main`. Latest commit: see `git log -1`.
+Branch: `feat/collections-and-file-view`, based on `main`. Latest commit: see
+`git log -1`.
 
 ## Current milestone
 
+**Collections + read-only File View refactor** (in progress). Splits browsing
+into a logical, bundle-first **Collection View** (the old "folder" concept,
+renamed) and a physical, storage-root-scoped read-only **File View**, and
+teaches the scanner to repair high-confidence moved files.
+
+Done so far on this branch:
+
+- Phase 1 — backend DB/model rename `Folder` → `Collection` (+ data-preserving
+  Alembic migration).
+- Phase 2 — public API/schema/filter rename to `collections`; Smart Folders →
+  Smart Collections; OpenAPI + frontend types regenerated.
+- Phase 3 — frontend rename to Collections / Smart Collections.
+
+Remaining: read-only File View backend (Phase 4) + UI (Phase 5), scanner
+moved-file repair (Phase 6), File View host-integration planning (Phase 7),
+final audit (Phase 8).
+
+## Previously merged
+
 **In-bundle view** — open a bundle to browse and inspect the files inside it.
-Merged to `main`. **Phases 0–8** are also merged to `main`.
+Merged to `main`. **Phases 0–8** (original roadmap) are also merged to `main`.
 
 ## Completed in this milestone
 

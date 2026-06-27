@@ -27,8 +27,8 @@ async function mockApi(page: Page) {
   await page.route('**/api/v1/bundles/counts', (r) =>
     r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
   )
-  await page.route('**/api/v1/folders/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/folders?*', (r) =>
+  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
   await page.route('**/api/v1/bundles/browse**', (r) =>

@@ -51,10 +51,10 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/api/v1/folders?*', (r) =>
+  await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/api/v1/folders/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/tags?*', (r) =>
     r.fulfill({
       json: {
@@ -79,8 +79,8 @@ async function mockApi(page: Page) {
   await page.route('**/api/v1/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 0 } } }))
 
   await page.route('**/api/v1/bundles/b0/files', (r) => r.fulfill({ json: [] }))
-  await page.route('**/api/v1/bundles/b0/folders', (r) =>
-    r.fulfill({ json: { bundle_id: 'b0', folder_ids: [] } }),
+  await page.route('**/api/v1/bundles/b0/collections', (r) =>
+    r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
   await page.route('**/api/v1/bundles/b0/tags', async (r) => {
     if (r.request().method() === 'PUT') {
