@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { FolderRead } from '../api/client'
-import { useBundleFolders, useFolderCounts, useFolders, useSetBundleFolders } from '../api/hooks'
+import { useBundleFolders, useFolders, useSetBundleFolders } from '../api/hooks'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 interface FolderRow {
@@ -33,7 +33,6 @@ function visibleFolderRows(folders: FolderRead[], collapsed: Set<string>): Folde
 export function FolderPicker({ bundleId }: { bundleId: string }) {
   const { data: bundleFolders } = useBundleFolders(bundleId)
   const { data: folders = [] } = useFolders()
-  const { data: counts = {} } = useFolderCounts()
   const setFolders = useSetBundleFolders(bundleId)
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
@@ -123,7 +122,9 @@ export function FolderPicker({ bundleId }: { bundleId: string }) {
                     </button>
                     <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
                     <span>🗀 {item.name}</span>
-                    <span className="pick-row__count">{counts[item.id] ?? 0}</span>
+                    {item.parent_id && byId.get(item.parent_id) && (
+                      <span className="pick-row__parent">{byId.get(item.parent_id)!.name}</span>
+                    )}
                   </div>
                 ))}
               </div>,
