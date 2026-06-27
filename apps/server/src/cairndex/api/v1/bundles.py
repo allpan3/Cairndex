@@ -98,8 +98,8 @@ def batch_update(payload: BatchUpdate, db: DbSession) -> BatchResult:
         bundle_ids=payload.bundle_ids,
         add_tag_ids=payload.add_tag_ids,
         remove_tag_ids=payload.remove_tag_ids,
-        add_folder_ids=payload.add_folder_ids,
-        remove_folder_ids=payload.remove_folder_ids,
+        add_collection_ids=payload.add_folder_ids,
+        remove_collection_ids=payload.remove_folder_ids,
     )
     return BatchResult(updated=updated)
 
@@ -194,13 +194,13 @@ def set_tags(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleTag
 @router.get("/{bundle_id}/folders", response_model=BundleFolders)
 def get_folders(bundle_id: str, db: DbSession) -> BundleFolders:
     bundle = service.get_bundle(db, bundle_id)
-    return BundleFolders(bundle_id=bundle.id, folder_ids=[f.id for f in bundle.folders])
+    return BundleFolders(bundle_id=bundle.id, folder_ids=[c.id for c in bundle.collections])
 
 
 @router.put("/{bundle_id}/folders", response_model=BundleFolders)
 def set_folders(bundle_id: str, payload: SetIdsRequest, db: DbSession) -> BundleFolders:
-    bundle = service.set_bundle_folders(db, bundle_id, payload.ids)
-    return BundleFolders(bundle_id=bundle.id, folder_ids=[f.id for f in bundle.folders])
+    bundle = service.set_bundle_collections(db, bundle_id, payload.ids)
+    return BundleFolders(bundle_id=bundle.id, folder_ids=[c.id for c in bundle.collections])
 
 
 # --- Thumbnails (generated lazily and cached) --------------------------------

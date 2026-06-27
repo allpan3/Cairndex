@@ -18,10 +18,10 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.eagle.reader import EagleLibrary, read_library
-from cairndex.persistence.models import Folder, ImportRecord, StorageRoot, Tag, TagGroup
+from cairndex.persistence.models import Collection, ImportRecord, StorageRoot, Tag, TagGroup
 from cairndex.scanning.media_types import classify
 from cairndex.services import bundles as bundle_service
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
 from cairndex.services import tag_groups as group_service
 from cairndex.services import tags as tag_service
@@ -33,7 +33,7 @@ _PROVIDER = "eagle"
 @dataclass
 class ImportResult:
     bundles_created: int = 0
-    folders_created: int = 0
+    collections_created: int = 0
     tags_created: int = 0
     tag_groups_created: int = 0
     skipped: int = 0
@@ -61,22 +61,25 @@ def _ensure_storage_root(session: Session, library: EagleLibrary) -> StorageRoot
     )
 
 
-def _ensure_folders(
+def _ensure_collections(
     session: Session, library: EagleLibrary, result: ImportResult
 ) -> dict[str, str]:
-    """Create/reuse folders, returning Eagle folder id → Cairndex folder id."""
+    """Create/reuse collections, returning Eagle folder id → Cairndex
+    collection id (Eagle folders import into Cairndex collections)."""
     mapping: dict[str, str] = {}
     for ef in library.folders:  # parents precede children (reader flattens depth-first)
         parent_id = mapping.get(ef.parent_id) if ef.parent_id else None
         existing = session.scalar(
-            select(Folder).where(Folder.parent_id == parent_id, Folder.name == ef.name)
+            select(Collection).where(Collection.parent_id == parent_id, Collection.name == ef.name)
         )
         if existing is not None:
             mapping[ef.id] = existing.id
             continue
-        folder = folder_service.create_folder(session, name=ef.name, parent_id=parent_id)
-        result.folders_created += 1
-        mapping[ef.id] = folder.id
+        collection = collection_service.create_collection(
+            session, name=ef.name, parent_id=parent_id
+        )
+        result.collections_created += 1
+        mapping[ef.id] = collection.id
     return mapping
 
 
@@ -118,7 +121,7 @@ def import_library(session: Session, library_path: str) -> ImportResult:
     result = ImportResult()
 
     root = _ensure_storage_root(session, library)
-    folder_map = _ensure_folders(session, library, result)
+    collection_map = _ensure_collections(session, library, result)
     tag_cache: dict[str, str] = {}
     _ensure_tag_groups(session, library, result, tag_cache)
 
@@ -145,9 +148,9 @@ def import_library(session: Session, library_path: str) -> ImportResult:
         if item.tags:
             tag_ids = [_ensure_tag(session, t, result, tag_cache) for t in item.tags]
             bundle_service.set_bundle_tags(session, bundle.id, tag_ids)
-        folder_ids = [folder_map[f] for f in item.folder_ids if f in folder_map]
-        if folder_ids:
-            bundle_service.set_bundle_folders(session, bundle.id, folder_ids)
+        collection_ids = [collection_map[f] for f in item.folder_ids if f in collection_map]
+        if collection_ids:
+            bundle_service.set_bundle_collections(session, bundle.id, collection_ids)
 
         session.add(ImportRecord(provider=_PROVIDER, external_id=item.id, bundle_id=bundle.id))
         session.flush()

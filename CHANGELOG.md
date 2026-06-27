@@ -157,6 +157,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Collections + File View refactor (in progress).** Renaming the logical
+  grouping concept from "folder" to **collection**, to free "folder/file" for a
+  new physical, storage-root-scoped **File View**.
+  - *Backend DB/model rename (Phase 1):* the `folders` table is now
+    `collections` and `asset_bundle_folders` is now `asset_bundle_collections`
+    (`folder_id` → `collection_id`); the ORM model `Folder` is `Collection` and
+    `AssetBundle.folders` is `AssetBundle.collections`. A data-preserving Alembic
+    migration copies hierarchy, parent-child links, and bundle memberships
+    across verbatim (every id preserved); no physical files are touched. The
+    domain service moved from `services/folders.py` to `services/collections.py`.
+    The public `/api/v1/folders*` routes and the `folders` filter field keep
+    their names in this phase and are renamed to `collections` next.
 - Refreshed current-state documentation after the Phase 0–8 roadmap: README,
   architecture, data model, status, and agent instructions now describe the
   implemented app instead of the old Phase 0/TBD skeleton, and clarify the

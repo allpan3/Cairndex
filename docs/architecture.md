@@ -48,7 +48,7 @@ api/         FastAPI routers and request/response schemas
 core/        config, app factory, time, errors, path-safety helpers
 persistence/ SQLAlchemy models, engine/session setup, Alembic migrations
 domain/      enum/domain definitions
-services/    HTTP-agnostic business logic for bundles, roots, tags, folders,
+services/    HTTP-agnostic business logic for bundles, roots, tags, collections,
              filters, jobs, subtitles, Eagle import, etc.
 scanning/    storage-root scanning, fast-add, file classification, fingerprints
 media/       ffprobe/ffmpeg adapters, thumbnailing, playback/subtitle helpers
@@ -111,7 +111,9 @@ ADR-0002/0003/0004. The core object graph is:
   availability, fingerprint/hash placeholders, and technical metadata.
 - `Tag` — hierarchical tag node using an adjacency list.
 - `TagGroup` — navigational grouping independent of tag hierarchy.
-- `Folder` — hierarchical virtual collection; bundle membership is many-to-many.
+- `Collection` — hierarchical virtual grouping (formerly "folder"); bundle
+  membership is many-to-many and never moves files on disk. This is the logical
+  surface (Collection View), distinct from the physical File View.
 - `SmartFolder` — saved, versioned filter AST plus optional view defaults.
 - `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to
   a video file.

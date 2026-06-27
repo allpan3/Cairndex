@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
 from cairndex.services.browse import BundleSort, SystemView, browse_bundles, view_counts
 
@@ -43,11 +43,11 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
 
 def test_system_views_filter(session: Session) -> None:
     root_id = _root(session)
-    folder = folder_service.create_folder(session, name="F")
+    collection = collection_service.create_collection(session, name="F")
 
-    # b1: in a folder, tagged-not; b2: uncategorized + untagged; b3: has missing file.
+    # b1: in a collection, tagged-not; b2: uncategorized + untagged; b3: missing file.
     b1 = bundle_service.create_bundle(session, title="b1")
-    bundle_service.set_bundle_folders(session, b1.id, [folder.id])
+    bundle_service.set_bundle_collections(session, b1.id, [collection.id])
     bundle_service.create_bundle(session, title="b2")  # uncategorized + untagged
     b3 = bundle_service.create_bundle(session, title="b3")
     mf = bundle_service.add_file(
@@ -62,13 +62,13 @@ def test_system_views_filter(session: Session) -> None:
     session.commit()
 
     assert browse_bundles(session, view=SystemView.ALL).total == 3
-    # b2 and b3 are in no folder.
+    # b2 and b3 are in no collection.
     assert browse_bundles(session, view=SystemView.UNCATEGORIZED).total == 2
     # all three are untagged.
     assert browse_bundles(session, view=SystemView.UNTAGGED).total == 3
     missing = browse_bundles(session, view=SystemView.MISSING)
     assert missing.total == 1 and missing.items[0].id == b3.id
-    assert browse_bundles(session, folder_id=folder.id).items[0].id == b1.id
+    assert browse_bundles(session, folder_id=collection.id).items[0].id == b1.id
 
 
 def test_sort_and_offset_pagination(session: Session) -> None:

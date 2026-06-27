@@ -26,7 +26,7 @@ def main() -> None:
     print(
         f"Seeded {summary.bundles} bundles / {summary.files} files, "
         f"{summary.tags} tags in {summary.tag_groups} groups, "
-        f"{summary.folders} folders (storage root {summary.storage_root_id})."
+        f"{summary.collections} collections (storage root {summary.storage_root_id})."
     )
 
 
