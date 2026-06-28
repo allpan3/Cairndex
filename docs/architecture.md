@@ -229,6 +229,33 @@ There is no application authentication yet. Production compose binds to
 `127.0.0.1` by default and is intended to sit behind a private network/Tailscale
 or an authenticating reverse proxy, not the public internet.
 
+## 11a. Library registry and per-library metadata (ADR-0008, in progress)
+
+Cairndex is moving from one global content database to an Eagle-like
+**per-library** model, kept compatible with the server/client split above. The
+direction and the full phase plan are recorded in ADR-0008; this section
+describes the shape and what has landed so far.
+
+- A **library** is a directory containing a `.cairndex/` marker:
+  `manifest.json` (format/uuid/display name), `library.db` (all of that
+  library's content metadata), and `cache/` (portable derived media). The
+  library travels with the folder.
+- The server keeps a separate **registry** database at
+  `{CAIRNDEX_DATA_DIR}/registry.db` (`cairndex.registry`), distinct from any
+  library DB. It tracks registered libraries (path, availability, schema
+  version) and will own the runtime job queue. It is server-local runtime
+  state, never portable metadata.
+- Library context is routed by path (`/api/v1/libraries/{library_id}/…`); the
+  active library is a client concern, not a server-global setting.
+
+Landed so far (this PR): the registry DB and models, the on-disk library
+package (`registry/library_package.py`), create/register/list services, and the
+global endpoints `GET /api/v1/libraries`, `POST /api/v1/libraries/create`,
+`POST /api/v1/libraries/register`, `GET /api/v1/libraries/{id}`. The existing
+storage-root-scoped content APIs are unchanged for now; migrating them under
+`/libraries/{id}`, the per-library engine cache, and the schema collapse that
+drops `storage_roots` are sequenced into later PRs (ADR-0008 phases 3–8).
+
 ## 12. Browsing surfaces: Collection View and File View
 
 Cairndex has two distinct browsing surfaces:

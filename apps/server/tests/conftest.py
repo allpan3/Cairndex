@@ -6,12 +6,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.api.deps import get_db
+from cairndex.api.deps import get_db, get_registry_db
 from cairndex.core.config import get_settings
 from cairndex.main import create_app
 from cairndex.persistence import models  # noqa: F401  (register metadata)
 from cairndex.persistence.base import Base
 from cairndex.persistence.engine import create_app_engine
+from cairndex.registry.engine import create_registry_engine
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -60,11 +61,30 @@ def session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(session: Session) -> Iterator[TestClient]:
-    """A TestClient whose DB dependency is bound to the test session.
+def registry_engine(tmp_path: "os.PathLike[str]") -> Iterator[Engine]:
+    """A fresh file-backed registry engine (separate from the content DB)."""
+    db_path = os.path.join(tmp_path, "registry.db")
+    eng = create_registry_engine(database_url=f"sqlite:///{db_path}")  # create_all inside
+    try:
+        yield eng
+    finally:
+        eng.dispose()
 
-    Requests share the fixture session and commit on success, so writes from
+
+@pytest.fixture
+def registry_session(registry_engine: Engine) -> Iterator[Session]:
+    sm = sessionmaker(bind=registry_engine, expire_on_commit=False, future=True)
+    with sm() as db_session:
+        yield db_session
+
+
+@pytest.fixture
+def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
+    """A TestClient whose DB dependencies are bound to the test sessions.
+
+    Requests share the fixture sessions and commit on success, so writes from
     one request are visible to the next (and to direct session assertions).
+    Both the content DB and the registry DB (ADR-0008) are overridden.
     """
     app = create_app()
 
@@ -76,7 +96,16 @@ def client(session: Session) -> Iterator[TestClient]:
             session.rollback()
             raise
 
+    def _override_get_registry_db() -> Iterator[Session]:
+        try:
+            yield registry_session
+            registry_session.commit()
+        except Exception:
+            registry_session.rollback()
+            raise
+
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_registry_db] = _override_get_registry_db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

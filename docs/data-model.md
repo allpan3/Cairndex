@@ -132,6 +132,31 @@ for manual attachment.
 bundle it produced so re-running an import skips already-imported items. Generic
 columns keep it reusable for future importers.
 
+## Registry database (ADR-0008, separate from the content DB)
+
+These tables live in the **registry** DB (`{CAIRNDEX_DATA_DIR}/registry.db`,
+package `cairndex.registry`), not in the content/library DB. They are
+server-local runtime state and use their own metadata/schema lifecycle
+(bootstrapped via `create_all`, not the content Alembic chain).
+
+### `registered_libraries`
+
+`id`, `library_uuid` (the library's own identity, copied from its manifest,
+`UNIQUE`), `name`, `root_path` (absolute, normalized, `UNIQUE`), `manifest_path`,
+`status` (`available`/`unavailable`, re-probed on read), `schema_version`,
+timestamps + `last_opened_at`. One row per `<root>/.cairndex/` library package
+the server knows about.
+
+### `job_queue`
+
+`id`, `library_id` (FK `registered_libraries`, CASCADE), `job_type`, `status`,
+`payload` (JSON), `processed`/`total`, `result` (JSON), `error`,
+`cancel_requested`, timestamps + `started_at`/`finished_at`. The registry will
+own the runtime job queue so the worker can open the target library DB by
+`library_id`; the per-library worker that consumes these rows lands in a later
+PR (ADR-0008 phase 7). The current in-process worker still uses the content-DB
+`jobs` table.
+
 ## Non-table model surfaces
 
 ### File View entries
