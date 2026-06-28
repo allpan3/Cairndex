@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Per-library derived cache (ADR-0008, phase 8).** Thumbnails and converted
+  WebVTT subtitles are now cached inside each library's portable
+  `<root>/.cairndex/cache/{thumbnails,subtitles}/` (paths derived from the
+  library root via `registry.library_package.cache_dir`) instead of the
+  server-global `{CAIRNDEX_DATA_DIR}/cache`. The cache now travels with the
+  library folder and is never written beside source media. Removed the unused
+  `Settings.cache_dir`. A future `cache_mode` (`inside_library` | `server_local`,
+  default `inside_library`) is documented for opting large transcodes into a
+  server-local cache; portable cache trades a larger backup footprint for
+  self-containment.
+
 - **Per-library content migration — create → scan → browse (ADR-0008, phases
   3–5/7).** Breaking, pre-release clean break. All content metadata now lives in
   each library's own `.cairndex/library.db`; the server keeps only a registry
