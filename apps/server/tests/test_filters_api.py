@@ -1,4 +1,4 @@
-"""API surface for Phase 5: filter preview, filtered browse, Smart Folder CRUD."""
+"""API surface for Phase 5: filter preview, filtered browse, Smart Collection CRUD."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -14,40 +14,47 @@ def _seed(session: Session) -> None:
     session.commit()
 
 
-def test_preview_counts_matches(client: TestClient, session: Session) -> None:
+def test_preview_counts_matches(client: TestClient, library_id: str, session: Session) -> None:
     _seed(session)
-    r = client.post("/api/v1/filters/preview", json={"filter": _HIGH_RATED})
+    base = f"/api/v1/libraries/{library_id}"
+    r = client.post(f"{base}/filters/preview", json={"filter": _HIGH_RATED})
     assert r.status_code == 200
     assert r.json() == {"count": 1}
 
 
-def test_preview_invalid_filter_is_422(client: TestClient, session: Session) -> None:
+def test_preview_invalid_filter_is_422(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
     r = client.post(
-        "/api/v1/filters/preview",
+        f"{base}/filters/preview",
         json={"filter": {"version": 1, "root": {"field": "nope", "operator": "eq", "value": 1}}},
     )
     assert r.status_code == 422
 
 
-def test_browse_post_with_filter(client: TestClient, session: Session) -> None:
+def test_browse_post_with_filter(client: TestClient, library_id: str, session: Session) -> None:
     _seed(session)
-    r = client.post("/api/v1/bundles/browse", json={"filter": _HIGH_RATED})
+    base = f"/api/v1/libraries/{library_id}"
+    r = client.post(f"{base}/bundles/browse", json={"filter": _HIGH_RATED})
     assert r.status_code == 200
     body = r.json()
     assert body["total"] == 1
     assert body["items"][0]["title"] == "keep"
 
 
-def test_browse_post_no_filter_matches_all(client: TestClient, session: Session) -> None:
+def test_browse_post_no_filter_matches_all(
+    client: TestClient, library_id: str, session: Session
+) -> None:
     _seed(session)
-    r = client.post("/api/v1/bundles/browse", json={})
+    base = f"/api/v1/libraries/{library_id}"
+    r = client.post(f"{base}/bundles/browse", json={})
     assert r.status_code == 200
     assert r.json()["total"] == 2
 
 
-def test_smart_collection_crud(client: TestClient, session: Session) -> None:
+def test_smart_collection_crud(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
     created = client.post(
-        "/api/v1/smart-collections",
+        f"{base}/smart-collections",
         json={"name": "Highly rated", "filter": _HIGH_RATED},
     )
     assert created.status_code == 201
@@ -55,21 +62,22 @@ def test_smart_collection_crud(client: TestClient, session: Session) -> None:
     assert sc["name"] == "Highly rated"
     assert sc["filter"]["root"]["field"] == "rating"
 
-    listed = client.get("/api/v1/smart-collections")
+    listed = client.get(f"{base}/smart-collections")
     assert [x["id"] for x in listed.json()] == [sc["id"]]
 
-    patched = client.patch(f"/api/v1/smart-collections/{sc['id']}", json={"name": "Renamed"})
+    patched = client.patch(f"{base}/smart-collections/{sc['id']}", json={"name": "Renamed"})
     assert patched.status_code == 200
     assert patched.json()["name"] == "Renamed"
 
-    deleted = client.delete(f"/api/v1/smart-collections/{sc['id']}")
+    deleted = client.delete(f"{base}/smart-collections/{sc['id']}")
     assert deleted.status_code == 204
-    assert client.get(f"/api/v1/smart-collections/{sc['id']}").status_code == 404
+    assert client.get(f"{base}/smart-collections/{sc['id']}").status_code == 404
 
 
-def test_smart_collection_invalid_filter_is_422(client: TestClient) -> None:
+def test_smart_collection_invalid_filter_is_422(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
     r = client.post(
-        "/api/v1/smart-collections",
+        f"{base}/smart-collections",
         json={
             "name": "bad",
             "filter": {"version": 1, "root": {"field": "nope", "operator": "eq", "value": 1}},

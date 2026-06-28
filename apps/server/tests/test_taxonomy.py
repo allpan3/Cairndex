@@ -102,15 +102,16 @@ def test_set_group_tags_rejects_unknown_tag(session: Session) -> None:
 
 
 # --- API smoke ---------------------------------------------------------------
-def test_tag_and_group_api_flow(client: TestClient) -> None:
-    parent = client.post("/api/v1/tags", json={"name": "genre"}).json()
-    child = client.post("/api/v1/tags", json={"name": "thriller", "parent_id": parent["id"]}).json()
+def test_tag_and_group_api_flow(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    parent = client.post(f"{base}/tags", json={"name": "genre"}).json()
+    child = client.post(f"{base}/tags", json={"name": "thriller", "parent_id": parent["id"]}).json()
     assert child["parent_id"] == parent["id"]
 
-    group = client.post("/api/v1/tag-groups", json={"name": "Genre"}).json()
-    put = client.put(f"/api/v1/tag-groups/{group['id']}/tags", json={"tag_ids": [child["id"]]})
+    group = client.post(f"{base}/tag-groups", json={"name": "Genre"}).json()
+    put = client.put(f"{base}/tag-groups/{group['id']}/tags", json={"tag_ids": [child["id"]]})
     assert put.status_code == 200
     assert put.json()["tag_ids"] == [child["id"]]
 
-    listed = client.get("/api/v1/tags").json()
+    listed = client.get(f"{base}/tags").json()
     assert {t["id"] for t in listed["items"]} == {parent["id"], child["id"]}

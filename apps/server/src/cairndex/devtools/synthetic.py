@@ -11,11 +11,9 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from cairndex.core.ids import new_id
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
-from cairndex.services import storage_roots as root_service
 from cairndex.services import tag_groups as group_service
 from cairndex.services import tags as tag_service
 
@@ -27,7 +25,6 @@ _COLLECTIONS = ["Films", "Series", "Shorts", "Archive"]
 
 @dataclass(frozen=True)
 class SeedSummary:
-    storage_root_id: str
     tags: int
     tag_groups: int
     collections: int
@@ -40,15 +37,10 @@ def seed_synthetic_library(
     *,
     n_bundles: int = 500,
     seed: int = 42,
-    root_path: str = "/synthetic-media",
 ) -> SeedSummary:
+    """Populate a library content session with synthetic metadata (ADR-0008:
+    file paths are library-relative; no storage root)."""
     rng = random.Random(seed)
-
-    root = root_service.create_storage_root(
-        session,
-        name=f"synthetic-{new_id()[:8]}",
-        canonical_path=root_path,
-    )
 
     groups = [group_service.create_tag_group(session, name=n) for n in _TAG_GROUPS]
     genre_parent = tag_service.create_tag(session, name="genre")
@@ -82,7 +74,6 @@ def seed_synthetic_library(
         bundle_service.add_file(
             session,
             bundle.id,
-            storage_root_id=root.id,
             relative_path=f"dir{i % 64:03d}/clip{i:05d}.mp4",
             role=FileRole.PRIMARY_VIDEO,
             media_kind=MediaKind.VIDEO,
@@ -92,7 +83,6 @@ def seed_synthetic_library(
             bundle_service.add_file(
                 session,
                 bundle.id,
-                storage_root_id=root.id,
                 relative_path=f"dir{i % 64:03d}/clip{i:05d}_cover.jpg",
                 role=FileRole.COVER,
                 media_kind=MediaKind.IMAGE,
@@ -110,7 +100,6 @@ def seed_synthetic_library(
 
     session.flush()
     return SeedSummary(
-        storage_root_id=root.id,
         tags=len(all_tags),
         tag_groups=len(groups),
         collections=len(all_collections),

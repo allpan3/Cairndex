@@ -8,22 +8,32 @@ import App from './App'
 // renders nothing here — card/grid rendering is covered by the Playwright e2e.
 // These tests verify the shell structure, data wiring, and the empty state.
 
-function mockApi(overrides: Record<string, unknown> = {}) {
-  const responses: Record<string, unknown> = {
-    '/api/v1/bundles/counts': { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 },
-    '/api/v1/collections/counts': { counts: {} },
-    '/api/v1/collections': { items: [], next_cursor: null },
-    '/api/v1/storage-roots': { items: [], next_cursor: null },
-    browse: { items: [], total: 0, offset: 0, limit: 100 },
-    ...overrides,
-  }
+const LIBRARY = {
+  id: 'lib1',
+  library_uuid: '01HZZZZZZZZZZZZZZZZZZZZZZZ',
+  name: 'Test Library',
+  root_path: '/srv/library',
+  status: 'available',
+  schema_version: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+  last_opened_at: null,
+}
+
+function mockApi(libraries: unknown[] = [LIBRARY]) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      const key = url.includes('/bundles/browse')
-        ? 'browse'
-        : (Object.keys(responses).find((k) => url.includes(k)) ?? '')
-      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(responses[key]) })
+      let body: unknown = {}
+      if (url.endsWith('/api/v1/libraries')) body = libraries
+      else if (url.includes('/bundles/browse'))
+        body = { items: [], total: 0, offset: 0, limit: 100 }
+      else if (url.includes('/bundles/counts'))
+        body = { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 }
+      else if (url.includes('/collections/counts')) body = { counts: {} }
+      else if (url.includes('/collections')) body = { items: [], next_cursor: null }
+      else if (url.includes('/smart-collections')) body = []
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
     }),
   )
 }
@@ -39,10 +49,10 @@ function renderApp() {
   )
 }
 
-test('renders the shell with the brand and the system views', () => {
+test('renders the shell with the brand and the system views', async () => {
   mockApi()
   renderApp()
-  expect(screen.getByText('Cairndex')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
   expect(screen.getByText('Recently Added')).toBeInTheDocument()
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   expect(screen.getByText('Missing Files')).toBeInTheDocument()
@@ -52,4 +62,10 @@ test('shows the empty state when there are no bundles', async () => {
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Nothing here yet.')).toBeInTheDocument())
+})
+
+test('shows the library manager when no library exists', async () => {
+  mockApi([])
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Libraries')).toBeInTheDocument())
 })

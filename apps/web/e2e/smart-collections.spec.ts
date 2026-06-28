@@ -24,18 +24,21 @@ function summary(id: string, title: string) {
 async function mockApi(page: Page) {
   const smartCollections: Array<Record<string, unknown>> = []
 
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
+    }),
+  )
+  await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0 } }),
   )
-  await page.route('**/api/v1/collections?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
 
   // Filtered (POST) vs. unfiltered (GET) browse return different totals so the
   // test can prove the Smart Collection actually filters.
-  await page.route('**/api/v1/bundles/browse**', (r) => {
+  await page.route('**/bundles/browse**', (r) => {
     const filtered = r.request().method() === 'POST'
     r.fulfill({
       json: {
@@ -47,9 +50,9 @@ async function mockApi(page: Page) {
     })
   })
 
-  await page.route('**/api/v1/filters/preview', (r) => r.fulfill({ json: { count: 1 } }))
+  await page.route('**/filters/preview', (r) => r.fulfill({ json: { count: 1 } }))
 
-  await page.route('**/api/v1/smart-collections', async (r) => {
+  await page.route('**/smart-collections', async (r) => {
     if (r.request().method() === 'POST') {
       const body = r.request().postDataJSON() as Record<string, unknown>
       const sc = {

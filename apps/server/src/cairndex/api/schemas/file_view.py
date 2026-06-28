@@ -24,7 +24,6 @@ class FileViewEntryRead(BaseModel):
 
 
 class FileViewListingRead(BaseModel):
-    root_id: str
-    # The relative directory listed ("" = the storage root itself).
+    # The relative directory listed ("" = the library root itself).
     path: str
     entries: list[FileViewEntryRead]

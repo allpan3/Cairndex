@@ -24,17 +24,20 @@ function bundle(i: number) {
 
 async function mockApi(page: Page) {
   const items = Array.from({ length: 40 }, (_, i) => bundle(i))
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
+    }),
+  )
+  await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
   )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/collections?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/bundles/browse**', (r) =>
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } }),
   )
-  await page.route('**/api/v1/bundles/b0**', (r) => {
+  await page.route('**/bundles/b0**', (r) => {
     const url = r.request().url()
     if (url.includes('/files')) {
       r.fulfill({

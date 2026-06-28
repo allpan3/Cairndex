@@ -1,22 +1,20 @@
 import { useMemo, useState } from 'react'
 
-import type { FileViewEntry, StorageRootRead } from '../api/client'
+import type { FileViewEntry } from '../api/client'
 import { useFileView } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
 import { FileEntryViewer } from './FileEntryViewer'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
-import type { FileLocation } from './types'
 
 interface FileViewProps {
-  roots: StorageRootRead[]
-  location: FileLocation
+  libraryName: string
+  path: string
   selectedPath: string | null
   onNavigate: (path: string) => void
   onSelectEntry: (entry: FileViewEntry | null) => void
-  onManageLibraries: () => void
 }
 
-/** Breadcrumb segments for a root-relative POSIX path. */
+/** Breadcrumb segments for a library-root-relative POSIX path. */
 function crumbs(path: string): { label: string; path: string }[] {
   if (!path) return []
   const parts = path.split('/')
@@ -42,27 +40,23 @@ function entryIcon(entry: FileViewEntry) {
 }
 
 /**
- * Read-only File View: a physical, storage-root-scoped filesystem browser.
+ * Read-only File View: a physical, library-scoped filesystem browser (ADR-0008).
  * Distinct from the bundle-first Collection View — the visible items here are
- * real directories and files. No move/rename/delete controls exist. Double-
- * clicking a previewable file opens a read-only lightbox.
+ * real directories and files under the active library's root. No move/rename/
+ * delete controls exist. Double-clicking a previewable file opens a read-only
+ * lightbox.
  */
 export function FileView({
-  roots,
-  location,
+  libraryName,
+  path,
   selectedPath,
   onNavigate,
   onSelectEntry,
-  onManageLibraries,
 }: FileViewProps) {
-  const { rootId, path } = location
-  const query = useFileView(rootId, path)
-  const activeRoot = roots.find((r) => r.id === rootId) ?? null
-  const unavailable = activeRoot?.status === 'unavailable'
+  const query = useFileView(path)
 
   // Previewable files in this folder, in display order, for the lightbox to
-  // step through with the arrow keys. Index into this list, not the full entry
-  // list, so navigation skips directories and unsupported files.
+  // step through with the arrow keys.
   const openable = useMemo(
     () => (query.data?.entries ?? []).filter((e) => e.kind === 'file' && e.supported),
     [query.data],
@@ -79,7 +73,7 @@ export function FileView({
       <div className="file-view__bar">
         <nav className="file-view__crumbs" aria-label="Breadcrumb">
           <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
-            {activeRoot?.name ?? 'Root'}
+            {libraryName}
           </button>
           {crumbs(path).map((c) => (
             <span key={c.path}>
@@ -93,22 +87,7 @@ export function FileView({
       </div>
 
       <div className="file-view__body">
-        {rootId === null ? (
-          <div className="empty">
-            <p>No libraries yet.</p>
-            <button className="btn btn--primary" onClick={onManageLibraries}>
-              Add a library
-            </button>
-          </div>
-        ) : unavailable ? (
-          <div className="empty empty--error">
-            <p>This library is currently unavailable.</p>
-            <p className="empty__hint">
-              Its folder may be offline or was moved or renamed. Reconnect it (or fix the path in
-              Libraries), then rescan.
-            </p>
-          </div>
-        ) : query.isLoading ? (
+        {query.isLoading ? (
           <div className="empty">Loading…</div>
         ) : query.isError ? (
           <div className="empty empty--error">{(query.error as Error).message}</div>
@@ -140,9 +119,8 @@ export function FileView({
         )}
       </div>
 
-      {openIndex !== null && rootId !== null && (
+      {openIndex !== null && (
         <FileEntryViewer
-          rootId={rootId}
           files={openable}
           index={openIndex}
           onIndex={setOpenIndex}

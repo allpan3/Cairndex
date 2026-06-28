@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
+from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
@@ -72,3 +73,18 @@ def get_session() -> Iterator[Session]:
     """FastAPI dependency yielding a transactional session."""
     with session_scope() as session:
         yield session
+
+
+def library_root_for_session(session: Session) -> Path:
+    """The library root directory for a content session (ADR-0008).
+
+    A library DB lives at ``<root>/.cairndex/library.db``, so the root is the
+    grandparent of the bound engine's database file. Used by content services
+    to resolve library-relative ``AssetFile`` paths without threading the root
+    through every call.
+    """
+    bind = session.get_bind()
+    database = getattr(getattr(bind, "url", None), "database", None)
+    if not database:
+        raise RuntimeError("session is not bound to a file-backed library database")
+    return Path(database).resolve().parent.parent

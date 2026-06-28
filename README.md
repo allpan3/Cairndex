@@ -15,24 +15,21 @@ rules that govern this repository.
 
 ## Status
 
-Cairndex is past the project-foundation phase. The `main` branch currently
-contains the Phase 0–8 MVP foundation: core domain schema and storage-root CRUD,
-scan/probe/thumbnail jobs, an Eagle-inspired desktop web browser, filtering and
-Smart Collections, direct playback with subtitle tracks, one-way Eagle import,
-and a hardened single-container production deployment.
+Cairndex is past the project-foundation phase. It provides an Eagle-inspired
+desktop web browser over asset bundles: hierarchical **Collections**, a
+read-only physical **File View**, hierarchical tags + tag groups, filtering and
+Smart Collections, scan/probe/thumbnail jobs with high-confidence moved-file
+repair, and direct playback with subtitle tracks — plus a hardened
+single-container production deployment.
 
-The first major refactor has merged to `main`: logical folders became
-hierarchical **Collections**, a read-only physical **File View** was added over
-storage roots, the scanner repairs high-confidence moved files while preserving
-bundle metadata, and Collection View / File View share one active-library
-selector.
-
-The current branch (`feat/per-library-metadata`) begins the move to portable,
-Eagle-like **libraries** — each a directory carrying its own `.cairndex/`
-metadata (`manifest.json`, `library.db`, `cache/`) — backed by a separate
-server-side **registry** (ADR-0008). This first PR adds the registry and the
-`GET/POST /api/v1/libraries…` management endpoints; routing content APIs under
-`/libraries/{id}` and collapsing the storage-root schema come in later PRs.
+Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
+each library is a directory carrying its own `.cairndex/` metadata
+(`manifest.json`, `library.db`, `cache/`), and a separate server-side
+**registry** tracks registered libraries and the job queue. All content APIs are
+scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
+active library per tab. The end-to-end flow is **create a library → scan it →
+browse** — there are no global storage roots. (Eagle import is temporarily
+removed pending a per-library re-implementation.)
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, server-side
