@@ -11,8 +11,9 @@ _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "var"
 class Settings(BaseSettings):
     """Application configuration, sourced from environment variables.
 
-    Storage-root and media-cache paths grow here as later subsystems land —
-    see docs/deployment.md for the planned environment variables.
+    See docs/deployment.md for the planned environment variables. Note that
+    derived media (thumbnails/subtitles) is *not* cached here — it lives inside
+    each library's portable ``.cairndex/cache/`` (ADR-0008 phase 8).
     """
 
     model_config = SettingsConfigDict(env_prefix="CAIRNDEX_", env_file=".env")
@@ -20,8 +21,9 @@ class Settings(BaseSettings):
     app_name: str = "Cairndex"
     environment: str = "development"
 
-    # Writable application-data directory (SQLite DB + derived-media cache).
-    # Kept entirely separate from any storage root (AGENTS.md §11/§12).
+    # Writable application-data directory (the server-local registry DB). Kept
+    # entirely separate from any library (AGENTS.md §11/§12). Per-library content
+    # and its derived cache live in each library's own ``.cairndex/`` instead.
     data_dir: Path = _DEFAULT_DATA_DIR
 
     # Optional explicit override for the SQLite database URL. When unset, the
@@ -52,11 +54,6 @@ class Settings(BaseSettings):
         if self.registry_url is not None:
             return self.registry_url
         return f"sqlite:///{(self.data_dir / 'registry.db').as_posix()}"
-
-    @property
-    def cache_dir(self) -> Path:
-        """Directory for derived media (thumbnails), kept outside any root."""
-        return self.data_dir / "cache"
 
 
 @lru_cache

@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.core.config import get_settings
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.media import thumbnails
 from cairndex.persistence.models import AssetFile
+from cairndex.registry import library_package as pkg
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
 
@@ -58,9 +58,11 @@ def _make_image(path: Path) -> None:
     )
 
 
-def test_cache_path_is_under_data_dir_not_source() -> None:
-    path = thumbnails.thumbnail_cache_path("01ABCDEF01ABCDEF01ABCDEF01")
-    assert path.is_relative_to(get_settings().cache_dir)
+def test_cache_path_is_inside_library_package(library_root: Path) -> None:
+    path = thumbnails.thumbnail_cache_path(library_root, "01ABCDEF01ABCDEF01ABCDEF01")
+    # Lives under the library's portable .cairndex/cache/thumbnails (phase 8).
+    assert path.is_relative_to(pkg.cache_dir(library_root) / "thumbnails")
+    assert path.is_relative_to(pkg.marker_dir(library_root))
 
 
 @requires_ffmpeg
@@ -76,8 +78,10 @@ def test_generates_thumbnail_outside_source_and_leaves_original(
     thumb = thumbnails.generate_for_file(session, file_id)
     assert thumb.exists() and thumb.stat().st_size > 0
     assert thumb.suffix == ".jpg"
-    assert thumb.is_relative_to(get_settings().cache_dir)
-    assert not thumb.is_relative_to(library_root)
+    # Cached inside the library's .cairndex/cache, never beside the source.
+    assert thumb.is_relative_to(pkg.cache_dir(library_root))
+    assert not thumb.is_relative_to(library_root / "clip.mp4")
+    assert thumb.parent != (library_root / "clip.mp4").parent
     assert (library_root / "clip.mp4").read_bytes() == original_bytes
 
 
