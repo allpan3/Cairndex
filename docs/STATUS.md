@@ -2,13 +2,13 @@
 
 ## Current branch / latest commit
 
-Branch: `chore/remove-eagle-import`. Latest commit: see `git log -1`.
+Branch: `feat/cache-relocation`. Latest commit: see `git log -1`.
 
 ADR-0008 landed incrementally: PR 1 (registry skeleton, #20), PR 2 (per-library
-engine + first scoped route, #21), and PR 3 (create → scan → browse working
-slice, #22, phases 3–7) have merged to `main`. This branch **removes the Eagle
-import feature** entirely now that libraries are portable, scan-populated
-directories.
+engine + first scoped route, #21), PR 3 (create → scan → browse working slice,
+#22, phases 3–7), and the Eagle-import removal (#23) have merged to `main`. This
+branch **relocates the derived cache into each library** (`.cairndex/cache/`,
+ADR-0008 phase 8).
 
 ## Current milestone
 
@@ -58,13 +58,20 @@ phases at once.
     and the `import_records` table); ADR-0004 retained as superseded. Eagle
     remains a UI-design *inspiration* only.
 
+- **Phase 8 — cache relocation (this branch).** Thumbnails and converted WebVTT
+  subtitles are now written into each library's portable
+  `.cairndex/cache/{thumbnails,subtitles}/` (derived from the library root via
+  `registry.library_package.cache_dir`), never into the server data dir and never
+  beside source media. Removed the now-unused `Settings.cache_dir`. A future
+  `cache_mode` (`inside_library` | `server_local`) is documented for large
+  transcodes.
+
 ## Tests and validation
 
 Run and passing locally for this PR:
 
-- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (171 passed);
-- frontend: `lint`, `typecheck`, `vitest` (3), `build`, Playwright e2e (10);
-- `demo/run_libraries.sh` exercises create → scan → browse end to end.
+- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (167 passed);
+- frontend: `lint`, `typecheck`, `vitest` (3), `build`, Playwright e2e (10).
 
 ## Known issues / environment gaps
 
@@ -81,8 +88,6 @@ Run and passing locally for this PR:
 
 Following the ADR-0008 phase/PR sequence:
 
-- PR 8 — `.cairndex/cache` relocation (thumbnails/subtitles under the library)
-  and docs polish.
 - PR 9 — optimistic-concurrency versions + operation-based tag/collection edits.
 - Per-library probe/thumbnail UI actions (jobs already exist server-side).
 

@@ -4,8 +4,8 @@ external-subtitle conversion to WebVTT (AGENTS.md §6.1, ADR-0003 §4).
 We never claim playback support merely because a file can be served: browser
 video support varies by container/codec, so each video reports a `playable`
 flag plus a human reason for the UI to show a fallback state. External `.srt`
-subtitles are converted to browser-native `.vtt` into the app cache (never
-beside the originals).
+subtitles are converted to browser-native `.vtt` into the library's portable
+``.cairndex/cache/subtitles/`` (ADR-0008 phase 8), never beside the originals.
 """
 
 from __future__ import annotations
@@ -16,13 +16,13 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.core.config import get_settings
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile, SubtitleTrack
+from cairndex.registry import library_package
 
 # Containers/codecs broadly playable by the HTML <video> element. MKV/AVI/WMV
 # and HEVC/H.265 are intentionally excluded — support is absent or unreliable,
@@ -112,8 +112,10 @@ def _srt_to_vtt(text: str) -> str:
     return "WEBVTT\n\n" + body.lstrip("﻿")
 
 
-def vtt_cache_path(track_id: str) -> Path:
-    return get_settings().cache_dir / "subtitles" / track_id[:2] / f"{track_id}.vtt"
+def vtt_cache_path(library_root: Path, track_id: str) -> Path:
+    """Cached WebVTT location under the library's portable
+    ``.cairndex/cache/subtitles/`` (ADR-0008 phase 8)."""
+    return library_package.cache_dir(library_root) / "subtitles" / track_id[:2] / f"{track_id}.vtt"
 
 
 def build_vtt_for_track(session: Session, track: SubtitleTrack, *, force: bool = False) -> Path:
@@ -131,11 +133,12 @@ def build_vtt_for_track(session: Session, track: SubtitleTrack, *, force: bool =
     if ext not in ("srt", "vtt"):
         raise ValidationError(f"{ext.upper()} subtitles aren't convertible to VTT yet")
 
-    dest = vtt_cache_path(track.id)
+    library_root = library_root_for_session(session)
+    dest = vtt_cache_path(library_root, track.id)
     if dest.exists() and not force:
         return dest
 
-    abs_path = Path(resolve_within_root(library_root_for_session(session), source.relative_path))
+    abs_path = Path(resolve_within_root(library_root, source.relative_path))
     raw = abs_path.read_text(encoding="utf-8", errors="replace")
     vtt = raw if ext == "vtt" else _srt_to_vtt(raw)
     dest.parent.mkdir(parents=True, exist_ok=True)

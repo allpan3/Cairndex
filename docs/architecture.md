@@ -268,10 +268,18 @@ How it works now:
 - **Frontend** picks one active library per tab (bootstrapped from
   `GET /api/v1/libraries`) and routes every content request under it; the sidebar
   has a library selector and a Scan action.
+- **Derived cache is per library (phase 8).** Thumbnails and converted WebVTT
+  subtitles are written under the library's own
+  `<root>/.cairndex/cache/{thumbnails,subtitles}/` (paths derived from the
+  library root via `registry.library_package.cache_dir`), never into the
+  server-global data dir and never beside the source media. The cache therefore
+  travels with the library folder. A future `cache_mode` setting
+  (`inside_library` | `server_local`, default `inside_library`) may let large
+  transcodes opt into a server-local cache; portable cache trades a larger
+  backup footprint for self-containment.
 
 Eagle import has been removed entirely (see §10). Remaining ADR-0008 work:
-`.cairndex/cache` relocation (phase 8) and optimistic-concurrency versions
-(phase 9).
+optimistic-concurrency versions (phase 9).
 
 ## 12. Browsing surfaces: Collection View and File View
 
