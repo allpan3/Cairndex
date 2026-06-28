@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Per-library engine + route scoping (ADR-0008, phase 2/3).** Introduces a
+  per-library content engine/session cache (`cairndex.registry.library_engine`)
+  and a `LibrarySession` dependency that resolves `{library_id}` against the
+  registry, refuses an unavailable (offline/moved) library with 404, and opens
+  the right `library.db` — no server-global "active library". The first
+  library-scoped content routes land under
+  `/api/v1/libraries/{library_id}/collections` (create/list/get/update/delete),
+  alongside the existing global `/collections` (full migration is a later PR).
+  Tests prove two registered libraries are fully isolated (a collection created
+  in one is invisible to the other; each route reads its own on-disk
+  `library.db`). OpenAPI + frontend types regenerated.
+
 - **Per-library metadata architecture — registry skeleton (ADR-0008, phase 1).**
   Groundwork for moving from one global content database to portable, Eagle-like
   libraries (each a directory with a `.cairndex/` marker holding
