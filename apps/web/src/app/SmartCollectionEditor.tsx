@@ -34,7 +34,7 @@ export function SmartCollectionEditor({
     const payload = { name: name.trim(), filter: expr }
     if (!payload.name) return
     if (existing) {
-      update.mutate({ id: existing.id, payload }, { onSuccess: onSaved })
+      update.mutate({ id: existing.id, payload, version: existing.version }, { onSuccess: onSaved })
     } else {
       create.mutate(payload, { onSuccess: onSaved })
     }

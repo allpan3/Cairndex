@@ -1,11 +1,23 @@
 import { useState } from 'react'
 
-import { type BundleRead, thumbnailUrl } from '../api/client'
+import { ConflictError, type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
 import { CollectionPicker } from './CollectionPicker'
 import { Player } from './Player'
 import { TagEditor } from './TagEditor'
+
+/** Shown when an edit was rejected because the bundle changed elsewhere
+ * (ADR-0008 phase 9). The latest server values are already being refetched. */
+function ConflictNotice({ error }: { error: unknown }) {
+  if (!(error instanceof ConflictError)) return null
+  return (
+    <div className="conflict-notice" role="alert">
+      This item was changed elsewhere, so your edit wasn’t applied. The latest values are shown
+      below — save again to apply your change over them.
+    </div>
+  )
+}
 
 function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
@@ -50,7 +62,7 @@ export function Inspector({ bundleId }: { bundleId: string | null }) {
 function BundleEditor({ bundle }: { bundle: BundleRead }) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
-  const update = useUpdateBundle(bundleId)
+  const update = useUpdateBundle(bundleId, bundle.version)
 
   const [title, setTitle] = useState(bundle.title ?? '')
   const [note, setNote] = useState(bundle.note ?? '')
@@ -81,6 +93,8 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
         )}
       </div>
       {playing && <Player bundleId={bundleId} onClose={() => setPlaying(false)} />}
+
+      <ConflictNotice error={update.error} />
 
       <input
         className="edit edit--title"
@@ -129,6 +143,7 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
 
       <FileList
         bundleId={bundleId}
+        bundleVersion={bundle.version}
         coverId={bundle.cover_file_id ?? null}
         primaryId={bundle.primary_file_id ?? null}
       />
@@ -138,15 +153,17 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
 
 function FileList({
   bundleId,
+  bundleVersion,
   coverId,
   primaryId,
 }: {
   bundleId: string
+  bundleVersion: number
   coverId: string | null
   primaryId: string | null
 }) {
   const { data: files = [] } = useBundleFiles(bundleId)
-  const update = useUpdateBundle(bundleId)
+  const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
 
   const move = (index: number, delta: number) => {
@@ -165,6 +182,7 @@ function FileList({
       <div className="sidebar__heading" style={{ padding: '4px 0' }}>
         Files in bundle ({files.length})
       </div>
+      <ConflictNotice error={update.error} />
       {files.map((f, i) => {
         const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
         const dims = formatDimensions(meta.width as number, meta.height as number)

@@ -76,10 +76,32 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T
 }
 
-async function send<T>(url: string, method: string, body?: unknown): Promise<T> {
+/**
+ * Thrown on a 409 optimistic-concurrency conflict (ADR-0008 phase 9): the
+ * `If-Match` version we sent was stale because another client edited the entity
+ * first. Callers can detect this to refetch the latest and tell the user,
+ * instead of silently overwriting the other edit.
+ */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConflictError'
+  }
+}
+
+async function send<T>(
+  url: string,
+  method: string,
+  body?: unknown,
+  /** Optimistic-concurrency precondition: the entity `version` last read. */
+  ifMatch?: number,
+): Promise<T> {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
   const response = await fetch(url, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!response.ok) {
@@ -88,6 +110,9 @@ async function send<T>(url: string, method: string, body?: unknown): Promise<T> 
       detail = ((await response.json()) as { message?: string }).message ?? ''
     } catch {
       /* ignore */
+    }
+    if (response.status === 409) {
+      throw new ConflictError(detail || 'This item was changed elsewhere.')
     }
     throw new Error(`Request failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`)
   }
@@ -168,8 +193,11 @@ export const fetchSmartCollections = (signal?: AbortSignal) =>
 export const createSmartCollection = (payload: SmartCollectionCreate) =>
   send<SmartCollectionRead>(`${lib()}/smart-collections`, 'POST', payload)
 
-export const updateSmartCollection = (id: string, payload: SmartCollectionUpdate) =>
-  send<SmartCollectionRead>(`${lib()}/smart-collections/${id}`, 'PATCH', payload)
+export const updateSmartCollection = (
+  id: string,
+  payload: SmartCollectionUpdate,
+  version?: number,
+) => send<SmartCollectionRead>(`${lib()}/smart-collections/${id}`, 'PATCH', payload, version)
 
 export const deleteSmartCollection = (id: string) =>
   send<void>(`${lib()}/smart-collections/${id}`, 'DELETE')
@@ -226,6 +254,10 @@ export function fetchPathSuggestions(path: string, signal?: AbortSignal): Promis
 
 // --- Background jobs ----------------------------------------------------------
 export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')
+
+export const enqueueProbe = () => send<JobRead>(`${lib()}/jobs/probe`, 'POST')
+
+export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
 // --- File View (read-only filesystem browsing) -------------------------------
 export function fetchFileViewEntries(
@@ -284,8 +316,8 @@ export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promis
 }
 
 // --- Mutations ---------------------------------------------------------------
-export const updateBundle = (id: string, patch: BundlePatch) =>
-  send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch)
+export const updateBundle = (id: string, patch: BundlePatch, version?: number) =>
+  send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch, version)
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })
@@ -302,8 +334,8 @@ export const fetchBundleCollections = (id: string, signal?: AbortSignal) =>
     signal,
   )
 
-export const updateFile = (bundleId: string, fileId: string, patch: FilePatch) =>
-  send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch)
+export const updateFile = (bundleId: string, fileId: string, patch: FilePatch, version?: number) =>
+  send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'PATCH', patch, version)
 
 export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
