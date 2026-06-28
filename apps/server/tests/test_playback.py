@@ -9,6 +9,7 @@ from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.media import playback
 from cairndex.media.playback import _srt_to_vtt, assess_playability
 from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.registry import library_package as pkg
 from cairndex.services import bundles as bundle_service
 from cairndex.services import subtitles as sub_service
 
@@ -144,4 +145,7 @@ def test_subtitle_vtt_endpoint_converts_srt(
     assert resp.headers["content-type"].startswith("text/vtt")
     assert resp.text.startswith("WEBVTT")
     assert "00:00:01.000 --> 00:00:02.000" in resp.text
-    assert playback.vtt_cache_path(track_id).exists()
+    vtt = playback.vtt_cache_path(library_root, track_id)
+    assert vtt.exists()
+    # Cached inside the library's portable .cairndex/cache/subtitles (phase 8).
+    assert vtt.is_relative_to(pkg.cache_dir(library_root) / "subtitles")

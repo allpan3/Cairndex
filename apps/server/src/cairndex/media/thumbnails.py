@@ -1,9 +1,11 @@
 """Thumbnail generation + cache + cover fallback.
 
 Thumbnails are derived media: generated with ffmpeg (read-only on the source)
-and cached under the app data directory, never beside the originals (AGENTS.md
-§4.4/§6, §11). Cache paths are deterministic from the file id, so generation
-is reproducible and de-duplicated (an existing thumbnail is reused).
+and cached inside the library's own portable ``.cairndex/cache/thumbnails/``
+directory (ADR-0008 phase 8), never beside the originals (AGENTS.md §4.4/§6).
+Keeping the cache inside the library means it travels with the folder; cache
+paths are deterministic from the file id, so generation is reproducible and
+de-duplicated (an existing thumbnail is reused).
 """
 
 import shutil
@@ -15,12 +17,12 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.core.config import get_settings
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
+from cairndex.registry import library_package
 from cairndex.services.bundles import get_bundle, list_files
 
 THUMBNAIL_WIDTH = 480
@@ -33,9 +35,13 @@ class ThumbnailError(RuntimeError):
     """ffmpeg was unavailable or failed to produce a thumbnail."""
 
 
-def thumbnail_cache_path(file_id: str) -> Path:
-    """Deterministic cache location for a file's thumbnail (sharded by prefix)."""
-    return get_settings().cache_dir / "thumbnails" / file_id[:2] / f"{file_id}.jpg"
+def thumbnail_cache_path(library_root: Path, file_id: str) -> Path:
+    """Deterministic cache location for a file's thumbnail (sharded by prefix).
+
+    Lives under the library's portable ``.cairndex/cache/thumbnails/`` so it
+    travels with the library folder (ADR-0008 phase 8).
+    """
+    return library_package.cache_dir(library_root) / "thumbnails" / file_id[:2] / f"{file_id}.jpg"
 
 
 def _ffmpeg() -> str:
@@ -72,11 +78,12 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
     if asset_file.media_kind not in _THUMBNAILABLE:
         raise ValidationError(f"{asset_file.media_kind} files are not thumbnailable")
 
-    dest = thumbnail_cache_path(file_id)
+    library_root = library_root_for_session(session)
+    dest = thumbnail_cache_path(library_root, file_id)
     if dest.exists() and not force:
         return dest  # cache hit — reused, not regenerated
 
-    source = resolve_within_root(library_root_for_session(session), asset_file.relative_path)
+    source = resolve_within_root(library_root, asset_file.relative_path)
     _generate(Path(source), dest, asset_file.media_kind)
     return dest
 

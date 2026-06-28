@@ -22,8 +22,9 @@ MARKER_DIR = ".cairndex"
 MANIFEST_NAME = "manifest.json"
 DB_NAME = "library.db"
 CACHE_DIR = "cache"
-# Portable derived-cache categories created up front (phase 8 relocates the
-# writers to use them; the layout is fixed now).
+# Portable derived-cache categories. Writers resolve their target under
+# ``cache_dir(root)/<category>`` (ADR-0008 phase 8): thumbnails and converted
+# WebVTT subtitles land here; storyboards are reserved for later.
 CACHE_SUBDIRS = ("thumbnails", "subtitles", "storyboards")
 
 FORMAT = "cairndex.library"
