@@ -1577,6 +1577,119 @@
         "title": "JobType",
         "type": "string"
       },
+      "LibraryCreate": {
+        "description": "Create a brand-new library package under ``root_path``.",
+        "properties": {
+          "create_if_missing": {
+            "default": false,
+            "title": "Create If Missing",
+            "type": "boolean"
+          },
+          "display_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "root_path": {
+            "minLength": 1,
+            "title": "Root Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_path",
+          "display_name"
+        ],
+        "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_opened_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Opened At"
+          },
+          "library_uuid": {
+            "title": "Library Uuid",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "root_path": {
+            "title": "Root Path",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LibraryStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "library_uuid",
+          "name",
+          "root_path",
+          "status",
+          "schema_version",
+          "created_at",
+          "updated_at",
+          "last_opened_at"
+        ],
+        "title": "LibraryRead",
+        "type": "object"
+      },
+      "LibraryRegister": {
+        "description": "Register an existing library directory (must already have a marker).",
+        "properties": {
+          "root_path": {
+            "minLength": 1,
+            "title": "Root Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_path"
+        ],
+        "title": "LibraryRegister",
+        "type": "object"
+      },
+      "LibraryStatus": {
+        "description": "Whether a registered library's root/marker is currently reachable.\n\nServer-registry state (ADR-0008), distinct from a library's own content\nmetadata. ``unavailable`` means the root path or ``.cairndex`` marker\ncould not be found when last probed (e.g. an offline NAS mount).",
+        "enum": [
+          "available",
+          "unavailable"
+        ],
+        "title": "LibraryStatus",
+        "type": "string"
+      },
       "MediaKind": {
         "description": "Coarse media classification, independent of the in-bundle role.",
         "enum": [
@@ -4475,6 +4588,155 @@
         "summary": "Cancel Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/libraries": {
+      "get": {
+        "operationId": "list_libraries_api_v1_libraries_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryRead"
+                  },
+                  "title": "Response List Libraries Api V1 Libraries Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Libraries",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/create": {
+      "post": {
+        "operationId": "create_library_api_v1_libraries_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/register": {
+      "post": {
+        "operationId": "register_library_api_v1_libraries_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Library",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}": {
+      "get": {
+        "operationId": "get_library_api_v1_libraries__library_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Library",
+        "tags": [
+          "libraries"
         ]
       }
     },
