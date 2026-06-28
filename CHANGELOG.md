@@ -10,6 +10,24 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Per-library metadata architecture — registry skeleton (ADR-0008, phase 1).**
+  Groundwork for moving from one global content database to portable, Eagle-like
+  libraries (each a directory with a `.cairndex/` marker holding
+  `manifest.json`, `library.db`, and `cache/`) while keeping the server/client
+  split. Adds a separate **registry** database (`{CAIRNDEX_DATA_DIR}/
+  registry.db`, package `cairndex.registry`) that tracks registered libraries
+  (and a `job_queue` table for the future per-library worker), the on-disk
+  library package handler, and global endpoints: `GET /api/v1/libraries`,
+  `POST /api/v1/libraries/create` (builds the package + an initialized
+  `library.db`), `POST /api/v1/libraries/register` (validates an existing
+  marker), and `GET /api/v1/libraries/{id}` (availability re-probed on read).
+  Existing storage-root-scoped content APIs are unchanged; routing them under
+  `/libraries/{id}`, the per-library engine cache, and the `storage_roots`
+  schema collapse are sequenced into later PRs. Backend tests cover
+  create/register/list and the error cases (missing root, relative path,
+  duplicate/existing library, missing marker, invalid manifest, unavailable
+  path).
+
 - **Shared library selector + File View file preview.** Collection View and
   File View now share a single active-library (storage root) selector. Browse
   results, sidebar system-view counts, and collection/tag counts are optionally

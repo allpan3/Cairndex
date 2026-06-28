@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from cairndex.persistence.engine import get_session as _get_session
+from cairndex.registry.engine import get_registry_session as _get_registry_session
 from cairndex.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
 
@@ -19,6 +20,18 @@ def get_db() -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def get_registry_db() -> Iterator[Session]:
+    """FastAPI registry-DB session dependency (ADR-0008).
+
+    The registry tracks registered libraries and the job queue; it is a
+    separate database from the content/library DBs. Overridden in tests.
+    """
+    yield from _get_registry_session()
+
+
+RegistryDbSession = Annotated[Session, Depends(get_registry_db)]
 
 
 class PageParams(BaseModel):
