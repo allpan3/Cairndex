@@ -320,21 +320,3 @@ class SubtitleTrack(Base):
         UniqueConstraint("video_file_id", "embedded_index", name="subtitle_embedded_unique"),
         UniqueConstraint("source_file_id", name="subtitle_source_unique"),
     )
-
-
-class ImportRecord(Base):
-    """Maps an external item to the bundle it produced, for idempotent imports.
-
-    Keyed by ``(provider, external_id)`` so re-running an import (e.g. Eagle —
-    ADR-0004) skips already-imported items instead of duplicating them.
-    """
-
-    __tablename__ = "import_records"
-
-    id: Mapped[UlidPk]
-    provider: Mapped[str] = mapped_column(String(32))
-    external_id: Mapped[str] = mapped_column(String(255))
-    bundle_id: Mapped[UlidFk] = mapped_column(ForeignKey("asset_bundles.id", ondelete="CASCADE"))
-    imported_at: Mapped[CreatedAt]
-
-    __table_args__ = (UniqueConstraint("provider", "external_id", name="import_provider_external"),)

@@ -1,8 +1,16 @@
 # ADR-0004: Eagle library import (one-way, read-only, idempotent)
 
-- Status: accepted
+- Status: **superseded — feature removed** (was: accepted)
 - Date: 2026-06-26
 - Branch/PR: `feature/eagle-import`
+
+> **Superseded.** Eagle import has been removed from the product. Under the
+> per-library architecture (ADR-0008) a Cairndex library is its own portable
+> directory populated by scanning, so migrating from an external Eagle library is
+> out of scope. The `eagle` reader/planner package, the `services.eagle`
+> importer, and the `import_records` table no longer exist. This ADR is kept as
+> historical record only. Cairndex's UI remains Eagle-*inspired*; only the
+> import feature is gone.
 
 ## Context
 
