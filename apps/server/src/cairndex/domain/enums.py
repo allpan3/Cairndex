@@ -8,6 +8,18 @@ class StorageRootStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class LibraryStatus(StrEnum):
+    """Whether a registered library's root/marker is currently reachable.
+
+    Server-registry state (ADR-0008), distinct from a library's own content
+    metadata. ``unavailable`` means the root path or ``.cairndex`` marker
+    could not be found when last probed (e.g. an offline NAS mount).
+    """
+
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+
+
 class FileRole(StrEnum):
     """Role of an asset file within its bundle (AGENTS.md §4.3)."""
 

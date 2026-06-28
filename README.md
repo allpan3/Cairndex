@@ -21,10 +21,18 @@ scan/probe/thumbnail jobs, an Eagle-inspired desktop web browser, filtering and
 Smart Collections, direct playback with subtitle tracks, one-way Eagle import,
 and a hardened single-container production deployment.
 
-The `feat/collections-and-file-view` branch adds the first major refactor:
-logical folders become hierarchical **Collections**, a read-only physical
-**File View** is added over storage roots, and the scanner can repair
-high-confidence moved files while preserving bundle metadata.
+The first major refactor has merged to `main`: logical folders became
+hierarchical **Collections**, a read-only physical **File View** was added over
+storage roots, the scanner repairs high-confidence moved files while preserving
+bundle metadata, and Collection View / File View share one active-library
+selector.
+
+The current branch (`feat/per-library-metadata`) begins the move to portable,
+Eagle-like **libraries** — each a directory carrying its own `.cairndex/`
+metadata (`manifest.json`, `library.db`, `cache/`) — backed by a separate
+server-side **registry** (ADR-0008). This first PR adds the registry and the
+`GET/POST /api/v1/libraries…` management endpoints; routing content APIs under
+`/libraries/{id}` and collapsing the storage-root schema come in later PRs.
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, server-side

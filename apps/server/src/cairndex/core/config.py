@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # database lives at ``{data_dir}/cairndex.db``.
     database_url: str | None = None
 
+    # Optional explicit override for the registry database URL (ADR-0008). The
+    # registry tracks registered libraries and the runtime job queue; it is
+    # server-local and separate from any library's own metadata DB. When unset
+    # it lives at ``{data_dir}/registry.db``.
+    registry_url: str | None = None
+
     # Run the in-process background worker on app startup. Disabled in tests so
     # jobs are driven deterministically instead of by a polling thread.
     worker_enabled: bool = True
@@ -41,6 +47,11 @@ class Settings(BaseSettings):
         if self.database_url is not None:
             return self.database_url
         return f"sqlite:///{(self.data_dir / 'cairndex.db').as_posix()}"
+
+    def resolved_registry_url(self) -> str:
+        if self.registry_url is not None:
+            return self.registry_url
+        return f"sqlite:///{(self.data_dir / 'registry.db').as_posix()}"
 
     @property
     def cache_dir(self) -> Path:
