@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, status
 
-from cairndex.api.deps import LibrarySession
+from cairndex.api.deps import IfMatchVersion, LibrarySession
 from cairndex.api.schemas.smart_collections import (
     SmartCollectionCreate,
     SmartCollectionRead,
@@ -25,6 +25,7 @@ def _read(sc: SmartCollection) -> SmartCollectionRead:
         sort_order=sc.sort_order,
         created_at=sc.created_at,
         updated_at=sc.updated_at,
+        version=sc.version,
     )
 
 
@@ -54,7 +55,10 @@ def get_smart_collection(smart_collection_id: str, db: LibrarySession) -> SmartC
 
 @router.patch("/{smart_collection_id}", response_model=SmartCollectionRead)
 def update_smart_collection(
-    smart_collection_id: str, payload: SmartCollectionUpdate, db: LibrarySession
+    smart_collection_id: str,
+    payload: SmartCollectionUpdate,
+    db: LibrarySession,
+    if_match: IfMatchVersion = None,
 ) -> SmartCollectionRead:
     fields = payload.model_fields_set
     sc = service.update_smart_collection(
@@ -67,6 +71,7 @@ def update_smart_collection(
         default_layout=payload.default_layout,
         set_default_layout="default_layout" in fields,
         sort_order=payload.sort_order,
+        expected_version=if_match,
     )
     return _read(sc)
 

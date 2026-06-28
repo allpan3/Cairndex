@@ -8,6 +8,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Optimistic concurrency for metadata edits (ADR-0008, phase 9).** The
+  frequently edited entities (`asset_bundles`, `asset_files`, `tags`,
+  `collections`, `smart_folders`, `subtitle_tracks`) now carry a `version`
+  integer (starts at 1, bumped on each edit). Single-entity `PATCH` routes —
+  bundles, files, tags, collections, and smart collections — accept an optional
+  `If-Match: <version>` header: a stale value is rejected with **409**
+  (`version_conflict`) before anything is mutated, while omitting the header
+  keeps the previous last-write-wins behaviour (back-compatible). `version` is
+  exposed on the read models; OpenAPI and frontend types were regenerated.
+  Increment is explicit in the service layer (`persistence/concurrency.py`) so
+  internal scan/repair writes never risk `StaleDataError` under the single-writer
+  model.
+
 ### Changed
 
 - **Per-library derived cache (ADR-0008, phase 8).** Thumbnails and converted

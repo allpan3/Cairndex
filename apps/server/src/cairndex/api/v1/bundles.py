@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
     BatchResult,
@@ -127,9 +127,13 @@ def get_bundle(bundle_id: str, db: LibrarySession) -> BundleRead:
 
 
 @router.patch("/{bundle_id}", response_model=BundleRead)
-def update_bundle(bundle_id: str, payload: BundleUpdate, db: LibrarySession) -> BundleRead:
+def update_bundle(
+    bundle_id: str, payload: BundleUpdate, db: LibrarySession, if_match: IfMatchVersion = None
+) -> BundleRead:
     changes = payload.model_dump(exclude_unset=True)
-    return BundleRead.model_validate(service.update_bundle(db, bundle_id, changes))
+    return BundleRead.model_validate(
+        service.update_bundle(db, bundle_id, changes, expected_version=if_match)
+    )
 
 
 @router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -161,9 +165,17 @@ def add_file(bundle_id: str, payload: FileLink, db: LibrarySession) -> FileRead:
 
 
 @router.patch("/{bundle_id}/files/{file_id}", response_model=FileRead)
-def update_file(bundle_id: str, file_id: str, payload: FileUpdate, db: LibrarySession) -> FileRead:
+def update_file(
+    bundle_id: str,
+    file_id: str,
+    payload: FileUpdate,
+    db: LibrarySession,
+    if_match: IfMatchVersion = None,
+) -> FileRead:
     changes = payload.model_dump(exclude_unset=True)
-    return FileRead.model_validate(service.update_file(db, bundle_id, file_id, changes))
+    return FileRead.model_validate(
+        service.update_file(db, bundle_id, file_id, changes, expected_version=if_match)
+    )
 
 
 @router.put("/{bundle_id}/files/order", response_model=list[FileRead])

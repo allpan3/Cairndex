@@ -33,6 +33,13 @@
 > root directory comes from the registry. The runtime `jobs` queue moved to the
 > registry (`job_queue`); see the registry section below.
 
+> ADR-0008 phase 9: the frequently edited entities (`asset_bundles`,
+> `asset_files`, `tags`, `collections`, `smart_folders`, `subtitle_tracks`) carry
+> a `version` integer (default 1, bumped on each edit) for optimistic
+> concurrency. Single-entity `PATCH` routes accept an optional `If-Match:
+> <version>` precondition and return 409 (`version_conflict`) on a stale edit;
+> without it, edits are last-write-wins. See `persistence/concurrency.py`.
+
 ### `asset_bundles`
 
 `id`, `title` (nullable), `note`, `rating` (nullable int, CHECK 0–5; NULL =

@@ -31,3 +31,5 @@ class SmartCollectionRead(BaseModel):
     sort_order: int
     created_at: datetime
     updated_at: datetime
+    # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
+    version: int
