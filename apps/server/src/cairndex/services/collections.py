@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
+from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.models import Collection
 from cairndex.services.hierarchy import descendant_ids, is_descendant
 from cairndex.services.pagination import keyset_page
@@ -58,8 +59,10 @@ def update_collection(
     name: str | None = None,
     parent_id: str | None = None,
     set_parent: bool = False,
+    expected_version: int | None = None,
 ) -> Collection:
     collection = get_collection(session, collection_id)
+    guard_and_bump_version(collection, expected_version)
 
     if name is not None:
         cleaned = name.strip()

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
+from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.models import SmartCollection
 
 
@@ -75,8 +76,10 @@ def update_smart_collection(
     default_layout: str | None = None,
     set_default_layout: bool = False,
     sort_order: int | None = None,
+    expected_version: int | None = None,
 ) -> SmartCollection:
     sc = get_smart_collection(session, smart_collection_id)
+    guard_and_bump_version(sc, expected_version)
 
     if name is not None:
         cleaned = name.strip()

@@ -2,13 +2,14 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/cache-relocation`. Latest commit: see `git log -1`.
+Branch: `feat/optimistic-concurrency`. Latest commit: see `git log -1`.
 
-ADR-0008 landed incrementally: PR 1 (registry skeleton, #20), PR 2 (per-library
-engine + first scoped route, #21), PR 3 (create → scan → browse working slice,
-#22, phases 3–7), and the Eagle-import removal (#23) have merged to `main`. This
-branch **relocates the derived cache into each library** (`.cairndex/cache/`,
-ADR-0008 phase 8).
+ADR-0008 landed incrementally: registry skeleton (#20), per-library engine +
+first scoped route (#21), create → scan → browse working slice (#22, phases 3–7),
+Eagle-import removal (#23), and cache relocation (#24, phase 8) have merged to
+`main`. This branch adds **optimistic concurrency** (ADR-0008 phase 9). With it,
+the ADR-0008 server-managed phases are complete; only the future direct-open /
+native modes (phases 10–11) remain.
 
 ## Current milestone
 
@@ -58,7 +59,7 @@ phases at once.
     and the `import_records` table); ADR-0004 retained as superseded. Eagle
     remains a UI-design *inspiration* only.
 
-- **Phase 8 — cache relocation (this branch).** Thumbnails and converted WebVTT
+- **Phase 8 — cache relocation (merged, #24).** Thumbnails and converted WebVTT
   subtitles are now written into each library's portable
   `.cairndex/cache/{thumbnails,subtitles}/` (derived from the library root via
   `registry.library_package.cache_dir`), never into the server data dir and never
@@ -66,12 +67,21 @@ phases at once.
   `cache_mode` (`inside_library` | `server_local`) is documented for large
   transcodes.
 
+- **Phase 9 — optimistic concurrency (this branch).** The frequently edited
+  entities carry a `version` integer (`persistence.base.Version`); single-entity
+  `PATCH` routes accept an optional `If-Match: <version>` header and reject a
+  stale edit with 409 (`version_conflict`) before mutating, via
+  `persistence.concurrency.guard_and_bump_version`. `version` is exposed on the
+  read models. Without `If-Match`, edits stay last-write-wins (back-compatible).
+  Frontend wiring (surfacing 409 + reload) is a follow-up.
+
 ## Tests and validation
 
 Run and passing locally for this PR:
 
-- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (167 passed);
-- frontend: `lint`, `typecheck`, `vitest` (3), `build`, Playwright e2e (10).
+- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (172 passed);
+- frontend: `lint`, `format:check`, `typecheck`, `build` (OpenAPI + types
+  regenerated for the new `version` field and `If-Match` header).
 
 ## Known issues / environment gaps
 
@@ -86,10 +96,11 @@ Run and passing locally for this PR:
 
 ## Next recommended tasks
 
-Following the ADR-0008 phase/PR sequence:
+The server-managed ADR-0008 phases (1–9) are complete. Remaining / follow-up:
 
-- PR 9 — optimistic-concurrency versions + operation-based tag/collection edits.
+- Frontend: send `If-Match` on edits and surface 409 conflicts (reload + retry).
 - Per-library probe/thumbnail UI actions (jobs already exist server-side).
+- Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
 
 ## Unresolved decisions
 
