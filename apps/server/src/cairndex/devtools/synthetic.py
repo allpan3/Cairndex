@@ -1,8 +1,8 @@
 """Deterministic synthetic-library generator.
 
-Produces tags, tag groups, folders, and asset bundles with linked files using
-only synthetic relative paths — no real media is touched (AGENTS.md §15). Used
-by tests and by the seed CLI to populate a dev database for exercising the
+Produces tags, tag groups, collections, and asset bundles with linked files
+using only synthetic relative paths — no real media is touched (AGENTS.md §15).
+Used by tests and by the seed CLI to populate a dev database for exercising the
 browsing UI at scale (Phase 3).
 """
 
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.ids import new_id
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
 from cairndex.services import tag_groups as group_service
 from cairndex.services import tags as tag_service
@@ -22,7 +22,7 @@ from cairndex.services import tags as tag_service
 _TAG_GROUPS = ["Genre", "Mood", "Status", "Source"]
 _GENRES = ["thriller", "drama", "comedy", "documentary", "sci-fi", "horror"]
 _MOODS = ["calm", "intense", "uplifting", "dark"]
-_FOLDERS = ["Films", "Series", "Shorts", "Archive"]
+_COLLECTIONS = ["Films", "Series", "Shorts", "Archive"]
 
 
 @dataclass(frozen=True)
@@ -30,7 +30,7 @@ class SeedSummary:
     storage_root_id: str
     tags: int
     tag_groups: int
-    folders: int
+    collections: int
     bundles: int
     files: int
 
@@ -62,12 +62,14 @@ def seed_synthetic_library(
     )
     group_service.set_group_tags(session, groups[1].id, [t.id for t in mood_tags])
 
-    folders = [folder_service.create_folder(session, name=n) for n in _FOLDERS]
-    sub_folders = [
-        folder_service.create_folder(session, name=f"{rng.randint(2000, 2026)}", parent_id=f.id)
-        for f in folders
+    collections = [collection_service.create_collection(session, name=n) for n in _COLLECTIONS]
+    sub_collections = [
+        collection_service.create_collection(
+            session, name=f"{rng.randint(2000, 2026)}", parent_id=c.id
+        )
+        for c in collections
     ]
-    all_folders = [*folders, *sub_folders]
+    all_collections = [*collections, *sub_collections]
 
     file_count = 0
     for i in range(n_bundles):
@@ -100,16 +102,18 @@ def seed_synthetic_library(
         chosen_tags = rng.sample(all_tags, k=rng.randint(0, 3))
         if chosen_tags:
             bundle_service.set_bundle_tags(session, bundle.id, [t.id for t in chosen_tags])
-        chosen_folders = rng.sample(all_folders, k=rng.randint(0, 2))
-        if chosen_folders:
-            bundle_service.set_bundle_folders(session, bundle.id, [f.id for f in chosen_folders])
+        chosen_collections = rng.sample(all_collections, k=rng.randint(0, 2))
+        if chosen_collections:
+            bundle_service.set_bundle_collections(
+                session, bundle.id, [c.id for c in chosen_collections]
+            )
 
     session.flush()
     return SeedSummary(
         storage_root_id=root.id,
         tags=len(all_tags),
         tag_groups=len(groups),
-        folders=len(all_folders),
+        collections=len(all_collections),
         bundles=n_bundles,
         files=file_count,
     )

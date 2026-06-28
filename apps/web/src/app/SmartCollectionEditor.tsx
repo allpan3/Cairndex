@@ -1,27 +1,27 @@
 import { useMemo, useState } from 'react'
 
-import type { SmartFolderRead } from '../api/client'
-import { useFilterPreview, useSmartFolderMutations } from '../api/hooks'
+import type { SmartCollectionRead } from '../api/client'
+import { useFilterPreview, useSmartCollectionMutations } from '../api/hooks'
 import { FilterBuilder } from './FilterBuilder'
 import { type FilterDraft, draftToExpression, emptyDraft, expressionToDraft } from './filterModel'
 
 /**
- * Create or edit a Smart Folder. Wraps the shared FilterBuilder with a name
- * field and a live match count (the same compile path the saved folder will
+ * Create or edit a Smart Collection. Wraps the shared FilterBuilder with a name
+ * field and a live match count (the same compile path the saved collection will
  * use when browsed), so what you preview is what you get.
  */
-export function SmartFolderEditor({
+export function SmartCollectionEditor({
   existing,
   initialDraft,
   onClose,
   onSaved,
 }: {
-  existing?: SmartFolderRead | null
+  existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
   onClose: () => void
-  onSaved: (sf: SmartFolderRead) => void
+  onSaved: (sc: SmartCollectionRead) => void
 }) {
-  const { create, update, remove } = useSmartFolderMutations()
+  const { create, update, remove } = useSmartCollectionMutations()
   const [name, setName] = useState(existing?.name ?? '')
   const [draft, setDraft] = useState<FilterDraft>(
     () => initialDraft ?? (existing ? expressionToDraft(existing.filter) : emptyDraft()),
@@ -57,7 +57,7 @@ export function SmartFolderEditor({
         aria-modal="true"
       >
         <div className="modal__head">
-          <h2>{existing ? 'Edit Smart Folder' : 'New Smart Folder'}</h2>
+          <h2>{existing ? 'Edit Smart Collection' : 'New Smart Collection'}</h2>
           <button className="modal__close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -66,9 +66,9 @@ export function SmartFolderEditor({
         <input
           className="edit edit--title"
           value={name}
-          placeholder="Smart folder name"
+          placeholder="Smart collection name"
           onChange={(e) => setName(e.target.value)}
-          aria-label="Smart folder name"
+          aria-label="Smart collection name"
           autoFocus
         />
 

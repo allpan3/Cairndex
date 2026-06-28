@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the Phase 5 flow: build a filter, watch the live preview
-// count, save a Smart Folder, and browse it. No backend required.
+// count, save a Smart Collection, and browse it. No backend required.
 
 function summary(id: string, title: string) {
   return {
@@ -22,19 +22,19 @@ function summary(id: string, title: string) {
 }
 
 async function mockApi(page: Page) {
-  const smartFolders: Array<Record<string, unknown>> = []
+  const smartCollections: Array<Record<string, unknown>> = []
 
   await page.route('**/api/v1/bundles/counts', (r) =>
     r.fulfill({ json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0 } }),
   )
-  await page.route('**/api/v1/folders?*', (r) =>
+  await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/api/v1/folders/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
 
   // Filtered (POST) vs. unfiltered (GET) browse return different totals so the
-  // test can prove the Smart Folder actually filters.
+  // test can prove the Smart Collection actually filters.
   await page.route('**/api/v1/bundles/browse**', (r) => {
     const filtered = r.request().method() === 'POST'
     r.fulfill({
@@ -49,11 +49,11 @@ async function mockApi(page: Page) {
 
   await page.route('**/api/v1/filters/preview', (r) => r.fulfill({ json: { count: 1 } }))
 
-  await page.route('**/api/v1/smart-folders', async (r) => {
+  await page.route('**/api/v1/smart-collections', async (r) => {
     if (r.request().method() === 'POST') {
       const body = r.request().postDataJSON() as Record<string, unknown>
-      const sf = {
-        id: 'sf1',
+      const sc = {
+        id: 'sc1',
         name: body.name,
         filter: body.filter,
         default_sort: null,
@@ -62,20 +62,20 @@ async function mockApi(page: Page) {
         created_at: 'x',
         updated_at: 'x',
       }
-      smartFolders.push(sf)
-      await r.fulfill({ status: 201, json: sf })
+      smartCollections.push(sc)
+      await r.fulfill({ status: 201, json: sc })
     } else {
-      await r.fulfill({ json: smartFolders })
+      await r.fulfill({ json: smartCollections })
     }
   })
 }
 
-test('build, preview, save, and browse a Smart Folder', async ({ page }) => {
+test('build, preview, save, and browse a Smart Collection', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
 
-  await page.getByRole('button', { name: 'New smart folder' }).click()
-  await page.getByLabel('Smart folder name').fill('Highly rated')
+  await page.getByRole('button', { name: 'New smart collection' }).click()
+  await page.getByLabel('Smart collection name').fill('Highly rated')
   await page.getByLabel('Field').selectOption('rating')
   await page.getByLabel('Operator').selectOption('gte')
   await page.getByLabel('Value').fill('4')
@@ -85,7 +85,7 @@ test('build, preview, save, and browse a Smart Folder', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Create' }).click()
 
-  // The saved folder appears in the sidebar and drives a filtered browse.
+  // The saved collection appears in the sidebar and drives a filtered browse.
   await expect(page.locator('.nav-item__label', { hasText: 'Highly rated' })).toBeVisible()
   await expect(page.locator('.toolbar__count')).toContainText('1 items')
 })

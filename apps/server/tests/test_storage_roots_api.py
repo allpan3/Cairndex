@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -23,6 +25,26 @@ def test_create_and_get_roundtrip(client: TestClient) -> None:
     got = client.get(f"/api/v1/storage-roots/{created['id']}")
     assert got.status_code == 200
     assert got.json()["id"] == created["id"]
+
+
+def test_create_if_missing_via_api(client: TestClient, tmp_path: Path) -> None:
+    target = tmp_path / "fresh-library"
+    resp = client.post(
+        "/api/v1/storage-roots",
+        json={"name": "fresh", "canonical_path": str(target), "create_if_missing": True},
+    )
+    assert resp.status_code == 201, resp.text
+    assert target.is_dir()
+    assert resp.json()["status"] == "available"
+
+
+def test_path_suggestions_endpoint(client: TestClient, tmp_path: Path) -> None:
+    (tmp_path / "Movies").mkdir()
+    (tmp_path / "Music").mkdir()
+    resp = client.get("/api/v1/storage-roots/path-suggestions", params={"path": f"{tmp_path}/"})
+    assert resp.status_code == 200
+    names = {Path(p).name for p in resp.json()["suggestions"]}
+    assert {"Movies", "Music"} <= names
 
 
 def test_create_rejects_relative_path(client: TestClient) -> None:

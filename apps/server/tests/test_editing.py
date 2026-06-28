@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ValidationError
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
 from cairndex.services import tags as tag_service
 from cairndex.services.browse import tag_counts
@@ -65,28 +65,31 @@ def test_reorder_rejects_mismatched_ids(session: Session) -> None:
         bundle_service.reorder_files(session, bundle.id, [a.id, "nonexistent"])
 
 
-def test_batch_add_and_remove_tags_and_folders(session: Session) -> None:
+def test_batch_add_and_remove_tags_and_collections(session: Session) -> None:
     b1 = bundle_service.create_bundle(session, title="b1")
     b2 = bundle_service.create_bundle(session, title="b2")
     tag = tag_service.create_tag(session, name="t")
-    folder = folder_service.create_folder(session, name="f")
+    collection = collection_service.create_collection(session, name="c")
     session.flush()
 
     count = bundle_service.batch_update_bundles(
-        session, bundle_ids=[b1.id, b2.id], add_tag_ids=[tag.id], add_folder_ids=[folder.id]
+        session,
+        bundle_ids=[b1.id, b2.id],
+        add_tag_ids=[tag.id],
+        add_collection_ids=[collection.id],
     )
     assert count == 2
     session.refresh(b1)
     assert {t.id for t in b1.tags} == {tag.id}
-    assert {f.id for f in b1.folders} == {folder.id}
+    assert {c.id for c in b1.collections} == {collection.id}
 
     # Idempotent re-add + a remove.
     bundle_service.batch_update_bundles(
-        session, bundle_ids=[b1.id], add_tag_ids=[tag.id], remove_folder_ids=[folder.id]
+        session, bundle_ids=[b1.id], add_tag_ids=[tag.id], remove_collection_ids=[collection.id]
     )
     session.refresh(b1)
     assert {t.id for t in b1.tags} == {tag.id}  # still one, not duplicated
-    assert b1.folders == []
+    assert b1.collections == []
 
 
 def test_tag_counts(session: Session) -> None:

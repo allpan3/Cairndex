@@ -6,20 +6,25 @@ import {
   type BundlePatch,
   type FilePatch,
   type FilterExpression,
-  type SmartFolderCreate,
-  type SmartFolderUpdate,
+  type SmartCollectionCreate,
+  type SmartCollectionUpdate,
   batchUpdate,
   browseBundles,
-  createSmartFolder,
-  deleteSmartFolder,
-  fetchAllFolders,
+  type StorageRootCreate,
+  createSmartCollection,
+  createStorageRoot,
+  deleteSmartCollection,
+  deleteStorageRoot,
+  fetchAllCollections,
   fetchBundle,
   fetchBundleFiles,
-  fetchBundleFolders,
+  fetchBundleCollections,
   fetchBundleTags,
-  fetchFolderCounts,
+  fetchCollectionCounts,
+  fetchFileViewEntries,
   fetchPlaybackManifest,
-  fetchSmartFolders,
+  fetchStorageRoots,
+  fetchSmartCollections,
   previewEagleImport,
   runEagleImport,
   fetchTagCounts,
@@ -30,11 +35,11 @@ import {
   previewFilter,
   removeFile,
   reorderFiles,
-  setBundleFolders,
+  setBundleCollections,
   setBundleTags,
   updateBundle,
   updateFile,
-  updateSmartFolder,
+  updateSmartCollection,
 } from './client'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
@@ -53,8 +58,11 @@ export function useBrowse(query: BrowseQuery) {
   })
 }
 
-export function useViewCounts() {
-  return useQuery({ queryKey: ['view-counts'], queryFn: ({ signal }) => fetchViewCounts(signal) })
+export function useViewCounts(rootId: string | null = null) {
+  return useQuery({
+    queryKey: ['view-counts', rootId],
+    queryFn: ({ signal }) => fetchViewCounts(rootId, signal),
+  })
 }
 
 /** Live match-count for a draft filter, debounced by query key (the AST). */
@@ -77,8 +85,8 @@ export function useEagleImport() {
         for (const key of [
           'browse',
           'view-counts',
-          'folders',
-          'folder-counts',
+          'collections',
+          'collection-counts',
           'tags',
           'tag-counts',
         ])
@@ -96,41 +104,76 @@ export function usePlaybackManifest(bundleId: string | null) {
   })
 }
 
-export function useSmartFolders() {
+export function useSmartCollections() {
   return useQuery({
-    queryKey: ['smart-folders'],
-    queryFn: ({ signal }) => fetchSmartFolders(signal),
+    queryKey: ['smart-collections'],
+    queryFn: ({ signal }) => fetchSmartCollections(signal),
   })
 }
 
-export function useSmartFolderMutations() {
+export function useSmartCollectionMutations() {
   const qc = useQueryClient()
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['smart-folders'] })
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['smart-collections'] })
   return {
     create: useMutation({
-      mutationFn: (payload: SmartFolderCreate) => createSmartFolder(payload),
+      mutationFn: (payload: SmartCollectionCreate) => createSmartCollection(payload),
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: ({ id, payload }: { id: string; payload: SmartFolderUpdate }) =>
-        updateSmartFolder(id, payload),
+      mutationFn: ({ id, payload }: { id: string; payload: SmartCollectionUpdate }) =>
+        updateSmartCollection(id, payload),
       onSuccess: invalidate,
     }),
     remove: useMutation({
-      mutationFn: (id: string) => deleteSmartFolder(id),
+      mutationFn: (id: string) => deleteSmartCollection(id),
       onSuccess: invalidate,
     }),
   }
 }
 
-export function useFolders() {
-  return useQuery({ queryKey: ['folders'], queryFn: ({ signal }) => fetchAllFolders(signal) })
+// --- Libraries (storage roots) + File View -----------------------------------
+export function useStorageRoots() {
+  return useQuery({
+    queryKey: ['storage-roots'],
+    queryFn: ({ signal }) => fetchStorageRoots(signal),
+  })
 }
 
-export function useFolderCounts() {
+export function useLibraryMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['storage-roots'] })
+  return {
+    create: useMutation({
+      mutationFn: (payload: StorageRootCreate) => createStorageRoot(payload),
+      onSuccess: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteStorageRoot(id),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+/** List directory entries for a storage root + relative path (null = root). */
+export function useFileView(rootId: string | null, path: string | null) {
   return useQuery({
-    queryKey: ['folder-counts'],
-    queryFn: ({ signal }) => fetchFolderCounts(signal),
+    queryKey: ['file-view', rootId, path ?? ''],
+    queryFn: ({ signal }) => fetchFileViewEntries(rootId as string, path, signal),
+    enabled: rootId !== null,
+  })
+}
+
+export function useCollections() {
+  return useQuery({
+    queryKey: ['collections'],
+    queryFn: ({ signal }) => fetchAllCollections(signal),
+  })
+}
+
+export function useCollectionCounts(rootId: string | null = null) {
+  return useQuery({
+    queryKey: ['collection-counts', rootId],
+    queryFn: ({ signal }) => fetchCollectionCounts(rootId, signal),
   })
 }
 
@@ -142,8 +185,11 @@ export function useTagGroups() {
   return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
 }
 
-export function useTagCounts() {
-  return useQuery({ queryKey: ['tag-counts'], queryFn: ({ signal }) => fetchTagCounts(signal) })
+export function useTagCounts(rootId: string | null = null) {
+  return useQuery({
+    queryKey: ['tag-counts', rootId],
+    queryFn: ({ signal }) => fetchTagCounts(rootId, signal),
+  })
 }
 
 /** Map of tag-group id → its member tag ids, for the tag picker's group tabs. */
@@ -186,10 +232,10 @@ export function useBundleTags(id: string | null) {
   })
 }
 
-export function useBundleFolders(id: string | null) {
+export function useBundleCollections(id: string | null) {
   return useQuery({
-    queryKey: ['bundle-folders', id],
-    queryFn: ({ signal }) => fetchBundleFolders(id as string, signal),
+    queryKey: ['bundle-collections', id],
+    queryFn: ({ signal }) => fetchBundleCollections(id as string, signal),
     enabled: id !== null,
   })
 }
@@ -222,13 +268,13 @@ export function useSetBundleTags(id: string) {
   })
 }
 
-export function useSetBundleFolders(id: string) {
+export function useSetBundleCollections(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => setBundleFolders(id, ids),
+    mutationFn: (ids: string[]) => setBundleCollections(id, ids),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['bundle-folders', id] })
-      qc.invalidateQueries({ queryKey: ['folder-counts'] })
+      qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
       qc.invalidateQueries({ queryKey: ['browse'] })
     },
@@ -266,7 +312,7 @@ export function useBatchUpdate() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
-      qc.invalidateQueries({ queryKey: ['folder-counts'] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
     },
   })

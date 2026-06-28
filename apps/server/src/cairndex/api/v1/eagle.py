@@ -50,7 +50,7 @@ def run_import(payload: EagleImportRequest, db: DbSession) -> ImportResultRead:
     result = eagle_service.import_library(db, payload.library_path)
     return ImportResultRead(
         bundles_created=result.bundles_created,
-        folders_created=result.folders_created,
+        collections_created=result.collections_created,
         tags_created=result.tags_created,
         tag_groups_created=result.tag_groups_created,
         skipped=result.skipped,

@@ -5,7 +5,7 @@ import type { FilterExpression } from '../api/client'
 // predicate rows. This is the shape the UI produces *and* round-trips; the
 // underlying AST supports arbitrary nesting, but the editor exposes one level.
 
-export type FieldKind = 'text' | 'number' | 'bool' | 'date' | 'tags' | 'folders'
+export type FieldKind = 'text' | 'number' | 'bool' | 'date' | 'tags' | 'collections'
 
 export interface FieldDef {
   field: string
@@ -39,9 +39,9 @@ export const FIELDS: FieldDef[] = [
     operators: ['contains_any', 'contains_all', 'contains_none'],
   },
   {
-    field: 'folders',
-    label: 'Folders',
-    kind: 'folders',
+    field: 'collections',
+    label: 'Collections',
+    kind: 'collections',
     operators: ['contains_any', 'contains_all', 'contains_none'],
   },
   { field: 'date_added', label: 'Date added', kind: 'date', operators: ['gte', 'lte', 'gt', 'lt'] },
@@ -82,7 +82,7 @@ export const fieldDef = (field: string): FieldDef =>
 export function defaultValue(kind: FieldKind): unknown {
   if (kind === 'number') return 0
   if (kind === 'bool') return true
-  if (kind === 'tags' || kind === 'folders') return []
+  if (kind === 'tags' || kind === 'collections') return []
   return ''
 }
 
@@ -116,11 +116,11 @@ export function draftToExpression(draft: FilterDraft): FilterExpression {
 function isBlank(r: Condition): boolean {
   const def = fieldDef(r.field)
   if (def.kind === 'text') return (r.value as string).trim() === ''
-  if (def.kind === 'tags' || def.kind === 'folders') return (r.value as string[]).length === 0
+  if (def.kind === 'tags' || def.kind === 'collections') return (r.value as string[]).length === 0
   return false
 }
 
-/** AST → editor draft, for editing a saved Smart Folder built by this UI. */
+/** AST → editor draft, for editing a saved Smart Collection built by this UI. */
 export function expressionToDraft(expr: FilterExpression | null): FilterDraft {
   const root = expr?.root
   if (!root) return { match: 'all', rows: [newCondition()] }

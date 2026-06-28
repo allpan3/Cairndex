@@ -27,9 +27,9 @@ from cairndex.filters.ast import (
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
-    Folder,
+    Collection,
     Tag,
-    asset_bundle_folders,
+    asset_bundle_collections,
     asset_bundle_tags,
 )
 from cairndex.services.hierarchy import descendant_ids
@@ -118,7 +118,7 @@ def _file_exists(condition: Bool) -> Bool:
     return exists().where((AssetFile.bundle_id == AssetBundle.id) & condition)
 
 
-def _expand(session: Session, model: type[Tag] | type[Folder], ids: list[str]) -> list[str]:
+def _expand(session: Session, model: type[Tag] | type[Collection], ids: list[str]) -> list[str]:
     out: list[str] = []
     for i in ids:
         out.extend(descendant_ids(session, model, i, include_self=True))
@@ -130,7 +130,7 @@ def _membership(
     *,
     bundle_col: Any,
     member_col: Any,
-    model: type[Tag] | type[Folder],
+    model: type[Tag] | type[Collection],
     node: PredicateNode,
 ) -> Bool:
     if not isinstance(node.value, list):
@@ -213,12 +213,12 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
             model=Tag,
             node=node,
         )
-    if field == "folders":
+    if field == "collections":
         return _membership(
             session,
-            bundle_col=asset_bundle_folders.c.bundle_id,
-            member_col=asset_bundle_folders.c.folder_id,
-            model=Folder,
+            bundle_col=asset_bundle_collections.c.bundle_id,
+            member_col=asset_bundle_collections.c.collection_id,
+            model=Collection,
             node=node,
         )
     if field == "extension":

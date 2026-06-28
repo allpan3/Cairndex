@@ -124,7 +124,9 @@ button {
 }
 .nav-item__icon {
   width: 16px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.8;
 }
 .nav-item__label {
@@ -138,10 +140,10 @@ button {
   color: var(--text-muted);
   font-size: 12px;
 }
-.folder-row {
+.collection-row {
   cursor: pointer;
 }
-.folder-row__toggle {
+.collection-row__toggle {
   width: 14px;
   border: 0;
   background: transparent;
@@ -489,7 +491,7 @@ button {
   min-height: 56px;
 }
 
-/* --- Tag / folder editor popovers ---------------------------------------- */
+/* --- Tag / collection editor popovers ------------------------------------ */
 .picker {
   position: relative;
 }
@@ -1104,6 +1106,9 @@ code {
   object-fit: contain;
   background: #000;
 }
+.viewer__audio {
+  width: min(560px, 80vw);
+}
 .viewer__close {
   position: absolute;
   top: 14px;
@@ -1181,4 +1186,317 @@ code {
   color: var(--text-muted);
   font-size: 12px;
   margin: 0;
+}
+
+/* --- Mode switch (Collection View / File View) ---------------------------- */
+.sidebar__library {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.sidebar__library-select {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar__library-manage {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.sidebar__library-manage:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+.sidebar__modes {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+.mode-tab {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.mode-tab--active {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+
+/* --- File View (read-only filesystem browser) ---------------------------- */
+.file-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.file-view__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.file-view__root {
+  max-width: 220px;
+}
+.file-view__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.crumb {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.crumb:disabled {
+  color: var(--text-strong);
+  cursor: default;
+}
+.crumb__sep {
+  color: var(--text-muted);
+}
+.file-view__body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty--error {
+  color: #ff8a8a;
+}
+/* The File View list is a CSS grid: the header and every row use this one
+   column template, so columns line up exactly regardless of cell content.
+   All rules are scoped under `.file-table` because `.file-row`/`.file-row__name`
+   are also used (with a different layout) by the bundle inspector. */
+.file-table {
+  font-size: 13px;
+}
+.file-table__head,
+.file-table .file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 96px 160px;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.file-table__head {
+  color: var(--text-muted);
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  z-index: 1;
+}
+.file-table__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.file-table .file-row {
+  cursor: pointer;
+}
+.file-table .file-row:hover {
+  background: var(--bg-2);
+}
+.file-table .file-row--selected {
+  background: var(--accent-soft);
+}
+/* Each grid cell clips overflow so a long value can't shove the columns. */
+.file-table .file-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-table .file-row__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-strong);
+}
+.file-row__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--text-muted);
+}
+/* Inline SVG icon sizing (sidebar + file list). */
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+}
+/* The filename is the only part allowed to shrink/ellipsize; badges stay whole. */
+.file-row__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-table .file-row__name .badge {
+  flex: 0 0 auto;
+}
+.file-row__type,
+.file-row__modified {
+  color: var(--text-muted);
+}
+.badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-muted);
+}
+.badge--ok {
+  background: rgba(91, 140, 255, 0.18);
+  color: var(--accent);
+}
+.badge--link {
+  background: rgba(120, 200, 120, 0.18);
+  color: #79c879;
+}
+
+/* --- File inspector ------------------------------------------------------- */
+.inspector__empty {
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.file-meta {
+  margin: 0;
+  padding: 12px 16px;
+}
+.file-meta__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.file-meta__row dt {
+  color: var(--text-muted);
+}
+.file-meta__row dd {
+  margin: 0;
+  color: var(--text-strong);
+  text-align: right;
+  word-break: break-all;
+}
+
+/* --- Library manager + path autocomplete --------------------------------- */
+.empty__hint {
+  font-size: 12px;
+  max-width: 360px;
+  margin: 6px auto 0;
+}
+.badge--warn {
+  background: rgba(251, 191, 36, 0.18);
+  color: var(--warn);
+}
+.btn--sm {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.lib-list {
+  max-height: 240px;
+  overflow: auto;
+  margin-bottom: 14px;
+}
+.lib-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.lib-row__main {
+  flex: 1;
+  min-width: 0;
+}
+.lib-row__name {
+  display: block;
+  color: var(--text-strong);
+}
+.lib-row__path {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-add {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.lib-add__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.path-input {
+  position: relative;
+}
+.path-input__menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  margin-top: 2px;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.path-input__opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.path-input__opt:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
 }

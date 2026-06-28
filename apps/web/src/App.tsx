@@ -1,21 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { SmartFolderRead } from './api/client'
-import { useBrowse, useFolderCounts, useFolders, useSmartFolders, useViewCounts } from './api/hooks'
+import type { FileViewEntry, SmartCollectionRead } from './api/client'
+import {
+  useBrowse,
+  useCollectionCounts,
+  useCollections,
+  useSmartCollections,
+  useStorageRoots,
+  useViewCounts,
+} from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { EagleImport } from './app/EagleImport'
+import { FileInspector } from './app/FileInspector'
+import { FileView } from './app/FileView'
+import { LibraryManager } from './app/LibraryManager'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { Sidebar } from './app/Sidebar'
-import { SmartFolderEditor } from './app/SmartFolderEditor'
+import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
-import { DEFAULT_PREFS, SYSTEM_VIEWS, type BrowsePrefs, type Selection } from './app/types'
+import {
+  DEFAULT_PREFS,
+  SYSTEM_VIEWS,
+  type AppMode,
+  type BrowsePrefs,
+  type Selection,
+} from './app/types'
 import { usePersistentState } from './state/usePersistentState'
 
 interface EditorState {
-  existing?: SmartFolderRead | null
+  existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
 }
 
@@ -65,7 +81,7 @@ export default function App() {
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
-  const [selection, setSelection] = useState<Selection>({ view: 'all', folderId: null })
+  const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
   const [openBundleId, setOpenBundleId] = useState<string | null>(null) // album view
@@ -73,24 +89,59 @@ export default function App() {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [importing, setImporting] = useState(false)
 
-  const counts = useViewCounts()
-  const folders = useFolders()
-  const folderCounts = useFolderCounts()
-  const smartFolders = useSmartFolders()
+  // The active *library* (storage root) is a shared context across both
+  // surfaces: the Collection view scopes its bundles to it, and the File view
+  // browses it physically. The Collections/Files toggle only changes the lens.
+  const [mode, setMode] = useState<AppMode>('collection')
+  const [chosenRootId, setChosenRootId] = usePersistentState<string | null>(
+    'cairndex.rootId',
+    null,
+  )
+  const [filePath, setFilePath] = useState('') // File View directory within the root
+  const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+  const [libraries, setLibraries] = useState(false)
 
-  // A selected Smart Folder drives browsing through its saved filter AST, which
-  // compiles via the exact path POST /bundles/browse uses for ad-hoc filters.
-  const activeSmartFolder =
-    smartFolders.data?.find((sf) => sf.id === selection.smartFolderId) ?? null
+  const collections = useCollections()
+  const smartCollections = useSmartCollections()
+  const storageRoots = useStorageRoots()
+
+  // Resolve the chosen library to a real one without storing a stale id: fall
+  // back to the first available root when none is chosen or it was removed.
+  // Derived (not an effect) so it stays consistent during render.
+  const rootId = useMemo(() => {
+    const roots = storageRoots.data ?? []
+    if (chosenRootId && roots.some((r) => r.id === chosenRootId)) return chosenRootId
+    return roots[0]?.id ?? null
+  }, [storageRoots.data, chosenRootId])
+
+  // Counts and browsing are scoped to the active library.
+  const counts = useViewCounts(rootId)
+  const collectionCounts = useCollectionCounts(rootId)
+
+  const changeRoot = useCallback(
+    (next: string) => {
+      setChosenRootId(next)
+      setFilePath('')
+      setFileEntry(null)
+    },
+    [setChosenRootId],
+  )
+
+  // A selected Smart Collection drives browsing through its saved filter AST,
+  // which compiles via the exact path POST /bundles/browse uses for ad-hoc
+  // filters.
+  const activeSmartCollection =
+    smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
 
   const browse = useBrowse({
     view: selection.view,
-    folderId: selection.folderId,
-    includeDescendants: selection.folderId !== null,
+    collectionId: selection.collectionId,
+    includeDescendants: selection.collectionId !== null,
     sort: prefs.sort,
     order: prefs.order,
     limit: 100,
-    filter: activeSmartFolder?.filter ?? null,
+    filter: activeSmartCollection?.filter ?? null,
+    storageRootId: rootId,
   })
 
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -102,12 +153,12 @@ export default function App() {
   }, [items, search])
 
   const title = useMemo(() => {
-    if (activeSmartFolder) return activeSmartFolder.name
-    if (selection.folderId) {
-      return folders.data?.find((f) => f.id === selection.folderId)?.name ?? 'Folder'
+    if (activeSmartCollection) return activeSmartCollection.name
+    if (selection.collectionId) {
+      return collections.data?.find((c) => c.id === selection.collectionId)?.name ?? 'Collection'
     }
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
-  }, [selection, folders.data, activeSmartFolder])
+  }, [selection, collections.data, activeSmartCollection])
 
   const select = useCallback((id: string, e: React.MouseEvent) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey) {
@@ -183,69 +234,94 @@ export default function App() {
       }
     >
       <Sidebar
+        mode={mode}
+        onMode={setMode}
+        roots={storageRoots.data ?? []}
+        rootId={rootId}
+        onChangeRoot={changeRoot}
+        onManageLibraries={() => setLibraries(true)}
         selection={selection}
         onSelect={(s) => {
+          setMode('collection')
           setSelection(s)
           clearSelection()
           setOpenBundleId(null)
         }}
         counts={counts.data}
-        folders={folders.data ?? []}
-        folderCounts={folderCounts.data}
-        smartFolders={smartFolders.data ?? []}
-        onNewSmartFolder={() => setEditor({ initialDraft: emptyDraft() })}
-        onEditSmartFolder={(sf) => setEditor({ existing: sf })}
+        collections={collections.data ?? []}
+        collectionCounts={collectionCounts.data}
+        smartCollections={smartCollections.data ?? []}
+        onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
+        onEditSmartCollection={(sc) => setEditor({ existing: sc })}
         onImport={() => setImporting(true)}
       />
 
       <div className="center">
-        <Toolbar
-          title={title}
-          total={total}
-          search={search}
-          onSearch={setSearch}
-          prefs={prefs}
-          onPrefs={setPrefs}
-        />
-        {selectedIds.size >= 2 && !openBundleId && (
-          <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
-        )}
-        {openBundleId ? (
-          <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
-        ) : (
-          <Browser
-            items={filtered}
-            total={total}
-            layout={prefs.layout}
-            zoom={prefs.zoom}
-            selectedIds={selectedIds}
-            onSelect={select}
-            onOpen={open}
-            isLoading={browse.isLoading}
-            isError={browse.isError}
-            error={browse.error}
-            hasNextPage={browse.hasNextPage}
-            isFetchingNextPage={browse.isFetchingNextPage}
-            fetchNextPage={browse.fetchNextPage}
+        {mode === 'file' ? (
+          <FileView
+            roots={storageRoots.data ?? []}
+            location={{ rootId, path: filePath }}
+            selectedPath={fileEntry?.relative_path ?? null}
+            onNavigate={(path) => {
+              setFilePath(path)
+              setFileEntry(null)
+            }}
+            onSelectEntry={setFileEntry}
+            onManageLibraries={() => setLibraries(true)}
           />
+        ) : (
+          <>
+            <Toolbar
+              title={title}
+              total={total}
+              search={search}
+              onSearch={setSearch}
+              prefs={prefs}
+              onPrefs={setPrefs}
+            />
+            {selectedIds.size >= 2 && !openBundleId && (
+              <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
+            )}
+            {openBundleId ? (
+              <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
+            ) : (
+              <Browser
+                items={filtered}
+                total={total}
+                layout={prefs.layout}
+                zoom={prefs.zoom}
+                selectedIds={selectedIds}
+                onSelect={select}
+                onOpen={open}
+                isLoading={browse.isLoading}
+                isError={browse.isError}
+                error={browse.error}
+                hasNextPage={browse.hasNextPage}
+                isFetchingNextPage={browse.isFetchingNextPage}
+                fetchNextPage={browse.fetchNextPage}
+              />
+            )}
+          </>
         )}
       </div>
 
-      <Inspector bundleId={activeId} />
+      {mode === 'file' ? <FileInspector entry={fileEntry} /> : <Inspector bundleId={activeId} />}
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
       {importing && <EagleImport onClose={() => setImporting(false)} />}
 
+      {libraries && <LibraryManager onClose={() => setLibraries(false)} />}
+
       {editor && (
-        <SmartFolderEditor
+        <SmartCollectionEditor
           existing={editor.existing}
           initialDraft={editor.initialDraft}
           onClose={() => setEditor(null)}
-          onSaved={(sf) => {
+          onSaved={(sc) => {
             setEditor(null)
-            setSelection({ view: 'all', folderId: null, smartFolderId: sf.id })
+            setSelection({ view: 'all', collectionId: null, smartCollectionId: sc.id })
             clearSelection()
           }}
         />

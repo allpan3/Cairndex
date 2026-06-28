@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
-    Folder,
+    Collection,
     ImportRecord,
     Tag,
     TagGroup,
@@ -63,7 +63,7 @@ def test_import_maps_everything_and_is_idempotent(session: Session, tmp_path: Pa
 
     assert result.bundles_created == 1  # IT1 only (IT2 deleted)
     assert result.skipped == 1
-    assert result.folders_created == 2  # Movies + 2024
+    assert result.collections_created == 2  # Movies + 2024
 
     bundle = session.scalar(select(AssetBundle))
     assert bundle is not None
@@ -71,7 +71,7 @@ def test_import_maps_everything_and_is_idempotent(session: Session, tmp_path: Pa
     assert bundle.note == "note"
     assert bundle.rating == 4
     assert {t.name for t in bundle.tags} == {"action", "scifi"}
-    assert {f.name for f in bundle.folders} == {"2024"}
+    assert {c.name for c in bundle.collections} == {"2024"}
 
     f = session.scalar(select(AssetFile))
     assert f is not None
@@ -86,10 +86,10 @@ def test_import_maps_everything_and_is_idempotent(session: Session, tmp_path: Pa
     again = eagle_service.import_library(session, str(lib))
     session.commit()
     assert again.bundles_created == 0
-    assert again.folders_created == 0
+    assert again.collections_created == 0
     assert session.scalar(select(func.count()).select_from(AssetBundle)) == 1
     assert session.scalar(select(func.count()).select_from(ImportRecord)) == 1
-    assert session.scalar(select(func.count()).select_from(Folder)) == 2
+    assert session.scalar(select(func.count()).select_from(Collection)) == 2
     assert session.scalar(select(func.count()).select_from(Tag)) == 2
 
 

@@ -1,8 +1,8 @@
 # Architecture
 
-> Status: current through Phase 8. This document summarizes what is implemented
-> on `main`; see `AGENTS.md` for the product brief and `docs/STATUS.md` for
-> current gaps and recommended next tasks.
+> Status: current through the Collections + read-only File View refactor branch.
+> See `AGENTS.md` for the product brief and `docs/STATUS.md` for current gaps,
+> validation state, and recommended next tasks.
 
 ## 1. System overview
 
@@ -11,6 +11,12 @@ process, one SQLite database, a local cache directory for derived media
 (thumbnails, converted subtitles, future transcodes), and a React frontend
 served to a browser on the same LAN or a private overlay network such as
 Tailscale.
+
+The split backend/client model is important for future TV and remote viewing:
+media and metadata live on a NAS/server, while different clients browse and play
+the library from elsewhere. A desktop-only client could also operate directly on
+an SMB-mounted library path, but the server model gives smoother shared metadata,
+scanning, remote playback, and multi-client behavior.
 
 ```text
 ┌──────────────┐       HTTP/JSON, /api/v1/*        ┌─────────────────────┐
@@ -48,16 +54,16 @@ api/         FastAPI routers and request/response schemas
 core/        config, app factory, time, errors, path-safety helpers
 persistence/ SQLAlchemy models, engine/session setup, Alembic migrations
 domain/      enum/domain definitions
-services/    HTTP-agnostic business logic for bundles, roots, tags, folders,
-             filters, jobs, subtitles, Eagle import, etc.
+services/    HTTP-agnostic business logic for bundles, roots, tags, collections,
+             filters, jobs, subtitles, Eagle import, file view, etc.
 scanning/    storage-root scanning, fast-add, file classification, fingerprints
 media/       ffprobe/ffmpeg adapters, thumbnailing, playback/subtitle helpers
 jobs/        DB-backed job registry + worker loop
 ```
 
-API routes currently cover health, storage roots, bundles/files, tags, tag
-groups, folders, Smart Folders, filter preview, playback/subtitles, Eagle
-import, and jobs.
+API routes currently cover health, storage roots, File View entries, bundles /
+files, tags, tag groups, collections, Smart Collections, filter preview,
+playback/subtitles, Eagle import, and jobs.
 
 ## 3. Frontend (`apps/web`)
 
@@ -68,17 +74,19 @@ src/
   api/        typed client over /api/v1 (generated OpenAPI types) +
               TanStack Query hooks, including an infinite browse query
   app/        shell pieces: Sidebar, Toolbar, Browser, Inspector, BundleCard,
-              FilterBuilder, SmartFolderEditor, Player, EagleImport, layouts
+              FilterBuilder, CollectionPicker, SmartCollectionEditor, Player,
+              EagleImport, FileView, FileInspector, layouts
   state/      usePersistentState (localStorage for layout/zoom/pane widths)
   lib/        formatting helpers
 ```
 
-Server state lives in TanStack Query. View state such as selection, active
-folder/system view, Smart Folder selection, and toolbar search is local React
-state; durable browse preferences persist to localStorage. The browser is
-virtualized with TanStack Virtual over packed grid/list/justified rows so large
-loaded windows stay responsive. A typed router remains deferred while the app is
-a single browse surface with modals.
+Server state lives in TanStack Query. View state such as active browsing mode,
+collection/system view, Smart Collection selection, bundle selection, File View
+path selection, and toolbar search is local React state; durable browse
+preferences persist to localStorage. Collection View's browser is virtualized
+with TanStack Virtual over packed grid/list/justified rows so large loaded
+windows stay responsive. A typed router remains deferred while the app is a
+single shell with mode switches and modals.
 
 ## 4. Storage and path safety
 
@@ -95,24 +103,29 @@ All externally influenced file paths must pass through `core.paths`:
   root and rejects symlink escapes outside the root.
 
 Services re-resolve paths at access time for sensitive operations such as
-streaming, probing, subtitle conversion, and thumbnails. Storage roots may be
-read-only or write-enabled in the schema, but current MVP behavior is
-metadata-only and treats source media as immutable.
+streaming, probing, subtitle conversion, thumbnails, and File View listing.
+Storage roots may be read-only or write-enabled in the schema, but current MVP
+behavior is metadata-only and treats source media as immutable.
 
 ## 5. Domain model
 
 The implemented schema is documented in `docs/data-model.md` and recorded in
-ADR-0002/0003/0004. The core object graph is:
+ADR-0002/0003/0004/0006. The core object graph is:
 
 - `StorageRoot` — server-visible mounted root with scan status/timestamps.
-- `AssetBundle` — primary user-facing item shown in browse/search/folders/tags.
+- `AssetBundle` — primary user-facing item shown in Collection View,
+  browse/search/collections/tags.
 - `AssetFile` — one physical file linked into one bundle by
   `storage_root_id + relative_path`, with role, media kind, order,
-  availability, fingerprint/hash placeholders, and technical metadata.
+  availability, filesystem identity, fingerprint/hash placeholders, and
+  technical metadata.
 - `Tag` — hierarchical tag node using an adjacency list.
 - `TagGroup` — navigational grouping independent of tag hierarchy.
-- `Folder` — hierarchical virtual collection; bundle membership is many-to-many.
-- `SmartFolder` — saved, versioned filter AST plus optional view defaults.
+- `Collection` — hierarchical virtual grouping (formerly "folder"); bundle
+  membership is many-to-many and never moves files on disk. This is the logical
+  surface (Collection View), distinct from physical File View directories.
+- `SmartCollection` — saved, versioned filter AST plus optional view defaults
+  (table still named `smart_folders`).
 - `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to
   a video file.
 - `ImportRecord` — provider/external ID mapping for idempotent imports.
@@ -128,9 +141,11 @@ ad hoc values in `extra_metadata`.
 
 `scan_storage_root()` walks a storage root, links classifiable media files,
 updates existing rows by relative path, and marks disappeared files `missing`
-instead of deleting metadata. It computes only the quick fingerprint used by the
-MVP scan path (`size + mtime`), commits in batches, and reports progress through
-the job checkpoint hook.
+instead of deleting metadata. It computes only the quick fingerprint (`size +
+mtime`) plus cheap filesystem identity (`st_dev`/`st_ino`) used for moved-file
+repair — never a full hash — commits in batches, and reports progress through
+the job checkpoint hook. Before creating new bundles it repairs high-confidence
+moves in place, preserving `AssetFile.id` and all bundle metadata; see ADR-0006.
 
 `fast_add()` manually links selected files or directories and supports either
 one bundle per file or a single bundle for the whole selection. It skips already
@@ -142,19 +157,16 @@ metadata into `AssetFile.tech_metadata`. Thumbnail generation uses `ffmpeg` and
 writes reproducible derived files under the app cache directory, outside any
 storage root.
 
-## 7. Filtering and Smart Folders
+## 7. Filtering and Smart Collections
 
 The filter system uses a canonical JSON AST (`version`, logical nodes, and
 predicate nodes), not raw SQL. Incoming expressions are validated by Pydantic
 and compiled through an allowlisted SQLAlchemy compiler with bound parameters.
-The same compiler path powers:
+The same compiler path powers live count preview, filtered browse, and saved
+Smart Collection CRUD/browse.
 
-- live count preview at `POST /api/v1/filters/preview`;
-- filtered browse at `POST /api/v1/bundles/browse`;
-- saved Smart Folder CRUD and browse.
-
-The current Smart Folder editor exposes one Eagle-style all/any condition group.
-The AST supports nested `and`/`or`/`not` groups for a later richer editor.
+The current Smart Collection editor exposes one Eagle-style all/any condition
+group. The AST supports nested boolean groups for a later richer editor.
 
 Current gap: toolbar text search in the frontend filters the already-loaded
 client-side page/window by title. Server-side text search and SQLite FTS5 are
@@ -195,9 +207,9 @@ The Eagle importer is one-way, read-only, and idempotent:
 - `eagle.planner` produces a dry-run report with counts and advisory merge
   suggestions.
 - `services.eagle.import_library()` registers the Eagle `images/` directory as a
-  read-only storage root, creates/reuses folders/tags/tag groups, maps each new
-  live Eagle item to one bundle + linked file, and records `ImportRecord` rows
-  so reruns skip existing items.
+  read-only storage root, creates/reuses collections/tags/tag groups (Eagle
+  folders become collections), maps each new live Eagle item to one bundle +
+  linked file, and records `ImportRecord` rows so reruns skip existing items.
 
 Applying merge suggestions in-app is a follow-up; imports currently preserve
 safety by not auto-merging destructively.
@@ -217,20 +229,78 @@ There is no application authentication yet. Production compose binds to
 `127.0.0.1` by default and is intended to sit behind a private network/Tailscale
 or an authenticating reverse proxy, not the public internet.
 
-## 12. Known architectural debt
+## 12. Browsing surfaces: Collection View and File View
 
-These are the most important architecture follow-ups after the Phase 0–8 MVP
-foundation:
+Cairndex has two distinct browsing surfaces:
 
+- **Collection View** — logical, metadata-first, bundle-based. The visible item
+  is an `AssetBundle`; Collections are hierarchical virtual groupings and a
+  bundle may belong to zero or many. Collection membership never moves files.
+- **File View** — physical, filesystem-first, storage-root-scoped. The visible
+  items are real directories and files under a configured storage root. The
+  first milestone is read-only.
+
+The read-only File View backend is `services/file_view.py`, exposed as
+`GET /api/v1/storage-roots/{root_id}/entries?path=...`:
+
+- input is only `storage_root_id + relative_path` (omitted = the root itself),
+  never an absolute server path; absolute paths, traversal attempts, NUL bytes,
+  and symlink escapes are rejected via `core.paths` and a per-entry real-path
+  containment check;
+- hidden entries are excluded (dotfiles/dot-directories cover `.git`, `.DS_Store`,
+  `.env`, etc., plus a small denylist of non-dot cruft like `__pycache__`,
+  `node_modules`, `Thumbs.db`);
+- directories are returned first, then files, each sorted case-insensitively;
+- each entry carries name, relative path, kind (directory/file), size, modified
+  time, extension, a cheap MIME guess, the app's media classification, a
+  `supported` flag (can the app preview/play it natively), and a cheap
+  `linked`/`bundle_id` hint when the exact path is already linked into a bundle;
+- it never moves, renames, deletes, or rewrites anything.
+
+On the frontend, a sidebar mode toggle ("Collections" / "Files") switches the
+center pane between the virtualized bundle browser and `FileView` — a library
+selector + breadcrumbs + a directory/file table with `openable`, `unsupported`,
+and `linked` badges, plus loading/empty/error states (including a friendly "this
+library is currently unavailable" state when a root's directory is offline or
+moved). File View selection is kept entirely separate from Collection/bundle
+selection, and the right pane shows `FileInspector` (path/size/mtime/MIME/
+openable/linked facts) — not the bundle inspector — so a filesystem entry is
+never mistaken for a bundle. There are no move/rename/delete controls in this
+milestone.
+
+Storage roots are presented in the UI as **Libraries** (`LibraryManager`): add
+one by absolute server path with directory autocomplete and an optional
+"create if missing" toggle, and see each library's available/unavailable status.
+Autocomplete is backed by `GET /api/v1/storage-roots/path-suggestions`, which
+lists *directories only* (capped, dotfiles skipped) that the server process can
+see — host filesystem, or only up to the image root inside a container. Because
+that lists directories outside any storage root, it is **owner-configuration
+tooling**, consistent with the single-owner, no-public-internet stance (§11); it
+never returns file contents and creating a library directory is the only write
+the otherwise metadata-only app performs.
+
+No write endpoints exist yet. The module funnels all resolution through the
+storage-root allowlist so later write-mode operations can share path validation.
+ADR-0007 records the product nuance: the split server/client model primarily
+enables future TV and remote viewing, while desktop file actions are more
+naturally macOS/native-client features than normal web-client capabilities.
+
+## 13. Known architectural debt
+
+These are the most important architecture follow-ups after the current branch:
+
+- update/rebase `feat/collections-and-file-view` against current `main` before
+  merge;
 - server-side text search / SQLite FTS5 and removal of client-side-only toolbar
   search;
 - browse-summary query optimization and query-pattern indexes for larger
   libraries;
 - first-class merge/split/move-file workflows for multi-file bundles and Eagle
   merge suggestions;
-- moved-file repair using path candidates, filename, size, timestamps, quick
-  hashes, and optional full hashes;
+- cross-filesystem moved-file repair and candidate suggestions for ambiguous
+  cases (same-volume repair is implemented — ADR-0006);
 - scheduled scans and stronger scan/probe/thumbnail job scheduling;
+- safe File View write mode plus desktop-client integration (ADR-0007);
 - single-owner authentication before real remote exposure;
 - remux/transcode fallback and embedded subtitle extraction for unsupported
   browser playback cases.

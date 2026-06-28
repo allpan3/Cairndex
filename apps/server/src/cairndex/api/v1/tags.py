@@ -1,4 +1,6 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import DbSession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
@@ -11,8 +13,10 @@ router = APIRouter(prefix="/tags", tags=["tags"])
 
 
 @router.get("/counts", response_model=CountsResponse)
-def tag_counts(db: DbSession) -> CountsResponse:
-    return CountsResponse(counts=browse_service.tag_counts(db))
+def tag_counts(
+    db: DbSession, storage_root_id: Annotated[str | None, Query()] = None
+) -> CountsResponse:
+    return CountsResponse(counts=browse_service.tag_counts(db, storage_root_id))
 
 
 @router.post("", response_model=TagRead, status_code=status.HTTP_201_CREATED)
