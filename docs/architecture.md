@@ -277,9 +277,22 @@ How it works now:
   (`inside_library` | `server_local`, default `inside_library`) may let large
   transcodes opt into a server-local cache; portable cache trades a larger
   backup footprint for self-containment.
+- **Optimistic concurrency (phase 9).** The frequently edited entities
+  (`asset_bundles`, `asset_files`, `tags`, `collections`, `smart_folders`,
+  `subtitle_tracks`) carry a `version` integer (starts at 1, bumped on each
+  edit; see `persistence.base.Version` + `persistence.concurrency`). Single-entity
+  `PATCH` routes accept an optional `If-Match: <version>` header: when present and
+  stale the edit is rejected with **409** (`version_conflict`) before anything is
+  mutated; when absent the edit is last-write-wins, so existing clients are
+  unaffected. `version` is exposed on the read models so a client can round-trip
+  it. (Increment is explicit in the service layer rather than via
+  `version_id_col`, so internal scan/repair writes never risk `StaleDataError`
+  under the single-writer model.)
 
-Eagle import has been removed entirely (see §10). Remaining ADR-0008 work:
-optimistic-concurrency versions (phase 9).
+Eagle import has been removed entirely (see §10). The ADR-0008 phase sequence
+(registry, per-library engine/routing, schema collapse, worker, cache, and
+optimistic concurrency) is now implemented; the remaining direct-open/native
+modes (phases 10–11) stay future work.
 
 ## 12. Browsing surfaces: Collection View and File View
 

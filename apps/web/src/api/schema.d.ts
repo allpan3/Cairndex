@@ -923,6 +923,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version */
+            version: number;
         };
         /**
          * BundleSort
@@ -1008,6 +1010,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version */
+            version: number;
         };
         /** CollectionUpdate */
         CollectionUpdate: {
@@ -1105,6 +1109,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version */
+            version: number;
         };
         /** FileReorder */
         FileReorder: {
@@ -1499,6 +1505,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version */
+            version: number;
         };
         /** SmartCollectionUpdate */
         SmartCollectionUpdate: {
@@ -1603,6 +1611,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Version */
+            version: number;
         };
         /** TagUpdate */
         TagUpdate: {
@@ -2184,7 +2194,10 @@ export interface operations {
     update_bundle_api_v1_libraries__library_id__bundles__bundle_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -2423,7 +2436,10 @@ export interface operations {
     update_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+            };
             path: {
                 bundle_id: string;
                 file_id: string;
@@ -2787,7 +2803,10 @@ export interface operations {
     update_collection_api_v1_libraries__library_id__collections__collection_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+            };
             path: {
                 collection_id: string;
                 library_id: string;
@@ -3244,7 +3263,10 @@ export interface operations {
     update_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+            };
             path: {
                 smart_collection_id: string;
                 library_id: string;
@@ -3709,7 +3731,10 @@ export interface operations {
     update_tag_api_v1_libraries__library_id__tags__tag_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Expected entity version for optimistic concurrency. */
+                "If-Match"?: number | null;
+            };
             path: {
                 tag_id: string;
                 library_id: string;

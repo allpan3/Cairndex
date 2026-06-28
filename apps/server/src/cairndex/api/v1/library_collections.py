@@ -6,7 +6,7 @@ so a collection created in one library is invisible to another.
 
 from fastapi import APIRouter, status
 
-from cairndex.api.deps import LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import CollectionCreate, CollectionRead, CollectionUpdate
@@ -40,7 +40,10 @@ def get_collection(collection_id: str, db: LibrarySession) -> CollectionRead:
 
 @router.patch("/{collection_id}", response_model=CollectionRead)
 def update_collection(
-    collection_id: str, payload: CollectionUpdate, db: LibrarySession
+    collection_id: str,
+    payload: CollectionUpdate,
+    db: LibrarySession,
+    if_match: IfMatchVersion = None,
 ) -> CollectionRead:
     collection = service.update_collection(
         db,
@@ -48,6 +51,7 @@ def update_collection(
         name=payload.name,
         parent_id=payload.parent_id,
         set_parent="parent_id" in payload.model_fields_set,
+        expected_version=if_match,
     )
     return CollectionRead.model_validate(collection)
 

@@ -34,7 +34,7 @@ from cairndex.domain.enums import (
     FileRole,
     MediaKind,
 )
-from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt
+from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt, Version
 from cairndex.persistence.types import UtcDateTime
 
 # --- Association tables ------------------------------------------------------
@@ -123,6 +123,7 @@ class AssetBundle(Base):
     created_at: Mapped[CreatedAt]
     imported_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     files: Mapped[list[AssetFile]] = relationship(
         back_populates="bundle",
@@ -182,6 +183,7 @@ class AssetFile(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     bundle: Mapped[AssetBundle] = relationship(back_populates="files", foreign_keys=[bundle_id])
 
@@ -206,6 +208,7 @@ class Tag(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     parent: Mapped[Tag | None] = relationship(back_populates="children", remote_side="Tag.id")
     children: Mapped[list[Tag]] = relationship(back_populates="parent")
@@ -247,6 +250,7 @@ class Collection(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     parent: Mapped[Collection | None] = relationship(
         back_populates="children", remote_side="Collection.id"
@@ -274,6 +278,7 @@ class SmartCollection(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
 
 class SubtitleTrack(Base):
@@ -305,6 +310,7 @@ class SubtitleTrack(Base):
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     __table_args__ = (
         # Exactly one source: external file XOR embedded stream index.

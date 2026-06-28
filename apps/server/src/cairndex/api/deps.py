@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import Depends, Query
+from fastapi import Depends, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -63,6 +63,15 @@ def get_library_session(library_id: str, registry: RegistryDbSession) -> Iterato
 
 
 LibrarySession = Annotated[Session, Depends(get_library_session)]
+
+
+# Optimistic-concurrency precondition (ADR-0008 phase 9). A client sends the
+# ``version`` it last read; the service rejects a stale edit with 409. Optional —
+# when omitted the edit is last-write-wins, so existing callers are unaffected.
+IfMatchVersion = Annotated[
+    int | None,
+    Header(alias="If-Match", description="Expected entity version for optimistic concurrency."),
+]
 
 
 class PageParams(BaseModel):
