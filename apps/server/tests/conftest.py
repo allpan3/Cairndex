@@ -13,6 +13,18 @@ from cairndex.persistence import models  # noqa: F401  (register metadata)
 from cairndex.persistence.base import Base
 from cairndex.persistence.engine import create_app_engine
 from cairndex.registry.engine import create_registry_engine
+from cairndex.registry.library_engine import dispose_all_library_engines
+
+
+@pytest.fixture(autouse=True)
+def _dispose_library_engines() -> Iterator[None]:
+    """Release any per-library engines opened during a test (ADR-0008).
+
+    The cache is process-global; disposing after each test closes handles to
+    temp ``library.db`` files so their tmp dirs can be cleaned up.
+    """
+    yield
+    dispose_all_library_engines()
 
 
 @pytest.fixture(autouse=True, scope="session")

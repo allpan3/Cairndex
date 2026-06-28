@@ -248,13 +248,23 @@ describes the shape and what has landed so far.
 - Library context is routed by path (`/api/v1/libraries/{library_id}/…`); the
   active library is a client concern, not a server-global setting.
 
-Landed so far (this PR): the registry DB and models, the on-disk library
-package (`registry/library_package.py`), create/register/list services, and the
-global endpoints `GET /api/v1/libraries`, `POST /api/v1/libraries/create`,
-`POST /api/v1/libraries/register`, `GET /api/v1/libraries/{id}`. The existing
-storage-root-scoped content APIs are unchanged for now; migrating them under
-`/libraries/{id}`, the per-library engine cache, and the schema collapse that
-drops `storage_roots` are sequenced into later PRs (ADR-0008 phases 3–8).
+Landed so far:
+
+- The registry DB and models, the on-disk library package
+  (`registry/library_package.py`), create/register/list services, and the global
+  endpoints `GET /api/v1/libraries`, `POST /api/v1/libraries/create`,
+  `POST /api/v1/libraries/register`, `GET /api/v1/libraries/{id}`.
+- A **per-library engine cache** (`registry/library_engine.py`) keyed by
+  `library_id` (and resolved DB path, so a moved library transparently
+  re-opens), plus a `LibrarySession` dependency (`api/deps.py`) that resolves
+  `{library_id}` against the registry, refuses unavailable libraries with 404,
+  and yields a transactional session on that library's `library.db`. The first
+  library-scoped content route — `/api/v1/libraries/{library_id}/collections` —
+  exercises it, with tests proving two-library isolation.
+
+The remaining storage-root-scoped content APIs are unchanged for now; migrating
+the rest under `/libraries/{id}` and the schema collapse that drops
+`storage_roots` are sequenced into later PRs (ADR-0008 phases 4–8).
 
 ## 12. Browsing surfaces: Collection View and File View
 

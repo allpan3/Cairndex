@@ -8,6 +8,7 @@ from cairndex.api.v1 import (
     health,
     jobs,
     libraries,
+    library_collections,
     playback,
     smart_collections,
     storage_roots,
@@ -18,6 +19,7 @@ from cairndex.api.v1 import (
 router = APIRouter(prefix="/api/v1")
 router.include_router(health.router)
 router.include_router(libraries.router)
+router.include_router(library_collections.router)
 router.include_router(storage_roots.router)
 router.include_router(bundles.router)
 router.include_router(tags.router)
