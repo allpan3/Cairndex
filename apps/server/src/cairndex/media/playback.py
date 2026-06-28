@@ -21,6 +21,7 @@ from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.subtitles import extension_of
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile, SubtitleTrack
 
 # Containers/codecs broadly playable by the HTML <video> element. MKV/AVI/WMV
@@ -80,7 +81,7 @@ def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
         raise NotFoundError(f"file {file_id!r} not found")
     if asset_file.availability != FileAvailability.AVAILABLE:
         raise NotFoundError("file is missing on disk")
-    abs_path = resolve_within_root(asset_file.storage_root.canonical_path, asset_file.relative_path)
+    abs_path = resolve_within_root(library_root_for_session(session), asset_file.relative_path)
     path = Path(abs_path)
     if not path.exists():
         asset_file.availability = FileAvailability.MISSING
@@ -134,7 +135,7 @@ def build_vtt_for_track(session: Session, track: SubtitleTrack, *, force: bool =
     if dest.exists() and not force:
         return dest
 
-    abs_path = Path(resolve_within_root(source.storage_root.canonical_path, source.relative_path))
+    abs_path = Path(resolve_within_root(library_root_for_session(session), source.relative_path))
     raw = abs_path.read_text(encoding="utf-8", errors="replace")
     vtt = raw if ext == "vtt" else _srt_to_vtt(raw)
     dest.parent.mkdir(parents=True, exist_ok=True)

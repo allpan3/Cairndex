@@ -2,12 +2,11 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/per-library-engine`. Latest commit: see `git log -1`.
+Branch: `feat/per-library-content`. Latest commit: see `git log -1`.
 
-The Collections + read-only File View refactor and the shared library
-selector / File View preview have merged to `main` (PRs #18, #19), along with
-the parallel in-bundle album/viewer work. ADR-0008 PR 1 (registry skeleton) has
-merged to `main` (PR #20).
+ADR-0008 is landing incrementally: PR 1 (registry skeleton, #20) and PR 2
+(per-library engine + first scoped route, #21) have merged to `main`. This
+branch is the **create → scan → browse** working slice (phases 3–5/7).
 
 ## Current milestone
 
@@ -35,41 +34,42 @@ phases at once.
     `POST /api/v1/libraries/create`, `POST /api/v1/libraries/register`,
     `GET /api/v1/libraries/{id}`. Backend tests in `tests/test_libraries.py`.
 
-- **PR 2 — per-library engine + route scoping (this branch).**
-  - Per-library content engine/session cache (`registry/library_engine.py`),
-    keyed by `library_id` and resolved DB path (a moved library re-opens
-    transparently); `dispose`/`refresh`/`dispose_all` helpers.
-  - `LibrarySession` dependency (`api/deps.py`): resolves `{library_id}` in the
-    registry, 404s an unavailable library, yields a session on its `library.db`.
-  - First library-scoped content route:
-    `/api/v1/libraries/{library_id}/collections` (create/list/get/update/delete),
-    alongside the existing global `/collections`.
-  - `tests/test_library_scoped.py` proves two-library isolation; OpenAPI +
-    frontend types regenerated.
+- **PR 2 — per-library engine + first scoped route (merged, PR #21).**
+  - Per-library content engine/session cache (`registry/library_engine.py`) and
+    a `LibrarySession` dependency; first scoped route `/libraries/{id}/collections`
+    with two-library isolation tests.
+
+- **PR 3 — create → scan → browse working slice (this branch; phases 3–5/7).**
+  - **Schema collapse:** removed `StorageRoot` and `asset_files.storage_root_id`;
+    `relative_path` is library-root-relative with `UNIQUE(relative_path)`. Moved
+    the `jobs` table to the registry `job_queue`. Library DBs use `create_all`
+    (Alembic chain + `test_migrations` removed for the clean break).
+  - **Route migration:** all content APIs now live under
+    `/api/v1/libraries/{library_id}/…`; the global content + storage-root routers
+    are gone. Path resolution derives the library root from the content session
+    (`library_root_for_session`).
+  - **Per-library worker:** the worker drains the registry `job_queue`, opens the
+    target library DB, and runs scan/probe/thumbnail against the library root.
+  - **Frontend:** active-library bootstrap (one per tab), library selector +
+    Scan action, create/register library manager; storage-root + Eagle UI removed.
+  - **Eagle import** temporarily removed (reader/planner kept) pending a
+    per-library re-implementation.
 
 ## Tests and validation
 
 Run and passing locally for this PR:
 
-- backend: `uv run ruff check .`, `uv run ruff format --check .`,
-  `uv run mypy src`, `uv run pytest` (198 passed);
-- frontend: `npm run lint`, `npm run typecheck`, `npm run build` (types
-  regenerated; no frontend integration yet — that is ADR-0008 phase 6).
+- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (171 passed);
+- frontend: `lint`, `typecheck`, `vitest` (3), `build`, Playwright e2e (10);
+- `demo/run_libraries.sh` exercises create → scan → browse end to end.
 
 ## Known issues / environment gaps
 
-- Most content APIs are still global / storage-root-scoped; only collections
-  have a library-scoped route so far. Migrating the rest under `/libraries/{id}`
-  (phase 4) and the `storage_roots` schema collapse (phase 5) are upcoming PRs.
-- The global `/collections` router and the per-library
-  `/libraries/{id}/collections` router coexist during the transition; the global
-  one is removed when the migration completes.
+- Eagle import is unavailable until re-implemented for the per-library model.
 - The registry uses `create_all` bootstrap rather than a versioned migration
   chain; if its schema needs to evolve it will get its own chain.
-- `job_queue` is defined but not yet consumed — the current in-process worker
-  still uses the content-DB `jobs` table (per-library worker is phase 7).
-- Clean break from pre-release dev data: no global-DB → per-library migration is
-  planned (ADR-0008 decision 10).
+- Clean break from pre-release dev data: no global-DB → per-library migration
+  (ADR-0008 decision 10). Existing dev data is discarded; create/scan a library.
 - No authentication yet (`AGENTS.md` §12); single SQLite writer / single uvicorn
   worker by design (ADR-0001).
 
@@ -77,15 +77,12 @@ Run and passing locally for this PR:
 
 Following the ADR-0008 phase/PR sequence:
 
-- PR 3 — migrate the remaining content APIs (bundles, tags, tag groups, smart
-  collections, file view, playback) under `/libraries/{id}`; regenerate
-  OpenAPI/frontend types; update the API client.
-- PR 4 — library DB schema collapse (drop `storage_roots`/`storage_root_id`;
-  paths become library-relative).
-- PR 5 — registry job queue + per-library worker.
-- PR 6 — frontend library selector replacing the storage-root selector.
-- PR 7 — optimistic-concurrency versions + operation-based tag/collection edits.
-- PR 8 — `.cairndex/cache` relocation + docs polish.
+- Re-implement **Eagle import** as a library-scoped operation (link into the
+  active library; paths relative to the library root).
+- PR 8 — `.cairndex/cache` relocation (thumbnails/subtitles under the library)
+  and docs polish.
+- PR 9 — optimistic-concurrency versions + operation-based tag/collection edits.
+- Per-library probe/thumbnail UI actions (jobs already exist server-side).
 
 ## Unresolved decisions
 

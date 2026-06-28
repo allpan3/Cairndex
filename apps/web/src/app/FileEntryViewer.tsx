@@ -6,19 +6,17 @@ import { formatBytes } from '../lib/format'
 /**
  * Fullscreen lightbox for the read-only File View. Unlike `FileViewer` (which
  * works on bundle `FileRead`s served by file id), this previews a physical
- * filesystem entry by `storage_root_id + relative_path` — files here need not be
- * linked into any bundle. Images and video render inline; anything the browser
- * can't show falls back to an info card. Arrow keys / chevrons step through the
+ * filesystem entry by its library-relative path — files here need not be linked
+ * into any bundle. Images and video render inline; anything the browser can't
+ * show falls back to an info card. Arrow keys / chevrons step through the
  * supported files in the current folder; Escape closes.
  */
 export function FileEntryViewer({
-  rootId,
   files,
   index,
   onIndex,
   onClose,
 }: {
-  rootId: string
   files: FileViewEntry[]
   index: number
   onIndex: (i: number) => void
@@ -77,7 +75,7 @@ export function FileEntryViewer({
       )}
 
       <div className="viewer__stage" onMouseDown={(e) => e.stopPropagation()}>
-        <ViewerBody rootId={rootId} file={file} />
+        <ViewerBody file={file} />
       </div>
 
       <div className="viewer__caption" onMouseDown={(e) => e.stopPropagation()}>
@@ -90,9 +88,9 @@ export function FileEntryViewer({
   )
 }
 
-function ViewerBody({ rootId, file }: { rootId: string; file: FileViewEntry }) {
+function ViewerBody({ file }: { file: FileViewEntry }) {
   const [failed, setFailed] = useState(false)
-  const src = fileViewContentUrl(rootId, file.relative_path)
+  const src = fileViewContentUrl(file.relative_path)
 
   if (file.media_kind === 'image' && !failed) {
     return <img className="viewer__img" src={src} alt={file.name} onError={() => setFailed(true)} />

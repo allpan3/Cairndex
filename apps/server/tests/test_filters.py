@@ -11,7 +11,6 @@ from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import AssetBundle
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
-from cairndex.services import storage_roots as root_service
 from cairndex.services import tags as tag_service
 
 
@@ -186,7 +185,6 @@ def test_tags_any_all_none_with_descendants(session: Session) -> None:
 
 
 def test_collections_and_file_predicates(session: Session) -> None:
-    root = root_service.create_storage_root(session, name="r", canonical_path="/mnt/r")
     collection = collection_service.create_collection(session, name="F")
     session.flush()
 
@@ -196,7 +194,6 @@ def test_collections_and_file_predicates(session: Session) -> None:
     bundle_service.add_file(
         session,
         with_mkv.id,
-        storage_root_id=root.id,
         relative_path="a/movie.mkv",
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,
@@ -205,7 +202,6 @@ def test_collections_and_file_predicates(session: Session) -> None:
     mf = bundle_service.add_file(
         session,
         missing.id,
-        storage_root_id=root.id,
         relative_path="b/gone.mp4",
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,

@@ -1,17 +1,19 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.api.deps import get_db, get_registry_db
+from cairndex.api.deps import get_library_session, get_registry_db
 from cairndex.core.config import get_settings
 from cairndex.main import create_app
 from cairndex.persistence import models  # noqa: F401  (register metadata)
-from cairndex.persistence.base import Base
 from cairndex.persistence.engine import create_app_engine
+from cairndex.registry import library_package as pkg
+from cairndex.registry import services as registry_service
 from cairndex.registry.engine import create_registry_engine
 from cairndex.registry.library_engine import dispose_all_library_engines
 
@@ -45,15 +47,22 @@ def _isolate_data_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None
 
 
 @pytest.fixture
-def engine(tmp_path: "os.PathLike[str]") -> Iterator[Engine]:
-    """A fresh file-backed SQLite engine with the schema created via metadata.
+def library_root(tmp_path: Path) -> Path:
+    """A real on-disk library package (``.cairndex/`` + content-schema DB).
 
-    Uses create_all (fast) rather than running migrations; the migration
-    itself is exercised separately in test_migrations.py.
+    Content tests resolve library-relative file paths against this root, and
+    place any real fixture media directly under it.
     """
-    db_path = os.path.join(tmp_path, "test.db")
-    eng = create_app_engine(database_url=f"sqlite:///{db_path}")
-    Base.metadata.create_all(eng)
+    root = tmp_path / "library"
+    root.mkdir()
+    pkg.create_package(root, "Test Library")
+    return root
+
+
+@pytest.fixture
+def engine(library_root: Path) -> Iterator[Engine]:
+    """A content engine bound to the test library's ``library.db``."""
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
     try:
         yield eng
     finally:
@@ -73,10 +82,12 @@ def session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
 
 
 @pytest.fixture
-def registry_engine(tmp_path: "os.PathLike[str]") -> Iterator[Engine]:
+def registry_engine(tmp_path: Path) -> Iterator[Engine]:
     """A fresh file-backed registry engine (separate from the content DB)."""
-    db_path = os.path.join(tmp_path, "registry.db")
-    eng = create_registry_engine(database_url=f"sqlite:///{db_path}")  # create_all inside
+    db_path = tmp_path / "registry.db"
+    eng = create_registry_engine(
+        database_url=f"sqlite:///{db_path.as_posix()}"
+    )  # create_all inside
     try:
         yield eng
     finally:
@@ -84,29 +95,36 @@ def registry_engine(tmp_path: "os.PathLike[str]") -> Iterator[Engine]:
 
 
 @pytest.fixture
-def registry_session(registry_engine: Engine) -> Iterator[Session]:
-    sm = sessionmaker(bind=registry_engine, expire_on_commit=False, future=True)
-    with sm() as db_session:
+def registry_session_factory(registry_engine: Engine) -> sessionmaker[Session]:
+    """A sessionmaker bound to the test registry engine, for the job worker."""
+    return sessionmaker(bind=registry_engine, expire_on_commit=False, future=True)
+
+
+@pytest.fixture
+def registry_session(registry_session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    with registry_session_factory() as db_session:
         yield db_session
 
 
 @pytest.fixture
-def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
-    """A TestClient whose DB dependencies are bound to the test sessions.
+def library_id(registry_session: Session, library_root: Path) -> str:
+    """Register the test library in the registry and return its id."""
+    library = registry_service.register_existing_library(
+        registry_session, root_path=str(library_root)
+    )
+    registry_session.commit()
+    return library.id
 
-    Requests share the fixture sessions and commit on success, so writes from
-    one request are visible to the next (and to direct session assertions).
-    Both the content DB and the registry DB (ADR-0008) are overridden.
+
+@pytest.fixture
+def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
+    """A TestClient where library-scoped content routes use the shared test
+    ``session`` (bound to the test library) and registry routes use the test
+    registry session. Library-scoped URLs still need a ``library_id`` (see the
+    ``library_id`` fixture); resolution is bypassed so all writes share one
+    connection and are immediately visible to direct session assertions.
     """
     app = create_app()
-
-    def _override_get_db() -> Iterator[Session]:
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
 
     def _override_get_registry_db() -> Iterator[Session]:
         try:
@@ -116,7 +134,36 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
             registry_session.rollback()
             raise
 
-    app.dependency_overrides[get_db] = _override_get_db
+    def _override_get_library_session() -> Iterator[Session]:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+
+    app.dependency_overrides[get_registry_db] = _override_get_registry_db
+    app.dependency_overrides[get_library_session] = _override_get_library_session
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def isolated_client(registry_session: Session) -> Iterator[TestClient]:
+    """A TestClient with only the registry overridden, so library-scoped routes
+    perform real per-library resolution and open each library's own DB. Used to
+    prove cross-library isolation."""
+    app = create_app()
+
+    def _override_get_registry_db() -> Iterator[Session]:
+        try:
+            yield registry_session
+            registry_session.commit()
+        except Exception:
+            registry_session.rollback()
+            raise
+
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
     with TestClient(app) as test_client:
         yield test_client

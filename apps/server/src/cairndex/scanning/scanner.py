@@ -1,6 +1,6 @@
-"""Storage-root scanner: incremental, idempotent, non-destructive discovery.
+"""Library scanner: incremental, idempotent, non-destructive discovery.
 
-Walks a storage root and links discovered media files in place (default
+Walks a library root and links discovered media files in place (default
 grouping: one bundle per file — explicit multi-file bundling is a separate
 action). Re-scanning updates existing rows in place (no duplicates), and files
 that have disappeared are marked ``missing`` rather than deleted (AGENTS.md
@@ -29,11 +29,10 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.paths import normalize_relative_path
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import FileAvailability, FileRole, MediaKind, StorageRootStatus
+from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify
-from cairndex.services.storage_roots import get_storage_root
 
 # Called after each committed batch with (processed, total). May raise to abort
 # the scan (the job handler passes a checkpoint that raises on cancellation);
@@ -43,7 +42,6 @@ ProgressFn = Callable[[int, int | None], None]
 
 @dataclass(frozen=True)
 class ScanSummary:
-    root_id: str
     discovered: int
     created: int
     updated: int
@@ -156,30 +154,26 @@ def _plan_repairs(
     return repairs
 
 
-def scan_storage_root(
+def scan_library(
     session: Session,
-    root_id: str,
+    root_path: Path,
     *,
     on_progress: ProgressFn | None = None,
     batch_size: int = 200,
 ) -> ScanSummary:
-    root = get_storage_root(session, root_id)
-    root_path = Path(root.canonical_path)
-
+    """Scan a library's root directory. ``root_path`` comes from the registry
+    (ADR-0008); all ``AssetFile`` rows in ``session`` belong to this library."""
     existing: dict[str, AssetFile] = {
-        f.relative_path: f
-        for f in session.scalars(select(AssetFile).where(AssetFile.storage_root_id == root_id))
+        f.relative_path: f for f in session.scalars(select(AssetFile))
     }
 
-    # Unreachable root: mark it unavailable and all its files missing.
+    # Unreachable root: mark all files missing (availability is tracked in the
+    # registry, so there is no per-library status to flip here).
     if not root_path.is_dir():
-        root.status = StorageRootStatus.UNAVAILABLE
         missing = _mark_missing(existing.values(), keep=frozenset())
-        root.last_scanned_at = utcnow()
         session.commit()
-        return ScanSummary(root_id, 0, 0, 0, missing)
+        return ScanSummary(0, 0, 0, missing)
 
-    root.status = StorageRootStatus.AVAILABLE
     total = _count_media_files(root_path)
     seen: set[str] = set()
     new_obs: list[_Observed] = []  # bounded: one lightweight record per new path
@@ -227,7 +221,6 @@ def scan_storage_root(
         session.flush()
         new_file = AssetFile(
             bundle_id=bundle.id,
-            storage_root_id=root_id,
             relative_path=obs.rel,
             original_filename=obs.name,
             display_title=obs.name,
@@ -248,12 +241,11 @@ def scan_storage_root(
     still_missing = [row for row in missing_rows if row.id not in repaired_row_ids]
     missing = _mark_missing(still_missing, keep=frozenset())
 
-    root.last_scanned_at = utcnow()
     session.commit()
     if on_progress is not None:
         on_progress(processed, total)
 
-    return ScanSummary(root_id, processed, created, updated, missing, len(repairs))
+    return ScanSummary(processed, created, updated, missing, len(repairs))
 
 
 def _mark_missing(files: Iterable[AssetFile], keep: frozenset[str] | set[str]) -> int:

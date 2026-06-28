@@ -1,18 +1,16 @@
-"""Thumbnail job handler: pre-generate thumbnails for a storage root."""
+"""Thumbnail job handler: pre-generate thumbnails for a library."""
 
 from typing import Any
 
 from cairndex.jobs.worker import JobContext
-from cairndex.media.thumbnails import generate_for_root
+from cairndex.media.thumbnails import generate_for_library
 
 
 def thumbnail_job_handler(ctx: JobContext) -> dict[str, Any]:
-    root_id = ctx.payload["storage_root_id"]
     force = bool(ctx.payload.get("force", False))
 
-    summary = generate_for_root(
+    summary = generate_for_library(
         ctx.session,
-        root_id,
         force=force,
         on_progress=lambda processed, total: ctx.checkpoint(processed, total),
     )

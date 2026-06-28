@@ -32,10 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
-    JobStatus,
-    JobType,
     MediaKind,
-    StorageRootStatus,
 )
 from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt
 from cairndex.persistence.types import UtcDateTime
@@ -98,28 +95,6 @@ tag_group_memberships = Table(
 # --- Core entities -----------------------------------------------------------
 
 
-class StorageRoot(Base):
-    __tablename__ = "storage_roots"
-
-    id: Mapped[UlidPk]
-    name: Mapped[str] = mapped_column(String(255), unique=True)
-    # Absolute, server-side canonical path. Never a client-supplied path.
-    canonical_path: Mapped[str] = mapped_column(Text)
-    read_only: Mapped[bool] = mapped_column(default=True)
-    status: Mapped[StorageRootStatus] = mapped_column(
-        Enum(StorageRootStatus, native_enum=False, length=20),
-        default=StorageRootStatus.AVAILABLE,
-    )
-    # Free-form scan settings; shape is defined when the scanner lands (Phase 2).
-    scan_config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-
-    created_at: Mapped[CreatedAt]
-    updated_at: Mapped[UpdatedAt]
-    last_scanned_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
-
-    files: Mapped[list[AssetFile]] = relationship(back_populates="storage_root")
-
-
 class AssetBundle(Base):
     __tablename__ = "asset_bundles"
 
@@ -172,11 +147,9 @@ class AssetFile(Base):
 
     id: Mapped[UlidPk]
     bundle_id: Mapped[UlidFk] = mapped_column(ForeignKey("asset_bundles.id", ondelete="CASCADE"))
-    storage_root_id: Mapped[UlidFk] = mapped_column(
-        ForeignKey("storage_roots.id", ondelete="RESTRICT")
-    )
 
-    # Normalized path relative to the storage root's canonical path.
+    # Normalized path relative to the library root (ADR-0008). The library DB is
+    # itself the storage scope, so there is no storage-root reference anymore.
     relative_path: Mapped[str] = mapped_column(Text)
     original_filename: Mapped[str] = mapped_column(String(1024))
     display_title: Mapped[str] = mapped_column(String(1024))
@@ -211,11 +184,11 @@ class AssetFile(Base):
     updated_at: Mapped[UpdatedAt]
 
     bundle: Mapped[AssetBundle] = relationship(back_populates="files", foreign_keys=[bundle_id])
-    storage_root: Mapped[StorageRoot] = relationship(back_populates="files")
 
     __table_args__ = (
-        # One physical file is linked at most once (AGENTS.md §4.3).
-        UniqueConstraint("storage_root_id", "relative_path", name="root_path"),
+        # One physical file (by library-relative path) is linked at most once
+        # (AGENTS.md §4.3; ADR-0008 — the library DB is the storage scope).
+        UniqueConstraint("relative_path", name="relative_path"),
     )
 
 
@@ -365,33 +338,3 @@ class ImportRecord(Base):
     imported_at: Mapped[CreatedAt]
 
     __table_args__ = (UniqueConstraint("provider", "external_id", name="import_provider_external"),)
-
-
-class Job(Base):
-    """A resumable background job (scan, ffprobe, thumbnail, …).
-
-    Backs the in-process worker (ADR-0001 — a DB-backed queue, not Celery).
-    ``cancel_requested`` is a cooperative flag the running handler polls.
-    """
-
-    __tablename__ = "jobs"
-
-    id: Mapped[UlidPk]
-    type: Mapped[JobType] = mapped_column(Enum(JobType, native_enum=False, length=32))
-    status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus, native_enum=False, length=16),
-        default=JobStatus.QUEUED,
-    )
-    # Free-form job parameters (e.g. {"storage_root_id": "..."}).
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    # Progress counters; total is unknown until discovery completes.
-    processed: Mapped[int] = mapped_column(Integer, default=0)
-    total: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    cancel_requested: Mapped[bool] = mapped_column(default=False)
-
-    created_at: Mapped[CreatedAt]
-    updated_at: Mapped[UpdatedAt]
-    started_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

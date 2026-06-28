@@ -25,12 +25,11 @@
 
 ## Tables
 
-### `storage_roots`
-
-`id`, `name` (unique), `canonical_path` (absolute server path — never
-client-supplied), `read_only` (default true), `status` (`available` /
-`unavailable`), `scan_config` (JSON, nullable and intentionally extensible),
-`created_at`, `updated_at`, `last_scanned_at` (nullable).
+> ADR-0008: these content tables live in each library's own
+> `.cairndex/library.db`. There is no `storage_roots` table and no
+> `storage_root_id` — the library DB *is* the storage scope, and the library's
+> root directory comes from the registry. The runtime `jobs` queue moved to the
+> registry (`job_queue`); see the registry section below.
 
 ### `asset_bundles`
 
@@ -48,17 +47,16 @@ link table through a migration rather than hiding it in `extra_metadata`.
 ### `asset_files`
 
 `id`, `bundle_id` (FK → `asset_bundles`, **CASCADE** — metadata-only bundle
-deletion removes file rows, never the physical file), `storage_root_id` (FK →
-`storage_roots`, **RESTRICT** — can't delete a root with linked files),
-`relative_path`, `original_filename`, `display_title`, `note`, `source` (origin —
-a URL, `magnet:`, `ed2k:`, etc.), `role` (`FileRole`), `media_kind`
-(`MediaKind`), `mime_type`, `sequence`,
+deletion removes file rows, never the physical file), `relative_path` (relative
+to the library root, ADR-0008), `original_filename`, `display_title`, `note`,
+`source` (origin — a URL, `magnet:`, `ed2k:`, etc.), `role` (`FileRole`),
+`media_kind` (`MediaKind`), `mime_type`, `sequence`,
 `size_bytes`/`mtime`/`quick_fingerprint`/`full_hash`/`tech_metadata` (nullable,
 filled by scan/probe jobs where available),
 `filesystem_device`/`filesystem_inode`/`identity_available` (filesystem identity
 captured by the scanner for moved-file repair — ADR-0006), `availability`
 (`available`/`missing`), `created_at`, `updated_at`. **Unique**
-`(storage_root_id, relative_path)` — one physical file is linked at most once.
+`(relative_path)` — one physical file is linked at most once per library.
 
 Moved-file repair updates the existing `asset_files` row in place when confidence
 is high, preserving `id`, `bundle_id`, collection memberships, tags, rating,
@@ -102,15 +100,11 @@ legacy name `smart_folders` to avoid a second data migration. `id`, `name`
 `docs/filter-language.md`; never SQL), `default_sort`, `default_layout`,
 `sort_order`, timestamps.
 
-### `jobs`
-
-`id`, `type` (`scan`/`probe`/`thumbnail`), `status`
-(`queued`/`running`/`succeeded`/`failed`/`cancelled`), `payload` (JSON),
-`processed`/`total` (progress), `result` (JSON), `error`, `cancel_requested`
-(cooperative cancel flag), timestamps + `started_at`/`finished_at`. Backs the
-in-process worker (ADR-0001). Asset-file fields `size_bytes`, `mtime`,
-`quick_fingerprint`, filesystem identity, and `tech_metadata` are populated by
-scanner/probe jobs.
+> The background-job queue is **not** a content table — it lives in the registry
+> DB as `job_queue` (ADR-0008; see the registry section). Asset-file fields
+> `size_bytes`, `mtime`, `quick_fingerprint`, filesystem identity, and
+> `tech_metadata` are still populated by scanner/probe jobs, which open the
+> library DB to write their durable results.
 
 ### `subtitle_tracks` (ADR-0003)
 
@@ -162,10 +156,10 @@ PR (ADR-0008 phase 7). The current in-process worker still uses the content-DB
 ### File View entries
 
 Read-only File View entries are produced by `services/file_view.py` from the live
-filesystem under a configured storage root. They are response models rather than
-persistent rows. Each entry is derived from `storage_root_id + relative_path`,
-path-safety checks, filesystem metadata, media classification, and an optional
-linked `AssetFile` lookup.
+filesystem under the active library's root. They are response models rather than
+persistent rows. Each entry is derived from a library-relative path, path-safety
+checks, filesystem metadata, media classification, and an optional linked
+`AssetFile` lookup.
 
 Future native file handoff and write mode are documented in ADR-0007 and
 intentionally have no schema yet.

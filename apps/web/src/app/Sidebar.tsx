@@ -1,11 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import type {
-  CollectionRead,
-  SmartCollectionRead,
-  StorageRootRead,
-  ViewCounts,
-} from '../api/client'
+import type { CollectionRead, LibraryRead, SmartCollectionRead, ViewCounts } from '../api/client'
 import {
   IconAlert,
   IconCircleDashed,
@@ -39,10 +34,12 @@ function viewIcon(view: SystemView): ReactNode {
 interface SidebarProps {
   mode: AppMode
   onMode: (mode: AppMode) => void
-  roots: StorageRootRead[]
-  rootId: string | null
-  onChangeRoot: (rootId: string) => void
+  libraries: LibraryRead[]
+  libraryId: string | null
+  onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
+  onScan: () => void
+  scanning?: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -51,7 +48,6 @@ interface SidebarProps {
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
-  onImport: () => void
 }
 
 interface TreeNode {
@@ -95,10 +91,12 @@ function pruneTree(nodes: TreeNode[], counts?: Record<string, number>): TreeNode
 export function Sidebar({
   mode,
   onMode,
-  roots,
-  rootId,
-  onChangeRoot,
+  libraries,
+  libraryId,
+  onChangeLibrary,
   onManageLibraries,
+  onScan,
+  scanning,
   selection,
   onSelect,
   counts,
@@ -107,7 +105,6 @@ export function Sidebar({
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
-  onImport,
 }: SidebarProps) {
   // Scope the displayed collections to the active library (counts are already
   // library-scoped); the global list stays available to the collection picker.
@@ -122,26 +119,27 @@ export function Sidebar({
         <span>🍃</span> Cairndex
         <button
           className="sidebar__import"
-          onClick={onImport}
-          aria-label="Import from Eagle"
-          title="Import from Eagle"
+          onClick={onScan}
+          aria-label="Scan library"
+          title="Scan library for new files"
+          disabled={scanning || libraryId === null}
         >
-          ⇪
+          ⟳
         </button>
       </div>
 
       <div className="sidebar__library">
         <select
           className="edit sidebar__library-select"
-          value={rootId ?? ''}
-          onChange={(e) => onChangeRoot(e.target.value)}
+          value={libraryId ?? ''}
+          onChange={(e) => onChangeLibrary(e.target.value)}
           aria-label="Library"
-          disabled={roots.length === 0}
+          disabled={libraries.length === 0}
         >
-          {roots.length === 0 && <option value="">No libraries</option>}
-          {roots.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
+          {libraries.length === 0 && <option value="">No libraries</option>}
+          {libraries.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
             </option>
           ))}
         </select>

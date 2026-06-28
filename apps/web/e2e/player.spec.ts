@@ -22,23 +22,24 @@ function summary(id: string, title: string) {
 }
 
 async function mockApi(page: Page) {
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
+    }),
+  )
+  await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 } }),
   )
-  await page.route('**/api/v1/bundles/browse**', (r) =>
+  await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [summary('b0', 'Movie 0')], total: 1, offset: 0, limit: 100 } }),
   )
-  await page.route('**/api/v1/collections?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/api/v1/tag-groups?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/tags/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: {} } }))
 
-  await page.route('**/api/v1/bundles/b0/files', (r) =>
+  await page.route('**/bundles/b0/files', (r) =>
     r.fulfill({
       json: [
         {
@@ -52,13 +53,13 @@ async function mockApi(page: Page) {
       ],
     }),
   )
-  await page.route('**/api/v1/bundles/b0/collections', (r) =>
+  await page.route('**/bundles/b0/collections', (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
-  await page.route('**/api/v1/bundles/b0/tags', (r) =>
+  await page.route('**/bundles/b0/tags', (r) =>
     r.fulfill({ json: { bundle_id: 'b0', tag_ids: [] } }),
   )
-  await page.route('**/api/v1/bundles/b0', (r) =>
+  await page.route('**/bundles/b0', (r) =>
     r.fulfill({
       json: {
         id: 'b0',
@@ -73,7 +74,7 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/api/v1/bundles/b0/playback', (r) =>
+  await page.route('**/bundles/b0/playback', (r) =>
     r.fulfill({
       json: {
         bundle_id: 'b0',

@@ -38,10 +38,15 @@ async function mockApi(page: Page) {
     tagIds: [] as string[],
   }
 
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
+    }),
+  )
+  await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 } }),
   )
-  await page.route('**/api/v1/bundles/browse**', (r) =>
+  await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
       json: {
         items: [summary('b0', 'Movie 0'), summary('b1', 'Movie 1')],
@@ -51,11 +56,9 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/api/v1/collections?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/tags?*', (r) =>
+  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/tags?*', (r) =>
     r.fulfill({
       json: {
         items: [
@@ -73,22 +76,20 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/api/v1/tag-groups?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 0 } } }))
+  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: { t1: 0 } } }))
 
-  await page.route('**/api/v1/bundles/b0/files', (r) => r.fulfill({ json: [] }))
-  await page.route('**/api/v1/bundles/b0/collections', (r) =>
+  await page.route('**/bundles/b0/files', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b0/collections', (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
-  await page.route('**/api/v1/bundles/b0/tags', async (r) => {
+  await page.route('**/bundles/b0/tags', async (r) => {
     if (r.request().method() === 'PUT') {
       state.tagIds = (r.request().postDataJSON() as { ids: string[] }).ids
     }
     await r.fulfill({ json: { bundle_id: 'b0', tag_ids: state.tagIds } })
   })
-  await page.route('**/api/v1/bundles/b0', async (r) => {
+  await page.route('**/bundles/b0', async (r) => {
     if (r.request().method() === 'PATCH') {
       Object.assign(state.bundle, r.request().postDataJSON())
     }

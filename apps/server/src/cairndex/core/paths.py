@@ -1,17 +1,17 @@
-"""Storage-root path safety.
+"""Library-root path safety.
 
-Every file location in Cairndex is stored as ``storage_root_id +
-relative_path`` and never as a client-supplied absolute path (AGENTS.md §5,
-§10, §12). This module is the single choke point that:
+Every file location in Cairndex is stored as a library-root-relative path and
+never as a client-supplied absolute path (AGENTS.md §5, §10, §12; ADR-0008).
+This module is the single choke point that:
 
 - normalizes a client-supplied relative path to a clean POSIX form, and
-- resolves it against a storage root's canonical path while guaranteeing the
-  result stays inside that root — rejecting absolute paths, parent-directory
-  traversal, and symlink escapes.
+- resolves it against a library root while guaranteeing the result stays inside
+  that root — rejecting absolute paths, parent-directory traversal, and symlink
+  escapes.
 
 Callers must route *all* externally-influenced paths through here. Relative
-paths are stored in their normalized form so the ``(storage_root_id,
-relative_path)`` uniqueness constraint behaves consistently.
+paths are stored in their normalized form so the ``relative_path`` uniqueness
+constraint behaves consistently.
 """
 
 from pathlib import Path, PurePosixPath
