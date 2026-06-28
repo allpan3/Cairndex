@@ -15,7 +15,9 @@ import {
   createLibrary,
   createSmartCollection,
   deleteSmartCollection,
+  enqueueProbe,
   enqueueScan,
+  enqueueThumbnails,
   fetchAllCollections,
   fetchBundle,
   fetchBundleCollections,
@@ -98,9 +100,17 @@ export function useSmartCollectionMutations() {
       onSuccess: invalidate,
     }),
     update: useMutation({
-      mutationFn: ({ id, payload }: { id: string; payload: SmartCollectionUpdate }) =>
-        updateSmartCollection(id, payload),
-      onSuccess: invalidate,
+      mutationFn: ({
+        id,
+        payload,
+        version,
+      }: {
+        id: string
+        payload: SmartCollectionUpdate
+        version?: number
+      }) => updateSmartCollection(id, payload, version),
+      // Refetch on conflict too, so the editor shows the latest server state.
+      onSettled: invalidate,
     }),
     remove: useMutation({
       mutationFn: (id: string) => deleteSmartCollection(id),
@@ -143,6 +153,29 @@ export function useScan() {
       for (const key of ['browse', 'view-counts', 'collection-counts', 'tag-counts', 'file-view'])
         qc.invalidateQueries({ queryKey: [key] })
     },
+  })
+}
+
+// Probe (ffprobe tech metadata) and thumbnail generation are library-wide jobs
+// enqueued to the registry queue (ADR-0008 phase 7); the worker runs them async.
+// We invalidate the views whose contents they refresh once the job is accepted.
+export function useProbe() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => enqueueProbe(),
+    onSuccess: () => {
+      for (const key of ['bundle', 'bundle-files', 'browse']) {
+        qc.invalidateQueries({ queryKey: [key] })
+      }
+    },
+  })
+}
+
+export function useThumbnails() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => enqueueThumbnails(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
   })
 }
 
@@ -236,11 +269,13 @@ export function useBundleCollections(id: string | null) {
 // After a write, invalidate the queries whose results may have changed so the
 // UI reflects the edit (and survives a manual reload).
 
-export function useUpdateBundle(id: string) {
+export function useUpdateBundle(id: string, version?: number) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (patch: BundlePatch) => updateBundle(id, patch),
-    onSuccess: () => {
+    mutationFn: (patch: BundlePatch) => updateBundle(id, patch, version),
+    // onSettled (not onSuccess) so a 409 conflict also refetches the bundle —
+    // the editor then shows whatever the other client wrote (ADR-0008 phase 9).
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle', id] })
       qc.invalidateQueries({ queryKey: ['browse'] })
     },
@@ -282,9 +317,16 @@ export function useFileMutations(bundleId: string) {
   }
   return {
     update: useMutation({
-      mutationFn: ({ fileId, patch }: { fileId: string; patch: FilePatch }) =>
-        updateFile(bundleId, fileId, patch),
-      onSuccess: invalidate,
+      mutationFn: ({
+        fileId,
+        patch,
+        version,
+      }: {
+        fileId: string
+        patch: FilePatch
+        version?: number
+      }) => updateFile(bundleId, fileId, patch, version),
+      onSettled: invalidate,
     }),
     reorder: useMutation({
       mutationFn: (orderedIds: string[]) => reorderFiles(bundleId, orderedIds),

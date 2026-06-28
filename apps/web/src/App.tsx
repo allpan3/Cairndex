@@ -7,7 +7,9 @@ import {
   useCollectionCounts,
   useCollections,
   useLibraries,
+  useProbe,
   useScan,
+  useThumbnails,
   useSmartCollections,
   useViewCounts,
 } from './api/hooks'
@@ -151,6 +153,8 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const counts = useViewCounts()
   const collectionCounts = useCollectionCounts()
   const scan = useScan()
+  const probe = useProbe()
+  const thumbnails = useThumbnails()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
 
@@ -263,6 +267,10 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         onManageLibraries={onManage}
         onScan={() => scan.mutate()}
         scanning={scan.isPending}
+        onProbe={() => probe.mutate()}
+        probing={probe.isPending}
+        onThumbnails={() => thumbnails.mutate()}
+        thumbnailing={thumbnails.isPending}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
