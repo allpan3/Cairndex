@@ -2,11 +2,13 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/per-library-content`. Latest commit: see `git log -1`.
+Branch: `chore/remove-eagle-import`. Latest commit: see `git log -1`.
 
-ADR-0008 is landing incrementally: PR 1 (registry skeleton, #20) and PR 2
-(per-library engine + first scoped route, #21) have merged to `main`. This
-branch is the **create → scan → browse** working slice (phases 3–5/7).
+ADR-0008 landed incrementally: PR 1 (registry skeleton, #20), PR 2 (per-library
+engine + first scoped route, #21), and PR 3 (create → scan → browse working
+slice, #22, phases 3–7) have merged to `main`. This branch **removes the Eagle
+import feature** entirely now that libraries are portable, scan-populated
+directories.
 
 ## Current milestone
 
@@ -52,8 +54,9 @@ phases at once.
     target library DB, and runs scan/probe/thumbnail against the library root.
   - **Frontend:** active-library bootstrap (one per tab), library selector +
     Scan action, create/register library manager; storage-root + Eagle UI removed.
-  - **Eagle import** temporarily removed (reader/planner kept) pending a
-    per-library re-implementation.
+  - **Eagle import** removed entirely (reader/planner package, `services.eagle`,
+    and the `import_records` table); ADR-0004 retained as superseded. Eagle
+    remains a UI-design *inspiration* only.
 
 ## Tests and validation
 
@@ -65,7 +68,8 @@ Run and passing locally for this PR:
 
 ## Known issues / environment gaps
 
-- Eagle import is unavailable until re-implemented for the per-library model.
+- Eagle import has been removed (out of scope under the per-library model);
+  libraries are populated by scanning, not by migrating from another app.
 - The registry uses `create_all` bootstrap rather than a versioned migration
   chain; if its schema needs to evolve it will get its own chain.
 - Clean break from pre-release dev data: no global-DB → per-library migration
@@ -77,8 +81,6 @@ Run and passing locally for this PR:
 
 Following the ADR-0008 phase/PR sequence:
 
-- Re-implement **Eagle import** as a library-scoped operation (link into the
-  active library; paths relative to the library root).
 - PR 8 — `.cairndex/cache` relocation (thumbnails/subtitles under the library)
   and docs polish.
 - PR 9 — optimistic-concurrency versions + operation-based tag/collection edits.
