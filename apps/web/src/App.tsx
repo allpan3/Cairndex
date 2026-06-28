@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { FileViewEntry, SmartCollectionRead } from './api/client'
+import type { FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
+import { setActiveLibraryId } from './api/client'
 import {
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useLibraries,
+  useScan,
   useSmartCollections,
-  useStorageRoots,
   useViewCounts,
 } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
-import { EagleImport } from './app/EagleImport'
 import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
 import { LibraryManager } from './app/LibraryManager'
@@ -76,60 +77,83 @@ function Resizer({
   )
 }
 
+/**
+ * App shell: resolve the active library (one per tab, ADR-0008) before any
+ * content query runs. While there are no libraries the manager is shown so the
+ * owner can create or register one. The workspace is keyed by library id, so
+ * switching libraries remounts it with fresh query state — no cross-library
+ * cache bleed.
+ */
 export default function App() {
+  const librariesQuery = useLibraries()
+  const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
+  const [managing, setManaging] = useState(false)
+
+  const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
+  const libraryId = useMemo(() => {
+    if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
+    return libraries[0]?.id ?? null
+  }, [libraries, chosenId])
+
+  // Set the module-global active library during render so content queries (which
+  // run after commit) target the right library.
+  if (libraryId) setActiveLibraryId(libraryId)
+
+  if (librariesQuery.isLoading) {
+    return <div className="app-loading">Loading…</div>
+  }
+
+  if (!libraryId) {
+    // Forced manager: no library yet. Creating/registering one re-renders into
+    // the workspace once the list refreshes.
+    return <LibraryManager onClose={() => {}} />
+  }
+
+  return (
+    <>
+      <Workspace
+        key={libraryId}
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={setChosenId}
+        onManage={() => setManaging(true)}
+      />
+      {managing && <LibraryManager onClose={() => setManaging(false)} />}
+    </>
+  )
+}
+
+interface WorkspaceProps {
+  libraries: LibraryRead[]
+  libraryId: string
+  onChangeLibrary: (id: string) => void
+  onManage: () => void
+}
+
+function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: WorkspaceProps) {
   const [prefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [activeId, setActiveId] = useState<string | null>(null) // anchor for inspector + keyboard
-  const [openBundleId, setOpenBundleId] = useState<string | null>(null) // album view
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
-  const [importing, setImporting] = useState(false)
 
-  // The active *library* (storage root) is a shared context across both
-  // surfaces: the Collection view scopes its bundles to it, and the File view
-  // browses it physically. The Collections/Files toggle only changes the lens.
   const [mode, setMode] = useState<AppMode>('collection')
-  const [chosenRootId, setChosenRootId] = usePersistentState<string | null>(
-    'cairndex.rootId',
-    null,
-  )
-  const [filePath, setFilePath] = useState('') // File View directory within the root
+  const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
-  const [libraries, setLibraries] = useState(false)
 
   const collections = useCollections()
   const smartCollections = useSmartCollections()
-  const storageRoots = useStorageRoots()
+  const counts = useViewCounts()
+  const collectionCounts = useCollectionCounts()
+  const scan = useScan()
 
-  // Resolve the chosen library to a real one without storing a stale id: fall
-  // back to the first available root when none is chosen or it was removed.
-  // Derived (not an effect) so it stays consistent during render.
-  const rootId = useMemo(() => {
-    const roots = storageRoots.data ?? []
-    if (chosenRootId && roots.some((r) => r.id === chosenRootId)) return chosenRootId
-    return roots[0]?.id ?? null
-  }, [storageRoots.data, chosenRootId])
+  const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
 
-  // Counts and browsing are scoped to the active library.
-  const counts = useViewCounts(rootId)
-  const collectionCounts = useCollectionCounts(rootId)
-
-  const changeRoot = useCallback(
-    (next: string) => {
-      setChosenRootId(next)
-      setFilePath('')
-      setFileEntry(null)
-    },
-    [setChosenRootId],
-  )
-
-  // A selected Smart Collection drives browsing through its saved filter AST,
-  // which compiles via the exact path POST /bundles/browse uses for ad-hoc
-  // filters.
   const activeSmartCollection =
     smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
 
@@ -141,7 +165,6 @@ export default function App() {
     order: prefs.order,
     limit: 100,
     filter: activeSmartCollection?.filter ?? null,
-    storageRootId: rootId,
   })
 
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -185,7 +208,6 @@ export default function App() {
     setActiveId(null)
   }, [])
 
-  // Linear keyboard navigation over the loaded set (single-selects).
   const moveSelection = useCallback(
     (delta: number) => {
       if (filtered.length === 0) return
@@ -207,7 +229,6 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
-      // While the album view is open it owns keyboard navigation (incl. Esc).
       if (openBundleId !== null) return
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault()
@@ -236,10 +257,12 @@ export default function App() {
       <Sidebar
         mode={mode}
         onMode={setMode}
-        roots={storageRoots.data ?? []}
-        rootId={rootId}
-        onChangeRoot={changeRoot}
-        onManageLibraries={() => setLibraries(true)}
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={onChangeLibrary}
+        onManageLibraries={onManage}
+        onScan={() => scan.mutate()}
+        scanning={scan.isPending}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
@@ -253,21 +276,19 @@ export default function App() {
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
-        onImport={() => setImporting(true)}
       />
 
       <div className="center">
         {mode === 'file' ? (
           <FileView
-            roots={storageRoots.data ?? []}
-            location={{ rootId, path: filePath }}
+            libraryName={libraryName}
+            path={filePath}
             selectedPath={fileEntry?.relative_path ?? null}
             onNavigate={(path) => {
               setFilePath(path)
               setFileEntry(null)
             }}
             onSelectEntry={setFileEntry}
-            onManageLibraries={() => setLibraries(true)}
           />
         ) : (
           <>
@@ -309,10 +330,6 @@ export default function App() {
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
-
-      {importing && <EagleImport onClose={() => setImporting(false)} />}
-
-      {libraries && <LibraryManager onClose={() => setLibraries(false)} />}
 
       {editor && (
         <SmartCollectionEditor

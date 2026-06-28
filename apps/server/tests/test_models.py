@@ -1,7 +1,7 @@
 """Model-level invariants: FK enforcement, cascade/restrict, constraints.
 
-These verify the schema decisions in ADR-0002 hold at the database level
-(SQLite enforces foreign keys only when the pragma is on, which the engine
+These verify the schema decisions in ADR-0002/ADR-0008 hold at the database
+level (SQLite enforces foreign keys only when the pragma is on, which the engine
 sets), independent of any service-layer logic.
 """
 
@@ -11,20 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, MediaKind
-from cairndex.persistence.models import AssetBundle, AssetFile, StorageRoot, Tag
+from cairndex.persistence.models import AssetBundle, AssetFile, Tag
 
 
-def _make_root(session: Session, name: str = "media") -> StorageRoot:
-    root = StorageRoot(name=name, canonical_path="/mnt/media")
-    session.add(root)
-    session.flush()
-    return root
-
-
-def _make_file(session: Session, bundle: AssetBundle, root: StorageRoot, path: str) -> AssetFile:
+def _make_file(session: Session, bundle: AssetBundle, path: str) -> AssetFile:
     file = AssetFile(
         bundle_id=bundle.id,
-        storage_root_id=root.id,
         relative_path=path,
         original_filename=path.rsplit("/", 1)[-1],
         display_title=path.rsplit("/", 1)[-1],
@@ -53,10 +45,9 @@ def test_timestamps_are_timezone_aware(session: Session) -> None:
 
 
 def test_foreign_key_violation_is_rejected(session: Session) -> None:
-    # No such bundle/root: FK enforcement (PRAGMA foreign_keys=ON) must reject.
+    # No such bundle: FK enforcement (PRAGMA foreign_keys=ON) must reject.
     orphan = AssetFile(
         bundle_id="00000000000000000000000000",
-        storage_root_id="00000000000000000000000000",
         relative_path="a.mp4",
         original_filename="a.mp4",
         display_title="a.mp4",
@@ -68,36 +59,20 @@ def test_foreign_key_violation_is_rejected(session: Session) -> None:
         session.flush()
 
 
-def test_deleting_bundle_cascades_to_files_but_not_root(session: Session) -> None:
-    root = _make_root(session)
+def test_deleting_bundle_cascades_to_files(session: Session) -> None:
     bundle = AssetBundle(title="b")
     session.add(bundle)
     session.flush()
-    file = _make_file(session, bundle, root, "movie/a.mp4")
+    file = _make_file(session, bundle, "movie/a.mp4")
     file_id = file.id
     session.commit()
 
     session.delete(bundle)
     session.commit()
-    # Drop the identity map so reads hit the DB and observe the FK cascade.
     session.expire_all()
 
-    # File row is gone (metadata-only); the storage root remains untouched.
+    # File row is gone (metadata-only); nothing on disk is touched.
     assert session.get(AssetFile, file_id) is None
-    assert session.get(StorageRoot, root.id) is not None
-
-
-def test_deleting_root_with_linked_files_is_restricted(session: Session) -> None:
-    root = _make_root(session)
-    bundle = AssetBundle(title="b")
-    session.add(bundle)
-    session.flush()
-    _make_file(session, bundle, root, "movie/a.mp4")
-    session.commit()
-
-    session.delete(root)
-    with pytest.raises(IntegrityError):
-        session.commit()
 
 
 def test_rating_out_of_range_is_rejected(session: Session) -> None:
@@ -107,13 +82,12 @@ def test_rating_out_of_range_is_rejected(session: Session) -> None:
 
 
 def test_same_file_cannot_be_linked_twice(session: Session) -> None:
-    root = _make_root(session)
     bundle = AssetBundle(title="b")
     session.add(bundle)
     session.flush()
-    _make_file(session, bundle, root, "movie/a.mp4")
+    _make_file(session, bundle, "movie/a.mp4")
     with pytest.raises(IntegrityError):
-        _make_file(session, bundle, root, "movie/a.mp4")
+        _make_file(session, bundle, "movie/a.mp4")
 
 
 def test_tag_adjacency_parent_child(session: Session) -> None:
@@ -132,11 +106,10 @@ def test_tag_adjacency_parent_child(session: Session) -> None:
 
 
 def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:
-    root = _make_root(session)
     bundle = AssetBundle(title="b")
     session.add(bundle)
     session.flush()
-    file = _make_file(session, bundle, root, "movie/a.mp4")
+    file = _make_file(session, bundle, "movie/a.mp4")
     bundle.cover_file_id = file.id
     bundle.primary_file_id = file.id
     session.commit()

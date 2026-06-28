@@ -9,7 +9,7 @@ from cairndex.api.v1.router import router as api_v1_router
 from cairndex.core.config import get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
-from cairndex.persistence.engine import get_sessionmaker
+from cairndex.registry.engine import get_registry_sessionmaker
 
 
 @asynccontextmanager
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start/stop the in-process background worker around the app's lifetime."""
     worker: Worker | None = None
     if get_settings().worker_enabled:
-        worker = Worker(get_sessionmaker(), build_registry())
+        worker = Worker(get_registry_sessionmaker(), build_registry())
         worker.start()
         app.state.worker = worker
     try:

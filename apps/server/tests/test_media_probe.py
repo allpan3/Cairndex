@@ -16,11 +16,12 @@ from cairndex.domain.enums import JobStatus, JobType
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import execute_job
 from cairndex.media.ffprobe import ffprobe_available, normalize_metadata
-from cairndex.media.probe_service import probe_storage_root
+from cairndex.media.probe_service import probe_library
+from cairndex.persistence.engine import create_app_engine
 from cairndex.persistence.models import AssetFile
-from cairndex.scanning.scanner import scan_storage_root
-from cairndex.services import jobs as job_service
-from cairndex.services import storage_roots as root_service
+from cairndex.registry import jobs as job_service
+from cairndex.registry import library_package as pkg
+from cairndex.scanning.scanner import scan_library
 
 _FFMPEG = shutil.which("ffmpeg")
 requires_ffmpeg = pytest.mark.skipif(
@@ -97,20 +98,14 @@ def test_normalize_metadata_reduces_ffprobe_json() -> None:
 
 
 @requires_ffmpeg
-def test_probe_storage_root_extracts_dimensions(session: Session, tmp_path: Path) -> None:
-    media = tmp_path / "media"
-    media.mkdir()
-    _make_video(media / "clip.mp4")
-    _make_image(media / "poster.png")
-    (media / "subs.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nhi")
+def test_probe_library_extracts_dimensions(session: Session, library_root: Path) -> None:
+    _make_video(library_root / "clip.mp4")
+    _make_image(library_root / "poster.png")
+    (library_root / "subs.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nhi")
+    scan_library(session, library_root)
 
-    root = root_service.create_storage_root(session, name="m", canonical_path=str(media))
-    session.commit()
-    scan_storage_root(session, root.id)
-
-    summary = probe_storage_root(session, root.id)
-    # Video + image probed; the subtitle is not probe-eligible.
-    assert summary.probed == 2
+    summary = probe_library(session)
+    assert summary.probed == 2  # video + image; subtitle not probe-eligible
     assert summary.failed == 0
 
     video = session.scalar(select(AssetFile).where(AssetFile.relative_path == "clip.mp4"))
@@ -126,28 +121,35 @@ def test_probe_storage_root_extracts_dimensions(session: Session, tmp_path: Path
 
 
 @requires_ffmpeg
-def test_probe_job_populates_metadata_visible_via_api(
-    session_factory: sessionmaker[Session], tmp_path: Path
+def test_probe_job_populates_metadata(
+    registry_session_factory: sessionmaker[Session],
+    library_id: str,
+    library_root: Path,
 ) -> None:
-    media = tmp_path / "media"
-    media.mkdir()
-    _make_video(media / "movie.mp4")
+    _make_video(library_root / "movie.mp4")
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
+    try:
+        maker = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+        with maker() as session:
+            scan_library(session, library_root)
+            session.commit()
+            file_id = session.scalar(select(AssetFile.id))
+    finally:
+        eng.dispose()
 
-    with session_factory() as session:
-        root = root_service.create_storage_root(session, name="m", canonical_path=str(media))
-        session.commit()
-        root_id = root.id
-        scan_storage_root(session, root_id)
-        job = job_service.create_job(
-            session, type=JobType.PROBE, payload={"storage_root_id": root_id}
-        )
-        session.commit()
+    with registry_session_factory() as reg:
+        job = job_service.create_job(reg, library_id=library_id, job_type=JobType.PROBE)
+        reg.commit()
         job_id = job.id
-        file_id = session.scalar(select(AssetFile.id))
 
-    assert execute_job(session_factory, job_id, build_registry()) == JobStatus.SUCCEEDED
+    assert execute_job(registry_session_factory, job_id, build_registry()) == JobStatus.SUCCEEDED
 
-    with session_factory() as session:
-        probed = session.get(AssetFile, file_id)
-        assert probed is not None and probed.tech_metadata is not None
-        assert probed.tech_metadata["width"] == 320
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
+    try:
+        maker = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+        with maker() as session:
+            probed = session.get(AssetFile, file_id)
+            assert probed is not None and probed.tech_metadata is not None
+            assert probed.tech_metadata["width"] == 320
+    finally:
+        eng.dispose()

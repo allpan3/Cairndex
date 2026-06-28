@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Hermetic mock for the read-only File View: switch surfaces, list a storage
-// root, see openable/unsupported/linked badges, and navigate into a directory.
-// No backend required.
+// Hermetic mock for the read-only File View: switch surfaces, list the active
+// library's files, see openable/unsupported/linked badges, and navigate into a
+// directory. No backend required (ADR-0008: File View is library-scoped).
 
 function entry(name: string, over: Record<string, unknown> = {}) {
   return {
@@ -22,47 +22,28 @@ function entry(name: string, over: Record<string, unknown> = {}) {
 }
 
 async function mockApi(page: Page) {
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [{ id: 'lib1', name: 'NAS Media', root_path: '/mnt/media', status: 'available' }],
+    }),
+  )
   // Collection-View endpoints the shell loads on mount.
-  await page.route('**/api/v1/bundles/counts**', (r) =>
+  await page.route('**/bundles/counts**', (r) =>
     r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
   )
-  await page.route('**/api/v1/collections?*', (r) =>
-    r.fulfill({ json: { items: [], next_cursor: null } }),
-  )
-  await page.route('**/api/v1/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/api/v1/smart-collections', (r) => r.fulfill({ json: [] }))
-  await page.route('**/api/v1/bundles/browse**', (r) =>
+  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
+  await page.route('**/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
 
-  await page.route('**/api/v1/storage-roots?*', (r) =>
-    r.fulfill({
-      json: {
-        items: [
-          {
-            id: 'root1',
-            name: 'NAS Media',
-            canonical_path: '/mnt/media',
-            read_only: true,
-            status: 'available',
-            scan_config: null,
-            created_at: 'x',
-            updated_at: 'x',
-            last_scanned_at: null,
-          },
-        ],
-        next_cursor: null,
-      },
-    }),
-  )
-
-  await page.route('**/api/v1/storage-roots/root1/entries**', (r) => {
+  await page.route('**/file-view/entries**', (r) => {
     const url = new URL(r.request().url())
     const path = url.searchParams.get('path') ?? ''
     if (path === 'Show') {
       r.fulfill({
         json: {
-          root_id: 'root1',
           path: 'Show',
           entries: [
             entry('clip.mp4', {
@@ -77,7 +58,6 @@ async function mockApi(page: Page) {
     } else {
       r.fulfill({
         json: {
-          root_id: 'root1',
           path: '',
           entries: [
             entry('Show', { relative_path: 'Show', kind: 'directory', size_bytes: null }),
@@ -90,15 +70,15 @@ async function mockApi(page: Page) {
   })
 }
 
-test('browses a storage root read-only with badges and breadcrumbs', async ({ page }) => {
+test('browses a library read-only with badges and breadcrumbs', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
 
   // Switch to the File View surface.
   await page.getByRole('tab', { name: 'Files' }).click()
 
-  // The shared library selector (now in the sidebar) + entries with badges.
-  await expect(page.locator('.sidebar__library-select')).toHaveValue('root1')
+  // The shared library selector (in the sidebar) + entries with badges.
+  await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
   await expect(page.locator('.file-row__name', { hasText: 'Show' })).toBeVisible()
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('openable')
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('linked')

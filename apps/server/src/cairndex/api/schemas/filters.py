@@ -31,4 +31,3 @@ class BrowseRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=MAX_LIMIT)
     filter: FilterExpression | None = None
-    storage_root_id: str | None = None

@@ -18,8 +18,8 @@ from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, MediaKind
 from cairndex.media.ffprobe import ProbeError, normalize_metadata, run_ffprobe
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
-from cairndex.services.storage_roots import get_storage_root
 from cairndex.services.subtitles import sync_embedded_tracks
 
 ProgressFn = Callable[[int, int | None], None]
@@ -28,7 +28,6 @@ _PROBEABLE = (MediaKind.VIDEO, MediaKind.IMAGE, MediaKind.AUDIO)
 
 @dataclass(frozen=True)
 class ProbeSummary:
-    root_id: str
     probed: int
     skipped: int
     failed: int
@@ -39,7 +38,7 @@ def probe_asset_file(session: Session, file_id: str) -> AssetFile:
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
-    abs_path = resolve_within_root(asset_file.storage_root.canonical_path, asset_file.relative_path)
+    abs_path = resolve_within_root(library_root_for_session(session), asset_file.relative_path)
     asset_file.tech_metadata = normalize_metadata(run_ffprobe(abs_path))
     asset_file.updated_at = utcnow()
     session.flush()
@@ -48,17 +47,16 @@ def probe_asset_file(session: Session, file_id: str) -> AssetFile:
     return asset_file
 
 
-def probe_storage_root(
+def probe_library(
     session: Session,
-    root_id: str,
     *,
     reprobe: bool = False,
     on_progress: ProgressFn | None = None,
     batch_size: int = 50,
 ) -> ProbeSummary:
-    root = get_storage_root(session, root_id)
+    """Probe every eligible available file in the library."""
+    root_path = library_root_for_session(session)
     stmt = select(AssetFile).where(
-        AssetFile.storage_root_id == root_id,
         AssetFile.availability == FileAvailability.AVAILABLE,
         AssetFile.media_kind.in_(_PROBEABLE),
     )
@@ -71,7 +69,7 @@ def probe_storage_root(
             skipped += 1
         else:
             try:
-                abs_path = resolve_within_root(root.canonical_path, asset_file.relative_path)
+                abs_path = resolve_within_root(root_path, asset_file.relative_path)
                 asset_file.tech_metadata = normalize_metadata(run_ffprobe(Path(abs_path)))
                 asset_file.updated_at = utcnow()
                 if asset_file.media_kind == MediaKind.VIDEO:
@@ -87,4 +85,4 @@ def probe_storage_root(
     session.commit()
     if on_progress is not None:
         on_progress(total, total)
-    return ProbeSummary(root_id, probed, skipped, failed)
+    return ProbeSummary(probed, skipped, failed)

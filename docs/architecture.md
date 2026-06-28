@@ -243,28 +243,38 @@ describes the shape and what has landed so far.
 - The server keeps a separate **registry** database at
   `{CAIRNDEX_DATA_DIR}/registry.db` (`cairndex.registry`), distinct from any
   library DB. It tracks registered libraries (path, availability, schema
-  version) and will own the runtime job queue. It is server-local runtime
-  state, never portable metadata.
+  version) and owns the runtime job queue. It is server-local runtime state,
+  never portable metadata.
 - Library context is routed by path (`/api/v1/libraries/{library_id}/…`); the
   active library is a client concern, not a server-global setting.
 
-Landed so far:
+How it works now:
 
-- The registry DB and models, the on-disk library package
-  (`registry/library_package.py`), create/register/list services, and the global
-  endpoints `GET /api/v1/libraries`, `POST /api/v1/libraries/create`,
-  `POST /api/v1/libraries/register`, `GET /api/v1/libraries/{id}`.
-- A **per-library engine cache** (`registry/library_engine.py`) keyed by
-  `library_id` (and resolved DB path, so a moved library transparently
-  re-opens), plus a `LibrarySession` dependency (`api/deps.py`) that resolves
-  `{library_id}` against the registry, refuses unavailable libraries with 404,
-  and yields a transactional session on that library's `library.db`. The first
-  library-scoped content route — `/api/v1/libraries/{library_id}/collections` —
-  exercises it, with tests proving two-library isolation.
+- **Content lives per library.** Each `library.db` holds the full content schema
+  (bundles, files, collections, tags, tag groups, smart collections, subtitles,
+  import records). There is no `storage_roots` table; `asset_files.relative_path`
+  is relative to the library root and unique within the library. A
+  `LibrarySession` dependency (`api/deps.py`) resolves `{library_id}` in the
+  registry, refuses an unavailable library with 404, and yields a session from a
+  per-library engine cache (`registry/library_engine.py`, keyed by id + resolved
+  DB path so a moved library re-opens). Content services that touch the
+  filesystem derive the library root from the session
+  (`persistence.engine.library_root_for_session`).
+- **All content APIs are under `/api/v1/libraries/{library_id}/…`** — bundles,
+  collections, tags, tag-groups, smart-collections, filters, file-view, playback,
+  fast-add, and scan/probe/thumbnail enqueue. The only global routes are health,
+  the libraries registry, and job status.
+- **Jobs are registry-owned.** The in-process worker drains the registry
+  `job_queue`, reads each job's `library_id`, opens that library's DB, runs
+  scan/probe/thumbnail against the library root, writes durable results into
+  `library.db`, and writes progress/terminal state back to the registry row.
+- **Frontend** picks one active library per tab (bootstrapped from
+  `GET /api/v1/libraries`) and routes every content request under it; the sidebar
+  has a library selector and a Scan action.
 
-The remaining storage-root-scoped content APIs are unchanged for now; migrating
-the rest under `/libraries/{id}` and the schema collapse that drops
-`storage_roots` are sequenced into later PRs (ADR-0008 phases 4–8).
+Eagle import is temporarily removed (its reader/planner are retained) pending a
+per-library re-implementation. Remaining ADR-0008 work: `.cairndex/cache`
+relocation (phase 8) and optimistic-concurrency versions (phase 9).
 
 ## 12. Browsing surfaces: Collection View and File View
 

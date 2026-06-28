@@ -6,33 +6,33 @@ import {
   type BundlePatch,
   type FilePatch,
   type FilterExpression,
+  type LibraryCreate,
+  type LibraryRegister,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
   batchUpdate,
   browseBundles,
-  type StorageRootCreate,
+  createLibrary,
   createSmartCollection,
-  createStorageRoot,
   deleteSmartCollection,
-  deleteStorageRoot,
+  enqueueScan,
   fetchAllCollections,
   fetchBundle,
-  fetchBundleFiles,
   fetchBundleCollections,
+  fetchBundleFiles,
   fetchBundleTags,
   fetchCollectionCounts,
   fetchFileViewEntries,
+  fetchLibraries,
   fetchPlaybackManifest,
-  fetchStorageRoots,
   fetchSmartCollections,
-  previewEagleImport,
-  runEagleImport,
   fetchTagCounts,
   fetchTagGroupTags,
   fetchTagGroups,
   fetchTags,
   fetchViewCounts,
   previewFilter,
+  registerLibrary,
   removeFile,
   reorderFiles,
   setBundleCollections,
@@ -58,10 +58,10 @@ export function useBrowse(query: BrowseQuery) {
   })
 }
 
-export function useViewCounts(rootId: string | null = null) {
+export function useViewCounts() {
   return useQuery({
-    queryKey: ['view-counts', rootId],
-    queryFn: ({ signal }) => fetchViewCounts(rootId, signal),
+    queryKey: ['view-counts'],
+    queryFn: ({ signal }) => fetchViewCounts(signal),
   })
 }
 
@@ -72,28 +72,6 @@ export function useFilterPreview(filter: FilterExpression | null) {
     queryFn: ({ signal }) => (filter ? previewFilter(filter, signal) : Promise.resolve(0)),
     enabled: filter !== null,
   })
-}
-
-export function useEagleImport() {
-  const qc = useQueryClient()
-  return {
-    preview: useMutation({ mutationFn: (path: string) => previewEagleImport(path) }),
-    run: useMutation({
-      mutationFn: (path: string) => runEagleImport(path),
-      onSuccess: () => {
-        // A bulk import touches every browse-facing query.
-        for (const key of [
-          'browse',
-          'view-counts',
-          'collections',
-          'collection-counts',
-          'tags',
-          'tag-counts',
-        ])
-          qc.invalidateQueries({ queryKey: [key] })
-      },
-    }),
-  }
 }
 
 export function usePlaybackManifest(bundleId: string | null) {
@@ -131,35 +109,49 @@ export function useSmartCollectionMutations() {
   }
 }
 
-// --- Libraries (storage roots) + File View -----------------------------------
-export function useStorageRoots() {
+// --- Libraries (registry) + File View ----------------------------------------
+export function useLibraries() {
   return useQuery({
-    queryKey: ['storage-roots'],
-    queryFn: ({ signal }) => fetchStorageRoots(signal),
+    queryKey: ['libraries'],
+    queryFn: ({ signal }) => fetchLibraries(signal),
   })
 }
 
 export function useLibraryMutations() {
   const qc = useQueryClient()
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['storage-roots'] })
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['libraries'] })
   return {
     create: useMutation({
-      mutationFn: (payload: StorageRootCreate) => createStorageRoot(payload),
+      mutationFn: (payload: LibraryCreate) => createLibrary(payload),
       onSuccess: invalidate,
     }),
-    remove: useMutation({
-      mutationFn: (id: string) => deleteStorageRoot(id),
+    register: useMutation({
+      mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
       onSuccess: invalidate,
     }),
   }
 }
 
-/** List directory entries for a storage root + relative path (null = root). */
-export function useFileView(rootId: string | null, path: string | null) {
+/** Enqueue a scan of the active library. The worker runs it asynchronously; we
+ * optimistically invalidate browse-facing queries so a later refresh reflects
+ * discovered media. */
+export function useScan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => enqueueScan(),
+    onSuccess: () => {
+      for (const key of ['browse', 'view-counts', 'collection-counts', 'tag-counts', 'file-view'])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
+}
+
+/** List directory entries for a library-relative path (null = library root). */
+export function useFileView(path: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['file-view', rootId, path ?? ''],
-    queryFn: ({ signal }) => fetchFileViewEntries(rootId as string, path, signal),
-    enabled: rootId !== null,
+    queryKey: ['file-view', path ?? ''],
+    queryFn: ({ signal }) => fetchFileViewEntries(path, signal),
+    enabled,
   })
 }
 
@@ -170,10 +162,10 @@ export function useCollections() {
   })
 }
 
-export function useCollectionCounts(rootId: string | null = null) {
+export function useCollectionCounts() {
   return useQuery({
-    queryKey: ['collection-counts', rootId],
-    queryFn: ({ signal }) => fetchCollectionCounts(rootId, signal),
+    queryKey: ['collection-counts'],
+    queryFn: ({ signal }) => fetchCollectionCounts(signal),
   })
 }
 
@@ -185,10 +177,10 @@ export function useTagGroups() {
   return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
 }
 
-export function useTagCounts(rootId: string | null = null) {
+export function useTagCounts() {
   return useQuery({
-    queryKey: ['tag-counts', rootId],
-    queryFn: ({ signal }) => fetchTagCounts(rootId, signal),
+    queryKey: ['tag-counts'],
+    queryFn: ({ signal }) => fetchTagCounts(signal),
   })
 }
 

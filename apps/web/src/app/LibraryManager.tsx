@@ -1,40 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { type StorageRootRead, fetchPathSuggestions } from '../api/client'
-import { useLibraryMutations, useStorageRoots } from '../api/hooks'
+import { type LibraryRead, fetchPathSuggestions } from '../api/client'
+import { useLibraries, useLibraryMutations } from '../api/hooks'
 
 /**
- * Add and manage libraries (storage roots). A library is an owner-configured
- * server directory the app links files from. Adding one takes an absolute server
- * path (with directory autocomplete) and can create the folder if it's missing;
- * the path is owner-trusted setup, distinct from per-request path safety.
+ * Add and manage libraries (ADR-0008). A library is a directory carrying its own
+ * `.cairndex/` metadata. You can **create** a new library at an absolute server
+ * path (with directory autocomplete; optionally creating the folder), or
+ * **register** an existing library directory. The path is owner-trusted setup,
+ * distinct from per-request path safety.
  */
 export function LibraryManager({ onClose }: { onClose: () => void }) {
-  const roots = useStorageRoots()
-  const { create, remove } = useLibraryMutations()
+  const libraries = useLibraries()
+  const { create, register } = useLibraryMutations()
 
+  const [mode, setMode] = useState<'create' | 'register'>('create')
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
   const [createIfMissing, setCreateIfMissing] = useState(false)
 
+  const reset = () => {
+    setName('')
+    setPath('')
+    setCreateIfMissing(false)
+  }
+
   const submit = () => {
-    if (!name.trim() || !path.trim()) return
+    if (!path.trim()) return
+    if (mode === 'register') {
+      register.mutate({ root_path: path.trim() }, { onSuccess: reset })
+      return
+    }
+    if (!name.trim()) return
     create.mutate(
-      {
-        name: name.trim(),
-        canonical_path: path.trim(),
-        create_if_missing: createIfMissing,
-        read_only: true,
-      },
-      {
-        onSuccess: () => {
-          setName('')
-          setPath('')
-          setCreateIfMissing(false)
-        },
-      },
+      { root_path: path.trim(), display_name: name.trim(), create_if_missing: createIfMissing },
+      { onSuccess: reset },
     )
   }
+
+  const error = (create.error ?? register.error) as Error | null
+  const busy = create.isPending || register.isPending
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -52,48 +57,71 @@ export function LibraryManager({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="lib-list">
-          {(roots.data ?? []).length === 0 && (
+          {(libraries.data ?? []).length === 0 && (
             <div className="inspector__empty">No libraries yet. Add one below.</div>
           )}
-          {(roots.data ?? []).map((r) => (
-            <LibraryRow key={r.id} root={r} onRemove={() => remove.mutate(r.id)} />
+          {(libraries.data ?? []).map((lib) => (
+            <LibraryRow key={lib.id} library={lib} />
           ))}
         </div>
 
         <div className="lib-add">
-          <label className="field-label">Name</label>
-          <input
-            className="edit"
-            value={name}
-            placeholder="e.g. NAS Movies"
-            onChange={(e) => setName(e.target.value)}
-            aria-label="Library name"
-          />
+          <div className="sidebar__modes" role="tablist" aria-label="Add mode">
+            <button
+              role="tab"
+              aria-selected={mode === 'create'}
+              className={`mode-tab${mode === 'create' ? ' mode-tab--active' : ''}`}
+              onClick={() => setMode('create')}
+            >
+              Create new
+            </button>
+            <button
+              role="tab"
+              aria-selected={mode === 'register'}
+              className={`mode-tab${mode === 'register' ? ' mode-tab--active' : ''}`}
+              onClick={() => setMode('register')}
+            >
+              Register existing
+            </button>
+          </div>
+
+          {mode === 'create' && (
+            <>
+              <label className="field-label">Name</label>
+              <input
+                className="edit"
+                value={name}
+                placeholder="e.g. NAS Movies"
+                onChange={(e) => setName(e.target.value)}
+                aria-label="Library name"
+              />
+            </>
+          )}
 
           <label className="field-label">Path</label>
           <PathInput value={path} onChange={setPath} />
 
-          <label className="lib-add__check">
-            <input
-              type="checkbox"
-              checked={createIfMissing}
-              onChange={(e) => setCreateIfMissing(e.target.checked)}
-            />
-            Create the folder if it doesn&apos;t exist
-          </label>
-
-          {(create.error || remove.error) && (
-            <div className="modal__error">{((create.error ?? remove.error) as Error).message}</div>
+          {mode === 'create' && (
+            <label className="lib-add__check">
+              <input
+                type="checkbox"
+                checked={createIfMissing}
+                onChange={(e) => setCreateIfMissing(e.target.checked)}
+              />
+              Create the folder if it doesn&apos;t exist
+            </label>
           )}
+
+          {error && <div className="modal__error">{error.message}</div>}
 
           <div className="modal__actions">
             <span className="toolbar__spacer" />
             <button
               className="btn btn--primary"
               onClick={submit}
-              disabled={create.isPending || !name.trim() || !path.trim()}
+              disabled={busy || !path.trim() || (mode === 'create' && !name.trim())}
             >
-              Add library
+              {mode === 'create' ? 'Create library' : 'Register library'}
             </button>
           </div>
         </div>
@@ -102,24 +130,17 @@ export function LibraryManager({ onClose }: { onClose: () => void }) {
   )
 }
 
-function LibraryRow({ root, onRemove }: { root: StorageRootRead; onRemove: () => void }) {
-  const available = root.status === 'available'
+function LibraryRow({ library }: { library: LibraryRead }) {
+  const available = library.status === 'available'
   return (
     <div className="lib-row">
       <div className="lib-row__main">
-        <span className="lib-row__name">{root.name}</span>
-        <span className="lib-row__path">{root.canonical_path}</span>
+        <span className="lib-row__name">{library.name}</span>
+        <span className="lib-row__path">{library.root_path}</span>
       </div>
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>
-      <button
-        className="btn btn--danger btn--sm"
-        onClick={onRemove}
-        aria-label={`Remove ${root.name}`}
-      >
-        Remove
-      </button>
     </div>
   )
 }
@@ -130,7 +151,6 @@ function PathInput({ value, onChange }: { value: string; onChange: (v: string) =
   const [open, setOpen] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
 
-  // Debounced suggestion fetch as the path is typed.
   useEffect(() => {
     const handle = setTimeout(() => {
       fetchPathSuggestions(value)
@@ -173,7 +193,7 @@ function PathInput({ value, onChange }: { value: string; onChange: (v: string) =
               aria-selected={false}
               onClick={() => {
                 onChange(s)
-                setOpen(false) // re-focus or type "/" to drill nested
+                setOpen(false)
               }}
             >
               🗀 {s}

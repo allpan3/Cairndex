@@ -1,7 +1,9 @@
-"""Job persistence service: create, query, progress, and cancellation.
+"""Registry job-queue service (ADR-0008, phase 7).
 
-HTTP-agnostic. The worker (jobs/worker.py) drives status transitions; this
-module is the data layer the worker and API share.
+The registry owns the transient job queue: each row carries the ``library_id``
+so the worker can open the right library DB to execute, while durable results
+land in that library's own ``library.db``. HTTP-agnostic; the worker
+(``jobs/worker.py``) drives status transitions and the API shares this layer.
 """
 
 from typing import Any
@@ -12,35 +14,49 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import JobStatus, JobType
-from cairndex.persistence.models import Job
+from cairndex.registry.models import JobQueueEntry
 from cairndex.services.pagination import keyset_page
 
 
-def create_job(session: Session, *, type: JobType, payload: dict[str, Any] | None = None) -> Job:
-    job = Job(type=type, payload=payload or {}, status=JobStatus.QUEUED)
+def create_job(
+    session: Session,
+    *,
+    library_id: str,
+    job_type: JobType,
+    payload: dict[str, Any] | None = None,
+) -> JobQueueEntry:
+    job = JobQueueEntry(
+        library_id=library_id,
+        job_type=job_type,
+        payload=payload or {},
+        status=JobStatus.QUEUED,
+    )
     session.add(job)
     session.flush()
     return job
 
 
-def get_job(session: Session, job_id: str) -> Job:
-    job = session.get(Job, job_id)
+def get_job(session: Session, job_id: str) -> JobQueueEntry:
+    job = session.get(JobQueueEntry, job_id)
     if job is None:
         raise NotFoundError(f"job {job_id!r} not found")
     return job
 
 
-def list_jobs(session: Session, *, limit: int, cursor: str | None) -> tuple[list[Job], str | None]:
-    return keyset_page(session, select(Job), Job.id, limit, cursor)
+def list_jobs(
+    session: Session, *, limit: int, cursor: str | None
+) -> tuple[list[JobQueueEntry], str | None]:
+    return keyset_page(session, select(JobQueueEntry), JobQueueEntry.id, limit, cursor)
 
 
-def claim_next_queued(session: Session) -> Job | None:
-    """Atomically move the oldest queued job to RUNNING and return it.
-
-    Single-process worker, so a simple ordered select + status flip is enough;
-    the flush makes the transition visible before the handler runs.
-    """
-    stmt = select(Job).where(Job.status == JobStatus.QUEUED).order_by(Job.id).limit(1)
+def claim_next_queued(session: Session) -> JobQueueEntry | None:
+    """Atomically move the oldest queued job to RUNNING and return it."""
+    stmt = (
+        select(JobQueueEntry)
+        .where(JobQueueEntry.status == JobStatus.QUEUED)
+        .order_by(JobQueueEntry.id)
+        .limit(1)
+    )
     job = session.scalars(stmt).first()
     if job is None:
         return None
@@ -51,7 +67,6 @@ def claim_next_queued(session: Session) -> Job | None:
 
 
 def mark_running(session: Session, job_id: str) -> None:
-    """Ensure a job is RUNNING with a start time (idempotent)."""
     job = get_job(session, job_id)
     if job.status != JobStatus.RUNNING:
         job.status = JobStatus.RUNNING
@@ -70,9 +85,8 @@ def update_progress(
     session.flush()
 
 
-def request_cancel(session: Session, job_id: str) -> Job:
+def request_cancel(session: Session, job_id: str) -> JobQueueEntry:
     job = get_job(session, job_id)
-    # Already-finished jobs are left untouched; a queued/running job is flagged.
     if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
         job.cancel_requested = True
         session.flush()
@@ -80,7 +94,7 @@ def request_cancel(session: Session, job_id: str) -> Job:
 
 
 def is_cancel_requested(session: Session, job_id: str) -> bool:
-    job = session.get(Job, job_id)
+    job = session.get(JobQueueEntry, job_id)
     if job is None:
         return False
     session.refresh(job, ["cancel_requested"])
