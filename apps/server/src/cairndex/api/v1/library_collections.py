@@ -1,19 +1,24 @@
-"""Library-scoped collections endpoints (ADR-0008, phase 3/4 — first slice).
+"""Library-scoped collections endpoints (ADR-0008).
 
-Demonstrates per-library routing: these operate on the library DB selected by
-``{library_id}`` via ``LibrarySession``, so a collection created in one library
-is invisible to another. The existing global ``/collections`` router stays until
-the full content-API migration (phase 4); this is the first proof slice.
+Operate on the library DB selected by ``{library_id}`` via ``LibrarySession``,
+so a collection created in one library is invisible to another.
 """
 
 from fastapi import APIRouter, status
 
 from cairndex.api.deps import LibrarySession, Pagination
+from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import CollectionCreate, CollectionRead, CollectionUpdate
+from cairndex.services import browse as browse_service
 from cairndex.services import collections as service
 
 router = APIRouter(prefix="/libraries/{library_id}/collections", tags=["library-collections"])
+
+
+@router.get("/counts", response_model=CountsResponse)
+def collection_counts(db: LibrarySession) -> CountsResponse:
+    return CountsResponse(counts=browse_service.collection_counts(db))
 
 
 @router.post("", response_model=CollectionRead, status_code=status.HTTP_201_CREATED)

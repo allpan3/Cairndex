@@ -1,15 +1,15 @@
-"""Read-only File View: storage-root-scoped filesystem browsing.
+"""Read-only File View: library-scoped filesystem browsing.
 
 The File View is the *physical* browsing surface (distinct from the logical,
 bundle-first Collection View). It lists real directories and files under a
-configured storage root, identified by ``storage_root_id + relative_path`` — it
-never accepts or exposes an absolute server path, and never moves, renames,
-deletes, or rewrites anything on disk.
+library's root directory, identified by a root-relative path — it never accepts
+or exposes an absolute server path, and never moves, renames, deletes, or
+rewrites anything on disk (ADR-0008: the library root comes from the registry).
 
 This first milestone is strictly read-only. It is structured so later write-mode
 operations (open-with-default-app, reveal, guarded rename/move/delete — see
-``docs/adr/0006`` and Phase 7) can be layered on without a rewrite: all path
-resolution already funnels through ``core.paths`` and the storage-root allowlist.
+``docs/adr/0007`` and Phase 7) can be layered on without a rewrite: all path
+resolution already funnels through ``core.paths``.
 """
 
 from __future__ import annotations
@@ -25,13 +25,13 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.scanning.media_types import classify
-from cairndex.services.storage_roots import get_storage_root
 
 # Non-dotfile names we still hide: caches, OS/DB cruft, thumbnails. Dotfiles and
-# dot-directories (e.g. .git, .DS_Store, .env) are hidden by the leading-dot
-# rule below, so this list only needs the non-dot offenders.
+# dot-directories (e.g. .git, .DS_Store, .env, the .cairndex marker) are hidden
+# by the leading-dot rule below, so this list only needs the non-dot offenders.
 _HIDDEN_NAMES: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -67,24 +67,22 @@ class FileViewEntry:
 
 @dataclass(frozen=True)
 class FileViewListing:
-    root_id: str
-    # The relative directory being listed ("" = the storage root itself).
+    # The relative directory being listed ("" = the library root itself).
     path: str
     entries: list[FileViewEntry]
 
 
-def list_entries(session: Session, root_id: str, *, path: str | None = None) -> FileViewListing:
-    """List non-hidden directories and files directly under ``path`` in a root.
+def list_entries(session: Session, *, path: str | None = None) -> FileViewListing:
+    """List non-hidden directories and files directly under ``path`` in the library.
 
-    ``path`` is a root-relative POSIX path (``None``/empty = the root itself).
+    ``path`` is a library-root-relative POSIX path (``None``/empty = the root).
     Directories are returned first, then files, each sorted case-insensitively.
     Raises ``ValidationError`` for unsafe paths or a non-directory target, and
-    ``NotFoundError`` when the root is unavailable or the path does not exist.
+    ``NotFoundError`` when the library root is unavailable or the path is absent.
     """
-    root = get_storage_root(session, root_id)
-    root_path = Path(root.canonical_path)
+    root_path = library_root_for_session(session)
     if not root_path.is_dir():
-        raise NotFoundError(f"storage root {root_id!r} is not currently available")
+        raise NotFoundError("the library root is not currently available")
 
     rel = (path or "").strip()
     if not rel:
@@ -98,14 +96,14 @@ def list_entries(session: Session, root_id: str, *, path: str | None = None) -> 
         rel_norm = normalize_relative_path(rel)
 
     if not target.exists():
-        raise NotFoundError(f"path {rel_norm!r} does not exist in storage root {root_id!r}")
+        raise NotFoundError(f"path {rel_norm!r} does not exist in this library")
     if not target.is_dir():
         raise ValidationError(f"path {rel_norm!r} is not a directory")
 
     root_real = root_path.resolve(strict=False)
     dirs: list[FileViewEntry] = []
     files: list[FileViewEntry] = []
-    linked = _linked_paths(session, root_id, rel_norm)
+    linked = _linked_paths(session, rel_norm)
 
     with os.scandir(target) as it:
         for dirent in it:
@@ -118,23 +116,22 @@ def list_entries(session: Session, root_id: str, *, path: str | None = None) -> 
 
     dirs.sort(key=lambda e: e.name.lower())
     files.sort(key=lambda e: e.name.lower())
-    return FileViewListing(root_id=root_id, path=rel_norm, entries=[*dirs, *files])
+    return FileViewListing(path=rel_norm, entries=[*dirs, *files])
 
 
-def resolve_entry_path(session: Session, root_id: str, path: str) -> Path:
-    """Resolve a root-relative file path to a safe absolute path for serving.
+def resolve_entry_path(session: Session, path: str) -> Path:
+    """Resolve a library-relative file path to a safe absolute path for serving.
 
     Mirrors ``list_entries`` safety: rejects absolute paths, traversal, and
     symlink escapes, and confirms the target is an existing regular file (not a
     directory). Used by the read-only content endpoint so the File View can
     preview/play a file that is not linked into any bundle. Raises
     ``ValidationError`` for unsafe/non-file paths and ``NotFoundError`` when the
-    root is unavailable or the file does not exist.
+    library root is unavailable or the file does not exist.
     """
-    root = get_storage_root(session, root_id)
-    root_path = Path(root.canonical_path)
+    root_path = library_root_for_session(session)
     if not root_path.is_dir():
-        raise NotFoundError(f"storage root {root_id!r} is not currently available")
+        raise NotFoundError("the library root is not currently available")
 
     rel = (path or "").strip()
     if not rel:
@@ -146,7 +143,7 @@ def resolve_entry_path(session: Session, root_id: str, path: str) -> Path:
 
     rel_norm = normalize_relative_path(rel)
     if not target.exists():
-        raise NotFoundError(f"path {rel_norm!r} does not exist in storage root {root_id!r}")
+        raise NotFoundError(f"path {rel_norm!r} does not exist in this library")
     if not target.is_file():
         raise ValidationError(f"path {rel_norm!r} is not a file")
     return target
@@ -206,17 +203,14 @@ def _build_entry(
     )
 
 
-def _linked_paths(session: Session, root_id: str, parent_rel: str) -> dict[str, str]:
-    """Map ``relative_path -> bundle_id`` for files already linked under
-    ``parent_rel`` in this root, so listed entries can show a linked badge
+def _linked_paths(session: Session, parent_rel: str) -> dict[str, str]:
+    """Map ``relative_path -> bundle_id`` for files already linked directly under
+    ``parent_rel`` in this library, so listed entries can show a linked badge
     without a per-file query."""
     prefix = f"{parent_rel}/" if parent_rel else ""
-    stmt = select(AssetFile.relative_path, AssetFile.bundle_id).where(
-        AssetFile.storage_root_id == root_id
-    )
+    stmt = select(AssetFile.relative_path, AssetFile.bundle_id)
     if prefix:
         stmt = stmt.where(AssetFile.relative_path.startswith(prefix))
-    # Only direct children of parent_rel matter for this listing.
     out: dict[str, str] = {}
     for rel_path, bundle_id in session.execute(stmt):
         remainder = rel_path[len(prefix) :]

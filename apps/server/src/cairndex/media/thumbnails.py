@@ -19,9 +19,9 @@ from cairndex.core.config import get_settings
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.services.bundles import get_bundle, list_files
-from cairndex.services.storage_roots import get_storage_root
 
 THUMBNAIL_WIDTH = 480
 _THUMBNAILABLE = (MediaKind.VIDEO, MediaKind.IMAGE)
@@ -76,7 +76,7 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
     if dest.exists() and not force:
         return dest  # cache hit — reused, not regenerated
 
-    source = resolve_within_root(asset_file.storage_root.canonical_path, asset_file.relative_path)
+    source = resolve_within_root(library_root_for_session(session), asset_file.relative_path)
     _generate(Path(source), dest, asset_file.media_kind)
     return dest
 
@@ -114,22 +114,19 @@ def generate_for_bundle(session: Session, bundle_id: str, *, force: bool = False
 
 @dataclass(frozen=True)
 class ThumbnailSummary:
-    root_id: str
     generated: int
     failed: int
 
 
-def generate_for_root(
+def generate_for_library(
     session: Session,
-    root_id: str,
     *,
     force: bool = False,
     on_progress: ProgressFn | None = None,
     batch_size: int = 20,
 ) -> ThumbnailSummary:
-    get_storage_root(session, root_id)
+    """Generate thumbnails for every thumbnailable, available file in the library."""
     stmt = select(AssetFile).where(
-        AssetFile.storage_root_id == root_id,
         AssetFile.availability == FileAvailability.AVAILABLE,
         AssetFile.media_kind.in_(_THUMBNAILABLE),
     )
@@ -148,4 +145,4 @@ def generate_for_root(
 
     if on_progress is not None:
         on_progress(total, total)
-    return ThumbnailSummary(root_id, generated, failed)
+    return ThumbnailSummary(generated, failed)

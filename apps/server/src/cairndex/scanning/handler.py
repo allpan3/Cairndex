@@ -1,23 +1,23 @@
-"""Scan job handler: runs a storage-root scan under the job worker.
+"""Scan job handler: runs a library scan under the job worker.
 
 Progress is reported through ``ctx.checkpoint``, which also raises
 ``JobCancelled`` when a cancel is requested — so a long scan stops promptly
-while keeping everything already committed.
+while keeping everything already committed. The library root comes from the
+registry via ``ctx.library_root`` (ADR-0008).
 """
 
 from typing import Any
 
 from cairndex.jobs.worker import JobContext
-from cairndex.scanning.scanner import scan_storage_root
+from cairndex.scanning.scanner import scan_library
 
 
 def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
-    root_id = ctx.payload["storage_root_id"]
     batch_size = int(ctx.payload.get("batch_size", 200))
 
-    summary = scan_storage_root(
+    summary = scan_library(
         ctx.session,
-        root_id,
+        ctx.library_root,
         on_progress=lambda processed, total: ctx.checkpoint(processed, total),
         batch_size=batch_size,
     )

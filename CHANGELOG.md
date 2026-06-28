@@ -8,6 +8,32 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Changed
+
+- **Per-library content migration — create → scan → browse (ADR-0008, phases
+  3–5/7).** Breaking, pre-release clean break. All content metadata now lives in
+  each library's own `.cairndex/library.db`; the server keeps only a registry
+  (libraries + job queue).
+  - **Schema collapse:** dropped the `storage_roots` table and
+    `asset_files.storage_root_id`; `asset_files.relative_path` is now relative to
+    the library root with `UNIQUE(relative_path)`. The content `jobs` table moved
+    to the registry's `job_queue`. Library DBs are created via `create_all` (no
+    Alembic chain).
+  - **Per-library engine + routing:** content APIs moved under
+    `/api/v1/libraries/{library_id}/…` (bundles, collections, tags, tag-groups,
+    smart-collections, filters, file-view, playback, fast-add, scan/probe/
+    thumbnail enqueue). A `LibrarySession` opens the right `library.db`; path
+    resolution derives the library root from the session.
+  - **Per-library jobs:** the worker now drains the registry `job_queue`, opens
+    the target library DB, runs scan/probe/thumbnail against it, and writes
+    durable results into `library.db`.
+  - **Frontend:** an active-library bootstrap (one per tab) routes all content
+    requests under the selected library; the sidebar gained a library selector
+    and a **Scan** action; the library manager creates/registers libraries.
+  - **Eagle import** is temporarily removed pending a per-library
+    re-implementation (the reader/planner are retained). The global
+    storage-root APIs/UI are gone.
+
 ### Added
 
 - **Per-library engine + route scoping (ADR-0008, phase 2/3).** Introduces a

@@ -10,7 +10,8 @@ class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    type: JobType
+    library_id: str
+    job_type: JobType
     status: JobStatus
     payload: dict[str, Any]
     processed: int

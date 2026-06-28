@@ -6,29 +6,19 @@ from sqlalchemy.orm import Session
 from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
-from cairndex.services import storage_roots as root_service
 from cairndex.services.browse import (
     BundleSort,
     SystemView,
     browse_bundles,
-    collection_counts,
     view_counts,
 )
 
 
-def _root(session: Session) -> str:
-    root = root_service.create_storage_root(session, name="r", canonical_path="/mnt/r")
-    session.flush()
-    return root.id
-
-
 def test_browse_returns_enriched_summaries(session: Session) -> None:
-    root_id = _root(session)
     bundle = bundle_service.create_bundle(session, title="Movie")
     f = bundle_service.add_file(
         session,
         bundle.id,
-        storage_root_id=root_id,
         relative_path="m/movie.mp4",
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,
@@ -48,10 +38,8 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
 
 
 def test_system_views_filter(session: Session) -> None:
-    root_id = _root(session)
     collection = collection_service.create_collection(session, name="F")
 
-    # b1: in a collection, tagged-not; b2: uncategorized + untagged; b3: missing file.
     b1 = bundle_service.create_bundle(session, title="b1")
     bundle_service.set_bundle_collections(session, b1.id, [collection.id])
     bundle_service.create_bundle(session, title="b2")  # uncategorized + untagged
@@ -59,7 +47,6 @@ def test_system_views_filter(session: Session) -> None:
     mf = bundle_service.add_file(
         session,
         b3.id,
-        storage_root_id=root_id,
         relative_path="x/y.mp4",
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,
@@ -68,9 +55,7 @@ def test_system_views_filter(session: Session) -> None:
     session.commit()
 
     assert browse_bundles(session, view=SystemView.ALL).total == 3
-    # b2 and b3 are in no collection.
     assert browse_bundles(session, view=SystemView.UNCATEGORIZED).total == 2
-    # all three are untagged.
     assert browse_bundles(session, view=SystemView.UNTAGGED).total == 3
     missing = browse_bundles(session, view=SystemView.MISSING)
     assert missing.total == 1 and missing.items[0].id == b3.id
@@ -89,48 +74,6 @@ def test_sort_and_offset_pagination(session: Session) -> None:
     assert [s.title for s in nxt.items] == ["title-2", "title-3"]
 
 
-def test_storage_root_scoping(session: Session) -> None:
-    """Browsing and counts can be scoped to one library (storage root) without
-    affecting the logical collection a bundle belongs to."""
-    r1 = root_service.create_storage_root(session, name="r1", canonical_path="/mnt/r1")
-    r2 = root_service.create_storage_root(session, name="r2", canonical_path="/mnt/r2")
-    session.flush()
-    collection = collection_service.create_collection(session, name="C")
-
-    b1 = bundle_service.create_bundle(session, title="in-r1")
-    bundle_service.add_file(
-        session,
-        b1.id,
-        storage_root_id=r1.id,
-        relative_path="a.mp4",
-        role=FileRole.PRIMARY_VIDEO,
-        media_kind=MediaKind.VIDEO,
-    )
-    bundle_service.set_bundle_collections(session, b1.id, [collection.id])
-
-    b2 = bundle_service.create_bundle(session, title="in-r2")
-    bundle_service.add_file(
-        session,
-        b2.id,
-        storage_root_id=r2.id,
-        relative_path="b.mp4",
-        role=FileRole.PRIMARY_VIDEO,
-        media_kind=MediaKind.VIDEO,
-    )
-    bundle_service.set_bundle_collections(session, b2.id, [collection.id])
-    session.commit()
-
-    assert browse_bundles(session).total == 2
-    scoped = browse_bundles(session, storage_root_id=r1.id)
-    assert scoped.total == 1 and scoped.items[0].id == b1.id
-
-    assert view_counts(session)["all"] == 2
-    assert view_counts(session, storage_root_id=r1.id)["all"] == 1
-
-    assert collection_counts(session)[collection.id] == 2
-    assert collection_counts(session, storage_root_id=r2.id)[collection.id] == 1
-
-
 def test_view_counts(session: Session) -> None:
     bundle_service.create_bundle(session, title="a")
     bundle_service.create_bundle(session, title="b")
@@ -142,23 +85,24 @@ def test_view_counts(session: Session) -> None:
     assert counts["missing"] == 0
 
 
-def test_browse_endpoint_and_counts_routing(client: TestClient) -> None:
-    # /browse and /counts must not be shadowed by /{bundle_id}.
-    client.post("/api/v1/bundles", json={"title": "one"})
-    browse = client.get("/api/v1/bundles/browse", params={"view": "all", "sort": "title"})
+def test_browse_endpoint_and_counts_routing(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    client.post(f"{base}/bundles", json={"title": "one"})
+    browse = client.get(f"{base}/bundles/browse", params={"view": "all", "sort": "title"})
     assert browse.status_code == 200
     assert browse.json()["total"] == 1
     assert browse.json()["items"][0]["title"] == "one"
 
-    counts = client.get("/api/v1/bundles/counts")
+    counts = client.get(f"{base}/bundles/counts")
     assert counts.status_code == 200
     assert counts.json()["all"] == 1
 
 
-def test_collection_counts_endpoint(client: TestClient) -> None:
-    collection_id = client.post("/api/v1/collections", json={"name": "F"}).json()["id"]
-    bundle_id = client.post("/api/v1/bundles", json={"title": "x"}).json()["id"]
-    client.put(f"/api/v1/bundles/{bundle_id}/collections", json={"ids": [collection_id]})
+def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    collection_id = client.post(f"{base}/collections", json={"name": "F"}).json()["id"]
+    bundle_id = client.post(f"{base}/bundles", json={"title": "x"}).json()["id"]
+    client.put(f"{base}/bundles/{bundle_id}/collections", json={"ids": [collection_id]})
 
-    counts = client.get("/api/v1/collections/counts").json()["counts"]
+    counts = client.get(f"{base}/collections/counts").json()["counts"]
     assert counts[collection_id] == 1

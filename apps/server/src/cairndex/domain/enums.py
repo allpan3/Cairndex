@@ -1,13 +1,6 @@
 from enum import StrEnum
 
 
-class StorageRootStatus(StrEnum):
-    """Whether a storage root's canonical path is currently reachable."""
-
-    AVAILABLE = "available"
-    UNAVAILABLE = "unavailable"
-
-
 class LibraryStatus(StrEnum):
     """Whether a registered library's root/marker is currently reachable.
 

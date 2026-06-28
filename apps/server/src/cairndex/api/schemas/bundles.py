@@ -39,7 +39,6 @@ class BundleRead(BaseModel):
 
 # --- Files -------------------------------------------------------------------
 class FileLink(BaseModel):
-    storage_root_id: str
     relative_path: str = Field(min_length=1)
     role: FileRole
     media_kind: MediaKind
@@ -80,7 +79,6 @@ class FileRead(BaseModel):
 
     id: str
     bundle_id: str
-    storage_root_id: str
     relative_path: str
     original_filename: str
     display_title: str

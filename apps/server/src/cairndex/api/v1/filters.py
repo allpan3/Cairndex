@@ -7,16 +7,16 @@ Live count for the toolbar/Smart Collection editor. Invalid expressions raise
 from fastapi import APIRouter
 from sqlalchemy import func, select
 
-from cairndex.api.deps import DbSession
+from cairndex.api.deps import LibrarySession
 from cairndex.api.schemas.filters import FilterPreviewRequest, FilterPreviewResponse
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import AssetBundle
 
-router = APIRouter(prefix="/filters", tags=["filters"])
+router = APIRouter(prefix="/libraries/{library_id}/filters", tags=["filters"])
 
 
 @router.post("/preview", response_model=FilterPreviewResponse)
-def preview(payload: FilterPreviewRequest, db: DbSession) -> FilterPreviewResponse:
+def preview(payload: FilterPreviewRequest, db: LibrarySession) -> FilterPreviewResponse:
     predicate = compile_expression(db, payload.filter)
     count = db.scalar(select(func.count()).select_from(AssetBundle).where(predicate)) or 0
     return FilterPreviewResponse(count=count)

@@ -123,3 +123,47 @@ def list_libraries(session: Session) -> list[RegisteredLibrary]:
     if changed:
         session.flush()
     return libraries
+
+
+_MAX_SUGGESTIONS = 50
+
+
+def suggest_paths(prefix: str) -> list[str]:
+    """Directory autocompletions for an absolute path prefix (owner setup only).
+
+    Lists real directories the server process can see — the host filesystem, or
+    only up to the image root inside a container. Returns directories only, never
+    file contents, and is capped. An empty/relative prefix lists the filesystem
+    root. Used by the add-library form to pick a library root.
+    """
+    if "\x00" in prefix:
+        raise ValidationError("null byte in path")
+
+    raw = prefix.strip()
+    if not raw or not raw.startswith("/"):
+        base, partial = Path("/"), ""
+    elif raw.endswith("/"):
+        base, partial = Path(raw), ""
+    else:
+        p = Path(raw)
+        base, partial = p.parent, p.name
+
+    try:
+        children = sorted(
+            entry
+            for entry in base.iterdir()
+            if not entry.name.startswith(".") and entry.name.lower().startswith(partial.lower())
+        )
+    except OSError:
+        return []  # unreadable/nonexistent base — nothing to suggest
+
+    out: list[str] = []
+    for entry in children:
+        try:
+            if entry.is_dir():
+                out.append(entry.as_posix())
+        except OSError:
+            continue  # skip entries we can't stat (e.g. permission denied)
+        if len(out) >= _MAX_SUGGESTIONS:
+            break
+    return out

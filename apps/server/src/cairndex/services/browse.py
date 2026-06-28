@@ -91,15 +91,6 @@ def _size_sq() -> Any:
     )
 
 
-def _bundle_in_root(storage_root_id: str) -> Any:
-    """A correlated EXISTS: the bundle has at least one file in this storage
-    root. Used to scope browsing/counts to a single library without changing the
-    logical, root-independent nature of collections themselves."""
-    return exists().where(
-        (AssetFile.bundle_id == AssetBundle.id) & (AssetFile.storage_root_id == storage_root_id)
-    )
-
-
 def _apply_view(
     stmt: Select[Any],
     session: Session,
@@ -159,7 +150,6 @@ def browse_bundles(
     offset: int = 0,
     limit: int = 100,
     filter_expr: FilterExpression | None = None,
-    storage_root_id: str | None = None,
 ) -> BundlePage:
     # A saved Smart Collection and a simple toolbar filter both arrive here as
     # the same compiled predicate, so they share one ranking/pagination path.
@@ -167,8 +157,6 @@ def browse_bundles(
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
         stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
-        if storage_root_id is not None:
-            stmt = stmt.where(_bundle_in_root(storage_root_id))
         return stmt.where(predicate) if predicate is not None else stmt
 
     base = _scoped(select(AssetBundle.id))
@@ -228,15 +216,13 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     )
 
 
-def view_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
-    """Counts for the sidebar system views, optionally scoped to one library."""
+def view_counts(session: Session) -> dict[str, int]:
+    """Counts for the sidebar system views (scoped to this library DB)."""
 
     def _count(*where: Any) -> int:
         stmt = select(func.count()).select_from(AssetBundle)
         for clause in where:
             stmt = stmt.where(clause)
-        if storage_root_id is not None:
-            stmt = stmt.where(_bundle_in_root(storage_root_id))
         return session.scalar(stmt) or 0
 
     total = _count()
@@ -257,23 +243,11 @@ def view_counts(session: Session, storage_root_id: str | None = None) -> dict[st
     }
 
 
-def _membership_in_root(bundle_col: Any, storage_root_id: str) -> Any:
-    """EXISTS clause correlating a membership join row's bundle to a root."""
-    return exists().where(
-        (AssetFile.bundle_id == bundle_col) & (AssetFile.storage_root_id == storage_root_id)
-    )
-
-
-def collection_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
-    """Direct (non-recursive) bundle count per collection id, for the sidebar.
-    Optionally scoped to bundles with a file in the given library."""
+def collection_counts(session: Session) -> dict[str, int]:
+    """Direct (non-recursive) bundle count per collection id, for the sidebar."""
     stmt = select(asset_bundle_collections.c.collection_id, func.count()).group_by(
         asset_bundle_collections.c.collection_id
     )
-    if storage_root_id is not None:
-        stmt = stmt.where(
-            _membership_in_root(asset_bundle_collections.c.bundle_id, storage_root_id)
-        )
     rows = session.execute(stmt).all()
     counts = {collection_id: count for collection_id, count in rows}
     # Ensure every collection appears (zero if empty).
@@ -282,12 +256,9 @@ def collection_counts(session: Session, storage_root_id: str | None = None) -> d
     return counts
 
 
-def tag_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
-    """Bundle count per tag id (direct membership), for the tag picker.
-    Optionally scoped to bundles with a file in the given library."""
+def tag_counts(session: Session) -> dict[str, int]:
+    """Bundle count per tag id (direct membership), for the tag picker."""
     stmt = select(asset_bundle_tags.c.tag_id, func.count()).group_by(asset_bundle_tags.c.tag_id)
-    if storage_root_id is not None:
-        stmt = stmt.where(_membership_in_root(asset_bundle_tags.c.bundle_id, storage_root_id))
     rows = session.execute(stmt).all()
     counts = {tag_id: count for tag_id, count in rows}
     for (tag_id,) in session.execute(select(Tag.id)).all():

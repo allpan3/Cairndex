@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
 from cairndex.domain.enums import Grouping
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify
 from cairndex.scanning.scanner import _iter_media_files
-from cairndex.services.storage_roots import get_storage_root
 
 
 @dataclass(frozen=True)
@@ -32,15 +32,14 @@ class FastAddResult:
 
 def fast_add(
     session: Session,
-    root_id: str,
     *,
     paths: list[str],
     grouping: Grouping = Grouping.PER_FILE,
     bundle_title: str | None = None,
 ) -> FastAddResult:
-    root = get_storage_root(session, root_id)
-    root_path = Path(root.canonical_path)
-
+    """Link selected files/dirs under the library root (ADR-0008). The library
+    root is derived from the bound content session."""
+    root_path = library_root_for_session(session)
     # Expand the selection to concrete, in-root media files (deduped, ordered).
     candidates: dict[str, Path] = {}
     for raw in paths:
@@ -57,12 +56,7 @@ def fast_add(
             candidates.setdefault(normalized, resolved)
         # Missing paths and non-media files are silently ignored.
 
-    already_linked = {
-        rel
-        for (rel,) in session.execute(
-            select(AssetFile.relative_path).where(AssetFile.storage_root_id == root_id)
-        )
-    }
+    already_linked = {rel for (rel,) in session.execute(select(AssetFile.relative_path))}
     to_link = {rel: path for rel, path in candidates.items() if rel not in already_linked}
 
     skipped = len(candidates) - len(to_link)
@@ -75,23 +69,21 @@ def fast_add(
         session.add(bundle)
         session.flush()
         for sequence, (rel, path) in enumerate(to_link.items()):
-            _link(session, bundle.id, root_id, rel, path, sequence=sequence)
+            _link(session, bundle.id, rel, path, sequence=sequence)
         bundles_created = 1
     else:
         for rel, path in to_link.items():
             bundle = AssetBundle(title=path.stem)
             session.add(bundle)
             session.flush()
-            _link(session, bundle.id, root_id, rel, path, sequence=0)
+            _link(session, bundle.id, rel, path, sequence=0)
         bundles_created = len(to_link)
 
     session.commit()
     return FastAddResult(bundles_created, len(to_link), skipped)
 
 
-def _link(
-    session: Session, bundle_id: str, root_id: str, rel: str, path: Path, *, sequence: int
-) -> None:
+def _link(session: Session, bundle_id: str, rel: str, path: Path, *, sequence: int) -> None:
     classification = classify(path.name)
     assert classification is not None
     kind, role = classification
@@ -99,7 +91,6 @@ def _link(
     session.add(
         AssetFile(
             bundle_id=bundle_id,
-            storage_root_id=root_id,
             relative_path=rel,
             original_filename=path.name,
             display_title=path.name,

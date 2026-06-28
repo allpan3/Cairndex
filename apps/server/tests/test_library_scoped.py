@@ -2,9 +2,17 @@
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from cairndex.registry import library_package as pkg
+
+
+@pytest.fixture
+def client(isolated_client: TestClient) -> TestClient:
+    """Use real per-library resolution (not the shared-session client) so these
+    isolation tests open each library's own DB."""
+    return isolated_client
 
 
 def _create_library(client: TestClient, root: Path, name: str) -> str:

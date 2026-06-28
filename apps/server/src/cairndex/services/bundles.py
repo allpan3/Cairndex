@@ -2,9 +2,9 @@
 
 The bundle is the primary user-facing object. Everything here is metadata-only
 and non-destructive (AGENTS.md §3): linking or unlinking files mutates rows,
-never the files on disk. File locations are stored as
-``storage_root_id + normalized relative_path`` and validated through
-``core.paths`` so no client input can escape a storage root.
+never the files on disk. File locations are stored as a normalized
+library-relative path (ADR-0008) and validated through ``core.paths`` so no
+client input can escape the library root.
 """
 
 from pathlib import Path
@@ -22,11 +22,11 @@ from cairndex.core.paths import (
 )
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
     Collection,
-    StorageRoot,
     Tag,
 )
 from cairndex.services.pagination import keyset_page
@@ -107,7 +107,6 @@ def add_file(
     session: Session,
     bundle_id: str,
     *,
-    storage_root_id: str,
     relative_path: str,
     role: FileRole,
     media_kind: MediaKind,
@@ -117,24 +116,22 @@ def add_file(
     source: str | None = None,
     mime_type: str | None = None,
 ) -> AssetFile:
-    """Link an existing on-disk file into the bundle without copying it."""
+    """Link an existing on-disk file (library-relative) into the bundle without
+    copying it (ADR-0008: the library DB is the storage scope)."""
     get_bundle(session, bundle_id)
-    root = session.get(StorageRoot, storage_root_id)
-    if root is None:
-        raise ValidationError(f"storage root {storage_root_id!r} does not exist")
+    root_path = library_root_for_session(session)
 
     try:
         normalized = normalize_relative_path(relative_path)
-        # If the root is currently mounted, additionally reject symlink escapes.
-        if Path(root.canonical_path).exists():
-            resolve_within_root(root.canonical_path, normalized)
+        # If the library root is currently mounted, also reject symlink escapes.
+        if Path(root_path).exists():
+            resolve_within_root(root_path, normalized)
     except PathSafetyError as exc:
         raise ValidationError(str(exc)) from exc
 
     filename = normalized.rsplit("/", 1)[-1]
     asset_file = AssetFile(
         bundle_id=bundle_id,
-        storage_root_id=storage_root_id,
         relative_path=normalized,
         original_filename=filename,
         display_title=display_title or filename,
@@ -149,7 +146,7 @@ def add_file(
     try:
         session.flush()
     except IntegrityError as exc:
-        raise ConflictError(f"{normalized!r} is already linked under this storage root") from exc
+        raise ConflictError(f"{normalized!r} is already linked in this library") from exc
     return asset_file
 
 
