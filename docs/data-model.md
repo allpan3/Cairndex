@@ -2,11 +2,13 @@
 
 > Status: current through the Collections/File View refactor. Logical "folders"
 > are now **collections**. The core schema is implemented in
-> `apps/server/src/cairndex/persistence/models.py` and evolved by Alembic
-> migrations. Decisions are recorded in ADR-0002 (core schema/identity),
-> ADR-0003 (subtitle tracks), ADR-0004 (Eagle import), and ADR-0006 (scanner
-> identity and moved-file repair). `AGENTS.md` remains the conceptual product
-> brief; ADR-0007 records future File View native handoff / host integration.
+> `apps/server/src/cairndex/persistence/models.py` and created per library via
+> `create_all` (ADR-0008). Decisions are recorded in ADR-0002 (core
+> schema/identity), ADR-0003 (subtitle tracks), and ADR-0006 (scanner identity
+> and moved-file repair); ADR-0004 (Eagle import) is **superseded and the feature
+> removed**. `AGENTS.md` remains the conceptual product brief; ADR-0007 records
+> future File View native handoff / host integration; ADR-0008 records the
+> per-library metadata + registry architecture.
 
 ## Conventions (ADR-0002)
 
@@ -39,10 +41,9 @@ nullable; `use_alter` breaks the FK cycle), `extra_metadata` (JSON),
 `created_at`, `imported_at`, `updated_at`.
 
 Current schema note: bundles do **not** have a first-class hyperlink/source
-column. Origin/source metadata is currently stored on `asset_files.source`
-because the implemented Eagle import maps each Eagle item to one linked file. If
+column. Origin/source metadata is stored per file on `asset_files.source`. If
 bundle-level source pages become important, add an explicit nullable column or
-link table through a migration rather than hiding it in `extra_metadata`.
+link table rather than hiding it in `extra_metadata`.
 
 ### `asset_files`
 
@@ -118,13 +119,6 @@ constraints; uniqueness on `(video_file_id, embedded_index)` and
 `source_file_id`. External subtitles auto-link to a same-directory video by
 basename (language/forced parsed from the suffix); unmatched ones stay unlinked
 for manual attachment.
-
-### `import_records` (ADR-0004)
-
-`id`, `provider` (e.g. `eagle`), `external_id`, `bundle_id` (FK, CASCADE),
-`imported_at`, with `UNIQUE(provider, external_id)`. Maps an external item to the
-bundle it produced so re-running an import skips already-imported items. Generic
-columns keep it reusable for future importers.
 
 ## Registry database (ADR-0008, separate from the content DB)
 

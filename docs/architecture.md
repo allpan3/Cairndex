@@ -54,8 +54,8 @@ api/         FastAPI routers and request/response schemas
 core/        config, app factory, time, errors, path-safety helpers
 persistence/ SQLAlchemy models, engine/session setup, Alembic migrations
 domain/      enum/domain definitions
-services/    HTTP-agnostic business logic for bundles, roots, tags, collections,
-             filters, jobs, subtitles, Eagle import, file view, etc.
+services/    HTTP-agnostic business logic for bundles, tags, collections,
+             filters, jobs, subtitles, file view, etc.
 scanning/    storage-root scanning, fast-add, file classification, fingerprints
 media/       ffprobe/ffmpeg adapters, thumbnailing, playback/subtitle helpers
 jobs/        DB-backed job registry + worker loop
@@ -63,7 +63,7 @@ jobs/        DB-backed job registry + worker loop
 
 API routes currently cover health, storage roots, File View entries, bundles /
 files, tags, tag groups, collections, Smart Collections, filter preview,
-playback/subtitles, Eagle import, and jobs.
+playback/subtitles, and jobs.
 
 ## 3. Frontend (`apps/web`)
 
@@ -75,7 +75,7 @@ src/
               TanStack Query hooks, including an infinite browse query
   app/        shell pieces: Sidebar, Toolbar, Browser, Inspector, BundleCard,
               FilterBuilder, CollectionPicker, SmartCollectionEditor, Player,
-              EagleImport, FileView, FileInspector, layouts
+              LibraryManager, FileView, FileInspector, layouts
   state/      usePersistentState (localStorage for layout/zoom/pane widths)
   lib/        formatting helpers
 ```
@@ -128,8 +128,9 @@ ADR-0002/0003/0004/0006. The core object graph is:
   (table still named `smart_folders`).
 - `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to
   a video file.
-- `ImportRecord` — provider/external ID mapping for idempotent imports.
-- `Job` — DB-backed queued/running/terminal background job.
+
+Background jobs are no longer a content-DB model: the queue lives in the registry
+DB as `JobQueueEntry` (`job_queue`), owned by the server (ADR-0008).
 
 Current schema note: source/link metadata is implemented at the `AssetFile`
 level as `source` (URL, `magnet:`, `ed2k:`, etc.). There is no first-class
@@ -199,20 +200,16 @@ which commits progress and observes cooperative cancellation.
 This is intentionally single-process/single-worker for the SQLite MVP. Scaling
 is by process supervision and tighter scheduling, not Redis/Celery.
 
-## 10. Eagle migration
+## 10. Eagle migration (removed)
 
-The Eagle importer is one-way, read-only, and idempotent:
-
-- `eagle.reader` parses an Eagle `.library` directory without writing to it.
-- `eagle.planner` produces a dry-run report with counts and advisory merge
-  suggestions.
-- `services.eagle.import_library()` registers the Eagle `images/` directory as a
-  read-only storage root, creates/reuses collections/tags/tag groups (Eagle
-  folders become collections), maps each new live Eagle item to one bundle +
-  linked file, and records `ImportRecord` rows so reruns skip existing items.
-
-Applying merge suggestions in-app is a follow-up; imports currently preserve
-safety by not auto-merging destructively.
+Importing from an external Eagle library is **out of scope** and has been
+removed. The former `eagle` reader/planner package, the `services.eagle`
+importer, and the `import_records` table no longer exist. With the per-library
+model (ADR-0008) a Cairndex library is its own portable directory, so content is
+populated by scanning the library root rather than by migrating from another app.
+ADR-0004 is retained as superseded history. Cairndex's UI remains
+Eagle-*inspired* (see `docs/reference/eagle/`); only the import/migration feature
+is gone.
 
 ## 11. Deployment topology
 
@@ -251,8 +248,8 @@ describes the shape and what has landed so far.
 How it works now:
 
 - **Content lives per library.** Each `library.db` holds the full content schema
-  (bundles, files, collections, tags, tag groups, smart collections, subtitles,
-  import records). There is no `storage_roots` table; `asset_files.relative_path`
+  (bundles, files, collections, tags, tag groups, smart collections,
+  subtitles). There is no `storage_roots` table; `asset_files.relative_path`
   is relative to the library root and unique within the library. A
   `LibrarySession` dependency (`api/deps.py`) resolves `{library_id}` in the
   registry, refuses an unavailable library with 404, and yields a session from a
@@ -272,9 +269,9 @@ How it works now:
   `GET /api/v1/libraries`) and routes every content request under it; the sidebar
   has a library selector and a Scan action.
 
-Eagle import is temporarily removed (its reader/planner are retained) pending a
-per-library re-implementation. Remaining ADR-0008 work: `.cairndex/cache`
-relocation (phase 8) and optimistic-concurrency versions (phase 9).
+Eagle import has been removed entirely (see §10). Remaining ADR-0008 work:
+`.cairndex/cache` relocation (phase 8) and optimistic-concurrency versions
+(phase 9).
 
 ## 12. Browsing surfaces: Collection View and File View
 
@@ -342,8 +339,7 @@ These are the most important architecture follow-ups after the current branch:
   search;
 - browse-summary query optimization and query-pattern indexes for larger
   libraries;
-- first-class merge/split/move-file workflows for multi-file bundles and Eagle
-  merge suggestions;
+- first-class merge/split/move-file workflows for multi-file bundles;
 - cross-filesystem moved-file repair and candidate suggestions for ambiguous
   cases (same-volume repair is implemented — ADR-0006);
 - scheduled scans and stronger scan/probe/thumbnail job scheduling;
