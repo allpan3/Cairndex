@@ -22,6 +22,7 @@ from cairndex.core.paths import (
 )
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import (
     AssetBundle,
@@ -62,10 +63,21 @@ def list_bundles(
     return keyset_page(session, select(AssetBundle), AssetBundle.id, limit, cursor)
 
 
-def update_bundle(session: Session, bundle_id: str, changes: dict[str, Any]) -> AssetBundle:
+def update_bundle(
+    session: Session,
+    bundle_id: str,
+    changes: dict[str, Any],
+    *,
+    expected_version: int | None = None,
+) -> AssetBundle:
     """Apply shared-metadata changes. ``changes`` contains only the fields the
-    client explicitly provided (so passing ``None`` clears a field)."""
+    client explicitly provided (so passing ``None`` clears a field).
+
+    When ``expected_version`` is given it must match the stored version or a
+    ``VersionConflictError`` (409) is raised before anything is mutated (ADR-0008
+    phase 9). The version is bumped on success."""
     bundle = get_bundle(session, bundle_id)
+    guard_and_bump_version(bundle, expected_version)
 
     for field in _BUNDLE_SCALAR_FIELDS:
         if field in changes:
@@ -154,15 +166,21 @@ _FILE_SCALAR_FIELDS = ("display_title", "note", "source")
 
 
 def update_file(
-    session: Session, bundle_id: str, file_id: str, changes: dict[str, Any]
+    session: Session,
+    bundle_id: str,
+    file_id: str,
+    changes: dict[str, Any],
+    *,
+    expected_version: int | None = None,
 ) -> AssetFile:
     """Update file-level metadata (display title/note/link/role/order).
 
     Only the on-bundle membership and metadata change — the physical file is
-    never touched."""
+    never touched. ``expected_version`` enables optimistic concurrency (phase 9)."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None or asset_file.bundle_id != bundle_id:
         raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
+    guard_and_bump_version(asset_file, expected_version)
     for field in _FILE_SCALAR_FIELDS:
         if field in changes:
             setattr(asset_file, field, changes[field])

@@ -35,6 +35,8 @@ class BundleRead(BaseModel):
     created_at: datetime
     imported_at: datetime
     updated_at: datetime
+    # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
+    version: int
 
 
 # --- Files -------------------------------------------------------------------
@@ -93,6 +95,8 @@ class FileRead(BaseModel):
     tech_metadata: dict[str, Any] | None
     created_at: datetime
     updated_at: datetime
+    # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
+    version: int
 
 
 # --- Associations ------------------------------------------------------------

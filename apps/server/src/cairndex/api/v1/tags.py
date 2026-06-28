@@ -1,6 +1,6 @@
 from fastapi import APIRouter, status
 
-from cairndex.api.deps import LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import TagCreate, TagRead, TagUpdate
@@ -35,7 +35,9 @@ def get_tag(tag_id: str, db: LibrarySession) -> TagRead:
 
 
 @router.patch("/{tag_id}", response_model=TagRead)
-def update_tag(tag_id: str, payload: TagUpdate, db: LibrarySession) -> TagRead:
+def update_tag(
+    tag_id: str, payload: TagUpdate, db: LibrarySession, if_match: IfMatchVersion = None
+) -> TagRead:
     fields = payload.model_fields_set
     tag = service.update_tag(
         db,
@@ -45,6 +47,7 @@ def update_tag(tag_id: str, payload: TagUpdate, db: LibrarySession) -> TagRead:
         set_parent="parent_id" in fields,
         color=payload.color,
         set_color="color" in fields,
+        expected_version=if_match,
     )
     return TagRead.model_validate(tag)
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import MetaData, String
+from sqlalchemy import Integer, MetaData, String
 from sqlalchemy.orm import DeclarativeBase, mapped_column
 
 from cairndex.core.ids import new_id
@@ -43,3 +43,10 @@ UpdatedAt = Annotated[
     datetime,
     mapped_column(UtcDateTime, default=utcnow, onupdate=utcnow),
 ]
+
+# Optimistic-concurrency counter (ADR-0008 phase 9). Starts at 1 and is bumped
+# by the service layer on each client edit; write APIs may require a matching
+# expected version (``If-Match``) and reject stale writes with 409. Bumped
+# explicitly (not via version_id_col) so internal scan/repair updates don't risk
+# StaleDataError in the single-writer model.
+Version = Annotated[int, mapped_column(Integer, default=1, server_default="1")]

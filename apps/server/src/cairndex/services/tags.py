@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
+from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.models import Tag
 from cairndex.services.hierarchy import descendant_ids, is_descendant
 from cairndex.services.pagination import keyset_page
@@ -59,10 +60,13 @@ def update_tag(
     set_parent: bool = False,
     color: str | None = None,
     set_color: bool = False,
+    expected_version: int | None = None,
 ) -> Tag:
     """Update a tag. ``set_parent``/``set_color`` distinguish "set to null"
-    from "leave unchanged" for the nullable fields."""
+    from "leave unchanged" for the nullable fields. ``expected_version`` enables
+    optimistic concurrency (phase 9)."""
     tag = get_tag(session, tag_id)
+    guard_and_bump_version(tag, expected_version)
 
     if name is not None:
         cleaned = name.strip()

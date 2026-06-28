@@ -360,6 +360,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -371,7 +375,8 @@
           "primary_file_id",
           "created_at",
           "imported_at",
-          "updated_at"
+          "updated_at",
+          "version"
         ],
         "title": "BundleRead",
         "type": "object"
@@ -655,6 +660,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -663,7 +672,8 @@
           "name",
           "sort_order",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "version"
         ],
         "title": "CollectionRead",
         "type": "object"
@@ -931,6 +941,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -947,7 +961,8 @@
           "availability",
           "tech_metadata",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "version"
         ],
         "title": "FileRead",
         "type": "object"
@@ -2110,6 +2125,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -2120,7 +2139,8 @@
           "default_layout",
           "sort_order",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "version"
         ],
         "title": "SmartCollectionRead",
         "type": "object"
@@ -2438,6 +2458,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
@@ -2447,7 +2471,8 @@
           "color",
           "sort_order",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "version"
         ],
         "title": "TagRead",
         "type": "object"
@@ -3431,6 +3456,24 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "description": "Expected entity version for optimistic concurrency.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected entity version for optimistic concurrency.",
+              "title": "If-Match"
+            }
           }
         ],
         "requestBody": {
@@ -3840,6 +3883,24 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Expected entity version for optimistic concurrency.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected entity version for optimistic concurrency.",
+              "title": "If-Match"
             }
           }
         ],
@@ -4423,6 +4484,24 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Expected entity version for optimistic concurrency.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected entity version for optimistic concurrency.",
+              "title": "If-Match"
             }
           }
         ],
@@ -5110,6 +5189,24 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Expected entity version for optimistic concurrency.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected entity version for optimistic concurrency.",
+              "title": "If-Match"
             }
           }
         ],
@@ -5856,6 +5953,24 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Expected entity version for optimistic concurrency.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected entity version for optimistic concurrency.",
+              "title": "If-Match"
             }
           }
         ],

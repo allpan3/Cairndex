@@ -26,6 +26,16 @@ class ConflictError(DomainError):
     code = "conflict"
 
 
+class VersionConflictError(ConflictError):
+    """An optimistic-concurrency precondition failed (stale ``If-Match`` version).
+
+    The client's expected version no longer matches the stored row, so another
+    writer changed it first. Clients should reload and retry. Maps to 409.
+    """
+
+    code = "version_conflict"
+
+
 class ValidationError(DomainError):
     """Input that is well-formed but semantically invalid."""
 
