@@ -592,6 +592,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storage-roots/{root_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve File View File
+         * @description Serve the raw bytes of a file under a storage root, for File View preview.
+         *
+         *     Read-only and path-safe (same scoping as ``/entries``): ``path`` is
+         *     root-relative; absolute paths, traversal, NUL bytes, and symlink escapes are
+         *     rejected. Files here need not be linked into a bundle. ``FileResponse``
+         *     honors HTTP Range, so images and video stream incrementally.
+         */
+        get: operations["serve_file_view_file_api_v1_storage_roots__root_id__file_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage-roots/{root_id}/probe": {
         parameters: {
             query?: never;
@@ -844,6 +869,8 @@ export interface components {
             order: string;
             /** @default date_added */
             sort: components["schemas"]["BundleSort"];
+            /** Storage Root Id */
+            storage_root_id?: string | null;
             /** @default all */
             view: components["schemas"]["SystemView"];
         };
@@ -1792,6 +1819,7 @@ export interface operations {
                 order?: string;
                 offset?: number;
                 limit?: number;
+                storage_root_id?: string | null;
             };
             header?: never;
             path?: never;
@@ -1854,7 +1882,9 @@ export interface operations {
     };
     bundle_view_counts_api_v1_bundles_counts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                storage_root_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1868,6 +1898,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ViewCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -2427,7 +2466,9 @@ export interface operations {
     };
     collection_counts_api_v1_collections_counts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                storage_root_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2441,6 +2482,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3222,6 +3272,39 @@ export interface operations {
             };
         };
     };
+    serve_file_view_file_api_v1_storage_roots__root_id__file_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path: {
+                root_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     probe_root_api_v1_storage_roots__root_id__probe_post: {
         parameters: {
             query?: {
@@ -3643,7 +3726,9 @@ export interface operations {
     };
     tag_counts_api_v1_tags_counts_get: {
         parameters: {
-            query?: never;
+            query?: {
+                storage_root_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3657,6 +3742,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

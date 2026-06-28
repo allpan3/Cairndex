@@ -183,6 +183,17 @@
             "$ref": "#/components/schemas/BundleSort",
             "default": "date_added"
           },
+          "storage_root_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Root Id"
+          },
           "view": {
             "$ref": "#/components/schemas/SystemView",
             "default": "all"
@@ -2991,6 +3002,22 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
           }
         ],
         "responses": {
@@ -3064,6 +3091,24 @@
     "/api/v1/bundles/counts": {
       "get": {
         "operationId": "bundle_view_counts_api_v1_bundles_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3074,6 +3119,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Bundle View Counts",
@@ -3881,6 +3936,24 @@
     "/api/v1/collections/counts": {
       "get": {
         "operationId": "collection_counts_api_v1_collections_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3891,6 +3964,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Collection Counts",
@@ -4964,6 +5047,56 @@
         ]
       }
     },
+    "/api/v1/storage-roots/{root_id}/file": {
+      "get": {
+        "description": "Serve the raw bytes of a file under a storage root, for File View preview.\n\nRead-only and path-safe (same scoping as ``/entries``): ``path`` is\nroot-relative; absolute paths, traversal, NUL bytes, and symlink escapes are\nrejected. Files here need not be linked into a bundle. ``FileResponse``\nhonors HTTP Range, so images and video stream incrementally.",
+        "operationId": "serve_file_view_file_api_v1_storage_roots__root_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Serve File View File",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
     "/api/v1/storage-roots/{root_id}/probe": {
       "post": {
         "operationId": "probe_root_api_v1_storage_roots__root_id__probe_post",
@@ -5571,6 +5704,24 @@
     "/api/v1/tags/counts": {
       "get": {
         "operationId": "tag_counts_api_v1_tags_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5581,6 +5732,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Tag Counts",

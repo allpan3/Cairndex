@@ -81,6 +81,8 @@ export interface BrowseParams {
   offset: number
   limit: number
   filter?: FilterExpression | null
+  // Scope to a single library (storage root). Null = unscoped (all roots).
+  storageRootId?: string | null
 }
 
 export function browseBundles(
@@ -99,6 +101,7 @@ export function browseBundles(
       offset: params.offset,
       limit: params.limit,
       filter: params.filter,
+      storage_root_id: params.storageRootId ?? null,
     })
   }
   const q = new URLSearchParams({
@@ -112,6 +115,7 @@ export function browseBundles(
     q.set('collection_id', params.collectionId)
     q.set('include_descendants', String(params.includeDescendants ?? false))
   }
+  if (params.storageRootId) q.set('storage_root_id', params.storageRootId)
   return getJson<BundleBrowsePage>(`/api/v1/bundles/browse?${q.toString()}`, signal)
 }
 
@@ -161,14 +165,23 @@ export const previewEagleImport = (libraryPath: string) =>
 export const runEagleImport = (libraryPath: string) =>
   send<ImportResultRead>('/api/v1/eagle/import', 'POST', { library_path: libraryPath })
 
-export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
-  return getJson<ViewCounts>('/api/v1/bundles/counts', signal)
+/** Append ?storage_root_id=… when a library scope is active. */
+function rootQuery(rootId: string | null | undefined): string {
+  return rootId ? `?storage_root_id=${encodeURIComponent(rootId)}` : ''
 }
 
-export function fetchCollectionCounts(signal?: AbortSignal): Promise<Record<string, number>> {
-  return getJson<{ counts: Record<string, number> }>('/api/v1/collections/counts', signal).then(
-    (r) => r.counts,
-  )
+export function fetchViewCounts(rootId: string | null, signal?: AbortSignal): Promise<ViewCounts> {
+  return getJson<ViewCounts>(`/api/v1/bundles/counts${rootQuery(rootId)}`, signal)
+}
+
+export function fetchCollectionCounts(
+  rootId: string | null,
+  signal?: AbortSignal,
+): Promise<Record<string, number>> {
+  return getJson<{ counts: Record<string, number> }>(
+    `/api/v1/collections/counts${rootQuery(rootId)}`,
+    signal,
+  ).then((r) => r.counts)
 }
 
 interface Page<T> {
@@ -236,6 +249,11 @@ export function fileContentUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/content`
 }
 
+/** Raw bytes of a File View entry (storage root + relative path, read-only). */
+export function fileViewContentUrl(rootId: string, path: string): string {
+  return `/api/v1/storage-roots/${rootId}/file?path=${encodeURIComponent(path)}`
+}
+
 export function fileStreamUrl(fileId: string): string {
   return `/api/v1/files/${fileId}/stream`
 }
@@ -257,10 +275,14 @@ export const fetchTags = (signal?: AbortSignal) => fetchAllPaged<TagRead>('/api/
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>('/api/v1/tag-groups', signal)
 
-export function fetchTagCounts(signal?: AbortSignal): Promise<Record<string, number>> {
-  return getJson<{ counts: Record<string, number> }>('/api/v1/tags/counts', signal).then(
-    (r) => r.counts,
-  )
+export function fetchTagCounts(
+  rootId: string | null,
+  signal?: AbortSignal,
+): Promise<Record<string, number>> {
+  return getJson<{ counts: Record<string, number> }>(
+    `/api/v1/tags/counts${rootQuery(rootId)}`,
+    signal,
+  ).then((r) => r.counts)
 }
 
 export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promise<string[]> {

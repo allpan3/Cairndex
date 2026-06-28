@@ -121,6 +121,37 @@ def list_entries(session: Session, root_id: str, *, path: str | None = None) -> 
     return FileViewListing(root_id=root_id, path=rel_norm, entries=[*dirs, *files])
 
 
+def resolve_entry_path(session: Session, root_id: str, path: str) -> Path:
+    """Resolve a root-relative file path to a safe absolute path for serving.
+
+    Mirrors ``list_entries`` safety: rejects absolute paths, traversal, and
+    symlink escapes, and confirms the target is an existing regular file (not a
+    directory). Used by the read-only content endpoint so the File View can
+    preview/play a file that is not linked into any bundle. Raises
+    ``ValidationError`` for unsafe/non-file paths and ``NotFoundError`` when the
+    root is unavailable or the file does not exist.
+    """
+    root = get_storage_root(session, root_id)
+    root_path = Path(root.canonical_path)
+    if not root_path.is_dir():
+        raise NotFoundError(f"storage root {root_id!r} is not currently available")
+
+    rel = (path or "").strip()
+    if not rel:
+        raise ValidationError("a file path is required")
+    try:
+        target = resolve_within_root(root_path, rel)
+    except PathSafetyError as exc:
+        raise ValidationError(str(exc)) from exc
+
+    rel_norm = normalize_relative_path(rel)
+    if not target.exists():
+        raise NotFoundError(f"path {rel_norm!r} does not exist in storage root {root_id!r}")
+    if not target.is_file():
+        raise ValidationError(f"path {rel_norm!r} is not a file")
+    return target
+
+
 def _build_entry(
     dirent: os.DirEntry[str],
     parent_rel: str,

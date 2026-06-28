@@ -26,7 +26,6 @@ import {
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
-  type FileLocation,
   type Selection,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
@@ -90,28 +89,43 @@ export default function App() {
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [importing, setImporting] = useState(false)
 
-  // File View state is kept separate from Collection/bundle selection so the
-  // two surfaces never collide.
+  // The active *library* (storage root) is a shared context across both
+  // surfaces: the Collection view scopes its bundles to it, and the File view
+  // browses it physically. The Collections/Files toggle only changes the lens.
   const [mode, setMode] = useState<AppMode>('collection')
-  const [fileLoc, setFileLoc] = useState<FileLocation>({ rootId: null, path: '' })
+  const [chosenRootId, setChosenRootId] = usePersistentState<string | null>(
+    'cairndex.rootId',
+    null,
+  )
+  const [filePath, setFilePath] = useState('') // File View directory within the root
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
   const [libraries, setLibraries] = useState(false)
 
-  const counts = useViewCounts()
   const collections = useCollections()
-  const collectionCounts = useCollectionCounts()
   const smartCollections = useSmartCollections()
   const storageRoots = useStorageRoots()
 
-  // Keep the File View pointed at a real library without storing a stale id:
-  // fall back to the first available root when none is chosen or the chosen one
-  // was removed. Derived (not an effect) so it stays consistent during render.
-  const fileRootId = useMemo(() => {
+  // Resolve the chosen library to a real one without storing a stale id: fall
+  // back to the first available root when none is chosen or it was removed.
+  // Derived (not an effect) so it stays consistent during render.
+  const rootId = useMemo(() => {
     const roots = storageRoots.data ?? []
-    if (fileLoc.rootId && roots.some((r) => r.id === fileLoc.rootId)) return fileLoc.rootId
+    if (chosenRootId && roots.some((r) => r.id === chosenRootId)) return chosenRootId
     return roots[0]?.id ?? null
-  }, [storageRoots.data, fileLoc.rootId])
-  const filePath = fileRootId === fileLoc.rootId ? fileLoc.path : ''
+  }, [storageRoots.data, chosenRootId])
+
+  // Counts and browsing are scoped to the active library.
+  const counts = useViewCounts(rootId)
+  const collectionCounts = useCollectionCounts(rootId)
+
+  const changeRoot = useCallback(
+    (next: string) => {
+      setChosenRootId(next)
+      setFilePath('')
+      setFileEntry(null)
+    },
+    [setChosenRootId],
+  )
 
   // A selected Smart Collection drives browsing through its saved filter AST,
   // which compiles via the exact path POST /bundles/browse uses for ad-hoc
@@ -127,6 +141,7 @@ export default function App() {
     order: prefs.order,
     limit: 100,
     filter: activeSmartCollection?.filter ?? null,
+    storageRootId: rootId,
   })
 
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -221,6 +236,10 @@ export default function App() {
       <Sidebar
         mode={mode}
         onMode={setMode}
+        roots={storageRoots.data ?? []}
+        rootId={rootId}
+        onChangeRoot={changeRoot}
+        onManageLibraries={() => setLibraries(true)}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
@@ -241,14 +260,10 @@ export default function App() {
         {mode === 'file' ? (
           <FileView
             roots={storageRoots.data ?? []}
-            location={{ rootId: fileRootId, path: filePath }}
+            location={{ rootId, path: filePath }}
             selectedPath={fileEntry?.relative_path ?? null}
-            onChangeRoot={(rootId) => {
-              setFileLoc({ rootId, path: '' })
-              setFileEntry(null)
-            }}
             onNavigate={(path) => {
-              setFileLoc({ rootId: fileRootId, path })
+              setFilePath(path)
               setFileEntry(null)
             }}
             onSelectEntry={setFileEntry}

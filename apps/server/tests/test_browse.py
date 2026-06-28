@@ -7,7 +7,13 @@ from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
-from cairndex.services.browse import BundleSort, SystemView, browse_bundles, view_counts
+from cairndex.services.browse import (
+    BundleSort,
+    SystemView,
+    browse_bundles,
+    collection_counts,
+    view_counts,
+)
 
 
 def _root(session: Session) -> str:
@@ -81,6 +87,48 @@ def test_sort_and_offset_pagination(session: Session) -> None:
     assert asc.total == 5
     nxt = browse_bundles(session, sort=BundleSort.TITLE, descending=False, limit=2, offset=2)
     assert [s.title for s in nxt.items] == ["title-2", "title-3"]
+
+
+def test_storage_root_scoping(session: Session) -> None:
+    """Browsing and counts can be scoped to one library (storage root) without
+    affecting the logical collection a bundle belongs to."""
+    r1 = root_service.create_storage_root(session, name="r1", canonical_path="/mnt/r1")
+    r2 = root_service.create_storage_root(session, name="r2", canonical_path="/mnt/r2")
+    session.flush()
+    collection = collection_service.create_collection(session, name="C")
+
+    b1 = bundle_service.create_bundle(session, title="in-r1")
+    bundle_service.add_file(
+        session,
+        b1.id,
+        storage_root_id=r1.id,
+        relative_path="a.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    bundle_service.set_bundle_collections(session, b1.id, [collection.id])
+
+    b2 = bundle_service.create_bundle(session, title="in-r2")
+    bundle_service.add_file(
+        session,
+        b2.id,
+        storage_root_id=r2.id,
+        relative_path="b.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    bundle_service.set_bundle_collections(session, b2.id, [collection.id])
+    session.commit()
+
+    assert browse_bundles(session).total == 2
+    scoped = browse_bundles(session, storage_root_id=r1.id)
+    assert scoped.total == 1 and scoped.items[0].id == b1.id
+
+    assert view_counts(session)["all"] == 2
+    assert view_counts(session, storage_root_id=r1.id)["all"] == 1
+
+    assert collection_counts(session)[collection.id] == 2
+    assert collection_counts(session, storage_root_id=r2.id)[collection.id] == 1
 
 
 def test_view_counts(session: Session) -> None:

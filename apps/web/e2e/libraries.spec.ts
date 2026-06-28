@@ -6,13 +6,13 @@ import { expect, test, type Page } from '@playwright/test'
 async function mockApi(page: Page) {
   const roots: Array<Record<string, unknown>> = []
 
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/bundles/counts**', (r) =>
     r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
   )
   await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/smart-collections', (r) => r.fulfill({ json: [] }))
   await page.route('**/api/v1/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
