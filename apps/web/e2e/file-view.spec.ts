@@ -23,13 +23,13 @@ function entry(name: string, over: Record<string, unknown> = {}) {
 
 async function mockApi(page: Page) {
   // Collection-View endpoints the shell loads on mount.
-  await page.route('**/api/v1/bundles/counts', (r) =>
+  await page.route('**/api/v1/bundles/counts**', (r) =>
     r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
   )
   await page.route('**/api/v1/collections?*', (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
   )
-  await page.route('**/api/v1/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
+  await page.route('**/api/v1/collections/counts**', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/api/v1/smart-collections', (r) => r.fulfill({ json: [] }))
   await page.route('**/api/v1/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
@@ -97,8 +97,8 @@ test('browses a storage root read-only with badges and breadcrumbs', async ({ pa
   // Switch to the File View surface.
   await page.getByRole('tab', { name: 'Files' }).click()
 
-  // Root selector + entries with the right badges.
-  await expect(page.locator('.file-view__root')).toHaveValue('root1')
+  // The shared library selector (now in the sidebar) + entries with badges.
+  await expect(page.locator('.sidebar__library-select')).toHaveValue('root1')
   await expect(page.locator('.file-row__name', { hasText: 'Show' })).toBeVisible()
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('openable')
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('linked')

@@ -1,6 +1,8 @@
+import mimetypes
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
+from fastapi.responses import FileResponse
 
 from cairndex.api.deps import DbSession, Pagination
 from cairndex.api.schemas.common import Page
@@ -80,6 +82,24 @@ def list_file_view_entries(
         path=listing.path,
         entries=[FileViewEntryRead(**vars(e)) for e in listing.entries],
     )
+
+
+@router.get("/{root_id}/file")
+def serve_file_view_file(
+    root_id: str,
+    db: DbSession,
+    path: Annotated[str, Query()],
+) -> FileResponse:
+    """Serve the raw bytes of a file under a storage root, for File View preview.
+
+    Read-only and path-safe (same scoping as ``/entries``): ``path`` is
+    root-relative; absolute paths, traversal, NUL bytes, and symlink escapes are
+    rejected. Files here need not be linked into a bundle. ``FileResponse``
+    honors HTTP Range, so images and video stream incrementally.
+    """
+    target = file_view_service.resolve_entry_path(db, root_id, path)
+    media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    return FileResponse(str(target), media_type=media_type, filename=target.name)
 
 
 @router.patch("/{root_id}", response_model=StorageRootRead)

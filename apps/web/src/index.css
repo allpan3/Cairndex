@@ -124,7 +124,9 @@ button {
 }
 .nav-item__icon {
   width: 16px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   opacity: 0.8;
 }
 .nav-item__label {
@@ -1104,6 +1106,9 @@ code {
   object-fit: contain;
   background: #000;
 }
+.viewer__audio {
+  width: min(560px, 80vw);
+}
 .viewer__close {
   position: absolute;
   top: 14px;
@@ -1184,6 +1189,32 @@ code {
 }
 
 /* --- Mode switch (Collection View / File View) ---------------------------- */
+.sidebar__library {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.sidebar__library-select {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar__library-manage {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+.sidebar__library-manage:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
 .sidebar__modes {
   display: flex;
   gap: 4px;
@@ -1258,44 +1289,79 @@ code {
 .empty--error {
   color: #ff8a8a;
 }
+/* The File View list is a CSS grid: the header and every row use this one
+   column template, so columns line up exactly regardless of cell content.
+   All rules are scoped under `.file-table` because `.file-row`/`.file-row__name`
+   are also used (with a different layout) by the bundle inspector. */
 .file-table {
-  width: 100%;
-  border-collapse: collapse;
   font-size: 13px;
 }
-.file-table th {
-  text-align: left;
+.file-table__head,
+.file-table .file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 96px 160px;
+  align-items: center;
+  gap: 12px;
   padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.file-table__head {
   color: var(--text-muted);
   font-weight: 500;
-  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   background: var(--bg-2);
+  z-index: 1;
 }
 .file-table__num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.file-row {
+.file-table .file-row {
   cursor: pointer;
 }
-.file-row:hover {
+.file-table .file-row:hover {
   background: var(--bg-2);
 }
-.file-row--selected {
+.file-table .file-row--selected {
   background: var(--accent-soft);
 }
-.file-row td {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
+/* Each grid cell clips overflow so a long value can't shove the columns. */
+.file-table .file-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.file-row__name {
+.file-table .file-row__name {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   color: var(--text-strong);
 }
-.file-row__type {
+.file-row__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--text-muted);
+}
+/* Inline SVG icon sizing (sidebar + file list). */
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+}
+/* The filename is the only part allowed to shrink/ellipsize; badges stay whole. */
+.file-row__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-table .file-row__name .badge {
+  flex: 0 0 auto;
+}
+.file-row__type,
+.file-row__modified {
   color: var(--text-muted);
 }
 .badge {

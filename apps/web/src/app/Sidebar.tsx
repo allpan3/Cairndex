@@ -1,11 +1,48 @@
 import { useMemo, useState } from 'react'
 
-import type { CollectionRead, SmartCollectionRead, ViewCounts } from '../api/client'
+import type {
+  CollectionRead,
+  SmartCollectionRead,
+  StorageRootRead,
+  ViewCounts,
+} from '../api/client'
+import {
+  IconAlert,
+  IconCircleDashed,
+  IconClock,
+  IconFilter,
+  IconFolder,
+  IconGrid,
+  IconTag,
+} from './icons'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
+
+import type { SystemView } from '../api/client'
+import type { ReactNode } from 'react'
+
+/** Inline-SVG icon for each system view (replaces the emoji glyphs). */
+function viewIcon(view: SystemView): ReactNode {
+  switch (view) {
+    case 'all':
+      return <IconGrid />
+    case 'recent':
+      return <IconClock />
+    case 'uncategorized':
+      return <IconCircleDashed />
+    case 'untagged':
+      return <IconTag />
+    case 'missing':
+      return <IconAlert />
+  }
+}
 
 interface SidebarProps {
   mode: AppMode
   onMode: (mode: AppMode) => void
+  roots: StorageRootRead[]
+  rootId: string | null
+  onChangeRoot: (rootId: string) => void
+  onManageLibraries: () => void
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -37,9 +74,31 @@ function buildTree(collections: CollectionRead[]): TreeNode[] {
   return make(null)
 }
 
+/**
+ * Prune the tree to collections relevant to the active library: keep a node if
+ * it (or any descendant) has at least one bundle in the current library. The
+ * supplied counts are already library-scoped, so an empty-in-this-library
+ * collection drops out. While counts are still loading the full tree is shown
+ * (avoids a flash of "no collections"). The global collection list is left
+ * untouched for the collection picker — only the sidebar display is scoped.
+ */
+function pruneTree(nodes: TreeNode[], counts?: Record<string, number>): TreeNode[] {
+  if (!counts) return nodes
+  const keep = (n: TreeNode): TreeNode | null => {
+    const children = n.children.map(keep).filter((c): c is TreeNode => c !== null)
+    const hasOwn = (counts[n.collection.id] ?? 0) > 0
+    return hasOwn || children.length > 0 ? { collection: n.collection, children } : null
+  }
+  return nodes.map(keep).filter((c): c is TreeNode => c !== null)
+}
+
 export function Sidebar({
   mode,
   onMode,
+  roots,
+  rootId,
+  onChangeRoot,
+  onManageLibraries,
   selection,
   onSelect,
   counts,
@@ -50,7 +109,12 @@ export function Sidebar({
   onEditSmartCollection,
   onImport,
 }: SidebarProps) {
-  const tree = useMemo(() => buildTree(collections), [collections])
+  // Scope the displayed collections to the active library (counts are already
+  // library-scoped); the global list stays available to the collection picker.
+  const tree = useMemo(
+    () => pruneTree(buildTree(collections), collectionCounts),
+    [collections, collectionCounts],
+  )
 
   return (
     <aside className="sidebar">
@@ -63,6 +127,31 @@ export function Sidebar({
           title="Import from Eagle"
         >
           ⇪
+        </button>
+      </div>
+
+      <div className="sidebar__library">
+        <select
+          className="edit sidebar__library-select"
+          value={rootId ?? ''}
+          onChange={(e) => onChangeRoot(e.target.value)}
+          aria-label="Library"
+          disabled={roots.length === 0}
+        >
+          {roots.length === 0 && <option value="">No libraries</option>}
+          {roots.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        <button
+          className="sidebar__library-manage"
+          onClick={onManageLibraries}
+          aria-label="Manage libraries"
+          title="Manage libraries"
+        >
+          +
         </button>
       </div>
 
@@ -94,7 +183,7 @@ export function Sidebar({
               className={`nav-item${active ? ' nav-item--active' : ''}`}
               onClick={() => onSelect({ view: v.view, collectionId: null })}
             >
-              <span className="nav-item__icon">{v.icon}</span>
+              <span className="nav-item__icon">{viewIcon(v.view)}</span>
               <span className="nav-item__label">{v.label}</span>
               {counts && <span className="nav-item__count">{counts[v.view]}</span>}
             </button>
@@ -129,7 +218,9 @@ export function Sidebar({
                   onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
               }}
             >
-              <span className="nav-item__icon">⚙</span>
+              <span className="nav-item__icon">
+                <IconFilter />
+              </span>
               <span className="nav-item__label">{sc.name}</span>
               <button
                 className="nav-item__edit"
@@ -200,7 +291,9 @@ function CollectionBranch({
         >
           {hasChildren ? (expanded ? '▾' : '▸') : ''}
         </button>
-        <span className="nav-item__icon">🗀</span>
+        <span className="nav-item__icon">
+          <IconFolder />
+        </span>
         <span className="nav-item__label">{node.collection.name}</span>
         <span className="nav-item__count">{collectionCounts?.[node.collection.id] ?? ''}</span>
       </div>

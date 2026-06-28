@@ -1,4 +1,6 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import DbSession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
@@ -23,8 +25,10 @@ def list_collections(db: DbSession, page: Pagination) -> Page[CollectionRead]:
 
 
 @router.get("/counts", response_model=CountsResponse)
-def collection_counts(db: DbSession) -> CountsResponse:
-    return CountsResponse(counts=browse_service.collection_counts(db))
+def collection_counts(
+    db: DbSession, storage_root_id: Annotated[str | None, Query()] = None
+) -> CountsResponse:
+    return CountsResponse(counts=browse_service.collection_counts(db, storage_root_id))
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)

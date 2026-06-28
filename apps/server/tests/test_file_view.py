@@ -117,3 +117,31 @@ def test_entries_endpoint(client: TestClient, session: Session, tmp_path: Path) 
     # Traversal is a 4xx, not a listing.
     bad = client.get(f"/api/v1/storage-roots/{root_id}/entries", params={"path": "../x"})
     assert bad.status_code == 422 or bad.status_code == 400
+
+
+def test_resolve_entry_path(session: Session, tmp_path: Path) -> None:
+    root_id, media = _make_root(session, tmp_path)
+    resolved = service.resolve_entry_path(session, root_id, "Show/S01/ep1.mkv")
+    assert resolved == (media / "Show" / "S01" / "ep1.mkv").resolve()
+
+    with pytest.raises(ValidationError):
+        service.resolve_entry_path(session, root_id, "Show")  # a directory, not a file
+    with pytest.raises(ValidationError):
+        service.resolve_entry_path(session, root_id, "../secrets")  # traversal
+    with pytest.raises(NotFoundError):
+        service.resolve_entry_path(session, root_id, "Show/missing.mkv")
+
+
+def test_file_content_endpoint(client: TestClient, session: Session, tmp_path: Path) -> None:
+    root_id, _ = _make_root(session, tmp_path)
+    r = client.get(f"/api/v1/storage-roots/{root_id}/file", params={"path": "top.mp4"})
+    assert r.status_code == 200
+    assert r.content == b"toplevel"
+
+    # A directory is not servable, and traversal is rejected — both 4xx.
+    assert client.get(
+        f"/api/v1/storage-roots/{root_id}/file", params={"path": "Show"}
+    ).status_code in (400, 422)
+    assert client.get(
+        f"/api/v1/storage-roots/{root_id}/file", params={"path": "../etc"}
+    ).status_code in (400, 422)

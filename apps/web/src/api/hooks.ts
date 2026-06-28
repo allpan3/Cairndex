@@ -58,8 +58,11 @@ export function useBrowse(query: BrowseQuery) {
   })
 }
 
-export function useViewCounts() {
-  return useQuery({ queryKey: ['view-counts'], queryFn: ({ signal }) => fetchViewCounts(signal) })
+export function useViewCounts(rootId: string | null = null) {
+  return useQuery({
+    queryKey: ['view-counts', rootId],
+    queryFn: ({ signal }) => fetchViewCounts(rootId, signal),
+  })
 }
 
 /** Live match-count for a draft filter, debounced by query key (the AST). */
@@ -167,10 +170,10 @@ export function useCollections() {
   })
 }
 
-export function useCollectionCounts() {
+export function useCollectionCounts(rootId: string | null = null) {
   return useQuery({
-    queryKey: ['collection-counts'],
-    queryFn: ({ signal }) => fetchCollectionCounts(signal),
+    queryKey: ['collection-counts', rootId],
+    queryFn: ({ signal }) => fetchCollectionCounts(rootId, signal),
   })
 }
 
@@ -182,8 +185,11 @@ export function useTagGroups() {
   return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
 }
 
-export function useTagCounts() {
-  return useQuery({ queryKey: ['tag-counts'], queryFn: ({ signal }) => fetchTagCounts(signal) })
+export function useTagCounts(rootId: string | null = null) {
+  return useQuery({
+    queryKey: ['tag-counts', rootId],
+    queryFn: ({ signal }) => fetchTagCounts(rootId, signal),
+  })
 }
 
 /** Map of tag-group id → its member tag ids, for the tag picker's group tabs. */

@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Shared library selector + File View file preview.** Collection View and
+  File View now share a single active-library (storage root) selector. Browse
+  results, sidebar system-view counts, and collection/tag counts are optionally
+  scoped to the active library (`storage_root_id` query param on
+  `/api/v1/bundles/browse`, `/counts`, and the filtered browse body), without
+  changing the root-independent nature of collections. File View can now open a
+  file in an in-app preview lightbox via a new read-only, path-safe content
+  endpoint `GET /api/v1/storage-roots/{root_id}/file?path=...` (`FileResponse`
+  with HTTP Range support; same scoping/safety as `/entries`, and files need not
+  be linked into a bundle). Sidebar and file icons switched to inline SVGs
+  (`app/icons.tsx`); the File View file table moved to a CSS-grid layout for
+  column alignment.
+
 - **Library management UI + path autocomplete.** Storage roots are surfaced in
   the UI as **Libraries**. A new manager (the "+ Library" button in File View,
   or the "Add a library" call-to-action when none exist) lists existing libraries

@@ -56,6 +56,7 @@ def browse_bundles(
     order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
+    storage_root_id: Annotated[str | None, Query()] = None,
 ) -> BundleBrowsePage:
     return _browse_page(
         db,
@@ -66,6 +67,7 @@ def browse_bundles(
         descending=order == "desc",
         offset=offset,
         limit=limit,
+        storage_root_id=storage_root_id,
     )
 
 
@@ -83,12 +85,15 @@ def browse_bundles_filtered(payload: BrowseRequest, db: DbSession) -> BundleBrow
         offset=payload.offset,
         limit=payload.limit,
         filter_expr=payload.filter,
+        storage_root_id=payload.storage_root_id,
     )
 
 
 @router.get("/counts", response_model=ViewCounts)
-def bundle_view_counts(db: DbSession) -> ViewCounts:
-    return ViewCounts(**browse_service.view_counts(db))
+def bundle_view_counts(
+    db: DbSession, storage_root_id: Annotated[str | None, Query()] = None
+) -> ViewCounts:
+    return ViewCounts(**browse_service.view_counts(db, storage_root_id))
 
 
 @router.post("/batch", response_model=BatchResult)
