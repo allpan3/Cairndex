@@ -1,10 +1,12 @@
 # Data model
 
-> Status: current through Phase 8. The core schema is implemented in
+> Status: current through the Collections/File View refactor. Logical "folders"
+> are now **collections**. The core schema is implemented in
 > `apps/server/src/cairndex/persistence/models.py` and evolved by Alembic
 > migrations. Decisions are recorded in ADR-0002 (core schema/identity),
-> ADR-0003 (subtitle tracks), and ADR-0004 (Eagle import). `AGENTS.md` remains
-> the conceptual product brief.
+> ADR-0003 (subtitle tracks), ADR-0004 (Eagle import), and ADR-0006 (scanner
+> identity and moved-file repair). `AGENTS.md` remains the conceptual product
+> brief; ADR-0007 records future File View native handoff / host integration.
 
 ## Conventions (ADR-0002)
 
@@ -17,18 +19,18 @@
 - **Enums**: stored as strings with CHECK-like validation through
   `Enum(..., native_enum=False)`, defined in `domain/enums.py`.
 - **Hierarchy**: adjacency list (`parent_id` self-FK) + recursive CTE for
-  descendants (tags and folders).
-- **FK enforcement**: `PRAGMA foreign_keys=ON` per SQLite connection; WAL mode
-  is enabled for the file database.
+  descendants (tags and collections).
+- **FK enforcement**: `PRAGMA foreign_keys=ON` per SQLite connection; WAL mode is
+  enabled for the file database.
 
 ## Tables
 
 ### `storage_roots`
 
 `id`, `name` (unique), `canonical_path` (absolute server path — never
-client-supplied), `read_only` (default true), `status`
-(`available`/`unavailable`), `scan_config` (JSON, nullable and intentionally
-extensible), `created_at`, `updated_at`, `last_scanned_at` (nullable).
+client-supplied), `read_only` (default true), `status` (`available` /
+`unavailable`), `scan_config` (JSON, nullable and intentionally extensible),
+`created_at`, `updated_at`, `last_scanned_at` (nullable).
 
 ### `asset_bundles`
 
@@ -39,9 +41,9 @@ nullable; `use_alter` breaks the FK cycle), `extra_metadata` (JSON),
 
 Current schema note: bundles do **not** have a first-class hyperlink/source
 column. Origin/source metadata is currently stored on `asset_files.source`
-because the implemented Eagle import maps each Eagle item to one linked file.
-If bundle-level source pages become important, add an explicit nullable column
-or link table through a migration rather than hiding it in `extra_metadata`.
+because the implemented Eagle import maps each Eagle item to one linked file. If
+bundle-level source pages become important, add an explicit nullable column or
+link table through a migration rather than hiding it in `extra_metadata`.
 
 ### `asset_files`
 
@@ -52,9 +54,17 @@ deletion removes file rows, never the physical file), `storage_root_id` (FK →
 a URL, `magnet:`, `ed2k:`, etc.), `role` (`FileRole`), `media_kind`
 (`MediaKind`), `mime_type`, `sequence`,
 `size_bytes`/`mtime`/`quick_fingerprint`/`full_hash`/`tech_metadata` (nullable,
-filled by scan/probe jobs where available), `availability`
+filled by scan/probe jobs where available),
+`filesystem_device`/`filesystem_inode`/`identity_available` (filesystem identity
+captured by the scanner for moved-file repair — ADR-0006), `availability`
 (`available`/`missing`), `created_at`, `updated_at`. **Unique**
 `(storage_root_id, relative_path)` — one physical file is linked at most once.
+
+Moved-file repair updates the existing `asset_files` row in place when confidence
+is high, preserving `id`, `bundle_id`, collection memberships, tags, rating,
+cover/primary references, and subtitle links. The normal scan path does not full
+hash large files; `full_hash` remains lazy and available for future duplicate
+verification or ambiguous repair workflows.
 
 ### `tags`
 
@@ -68,21 +78,27 @@ timestamps. **Unique** `(parent_id, name)`.
 ### `tag_group_memberships` (M:N tags ↔ groups)
 
 `group_id` + `tag_id` (composite PK, both CASCADE), `sort_order`. A group is
-**not** a hierarchy parent (ADR-0002 / `AGENTS.md` §4.6).
+**not** a hierarchy parent (ADR-0002 / `AGENTS.md`).
 
-### `folders`
+### `collections`
 
-`id`, `parent_id` (self-FK, `SET NULL`), `name`, `sort_order`, timestamps.
-**Unique** `(parent_id, name)`.
+Hierarchical virtual groupings of bundles (formerly "folders" — renamed in the
+Collections/File View refactor; the table was `folders`). `id`, `parent_id`
+(self-FK, `SET NULL`), `name`, `sort_order`, timestamps. **Unique**
+`(parent_id, name)`. Collections are purely logical and independent of the
+physical File View.
 
-### `asset_bundle_tags` / `asset_bundle_folders` (M:N)
+### `asset_bundle_tags` / `asset_bundle_collections` (M:N)
 
-Composite PK of the two FKs, both CASCADE. Folder membership is virtual and never
-moves files on disk.
+Composite PK of the two FKs, both CASCADE. Collection membership is virtual and
+never moves files on disk.
 
-### `smart_folders`
+### `smart_folders` (model `SmartCollection`)
 
-`id`, `name` (unique), `filter_version`, `filter_json` (versioned JSON AST — see
+Saved **Smart Collections** (formerly "Smart Folders"). The ORM model is
+`SmartCollection` and the API is `/api/v1/smart-collections`; the table keeps the
+legacy name `smart_folders` to avoid a second data migration. `id`, `name`
+(unique), `filter_version`, `filter_json` (versioned JSON AST — see
 `docs/filter-language.md`; never SQL), `default_sort`, `default_layout`,
 `sort_order`, timestamps.
 
@@ -93,11 +109,10 @@ moves files on disk.
 `processed`/`total` (progress), `result` (JSON), `error`, `cancel_requested`
 (cooperative cancel flag), timestamps + `started_at`/`finished_at`. Backs the
 in-process worker (ADR-0001). Asset-file fields `size_bytes`, `mtime`,
-`quick_fingerprint`, and `tech_metadata` are populated by scanner/probe jobs;
-`full_hash` stays lazy/unused until a deduplication or moved-file repair feature
-needs it.
+`quick_fingerprint`, filesystem identity, and `tech_metadata` are populated by
+scanner/probe jobs.
 
-### `subtitle_tracks` (Phase 6, ADR-0003)
+### `subtitle_tracks` (ADR-0003)
 
 `id`, `bundle_id` (FK, CASCADE), `video_file_id` (FK `asset_files`, CASCADE,
 nullable), `source_file_id` (FK `asset_files`, SET NULL, nullable),
@@ -110,12 +125,25 @@ constraints; uniqueness on `(video_file_id, embedded_index)` and
 basename (language/forced parsed from the suffix); unmatched ones stay unlinked
 for manual attachment.
 
-### `import_records` (Phase 7, ADR-0004)
+### `import_records` (ADR-0004)
 
 `id`, `provider` (e.g. `eagle`), `external_id`, `bundle_id` (FK, CASCADE),
-`imported_at`, with `UNIQUE(provider, external_id)`. Maps an external item to
-the bundle it produced so re-running an import skips already-imported items.
-Generic columns keep it reusable for future importers.
+`imported_at`, with `UNIQUE(provider, external_id)`. Maps an external item to the
+bundle it produced so re-running an import skips already-imported items. Generic
+columns keep it reusable for future importers.
+
+## Non-table model surfaces
+
+### File View entries
+
+Read-only File View entries are produced by `services/file_view.py` from the live
+filesystem under a configured storage root. They are response models rather than
+persistent rows. Each entry is derived from `storage_root_id + relative_path`,
+path-safety checks, filesystem metadata, media classification, and an optional
+linked `AssetFile` lookup.
+
+Future native file handoff and write mode are documented in ADR-0007 and
+intentionally have no schema yet.
 
 ## Deferred to later phases
 
@@ -126,14 +154,18 @@ Generic columns keep it reusable for future importers.
 - **Bundle-level links/sources** — current MVP stores source at the file level;
   add a bundle-level column or link table only if the product needs logical
   asset pages independent of physical-file origins.
-- **Moved-file repair state** — missing rows exist now, but candidate matching,
-  repair suggestions, and full-hash verification are future workflow work.
+- **Moved-file repair improvements** — same-volume high-confidence repair is
+  implemented (ADR-0006). Still future: cross-filesystem repair, candidate
+  suggestions for ambiguous cases, duplicate/copy resolution, and optional
+  full-hash verification.
+- **File View write/native integration** — future desktop/native integration is
+  planned in ADR-0007; no persistent model exists yet.
 
 ## Still open
 
 - Index plan beyond PK/unique constraints, especially for server-side text
-  search/SQLite FTS5, browse-summary aggregation, tag/folder membership queries,
-  and larger synthetic-library benchmarks.
-- Tag/folder delete semantics at the service layer (DB default is `SET NULL` on
-  the parent FK → children float to root; the service may later offer
+  search/SQLite FTS5, browse-summary aggregation, tag/collection membership
+  queries, and larger synthetic-library benchmarks.
+- Tag/collection delete semantics at the service layer (DB default is `SET NULL`
+  on the parent FK → children float to root; the service may later offer
   reparent/cascade choices).

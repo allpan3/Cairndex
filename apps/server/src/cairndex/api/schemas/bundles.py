@@ -67,8 +67,8 @@ class BatchUpdate(BaseModel):
     bundle_ids: list[str] = Field(min_length=1)
     add_tag_ids: list[str] = Field(default_factory=list)
     remove_tag_ids: list[str] = Field(default_factory=list)
-    add_folder_ids: list[str] = Field(default_factory=list)
-    remove_folder_ids: list[str] = Field(default_factory=list)
+    add_collection_ids: list[str] = Field(default_factory=list)
+    remove_collection_ids: list[str] = Field(default_factory=list)
 
 
 class BatchResult(BaseModel):
@@ -107,6 +107,6 @@ class BundleTags(BaseModel):
     tag_ids: list[str]
 
 
-class BundleFolders(BaseModel):
+class BundleCollections(BaseModel):
     bundle_id: str
-    folder_ids: list[str]
+    collection_ids: list[str]

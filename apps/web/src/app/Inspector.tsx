@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
-import { FolderPicker } from './FolderPicker'
+import { CollectionPicker } from './CollectionPicker'
 import { Player } from './Player'
 import { TagEditor } from './TagEditor'
 
@@ -125,7 +125,7 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
       />
 
       <TagEditor bundleId={bundleId} />
-      <FolderPicker bundleId={bundleId} />
+      <CollectionPicker bundleId={bundleId} />
 
       <FileList
         bundleId={bundleId}

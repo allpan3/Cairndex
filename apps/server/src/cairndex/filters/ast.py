@@ -1,6 +1,6 @@
 """The versioned, JSON-serializable filter AST (docs/filter-language.md).
 
-One canonical model backs both the simple toolbar filters and Smart Folders.
+One canonical model backs both the simple toolbar filters and Smart Collections.
 It is validated by Pydantic on the way in and compiled to parameterized
 SQLAlchemy by ``filters.compiler`` — raw values never reach SQL as text.
 
@@ -38,7 +38,7 @@ class PredicateNode(_Node):
     field: str
     operator: str
     value: Any = None
-    # Tag/folder predicates may expand a parent to its descendants.
+    # Tag/collection predicates may expand a parent to its descendants.
     include_descendants: bool = False
 
 

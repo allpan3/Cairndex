@@ -1,6 +1,6 @@
 """Filter preview: compile an AST and return how many bundles it matches.
 
-Live count for the toolbar/Smart Folder editor. Invalid expressions raise
+Live count for the toolbar/Smart Collection editor. Invalid expressions raise
 ``ValidationError`` (HTTP 422) — they never reach SQL.
 """
 

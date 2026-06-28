@@ -9,6 +9,15 @@ class StorageRootCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     canonical_path: str = Field(min_length=1)
     read_only: bool = True
+    # Owner setup convenience: create the directory if it does not exist yet.
+    create_if_missing: bool = False
+
+
+class PathSuggestions(BaseModel):
+    """Directory autocompletions for the add-library form."""
+
+    # The absolute paths suggested for the typed prefix.
+    suggestions: list[str]
 
 
 class StorageRootUpdate(BaseModel):

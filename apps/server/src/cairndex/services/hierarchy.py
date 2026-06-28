@@ -1,16 +1,16 @@
 """Adjacency-list hierarchy helpers (ADR-0002).
 
-Tags and folders both use a ``parent_id`` self-reference. Descendant
-expansion (for the "include descendants" toggle on tag/folder selection and
+Tags and collections both use a ``parent_id`` self-reference. Descendant
+expansion (for the "include descendants" toggle on tag/collection selection and
 filters) is done with a SQLite recursive CTE.
 """
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.persistence.models import Folder, Tag
+from cairndex.persistence.models import Collection, Tag
 
-type HierarchyModel = type[Tag] | type[Folder]
+type HierarchyModel = type[Tag] | type[Collection]
 
 
 def descendant_ids(

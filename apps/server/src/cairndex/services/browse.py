@@ -2,7 +2,7 @@
 
 Powers the desktop library browser. Returns card-ready ``BundleSummary`` rows
 (cover/primary-derived dimensions, duration, size, file count, missing state)
-with server-side filtering by system view or folder, sorting with a stable
+with server-side filtering by system view or collection, sorting with a stable
 tie-breaker, and offset pagination + a total for virtualization. Counts feed
 the sidebar.
 
@@ -25,18 +25,18 @@ from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
-    Folder,
+    Collection,
     Tag,
-    asset_bundle_folders,
+    asset_bundle_collections,
     asset_bundle_tags,
 )
-from cairndex.services.folders import folder_descendant_ids
+from cairndex.services.collections import collection_descendant_ids
 
 
 class SystemView(StrEnum):
     ALL = "all"
     RECENT = "recent"  # all, default-sorted by date added
-    UNCATEGORIZED = "uncategorized"  # in no folder
+    UNCATEGORIZED = "uncategorized"  # in no collection
     UNTAGGED = "untagged"  # has no tags
     MISSING = "missing"  # has at least one missing file
 
@@ -91,29 +91,38 @@ def _size_sq() -> Any:
     )
 
 
+def _bundle_in_root(storage_root_id: str) -> Any:
+    """A correlated EXISTS: the bundle has at least one file in this storage
+    root. Used to scope browsing/counts to a single library without changing the
+    logical, root-independent nature of collections themselves."""
+    return exists().where(
+        (AssetFile.bundle_id == AssetBundle.id) & (AssetFile.storage_root_id == storage_root_id)
+    )
+
+
 def _apply_view(
     stmt: Select[Any],
     session: Session,
     view: SystemView,
-    folder_id: str | None,
+    collection_id: str | None,
     include_descendants: bool,
 ) -> Select[Any]:
-    if folder_id is not None:
+    if collection_id is not None:
         ids = (
-            folder_descendant_ids(session, folder_id, include_self=True)
+            collection_descendant_ids(session, collection_id, include_self=True)
             if include_descendants
-            else [folder_id]
+            else [collection_id]
         )
         stmt = stmt.where(
             exists().where(
-                (asset_bundle_folders.c.bundle_id == AssetBundle.id)
-                & asset_bundle_folders.c.folder_id.in_(ids)
+                (asset_bundle_collections.c.bundle_id == AssetBundle.id)
+                & asset_bundle_collections.c.collection_id.in_(ids)
             )
         )
         return stmt
 
     if view is SystemView.UNCATEGORIZED:
-        stmt = stmt.where(~exists().where(asset_bundle_folders.c.bundle_id == AssetBundle.id))
+        stmt = stmt.where(~exists().where(asset_bundle_collections.c.bundle_id == AssetBundle.id))
     elif view is SystemView.UNTAGGED:
         stmt = stmt.where(~exists().where(asset_bundle_tags.c.bundle_id == AssetBundle.id))
     elif view is SystemView.MISSING:
@@ -143,20 +152,23 @@ def browse_bundles(
     session: Session,
     *,
     view: SystemView = SystemView.ALL,
-    folder_id: str | None = None,
+    collection_id: str | None = None,
     include_descendants: bool = False,
     sort: BundleSort = BundleSort.DATE_ADDED,
     descending: bool = True,
     offset: int = 0,
     limit: int = 100,
     filter_expr: FilterExpression | None = None,
+    storage_root_id: str | None = None,
 ) -> BundlePage:
-    # A saved Smart Folder and a simple toolbar filter both arrive here as the
-    # same compiled predicate, so they share one ranking/pagination code path.
+    # A saved Smart Collection and a simple toolbar filter both arrive here as
+    # the same compiled predicate, so they share one ranking/pagination path.
     predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
-        stmt = _apply_view(stmt, session, view, folder_id, include_descendants)
+        stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
+        if storage_root_id is not None:
+            stmt = stmt.where(_bundle_in_root(storage_root_id))
         return stmt.where(predicate) if predicate is not None else stmt
 
     base = _scoped(select(AssetBundle.id))
@@ -216,37 +228,25 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     )
 
 
-def view_counts(session: Session) -> dict[str, int]:
-    """Counts for the sidebar system views."""
-    total = session.scalar(select(func.count()).select_from(AssetBundle)) or 0
-    uncategorized = (
-        session.scalar(
-            select(func.count())
-            .select_from(AssetBundle)
-            .where(~exists().where(asset_bundle_folders.c.bundle_id == AssetBundle.id))
+def view_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
+    """Counts for the sidebar system views, optionally scoped to one library."""
+
+    def _count(*where: Any) -> int:
+        stmt = select(func.count()).select_from(AssetBundle)
+        for clause in where:
+            stmt = stmt.where(clause)
+        if storage_root_id is not None:
+            stmt = stmt.where(_bundle_in_root(storage_root_id))
+        return session.scalar(stmt) or 0
+
+    total = _count()
+    uncategorized = _count(~exists().where(asset_bundle_collections.c.bundle_id == AssetBundle.id))
+    untagged = _count(~exists().where(asset_bundle_tags.c.bundle_id == AssetBundle.id))
+    missing = _count(
+        exists().where(
+            (AssetFile.bundle_id == AssetBundle.id)
+            & (AssetFile.availability == FileAvailability.MISSING)
         )
-        or 0
-    )
-    untagged = (
-        session.scalar(
-            select(func.count())
-            .select_from(AssetBundle)
-            .where(~exists().where(asset_bundle_tags.c.bundle_id == AssetBundle.id))
-        )
-        or 0
-    )
-    missing = (
-        session.scalar(
-            select(func.count())
-            .select_from(AssetBundle)
-            .where(
-                exists().where(
-                    (AssetFile.bundle_id == AssetBundle.id)
-                    & (AssetFile.availability == FileAvailability.MISSING)
-                )
-            )
-        )
-        or 0
     )
     return {
         "all": total,
@@ -257,25 +257,38 @@ def view_counts(session: Session) -> dict[str, int]:
     }
 
 
-def folder_counts(session: Session) -> dict[str, int]:
-    """Direct (non-recursive) bundle count per folder id, for the sidebar tree."""
-    rows = session.execute(
-        select(asset_bundle_folders.c.folder_id, func.count()).group_by(
-            asset_bundle_folders.c.folder_id
+def _membership_in_root(bundle_col: Any, storage_root_id: str) -> Any:
+    """EXISTS clause correlating a membership join row's bundle to a root."""
+    return exists().where(
+        (AssetFile.bundle_id == bundle_col) & (AssetFile.storage_root_id == storage_root_id)
+    )
+
+
+def collection_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
+    """Direct (non-recursive) bundle count per collection id, for the sidebar.
+    Optionally scoped to bundles with a file in the given library."""
+    stmt = select(asset_bundle_collections.c.collection_id, func.count()).group_by(
+        asset_bundle_collections.c.collection_id
+    )
+    if storage_root_id is not None:
+        stmt = stmt.where(
+            _membership_in_root(asset_bundle_collections.c.bundle_id, storage_root_id)
         )
-    ).all()
-    counts = {folder_id: count for folder_id, count in rows}
-    # Ensure every folder appears (zero if empty).
-    for (folder_id,) in session.execute(select(Folder.id)).all():
-        counts.setdefault(folder_id, 0)
+    rows = session.execute(stmt).all()
+    counts = {collection_id: count for collection_id, count in rows}
+    # Ensure every collection appears (zero if empty).
+    for (collection_id,) in session.execute(select(Collection.id)).all():
+        counts.setdefault(collection_id, 0)
     return counts
 
 
-def tag_counts(session: Session) -> dict[str, int]:
-    """Bundle count per tag id (direct membership), for the tag picker."""
-    rows = session.execute(
-        select(asset_bundle_tags.c.tag_id, func.count()).group_by(asset_bundle_tags.c.tag_id)
-    ).all()
+def tag_counts(session: Session, storage_root_id: str | None = None) -> dict[str, int]:
+    """Bundle count per tag id (direct membership), for the tag picker.
+    Optionally scoped to bundles with a file in the given library."""
+    stmt = select(asset_bundle_tags.c.tag_id, func.count()).group_by(asset_bundle_tags.c.tag_id)
+    if storage_root_id is not None:
+        stmt = stmt.where(_membership_in_root(asset_bundle_tags.c.bundle_id, storage_root_id))
+    rows = session.execute(stmt).all()
     counts = {tag_id: count for tag_id, count in rows}
     for (tag_id,) in session.execute(select(Tag.id)).all():
         counts.setdefault(tag_id, 0)

@@ -88,11 +88,11 @@
       },
       "BatchUpdate": {
         "properties": {
-          "add_folder_ids": {
+          "add_collection_ids": {
             "items": {
               "type": "string"
             },
-            "title": "Add Folder Ids",
+            "title": "Add Collection Ids",
             "type": "array"
           },
           "add_tag_ids": {
@@ -110,11 +110,11 @@
             "title": "Bundle Ids",
             "type": "array"
           },
-          "remove_folder_ids": {
+          "remove_collection_ids": {
             "items": {
               "type": "string"
             },
-            "title": "Remove Folder Ids",
+            "title": "Remove Collection Ids",
             "type": "array"
           },
           "remove_tag_ids": {
@@ -134,6 +134,17 @@
       "BrowseRequest": {
         "description": "Filtered browse \u2014 the same params as GET /browse plus an optional AST.",
         "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
           "filter": {
             "anyOf": [
               {
@@ -143,17 +154,6 @@
                 "type": "null"
               }
             ]
-          },
-          "folder_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Folder Id"
           },
           "include_descendants": {
             "default": false,
@@ -182,6 +182,17 @@
           "sort": {
             "$ref": "#/components/schemas/BundleSort",
             "default": "date_added"
+          },
+          "storage_root_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storage Root Id"
           },
           "view": {
             "$ref": "#/components/schemas/SystemView",
@@ -220,6 +231,27 @@
           "limit"
         ],
         "title": "BundleBrowsePage",
+        "type": "object"
+      },
+      "BundleCollections": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "collection_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Collection Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "collection_ids"
+        ],
+        "title": "BundleCollections",
         "type": "object"
       },
       "BundleCreate": {
@@ -262,27 +294,6 @@
           }
         },
         "title": "BundleCreate",
-        "type": "object"
-      },
-      "BundleFolders": {
-        "properties": {
-          "bundle_id": {
-            "title": "Bundle Id",
-            "type": "string"
-          },
-          "folder_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Folder Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "bundle_id",
-          "folder_ids"
-        ],
-        "title": "BundleFolders",
         "type": "object"
       },
       "BundleRead": {
@@ -595,8 +606,111 @@
         "title": "BundleUpdate",
         "type": "object"
       },
+      "CollectionCreate": {
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CollectionCreate",
+        "type": "object"
+      },
+      "CollectionRead": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "name",
+          "sort_order",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CollectionRead",
+        "type": "object"
+      },
+      "CollectionUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "title": "CollectionUpdate",
+        "type": "object"
+      },
       "CountsResponse": {
-        "description": "Generic id \u2192 bundle-count map (folders, tags).",
+        "description": "Generic id \u2192 bundle-count map (collections, tags).",
         "properties": {
           "counts": {
             "additionalProperties": {
@@ -968,6 +1082,138 @@
         "title": "FileUpdate",
         "type": "object"
       },
+      "FileViewEntryRead": {
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "relative_path",
+          "kind",
+          "size_bytes",
+          "modified_at",
+          "extension",
+          "mime_type",
+          "media_kind",
+          "supported",
+          "linked",
+          "bundle_id"
+        ],
+        "title": "FileViewEntryRead",
+        "type": "object"
+      },
+      "FileViewListingRead": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FileViewEntryRead"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "root_id": {
+            "title": "Root Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "root_id",
+          "path",
+          "entries"
+        ],
+        "title": "FileViewListingRead",
+        "type": "object"
+      },
       "FilterExpression-Input": {
         "additionalProperties": false,
         "description": "A complete, versioned filter expression (the stored/transmitted form).",
@@ -1059,109 +1305,6 @@
           "count"
         ],
         "title": "FilterPreviewResponse",
-        "type": "object"
-      },
-      "FolderCreate": {
-        "properties": {
-          "name": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "FolderCreate",
-        "type": "object"
-      },
-      "FolderRead": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "parent_id",
-          "name",
-          "sort_order",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "FolderRead",
-        "type": "object"
-      },
-      "FolderUpdate": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "parent_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent Id"
-          }
-        },
-        "title": "FolderUpdate",
         "type": "object"
       },
       "Grouping": {
@@ -1279,8 +1422,8 @@
             "title": "Bundles Created",
             "type": "integer"
           },
-          "folders_created": {
-            "title": "Folders Created",
+          "collections_created": {
+            "title": "Collections Created",
             "type": "integer"
           },
           "skipped": {
@@ -1298,7 +1441,7 @@
         },
         "required": [
           "bundles_created",
-          "folders_created",
+          "collections_created",
           "tags_created",
           "tag_groups_created",
           "skipped"
@@ -1632,11 +1775,11 @@
         "title": "Page[BundleRead]",
         "type": "object"
       },
-      "Page_FolderRead_": {
+      "Page_CollectionRead_": {
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/FolderRead"
+              "$ref": "#/components/schemas/CollectionRead"
             },
             "title": "Items",
             "type": "array"
@@ -1656,7 +1799,7 @@
         "required": [
           "items"
         ],
-        "title": "Page[FolderRead]",
+        "title": "Page[CollectionRead]",
         "type": "object"
       },
       "Page_JobRead_": {
@@ -1765,6 +1908,23 @@
           "items"
         ],
         "title": "Page[TagRead]",
+        "type": "object"
+      },
+      "PathSuggestions": {
+        "description": "Directory autocompletions for the add-library form.",
+        "properties": {
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "PathSuggestions",
         "type": "object"
       },
       "PlayableVideo": {
@@ -1929,7 +2089,7 @@
         "title": "SetTagsRequest",
         "type": "object"
       },
-      "SmartFolderCreate": {
+      "SmartCollectionCreate": {
         "properties": {
           "default_layout": {
             "anyOf": [
@@ -1965,10 +2125,10 @@
           "name",
           "filter"
         ],
-        "title": "SmartFolderCreate",
+        "title": "SmartCollectionCreate",
         "type": "object"
       },
-      "SmartFolderRead": {
+      "SmartCollectionRead": {
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -2028,10 +2188,10 @@
           "created_at",
           "updated_at"
         ],
-        "title": "SmartFolderRead",
+        "title": "SmartCollectionRead",
         "type": "object"
       },
-      "SmartFolderUpdate": {
+      "SmartCollectionUpdate": {
         "properties": {
           "default_layout": {
             "anyOf": [
@@ -2088,7 +2248,7 @@
             "title": "Sort Order"
           }
         },
-        "title": "SmartFolderUpdate",
+        "title": "SmartCollectionUpdate",
         "type": "object"
       },
       "StorageRootCreate": {
@@ -2097,6 +2257,11 @@
             "minLength": 1,
             "title": "Canonical Path",
             "type": "string"
+          },
+          "create_if_missing": {
+            "default": false,
+            "title": "Create If Missing",
+            "type": "boolean"
           },
           "name": {
             "maxLength": 255,
@@ -2771,7 +2936,7 @@
           },
           {
             "in": "query",
-            "name": "folder_id",
+            "name": "collection_id",
             "required": false,
             "schema": {
               "anyOf": [
@@ -2782,7 +2947,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Folder Id"
+              "title": "Collection Id"
             }
           },
           {
@@ -2837,6 +3002,22 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
           }
         ],
         "responses": {
@@ -2867,7 +3048,7 @@
         ]
       },
       "post": {
-        "description": "Browse with a filter AST \u2014 the shared path for toolbar filters and\nSmart Folders. Equivalent to GET /browse when ``filter`` is null.",
+        "description": "Browse with a filter AST \u2014 the shared path for toolbar filters and\nSmart Collections. Equivalent to GET /browse when ``filter`` is null.",
         "operationId": "browse_bundles_filtered_api_v1_bundles_browse_post",
         "requestBody": {
           "content": {
@@ -2910,6 +3091,24 @@
     "/api/v1/bundles/counts": {
       "get": {
         "operationId": "bundle_view_counts_api_v1_bundles_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2920,6 +3119,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Bundle View Counts",
@@ -3048,6 +3257,98 @@
           }
         },
         "summary": "Update Bundle",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/bundles/{bundle_id}/collections": {
+      "get": {
+        "operationId": "get_collections_api_v1_bundles__bundle_id__collections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleCollections"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collections",
+        "tags": [
+          "bundles"
+        ]
+      },
+      "put": {
+        "operationId": "set_collections_api_v1_bundles__bundle_id__collections_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetIdsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleCollections"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Collections",
         "tags": [
           "bundles"
         ]
@@ -3357,98 +3658,6 @@
         ]
       }
     },
-    "/api/v1/bundles/{bundle_id}/folders": {
-      "get": {
-        "operationId": "get_folders_api_v1_bundles__bundle_id__folders_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bundle_id",
-            "required": true,
-            "schema": {
-              "title": "Bundle Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BundleFolders"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Folders",
-        "tags": [
-          "bundles"
-        ]
-      },
-      "put": {
-        "operationId": "set_folders_api_v1_bundles__bundle_id__folders_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "bundle_id",
-            "required": true,
-            "schema": {
-              "title": "Bundle Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetIdsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BundleFolders"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Folders",
-        "tags": [
-          "bundles"
-        ]
-      }
-    },
     "/api/v1/bundles/{bundle_id}/playback": {
       "get": {
         "operationId": "playback_manifest_api_v1_bundles__bundle_id__playback_get",
@@ -3624,6 +3833,280 @@
         ]
       }
     },
+    "/api/v1/collections": {
+      "get": {
+        "operationId": "list_collections_api_v1_collections_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CollectionRead_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Collections",
+        "tags": [
+          "collections"
+        ]
+      },
+      "post": {
+        "operationId": "create_collection_api_v1_collections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/counts": {
+      "get": {
+        "operationId": "collection_counts_api_v1_collections_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Collection Counts",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v1/collections/{collection_id}": {
+      "delete": {
+        "operationId": "delete_collection_api_v1_collections__collection_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "get": {
+        "operationId": "get_collection_api_v1_collections__collection_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection",
+        "tags": [
+          "collections"
+        ]
+      },
+      "patch": {
+        "operationId": "update_collection_api_v1_collections__collection_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Collection",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
     "/api/v1/eagle/import": {
       "post": {
         "operationId": "run_import_api_v1_eagle_import_post",
@@ -3706,6 +4189,47 @@
         ]
       }
     },
+    "/api/v1/files/{file_id}/content": {
+      "get": {
+        "description": "Serve a file's original bytes (e.g. full-resolution images for the viewer).\n\nPath-safe and read-only; FileResponse honors HTTP Range so large images and\nmedia stream incrementally. The mime type is guessed from the filename.",
+        "operationId": "file_content_api_v1_files__file_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Content",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
     "/api/v1/files/{file_id}/stream": {
       "get": {
         "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).",
@@ -3785,252 +4309,6 @@
         "summary": "Preview",
         "tags": [
           "filters"
-        ]
-      }
-    },
-    "/api/v1/folders": {
-      "get": {
-        "operationId": "list_folders_api_v1_folders_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Page_FolderRead_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Folders",
-        "tags": [
-          "folders"
-        ]
-      },
-      "post": {
-        "operationId": "create_folder_api_v1_folders_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FolderCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FolderRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Folder",
-        "tags": [
-          "folders"
-        ]
-      }
-    },
-    "/api/v1/folders/counts": {
-      "get": {
-        "operationId": "folder_counts_api_v1_folders_counts_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CountsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Folder Counts",
-        "tags": [
-          "folders"
-        ]
-      }
-    },
-    "/api/v1/folders/{folder_id}": {
-      "delete": {
-        "operationId": "delete_folder_api_v1_folders__folder_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "folder_id",
-            "required": true,
-            "schema": {
-              "title": "Folder Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Folder",
-        "tags": [
-          "folders"
-        ]
-      },
-      "get": {
-        "operationId": "get_folder_api_v1_folders__folder_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "folder_id",
-            "required": true,
-            "schema": {
-              "title": "Folder Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FolderRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Folder",
-        "tags": [
-          "folders"
-        ]
-      },
-      "patch": {
-        "operationId": "update_folder_api_v1_folders__folder_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "folder_id",
-            "required": true,
-            "schema": {
-              "title": "Folder Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FolderUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FolderRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Folder",
-        "tags": [
-          "folders"
         ]
       }
     },
@@ -4200,18 +4478,18 @@
         ]
       }
     },
-    "/api/v1/smart-folders": {
+    "/api/v1/smart-collections": {
       "get": {
-        "operationId": "list_smart_folders_api_v1_smart_folders_get",
+        "operationId": "list_smart_collections_api_v1_smart_collections_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/SmartFolderRead"
+                    "$ref": "#/components/schemas/SmartCollectionRead"
                   },
-                  "title": "Response List Smart Folders Api V1 Smart Folders Get",
+                  "title": "Response List Smart Collections Api V1 Smart Collections Get",
                   "type": "array"
                 }
               }
@@ -4219,18 +4497,18 @@
             "description": "Successful Response"
           }
         },
-        "summary": "List Smart Folders",
+        "summary": "List Smart Collections",
         "tags": [
-          "smart-folders"
+          "smart-collections"
         ]
       },
       "post": {
-        "operationId": "create_smart_folder_api_v1_smart_folders_post",
+        "operationId": "create_smart_collection_api_v1_smart_collections_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SmartFolderCreate"
+                "$ref": "#/components/schemas/SmartCollectionCreate"
               }
             }
           },
@@ -4241,7 +4519,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmartFolderRead"
+                  "$ref": "#/components/schemas/SmartCollectionRead"
                 }
               }
             },
@@ -4258,22 +4536,22 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Smart Folder",
+        "summary": "Create Smart Collection",
         "tags": [
-          "smart-folders"
+          "smart-collections"
         ]
       }
     },
-    "/api/v1/smart-folders/{smart_folder_id}": {
+    "/api/v1/smart-collections/{smart_collection_id}": {
       "delete": {
-        "operationId": "delete_smart_folder_api_v1_smart_folders__smart_folder_id__delete",
+        "operationId": "delete_smart_collection_api_v1_smart_collections__smart_collection_id__delete",
         "parameters": [
           {
             "in": "path",
-            "name": "smart_folder_id",
+            "name": "smart_collection_id",
             "required": true,
             "schema": {
-              "title": "Smart Folder Id",
+              "title": "Smart Collection Id",
               "type": "string"
             }
           }
@@ -4293,20 +4571,20 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Delete Smart Folder",
+        "summary": "Delete Smart Collection",
         "tags": [
-          "smart-folders"
+          "smart-collections"
         ]
       },
       "get": {
-        "operationId": "get_smart_folder_api_v1_smart_folders__smart_folder_id__get",
+        "operationId": "get_smart_collection_api_v1_smart_collections__smart_collection_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "smart_folder_id",
+            "name": "smart_collection_id",
             "required": true,
             "schema": {
-              "title": "Smart Folder Id",
+              "title": "Smart Collection Id",
               "type": "string"
             }
           }
@@ -4316,7 +4594,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmartFolderRead"
+                  "$ref": "#/components/schemas/SmartCollectionRead"
                 }
               }
             },
@@ -4333,20 +4611,20 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Smart Folder",
+        "summary": "Get Smart Collection",
         "tags": [
-          "smart-folders"
+          "smart-collections"
         ]
       },
       "patch": {
-        "operationId": "update_smart_folder_api_v1_smart_folders__smart_folder_id__patch",
+        "operationId": "update_smart_collection_api_v1_smart_collections__smart_collection_id__patch",
         "parameters": [
           {
             "in": "path",
-            "name": "smart_folder_id",
+            "name": "smart_collection_id",
             "required": true,
             "schema": {
-              "title": "Smart Folder Id",
+              "title": "Smart Collection Id",
               "type": "string"
             }
           }
@@ -4355,7 +4633,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SmartFolderUpdate"
+                "$ref": "#/components/schemas/SmartCollectionUpdate"
               }
             }
           },
@@ -4366,7 +4644,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmartFolderRead"
+                  "$ref": "#/components/schemas/SmartCollectionRead"
                 }
               }
             },
@@ -4383,9 +4661,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Update Smart Folder",
+        "summary": "Update Smart Collection",
         "tags": [
-          "smart-folders"
+          "smart-collections"
         ]
       }
     },
@@ -4484,6 +4762,50 @@
           }
         },
         "summary": "Create Storage Root",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/path-suggestions": {
+      "get": {
+        "description": "Directory autocompletions for the add-library form (owner setup only).",
+        "operationId": "path_suggestions_api_v1_storage_roots_path_suggestions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathSuggestions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Path Suggestions",
         "tags": [
           "storage-roots"
         ]
@@ -4614,6 +4936,65 @@
         ]
       }
     },
+    "/api/v1/storage-roots/{root_id}/entries": {
+      "get": {
+        "description": "List non-hidden directories/files under ``path`` in a storage root.\n\nRead-only. ``path`` is root-relative (omitted = the root itself); absolute\npaths, traversal, NUL bytes, and symlink escapes are rejected.",
+        "operationId": "list_file_view_entries_api_v1_storage_roots__root_id__entries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileViewListingRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List File View Entries",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
     "/api/v1/storage-roots/{root_id}/fast-add": {
       "post": {
         "operationId": "fast_add_files_api_v1_storage_roots__root_id__fast_add_post",
@@ -4661,6 +5042,56 @@
           }
         },
         "summary": "Fast Add Files",
+        "tags": [
+          "storage-roots"
+        ]
+      }
+    },
+    "/api/v1/storage-roots/{root_id}/file": {
+      "get": {
+        "description": "Serve the raw bytes of a file under a storage root, for File View preview.\n\nRead-only and path-safe (same scoping as ``/entries``): ``path`` is\nroot-relative; absolute paths, traversal, NUL bytes, and symlink escapes are\nrejected. Files here need not be linked into a bundle. ``FileResponse``\nhonors HTTP Range, so images and video stream incrementally.",
+        "operationId": "serve_file_view_file_api_v1_storage_roots__root_id__file_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "root_id",
+            "required": true,
+            "schema": {
+              "title": "Root Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Serve File View File",
         "tags": [
           "storage-roots"
         ]
@@ -5273,6 +5704,24 @@
     "/api/v1/tags/counts": {
       "get": {
         "operationId": "tag_counts_api_v1_tags_counts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "storage_root_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Storage Root Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -5283,6 +5732,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Tag Counts",

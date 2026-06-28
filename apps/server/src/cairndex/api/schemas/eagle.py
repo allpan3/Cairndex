@@ -27,7 +27,8 @@ class ImportPlanRead(BaseModel):
 
 class ImportResultRead(BaseModel):
     bundles_created: int
-    folders_created: int
+    # Eagle folders import into Cairndex collections.
+    collections_created: int
     tags_created: int
     tag_groups_created: int
     skipped: int

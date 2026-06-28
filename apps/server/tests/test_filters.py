@@ -10,7 +10,7 @@ from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import AssetBundle
 from cairndex.services import bundles as bundle_service
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import storage_roots as root_service
 from cairndex.services import tags as tag_service
 
@@ -185,13 +185,13 @@ def test_tags_any_all_none_with_descendants(session: Session) -> None:
     assert b_other.id not in none and b_child.id in none
 
 
-def test_folders_and_file_predicates(session: Session) -> None:
+def test_collections_and_file_predicates(session: Session) -> None:
     root = root_service.create_storage_root(session, name="r", canonical_path="/mnt/r")
-    folder = folder_service.create_folder(session, name="F")
+    collection = collection_service.create_collection(session, name="F")
     session.flush()
 
     in_folder = bundle_service.create_bundle(session, title="in folder")
-    bundle_service.set_bundle_folders(session, in_folder.id, [folder.id])
+    bundle_service.set_bundle_collections(session, in_folder.id, [collection.id])
     with_mkv = bundle_service.create_bundle(session, title="mkv")
     bundle_service.add_file(
         session,
@@ -217,7 +217,7 @@ def test_folders_and_file_predicates(session: Session) -> None:
         session,
         {
             "version": 1,
-            "root": {"field": "folders", "operator": "contains_any", "value": [folder.id]},
+            "root": {"field": "collections", "operator": "contains_any", "value": [collection.id]},
         },
     ) == {in_folder.id}
     assert _matches(

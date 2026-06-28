@@ -1,4 +1,4 @@
-"""Tag/folder hierarchy + tag-group membership (AGENTS.md §15)."""
+"""Tag/collection hierarchy + tag-group membership (AGENTS.md §15)."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, ValidationError
 from cairndex.persistence.models import Tag
-from cairndex.services import folders as folder_service
+from cairndex.services import collections as collection_service
 from cairndex.services import tag_groups as group_service
 from cairndex.services import tags as tag_service
 
@@ -51,19 +51,19 @@ def test_deleting_parent_floats_children_to_root(session: Session) -> None:
     assert reloaded.parent_id is None  # SET NULL, child survives
 
 
-# --- Folder hierarchy --------------------------------------------------------
-def test_folder_descendants_and_cycle_guard(session: Session) -> None:
-    root = folder_service.create_folder(session, name="root")
-    sub = folder_service.create_folder(session, name="sub", parent_id=root.id)
-    leaf = folder_service.create_folder(session, name="leaf", parent_id=sub.id)
+# --- Collection hierarchy ----------------------------------------------------
+def test_collection_descendants_and_cycle_guard(session: Session) -> None:
+    root = collection_service.create_collection(session, name="root")
+    sub = collection_service.create_collection(session, name="sub", parent_id=root.id)
+    leaf = collection_service.create_collection(session, name="leaf", parent_id=sub.id)
 
-    assert set(folder_service.folder_descendant_ids(session, root.id)) == {
+    assert set(collection_service.collection_descendant_ids(session, root.id)) == {
         root.id,
         sub.id,
         leaf.id,
     }
     with pytest.raises(ValidationError):
-        folder_service.update_folder(session, root.id, parent_id=leaf.id, set_parent=True)
+        collection_service.update_collection(session, root.id, parent_id=leaf.id, set_parent=True)
 
 
 # --- Tag groups (many-to-many, independent of hierarchy) ---------------------

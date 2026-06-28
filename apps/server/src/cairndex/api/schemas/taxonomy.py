@@ -30,18 +30,18 @@ class TagRead(BaseModel):
     updated_at: datetime
 
 
-# --- Folders -----------------------------------------------------------------
-class FolderCreate(BaseModel):
+# --- Collections -------------------------------------------------------------
+class CollectionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     parent_id: str | None = None
 
 
-class FolderUpdate(BaseModel):
+class CollectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     parent_id: str | None = None
 
 
-class FolderRead(BaseModel):
+class CollectionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
