@@ -33,7 +33,7 @@ The first product target is the computer-side web application. Android TV suppor
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File View, and the web.
 9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN. Tailscale access may be added without changing the core architecture.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naïve full scans, full hashing, or non-virtualized rendering are unacceptable.
-11. **One source of truth.** The application database is authoritative for app metadata. Eagle migration is one-way initially; do not implement bidirectional synchronization.
+11. **One source of truth.** The library database is authoritative for app metadata. Per ADR-0008, each library owns its own metadata DB; there is no external-app synchronization.
 12. **Progressive capability.** Direct playback comes first; remux/transcoding, File View write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
 
 ## 3. Fixed product decisions
@@ -267,9 +267,9 @@ When a linked path disappears, preserve the Asset File row as missing/stale. On 
 
 Repair must:
 
-- update the existing `AssetFile.storage_root_id` and `relative_path` rather than creating a new file row;
+- update the existing `AssetFile.relative_path` (library-relative, ADR-0008) rather than creating a new file row;
 - keep the `AssetFile.id` stable;
-- preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, subtitle links, and import records;
+- preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, and subtitle links;
 - run automatically as part of scan/rescan/reconciliation for high-confidence matches;
 - avoid destructive changes and avoid merging duplicates.
 
@@ -307,24 +307,18 @@ After direct playback is stable, add an FFmpeg-backed fallback:
 
 Remote quality/bitrate selection is a later milestone, designed for Tailscale use. Keep transcoding APIs and job models extensible.
 
-## 7. Eagle migration
+## 7. Bundle grouping
 
-The goal is one-way migration from Eagle into this application.
+Importing from an external Eagle library is **out of scope** (removed). With the
+per-library architecture (ADR-0008) a Cairndex library is its own portable
+directory, so the source of truth is a scan of the library root, not a migration
+from another app. The former one-way Eagle importer and its `import_records`
+table have been removed; ADR-0004 is retained as superseded history.
 
-Rules:
-
-- prefer official Eagle API/export mechanisms;
-- if API coverage is insufficient, inspect Eagle library files in read-only mode;
-- never write into Eagle's internal library;
-- always support dry run and review before commit;
-- preserve Eagle tags, tag groups, folders, titles, notes, links, ratings, and file references where available;
-- map Eagle folders to Cairndex collections;
-- initially map each Eagle item to one Asset Bundle;
-- suggest merges for likely video/cover/subtitle/part relationships;
-- never auto-merge destructively without a reviewable report;
-- make imports idempotent or record source IDs to avoid accidental duplication.
-
-Grouping heuristics may consider same directory, matching or similar basenames, numeric part suffixes, language subtitle suffixes, names such as `cover`/`poster`/`thumbnail`/`thumb`, Eagle folder/tag proximity, and manual mapping.
+Bundles are formed by scanning the library and grouping related files. Grouping
+heuristics may consider same directory, matching or similar basenames, numeric
+part suffixes, language subtitle suffixes, names such as
+`cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
 ## 8. UI and interaction direction
 
@@ -500,7 +494,6 @@ Minimum coverage areas:
 - range requests and playback headers;
 - thumbnail job deduplication;
 - metadata-only deletion safeguards;
-- Eagle import dry run and idempotency;
 - critical UI flows with Playwright.
 
 Tests must not depend on private media. Generate small synthetic fixtures or use redistributable test assets.
@@ -509,7 +502,7 @@ Tests must not depend on private media. Generate small synthetic fixtures or use
 
 Keep `main` stable and reviewable.
 
-Use a dedicated branch for each meaningful feature or fix, for example `feat/core-domain-model`, `feat/storage-scanner`, `feat/bundle-browser`, `feat/tag-filtering`, `feat/smart-collections`, `feat/file-view`, `feat/moved-file-repair`, `feat/subtitle-playback`, `feat/eagle-import`, `fix/path-normalization`, or `docs/architecture`.
+Use a dedicated branch for each meaningful feature or fix, for example `feat/core-domain-model`, `feat/storage-scanner`, `feat/bundle-browser`, `feat/tag-filtering`, `feat/smart-collections`, `feat/file-view`, `feat/moved-file-repair`, `feat/subtitle-playback`, `feat/per-library-metadata`, `fix/path-normalization`, or `docs/architecture`.
 
 Do not combine unrelated large features in one branch.
 
@@ -533,7 +526,6 @@ Required documentation targets include, as applicable:
 - `docs/deployment.md`
 - `docs/data-model.md`
 - `docs/filter-language.md`
-- `docs/eagle-migration.md` when migration behavior changes
 - `docs/adr/` for consequential decisions
 - `docs/STATUS.md`
 - `CHANGELOG.md`
@@ -598,7 +590,7 @@ Do not spend MVP time on:
 - social or collaboration features;
 - public cloud hosting;
 - full multi-user RBAC;
-- bidirectional Eagle synchronization;
+- Eagle import or synchronization (removed; see §7);
 - destructive file management enabled by default;
 - open-with-default-app before a safe local/native host-integration design exists;
 - duplicate detection or automatic duplicate merging;

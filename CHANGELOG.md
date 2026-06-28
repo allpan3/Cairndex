@@ -30,9 +30,17 @@ grouped under `Unreleased` until the first tagged release.
   - **Frontend:** an active-library bootstrap (one per tab) routes all content
     requests under the selected library; the sidebar gained a library selector
     and a **Scan** action; the library manager creates/registers libraries.
-  - **Eagle import** is temporarily removed pending a per-library
-    re-implementation (the reader/planner are retained). The global
-    storage-root APIs/UI are gone.
+  - The global storage-root APIs/UI are gone.
+
+### Removed
+
+- **Eagle import — removed entirely.** The one-way Eagle library importer is out
+  of scope under the per-library model (ADR-0008): a Cairndex library is its own
+  portable directory populated by scanning, not by migrating from another app.
+  Deleted the `cairndex.eagle` reader/planner package, the `services.eagle`
+  importer, its tests, and the `import_records` table / `ImportRecord` model.
+  ADR-0004 is retained as superseded history. Cairndex's UI remains
+  Eagle-*inspired* — only the import feature is gone.
 
 ### Added
 
