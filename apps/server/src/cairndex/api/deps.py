@@ -5,8 +5,12 @@ from fastapi import Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from cairndex.core.errors import NotFoundError
+from cairndex.domain.enums import LibraryStatus
 from cairndex.persistence.engine import get_session as _get_session
+from cairndex.registry import services as registry_service
 from cairndex.registry.engine import get_registry_session as _get_registry_session
+from cairndex.registry.library_engine import get_library_sessionmaker
 from cairndex.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
 
@@ -32,6 +36,33 @@ def get_registry_db() -> Iterator[Session]:
 
 
 RegistryDbSession = Annotated[Session, Depends(get_registry_db)]
+
+
+def get_library_session(library_id: str, registry: RegistryDbSession) -> Iterator[Session]:
+    """Yield a content session bound to one library's ``library.db`` (ADR-0008).
+
+    Resolves ``library_id`` (path param) in the registry, refuses an
+    unavailable library (offline/moved path) with 404, then yields a
+    transactional session from the per-library engine cache. This is how
+    library-scoped content routes (``/api/v1/libraries/{library_id}/…``) reach
+    the right database without any server-global "active library".
+    """
+    library = registry_service.get_library(registry, library_id)  # 404 if unknown
+    if library.status != LibraryStatus.AVAILABLE:
+        raise NotFoundError(f"library {library_id!r} is currently unavailable")
+
+    session = get_library_sessionmaker(library)()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+LibrarySession = Annotated[Session, Depends(get_library_session)]
 
 
 class PageParams(BaseModel):
