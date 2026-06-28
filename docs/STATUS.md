@@ -2,13 +2,15 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/optimistic-concurrency`. Latest commit: see `git log -1`.
+Branch: `feat/concurrency-ui-and-jobs`. Latest commit: see `git log -1`.
 
 ADR-0008 landed incrementally: registry skeleton (#20), per-library engine +
 first scoped route (#21), create → scan → browse working slice (#22, phases 3–7),
-Eagle-import removal (#23), and cache relocation (#24, phase 8) have merged to
-`main`. This branch adds **optimistic concurrency** (ADR-0008 phase 9). With it,
-the ADR-0008 server-managed phases are complete; only the future direct-open /
+Eagle-import removal (#23), cache relocation (#24, phase 8), and optimistic
+concurrency (#25, phase 9) have merged to `main`. This branch adds the
+**frontend** for optimistic concurrency (sending `If-Match` + a conflict notice)
+and **per-library maintenance UI actions** (Probe / Thumbnails alongside Scan).
+The ADR-0008 server-managed phases are complete; only the future direct-open /
 native modes (phases 10–11) remain.
 
 ## Current milestone
@@ -96,10 +98,11 @@ Run and passing locally for this PR:
 
 ## Next recommended tasks
 
-The server-managed ADR-0008 phases (1–9) are complete. Remaining / follow-up:
+The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
+per-library maintenance UI actions are all complete. Remaining / follow-up:
 
-- Frontend: send `If-Match` on edits and surface 409 conflicts (reload + retry).
-- Per-library probe/thumbnail UI actions (jobs already exist server-side).
+- Job progress UI: surface running scan/probe/thumbnail progress (the registry
+  `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
 
 ## Unresolved decisions
