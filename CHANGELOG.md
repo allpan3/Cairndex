@@ -10,6 +10,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Frontend wiring for optimistic concurrency + per-library maintenance jobs.**
+  The bundle inspector and Smart Collection editor now send the entity `version`
+  as `If-Match` on edits; a 409 conflict surfaces an inline notice ("changed
+  elsewhere — save again to apply over the latest") and the view refetches the
+  current server state instead of silently overwriting another client's change.
+  The sidebar gained a **Library maintenance** row with **Scan**, **Probe**
+  (ffprobe technical metadata), and **Thumbnails** (cover generation) actions —
+  the latter two enqueue the registry jobs that already existed server-side
+  (ADR-0008 phase 7); each disables while running and refetches affected views.
+
 - **Optimistic concurrency for metadata edits (ADR-0008, phase 9).** The
   frequently edited entities (`asset_bundles`, `asset_files`, `tags`,
   `collections`, `smart_folders`, `subtitle_tracks`) now carry a `version`

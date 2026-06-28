@@ -40,6 +40,10 @@ interface SidebarProps {
   onManageLibraries: () => void
   onScan: () => void
   scanning?: boolean
+  onProbe: () => void
+  probing?: boolean
+  onThumbnails: () => void
+  thumbnailing?: boolean
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -97,6 +101,10 @@ export function Sidebar({
   onManageLibraries,
   onScan,
   scanning,
+  onProbe,
+  probing,
+  onThumbnails,
+  thumbnailing,
   selection,
   onSelect,
   counts,
@@ -117,15 +125,6 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar__brand">
         <span>🍃</span> Cairndex
-        <button
-          className="sidebar__import"
-          onClick={onScan}
-          aria-label="Scan library"
-          title="Scan library for new files"
-          disabled={scanning || libraryId === null}
-        >
-          ⟳
-        </button>
       </div>
 
       <div className="sidebar__library">
@@ -150,6 +149,33 @@ export function Sidebar({
           title="Manage libraries"
         >
           +
+        </button>
+      </div>
+
+      <div className="sidebar__jobs" role="group" aria-label="Library maintenance">
+        <button
+          className="sidebar__job"
+          onClick={onScan}
+          title="Scan the library for new, moved, or missing files"
+          disabled={scanning || libraryId === null}
+        >
+          {scanning ? '⟳ Scanning…' : '⟳ Scan'}
+        </button>
+        <button
+          className="sidebar__job"
+          onClick={onProbe}
+          title="Read media technical metadata (dimensions, duration, codecs)"
+          disabled={probing || libraryId === null}
+        >
+          {probing ? 'ℹ Probing…' : 'ℹ Probe'}
+        </button>
+        <button
+          className="sidebar__job"
+          onClick={onThumbnails}
+          title="Generate cover thumbnails for images and videos"
+          disabled={thumbnailing || libraryId === null}
+        >
+          {thumbnailing ? '▦ Thumbnailing…' : '▦ Thumbnails'}
         </button>
       </div>
 

@@ -774,6 +774,17 @@ code {
   font-size: 12px;
   color: #ff6b6b;
 }
+/* Optimistic-concurrency conflict notice (ADR-0008 phase 9). */
+.conflict-notice {
+  margin: 6px 0;
+  padding: 6px 9px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .modal__actions {
   display: flex;
   align-items: center;
@@ -1214,6 +1225,35 @@ code {
 .sidebar__library-manage:hover {
   color: var(--text-strong);
   border-color: var(--border-strong);
+}
+/* Library maintenance jobs (scan/probe/thumbnails — ADR-0008 phase 7). */
+.sidebar__jobs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 8px;
+}
+.sidebar__job {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar__job:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+}
+.sidebar__job:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .sidebar__modes {
   display: flex;
