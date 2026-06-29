@@ -2,15 +2,16 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase4-review-ui`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase5-rescan-additions`. Latest commit: see `git log -1`.
 
 ADR-0008 is complete and merged. Work is on **ADR-0009** (suggestion-based
-bundle grouping, Option A+). Phases 1 (grouping review state, #29), 2 (read-only
-suggester, #30), and 3 (apply-plan service + API, #31) merged. This branch lands
-**phase 4 — the review UI**: a sidebar **⧉ Group** action opens a modal that
-suggests a grouping, shows the proposed bundles/containers with roles, confidence,
-and reasons, and applies it (reporting confirmed counts + conflicts). Verified
-end-to-end in a browser preview against a live backend + scanned library.
+bundle grouping, Option A+). Phases 1–4 merged (#29–#32). This branch lands
+**phase 5 — re-scan additions**: a newly discovered file in a directory owned by
+a confirmed bundle is suggested as an addition to that bundle (`target_bundle_id`
+on the proposal) instead of a fresh grouping; applying folds it in, links
+subtitles, and removes the emptied provisional bundle — idempotent and
+conflict-aware. Only phase 6 (subtitle auto-link in the scanner/role path)
+remains.
 
 ## Current milestone
 
@@ -29,7 +30,17 @@ phases at once.
 
 ## Completed in this milestone (ADR-0009)
 
-- **Phase 4 — grouping review UI (this branch).** Sidebar **⧉ Group** action →
+- **Phase 5 — re-scan additions (this branch).** The suggester learned to fold a
+  newly discovered file into the confirmed bundle that owns its directory:
+  `FileObservation` carries `bundle_id`/`bundle_title`, `_confirmed_owners`
+  derives directory→bundle ownership, and an *addition* proposal
+  (`target_bundle_id` set, stored on `grouping_proposals`) is emitted instead of
+  a fresh grouping. `apply._apply_addition` moves the files in, assigns roles,
+  links subtitles, removes emptied provisional bundles, and is idempotent +
+  conflict-aware. Apply result gained `files_added_to_bundles`; the review UI
+  shows additions as "Add to …". Tests in `tests/test_grouping_rescan.py`.
+
+- **Phase 4 — grouping review UI (merged, #32).** Sidebar **⧉ Group** action →
   `GroupingReview` modal: suggest a grouping (`POST /grouping/plans`), review the
   proposed bundles/containers (roles, confidence badge, reason, nested tree), and
   apply (`POST .../apply`) with a result summary + conflict list. New hooks
@@ -126,7 +137,7 @@ phases at once.
 Run and passing locally for this PR:
 
 - backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
-  `pytest` (194 passed);
+  `pytest` (198 passed);
 - frontend: `lint`, `format:check`, `typecheck`, `test`, `build`, `test:e2e`
   (OpenAPI + types regenerated for the new grouping routes).
 
@@ -146,12 +157,11 @@ Run and passing locally for this PR:
 The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
-- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1
-  (grouping state), 2 (suggester), 3 (apply-plan service + API), and 4 (review UI:
-  suggest → review → apply) are done. Remaining: (5) re-scan additions suggested
-  into confirmed bundles/containers without disturbing confirmed groupings; (6)
-  external subtitle auto-link folded into the scanner/role path. Follow-up within
-  phase 4: interactive edit-before-apply (merge/split/reclassify/rename).
+- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1–5
+  are done. Remaining: (6) external subtitle auto-link folded into the
+  scanner/role path so the data-model claim holds for scan/grouping flows.
+  Follow-up within phase 4: interactive edit-before-apply
+  (merge/split/reclassify/rename).
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).

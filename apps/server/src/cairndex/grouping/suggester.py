@@ -46,14 +46,18 @@ class FileObservation:
     """One scan-observed file fed to the suggester.
 
     ``grouping_confirmed`` marks files whose current bundle the user has already
-    confirmed; the suggester excludes them so it never re-proposes a settled
-    grouping.
+    confirmed; the suggester excludes those from new groupings but uses them to
+    recognize which directories a confirmed bundle already owns, so a newly
+    discovered file there is suggested as an *addition* (``bundle_id`` /
+    ``bundle_title`` name that owning bundle) rather than a fresh bundle.
     """
 
     asset_file_id: str
     relative_path: str  # normalized, library-root-relative POSIX path
     media_kind: MediaKind
     grouping_confirmed: bool = False
+    bundle_id: str | None = None
+    bundle_title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +86,9 @@ class GroupingProposal:
     confidence: float
     reason: str
     files: tuple[ProposedFile, ...] = ()
+    # When set, this is an *addition* proposal (ADR-0009 phase 5): its files
+    # join an existing confirmed bundle rather than forming a new one.
+    target_bundle_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -335,10 +342,93 @@ def _direct_media_proposals(
     ]
 
 
+@dataclass(frozen=True)
+class _Owner:
+    bundle_id: str
+    title: str | None
+
+
+def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, _Owner]:
+    """Map a directory to the confirmed bundle that owns it.
+
+    A directory is owned only when every confirmed file in it belongs to the
+    same bundle; a directory split across several confirmed bundles is ambiguous
+    and gets no owner, so additions there fall back to normal suggestion.
+    """
+    bundles_by_dir: dict[str, set[str]] = {}
+    title_by_bundle: dict[str, str | None] = {}
+    for f in confirmed:
+        if f.bundle_id is None:
+            continue
+        bundles_by_dir.setdefault(_dirname(f.relative_path), set()).add(f.bundle_id)
+        title_by_bundle[f.bundle_id] = f.bundle_title
+    owners: dict[str, _Owner] = {}
+    for directory, bundle_ids in bundles_by_dir.items():
+        if len(bundle_ids) == 1:
+            bundle_id = next(iter(bundle_ids))
+            owners[directory] = _Owner(bundle_id, title_by_bundle.get(bundle_id))
+    return owners
+
+
+def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Roles for files added to an *existing* bundle: keep it simple — the bundle
+    already has a primary/cover, so an added image is just an image, an added
+    video a part, and a subtitle a subtitle."""
+    proposed: list[ProposedFile] = []
+    for sequence, f in enumerate(sorted(files, key=lambda x: _natural_key(x.relative_path))):
+        match f.media_kind:
+            case MediaKind.SUBTITLE:
+                role = FileRole.SUBTITLE
+            case MediaKind.IMAGE:
+                role = FileRole.IMAGE
+            case MediaKind.VIDEO:
+                role = FileRole.VIDEO_PART
+            case _:
+                role = FileRole.ATTACHMENT
+        proposed.append(ProposedFile(f.asset_file_id, role, sequence))
+    return tuple(proposed)
+
+
+def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingProposal:
+    directory = _dirname(files[0].relative_path)
+    return GroupingProposal(
+        kind=ProposalKind.BUNDLE,
+        directory=directory,
+        parent_directory=None,
+        title=owner.title or _basename(directory),
+        confidence=0.8,
+        reason=f"add {len(files)} new file(s) to existing bundle",
+        files=_addition_roles(files),
+        target_bundle_id=owner.bundle_id,
+    )
+
+
 def suggest_grouping(files: Iterable[FileObservation]) -> GroupingPlan:
-    """Propose a grouping for ``files``. Confirmed groupings are excluded, so
-    re-running over a partly-confirmed library only suggests the open items."""
-    open_files = [f for f in files if not f.grouping_confirmed]
-    tree = _build_tree(open_files)
-    proposals = _classify(tree, parent=None)
-    return GroupingPlan(rule_version=SUGGESTER_RULE_VERSION, proposals=tuple(proposals))
+    """Propose a grouping for ``files``.
+
+    Confirmed groupings are excluded from *new* proposals, but a newly discovered
+    file in a directory already owned by a confirmed bundle becomes an **addition**
+    to that bundle (ADR-0009 phase 5) rather than a fresh bundle — so a re-scan
+    never disturbs a confirmed grouping, it only suggests folding new files in.
+    """
+    files = list(files)
+    confirmed = [f for f in files if f.grouping_confirmed]
+    owners = _confirmed_owners(confirmed)
+
+    additions: dict[str, tuple[_Owner, list[FileObservation]]] = {}
+    fresh: list[FileObservation] = []
+    for f in files:
+        if f.grouping_confirmed:
+            continue
+        owner = owners.get(_dirname(f.relative_path))
+        if owner is not None:
+            additions.setdefault(owner.bundle_id, (owner, []))[1].append(f)
+        else:
+            fresh.append(f)
+
+    addition_proposals = [_addition_proposal(owner, group) for owner, group in additions.values()]
+    proposals = _classify(_build_tree(fresh), parent=None)
+    return GroupingPlan(
+        rule_version=SUGGESTER_RULE_VERSION,
+        proposals=(*addition_proposals, *proposals),
+    )

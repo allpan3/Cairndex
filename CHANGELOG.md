@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Re-scan additions into confirmed bundles (ADR-0009, phase 5).** When a file
+  is discovered in a directory already owned by a *confirmed* bundle, the
+  suggester now proposes folding it into that bundle (an **addition** proposal,
+  `target_bundle_id` set) rather than spawning a fresh one — so a re-scan that
+  drops `cosmos.fr.srt` next to a confirmed *Cosmos* bundle suggests "add to
+  Cosmos", never disturbing the confirmed grouping. Applying an addition moves
+  the file in, assigns a role, links subtitles, removes the emptied provisional
+  bundle, and is idempotent + conflict-aware (a file the user moved into a
+  different confirmed bundle is left alone). The apply result reports
+  `files_added_to_bundles`; the review UI shows additions as "Add to …".
+
 - **Grouping review UI (ADR-0009, phase 4).** A new sidebar **⧉ Group** action
   opens a review modal that suggests a grouping for the active library and shows
   the plan — proposed bundles and the logical containers that would hold them,

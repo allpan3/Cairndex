@@ -406,6 +406,9 @@ class GroupingProposal(Base):
     parent_proposal_id: Mapped[str | None] = mapped_column(
         String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
     )
+    # Set when this proposal adds its files to an existing confirmed bundle
+    # (ADR-0009 phase 5). A plain id (not an FK) — a snapshot resolved at apply.
+    target_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     kind: Mapped[ProposalKind] = mapped_column(Enum(ProposalKind, native_enum=False, length=16))
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     directory: Mapped[str] = mapped_column(Text, default="")
