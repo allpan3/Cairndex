@@ -3,7 +3,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
 
 
 # --- Bundles -----------------------------------------------------------------
@@ -32,6 +38,10 @@ class BundleRead(BaseModel):
     rating: int | None
     cover_file_id: str | None
     primary_file_id: str | None
+    # Grouping review state (ADR-0009): provisional bundles are scan-staged and
+    # await user confirmation; confirmed bundles are durable user decisions.
+    grouping_state: GroupingState
+    grouping_source: GroupingSource
     created_at: datetime
     imported_at: datetime
     updated_at: datetime

@@ -45,7 +45,17 @@
 `id`, `title` (nullable), `note`, `rating` (nullable int, CHECK 0–5; NULL =
 unrated), `cover_file_id` / `primary_file_id` (FK → `asset_files`, `SET NULL`,
 nullable; `use_alter` breaks the FK cycle), `extra_metadata` (JSON),
-`created_at`, `imported_at`, `updated_at`.
+`grouping_state` / `grouping_source` / `grouping_rule_version` / `confirmed_at`
+(ADR-0009 grouping review state), `created_at`, `imported_at`, `updated_at`.
+
+Grouping review state (ADR-0009): scan stages newly discovered files into
+`provisional` / `scan_suggestion` bundles that await user review; an explicit
+user action — fast-add, manual create, or applying a reviewed grouping plan —
+produces a `confirmed` bundle (`grouping_source` records which action) and
+stamps `confirmed_at`. Confirmed groupings are durable and win over heuristics
+on re-scan: they are never silently re-split, merged, or retitled. Bundles
+created before this column existed backfill as `confirmed` / `legacy` via
+server defaults, so a pre-ADR-0009 library is never treated as un-reviewed.
 
 Current schema note: bundles do **not** have a first-class hyperlink/source
 column. Origin/source metadata is stored per file on `asset_files.source`. If

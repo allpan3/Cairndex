@@ -2,30 +2,44 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/concurrency-ui-and-jobs`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase1-schema`. Latest commit: see `git log -1`.
 
-ADR-0008 landed incrementally: registry skeleton (#20), per-library engine +
-first scoped route (#21), create → scan → browse working slice (#22, phases 3–7),
-Eagle-import removal (#23), cache relocation (#24, phase 8), and optimistic
-concurrency (#25, phase 9) have merged to `main`. This branch adds the
-**frontend** for optimistic concurrency (sending `If-Match` + a conflict notice)
-and **per-library maintenance UI actions** (Probe / Thumbnails alongside Scan).
-The ADR-0008 server-managed phases are complete; only the future direct-open /
-native modes (phases 10–11) remain.
+ADR-0008 is complete and merged (registry skeleton through optimistic
+concurrency + its frontend wiring and per-library maintenance UI). Work has now
+moved to **ADR-0009** (suggestion-based bundle grouping, Option A+). This branch
+lands **phase 1 — bundle grouping review state**: the `asset_bundles`
+`grouping_state` / `grouping_source` / `grouping_rule_version` / `confirmed_at`
+columns, with the scanner staging discovery as `provisional` and fast-add /
+manual creation confirming immediately.
 
 ## Current milestone
 
-**Per-library metadata + server/registry architecture (ADR-0008).** Moving from
-one global content database to portable, Eagle-like libraries — each a directory
-with a `.cairndex/` marker holding `manifest.json`, `library.db`, and `cache/`
-— while keeping the Jellyfin-like server/client split. The library DB travels
-with the folder; the server is normally the only metadata writer and routes
-content by `library_id`. The full phase plan is in ADR-0008.
+**Suggestion-based bundle grouping (ADR-0009, Option A+).** Scanning a realistic
+library over-fragments (one bundle per file). ADR-0009 keeps `AssetBundle` and
+`Collection` as separate tables but adds a provisional-grouping + durable
+grouping-plan workflow: scan discovers files into provisional bundles, a
+suggester proposes BUNDLE/CONTAINER groupings with roles/confidence/reasons, and
+the user reviews and applies the plan (apply is the only step that confirms
+groupings, assigns roles, creates logical collections, and links subtitles).
+Confirmed user decisions are durable and win over heuristics on re-scan. The
+full rollout is in ADR-0009.
 
 This is being landed incrementally across several PRs; do not implement all
 phases at once.
 
-## Completed in this milestone
+## Completed in this milestone (ADR-0009)
+
+- **Phase 1 — bundle grouping review state (this branch).** Added
+  `grouping_state` (`provisional` | `confirmed`), `grouping_source` (`legacy` |
+  `scan_suggestion` | `manual` | `fast_add` | `import`), `grouping_rule_version`,
+  and `confirmed_at` to `asset_bundles`. The scanner now stages discovered files
+  into `provisional` / `scan_suggestion` bundles; fast-add and manual creation
+  produce `confirmed` bundles; pre-existing rows backfill as `confirmed` /
+  `legacy` via server defaults. `BundleRead` exposes the state. Schema-and-state
+  only — browse behaviour, suggester, apply, and review UI are unchanged/later.
+  Tests in `tests/test_grouping_state.py`.
+
+## Completed in the prior milestone (ADR-0008)
 
 - **PR 1 — ADR + registry skeleton (merged, PR #20).**
   - ADR-0008 documenting the per-library + registry architecture, explicitly
@@ -81,9 +95,8 @@ phases at once.
 
 Run and passing locally for this PR:
 
-- backend: `ruff check`, `ruff format --check`, `mypy src`, `pytest` (172 passed);
-- frontend: `lint`, `format:check`, `typecheck`, `build` (OpenAPI + types
-  regenerated for the new `version` field and `If-Match` header).
+- backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
+  `pytest` (176 passed).
 
 ## Known issues / environment gaps
 
@@ -101,11 +114,10 @@ Run and passing locally for this PR:
 The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
-- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Keep
-  `AssetBundle` and `Collection` separate, add provisional bundle grouping state
-  plus durable grouping plans, then implement the propose→review→apply workflow
-  in phased PRs: schema state, read-only suggester, apply-plan API, review UI,
-  re-scan additions, and external subtitle auto-link.
+- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phase 1
+  (provisional grouping state) is done on this branch. Remaining phases, each a
+  separate PR: (2) read-only suggester, (3) apply-plan service + API, (4) review
+  UI, (5) re-scan additions as suggestions, (6) external subtitle auto-link.
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
