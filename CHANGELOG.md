@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Grouping review UI (ADR-0009, phase 4).** A new sidebar **⧉ Group** action
+  opens a review modal that suggests a grouping for the active library and shows
+  the plan — proposed bundles and the logical containers that would hold them,
+  with each file's role, a confidence badge, and a reason — then applies it on
+  confirmation (confirming bundles, creating collections, and linking subtitles;
+  nothing on disk changes). The apply result reports how many bundles/collections/
+  subtitle links were made and surfaces any conflicts (files that moved, vanished,
+  or were already grouped by hand). `useGroupingPlans` / `useGroupingPlan` /
+  `useGenerateGroupingPlan` / `useApplyGroupingPlan` wrap the ADR-0009 phase-3
+  routes; applying invalidates the browse/collection views. (Interactive
+  edit-before-apply — merge/split/reclassify/rename — is a follow-up; this lands
+  the review + accept-all + apply slice.)
+
 - **Grouping plan apply service + API (ADR-0009, phase 3).** Durable
   `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` tables store
   a reviewable snapshot of the suggester's output (parent links by
