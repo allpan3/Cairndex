@@ -27,7 +27,7 @@ and opens grouping review when a scan produced suggestions.
 normal maintenance path match the intended product model:
 
 1. scan the active library root;
-2. repair high-confidence moves without changing source files;
+2. repair high-confidence moves without changing original files;
 3. stage new files in provisional bundles;
 4. generate and persist a reviewable grouping plan;
 5. collect technical metadata;
@@ -37,7 +37,7 @@ Applying a grouping plan is the only operation that confirms scan-staged
 bundles, creates suggested logical collections, assigns roles, selects
 cover/primary files, links external subtitles, or adds newly discovered files to
 an existing confirmed bundle. It never moves, renames, deletes, or rewrites
-source files.
+original files.
 
 ## Current implementation notes
 
@@ -64,7 +64,12 @@ source files.
 - **Thumbnail UI:** the global sidebar thumbnail button was removed. The backend
   thumbnail job/API and lazy bundle/file thumbnail endpoints remain; cover
   fallback is explicit cover → first image → selected primary video → first video
-  → placeholder.
+  → placeholder/no thumbnail.
+- **Production deployment:** the library root mount must be writable because the
+  per-library package stores `.cairndex/{manifest.json,library.db,cache/}` under
+  that root. Normal MVP flows still avoid changing original media files. Backups
+  should cover `/data/registry.db` plus each library's `.cairndex/library.db`;
+  derived cache files are regenerable.
 
 ## Completed in ADR-0009
 
@@ -106,20 +111,20 @@ source files.
 
 ## Tests and validation
 
-Reported in the PR before this documentation refresh:
+Reported in the PR before this documentation/ops refresh:
 
 - backend: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy src`,
   `uv run pytest` (`210 passed`);
 - frontend: `npm run typecheck`, `npm run lint`, `npm run test`,
   `npm run build`.
 
-This status refresh is documentation-only and was not followed by a local test
-run in this session.
+This refresh updated docs, agent instructions, deployment comments/config, and
+the backup helper default/comments. No local test run was performed in this
+session; GitHub CI should validate the updated branch.
 
 ## Known issues / environment gaps
 
-- No authentication yet; the app is still intended for single-owner/local or
-  private-network use.
+- No authentication yet; the app is still intended for single-owner/local use.
 - Job status is polled and terminal states are surfaced, but long-running scan,
   probe, and thumbnail jobs still need detailed progress bars in the UI.
 - Grouping review can select/deselect proposals but does not yet provide rich
