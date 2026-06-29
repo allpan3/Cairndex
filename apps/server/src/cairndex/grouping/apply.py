@@ -1,0 +1,244 @@
+"""Apply a grouping plan (ADR-0009 phase 3).
+
+Applying a plan is the only step that creates *confirmed* grouping decisions: it
+merges/splits provisional bundles (preserving ``AssetFile.id`` so moved-file
+repair, subtitles, thumbnails, and notes stay stable), assigns roles, selects
+cover/primary, links external subtitles, and creates the logical collections a
+CONTAINER suggests. It never touches the filesystem.
+
+It is **idempotent** (re-applying a settled plan is a clean no-op) and
+**conflict-aware**: a proposal whose files have vanished or been manually
+regrouped is reported as a localized conflict and skipped, rather than discarding
+the whole plan or silently overriding a confirmed user decision.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from cairndex.core.errors import ConflictError
+from cairndex.core.time import utcnow
+from cairndex.domain.enums import (
+    FileRole,
+    GroupingPlanStatus,
+    GroupingState,
+    ProposalKind,
+)
+from cairndex.persistence.models import (
+    AssetBundle,
+    AssetFile,
+    Collection,
+    GroupingPlan,
+    GroupingProposal,
+)
+from cairndex.services.subtitles import auto_link_external_subtitles
+
+
+@dataclass(frozen=True)
+class ProposalConflict:
+    proposal_id: str
+    title: str | None
+    reason: str
+
+
+@dataclass
+class ApplyResult:
+    bundles_confirmed: int = 0
+    bundles_removed: int = 0
+    collections_created: int = 0
+    bundles_added_to_collections: int = 0
+    subtitles_linked: int = 0
+    conflicts: list[ProposalConflict] = field(default_factory=list)
+
+
+@dataclass
+class _BundleOutcome:
+    target_bundle_id: str | None
+
+
+def apply_plan(session: Session, plan: GroupingPlan) -> ApplyResult:
+    """Apply ``plan`` to the library, confirming bundles and creating containers.
+
+    Safe to call more than once; an already-applied proposal becomes a no-op.
+    """
+    if plan.status is GroupingPlanStatus.CANCELLED:
+        raise ConflictError("cannot apply a cancelled grouping plan")
+
+    result = ApplyResult()
+    proposals = list(plan.proposals)
+    target_bundle_by_proposal: dict[str, str] = {}
+
+    # 1) Bundles first, so containers can reference the resulting bundles.
+    for proposal in proposals:
+        if proposal.kind is ProposalKind.BUNDLE:
+            outcome = _apply_bundle(session, plan, proposal, result)
+            if outcome.target_bundle_id is not None:
+                target_bundle_by_proposal[proposal.id] = outcome.target_bundle_id
+
+    # 2) Containers, parent-first (shallower directories first), creating the
+    #    logical collections and nesting child collections under parents.
+    collection_by_proposal: dict[str, str] = {}
+    containers = [p for p in proposals if p.kind is ProposalKind.CONTAINER]
+    for proposal in sorted(containers, key=lambda p: p.directory.count("/")):
+        parent_collection_id = (
+            collection_by_proposal.get(proposal.parent_proposal_id)
+            if proposal.parent_proposal_id is not None
+            else None
+        )
+        collection, created = _ensure_collection(session, proposal, parent_collection_id)
+        collection_by_proposal[proposal.id] = collection.id
+        if created:
+            result.collections_created += 1
+
+    # 3) Wire bundle membership: each bundle joins its container's collection.
+    for proposal in proposals:
+        if proposal.kind is not ProposalKind.BUNDLE or proposal.parent_proposal_id is None:
+            continue
+        collection_id = collection_by_proposal.get(proposal.parent_proposal_id)
+        bundle_id = target_bundle_by_proposal.get(proposal.id)
+        if collection_id is None or bundle_id is None:
+            continue
+        if _add_bundle_to_collection(session, bundle_id, collection_id):
+            result.bundles_added_to_collections += 1
+
+    plan.status = GroupingPlanStatus.APPLIED
+    plan.applied_at = utcnow()
+    session.flush()
+    return result
+
+
+def _apply_bundle(
+    session: Session, plan: GroupingPlan, proposal: GroupingProposal, result: ApplyResult
+) -> _BundleOutcome:
+    file_ids = [pf.asset_file_id for pf in proposal.files]
+    rows = {fid: session.get(AssetFile, fid) for fid in file_ids}
+    present = [r for r in rows.values() if r is not None]
+    missing = [fid for fid, r in rows.items() if r is None]
+
+    if missing:
+        result.conflicts.append(
+            _conflict(
+                proposal, f"{len(missing)} file(s) referenced by this proposal no longer exist"
+            )
+        )
+    if not present:
+        return _BundleOutcome(None)
+
+    provisional = [r for r in present if r.bundle.grouping_state is GroupingState.PROVISIONAL]
+    confirmed = [r for r in present if r.bundle.grouping_state is GroupingState.CONFIRMED]
+
+    if confirmed:
+        confirmed_bundle_ids = {r.bundle_id for r in confirmed}
+        already_applied = (
+            not provisional
+            and len(confirmed_bundle_ids) == 1
+            and _bundle_holds_exactly(
+                session, next(iter(confirmed_bundle_ids)), {r.id for r in present}
+            )
+        )
+        if already_applied:
+            # Idempotent: this proposal is already realized as a confirmed bundle.
+            return _BundleOutcome(next(iter(confirmed_bundle_ids)))
+        result.conflicts.append(
+            _conflict(proposal, "some files were already grouped into a confirmed bundle")
+        )
+        return _BundleOutcome(None)
+
+    if not provisional:
+        return _BundleOutcome(None)
+
+    target = provisional[0].bundle
+    source_bundles = {r.bundle for r in provisional if r.bundle_id != target.id}
+    role_by_id = {pf.asset_file_id: pf.proposed_role for pf in proposal.files}
+    seq_by_id = {pf.asset_file_id: pf.sequence for pf in proposal.files}
+
+    for row in provisional:
+        row.bundle_id = target.id
+        row.role = role_by_id.get(row.id, row.role)
+        row.sequence = seq_by_id.get(row.id, row.sequence)
+
+    target.title = proposal.title or target.title
+    target.grouping_state = GroupingState.CONFIRMED
+    target.confirmed_at = utcnow()
+    target.grouping_rule_version = plan.rule_version
+    cover = next((r for r in provisional if r.role is FileRole.COVER), None)
+    primary = next((r for r in provisional if r.role is FileRole.PRIMARY_VIDEO), None)
+    target.cover_file_id = cover.id if cover is not None else target.cover_file_id
+    target.primary_file_id = primary.id if primary is not None else None
+    result.bundles_confirmed += 1
+
+    session.flush()
+    _cleanup_sources(session, source_bundles, result)
+
+    result.subtitles_linked += len(auto_link_external_subtitles(session, target.id))
+    return _BundleOutcome(target.id)
+
+
+def _cleanup_sources(
+    session: Session, source_bundles: set[AssetBundle], result: ApplyResult
+) -> None:
+    """Remove provisional bundles emptied by a merge; repair dangling cover/
+    primary references on any that still hold files (a split)."""
+    for bundle in source_bundles:
+        remaining = (
+            session.scalar(
+                select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle.id)
+            )
+            or 0
+        )
+        if remaining == 0:
+            session.delete(bundle)
+            result.bundles_removed += 1
+        else:
+            _clear_dangling_refs(session, bundle)
+
+
+def _clear_dangling_refs(session: Session, bundle: AssetBundle) -> None:
+    for attr in ("cover_file_id", "primary_file_id"):
+        ref_id = getattr(bundle, attr)
+        if ref_id is not None:
+            ref = session.get(AssetFile, ref_id)
+            if ref is None or ref.bundle_id != bundle.id:
+                setattr(bundle, attr, None)
+
+
+def _bundle_holds_exactly(session: Session, bundle_id: str, file_ids: set[str]) -> bool:
+    current = set(
+        session.scalars(select(AssetFile.id).where(AssetFile.bundle_id == bundle_id)).all()
+    )
+    return current == file_ids
+
+
+def _ensure_collection(
+    session: Session, proposal: GroupingProposal, parent_collection_id: str | None
+) -> tuple[Collection, bool]:
+    name = (proposal.title or proposal.directory.rsplit("/", 1)[-1] or "Untitled").strip()
+    existing = session.scalar(
+        select(Collection).where(
+            Collection.name == name, Collection.parent_id == parent_collection_id
+        )
+    )
+    if existing is not None:
+        return existing, False
+    collection = Collection(name=name, parent_id=parent_collection_id)
+    session.add(collection)
+    session.flush()
+    return collection, True
+
+
+def _add_bundle_to_collection(session: Session, bundle_id: str, collection_id: str) -> bool:
+    bundle = session.get(AssetBundle, bundle_id)
+    collection = session.get(Collection, collection_id)
+    if bundle is None or collection is None:
+        return False
+    if any(c.id == collection_id for c in bundle.collections):
+        return False
+    bundle.collections.append(collection)
+    return True
+
+
+def _conflict(proposal: GroupingProposal, reason: str) -> ProposalConflict:
+    return ProposalConflict(proposal_id=proposal.id, title=proposal.title, reason=reason)

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from cairndex.api.v1 import (
     bundles,
     filters,
+    grouping,
     health,
     jobs,
     libraries,
@@ -28,3 +29,4 @@ router.include_router(tag_groups.router)
 router.include_router(smart_collections.router)
 router.include_router(filters.router)
 router.include_router(playback.router)
+router.include_router(grouping.router)

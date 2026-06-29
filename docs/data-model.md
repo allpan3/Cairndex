@@ -137,6 +137,29 @@ constraints; uniqueness on `(video_file_id, embedded_index)` and
 basename (language/forced parsed from the suffix); unmatched ones stay unlinked
 for manual attachment.
 
+### `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` (ADR-0009)
+
+Durable, reviewable snapshot of the grouping suggester's output, applied as a
+single user-confirmed step.
+
+- `grouping_plans`: `id`, `scan_job_id` (nullable; the registry job that produced
+  it, no cross-DB FK), `status` (`open` | `applied` | `superseded` |
+  `cancelled`), `rule_version`, `generated_at`, `applied_at` (nullable),
+  timestamps, `version`. Generating a new plan supersedes the prior open one.
+- `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (FK
+  self, SET NULL — links a bundle/container to the container that would contain
+  it; the collection is created at apply time), `kind` (`bundle` | `container`),
+  `title`, `directory`, `confidence`, `reason`, `sort_order`.
+- `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
+  (a plain id, **not** an FK — a plan is a snapshot, so a file that later vanishes
+  surfaces as an apply-time conflict instead of cascading), `relative_path`
+  (display snapshot), `proposed_role`, `sequence`.
+
+Apply is idempotent and conflict-aware: it merges/splits provisional bundles
+**preserving `AssetFile.id`**, assigns roles, selects cover/primary, links
+external subtitles, and creates the collections a CONTAINER suggests — never
+touching the filesystem, and never overriding a confirmed user decision.
+
 ## Registry database (ADR-0008, separate from the content DB)
 
 These tables live in the **registry** DB (`{CAIRNDEX_DATA_DIR}/registry.db`,
