@@ -110,19 +110,23 @@ test('right-clicking a bundle deletes it via the context menu', async ({ page })
     }
     return r.fallback()
   })
-  // The delete action asks for confirmation first; accept it.
-  page.on('dialog', (d) => d.accept())
 
   await page.goto('/')
   await page.locator('.card').first().click({ button: 'right' })
   const menu = page.getByRole('menu')
   await expect(menu).toBeVisible()
-  await menu.getByRole('menuitem', { name: 'Delete bundle' }).click()
+  await menu.getByRole('menuitem', { name: 'Delete Bundle' }).click()
+
+  // Confirm in the styled dialog; the "delete files" box is off by default.
+  const dialog = page.getByRole('dialog', { name: 'Delete bundle' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+  await dialog.getByRole('button', { name: 'Delete' }).click()
 
   await expect.poll(() => deleted).toBe('b0')
 })
 
-test('removing a collection offers a subcollections choice', async ({ page }) => {
+test('deleting a collection offers a subcollections choice', async ({ page }) => {
   await mockApi(page)
   const collections = [
     { id: 'c1', name: 'Movies', parent_id: null },
@@ -145,13 +149,13 @@ test('removing a collection offers a subcollections choice', async ({ page }) =>
 
   await page.goto('/')
   await page.getByText('Movies').click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Remove Collection' }).click()
+  await page.getByRole('menuitem', { name: 'Delete collection' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'Remove collection' })
+  const dialog = page.getByRole('dialog', { name: 'Delete collection' })
   await expect(dialog).toBeVisible()
   // The subcollections checkbox is offered and checked by default.
   await expect(dialog.getByRole('checkbox')).toBeChecked()
-  await dialog.getByRole('button', { name: 'Remove' }).click()
+  await dialog.getByRole('button', { name: 'Delete' }).click()
 
   // Confirming with the box checked cascades to subcollections.
   await expect.poll(() => deleteUrl).toContain('cascade=true')

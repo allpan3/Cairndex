@@ -14,9 +14,9 @@ interface RemoveCollectionDialogProps {
 }
 
 /**
- * Confirm removing a collection. Removal is metadata-only — bundles and files
+ * Confirm deleting a collection. Deletion is metadata-only — bundles and files
  * are always kept. When the collection has subcollections the owner chooses
- * (checked by default) whether to remove them too or float them to the top
+ * (checked by default) whether to delete them too or float them to the top
  * level.
  */
 export function RemoveCollectionDialog({
@@ -43,18 +43,18 @@ export function RemoveCollectionDialog({
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Remove collection"
+        aria-label="Delete collection"
       >
         <div className="modal__head">
-          <h2>Remove Collection</h2>
+          <h2>Delete collection</h2>
           <button className="modal__close" onClick={onCancel} aria-label="Cancel">
             ×
           </button>
         </div>
 
         <div className="modal__preview">
-          Remove “{collection.name}”? The bundles and files inside it are kept — only the collection
-          is removed.
+          Delete “{collection.name}”? The bundles and files inside it are kept — only the collection
+          is deleted.
         </div>
 
         {hasChildren && (
@@ -65,12 +65,12 @@ export function RemoveCollectionDialog({
                 checked={cascade}
                 onChange={(e) => setCascade(e.target.checked)}
               />
-              Also remove subcollections
+              Also delete subcollections
             </label>
             <div className="modal__preview">
               {cascade
-                ? 'Subcollections (and any nested below them) will be removed too.'
-                : 'Subcollections will move to the top level instead of being removed.'}
+                ? 'Subcollections (and any nested below them) will be deleted too.'
+                : 'Subcollections will move to the top level instead of being deleted.'}
             </div>
           </>
         )}
@@ -85,7 +85,7 @@ export function RemoveCollectionDialog({
             onClick={() => onConfirm(hasChildren ? cascade : false)}
             disabled={pending}
           >
-            {pending ? 'Removing…' : 'Remove'}
+            {pending ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </div>
