@@ -20,6 +20,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -32,9 +33,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
+    GroupingPlanStatus,
     GroupingSource,
     GroupingState,
     MediaKind,
+    ProposalKind,
 )
 from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt, Version
 from cairndex.persistence.types import UtcDateTime
@@ -351,3 +354,95 @@ class SubtitleTrack(Base):
         UniqueConstraint("video_file_id", "embedded_index", name="subtitle_embedded_unique"),
         UniqueConstraint("source_file_id", name="subtitle_source_unique"),
     )
+
+
+class GroupingPlan(Base):
+    """A durable snapshot of grouping suggestions awaiting review (ADR-0009).
+
+    Generated from the suggester, optionally edited by the user, then applied.
+    A plan is a snapshot — not a live path-sync rule — so applying a stale plan
+    detects conflicts (moved/vanished/already-regrouped files) per proposal
+    rather than discarding the whole result.
+    """
+
+    __tablename__ = "grouping_plans"
+
+    id: Mapped[UlidPk]
+    # The scan that produced this plan, if any (registry job id; no cross-DB FK).
+    scan_job_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    status: Mapped[GroupingPlanStatus] = mapped_column(
+        Enum(GroupingPlanStatus, native_enum=False, length=16),
+        default=GroupingPlanStatus.OPEN,
+    )
+    rule_version: Mapped[int] = mapped_column(Integer, default=1)
+    generated_at: Mapped[CreatedAt]
+    applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
+    version: Mapped[Version]
+
+    proposals: Mapped[list[GroupingProposal]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="GroupingProposal.sort_order",
+    )
+
+
+class GroupingProposal(Base):
+    """One proposed BUNDLE or CONTAINER within a plan (ADR-0009).
+
+    ``parent_proposal_id`` links a child bundle/container to the container that
+    would contain it (the collection is created at apply time). ``directory`` and
+    proposed title/reason are display/context; the durable apply target is the
+    set of ``asset_file_id`` rows in ``files``.
+    """
+
+    __tablename__ = "grouping_proposals"
+
+    id: Mapped[UlidPk]
+    plan_id: Mapped[UlidFk] = mapped_column(ForeignKey("grouping_plans.id", ondelete="CASCADE"))
+    parent_proposal_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[ProposalKind] = mapped_column(Enum(ProposalKind, native_enum=False, length=16))
+    title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    directory: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[CreatedAt]
+    updated_at: Mapped[UpdatedAt]
+
+    plan: Mapped[GroupingPlan] = relationship(back_populates="proposals")
+    files: Mapped[list[GroupingProposalFile]] = relationship(
+        back_populates="proposal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="GroupingProposalFile.sequence",
+    )
+
+
+class GroupingProposalFile(Base):
+    """A file's proposed role + order within a proposed bundle (ADR-0009).
+
+    ``asset_file_id`` is stored as a plain id (not an FK): a plan is a snapshot,
+    so a file that later vanishes must surface as a conflict at apply time rather
+    than cascade-deleting or nulling the proposal row. ``relative_path`` is a
+    display/context snapshot.
+    """
+
+    __tablename__ = "grouping_proposal_files"
+
+    id: Mapped[UlidPk]
+    proposal_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey("grouping_proposals.id", ondelete="CASCADE")
+    )
+    asset_file_id: Mapped[str] = mapped_column(String(26))
+    relative_path: Mapped[str] = mapped_column(Text, default="")
+    proposed_role: Mapped[FileRole] = mapped_column(Enum(FileRole, native_enum=False, length=32))
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+
+    proposal: Mapped[GroupingProposal] = relationship(back_populates="files")

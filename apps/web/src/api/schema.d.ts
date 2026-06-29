@@ -575,6 +575,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/grouping/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Plans */
+        get: operations["list_plans_api_v1_libraries__library_id__grouping_plans_get"];
+        put?: never;
+        /**
+         * Generate Plan
+         * @description Suggest a grouping for the current library and store it as the active
+         *     plan (superseding any earlier open plan).
+         */
+        post: operations["generate_plan_api_v1_libraries__library_id__grouping_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_api_v1_libraries__library_id__grouping_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Plan */
+        post: operations["apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/jobs/probe": {
         parameters: {
             query?: never;
@@ -815,6 +871,30 @@ export interface components {
              * @constant
              */
             op: "and";
+        };
+        /** ApplyConflictRead */
+        ApplyConflictRead: {
+            /** Proposal Id */
+            proposal_id: string;
+            /** Reason */
+            reason: string;
+            /** Title */
+            title: string | null;
+        };
+        /** ApplyResultRead */
+        ApplyResultRead: {
+            /** Bundles Added To Collections */
+            bundles_added_to_collections: number;
+            /** Bundles Confirmed */
+            bundles_confirmed: number;
+            /** Bundles Removed */
+            bundles_removed: number;
+            /** Collections Created */
+            collections_created: number;
+            /** Conflicts */
+            conflicts: components["schemas"]["ApplyConflictRead"][];
+            /** Subtitles Linked */
+            subtitles_linked: number;
         };
         /** BatchResult */
         BatchResult: {
@@ -1213,6 +1293,15 @@ export interface components {
          */
         Grouping: "per_file" | "single_bundle";
         /**
+         * GroupingPlanStatus
+         * @description Lifecycle of a durable grouping plan (ADR-0009).
+         *
+         *     A plan is a snapshot of suggestions: ``open`` until the user applies it
+         *     (``applied``), regeneration ``superseded`` it, or it was ``cancelled``.
+         * @enum {string}
+         */
+        GroupingPlanStatus: "open" | "applied" | "superseded" | "cancelled";
+        /**
          * GroupingSource
          * @description What produced a bundle's current grouping (ADR-0009).
          *
@@ -1442,6 +1531,42 @@ export interface components {
             /** Suggestions */
             suggestions: string[];
         };
+        /** PlanRead */
+        PlanRead: {
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Id */
+            id: string;
+            /** Proposals */
+            proposals: components["schemas"]["ProposalRead"][];
+            /** Rule Version */
+            rule_version: number;
+            /** Scan Job Id */
+            scan_job_id: string | null;
+            status: components["schemas"]["GroupingPlanStatus"];
+        };
+        /** PlanSummary */
+        PlanSummary: {
+            /** Applied At */
+            applied_at: string | null;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Id */
+            id: string;
+            /** Proposal Count */
+            proposal_count: number;
+            /** Rule Version */
+            rule_version: number;
+            status: components["schemas"]["GroupingPlanStatus"];
+        };
         /** PlayableVideo */
         PlayableVideo: {
             /** Display Title */
@@ -1485,6 +1610,43 @@ export interface components {
             operator: string;
             /** Value */
             value?: unknown;
+        };
+        /** ProposalFileRead */
+        ProposalFileRead: {
+            /** Asset File Id */
+            asset_file_id: string;
+            proposed_role: components["schemas"]["FileRole"];
+            /** Relative Path */
+            relative_path: string;
+            /** Sequence */
+            sequence: number;
+        };
+        /**
+         * ProposalKind
+         * @description Whether a grouping proposal makes a bundle or a logical container (ADR-0009).
+         *
+         *     ``container`` is a logical-collection suggestion (its members are the bundles
+         *     proposed inside it), never a filesystem-synced rule.
+         * @enum {string}
+         */
+        ProposalKind: "bundle" | "container";
+        /** ProposalRead */
+        ProposalRead: {
+            /** Confidence */
+            confidence: number;
+            /** Directory */
+            directory: string;
+            /** Files */
+            files: components["schemas"]["ProposalFileRead"][];
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ProposalKind"];
+            /** Parent Proposal Id */
+            parent_proposal_id: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Title */
+            title: string | null;
         };
         /** SetIdsRequest */
         SetIdsRequest: {
@@ -3050,6 +3212,132 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FilterPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plans_api_v1_libraries__library_id__grouping_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_plan_api_v1_libraries__library_id__grouping_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_v1_libraries__library_id__grouping_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResultRead"];
                 };
             };
             /** @description Validation Error */

@@ -10,6 +10,22 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Grouping plan apply service + API (ADR-0009, phase 3).** Durable
+  `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` tables store
+  a reviewable snapshot of the suggester's output (parent links by
+  `parent_proposal_id`; proposal files reference `asset_file_id` as a snapshot id,
+  not an FK, so a vanished file surfaces as a conflict rather than cascading). New
+  library-scoped routes: `POST /grouping/plans` (suggest + persist, superseding
+  the prior open plan), `GET /grouping/plans`, `GET /grouping/plans/{id}`, and
+  `POST /grouping/plans/{id}/apply`. Apply is the only step that confirms
+  groupings: it merges/splits provisional bundles **preserving `AssetFile.id`**
+  (so moved-file repair, subtitles, thumbnails, and notes stay stable), assigns
+  roles, selects cover/primary, links external subtitles, and creates the logical
+  collections a CONTAINER suggests — never touching the filesystem. It is
+  idempotent (re-applying a settled plan is a clean no-op) and conflict-aware (a
+  proposal whose files vanished or were manually regrouped is reported as a
+  localized conflict and skipped, never overriding a confirmed user decision).
+
 - **Read-only grouping suggester (ADR-0009, phase 2).** A pure heuristic
   (`cairndex.grouping`) turns the files observed in a library into a
   `GroupingPlan` of BUNDLE / CONTAINER proposals with per-file roles, ordering,

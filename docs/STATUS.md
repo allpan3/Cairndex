@@ -2,14 +2,15 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase2-suggester`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase3-apply`. Latest commit: see `git log -1`.
 
 ADR-0008 is complete and merged. Work is on **ADR-0009** (suggestion-based
-bundle grouping, Option A+). Phase 1 (grouping review state) merged (#29). This
-branch lands **phase 2 — the read-only grouping suggester**: a pure heuristic
-(`cairndex.grouping`) that turns observed files into a `GroupingPlan` of
-BUNDLE/CONTAINER proposals with roles, confidence, and reasons, plus a read-only
-DB adapter. No persistence or API yet — that is phase 3.
+bundle grouping, Option A+). Phases 1 (grouping review state, #29) and 2
+(read-only suggester, #30) merged. This branch lands **phase 3 — the apply-plan
+service + API**: durable plan/proposal tables, generate/list/get/apply routes,
+and an idempotent, conflict-aware apply that confirms bundles, assigns roles,
+links subtitles, and creates the suggested collections. Next up is the review UI
+(phase 4).
 
 ## Current milestone
 
@@ -28,7 +29,18 @@ phases at once.
 
 ## Completed in this milestone (ADR-0009)
 
-- **Phase 2 — read-only grouping suggester (this branch).** New
+- **Phase 3 — apply-plan service + API (this branch).** Durable
+  `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` tables
+  (`grouping.plan_store` persists/supersedes/loads). `grouping.apply.apply_plan`
+  confirms bundles by merging/splitting provisional ones while preserving
+  `AssetFile.id`, assigns roles, selects cover/primary, links external subtitles,
+  and creates the collections a CONTAINER suggests — idempotent and
+  conflict-aware (vanished or manually-regrouped files become localized conflicts
+  and are skipped). Library-scoped routes under `/grouping/plans`
+  (generate/list/get/apply). Tests in `tests/test_grouping_apply.py` and
+  `tests/test_grouping_api.py`. OpenAPI + frontend types regenerated.
+
+- **Phase 2 — read-only grouping suggester (merged, #30).** New
   `cairndex.grouping` package: a pure `suggest_grouping(files)` that produces a
   `GroupingPlan` of BUNDLE/CONTAINER proposals (per-file roles + sequence,
   confidence, reason) using content-first heuristics — one-video-plus-sidecars
@@ -106,7 +118,9 @@ phases at once.
 Run and passing locally for this PR:
 
 - backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
-  `pytest` (186 passed).
+  `pytest` (194 passed);
+- frontend: `lint`, `format:check`, `typecheck`, `test`, `build`, `test:e2e`
+  (OpenAPI + types regenerated for the new grouping routes).
 
 ## Known issues / environment gaps
 
@@ -125,12 +139,12 @@ The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
 - **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1
-  (grouping state) and 2 (read-only suggester) are done. Remaining phases, each a
-  separate PR: (3) apply-plan service + API — durable plan/proposal tables and an
-  idempotent, conflict-aware apply that confirms bundles/collections, merges/
-  splits provisional bundles preserving `AssetFile.id`, assigns roles, and links
-  subtitles; (4) review UI; (5) re-scan additions as suggestions; (6) external
-  subtitle auto-link folded into role assignment.
+  (grouping state), 2 (read-only suggester), and 3 (apply-plan service + API) are
+  done. Remaining phases, each a separate PR: (4) review UI — surface the plan
+  after scan with accept-all/merge/split/reclassify/rename/apply wired to the
+  job/registry flow; (5) re-scan additions suggested into confirmed bundles/
+  containers without disturbing confirmed groupings; (6) external subtitle
+  auto-link folded into the scanner/role path.
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
