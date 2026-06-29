@@ -2,15 +2,14 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase1-schema`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase2-suggester`. Latest commit: see `git log -1`.
 
-ADR-0008 is complete and merged (registry skeleton through optimistic
-concurrency + its frontend wiring and per-library maintenance UI). Work has now
-moved to **ADR-0009** (suggestion-based bundle grouping, Option A+). This branch
-lands **phase 1 — bundle grouping review state**: the `asset_bundles`
-`grouping_state` / `grouping_source` / `grouping_rule_version` / `confirmed_at`
-columns, with the scanner staging discovery as `provisional` and fast-add /
-manual creation confirming immediately.
+ADR-0008 is complete and merged. Work is on **ADR-0009** (suggestion-based
+bundle grouping, Option A+). Phase 1 (grouping review state) merged (#29). This
+branch lands **phase 2 — the read-only grouping suggester**: a pure heuristic
+(`cairndex.grouping`) that turns observed files into a `GroupingPlan` of
+BUNDLE/CONTAINER proposals with roles, confidence, and reasons, plus a read-only
+DB adapter. No persistence or API yet — that is phase 3.
 
 ## Current milestone
 
@@ -29,7 +28,18 @@ phases at once.
 
 ## Completed in this milestone (ADR-0009)
 
-- **Phase 1 — bundle grouping review state (this branch).** Added
+- **Phase 2 — read-only grouping suggester (this branch).** New
+  `cairndex.grouping` package: a pure `suggest_grouping(files)` that produces a
+  `GroupingPlan` of BUNDLE/CONTAINER proposals (per-file roles + sequence,
+  confidence, reason) using content-first heuristics — one-video-plus-sidecars
+  and multipart folders become bundles; unrelated-item and sub-bundle-holding
+  folders become containers; nested folders recurse. Confirmed bundles are
+  excluded. A read-only `grouping.service` adapter snapshots a library session
+  into observations. Tests in `tests/test_grouping_suggester.py` (movie/photo/
+  nested/multipart/cover/subtitle/confirmed-exclusion + over a real scan). No
+  persistence, API, or UI yet.
+
+- **Phase 1 — bundle grouping review state (merged, #29).** Added
   `grouping_state` (`provisional` | `confirmed`), `grouping_source` (`legacy` |
   `scan_suggestion` | `manual` | `fast_add` | `import`), `grouping_rule_version`,
   and `confirmed_at` to `asset_bundles`. The scanner now stages discovered files
@@ -37,7 +47,7 @@ phases at once.
   produce `confirmed` bundles; pre-existing rows backfill as `confirmed` /
   `legacy` via server defaults. `BundleRead` exposes the state. Schema-and-state
   only — browse behaviour, suggester, apply, and review UI are unchanged/later.
-  Tests in `tests/test_grouping_state.py`.
+  Tests in `tests/test_grouping_state.py`. (#29)
 
 ## Completed in the prior milestone (ADR-0008)
 
@@ -96,7 +106,7 @@ phases at once.
 Run and passing locally for this PR:
 
 - backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
-  `pytest` (176 passed).
+  `pytest` (186 passed).
 
 ## Known issues / environment gaps
 
@@ -114,10 +124,13 @@ Run and passing locally for this PR:
 The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
-- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phase 1
-  (provisional grouping state) is done on this branch. Remaining phases, each a
-  separate PR: (2) read-only suggester, (3) apply-plan service + API, (4) review
-  UI, (5) re-scan additions as suggestions, (6) external subtitle auto-link.
+- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1
+  (grouping state) and 2 (read-only suggester) are done. Remaining phases, each a
+  separate PR: (3) apply-plan service + API — durable plan/proposal tables and an
+  idempotent, conflict-aware apply that confirms bundles/collections, merges/
+  splits provisional bundles preserving `AssetFile.id`, assigns roles, and links
+  subtitles; (4) review UI; (5) re-scan additions as suggestions; (6) external
+  subtitle auto-link folded into role assignment.
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
