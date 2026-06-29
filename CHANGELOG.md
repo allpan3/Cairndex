@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Bundle grouping review state (ADR-0009, phase 1).** `asset_bundles` now
+  carries `grouping_state` (`provisional` | `confirmed`), `grouping_source`
+  (`legacy` | `scan_suggestion` | `manual` | `fast_add` | `import`),
+  `grouping_rule_version`, and `confirmed_at`. The scanner stages newly
+  discovered files into `provisional` / `scan_suggestion` bundles awaiting
+  review; fast-add and manual creation produce `confirmed` bundles (the user
+  already chose the grouping). Bundles created before this change backfill as
+  `confirmed` / `legacy` via server defaults. `grouping_state` /
+  `grouping_source` are exposed on `BundleRead`. This is schema-and-state only:
+  the suggester, apply-plan service, and review UI land in later ADR-0009
+  phases, and browse behaviour is unchanged for now.
+
 - **Frontend wiring for optimistic concurrency + per-library maintenance jobs.**
   The bundle inspector and Smart Collection editor now send the entity `version`
   as `If-Match` on edits; a 409 conflict surfaces an inline notice ("changed

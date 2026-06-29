@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
-from cairndex.domain.enums import Grouping
+from cairndex.core.time import utcnow
+from cairndex.domain.enums import Grouping, GroupingSource, GroupingState
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
@@ -65,7 +66,7 @@ def fast_add(
 
     if grouping is Grouping.SINGLE_BUNDLE:
         title = bundle_title or next(iter(to_link.values())).stem
-        bundle = AssetBundle(title=title)
+        bundle = _new_confirmed_bundle(title)
         session.add(bundle)
         session.flush()
         for sequence, (rel, path) in enumerate(to_link.items()):
@@ -73,7 +74,7 @@ def fast_add(
         bundles_created = 1
     else:
         for rel, path in to_link.items():
-            bundle = AssetBundle(title=path.stem)
+            bundle = _new_confirmed_bundle(path.stem)
             session.add(bundle)
             session.flush()
             _link(session, bundle.id, rel, path, sequence=0)
@@ -81,6 +82,17 @@ def fast_add(
 
     session.commit()
     return FastAddResult(bundles_created, len(to_link), skipped)
+
+
+def _new_confirmed_bundle(title: str) -> AssetBundle:
+    """A fast-add bundle is confirmed on creation: the user chose the grouping
+    directly, so it never needs review (ADR-0009)."""
+    return AssetBundle(
+        title=title,
+        grouping_state=GroupingState.CONFIRMED,
+        grouping_source=GroupingSource.FAST_ADD,
+        confirmed_at=utcnow(),
+    )
 
 
 def _link(session: Session, bundle_id: str, rel: str, path: Path, *, sequence: int) -> None:

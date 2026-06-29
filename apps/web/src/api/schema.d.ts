@@ -903,6 +903,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            grouping_source: components["schemas"]["GroupingSource"];
+            grouping_state: components["schemas"]["GroupingState"];
             /** Id */
             id: string;
             /**
@@ -1210,6 +1212,28 @@ export interface components {
          * @enum {string}
          */
         Grouping: "per_file" | "single_bundle";
+        /**
+         * GroupingSource
+         * @description What produced a bundle's current grouping (ADR-0009).
+         *
+         *     ``legacy`` backfills bundles created before grouping state existed (they are
+         *     treated as already confirmed). ``scan_suggestion`` marks provisional bundles
+         *     staged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user
+         *     decided directly, so they confirm immediately.
+         * @enum {string}
+         */
+        GroupingSource: "legacy" | "scan_suggestion" | "manual" | "fast_add" | "import";
+        /**
+         * GroupingState
+         * @description Whether a bundle's grouping is a confirmed user decision (ADR-0009).
+         *
+         *     Scan discovers files and stages them in ``provisional`` bundles; only an
+         *     explicit user action (review/apply, fast-add, manual create) confirms a
+         *     grouping. Confirmed groupings are durable and win over heuristics on
+         *     re-scan — they are never silently re-split, merged, or retitled.
+         * @enum {string}
+         */
+        GroupingState: "provisional" | "confirmed";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */

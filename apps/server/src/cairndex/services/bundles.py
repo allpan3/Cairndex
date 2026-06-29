@@ -51,7 +51,9 @@ def create_bundle(
     rating: int | None = None,
 ) -> AssetBundle:
     _validate_rating(rating)
-    bundle = AssetBundle(title=title, note=note, rating=rating)
+    # A manually created bundle is a direct user grouping decision, so it is
+    # confirmed on creation (ADR-0009); model defaults give it confirmed/manual.
+    bundle = AssetBundle(title=title, note=note, rating=rating, confirmed_at=utcnow())
     session.add(bundle)
     session.flush()
     return bundle
