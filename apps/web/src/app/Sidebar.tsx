@@ -133,7 +133,7 @@ export function Sidebar({
 
   const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
     menu.open(e, [
-      { label: 'Delete collection', danger: true, onClick: () => onDeleteCollection(collection) },
+      { label: 'Remove Collection', danger: true, onClick: () => onDeleteCollection(collection) },
     ])
 
   const smartMenu = (sc: SmartCollectionRead, e: React.MouseEvent) => {

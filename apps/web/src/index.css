@@ -805,6 +805,18 @@ code {
   gap: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
+.modal--confirm {
+  width: min(440px, 92vw);
+  gap: 10px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-strong);
+  cursor: pointer;
+}
 .modal__head {
   display: flex;
   align-items: center;

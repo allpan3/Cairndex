@@ -57,5 +57,7 @@ def update_collection(
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_collection(collection_id: str, db: LibrarySession) -> None:
-    service.delete_collection(db, collection_id)
+def delete_collection(collection_id: str, db: LibrarySession, cascade: bool = False) -> None:
+    """Remove a collection (metadata only). ``cascade=true`` also removes its
+    descendant subcollections; otherwise they float to the library root."""
+    service.delete_collection(db, collection_id, cascade=cascade)
