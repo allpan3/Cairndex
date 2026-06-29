@@ -29,10 +29,21 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.paths import normalize_relative_path
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify
+
+# Version of the scan-time grouping rule recorded on provisional bundles
+# (ADR-0009). The current rule is still "one provisional bundle per file"; the
+# content-aware suggester (ADR-0009 phase 2) will bump this when it lands.
+SCAN_GROUPING_RULE_VERSION = 1
 
 # Called after each committed batch with (processed, total). May raise to abort
 # the scan (the job handler passes a checkpoint that raises on cancellation);
@@ -216,7 +227,12 @@ def scan_library(
     for obs in new_obs:
         if obs.rel in repaired_rel:
             continue
-        bundle = AssetBundle(title=Path(obs.name).stem)
+        bundle = AssetBundle(
+            title=Path(obs.name).stem,
+            grouping_state=GroupingState.PROVISIONAL,
+            grouping_source=GroupingSource.SCAN_SUGGESTION,
+            grouping_rule_version=SCAN_GROUPING_RULE_VERSION,
+        )
         session.add(bundle)
         session.flush()
         new_file = AssetFile(

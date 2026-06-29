@@ -32,6 +32,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from cairndex.domain.enums import (
     FileAvailability,
     FileRole,
+    GroupingSource,
+    GroupingState,
     MediaKind,
 )
 from cairndex.persistence.base import Base, CreatedAt, UlidFk, UlidPk, UpdatedAt, Version
@@ -119,6 +121,29 @@ class AssetBundle(Base):
     )
 
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Grouping state (ADR-0009). Scan stages files in PROVISIONAL bundles; only
+    # an explicit user action confirms a grouping. Defaults make a bare
+    # ``AssetBundle()`` a confirmed/manual bundle (a directly-made user
+    # decision); the scanner overrides to provisional/scan_suggestion. Existing
+    # rows backfill via the server_defaults as confirmed/legacy.
+    grouping_state: Mapped[GroupingState] = mapped_column(
+        Enum(GroupingState, native_enum=False, length=16),
+        default=GroupingState.CONFIRMED,
+        # SQLAlchemy stores these enums by member *name*, so the server_default
+        # (applied to rows written without the column) must use the name too.
+        server_default=GroupingState.CONFIRMED.name,
+    )
+    grouping_source: Mapped[GroupingSource] = mapped_column(
+        Enum(GroupingSource, native_enum=False, length=16),
+        default=GroupingSource.MANUAL,
+        server_default=GroupingSource.LEGACY.name,
+    )
+    # Which grouping heuristic version produced/last touched this grouping; NULL
+    # for hand-made bundles that no heuristic owns.
+    grouping_rule_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # When the grouping became confirmed (NULL while still provisional).
+    confirmed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     created_at: Mapped[CreatedAt]
     imported_at: Mapped[CreatedAt]

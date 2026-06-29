@@ -69,3 +69,32 @@ class Grouping(StrEnum):
 
     PER_FILE = "per_file"  # one bundle per file (the scan default)
     SINGLE_BUNDLE = "single_bundle"  # one bundle holding all selected files
+
+
+class GroupingState(StrEnum):
+    """Whether a bundle's grouping is a confirmed user decision (ADR-0009).
+
+    Scan discovers files and stages them in ``provisional`` bundles; only an
+    explicit user action (review/apply, fast-add, manual create) confirms a
+    grouping. Confirmed groupings are durable and win over heuristics on
+    re-scan — they are never silently re-split, merged, or retitled.
+    """
+
+    PROVISIONAL = "provisional"
+    CONFIRMED = "confirmed"
+
+
+class GroupingSource(StrEnum):
+    """What produced a bundle's current grouping (ADR-0009).
+
+    ``legacy`` backfills bundles created before grouping state existed (they are
+    treated as already confirmed). ``scan_suggestion`` marks provisional bundles
+    staged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user
+    decided directly, so they confirm immediately.
+    """
+
+    LEGACY = "legacy"
+    SCAN_SUGGESTION = "scan_suggestion"
+    MANUAL = "manual"
+    FAST_ADD = "fast_add"
+    IMPORT = "import"
