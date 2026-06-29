@@ -1131,6 +1131,11 @@ export interface components {
             files_linked: number;
             /** Skipped */
             skipped: number;
+            /**
+             * Subtitles Linked
+             * @default 0
+             */
+            subtitles_linked: number;
         };
         /**
          * FileAvailability
