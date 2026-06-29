@@ -383,7 +383,10 @@ export const batchUpdate = (payload: BatchUpdate) =>
 // bundles themselves are not deleted.
 export const deleteBundle = (id: string) => send<void>(`${lib()}/bundles/${id}`, 'DELETE')
 
-export const deleteCollection = (id: string) => send<void>(`${lib()}/collections/${id}`, 'DELETE')
+// `cascade` also removes the collection's descendant subcollections; otherwise
+// they float to the library root. Bundles and files are kept either way.
+export const deleteCollection = (id: string, cascade = false) =>
+  send<void>(`${lib()}/collections/${id}?cascade=${cascade}`, 'DELETE')
 
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
   return getJson<HealthStatus>('/api/v1/health', signal)

@@ -4746,6 +4746,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}": {
       "delete": {
+        "description": "Remove a collection (metadata only). ``cascade=true`` also removes its\ndescendant subcollections; otherwise they float to the library root.",
         "operationId": "delete_collection_api_v1_libraries__library_id__collections__collection_id__delete",
         "parameters": [
           {
@@ -4764,6 +4765,16 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cascade",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Cascade",
+              "type": "boolean"
             }
           }
         ],

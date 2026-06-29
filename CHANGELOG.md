@@ -13,16 +13,22 @@ grouped under `Unreleased` until the first tagged release.
 - **Right-click context menus + bundle/collection removal.** Bundle cards and
   list rows now have a right-click menu with **Open**, **Remove from this
   collection** (when browsing inside a collection), and **Delete bundle**; the
-  collection tree and Smart Collection rows have menus for **Delete collection**
-  and **Edit/Delete**. Deletion is metadata-only and wired to the existing
+  collection tree and Smart Collection rows have menus for **Remove Collection**
+  and **Edit/Delete**. Removal is metadata-only and wired to the existing
   `DELETE /bundles/{id}` and `DELETE /collections/{id}` endpoints — no file on
-  disk is ever touched, deleting a collection floats its subcollections to the
-  top level and keeps its bundles, and every destructive action confirms first.
-  Right-clicking a card that is part of a multi-selection acts on the whole
-  selection ("Delete N bundles"). A new reusable `ContextMenu` component
-  (`useContextMenu`) renders a cursor-anchored, viewport-clamped menu in a portal
-  that closes on outside click / Escape / scroll, and `useDeleteBundles` /
-  `useDeleteCollection` refresh the affected browse, count, and tree queries.
+  disk is ever touched, removing a collection keeps its bundles, and every
+  destructive action confirms first. Removing a collection that has
+  subcollections opens a confirm dialog (`RemoveCollectionDialog`) with an **Also
+  remove subcollections** checkbox, checked by default; unchecking it floats the
+  subcollections to the top level instead. This is backed by a new `cascade`
+  query parameter on `DELETE /collections/{id}` (default `false`) whose service
+  bulk-deletes the descendant subtree while keeping bundles/files. Right-clicking
+  a card that is part of a multi-selection acts on the whole selection ("Delete N
+  bundles"). A new reusable `ContextMenu` component (`useContextMenu`) renders a
+  cursor-anchored, viewport-clamped menu in a portal that closes on outside click
+  / Escape / scroll, and `useDeleteBundles` / `useDeleteCollection` refresh the
+  affected browse, count, and tree queries (clearing the view when the
+  in-view collection is removed).
 
 - **External subtitle auto-link across grouping flows (ADR-0009, phase 6).**
   Grouping a video with its sidecar `.srt`/`.vtt` now links them everywhere a

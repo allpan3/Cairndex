@@ -10,9 +10,15 @@ and `DELETE /collections/{id}`; the frontend now wires them through a reusable
 `ContextMenu` (`apps/web/src/app/ContextMenu.tsx` + `useContextMenu.ts`).
 Right-clicking a bundle card/row offers Open, Remove-from-collection (in a
 collection view), and Delete (acting on the whole selection when multi-selected);
-the collection tree and Smart Collection rows offer Delete / Edit. All deletes
-confirm first and never touch files on disk. Covered by `ContextMenu.test.tsx`
-(vitest) and a real-browser delete flow in `e2e/library.spec.ts`.
+the collection tree and Smart Collection rows offer Remove Collection / Edit /
+Delete. All removals confirm first and never touch files on disk. Removing a
+collection with subcollections opens a dialog with an "Also remove
+subcollections" checkbox (checked by default); unchecked floats them to the top
+level. Backend support: a `cascade` query param on `DELETE /collections/{id}`
+(default false) bulk-deletes the descendant subtree while keeping bundles/files.
+Covered by `ContextMenu.test.tsx` (vitest), backend
+`test_taxonomy.py` cascade/float cases, and real-browser delete + dialog flows in
+`e2e/library.spec.ts`.
 
 ## Earlier branches
 

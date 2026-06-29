@@ -28,6 +28,7 @@ import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
+import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
@@ -43,6 +44,24 @@ import { usePersistentState } from './state/usePersistentState'
 interface EditorState {
   existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
+}
+
+/** `rootId` plus every collection nested beneath it (used to clear a stale
+ * selection when a cascade removal deletes the collection currently in view). */
+function collectionSubtreeIds(collections: CollectionRead[], rootId: string): Set<string> {
+  const childrenOf = new Map<string, string[]>()
+  for (const c of collections)
+    if (c.parent_id) childrenOf.set(c.parent_id, [...(childrenOf.get(c.parent_id) ?? []), c.id])
+  const ids = new Set<string>([rootId])
+  const stack = [rootId]
+  while (stack.length) {
+    const id = stack.pop() as string
+    for (const childId of childrenOf.get(id) ?? []) {
+      ids.add(childId)
+      stack.push(childId)
+    }
+  }
+  return ids
 }
 
 function Resizer({
@@ -197,6 +216,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
   const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
+  const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
 
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
@@ -332,22 +352,35 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     ],
   )
 
+  // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
+  // choose whether to also remove subcollections; the menu item just opens it.
   const removeCollection = useCallback(
-    (collection: CollectionRead) => {
-      const ok = window.confirm(
-        `Delete collection “${collection.name}”? Bundles and files are kept; any ` +
-          'subcollections move to the top level.',
-      )
-      if (!ok) return
-      deleteCollection.mutate(collection.id, {
-        onSuccess: () => {
-          if (selection.collectionId === collection.id) {
-            setSelection({ view: 'all', collectionId: null })
-          }
+    (collection: CollectionRead) => setRemovingCollection(collection),
+    [],
+  )
+
+  const confirmRemoveCollection = useCallback(
+    (cascade: boolean) => {
+      const target = removingCollection
+      if (!target) return
+      deleteCollection.mutate(
+        { id: target.id, cascade },
+        {
+          onSuccess: () => {
+            setRemovingCollection(null)
+            // If the view is on the removed collection (or, when cascading, on
+            // one of its now-gone descendants), fall back to All.
+            const affected = cascade
+              ? collectionSubtreeIds(collections.data ?? [], target.id)
+              : new Set([target.id])
+            if (selection.collectionId && affected.has(selection.collectionId)) {
+              setSelection({ view: 'all', collectionId: null })
+            }
+          },
         },
-      })
+      )
     },
-    [deleteCollection, selection.collectionId],
+    [removingCollection, deleteCollection, collections.data, selection.collectionId],
   )
 
   const removeSmartCollection = useCallback(
@@ -502,6 +535,16 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
       <ContextMenu state={menu.state} onClose={menu.close} />
+
+      {removingCollection && (
+        <RemoveCollectionDialog
+          collection={removingCollection}
+          hasChildren={(collections.data ?? []).some((c) => c.parent_id === removingCollection.id)}
+          pending={deleteCollection.isPending}
+          onCancel={() => setRemovingCollection(null)}
+          onConfirm={confirmRemoveCollection}
+        />
+      )}
 
       {reviewingGrouping && (
         <GroupingReview

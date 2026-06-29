@@ -486,7 +486,8 @@ export function useDeleteBundles() {
 export function useDeleteCollection() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteCollection(id),
+    mutationFn: ({ id, cascade }: { id: string; cascade: boolean }) =>
+      deleteCollection(id, cascade),
     onSuccess: () => {
       for (const key of [
         'collections',
