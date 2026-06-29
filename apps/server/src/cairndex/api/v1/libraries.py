@@ -1,8 +1,8 @@
 """Library registry endpoints (ADR-0008).
 
 Global (not library-scoped) endpoints for managing the set of registered
-libraries. Per-library *content* endpoints move under
-``/api/v1/libraries/{library_id}/…`` in later phases.
+libraries. Per-library content endpoints already live under
+``/api/v1/libraries/{library_id}/…`` in the content routers.
 """
 
 from typing import Annotated
