@@ -1,6 +1,6 @@
 # Cairndex
 
-Cairndex is a local-first, Eagle-inspired media asset manager for a private
+Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
 self-hosted Docker app on a Linux NAS/server and is used from a browser.
 
@@ -8,7 +8,8 @@ In **Collection View**, the primary object is an **Asset Bundle** (cover + video
 parts + alternate versions + subtitles + screenshots + attachments), not a
 single file. Cairndex links existing files in place — it does not copy, move,
 rename, or otherwise manage your files in the normal MVP path. A separate
-**File View** browses the underlying configured storage-root directories.
+**File View** browses the underlying directories and files inside the active
+Cairndex library.
 
 See [AGENTS.md](AGENTS.md) for the full product brief and canonical engineering
 rules that govern this repository.
@@ -16,33 +17,36 @@ rules that govern this repository.
 ## Status
 
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
-desktop web browser over asset bundles: hierarchical **Collections**, a
-read-only physical **File View**, hierarchical tags + tag groups, filtering and
-Smart Collections, scan/probe/thumbnail jobs with high-confidence moved-file
-repair, and direct playback with subtitle tracks — plus a hardened
-single-container production deployment.
+desktop web browser over asset bundles: portable per-library metadata,
+hierarchical **Collections**, a read-only physical **File View**, hierarchical
+tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail jobs
+with high-confidence moved-file repair, direct playback with subtitle tracks,
+and a hardened single-container production deployment.
 
 Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
 each library is a directory carrying its own `.cairndex/` metadata
 (`manifest.json`, `library.db`, `cache/`), and a separate server-side
 **registry** tracks registered libraries and the job queue. All content APIs are
 scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
-active library per tab. The end-to-end flow is **create a library → scan it →
-browse** — there are no global storage roots. (Eagle import is temporarily
-removed pending a per-library re-implementation.)
+active library per tab. The normal maintenance flow is **Update**: scan the
+library, persist a reviewable grouping plan, collect technical metadata, refresh
+the UI, and open grouping review when suggestions exist. Individual scan,
+metadata collection, and grouping-review actions remain in the maintenance
+menu. There are no global storage-root content APIs in the current model.
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, server-side
-text search/FTS, browse-query performance/indexing, scheduled scans,
-File View write-mode and desktop-client integration, cross-filesystem repair
-candidates, and media fallback/remux/transcoding. See [docs/STATUS.md](docs/STATUS.md)
-for the current milestone, known gaps, and recommended next tasks.
+text search/FTS, browse-query performance/indexing, scheduled scans and progress
+bars, richer edit-before-apply grouping review, File View write-mode and
+desktop-client integration, cross-filesystem repair candidates, and media
+fallback/remux/transcoding. See [docs/STATUS.md](docs/STATUS.md) for the current
+milestone, known gaps, and recommended next tasks.
 
 ## Repository layout
 
 ```text
 apps/
-  server/   # FastAPI backend (Python 3.12+, SQLAlchemy, Alembic, SQLite/WAL)
+  server/   # FastAPI backend (Python 3.12+, SQLAlchemy, SQLite/WAL, ffmpeg)
   web/      # React + TypeScript frontend (Vite, TanStack Query/Virtual)
 docs/
   adr/                # Architecture Decision Records
@@ -97,4 +101,4 @@ single-container production stack.
 
 ## License
 
-Private project. No license is granted for redistribution.
+All rights reserved.

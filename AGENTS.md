@@ -4,15 +4,15 @@ This file is the canonical instruction set for every coding agent working in thi
 
 ## 1. Project mission
 
-Build a local-first, Eagle-inspired media asset manager for a private video and image library stored on local disks or NAS-mounted storage.
+Build a local-first, Eagle-inspired media asset manager for a personal video and image library stored on local disks or NAS-mounted storage.
 
-The product is not primarily a Plex/Jellyfin replacement and must not drift into a generic file gallery. Playback matters, but the core value is metadata-first organization:
+Cairndex is not primarily a Plex/Jellyfin replacement and must not drift into a generic file gallery. Playback matters, but the core value is metadata-first organization:
 
 - asset bundles composed of multiple related files;
 - custom covers and generated thumbnails;
 - hierarchical tags plus tag groups;
 - hierarchical collections with multi-collection membership;
-- a separate File View for browsing configured storage-root directories;
+- a separate File View for browsing the active library root;
 - notes, source/origin hyperlinks, ratings, titles, and technical metadata;
 - fast filtering, saved Smart Collections, and multiple browsing layouts;
 - metadata-only linking to existing files without copying them;
@@ -23,17 +23,17 @@ The first product target is the computer-side web application. Android TV suppor
 
 ## 2. Product principles
 
-1. **Collection View is bundle-first.** In Collection View, the visible item is an Asset Bundle, not a file. One bundle card may represent a cover, several videos, subtitle files, screenshots, album images, and attachments.
-2. **File View is file-system-first.** In File View, the visible items are physical directories and files under configured storage roots. File View is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
-3. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
-4. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-5. **Metadata-only and non-destructive first.** The first File View milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
-6. **File View is intended to become a true filesystem browser.** Long term, File View should operate on the underlying filesystem for storage-root-scoped browsing, opening, revealing, moving, renaming, and deleting where explicitly enabled. The read-only constraint is a first milestone, not the final product model.
-7. **Logical organization must survive filesystem moves.** If a linked path changes externally, Cairndex should preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata, and repair the existing file row when it can do so confidently.
+1. **Collection View is bundle-first.** In Collection View, the visible item is an Asset Bundle, not a file.
+2. **File View is filesystem-first.** In File View, the visible items are physical directories and files under the active library root. File View is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
+3. **Libraries are the storage scope.** A Cairndex library is a directory with `.cairndex/{manifest.json,library.db,cache/}`. The server-local registry tracks known libraries and jobs.
+4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
+5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
+6. **Metadata-only and non-destructive first.** The current File View milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
+7. **Logical organization must survive filesystem moves.** If a linked path changes externally, preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata by repairing the existing file row when confidence is high.
 8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File View, and the web.
-9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN. Tailscale access may be added without changing the core architecture.
-10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naïve full scans, full hashing, or non-virtualized rendering are unacceptable.
-11. **One source of truth.** The library database is authoritative for app metadata. Per ADR-0008, each library owns its own metadata DB; there is no external-app synchronization.
+9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN or private overlay network.
+10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
+11. **One source of truth.** Each library's `library.db` is authoritative for app metadata. The registry DB is server-local runtime state for known libraries and jobs, not portable content metadata.
 12. **Progressive capability.** Direct playback comes first; remux/transcoding, File View write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
 
 ## 3. Fixed product decisions
@@ -41,7 +41,7 @@ The first product target is the computer-side web application. Android TV suppor
 Unless the product owner explicitly changes them, treat these as settled:
 
 - Build from scratch rather than forking SmartGallery DAM.
-- Use SmartGallery DAM, Eagle, and open-source Jellyfin clients such as Wholphin as reference material only.
+- Use SmartGallery DAM, Eagle, Jellyfin clients, and Wholphin as reference material only.
 - Start with a Dockerized server and an app-like web UI/PWA.
 - A native macOS app is not required for the first release; a Tauri shell may be evaluated later.
 - The application links to files already on disk and stores metadata separately.
@@ -50,44 +50,58 @@ Unless the product owner explicitly changes them, treat these as settled:
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
-- The old product/API/model concept named `folder` must be renamed at all levels to `collection`.
+- Product/API/model terminology is `collection`, not user-facing `folder`, except when referring to ordinary filesystem directories in File View or historical/external references.
 - Collections are hierarchical logical groupings. A bundle may belong to zero, one, or many collections.
 - Collections contain bundles only, not loose files.
 - Selecting a tag or collection parent can include descendants; the UI exposes a toggle.
-- Smart Folders should be renamed to Smart Collections / saved collection filters, using the same canonical filter-expression model.
-- File View browses only configured storage roots.
+- Smart Folders should be renamed to Smart Collections / saved collection filters. The legacy table name `smart_folders` may remain until a migration is worth it.
+- File View browses only the active library root.
 - File View should show all non-hidden files/directories, not only supported media.
 - File View should visually distinguish files Cairndex can open natively from unsupported files.
-- The first File View milestone is read-only, but the long-term File View milestone is a true filesystem browser over storage roots.
+- The first File View milestone is read-only, but the long-term File View milestone is a true filesystem browser over library roots.
 - Future File View should support `open with default app` and `reveal in file manager` where deployment mode permits safe local/native host integration.
 - Open-with-default-app must not be implemented as arbitrary command execution from a remote browser. It needs an explicit local desktop/native helper, Tauri shell, or similarly safe host-integration design.
 - Start with metadata-only removal. File rename/move/delete capabilities come later under an explicit write mode.
 - Move repair is automatic during scan/rescan/reconciliation when confidence is high. Do not require a separate normal user workflow for repair.
 - Duplicate detection is deferred. If a still-present file is also found at another path, treat that as an unresolved duplicate/copy candidate later, not as an automatic bundle merge.
-- Bundles remain flexible logical objects. A bundle does not require a canonical physical folder and may contain files from different directories or storage roots.
+- Bundles remain flexible logical objects. A bundle does not require a canonical physical folder and may contain files from different directories.
 - Both embedded and external subtitles must be supported.
 - Begin with the desktop/computer experience. A TV web UI may reuse the same frontend later.
 - The first user is a single owner. Avoid choices that make later multi-user support require a full rewrite.
+- Eagle import/synchronization is removed from the current product path. Eagle remains a UI and interaction reference only.
 
 ## 4. Canonical domain model
 
-Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until the collection refactor replaces them.
+Names may evolve, but the concepts and relationships must remain clear. Current implementation names that still say `folder` are legacy names until intentionally migrated or retained as historical table names.
 
-### 4.1 Storage root
+### 4.1 Library
 
-A `StorageRoot` represents a server-visible directory mounted into the application, for example `/mnt/media`.
+A `Library` is the content and storage boundary. It is a server-visible root directory that carries its own Cairndex package:
+
+```text
+<library-root>/
+  media files...
+  .cairndex/
+    manifest.json
+    library.db
+    cache/
+      thumbnails/
+      subtitles/
+```
 
 Required concepts:
 
-- stable ID;
+- stable portable library UUID in the manifest;
 - display name;
-- canonical server path;
-- read-only/write-enabled mode;
-- optional path aliases for future platform-specific clients;
+- canonical server path recorded in the registry;
 - availability/status;
-- scan settings and timestamps.
+- schema version;
+- portable content DB at `.cairndex/library.db`;
+- reproducible derived cache under `.cairndex/cache/`.
 
-Store file locations as `storage_root_id + relative_path` whenever possible. Never expose arbitrary unrestricted server paths through the API. File View must browse through this storage-root abstraction, not through unrestricted absolute server paths.
+Store file locations as library-relative paths. Do not reintroduce a content `storage_roots` table or `asset_files.storage_root_id` unless a new ADR explicitly changes the per-library model. Never expose arbitrary unrestricted server paths through content APIs. File View must browse through the active library abstraction, not through unrestricted absolute server paths.
+
+The server-local registry DB at `{CAIRNDEX_DATA_DIR}/registry.db` tracks registered libraries and owns `job_queue`. It is runtime state, not portable library metadata.
 
 ### 4.2 Asset bundle
 
@@ -101,6 +115,7 @@ Bundle-level metadata includes:
 - shared rating;
 - selected cover file;
 - selected primary playable file;
+- grouping review state (`provisional` or `confirmed`);
 - creation, import, and update timestamps;
 - aggregate media properties where useful;
 - optional extensible metadata JSON for non-core fields.
@@ -115,7 +130,7 @@ Required concepts:
 
 - stable file ID that survives path repair;
 - bundle ID;
-- storage root ID and relative path;
+- library-relative path;
 - original filename;
 - display title defaulting to the filename;
 - optional file-level note and source/origin hyperlink, even if their UI is deferred;
@@ -133,18 +148,19 @@ Suggested roles: `primary_video`, `video_part`, `alternate_version`, `cover`, `i
 
 One physical path should normally have one owning bundle. Do not add cross-bundle aliases until a real use case requires them.
 
-When a file is moved and repaired, update the existing `AssetFile` row rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/primary references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
+When a file is moved and repaired, update the existing `AssetFile.relative_path` rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/primary references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
 
 ### 4.4 Covers and thumbnails
 
-Cover precedence:
+Cover/thumbnail source precedence:
 
-1. user-selected cover file;
-2. user-selected frame from a video;
-3. automatically extracted frame from the primary video;
-4. generated placeholder.
+1. user-selected cover file, when it is thumbnailable;
+2. first image in the bundle;
+3. selected primary video;
+4. first video in the bundle;
+5. generated placeholder / no thumbnail state.
 
-Original cover files are Asset Files. Generated thumbnails, preview frames, storyboards, and converted derivatives live in application cache storage and must be reproducible.
+Original cover files are Asset Files. Generated thumbnails, preview frames, storyboards, converted subtitles, and future transcodes live in application cache storage under `.cairndex/cache/` and must be reproducible. Scans must ignore `.cairndex/cache/`.
 
 ### 4.5 Tags and tag groups
 
@@ -173,7 +189,7 @@ Required behavior:
 - drag-and-drop assignment in a later UI milestone;
 - no file movement when collection membership changes.
 
-The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle or to ordinary filesystem directories in File View.
+The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle, to ordinary filesystem directories in File View, or to legacy table names being intentionally retained.
 
 ### 4.7 Smart Collections
 
@@ -199,14 +215,14 @@ The implemented model uses `SubtitleTrack` with either an external file referenc
 
 ### 4.9 File View
 
-File View is an in-app browser over configured storage roots. It is separate from Collection View and displays physical directories and files rather than bundle cards.
+File View is an in-app browser over the active library root. It is separate from Collection View and displays physical directories and files rather than bundle cards.
 
-Initial File View milestone:
+Current File View milestone:
 
-- browse only configured storage roots;
+- browse only the active library root;
 - display directories and all non-hidden files, not just media files;
 - hide hidden dotfiles/dot-directories and platform-hidden files where practical;
-- validate every requested path through the storage-root path-safety layer;
+- validate every requested path through the library-root path-safety layer;
 - never expose unrestricted absolute server paths;
 - visually separate files Cairndex can open natively from unsupported files;
 - allow later actions such as fast-add/link-to-bundle/create-bundle from selected files;
@@ -214,7 +230,7 @@ Initial File View milestone:
 
 Long-term File View milestone:
 
-- behave like a true filesystem browser scoped to storage roots;
+- behave like a true filesystem browser scoped to library roots;
 - support safe write-mode operations such as rename, move, delete, and directory creation;
 - support `open with default app` and `reveal in file manager` where safe local/native host integration exists;
 - record or surface enough state that metadata repair, stale paths, and missing linked files are understandable.
@@ -225,7 +241,7 @@ A supported/openable file means a file that the current app can preview or play 
 
 `Open with default app` and `Reveal in file manager` are future host-integration features. They must be designed deliberately because Cairndex may run inside Docker on a NAS while the user interacts through a browser on another machine.
 
-Do not implement these features as arbitrary shell command execution from the web API. Acceptable future approaches include a Tauri/native desktop shell, a local companion helper, or a carefully scoped host integration that can prove the opened path is inside an allowed storage root and that the action is initiated by the authenticated owner.
+Do not implement these features as arbitrary shell command execution from the web API. Acceptable future approaches include a Tauri/native desktop shell, a local companion helper, or a carefully scoped host integration that can prove the opened path is inside an allowed library root and that the action is initiated by the authenticated owner.
 
 ## 5. File discovery, linking, and identity
 
@@ -237,7 +253,7 @@ Do not full-hash multi-gigabyte files during normal add.
 
 Initial identity/fingerprint inputs may include:
 
-- storage root and normalized relative path;
+- library-relative path;
 - file size;
 - high-resolution modified time;
 - sampled/quick hash where cheap;
@@ -259,7 +275,7 @@ Network filesystems may not provide reliable file watcher events. The applicatio
 
 Do not run full library scans in request handlers.
 
-The scanner is the reconciliation mechanism between the filesystem and the metadata database. It should walk storage roots, observe current files, update known paths, mark absent paths missing/stale, and repair old `AssetFile` rows to new paths before creating replacement bundles for newly discovered files.
+The scanner is the reconciliation mechanism between the filesystem and the metadata database. It should walk the active library root, observe current files, update known paths, mark absent paths missing/stale, repair old `AssetFile` rows to new paths before creating replacement bundles for newly discovered files, and ignore hidden/cache paths such as `.cairndex`.
 
 ### 5.3 Moved-file repair
 
@@ -267,17 +283,17 @@ When a linked path disappears, preserve the Asset File row as missing/stale. On 
 
 Repair must:
 
-- update the existing `AssetFile.relative_path` (library-relative, ADR-0008) rather than creating a new file row;
+- update the existing `AssetFile.relative_path` rather than creating a new file row;
 - keep the `AssetFile.id` stable;
 - preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, and subtitle links;
 - run automatically as part of scan/rescan/reconciliation for high-confidence matches;
 - avoid destructive changes and avoid merging duplicates.
 
-Confidence signals may include same platform file identity (`st_dev`/`st_ino` or equivalent) when reliable, same storage root or clearly equivalent root alias, same filename/extension, same size and high-resolution mtime, same sampled/quick hash, and optional full hash only when needed for ambiguous candidates and only outside hot request paths.
+Confidence signals may include same platform file identity, same filename/extension, same size and high-resolution mtime, same sampled/quick hash, and optional full hash only when needed for ambiguous candidates and only outside hot request paths.
 
-A same-path content edit is not a move. For example, annotating a PDF may change size, mtime, sampled hash, and full hash while the logical file remains the same because the path and/or filesystem identity are stable. A cross-filesystem move followed by an edit may not be confidently repairable; keep the old file missing and expose a later manual repair/candidate workflow rather than guessing.
+A same-path content edit is not a move. A cross-filesystem move followed by an edit may not be confidently repairable; keep the old file missing and expose a later manual repair/candidate workflow rather than guessing.
 
-If the old path still exists and a similar or identical new path appears, do not auto-merge. Treat that as a future duplicate/copy candidate. Duplicate detection is out of scope for the first collection/file-view refactor.
+If the old path still exists and a similar or identical new path appears, do not auto-merge. Treat that as a future duplicate/copy candidate. Duplicate detection is out of scope for the first release.
 
 ### 5.4 Optional managed imports
 
@@ -309,47 +325,39 @@ Remote quality/bitrate selection is a later milestone, designed for Tailscale us
 
 ## 7. Bundle grouping
 
-Importing from an external Eagle library is **out of scope** (removed). With the
-per-library architecture (ADR-0008) a Cairndex library is its own portable
-directory, so the source of truth is a scan of the library root, not a migration
-from another app. The former one-way Eagle importer and its `import_records`
-table have been removed; ADR-0004 is retained as superseded history.
+Importing from an external Eagle library is out of scope. With the per-library architecture (ADR-0008), a Cairndex library is its own portable directory populated by scanning the library root, not by migrating from another app. The former one-way Eagle importer and its `import_records` table have been removed; ADR-0004 is retained as superseded history.
 
-Bundles are formed by scanning the library and grouping related files. Grouping
-heuristics may consider same directory, matching or similar basenames, numeric
-part suffixes, language subtitle suffixes, names such as
-`cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
+Bundles are formed by scanning the library and grouping related files. Grouping heuristics may consider same directory, matching or similar basenames, normalized subject prefixes, numeric part suffixes, language subtitle suffixes, names such as `cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
-Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+).
-A scan stays discovery/repair-first and stages newly found files in
-*provisional* bundles; a read-only **suggester** turns the library into a
-durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles,
-confidence, and a reason); the user reviews it and **applies** it. Apply is the
-only step that creates *confirmed* groupings — it merges/splits provisional
-bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links
-external subtitles, and creates the logical collections a CONTAINER suggests,
-never touching the filesystem. Confirmed groupings are durable and win over
-heuristics on re-scan: a confirmed bundle is never silently re-split or merged,
-and a newly discovered file in its directory is suggested as an *addition*, not
-auto-applied. A CONTAINER is a logical-collection suggestion, not an ongoing
-path→collection sync. Fast-add and manual creation confirm immediately (the user
-already chose the grouping). See ADR-0009 and `docs/data-model.md`.
+Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links external subtitles, and creates the logical collections a CONTAINER suggests, never touching the filesystem.
+
+Current workflow details:
+
+- scan jobs persist an open grouping plan without applying it;
+- the primary **Update** flow runs scan/grouping-plan generation, then metadata probe, refreshes affected queries, and opens grouping review when suggestions exist;
+- the grouping review UI supports checkbox selection, parent/child cascading, Select all / Deselect all, and **Accept selected**;
+- applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
+- confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered file in its directory is suggested as an addition, not auto-applied;
+- a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
+- fast-add and manual creation confirm immediately because the user already chose the grouping.
+
+Richer edit-before-apply grouping UI for merge/split/reclassify/rename remains a follow-up.
 
 ## 8. UI and interaction direction
 
 The UI should feel like a desktop media organizer, not an administration dashboard.
 
-Use the supplied Eagle screenshots as interaction references and store copies under `docs/reference/eagle/` when available. Do not commit private source media.
+Use the supplied Eagle screenshots as interaction references and store copies under `docs/reference/eagle/` when available. Do not commit user source media.
 
 ### 8.1 App shell
 
 Recommended layout:
 
-- left sidebar: system views, Smart Collections, hierarchical collection tree, File View entry points, tag entry points;
-- top toolbar: breadcrumbs, filter categories, search, sort, view controls, zoom/density control;
-- center: virtualized bundle browser in Collection View; storage-root directory browser in File View;
+- left sidebar: library selector, primary Update action, system views, Smart Collections, hierarchical collection tree, File View entry points, tag entry points;
+- top toolbar: breadcrumbs/title, filter categories, search, sort, view controls, zoom/density control;
+- center: virtualized bundle browser in Collection View; library-root directory browser in File View;
 - right inspector: selected bundle metadata and files, or selected file/directory details in File View;
-- modal/detail viewer: media preview and playback.
+- modal/detail viewer: media preview, playback, and grouping review.
 
 System views should include All, Uncategorized, Untagged, Recently Added / Recently Used, Random, All Tags, Missing Files, and Trash later where useful.
 
@@ -361,11 +369,11 @@ All large collections must be virtualized or paginated. Never render an entire l
 
 ### 8.3 File View layouts
 
-Plan for directory list/tree navigation scoped to storage roots, file table/list layout with name/type/size/modified time/support state/linked state, hidden-file exclusion, and no write actions in the first milestone. Later File View should grow into a true filesystem browser with guarded write actions and default-app handoff.
+Plan for directory list/tree navigation scoped to the active library root, file table/list layout with name/type/size/modified time/support state/linked state, hidden-file exclusion, and no write actions in the first milestone. Later File View should grow into a true filesystem browser with guarded write actions and default-app handoff.
 
 ### 8.4 Bundle cards and inspector
 
-A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, primary duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, and selection state.
+A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, primary duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
 The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating, aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
 
@@ -379,7 +387,7 @@ Inside a collection, show breadcrumb/title, direct subcollection selector/count,
 
 ### 8.7 File View
 
-Inside File View, show storage-root selector, filesystem breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists.
+Inside File View, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists.
 
 File View is not a replacement for Collection View. It is a filesystem browser and linking/diagnostic surface. Collection View remains the primary organization and browsing surface.
 
@@ -395,9 +403,9 @@ The simple filter toolbar and Smart Collection editor must compile to the same c
 
 Use this stack unless an existing repository strongly justifies another choice. Any major deviation requires an ADR.
 
-Backend: Python 3.12+, FastAPI, SQLAlchemy 2.x, Alembic, Pydantic, SQLite in WAL mode, ffmpeg/ffprobe, and a simple database-backed worker or other lightweight documented mechanism. Do not introduce Redis, Celery, Postgres, Elasticsearch, or a separate search service without demonstrated need.
+Backend: Python 3.12+, FastAPI, SQLAlchemy 2.x, SQLite in WAL mode, ffmpeg/ffprobe, and a simple database-backed worker. Do not introduce Redis, Celery, Postgres, Elasticsearch, or a separate search service without demonstrated need.
 
-Frontend: React, TypeScript strict mode, Vite, TanStack Query, TanStack Router or another typed router, TanStack Virtual or equivalent, accessible headless primitives such as Radix UI, a focused state solution only where server/cache state is insufficient, and Playwright for e2e tests.
+Frontend: React, TypeScript strict mode, Vite, TanStack Query, TanStack Virtual or equivalent, accessible headless primitives such as Radix UI where useful, a focused state solution only where server/cache state is insufficient, and Playwright for e2e tests.
 
 Search and filters: SQLite FTS5 where appropriate, relational indexes for tag/collection/rating/date/type filters, server-side filtering/sorting/pagination, and no client-side loading of the full library.
 
@@ -405,19 +413,20 @@ Repository layout should remain the existing monorepo shape under `apps/server`,
 
 ## 10. API design
 
-- Version public endpoints, for example `/api/v1/...`.
+- Version public endpoints under `/api/v1`.
+- Content endpoints must be library-scoped under `/api/v1/libraries/{library_id}/...`.
 - Publish and validate OpenAPI.
-- Use stable IDs, not paths, as resource identifiers.
-- Use collection terminology in public APIs and schemas. Do not add new `/folders` APIs after the collection refactor.
+- Use stable IDs, not paths, as resource identifiers where possible.
+- Use collection terminology in public APIs and schemas.
 - Keep path resolution server-side.
 - Paginate all list endpoints.
 - Support deterministic sorting with a stable tie-breaker.
 - Return structured errors.
 - Validate filter expressions against an allowlist of fields/operators.
-- Defend against path traversal, symlink escape, and unauthorized storage-root access.
+- Defend against path traversal, symlink escape, and unauthorized library-root access.
 - Separate metadata removal from physical file deletion.
 - Make long-running operations asynchronous jobs with status endpoints.
-- File View endpoints must accept only `storage_root_id + relative_path` and must reject absolute paths, traversal, and symlink escapes.
+- File View endpoints must accept only library-relative paths and must reject absolute paths, traversal, and symlink escapes.
 
 ## 11. Performance and reliability requirements
 
@@ -432,25 +441,25 @@ Required practices:
 - bounded worker concurrency;
 - virtualized UI;
 - server-side pagination/filtering/sorting;
-- thumbnail and metadata caches outside the source directories;
+- thumbnail and metadata caches under `.cairndex/cache/` and ignored by scan;
 - database indexes justified by real queries;
 - cancellation and retry for jobs;
 - no unbounded memory collection of scan results;
 - graceful handling of unavailable NAS mounts;
-- backups of the metadata database and configuration;
-- schema migrations with rollback/backup guidance.
+- backups of registry and library databases;
+- schema migrations or documented clean-break bootstrap guidance.
 
 Profile before adding complex infrastructure. Record performance baselines for representative libraries.
 
 ## 12. Security and privacy
 
-- Treat all source media and metadata as private.
+- Treat all source media and metadata as user-owned data.
 - Never upload media or metadata to external services unless explicitly enabled by the owner.
 - Do not add analytics or telemetry by default.
 - Do not log notes, URLs, filenames, or paths unnecessarily.
 - Never commit secrets, databases, thumbnails, caches, or source media.
 - Use a non-root container user where practical.
-- Validate all file paths against configured storage roots.
+- Validate all file paths against the active library root.
 - File View must not become an unrestricted server filesystem browser.
 - Do not expose arbitrary host command execution for open-with-default-app or reveal-in-file-manager features.
 - Consider optional single-owner authentication before remote/Tailscale use.
@@ -477,7 +486,7 @@ Do not implement these prematurely. Add nullable ownership/audit fields only whe
 ## 14. Code quality standards
 
 - Use clear module boundaries. Avoid god files and god services.
-- Separate API routes, schemas, persistence, domain services, scan logic, media processing, and path handling.
+- Separate API routes, schemas, persistence, domain services, scan logic, media processing, grouping, registry jobs, and path handling.
 - Keep business logic out of UI components and HTTP route functions.
 - Use type checking in both backend and frontend.
 - Document public interfaces and non-obvious invariants.
@@ -493,7 +502,7 @@ Add tests with every non-trivial feature.
 
 Minimum coverage areas:
 
-- storage-root path normalization and traversal rejection;
+- library-root path normalization and traversal rejection;
 - File View path scoping, hidden-file exclusion, and symlink escape rejection;
 - asset bundle/file relationships;
 - tag hierarchy and descendant behavior;
@@ -508,22 +517,23 @@ Minimum coverage areas:
 - subtitle matching and track selection;
 - range requests and playback headers;
 - thumbnail job deduplication;
+- grouping apply conflicts and selected-accept behavior;
 - metadata-only deletion safeguards;
 - critical UI flows with Playwright.
 
-Tests must not depend on private media. Generate small synthetic fixtures or use redistributable test assets.
+Tests must not depend on user media. Generate small synthetic fixtures or use redistributable test assets.
 
 ## 16. Git and branch workflow
 
 Keep `main` stable and reviewable.
 
-Use a dedicated branch for each meaningful feature or fix, for example `feat/core-domain-model`, `feat/storage-scanner`, `feat/bundle-browser`, `feat/tag-filtering`, `feat/smart-collections`, `feat/file-view`, `feat/moved-file-repair`, `feat/subtitle-playback`, `feat/per-library-metadata`, `fix/path-normalization`, or `docs/architecture`.
+Use a dedicated branch for each meaningful feature or fix, for example `feat/scan-grouping-review`, `feat/file-view`, `feat/moved-file-repair`, `feat/subtitle-playback`, `fix/path-normalization`, or `docs/architecture`.
 
 Do not combine unrelated large features in one branch.
 
 Commit frequently at meaningful checkpoints. Commits should be small enough to review and should normally leave the branch buildable. Use descriptive conventional-style messages when practical. Do not create meaningless `update` or `changes` commits.
 
-Every PR should include problem and scope, design summary, screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, and follow-up work explicitly out of scope.
+Every PR should include problem and scope, design summary, screenshots/video for UI changes, migration notes, tests run and results, performance/safety considerations, changelog entry, documentation updated, and follow-up work explicitly out of scope.
 
 Never force-push `main`. Before rebasing into main, check whether local `main` is up to date. Force-push only non-main branches and use `--force-with-lease`.
 
@@ -550,16 +560,16 @@ Maintain `CHANGELOG.md` using an `Unreleased` section with Added, Changed, Fixed
 
 Do not say “docs later” unless the PR explicitly records a narrow docs-debt item and the owner accepts it. PR summaries must include a `Documentation updated` section listing changed docs, or explain why no docs were affected. Definition of done requires documentation and changelog updates.
 
-When implementation reveals inconsistencies between AGENTS.md, current code, and other docs, correct the docs in the same phase. If the code is intentionally different from AGENTS.md, either change the code or record an ADR/STATUS note explaining the accepted deviation.
+When implementation reveals inconsistencies between `AGENTS.md`, current code, and other docs, correct the docs in the same phase. If the code is intentionally different from `AGENTS.md`, either change the code or record an ADR/STATUS note explaining the accepted deviation.
 
 ## 18. Agent execution loop
 
 Before changing code:
 
-1. Read `AGENTS.md`, `README.md`, `docs/STATUS.md`, relevant ADRs, and the current changelog.
-2. Inspect the repository and existing conventions.
-3. State the intended scope and branch.
-4. Identify migrations, safety risks, tests, and docs that must change.
+1. read `AGENTS.md`, `README.md`, `docs/STATUS.md`, relevant ADRs, and the current changelog;
+2. inspect the repository and existing conventions;
+3. state the intended scope and branch;
+4. identify migrations, safety risks, tests, and docs that must change.
 
 For each meaningful step:
 
@@ -585,7 +595,7 @@ Ask the product owner only when a decision is genuinely blocking or destructive.
 A feature is done only when:
 
 - the code is implemented with clear boundaries;
-- migrations are included and tested when needed;
+- migrations or clean-break bootstrap changes are included and tested when needed;
 - focused tests pass;
 - type checks and linters pass;
 - security/path/file-safety concerns are addressed;
@@ -605,7 +615,7 @@ Do not spend MVP time on:
 - social or collaboration features;
 - public cloud hosting;
 - full multi-user RBAC;
-- Eagle import or synchronization (removed; see §7);
+- Eagle import or synchronization;
 - destructive file management enabled by default;
 - open-with-default-app before a safe local/native host-integration design exists;
 - duplicate detection or automatic duplicate merging;
@@ -614,4 +624,4 @@ Do not spend MVP time on:
 - a complex distributed job system;
 - premature replacement of SQLite.
 
-The first release succeeds when the owner can link an existing NAS library, group related files into bundles, assign covers/tags/collections/metadata, browse both logical collections and filesystem directories, filter quickly in an Eagle-like interface, survive external filesystem moves through scan-based repair where possible, and play supported media with correctly linked subtitles without modifying the source files.
+The first release succeeds when the owner can register or create a Cairndex library, scan it, review grouping suggestions into bundles/collections, assign covers/tags/collections/metadata, browse both logical collections and filesystem directories, filter quickly in an Eagle-like interface, survive external filesystem moves through scan-based repair where possible, and play supported media with correctly linked subtitles without modifying source files.

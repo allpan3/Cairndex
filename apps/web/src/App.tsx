@@ -9,8 +9,8 @@ import {
   useLibraries,
   useProbe,
   useScan,
-  useThumbnails,
   useSmartCollections,
+  useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
 import { BatchBar } from './app/BatchBar'
@@ -148,9 +148,9 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         libraryId={null}
         onChangeLibrary={noop}
         onManageLibraries={onManage}
-        onScan={noop}
+        onUpdateLibrary={noop}
+        onScanFiles={noop}
         onProbe={noop}
-        onThumbnails={noop}
         onReviewGrouping={noop}
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
@@ -188,6 +188,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
+  const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
 
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
@@ -197,9 +198,19 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const smartCollections = useSmartCollections()
   const counts = useViewCounts()
   const collectionCounts = useCollectionCounts()
-  const scan = useScan()
+  const updateLibrary = useUpdateLibrary({
+    onGroupingPlan: (planId) => {
+      setReviewPlanId(planId)
+      setReviewingGrouping(true)
+    },
+  })
+  const scanFiles = useScan({
+    onGroupingPlan: (planId) => {
+      setReviewPlanId(planId)
+      setReviewingGrouping(true)
+    },
+  })
   const probe = useProbe()
-  const thumbnails = useThumbnails()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
 
@@ -310,13 +321,16 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
         onManageLibraries={onManage}
-        onScan={() => scan.mutate()}
-        scanning={scan.isPending}
+        onUpdateLibrary={() => updateLibrary.mutate()}
+        updating={updateLibrary.isPending}
+        onScanFiles={() => scanFiles.mutate()}
+        scanningFiles={scanFiles.isPending}
         onProbe={() => probe.mutate()}
         probing={probe.isPending}
-        onThumbnails={() => thumbnails.mutate()}
-        thumbnailing={thumbnails.isPending}
-        onReviewGrouping={() => setReviewingGrouping(true)}
+        onReviewGrouping={() => {
+          setReviewPlanId(null)
+          setReviewingGrouping(true)
+        }}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
@@ -385,7 +399,15 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
-      {reviewingGrouping && <GroupingReview onClose={() => setReviewingGrouping(false)} />}
+      {reviewingGrouping && (
+        <GroupingReview
+          initialPlanId={reviewPlanId}
+          onClose={() => {
+            setReviewingGrouping(false)
+            setReviewPlanId(null)
+          }}
+        />
+      )}
 
       {editor && (
         <SmartCollectionEditor

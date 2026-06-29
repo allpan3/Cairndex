@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# Cairndex app-data backup (AGENTS.md §12 / docs/deployment.md).
+# Cairndex SQLite backup helper (AGENTS.md §12 / docs/deployment.md).
 #
-# Makes a consistent, hot copy of the SQLite database using SQLite's online
-# backup API — safe to run WHILE the app is writing (WAL mode), no downtime,
-# never touches your media. The database is the only state worth backing up;
-# the derived-media cache (thumbnails, converted subtitles) is regenerable.
+# Makes a consistent, hot copy of one SQLite database using SQLite's online
+# backup API — safe to run while the app is writing (WAL mode), no downtime,
+# never touches source media.
 #
-# Recommended (run against the live container so the path + python are present):
-#   docker exec cairndex-app-1 \
-#     /app/infra/backup.sh /data/cairndex.db /data/backups
-#   docker cp cairndex-app-1:/data/backups ./backups   # pull off the NAS
+# ADR-0008 split state across multiple DBs:
+#   - server registry: /data/registry.db
+#   - each library:    <library-root>/.cairndex/library.db
 #
-# Or directly on the host (needs python3 and read access to the db file):
-#   ./infra/backup.sh /path/to/cairndex.db ./backups
+# Back up the registry plus every library DB you care about. Derived cache files
+# under .cairndex/cache/ are regenerable.
 #
-# Restore is just a file copy while the app is STOPPED:
+# Recommended (run against the live container so the paths + python are present):
+#   docker exec cairndex-app-1 /app/infra/backup.sh /data/registry.db /data/backups
+#   docker exec cairndex-app-1 /app/infra/backup.sh /storage/media/.cairndex/library.db /data/backups
+#   docker cp cairndex-app-1:/data/backups ./backups
+#
+# Restore is a file copy while the app is STOPPED:
 #   docker compose -f docker-compose.prod.yml down
-#   # replace the db in the cairndex-data volume with a backup, then:
+#   # replace registry.db and/or library.db with the backup copy, then:
 #   docker compose -f docker-compose.prod.yml up -d
 set -euo pipefail
 
-DB_PATH="${1:-${CAIRNDEX_DATA_DIR:-/data}/cairndex.db}"
+DB_PATH="${1:-${CAIRNDEX_DATA_DIR:-/data}/registry.db}"
 DEST_DIR="${2:-./backups}"
 
 if [ ! -f "$DB_PATH" ]; then
@@ -31,7 +34,9 @@ fi
 
 mkdir -p "$DEST_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="$DEST_DIR/cairndex-$STAMP.db"
+DB_NAME="$(basename "$DB_PATH")"
+DB_STEM="${DB_NAME%.db}"
+OUT="$DEST_DIR/${DB_STEM}-$STAMP.db"
 
 # sqlite3.backup() copies a live database safely under concurrent writes; a
 # plain `cp` of a WAL database can capture a torn/partial state.

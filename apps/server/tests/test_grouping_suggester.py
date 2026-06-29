@@ -9,7 +9,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, Grouping, MediaKind
+from cairndex.domain.enums import FileRole, Grouping, GroupingSource, GroupingState, MediaKind
 from cairndex.grouping import (
     FileObservation,
     GroupingProposal,
@@ -17,6 +17,7 @@ from cairndex.grouping import (
     suggest_grouping,
 )
 from cairndex.grouping.service import suggest_for_session
+from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fast_add import fast_add
 from cairndex.scanning.scanner import scan_library
 
@@ -60,6 +61,53 @@ def test_movie_folder_is_one_bundle_with_roles() -> None:
     assert roles["Cosmos/cosmos.mp4"] is FileRole.PRIMARY_VIDEO
     assert roles["Cosmos/poster.jpg"] is FileRole.COVER
     assert roles["Cosmos/cosmos.en.srt"] is FileRole.SUBTITLE
+
+
+# Multi-video folders attach sidecars by normalized filename subject prefix
+def test_multi_subject_folder_groups_sidecars_by_delimited_prefix() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Movies/cosmos.mp4", MediaKind.VIDEO),
+            _f("Movies/cosmos.en.srt", MediaKind.SUBTITLE),
+            _f("Movies/cosmos-poster.jpg", MediaKind.IMAGE),
+            _f("Movies/waves.mp4", MediaKind.VIDEO),
+            _f("Movies/waves.en.srt", MediaKind.SUBTITLE),
+        ]
+    )
+
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 2
+    by_title = {b.title: b for b in bundles}
+    assert set(by_title) == {"cosmos", "waves"}
+    assert {pf.asset_file_id for pf in by_title["cosmos"].files} == {
+        "Movies/cosmos.mp4",
+        "Movies/cosmos.en.srt",
+        "Movies/cosmos-poster.jpg",
+    }
+    assert {pf.asset_file_id for pf in by_title["waves"].files} == {
+        "Movies/waves.mp4",
+        "Movies/waves.en.srt",
+    }
+    assert _roles(by_title["cosmos"])["Movies/cosmos-poster.jpg"] is FileRole.COVER
+    assert _roles(by_title["waves"])["Movies/waves.en.srt"] is FileRole.SUBTITLE
+
+
+# Image-only folders remain item collections even when camera prefixes match
+def test_photo_folder_with_shared_prefix_does_not_collapse() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Photos/IMG-0001.jpg", MediaKind.IMAGE),
+            _f("Photos/IMG-0002.jpg", MediaKind.IMAGE),
+            _f("Photos/IMG-0003.jpg", MediaKind.IMAGE),
+        ]
+    )
+
+    containers = _containers(plan.proposals)
+    bundles = _bundles(plan.proposals)
+    assert len(containers) == 1
+    assert containers[0].directory == "Photos"
+    assert len(bundles) == 3
+    assert all(len(p.files) == 1 for p in bundles)
 
 
 def test_cover_named_image_wins_over_first_image() -> None:
@@ -179,6 +227,49 @@ def test_suggest_for_session_over_a_scanned_movie_folder(
         FileRole.COVER,
         FileRole.SUBTITLE,
     }
+
+
+# Hidden cache files are not grouping candidates
+def test_suggest_for_session_excludes_hidden_paths(session: Session) -> None:
+    hidden = AssetBundle(
+        title="thumb",
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    visible = AssetBundle(
+        title="cosmos",
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add_all([hidden, visible])
+    session.flush()
+    session.add_all(
+        [
+            AssetFile(
+                bundle_id=hidden.id,
+                relative_path=".cairndex/cache/thumbnails/01/thumb.jpg",
+                original_filename="thumb.jpg",
+                display_title="thumb.jpg",
+                role=FileRole.COVER,
+                media_kind=MediaKind.IMAGE,
+            ),
+            AssetFile(
+                bundle_id=visible.id,
+                relative_path="Movies/Cosmos/cosmos.mp4",
+                original_filename="cosmos.mp4",
+                display_title="cosmos.mp4",
+                role=FileRole.PRIMARY_VIDEO,
+                media_kind=MediaKind.VIDEO,
+            ),
+        ]
+    )
+    session.commit()
+
+    plan = suggest_for_session(session)
+
+    directories = {p.directory for p in plan.proposals}
+    assert ".cairndex" not in directories
+    assert directories == {"Movies", "Movies/Cosmos"}
 
 
 def test_suggest_for_session_excludes_confirmed_bundles(

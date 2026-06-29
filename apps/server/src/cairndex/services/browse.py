@@ -16,10 +16,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Select, exists, func, select
+from sqlalchemy import Select, exists, func, not_, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.domain.enums import FileAvailability, GroupingState, MediaKind
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
@@ -64,6 +64,7 @@ class BundleSummary:
     duration: float | None
     extension: str | None
     date_added: datetime
+    grouping_state: GroupingState
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,15 @@ def _file_count_sq() -> Any:
         .where(AssetFile.bundle_id == AssetBundle.id)
         .scalar_subquery()
     )
+
+
+# Hidden files are not library-visible assets
+def _visible_file_exists() -> Any:
+    """SQL predicate allowing empty bundles or at least one non-hidden file."""
+    hidden_path = AssetFile.relative_path.like(".%") | AssetFile.relative_path.like("%/.%")
+    any_file = exists().where(AssetFile.bundle_id == AssetBundle.id)
+    visible_file = exists().where((AssetFile.bundle_id == AssetBundle.id) & not_(hidden_path))
+    return not_(any_file) | visible_file
 
 
 def _size_sq() -> Any:
@@ -159,11 +169,13 @@ def browse_bundles(
         stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
         return stmt.where(predicate) if predicate is not None else stmt
 
-    base = _scoped(select(AssetBundle.id))
+    base = _scoped(select(AssetBundle.id).where(_visible_file_exists()))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     page_stmt = (
-        _apply_sort(_scoped(select(AssetBundle)), sort, descending).offset(offset).limit(limit)
+        _apply_sort(_scoped(select(AssetBundle).where(_visible_file_exists())), sort, descending)
+        .offset(offset)
+        .limit(limit)
     )
     bundles = list(session.scalars(page_stmt))
 
@@ -182,7 +194,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     total_size = sum(f.size_bytes or 0 for f in files)
     has_missing = any(f.availability == FileAvailability.MISSING for f in files)
     has_cover = bundle.cover_file_id is not None or any(
-        f.media_kind == MediaKind.IMAGE for f in files
+        f.media_kind in (MediaKind.IMAGE, MediaKind.VIDEO) for f in files
     )
 
     # The representative file for card stats: chosen primary, else first video,
@@ -213,6 +225,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         duration=meta.get("duration"),
         extension=extension,
         date_added=bundle.created_at,
+        grouping_state=bundle.grouping_state,
     )
 
 
@@ -220,7 +233,7 @@ def view_counts(session: Session) -> dict[str, int]:
     """Counts for the sidebar system views (scoped to this library DB)."""
 
     def _count(*where: Any) -> int:
-        stmt = select(func.count()).select_from(AssetBundle)
+        stmt = select(func.count()).select_from(AssetBundle).where(_visible_file_exists())
         for clause in where:
             stmt = stmt.where(clause)
         return session.scalar(stmt) or 0

@@ -35,6 +35,8 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.file_count == 1 and s.total_size == 1000
     assert s.width == 1920 and s.height == 1080 and s.duration == 90.0
     assert s.extension == "mp4" and s.media_kind == "video"
+    assert s.has_cover is True
+    assert s.grouping_state == bundle.grouping_state
 
 
 def test_system_views_filter(session: Session) -> None:
@@ -83,6 +85,33 @@ def test_view_counts(session: Session) -> None:
     assert counts["uncategorized"] == 2
     assert counts["untagged"] == 2
     assert counts["missing"] == 0
+
+
+# Hidden-only bundles are not visible library browse items
+def test_browse_excludes_hidden_only_bundles(session: Session) -> None:
+    hidden = bundle_service.create_bundle(session, title="hidden")
+    bundle_service.add_file(
+        session,
+        hidden.id,
+        relative_path=".cairndex/cache/thumbnails/01/thumb.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    visible = bundle_service.create_bundle(session, title="visible")
+    bundle_service.add_file(
+        session,
+        visible.id,
+        relative_path="visible.jpg",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+
+    page = browse_bundles(session)
+
+    assert page.total == 1
+    assert [item.title for item in page.items] == ["visible"]
+    assert view_counts(session)["all"] == 1
 
 
 def test_browse_endpoint_and_counts_routing(client: TestClient, library_id: str) -> None:

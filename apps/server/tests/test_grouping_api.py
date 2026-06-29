@@ -56,3 +56,38 @@ def test_generate_get_and_apply_plan(
 def test_get_unknown_plan_is_404(client: TestClient, library_id: str) -> None:
     resp = client.get(f"/api/v1/libraries/{library_id}/grouping/plans/nope")
     assert resp.status_code == 404
+
+
+def test_apply_plan_accepts_selected_proposals(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    (library_root / "Movies" / "Cosmos").mkdir(parents=True)
+    (library_root / "Movies" / "Cosmos" / "cosmos.mp4").write_text("v")
+    (library_root / "Movies" / "Waves").mkdir()
+    (library_root / "Movies" / "Waves" / "waves.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    selected = [
+        p["id"] for p in plan["proposals"] if p["kind"] == "container" or p["title"] == "Cosmos"
+    ]
+
+    applied = client.post(f"{base}/plans/{plan['id']}/apply", json={"proposal_ids": selected})
+
+    assert applied.status_code == 200
+    result = applied.json()
+    assert result["bundles_confirmed"] == 1
+    assert result["bundles_added_to_collections"] == 1
+
+
+def test_apply_plan_rejects_empty_selection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+
+    resp = client.post(f"{base}/plans/{plan['id']}/apply", json={"proposal_ids": []})
+
+    assert resp.status_code == 409
