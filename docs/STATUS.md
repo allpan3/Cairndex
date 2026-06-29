@@ -2,15 +2,15 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase3-apply`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase4-review-ui`. Latest commit: see `git log -1`.
 
 ADR-0008 is complete and merged. Work is on **ADR-0009** (suggestion-based
-bundle grouping, Option A+). Phases 1 (grouping review state, #29) and 2
-(read-only suggester, #30) merged. This branch lands **phase 3 — the apply-plan
-service + API**: durable plan/proposal tables, generate/list/get/apply routes,
-and an idempotent, conflict-aware apply that confirms bundles, assigns roles,
-links subtitles, and creates the suggested collections. Next up is the review UI
-(phase 4).
+bundle grouping, Option A+). Phases 1 (grouping review state, #29), 2 (read-only
+suggester, #30), and 3 (apply-plan service + API, #31) merged. This branch lands
+**phase 4 — the review UI**: a sidebar **⧉ Group** action opens a modal that
+suggests a grouping, shows the proposed bundles/containers with roles, confidence,
+and reasons, and applies it (reporting confirmed counts + conflicts). Verified
+end-to-end in a browser preview against a live backend + scanned library.
 
 ## Current milestone
 
@@ -29,7 +29,16 @@ phases at once.
 
 ## Completed in this milestone (ADR-0009)
 
-- **Phase 3 — apply-plan service + API (this branch).** Durable
+- **Phase 4 — grouping review UI (this branch).** Sidebar **⧉ Group** action →
+  `GroupingReview` modal: suggest a grouping (`POST /grouping/plans`), review the
+  proposed bundles/containers (roles, confidence badge, reason, nested tree), and
+  apply (`POST .../apply`) with a result summary + conflict list. New hooks
+  `useGroupingPlans` / `useGroupingPlan` / `useGenerateGroupingPlan` /
+  `useApplyGroupingPlan`; applying invalidates browse/collection views.
+  Edit-before-apply (merge/split/reclassify/rename) is a documented follow-up.
+  Verified end-to-end in a browser preview.
+
+- **Phase 3 — apply-plan service + API (merged, #31).** Durable
   `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` tables
   (`grouping.plan_store` persists/supersedes/loads). `grouping.apply.apply_plan`
   confirms bundles by merging/splitting provisional ones while preserving
@@ -48,8 +57,7 @@ phases at once.
   folders become containers; nested folders recurse. Confirmed bundles are
   excluded. A read-only `grouping.service` adapter snapshots a library session
   into observations. Tests in `tests/test_grouping_suggester.py` (movie/photo/
-  nested/multipart/cover/subtitle/confirmed-exclusion + over a real scan). No
-  persistence, API, or UI yet.
+  nested/multipart/cover/subtitle/confirmed-exclusion + over a real scan).
 
 - **Phase 1 — bundle grouping review state (merged, #29).** Added
   `grouping_state` (`provisional` | `confirmed`), `grouping_source` (`legacy` |
@@ -139,12 +147,11 @@ The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
 - **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1
-  (grouping state), 2 (read-only suggester), and 3 (apply-plan service + API) are
-  done. Remaining phases, each a separate PR: (4) review UI — surface the plan
-  after scan with accept-all/merge/split/reclassify/rename/apply wired to the
-  job/registry flow; (5) re-scan additions suggested into confirmed bundles/
-  containers without disturbing confirmed groupings; (6) external subtitle
-  auto-link folded into the scanner/role path.
+  (grouping state), 2 (suggester), 3 (apply-plan service + API), and 4 (review UI:
+  suggest → review → apply) are done. Remaining: (5) re-scan additions suggested
+  into confirmed bundles/containers without disturbing confirmed groupings; (6)
+  external subtitle auto-link folded into the scanner/role path. Follow-up within
+  phase 4: interactive edit-before-apply (merge/split/reclassify/rename).
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).

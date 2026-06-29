@@ -44,6 +44,7 @@ interface SidebarProps {
   probing?: boolean
   onThumbnails: () => void
   thumbnailing?: boolean
+  onReviewGrouping: () => void
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -105,6 +106,7 @@ export function Sidebar({
   probing,
   onThumbnails,
   thumbnailing,
+  onReviewGrouping,
   selection,
   onSelect,
   counts,
@@ -176,6 +178,14 @@ export function Sidebar({
           disabled={thumbnailing || libraryId === null}
         >
           {thumbnailing ? '▦ Thumbnailing…' : '▦ Thumbnails'}
+        </button>
+        <button
+          className="sidebar__job"
+          onClick={onReviewGrouping}
+          title="Review suggested bundle grouping and apply it"
+          disabled={libraryId === null}
+        >
+          ⧉ Group
         </button>
       </div>
 
