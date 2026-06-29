@@ -303,6 +303,12 @@
             "title": "Created At",
             "type": "string"
           },
+          "grouping_source": {
+            "$ref": "#/components/schemas/GroupingSource"
+          },
+          "grouping_state": {
+            "$ref": "#/components/schemas/GroupingState"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -373,6 +379,8 @@
           "rating",
           "cover_file_id",
           "primary_file_id",
+          "grouping_state",
+          "grouping_source",
           "created_at",
           "imported_at",
           "updated_at",
@@ -1290,6 +1298,27 @@
           "single_bundle"
         ],
         "title": "Grouping",
+        "type": "string"
+      },
+      "GroupingSource": {
+        "description": "What produced a bundle's current grouping (ADR-0009).\n\n``legacy`` backfills bundles created before grouping state existed (they are\ntreated as already confirmed). ``scan_suggestion`` marks provisional bundles\nstaged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user\ndecided directly, so they confirm immediately.",
+        "enum": [
+          "legacy",
+          "scan_suggestion",
+          "manual",
+          "fast_add",
+          "import"
+        ],
+        "title": "GroupingSource",
+        "type": "string"
+      },
+      "GroupingState": {
+        "description": "Whether a bundle's grouping is a confirmed user decision (ADR-0009).\n\nScan discovers files and stages them in ``provisional`` bundles; only an\nexplicit user action (review/apply, fast-add, manual create) confirms a\ngrouping. Confirmed groupings are durable and win over heuristics on\nre-scan \u2014 they are never silently re-split, merged, or retitled.",
+        "enum": [
+          "provisional",
+          "confirmed"
+        ],
+        "title": "GroupingState",
         "type": "string"
       },
       "HTTPValidationError": {
