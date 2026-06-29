@@ -320,6 +320,21 @@ heuristics may consider same directory, matching or similar basenames, numeric
 part suffixes, language subtitle suffixes, names such as
 `cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
+Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+).
+A scan stays discovery/repair-first and stages newly found files in
+*provisional* bundles; a read-only **suggester** turns the library into a
+durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles,
+confidence, and a reason); the user reviews it and **applies** it. Apply is the
+only step that creates *confirmed* groupings — it merges/splits provisional
+bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links
+external subtitles, and creates the logical collections a CONTAINER suggests,
+never touching the filesystem. Confirmed groupings are durable and win over
+heuristics on re-scan: a confirmed bundle is never silently re-split or merged,
+and a newly discovered file in its directory is suggested as an *addition*, not
+auto-applied. A CONTAINER is a logical-collection suggestion, not an ongoing
+path→collection sync. Fast-add and manual creation confirm immediately (the user
+already chose the grouping). See ADR-0009 and `docs/data-model.md`.
+
 ## 8. UI and interaction direction
 
 The UI should feel like a desktop media organizer, not an administration dashboard.

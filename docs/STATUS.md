@@ -2,16 +2,16 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase5-rescan-additions`. Latest commit: see `git log -1`.
+Branch: `feat/grouping-phase6-subtitle-autolink`. Latest commit: see `git log -1`.
 
-ADR-0008 is complete and merged. Work is on **ADR-0009** (suggestion-based
-bundle grouping, Option A+). Phases 1–4 merged (#29–#32). This branch lands
-**phase 5 — re-scan additions**: a newly discovered file in a directory owned by
-a confirmed bundle is suggested as an addition to that bundle (`target_bundle_id`
-on the proposal) instead of a fresh grouping; applying folds it in, links
-subtitles, and removes the emptied provisional bundle — idempotent and
-conflict-aware. Only phase 6 (subtitle auto-link in the scanner/role path)
-remains.
+ADR-0008 is complete and merged. **ADR-0009** (suggestion-based bundle grouping,
+Option A+) is now **fully rolled out**: phases 1–5 merged (#29–#33), and this
+branch lands **phase 6 — external subtitle auto-link across grouping flows**:
+fast-add single-bundle grouping now links a video with its sidecar `.srt`/`.vtt`
+(reporting `subtitles_linked`), matching the grouping-apply flow, so the
+ADR-0003 auto-link claim holds for every path that forms a bundle. The only
+documented follow-up is interactive edit-before-apply in the review UI
+(merge/split/reclassify/rename).
 
 ## Current milestone
 
@@ -30,7 +30,14 @@ phases at once.
 
 ## Completed in this milestone (ADR-0009)
 
-- **Phase 5 — re-scan additions (this branch).** The suggester learned to fold a
+- **Phase 6 — external subtitle auto-link across grouping flows (this branch).**
+  Folded `auto_link_external_subtitles` into fast-add (single-bundle grouping), so
+  grouping a video with its sidecar `.srt`/`.vtt` links them just as the
+  grouping-apply flow does. `FastAddResult`/`FastAddResponse` gained
+  `subtitles_linked`. Test in `tests/test_scan_endpoints.py`. With this, the
+  ADR-0003 data-model claim holds for every bundle-forming path.
+
+- **Phase 5 — re-scan additions (merged, #33).** The suggester learned to fold a
   newly discovered file into the confirmed bundle that owns its directory:
   `FileObservation` carries `bundle_id`/`bundle_title`, `_confirmed_owners`
   derives directory→bundle ownership, and an *addition* proposal
@@ -137,7 +144,7 @@ phases at once.
 Run and passing locally for this PR:
 
 - backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
-  `pytest` (198 passed);
+  `pytest` (199 passed);
 - frontend: `lint`, `format:check`, `typecheck`, `test`, `build`, `test:e2e`
   (OpenAPI + types regenerated for the new grouping routes).
 
@@ -157,11 +164,10 @@ Run and passing locally for this PR:
 The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
-- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Phases 1–5
-  are done. Remaining: (6) external subtitle auto-link folded into the
-  scanner/role path so the data-model claim holds for scan/grouping flows.
-  Follow-up within phase 4: interactive edit-before-apply
-  (merge/split/reclassify/rename).
+- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Fully rolled
+  out — all six phases shipped. Remaining follow-up: interactive edit-before-apply
+  in the review UI (merge/split/reclassify/rename), which the apply engine already
+  supports at the data level.
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).

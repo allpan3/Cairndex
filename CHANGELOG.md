@@ -10,6 +10,14 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **External subtitle auto-link across grouping flows (ADR-0009, phase 6).**
+  Grouping a video with its sidecar `.srt`/`.vtt` now links them everywhere a
+  bundle is formed, not only via the grouping-plan apply: **fast-add** with
+  single-bundle grouping runs `auto_link_external_subtitles` and reports
+  `subtitles_linked`, so the ADR-0003 data-model claim ("external subtitles
+  auto-link to a same-directory video by basename, language/forced parsed from
+  the suffix") holds for the scan/grouping and manual-grouping flows alike.
+
 - **Re-scan additions into confirmed bundles (ADR-0009, phase 5).** When a file
   is discovered in a directory already owned by a *confirmed* bundle, the
   suggester now proposes folding it into that bundle (an **addition** proposal,

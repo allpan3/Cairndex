@@ -22,3 +22,4 @@ class FastAddResponse(BaseModel):
     bundles_created: int
     files_linked: int
     skipped: int
+    subtitles_linked: int = 0
