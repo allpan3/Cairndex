@@ -1,0 +1,198 @@
+"""Read-only grouping suggester (ADR-0009 phase 2).
+
+Fixtures mirror the ADR's worked examples: a movie folder, a photo folder,
+nested containers, a multipart video, covers, subtitles, and an
+already-confirmed bundle that the suggester must leave alone.
+"""
+
+from pathlib import Path
+
+from sqlalchemy.orm import Session
+
+from cairndex.domain.enums import FileRole, Grouping, MediaKind
+from cairndex.grouping import (
+    FileObservation,
+    GroupingProposal,
+    ProposalKind,
+    suggest_grouping,
+)
+from cairndex.grouping.service import suggest_for_session
+from cairndex.scanning.fast_add import fast_add
+from cairndex.scanning.scanner import scan_library
+
+
+def _f(path: str, kind: MediaKind, *, confirmed: bool = False) -> FileObservation:
+    return FileObservation(
+        asset_file_id=path,  # the path doubles as a stable id in these tests
+        relative_path=path,
+        media_kind=kind,
+        grouping_confirmed=confirmed,
+    )
+
+
+def _bundles(proposals: tuple[GroupingProposal, ...]) -> list[GroupingProposal]:
+    return [p for p in proposals if p.kind is ProposalKind.BUNDLE]
+
+
+def _containers(proposals: tuple[GroupingProposal, ...]) -> list[GroupingProposal]:
+    return [p for p in proposals if p.kind is ProposalKind.CONTAINER]
+
+
+def _roles(p: GroupingProposal) -> dict[str, FileRole]:
+    return {pf.asset_file_id: pf.role for pf in p.files}
+
+
+def test_movie_folder_is_one_bundle_with_roles() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Cosmos/cosmos.mp4", MediaKind.VIDEO),
+            _f("Cosmos/poster.jpg", MediaKind.IMAGE),
+            _f("Cosmos/cosmos.en.srt", MediaKind.SUBTITLE),
+        ]
+    )
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 1
+    assert not _containers(plan.proposals)
+    bundle = bundles[0]
+    assert bundle.directory == "Cosmos"
+    assert bundle.title == "Cosmos"
+    roles = _roles(bundle)
+    assert roles["Cosmos/cosmos.mp4"] is FileRole.PRIMARY_VIDEO
+    assert roles["Cosmos/poster.jpg"] is FileRole.COVER
+    assert roles["Cosmos/cosmos.en.srt"] is FileRole.SUBTITLE
+
+
+def test_cover_named_image_wins_over_first_image() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Show/aaa.jpg", MediaKind.IMAGE),
+            _f("Show/cover.jpg", MediaKind.IMAGE),
+            _f("Show/show.mkv", MediaKind.VIDEO),
+        ]
+    )
+    bundle = _bundles(plan.proposals)[0]
+    roles = _roles(bundle)
+    assert roles["Show/cover.jpg"] is FileRole.COVER
+    assert roles["Show/aaa.jpg"] is FileRole.IMAGE
+
+
+def test_photo_folder_is_a_container_of_single_file_bundles() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Photos/beach.jpg", MediaKind.IMAGE),
+            _f("Photos/sunset.png", MediaKind.IMAGE),
+            _f("Photos/mountains.jpg", MediaKind.IMAGE),
+        ]
+    )
+    containers = _containers(plan.proposals)
+    bundles = _bundles(plan.proposals)
+    assert len(containers) == 1
+    assert containers[0].directory == "Photos"
+    assert len(bundles) == 3
+    assert all(p.parent_directory == "Photos" for p in bundles)
+    assert all(len(p.files) == 1 for p in bundles)
+
+
+def test_multipart_video_is_one_bundle_with_video_parts() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Epic/epic.part1.mkv", MediaKind.VIDEO),
+            _f("Epic/epic.part2.mkv", MediaKind.VIDEO),
+            _f("Epic/cover.jpg", MediaKind.IMAGE),
+        ]
+    )
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 1
+    roles = _roles(bundles[0])
+    assert roles["Epic/epic.part1.mkv"] is FileRole.VIDEO_PART
+    assert roles["Epic/epic.part2.mkv"] is FileRole.VIDEO_PART
+    assert roles["Epic/cover.jpg"] is FileRole.COVER
+    # Sequence follows natural order: part1 before part2.
+    seq = {pf.asset_file_id: pf.sequence for pf in bundles[0].files}
+    assert seq["Epic/epic.part1.mkv"] < seq["Epic/epic.part2.mkv"]
+
+
+def test_nested_containers_recurse() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Movies/Cosmos/cosmos.mp4", MediaKind.VIDEO),
+            _f("Movies/Cosmos/poster.jpg", MediaKind.IMAGE),
+            _f("Movies/Waves/waves.mp4", MediaKind.VIDEO),
+        ]
+    )
+    containers = _containers(plan.proposals)
+    bundles = _bundles(plan.proposals)
+    assert [c.directory for c in containers] == ["Movies"]
+    assert containers[0].parent_directory is None
+    assert {b.directory for b in bundles} == {"Movies/Cosmos", "Movies/Waves"}
+    assert all(b.parent_directory == "Movies" for b in bundles)
+
+
+def test_confirmed_files_are_excluded() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Old/old.mp4", MediaKind.VIDEO, confirmed=True),
+            _f("Old/old.jpg", MediaKind.IMAGE, confirmed=True),
+            _f("New/new.mp4", MediaKind.VIDEO),
+        ]
+    )
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 1
+    assert bundles[0].directory == "New"
+
+
+def test_loose_root_files_become_top_level_bundles() -> None:
+    plan = suggest_grouping(
+        [
+            _f("a.mp4", MediaKind.VIDEO),
+            _f("b.mkv", MediaKind.VIDEO),
+        ]
+    )
+    bundles = _bundles(plan.proposals)
+    assert not _containers(plan.proposals)
+    assert len(bundles) == 2
+    assert all(b.parent_directory is None for b in bundles)
+
+
+def test_empty_input_is_empty_plan() -> None:
+    plan = suggest_grouping([])
+    assert plan.proposals == ()
+
+
+# --- DB adapter (read-only) over a real scan --------------------------------
+
+
+def test_suggest_for_session_over_a_scanned_movie_folder(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "Cosmos").mkdir()
+    (library_root / "Cosmos" / "cosmos.mp4").write_text("video")
+    (library_root / "Cosmos" / "poster.jpg").write_text("image")
+    (library_root / "Cosmos" / "cosmos.en.srt").write_text("subs")
+    scan_library(session, library_root)  # creates three provisional bundles
+
+    plan = suggest_for_session(session)
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 1  # the suggester re-groups the over-fragmented scan
+    assert {pf.role for pf in bundles[0].files} == {
+        FileRole.PRIMARY_VIDEO,
+        FileRole.COVER,
+        FileRole.SUBTITLE,
+    }
+
+
+def test_suggest_for_session_excludes_confirmed_bundles(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "keep.mp4").write_text("video")
+    (library_root / "decided.mp4").write_text("video")
+    # Confirm one grouping via fast-add; scan the rest as provisional.
+    fast_add(session, paths=["decided.mp4"], grouping=Grouping.PER_FILE)
+    scan_library(session, library_root)
+
+    plan = suggest_for_session(session)
+    suggested_files = {pf.asset_file_id for b in _bundles(plan.proposals) for pf in b.files}
+    relative_paths = {p.directory for p in plan.proposals}
+    # The confirmed file is excluded; only the provisional "keep.mp4" is open.
+    assert relative_paths == {""}
+    assert len(suggested_files) == 1
