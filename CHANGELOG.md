@@ -10,6 +10,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Read-only grouping suggester (ADR-0009, phase 2).** A pure heuristic
+  (`cairndex.grouping`) turns the files observed in a library into a
+  `GroupingPlan` of BUNDLE / CONTAINER proposals with per-file roles, ordering,
+  a confidence, and a human-readable reason — leading with content signals and
+  using names only as a hint. A folder with one video plus sidecars (or a
+  multipart video) reads as a **bundle**; a folder of unrelated items or one
+  holding sub-bundles reads as a **container** (a logical-collection suggestion,
+  never a filesystem move); nested folders recurse. Roles are derived as ADR-0003
+  prescribes (primary video, cover = `cover`/`poster`/`thumb…` image else first
+  image, external subtitles, sequence by natural order). Files already in a
+  *confirmed* bundle are excluded, so confirmed decisions win over heuristics.
+  This phase is read-only: a thin DB adapter (`grouping.service`) snapshots the
+  current library and returns a plan; persisting and applying it is phase 3.
+
 - **Bundle grouping review state (ADR-0009, phase 1).** `asset_bundles` now
   carries `grouping_state` (`provisional` | `confirmed`), `grouping_source`
   (`legacy` | `scan_suggestion` | `manual` | `fast_add` | `import`),
