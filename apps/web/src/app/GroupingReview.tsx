@@ -90,11 +90,14 @@ function ProposalNode({ node }: { node: TreeNode }) {
       </li>
     )
   }
+  const isAddition = proposal.target_bundle_id !== null
   return (
     <li className="grp-node grp-node--bundle">
       <div className="grp-row">
-        <span className="grp-kind">🎬</span>
-        <span className="grp-title">{proposal.title || '(untitled)'}</span>
+        <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
+        <span className="grp-title">
+          {isAddition ? `Add to ${proposal.title || 'bundle'}` : proposal.title || '(untitled)'}
+        </span>
         <Confidence value={proposal.confidence} />
         {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
       </div>
@@ -115,7 +118,8 @@ function ResultPanel({ result }: { result: GroupingApplyResult }) {
     <div className="grp-result">
       <p className="grp-result__line">
         Confirmed <strong>{result.bundles_confirmed}</strong> bundle(s), created{' '}
-        <strong>{result.collections_created}</strong> collection(s), linked{' '}
+        <strong>{result.collections_created}</strong> collection(s), added{' '}
+        <strong>{result.files_added_to_bundles}</strong> file(s) to existing bundle(s), linked{' '}
         <strong>{result.subtitles_linked}</strong> subtitle(s).
       </p>
       {result.conflicts.length > 0 && (

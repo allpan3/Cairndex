@@ -24,6 +24,8 @@ class ProposalRead(BaseModel):
     title: str | None
     directory: str
     parent_proposal_id: str | None
+    # When set, this proposal adds its files to an existing confirmed bundle.
+    target_bundle_id: str | None
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
@@ -61,5 +63,6 @@ class ApplyResultRead(BaseModel):
     bundles_removed: int
     collections_created: int
     bundles_added_to_collections: int
+    files_added_to_bundles: int
     subtitles_linked: int
     conflicts: list[ApplyConflictRead]

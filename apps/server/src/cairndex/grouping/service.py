@@ -17,13 +17,16 @@ from cairndex.persistence.models import AssetBundle, AssetFile
 
 
 def gather_observations(session: Session) -> list[FileObservation]:
-    """Snapshot every linked file plus whether its bundle is confirmed."""
+    """Snapshot every linked file plus its bundle's confirmation state, id, and
+    title (so the suggester can fold new files into a confirmed bundle)."""
     rows = session.execute(
         select(
             AssetFile.id,
             AssetFile.relative_path,
             AssetFile.media_kind,
+            AssetBundle.id,
             AssetBundle.grouping_state,
+            AssetBundle.title,
         ).join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
     ).all()
     return [
@@ -32,8 +35,10 @@ def gather_observations(session: Session) -> list[FileObservation]:
             relative_path=relative_path,
             media_kind=media_kind,
             grouping_confirmed=grouping_state is GroupingState.CONFIRMED,
+            bundle_id=bundle_id,
+            bundle_title=title,
         )
-        for file_id, relative_path, media_kind, grouping_state in rows
+        for file_id, relative_path, media_kind, bundle_id, grouping_state, title in rows
     ]
 
 
