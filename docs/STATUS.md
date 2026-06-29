@@ -101,6 +101,11 @@ Run and passing locally for this PR:
 The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
 per-library maintenance UI actions are all complete. Remaining / follow-up:
 
+- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Keep
+  `AssetBundle` and `Collection` separate, add provisional bundle grouping state
+  plus durable grouping plans, then implement the propose→review→apply workflow
+  in phased PRs: schema state, read-only suggester, apply-plan API, review UI,
+  re-scan additions, and external subtitle auto-link.
 - Job progress UI: surface running scan/probe/thumbnail progress (the registry
   `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
