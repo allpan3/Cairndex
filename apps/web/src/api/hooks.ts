@@ -15,9 +15,13 @@ import {
   createLibrary,
   createSmartCollection,
   deleteSmartCollection,
+  applyGroupingPlan,
   enqueueProbe,
   enqueueScan,
   enqueueThumbnails,
+  fetchGroupingPlan,
+  fetchGroupingPlans,
+  generateGroupingPlan,
   fetchAllCollections,
   fetchBundle,
   fetchBundleCollections,
@@ -176,6 +180,52 @@ export function useThumbnails() {
   return useMutation({
     mutationFn: () => enqueueThumbnails(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
+  })
+}
+
+// --- Grouping plans (ADR-0009) -----------------------------------------------
+export function useGroupingPlans(enabled = true) {
+  return useQuery({
+    queryKey: ['grouping-plans'],
+    queryFn: ({ signal }) => fetchGroupingPlans(signal),
+    enabled,
+  })
+}
+
+export function useGroupingPlan(id: string | null) {
+  return useQuery({
+    queryKey: ['grouping-plan', id],
+    queryFn: ({ signal }) => fetchGroupingPlan(id as string, signal),
+    enabled: id !== null,
+  })
+}
+
+export function useGenerateGroupingPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => generateGroupingPlan(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['grouping-plans'] }),
+  })
+}
+
+export function useApplyGroupingPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => applyGroupingPlan(id),
+    onSuccess: () => {
+      // Applying confirms bundles and may create collections + subtitle links.
+      for (const key of [
+        'browse',
+        'view-counts',
+        'collections',
+        'collection-counts',
+        'grouping-plans',
+        'grouping-plan',
+        'bundle',
+        'bundle-files',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
   })
 }
 

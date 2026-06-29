@@ -259,6 +259,26 @@ export const enqueueProbe = () => send<JobRead>(`${lib()}/jobs/probe`, 'POST')
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
+// --- Grouping plans (ADR-0009) ------------------------------------------------
+export type GroupingPlan = components['schemas']['PlanRead']
+export type GroupingProposal = components['schemas']['ProposalRead']
+export type GroupingProposalFile = components['schemas']['ProposalFileRead']
+export type GroupingPlanSummary = components['schemas']['PlanSummary']
+export type GroupingApplyResult = components['schemas']['ApplyResultRead']
+
+/** Suggest a grouping for the active library and store it as the open plan. */
+export const generateGroupingPlan = () => send<GroupingPlan>(`${lib()}/grouping/plans`, 'POST')
+
+export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSummary[]> =>
+  getJson<GroupingPlanSummary[]>(`${lib()}/grouping/plans`, signal)
+
+export const fetchGroupingPlan = (id: string, signal?: AbortSignal): Promise<GroupingPlan> =>
+  getJson<GroupingPlan>(`${lib()}/grouping/plans/${id}`, signal)
+
+/** Apply a plan: confirm bundles, create collections, link subtitles. */
+export const applyGroupingPlan = (id: string): Promise<GroupingApplyResult> =>
+  send<GroupingApplyResult>(`${lib()}/grouping/plans/${id}/apply`, 'POST')
+
 // --- File View (read-only filesystem browsing) -------------------------------
 export function fetchFileViewEntries(
   path: string | null,

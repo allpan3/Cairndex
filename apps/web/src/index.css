@@ -815,6 +815,139 @@ code {
   cursor: default;
 }
 
+/* --- Grouping review (ADR-0009 phase 4) ----------------------------------- */
+.grp-modal {
+  width: min(720px, 94vw);
+}
+.grp-body {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 120px;
+}
+.grp-intro {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+.grp-error {
+  font-size: 12px;
+  color: #ff6b6b;
+}
+.grp-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 18px 4px;
+  text-align: center;
+}
+.grp-tree,
+.grp-children,
+.grp-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.grp-children {
+  margin-left: 16px;
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
+.grp-node {
+  margin: 4px 0;
+}
+.grp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.grp-kind {
+  font-size: 13px;
+}
+.grp-title {
+  font-weight: 600;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+.grp-reason {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.grp-conf {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.grp-conf--high {
+  color: #4ade80;
+  border-color: #2f5d3a;
+}
+.grp-conf--mid {
+  color: var(--warn);
+  border-color: #5a4a1f;
+}
+.grp-conf--low {
+  color: var(--text-muted);
+}
+.grp-files {
+  margin: 4px 0 6px 24px;
+}
+.grp-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 1px 0;
+}
+.grp-file__name {
+  color: var(--text);
+}
+.grp-file__role {
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.grp-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.grp-foot__spacer {
+  flex: 1;
+}
+.grp-result {
+  font-size: 13px;
+  color: var(--text);
+}
+.grp-result__line strong {
+  color: var(--text-strong);
+}
+.grp-conflicts {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  background: rgba(251, 191, 36, 0.1);
+}
+.grp-conflicts__head {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--text-strong);
+}
+.grp-conflicts ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.grp-conflicts__title {
+  color: var(--text-strong);
+}
+
 .filter-builder {
   display: flex;
   flex-direction: column;

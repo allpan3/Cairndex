@@ -18,6 +18,7 @@ import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
+import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
@@ -150,6 +151,7 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         onScan={noop}
         onProbe={noop}
         onThumbnails={noop}
+        onReviewGrouping={noop}
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
         collections={[]}
@@ -185,6 +187,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
+  const [reviewingGrouping, setReviewingGrouping] = useState(false)
 
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
@@ -313,6 +316,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         probing={probe.isPending}
         onThumbnails={() => thumbnails.mutate()}
         thumbnailing={thumbnails.isPending}
+        onReviewGrouping={() => setReviewingGrouping(true)}
         selection={selection}
         onSelect={(s) => {
           setMode('collection')
@@ -380,6 +384,8 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+
+      {reviewingGrouping && <GroupingReview onClose={() => setReviewingGrouping(false)} />}
 
       {editor && (
         <SmartCollectionEditor
