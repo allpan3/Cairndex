@@ -27,15 +27,17 @@ services:
       CAIRNDEX_STATIC_DIR: /app/web
       CAIRNDEX_DATA_DIR: /data
     volumes:
-      # Writable app-data: SQLite DB (WAL) + derived-media cache (thumbnails,
-      # converted subtitles). The only state to back up — see infra/backup.sh.
+      # Writable server-local runtime state: registry.db and backups. Per-library
+      # content metadata lives in each library's own .cairndex/library.db.
       - cairndex-data:/data
-      # Your media library, mounted READ-ONLY (AGENTS.md §3 — metadata-only,
-      # never mutate originals). Register a storage root in the app whose
-      # canonical path is the in-container target, e.g. /storage/media.
-      - "${MEDIA_HOST_PATH:-./media}:/storage/media:ro"
-    # Defense in depth: the app only writes under /data (a volume), so the rest
-    # of the container filesystem can be read-only.
+      # Your Cairndex library root. This must be writable because the current
+      # per-library package stores .cairndex/{manifest.json,library.db,cache/}
+      # inside the library root. Cairndex remains metadata-only for source media:
+      # normal app flows do not move, rename, delete, or rewrite media files.
+      - "${MEDIA_HOST_PATH:-./media}:/storage/media:rw"
+    # Defense in depth: the app only needs writable mounted volumes (/data and
+    # /storage/media/.cairndex), so the rest of the container filesystem can be
+    # read-only.
     read_only: true
     tmpfs:
       - /tmp
