@@ -377,6 +377,14 @@ export const removeFile = (bundleId: string, fileId: string) =>
 export const batchUpdate = (payload: BatchUpdate) =>
   send<{ updated: number }>(`${lib()}/bundles/batch`, 'POST', payload)
 
+// Removal is metadata-only on both endpoints: the bundle's/collection's rows are
+// deleted but no file on disk is ever touched (AGENTS.md §3, §10). Deleting a
+// collection floats its children to the root and drops bundle memberships; the
+// bundles themselves are not deleted.
+export const deleteBundle = (id: string) => send<void>(`${lib()}/bundles/${id}`, 'DELETE')
+
+export const deleteCollection = (id: string) => send<void>(`${lib()}/collections/${id}`, 'DELETE')
+
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
   return getJson<HealthStatus>('/api/v1/health', signal)
 }

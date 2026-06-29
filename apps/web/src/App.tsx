@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
+import type { CollectionRead, FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
 import { setActiveLibraryId } from './api/client'
 import {
+  useBatchUpdate,
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useDeleteBundles,
+  useDeleteCollection,
   useLibraries,
   useProbe,
   useScan,
+  useSmartCollectionMutations,
   useSmartCollections,
   useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
+import { ContextMenu } from './app/ContextMenu'
+import { type MenuEntry, useContextMenu } from './app/useContextMenu'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
@@ -155,9 +161,11 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
         collections={[]}
+        onDeleteCollection={noop}
         smartCollections={[]}
         onNewSmartCollection={noop}
         onEditSmartCollection={noop}
+        onDeleteSmartCollection={noop}
       />
       <div className="center">
         <div className="state">
@@ -211,6 +219,11 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     },
   })
   const probe = useProbe()
+  const deleteBundles = useDeleteBundles()
+  const deleteCollection = useDeleteCollection()
+  const smartCollectionMutations = useSmartCollectionMutations()
+  const batch = useBatchUpdate()
+  const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
 
@@ -267,6 +280,92 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     setSelectedIds(new Set())
     setActiveId(null)
   }, [])
+
+  // Right-click on a bundle card/row. Operate on the whole selection when the
+  // clicked card is part of a multi-selection; otherwise target (and select)
+  // just this one. Removal is metadata-only — files are never touched.
+  const bundleContextMenu = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
+      const n = targets.length
+      if (n === 1) {
+        setSelectedIds(new Set([id]))
+        setActiveId(id)
+      }
+      const items: MenuEntry[] = [{ label: 'Open', onClick: () => open(id), disabled: n > 1 }]
+      if (selection.collectionId) {
+        const collectionId = selection.collectionId
+        items.push({
+          label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
+          onClick: () =>
+            batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
+        })
+      }
+      items.push(null, {
+        label: n > 1 ? `Delete ${n} bundles` : 'Delete bundle',
+        danger: true,
+        onClick: () => {
+          const ok = window.confirm(
+            `Delete ${n > 1 ? `${n} bundles` : 'this bundle'}? This removes Cairndex ` +
+              'metadata only — the files stay on disk.',
+          )
+          if (!ok) return
+          deleteBundles.mutate(targets, {
+            onSuccess: () => {
+              clearSelection()
+              if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
+            },
+          })
+        },
+      })
+      menu.open(e, items)
+    },
+    [
+      selectedIds,
+      selection.collectionId,
+      open,
+      batch,
+      deleteBundles,
+      clearSelection,
+      openBundleId,
+      menu,
+    ],
+  )
+
+  const removeCollection = useCallback(
+    (collection: CollectionRead) => {
+      const ok = window.confirm(
+        `Delete collection “${collection.name}”? Bundles and files are kept; any ` +
+          'subcollections move to the top level.',
+      )
+      if (!ok) return
+      deleteCollection.mutate(collection.id, {
+        onSuccess: () => {
+          if (selection.collectionId === collection.id) {
+            setSelection({ view: 'all', collectionId: null })
+          }
+        },
+      })
+    },
+    [deleteCollection, selection.collectionId],
+  )
+
+  const removeSmartCollection = useCallback(
+    (sc: SmartCollectionRead) => {
+      if (
+        !window.confirm(`Delete smart collection “${sc.name}”? This removes the saved filter only.`)
+      )
+        return
+      smartCollectionMutations.remove.mutate(sc.id, {
+        onSuccess: () => {
+          if (selection.smartCollectionId === sc.id) {
+            setSelection({ view: 'all', collectionId: null })
+          }
+        },
+      })
+    },
+    [smartCollectionMutations.remove, selection.smartCollectionId],
+  )
 
   const moveSelection = useCallback(
     (delta: number) => {
@@ -341,9 +440,11 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         counts={counts.data}
         collections={collections.data ?? []}
         collectionCounts={collectionCounts.data}
+        onDeleteCollection={removeCollection}
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
+        onDeleteSmartCollection={removeSmartCollection}
       />
 
       <div className="center">
@@ -382,6 +483,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
                 selectedIds={selectedIds}
                 onSelect={select}
                 onOpen={open}
+                onContextMenu={bundleContextMenu}
                 isLoading={browse.isLoading}
                 isError={browse.isError}
                 error={browse.error}
@@ -398,6 +500,8 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+
+      <ContextMenu state={menu.state} onClose={menu.close} />
 
       {reviewingGrouping && (
         <GroupingReview

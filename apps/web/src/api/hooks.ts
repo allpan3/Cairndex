@@ -15,6 +15,8 @@ import {
   browseBundles,
   createLibrary,
   createSmartCollection,
+  deleteBundle,
+  deleteCollection,
   deleteSmartCollection,
   applyGroupingPlan,
   enqueueProbe,
@@ -451,6 +453,51 @@ export function useFileMutations(bundleId: string) {
       onSuccess: invalidate,
     }),
   }
+}
+
+/**
+ * Delete one or more bundles (metadata only — files stay on disk). Accepts a
+ * list so a multi-selection can be removed in one action; deletes run in
+ * parallel and the affected library surfaces are refetched once all settle.
+ */
+export function useDeleteBundles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => deleteBundle(id))),
+    onSuccess: () => {
+      for (const key of [
+        'browse',
+        'view-counts',
+        'collection-counts',
+        'tag-counts',
+        'bundle',
+        'bundle-files',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
+}
+
+/**
+ * Delete a collection (metadata only). Children float to the library root and
+ * bundle memberships drop server-side; no bundle or file is removed, so we
+ * refetch the collection tree, counts, and the browse grid.
+ */
+export function useDeleteCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteCollection(id),
+    onSuccess: () => {
+      for (const key of [
+        'collections',
+        'collection-counts',
+        'view-counts',
+        'browse',
+        'bundle-collections',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
 }
 
 export function useBatchUpdate() {

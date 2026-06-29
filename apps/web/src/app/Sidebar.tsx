@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 
 import type { CollectionRead, LibraryRead, SmartCollectionRead, ViewCounts } from '../api/client'
+import { ContextMenu } from './ContextMenu'
+import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
   IconAlert,
   IconCircleDashed,
@@ -50,9 +52,11 @@ interface SidebarProps {
   counts?: ViewCounts
   collections: CollectionRead[]
   collectionCounts?: Record<string, number>
+  onDeleteCollection: (collection: CollectionRead) => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
+  onDeleteSmartCollection: (sc: SmartCollectionRead) => void
 }
 
 interface TreeNode {
@@ -112,17 +116,34 @@ export function Sidebar({
   counts,
   collections,
   collectionCounts,
+  onDeleteCollection,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
+  onDeleteSmartCollection,
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
+  const menu = useContextMenu()
   // Scope the displayed collections to the active library (counts are already
   // library-scoped); the global list stays available to the collection picker.
   const tree = useMemo(
     () => pruneTree(buildTree(collections), collectionCounts),
     [collections, collectionCounts],
   )
+
+  const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
+    menu.open(e, [
+      { label: 'Delete collection', danger: true, onClick: () => onDeleteCollection(collection) },
+    ])
+
+  const smartMenu = (sc: SmartCollectionRead, e: React.MouseEvent) => {
+    const items: MenuEntry[] = [
+      { label: 'Edit', onClick: () => onEditSmartCollection(sc) },
+      null,
+      { label: 'Delete', danger: true, onClick: () => onDeleteSmartCollection(sc) },
+    ]
+    menu.open(e, items)
+  }
 
   return (
     <aside className="sidebar">
@@ -264,6 +285,7 @@ export function Sidebar({
               onClick={() =>
                 onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
               }
+              onContextMenu={(e) => smartMenu(sc, e)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
@@ -300,10 +322,13 @@ export function Sidebar({
             depth={0}
             selection={selection}
             onSelect={onSelect}
+            onContextMenu={collectionMenu}
             collectionCounts={collectionCounts}
           />
         ))}
       </div>
+
+      <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
   )
 }
@@ -313,12 +338,14 @@ function CollectionBranch({
   depth,
   selection,
   onSelect,
+  onContextMenu,
   collectionCounts,
 }: {
   node: TreeNode
   depth: number
   selection: Selection
   onSelect: (selection: Selection) => void
+  onContextMenu: (collection: CollectionRead, e: React.MouseEvent) => void
   collectionCounts?: Record<string, number>
 }) {
   const [expanded, setExpanded] = useState(depth < 1)
@@ -331,6 +358,7 @@ function CollectionBranch({
         className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => onSelect({ view: 'all', collectionId: node.collection.id })}
+        onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
       >
@@ -358,6 +386,7 @@ function CollectionBranch({
             depth={depth + 1}
             selection={selection}
             onSelect={onSelect}
+            onContextMenu={onContextMenu}
             collectionCounts={collectionCounts}
           />
         ))}

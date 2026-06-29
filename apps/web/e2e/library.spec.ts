@@ -100,6 +100,28 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(page.getByText('movie.mp4')).toBeVisible()
 })
 
+test('right-clicking a bundle deletes it via the context menu', async ({ page }) => {
+  await mockApi(page)
+  let deleted: string | null = null
+  await page.route('**/bundles/b0', (r) => {
+    if (r.request().method() === 'DELETE') {
+      deleted = 'b0'
+      return r.fulfill({ status: 204, body: '' })
+    }
+    return r.fallback()
+  })
+  // The delete action asks for confirmation first; accept it.
+  page.on('dialog', (d) => d.accept())
+
+  await page.goto('/')
+  await page.locator('.card').first().click({ button: 'right' })
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: 'Delete bundle' }).click()
+
+  await expect.poll(() => deleted).toBe('b0')
+})
+
 test('layout choice persists across reload', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
