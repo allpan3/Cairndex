@@ -106,9 +106,15 @@ export default function App() {
   }
 
   if (!libraryId) {
-    // Forced manager: no library yet. Creating/registering one re-renders into
-    // the workspace once the list refreshes.
-    return <LibraryManager onClose={() => {}} />
+    // No library yet: show the empty app shell (not a forced dialog) so the
+    // owner can add one from the sidebar "+" when ready. Creating/registering
+    // re-renders into the workspace once the list refreshes.
+    return (
+      <>
+        <NoLibraryView onManage={() => setManaging(true)} />
+        {managing && <LibraryManager onClose={() => setManaging(false)} />}
+      </>
+    )
   }
 
   return (
@@ -122,6 +128,42 @@ export default function App() {
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
     </>
+  )
+}
+
+/**
+ * Empty app shell shown before any library exists. Renders the real sidebar
+ * (so the "+" to add a library sits where it always does) with no content, and
+ * an empty center pane — no content queries run without an active library.
+ */
+function NoLibraryView({ onManage }: { onManage: () => void }) {
+  const noop = () => {}
+  return (
+    <div className="app">
+      <Sidebar
+        mode="collection"
+        onMode={noop}
+        libraries={[]}
+        libraryId={null}
+        onChangeLibrary={noop}
+        onManageLibraries={onManage}
+        onScan={noop}
+        onProbe={noop}
+        onThumbnails={noop}
+        selection={{ view: 'all', collectionId: null }}
+        onSelect={noop}
+        collections={[]}
+        smartCollections={[]}
+        onNewSmartCollection={noop}
+        onEditSmartCollection={noop}
+      />
+      <div className="center">
+        <div className="state">
+          No library yet. Click <strong>+</strong> in the sidebar to add one.
+        </div>
+      </div>
+      <aside className="inspector" />
+    </div>
   )
 }
 
