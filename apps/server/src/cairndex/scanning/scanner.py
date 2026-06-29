@@ -40,9 +40,10 @@ from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
-# Version of the scan-time grouping rule recorded on provisional bundles
-# (ADR-0009). The current rule is still "one provisional bundle per file"; the
-# content-aware suggester (ADR-0009 phase 2) will bump this when it lands.
+# Version of the scan-time provisional-bundling rule recorded on bundles staged
+# by scan. This remains intentionally simple: one provisional bundle per new file.
+# The richer ADR-0009 grouping suggester has its own rule version and persists a
+# separate reviewable plan after scan completes.
 SCAN_GROUPING_RULE_VERSION = 1
 
 # Called after each committed batch with (processed, total). May raise to abort
