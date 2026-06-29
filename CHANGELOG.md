@@ -108,6 +108,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Documentation refresh for the current development state.** README,
+  `docs/STATUS.md`, architecture, data-model, development, deployment,
+  `AGENTS.md`, and `CLAUDE.md` were refreshed to reflect the implemented
+  per-library package + registry model, current Update/grouping-review workflow,
+  selected-accept semantics, hidden/cache exclusions, removed Eagle importer,
+  and absence of global storage-root content APIs.
+
+- **Production deployment now matches per-library packages.**
+  `docker-compose.prod.yml` mounts the library root writable because
+  `.cairndex/{manifest.json,library.db,cache/}` lives inside the library root.
+  `.env.example`, deployment docs, and `infra/backup.sh` now describe backing up
+  `/data/registry.db` plus each library's `.cairndex/library.db`; cache remains
+  regenerable and source media remains non-destructive in normal app flows.
+
 - **Update library opens grouping review instead of leaving stale provisional cards.**
   A successful scan job persists an open ADR-0009 grouping plan and returns its
   id/proposal count in the job result without applying it. The frontend now
@@ -128,7 +142,9 @@ grouped under `Unreleased` until the first tagged release.
   library state, so unchanged inputs usually produce the same result. Proposals
   have checkboxes, parent toggles cascade to children, **Select all** /
   **Deselect all** controls are available, and **Accept selected** applies only
-  the checked proposals.
+  the checked proposals. Because apply marks the plan applied, unchecked
+  proposals are treated as intentionally skipped for that plan; regenerate
+  suggestions to review a fresh plan later.
 
 - **Thumbnail actions moved out of the global sidebar.** The backend thumbnail
   job/API and lazy thumbnail endpoints remain, but the prominent sidebar button
