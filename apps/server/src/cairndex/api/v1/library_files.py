@@ -69,6 +69,7 @@ def fast_add_files(payload: FastAddRequest, db: LibrarySession) -> FastAddRespon
         bundles_created=result.bundles_created,
         files_linked=result.files_linked,
         skipped=result.skipped,
+        subtitles_linked=result.subtitles_linked,
     )
 
 

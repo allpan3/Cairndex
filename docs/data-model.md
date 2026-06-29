@@ -135,7 +135,9 @@ stream `embedded_index` inside `video_file_id`'s container), enforced by CHECK
 constraints; uniqueness on `(video_file_id, embedded_index)` and
 `source_file_id`. External subtitles auto-link to a same-directory video by
 basename (language/forced parsed from the suffix); unmatched ones stay unlinked
-for manual attachment.
+for manual attachment. Auto-link runs on every path that forms a bundle —
+grouping-plan apply (ADR-0009 phase 3/5) and fast-add single-bundle grouping
+(phase 6) — so the claim holds for scan/grouping and manual-grouping flows alike.
 
 ### `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` (ADR-0009)
 
