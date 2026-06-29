@@ -66,6 +66,30 @@ def test_fast_add_single_bundle_expands_directory(session: Session, library_root
     assert titles == ["My Movie"]
 
 
+def test_fast_add_single_bundle_links_external_subtitle(
+    session: Session, library_root: Path
+) -> None:
+    """Grouping a video with its sidecar .srt links them (ADR-0009 phase 6)."""
+    (library_root / "doc").mkdir()
+    (library_root / "doc" / "film.mkv").write_text("v")
+    (library_root / "doc" / "film.en.srt").write_text("s")
+    result = fast_add(session, paths=["doc"], grouping=Grouping.SINGLE_BUNDLE)
+
+    assert result.subtitles_linked == 1
+    from cairndex.persistence.models import SubtitleTrack
+
+    track = session.scalars(select(SubtitleTrack)).one()
+    video = session.scalars(
+        select(AssetFile).where(AssetFile.relative_path == "doc/film.mkv")
+    ).one()
+    srt = session.scalars(
+        select(AssetFile).where(AssetFile.relative_path == "doc/film.en.srt")
+    ).one()
+    assert track.source_file_id == srt.id
+    assert track.video_file_id == video.id
+    assert track.language == "en"
+
+
 def test_fast_add_is_idempotent(session: Session, library_root: Path) -> None:
     _media_tree(library_root)
     fast_add(session, paths=["loose.mp4"])

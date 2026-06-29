@@ -22,6 +22,7 @@ from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
 from cairndex.scanning.media_types import classify
 from cairndex.scanning.scanner import _iter_media_files
+from cairndex.services.subtitles import auto_link_external_subtitles
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class FastAddResult:
     bundles_created: int
     files_linked: int
     skipped: int
+    subtitles_linked: int = 0
 
 
 def fast_add(
@@ -64,6 +66,7 @@ def fast_add(
     if not to_link:
         return FastAddResult(0, 0, skipped)
 
+    subtitles_linked = 0
     if grouping is Grouping.SINGLE_BUNDLE:
         title = bundle_title or next(iter(to_link.values())).stem
         bundle = _new_confirmed_bundle(title)
@@ -71,6 +74,9 @@ def fast_add(
         session.flush()
         for sequence, (rel, path) in enumerate(to_link.items()):
             _link(session, bundle.id, rel, path, sequence=sequence)
+        # Grouping a video with its external .srt/.vtt should link them, just as
+        # the grouping-apply flow does (ADR-0009 phase 6 / ADR-0003).
+        subtitles_linked = len(auto_link_external_subtitles(session, bundle.id))
         bundles_created = 1
     else:
         for rel, path in to_link.items():
@@ -81,7 +87,7 @@ def fast_add(
         bundles_created = len(to_link)
 
     session.commit()
-    return FastAddResult(bundles_created, len(to_link), skipped)
+    return FastAddResult(bundles_created, len(to_link), skipped, subtitles_linked)
 
 
 def _new_confirmed_bundle(title: str) -> AssetBundle:

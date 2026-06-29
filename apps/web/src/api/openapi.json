@@ -855,6 +855,11 @@
           "skipped": {
             "title": "Skipped",
             "type": "integer"
+          },
+          "subtitles_linked": {
+            "default": 0,
+            "title": "Subtitles Linked",
+            "type": "integer"
           }
         },
         "required": [
