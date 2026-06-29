@@ -148,7 +148,9 @@ single user-confirmed step.
   timestamps, `version`. Generating a new plan supersedes the prior open one.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (FK
   self, SET NULL — links a bundle/container to the container that would contain
-  it; the collection is created at apply time), `kind` (`bundle` | `container`),
+  it; the collection is created at apply time), `target_bundle_id` (a plain id,
+  set when the proposal *adds* its files to an existing confirmed bundle rather
+  than forming a new one — ADR-0009 phase 5), `kind` (`bundle` | `container`),
   `title`, `directory`, `confidence`, `reason`, `sort_order`.
 - `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
   (a plain id, **not** an FK — a plan is a snapshot, so a file that later vanishes

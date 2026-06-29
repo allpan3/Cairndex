@@ -60,6 +60,7 @@ def apply_plan(plan_id: str, db: LibrarySession) -> ApplyResultRead:
         bundles_removed=result.bundles_removed,
         collections_created=result.collections_created,
         bundles_added_to_collections=result.bundles_added_to_collections,
+        files_added_to_bundles=result.files_added_to_bundles,
         subtitles_linked=result.subtitles_linked,
         conflicts=[
             ApplyConflictRead(proposal_id=c.proposal_id, title=c.title, reason=c.reason)

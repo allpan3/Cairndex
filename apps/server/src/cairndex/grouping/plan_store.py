@@ -72,6 +72,7 @@ def persist_plan(
             confidence=proposal.confidence,
             reason=proposal.reason,
             sort_order=order,
+            target_bundle_id=proposal.target_bundle_id,
         )
         session.add(row)
         session.flush()
