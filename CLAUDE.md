@@ -18,7 +18,9 @@
 - Existing source files remain in place by default.
 - The MVP is metadata-only and non-destructive.
 - Tags are hierarchical **and** may belong to multiple independent tag groups.
-- Folders are hierarchical virtual collections with multi-folder membership.
+- Collections are hierarchical virtual groupings with multi-collection membership.
+- A Cairndex library is a portable root with `.cairndex/{manifest.json,library.db,cache/}`.
+- File View is a filesystem-first browser over the active library root, not a bundle view.
 - Bundle metadata is shared; file-level title/note/link remain schema-compatible for later use.
 - Subtitle association and playback are first-class features.
 - The computer-side web app comes before TV/native clients.
@@ -53,12 +55,12 @@ Do not implement several major milestones in one unreviewable patch.
 ## Safety rules
 
 - Never rename, move, overwrite, or delete original media during the metadata-only milestones.
-- Validate every path against a configured storage root.
+- Validate every path against the active library root.
 - Never trust a client-supplied absolute path.
 - Do not full-hash large files on the request path.
 - Do not run full scans in HTTP request handlers.
 - Do not claim browser playback support for a format until it has been tested.
-- Never write into an Eagle library during migration work.
+- Never write into an Eagle library during migration/reference work.
 - Do not commit source media, private screenshots, databases, caches, thumbnails, or secrets.
 
 ## Decision handling
