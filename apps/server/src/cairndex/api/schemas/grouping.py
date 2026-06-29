@@ -52,6 +52,10 @@ class PlanSummary(BaseModel):
     proposal_count: int
 
 
+class ApplyPlanRequest(BaseModel):
+    proposal_ids: list[str] | None = None
+
+
 class ApplyConflictRead(BaseModel):
     proposal_id: str
     title: str | None

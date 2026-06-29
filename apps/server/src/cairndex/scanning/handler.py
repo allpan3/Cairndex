@@ -8,10 +8,12 @@ registry via ``ctx.library_root`` (ADR-0008).
 
 from typing import Any
 
+from cairndex.grouping import plan_store
 from cairndex.jobs.worker import JobContext
 from cairndex.scanning.scanner import scan_library
 
 
+# Run discovery, then persist a reviewable grouping plan without applying it
 def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     batch_size = int(ctx.payload.get("batch_size", 200))
 
@@ -21,9 +23,13 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         on_progress=lambda processed, total: ctx.checkpoint(processed, total),
         batch_size=batch_size,
     )
+    plan = plan_store.generate_plan(ctx.session, scan_job_id=ctx.job_id)
     return {
         "discovered": summary.discovered,
         "created": summary.created,
         "updated": summary.updated,
         "missing": summary.missing,
+        "repaired": summary.repaired,
+        "grouping_plan_id": plan.id,
+        "grouping_proposal_count": len(plan.proposals),
     }

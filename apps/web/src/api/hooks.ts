@@ -6,6 +6,7 @@ import {
   type BundlePatch,
   type FilePatch,
   type FilterExpression,
+  type JobRead,
   type LibraryCreate,
   type LibraryRegister,
   type SmartCollectionCreate,
@@ -19,6 +20,7 @@ import {
   enqueueProbe,
   enqueueScan,
   enqueueThumbnails,
+  fetchJob,
   fetchGroupingPlan,
   fetchGroupingPlans,
   generateGroupingPlan,
@@ -49,6 +51,40 @@ import {
 } from './client'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
+
+const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
+
+// Wait for a queued/running job to finish so dependent queries refetch fresh data
+async function waitForJob(job: JobRead): Promise<JobRead> {
+  let current = job
+  while (!TERMINAL_JOB_STATUSES.has(current.status)) {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    current = await fetchJob(job.id)
+  }
+  if (current.status === 'failed') {
+    throw new Error(current.error ?? 'Background job failed.')
+  }
+  if (current.status === 'cancelled') {
+    throw new Error('Background job was cancelled.')
+  }
+  return current
+}
+
+// Invalidate all library surfaces whose content changes after a maintenance job
+function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of [
+    'browse',
+    'view-counts',
+    'collection-counts',
+    'tag-counts',
+    'file-view',
+    'grouping-plans',
+    'grouping-plan',
+    'bundle',
+    'bundle-files',
+  ])
+    qc.invalidateQueries({ queryKey: [key] })
+}
 
 /**
  * Infinite browse query: pages are fetched by offset as the virtualized grid
@@ -146,16 +182,43 @@ export function useLibraryMutations() {
   }
 }
 
-/** Enqueue a scan of the active library. The worker runs it asynchronously; we
- * optimistically invalidate browse-facing queries so a later refresh reflects
- * discovered media. */
-export function useScan() {
+// Open grouping review when a completed scan produced suggestions
+function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => void) {
+  const result = job.result as Record<string, unknown> | null
+  const proposalCount = Number(result?.grouping_proposal_count ?? 0)
+  const planId = typeof result?.grouping_plan_id === 'string' ? result.grouping_plan_id : null
+  if (planId !== null && proposalCount > 0) {
+    onGroupingPlan?.(planId)
+  }
+}
+
+/** Enqueue scan-only discovery/repair and grouping suggestion preparation */
+export function useScan(options: { onGroupingPlan?: (planId: string) => void } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => enqueueScan(),
-    onSuccess: () => {
-      for (const key of ['browse', 'view-counts', 'collection-counts', 'tag-counts', 'file-view'])
-        qc.invalidateQueries({ queryKey: [key] })
+    mutationFn: async () => {
+      const scanJob = await waitForJob(await enqueueScan())
+      return scanJob
+    },
+    onSuccess: (job) => {
+      invalidateLibraryContent(qc)
+      notifyGroupingPlan(job, options.onGroupingPlan)
+    },
+  })
+}
+
+/** Enqueue the primary library update flow: scan, grouping suggestions, then metadata probe */
+export function useUpdateLibrary(options: { onGroupingPlan?: (planId: string) => void } = {}) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const scanJob = await waitForJob(await enqueueScan())
+      await waitForJob(await enqueueProbe())
+      return scanJob
+    },
+    onSuccess: (job) => {
+      invalidateLibraryContent(qc)
+      notifyGroupingPlan(job, options.onGroupingPlan)
     },
   })
 }
@@ -166,7 +229,7 @@ export function useScan() {
 export function useProbe() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => enqueueProbe(),
+    mutationFn: async () => waitForJob(await enqueueProbe()),
     onSuccess: () => {
       for (const key of ['bundle', 'bundle-files', 'browse']) {
         qc.invalidateQueries({ queryKey: [key] })
@@ -178,7 +241,7 @@ export function useProbe() {
 export function useThumbnails() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => enqueueThumbnails(),
+    mutationFn: async () => waitForJob(await enqueueThumbnails()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
   })
 }
@@ -211,7 +274,8 @@ export function useGenerateGroupingPlan() {
 export function useApplyGroupingPlan() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => applyGroupingPlan(id),
+    mutationFn: ({ id, proposalIds }: { id: string; proposalIds?: string[] }) =>
+      applyGroupingPlan(id, proposalIds),
     onSuccess: () => {
       // Applying confirms bundles and may create collections + subtitle links.
       for (const key of [

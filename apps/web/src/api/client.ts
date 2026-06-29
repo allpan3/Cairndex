@@ -259,6 +259,10 @@ export const enqueueProbe = () => send<JobRead>(`${lib()}/jobs/probe`, 'POST')
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
+/** Fetch the current status/result for a background job. */
+export const fetchJob = (id: string, signal?: AbortSignal) =>
+  getJson<JobRead>(`/api/v1/jobs/${id}`, signal)
+
 // --- Grouping plans (ADR-0009) ------------------------------------------------
 export type GroupingPlan = components['schemas']['PlanRead']
 export type GroupingProposal = components['schemas']['ProposalRead']
@@ -275,9 +279,16 @@ export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSu
 export const fetchGroupingPlan = (id: string, signal?: AbortSignal): Promise<GroupingPlan> =>
   getJson<GroupingPlan>(`${lib()}/grouping/plans/${id}`, signal)
 
-/** Apply a plan: confirm bundles, create collections, link subtitles. */
-export const applyGroupingPlan = (id: string): Promise<GroupingApplyResult> =>
-  send<GroupingApplyResult>(`${lib()}/grouping/plans/${id}/apply`, 'POST')
+/** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */
+export const applyGroupingPlan = (
+  id: string,
+  proposalIds?: string[],
+): Promise<GroupingApplyResult> =>
+  send<GroupingApplyResult>(
+    `${lib()}/grouping/plans/${id}/apply`,
+    'POST',
+    proposalIds ? { proposal_ids: proposalIds } : undefined,
+  )
 
 // --- File View (read-only filesystem browsing) -------------------------------
 export function fetchFileViewEntries(

@@ -2,179 +2,159 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/grouping-phase6-subtitle-autolink`. Latest commit: see `git log -1`.
+Branch: `feat/scan-grouping-review`. Latest commit: see `git log -1`.
 
-ADR-0008 is complete and merged. **ADR-0009** (suggestion-based bundle grouping,
-Option A+) is now **fully rolled out**: phases 1–5 merged (#29–#33), and this
-branch lands **phase 6 — external subtitle auto-link across grouping flows**:
-fast-add single-bundle grouping now links a video with its sidecar `.srt`/`.vtt`
-(reporting `subtitles_linked`), matching the grouping-apply flow, so the
-ADR-0003 auto-link claim holds for every path that forms a bundle. The only
-documented follow-up is interactive edit-before-apply in the review UI
-(merge/split/reclassify/rename).
+ADR-0008 is implemented: Cairndex now uses portable per-library metadata
+packages (`<root>/.cairndex/{manifest.json,library.db,cache/}`) plus a separate
+server-local registry DB for registered libraries and the runtime job queue. The
+old global storage-root content model and Eagle importer are removed from the
+current product path.
+
+ADR-0009 (suggestion-based bundle grouping, Option A+) is functionally rolled
+out. The scanner still performs conservative discovery/repair first and stages
+new files as provisional bundles. Scan jobs now also persist a durable grouping
+plan without applying it, so grouping remains a user-reviewed decision.
+
+PR 36 is the current UI/workflow follow-up: the sidebar exposes one primary
+**Update** action, with individual **Scan new files**, **Collect metadata**, and
+**Review grouping** actions in the overflow menu. Update waits for scan/grouping
+plan generation and ffprobe metadata collection, invalidates affected queries,
+and opens grouping review when a scan produced suggestions.
 
 ## Current milestone
 
-**Suggestion-based bundle grouping (ADR-0009, Option A+).** Scanning a realistic
-library over-fragments (one bundle per file). ADR-0009 keeps `AssetBundle` and
-`Collection` as separate tables but adds a provisional-grouping + durable
-grouping-plan workflow: scan discovers files into provisional bundles, a
-suggester proposes BUNDLE/CONTAINER groupings with roles/confidence/reasons, and
-the user reviews and applies the plan (apply is the only step that confirms
-groupings, assigns roles, creates logical collections, and links subtitles).
-Confirmed user decisions are durable and win over heuristics on re-scan. The
-full rollout is in ADR-0009.
+**Library maintenance and grouping review polish.** The current branch makes the
+normal maintenance path match the intended product model:
 
-This is being landed incrementally across several PRs; do not implement all
-phases at once.
+1. scan the active library root;
+2. repair high-confidence moves without changing original files;
+3. stage new files in provisional bundles;
+4. generate and persist a reviewable grouping plan;
+5. collect technical metadata;
+6. let the user accept selected grouping proposals.
 
-## Completed in this milestone (ADR-0009)
+Applying a grouping plan is the only operation that confirms scan-staged
+bundles, creates suggested logical collections, assigns roles, selects
+cover/primary files, links external subtitles, or adds newly discovered files to
+an existing confirmed bundle. It never moves, renames, deletes, or rewrites
+original files.
 
-- **Phase 6 — external subtitle auto-link across grouping flows (this branch).**
-  Folded `auto_link_external_subtitles` into fast-add (single-bundle grouping), so
-  grouping a video with its sidecar `.srt`/`.vtt` links them just as the
-  grouping-apply flow does. `FastAddResult`/`FastAddResponse` gained
-  `subtitles_linked`. Test in `tests/test_scan_endpoints.py`. With this, the
-  ADR-0003 data-model claim holds for every bundle-forming path.
+## Current implementation notes
 
-- **Phase 5 — re-scan additions (merged, #33).** The suggester learned to fold a
-  newly discovered file into the confirmed bundle that owns its directory:
-  `FileObservation` carries `bundle_id`/`bundle_title`, `_confirmed_owners`
-  derives directory→bundle ownership, and an *addition* proposal
-  (`target_bundle_id` set, stored on `grouping_proposals`) is emitted instead of
-  a fresh grouping. `apply._apply_addition` moves the files in, assigns roles,
-  links subtitles, removes emptied provisional bundles, and is idempotent +
-  conflict-aware. Apply result gained `files_added_to_bundles`; the review UI
-  shows additions as "Add to …". Tests in `tests/test_grouping_rescan.py`.
+- **Primary maintenance flow:** **Update** is the main sidebar action. It runs
+  scan + grouping-plan generation first, then probe. The overflow menu keeps
+  scan-only, probe-only, and review-only actions for exception cases.
+- **Grouping review:** The modal shows the persisted plan, explains that
+  regeneration reruns the same heuristic against current library state, and
+  supports checkboxes, cascading parent toggles, **Select all**, **Deselect all**,
+  and **Accept selected**.
+- **Selected accept semantics:** `POST /grouping/plans/{id}/apply` accepts an
+  optional `proposal_ids` list. When supplied, only those proposals are applied;
+  the plan is then marked applied, so unchecked proposals are intentionally left
+  unapplied for that plan. Regenerate suggestions after library changes if the
+  owner wants a fresh plan.
+- **Provisional browse state:** browse summaries expose `grouping_state`, and
+  provisional scan-created bundles show a visible “Needs review”/review marker
+  until grouping is applied.
+- **Hidden/cache exclusions:** scan and grouping ignore dot-directories/files and
+  known hidden/cruft names such as `.cairndex`, `.DS_Store`, `__pycache__`,
+  `node_modules`, and `Thumbs.db`. Rescan cleans up scan-staged provisional rows
+  that were previously created for now-hidden paths. Browse hides hidden-only
+  bundles while preserving legitimate empty bundles.
+- **Thumbnail UI:** the global sidebar thumbnail button was removed. The backend
+  thumbnail job/API and lazy bundle/file thumbnail endpoints remain; cover
+  fallback is explicit cover → first image → selected primary video → first video
+  → placeholder/no thumbnail.
+- **Production deployment:** the library root mount must be writable because the
+  per-library package stores `.cairndex/{manifest.json,library.db,cache/}` under
+  that root. Normal MVP flows still avoid changing original media files. Backups
+  should cover `/data/registry.db` plus each library's `.cairndex/library.db`;
+  derived cache files are regenerable.
 
-- **Phase 4 — grouping review UI (merged, #32).** Sidebar **⧉ Group** action →
-  `GroupingReview` modal: suggest a grouping (`POST /grouping/plans`), review the
-  proposed bundles/containers (roles, confidence badge, reason, nested tree), and
-  apply (`POST .../apply`) with a result summary + conflict list. New hooks
-  `useGroupingPlans` / `useGroupingPlan` / `useGenerateGroupingPlan` /
-  `useApplyGroupingPlan`; applying invalidates browse/collection views.
-  Edit-before-apply (merge/split/reclassify/rename) is a documented follow-up.
-  Verified end-to-end in a browser preview.
-
-- **Phase 3 — apply-plan service + API (merged, #31).** Durable
-  `grouping_plans` / `grouping_proposals` / `grouping_proposal_files` tables
-  (`grouping.plan_store` persists/supersedes/loads). `grouping.apply.apply_plan`
-  confirms bundles by merging/splitting provisional ones while preserving
-  `AssetFile.id`, assigns roles, selects cover/primary, links external subtitles,
-  and creates the collections a CONTAINER suggests — idempotent and
-  conflict-aware (vanished or manually-regrouped files become localized conflicts
-  and are skipped). Library-scoped routes under `/grouping/plans`
-  (generate/list/get/apply). Tests in `tests/test_grouping_apply.py` and
-  `tests/test_grouping_api.py`. OpenAPI + frontend types regenerated.
-
-- **Phase 2 — read-only grouping suggester (merged, #30).** New
-  `cairndex.grouping` package: a pure `suggest_grouping(files)` that produces a
-  `GroupingPlan` of BUNDLE/CONTAINER proposals (per-file roles + sequence,
-  confidence, reason) using content-first heuristics — one-video-plus-sidecars
-  and multipart folders become bundles; unrelated-item and sub-bundle-holding
-  folders become containers; nested folders recurse. Confirmed bundles are
-  excluded. A read-only `grouping.service` adapter snapshots a library session
-  into observations. Tests in `tests/test_grouping_suggester.py` (movie/photo/
-  nested/multipart/cover/subtitle/confirmed-exclusion + over a real scan).
+## Completed in ADR-0009
 
 - **Phase 1 — bundle grouping review state (merged, #29).** Added
-  `grouping_state` (`provisional` | `confirmed`), `grouping_source` (`legacy` |
-  `scan_suggestion` | `manual` | `fast_add` | `import`), `grouping_rule_version`,
-  and `confirmed_at` to `asset_bundles`. The scanner now stages discovered files
-  into `provisional` / `scan_suggestion` bundles; fast-add and manual creation
-  produce `confirmed` bundles; pre-existing rows backfill as `confirmed` /
-  `legacy` via server defaults. `BundleRead` exposes the state. Schema-and-state
-  only — browse behaviour, suggester, apply, and review UI are unchanged/later.
-  Tests in `tests/test_grouping_state.py`. (#29)
+  `grouping_state`, `grouping_source`, `grouping_rule_version`, and
+  `confirmed_at`; scan creates provisional bundles while fast-add/manual actions
+  create confirmed bundles.
+- **Phase 2 — read-only grouping suggester (merged, #30).** Added the pure
+  heuristic and DB adapter that produce BUNDLE/CONTAINER proposals with roles,
+  confidence, reasons, and stable ordering.
+- **Phase 3 — apply-plan service + API (merged, #31).** Added durable grouping
+  plans/proposals, apply semantics, conflict reporting, role assignment,
+  collection creation, subtitle linking, and generated OpenAPI/frontend types.
+- **Phase 4 — grouping review UI (merged, #32).** Added the review modal and
+  frontend hooks for generating, reading, and applying grouping plans.
+- **Phase 5 — re-scan additions (merged, #33).** New files found under a
+  directory already owned by a confirmed bundle are proposed as additions instead
+  of disturbing the confirmed grouping.
+- **Phase 6 — external subtitle auto-link across grouping flows.** Fast-add
+  single-bundle grouping now runs the same external-subtitle auto-link behavior as
+  grouping-plan apply.
+- **Current follow-up — scan grouping review workflow (PR 36).** Scan jobs persist
+  open grouping plans; Update is the primary maintenance flow; hidden/cache paths
+  are excluded; grouping review supports selected accept; the global thumbnail
+  action is removed from the sidebar.
 
-## Completed in the prior milestone (ADR-0008)
+## Completed in ADR-0008
 
-- **PR 1 — ADR + registry skeleton (merged, PR #20).**
-  - ADR-0008 documenting the per-library + registry architecture, explicitly
-    distinguishing metadata writes vs. physical file writes vs. native opening.
-  - Registry database (`{CAIRNDEX_DATA_DIR}/registry.db`, package
-    `cairndex.registry`): `registered_libraries` and `job_queue` models, a
-    separate engine/sessionmaker, and a `RegistryDbSession` dependency.
-  - On-disk library package handler (`registry/library_package.py`): manifest
-    format, create, and detect.
-  - Services + endpoints: `GET /api/v1/libraries`,
-    `POST /api/v1/libraries/create`, `POST /api/v1/libraries/register`,
-    `GET /api/v1/libraries/{id}`. Backend tests in `tests/test_libraries.py`.
-
-- **PR 2 — per-library engine + first scoped route (merged, PR #21).**
-  - Per-library content engine/session cache (`registry/library_engine.py`) and
-    a `LibrarySession` dependency; first scoped route `/libraries/{id}/collections`
-    with two-library isolation tests.
-
-- **PR 3 — create → scan → browse working slice (this branch; phases 3–5/7).**
-  - **Schema collapse:** removed `StorageRoot` and `asset_files.storage_root_id`;
-    `relative_path` is library-root-relative with `UNIQUE(relative_path)`. Moved
-    the `jobs` table to the registry `job_queue`. Library DBs use `create_all`
-    (Alembic chain + `test_migrations` removed for the clean break).
-  - **Route migration:** all content APIs now live under
-    `/api/v1/libraries/{library_id}/…`; the global content + storage-root routers
-    are gone. Path resolution derives the library root from the content session
-    (`library_root_for_session`).
-  - **Per-library worker:** the worker drains the registry `job_queue`, opens the
-    target library DB, and runs scan/probe/thumbnail against the library root.
-  - **Frontend:** active-library bootstrap (one per tab), library selector +
-    Scan action, create/register library manager; storage-root + Eagle UI removed.
-  - **Eagle import** removed entirely (reader/planner package, `services.eagle`,
-    and the `import_records` table); ADR-0004 retained as superseded. Eagle
-    remains a UI-design *inspiration* only.
-
-- **Phase 8 — cache relocation (merged, #24).** Thumbnails and converted WebVTT
-  subtitles are now written into each library's portable
-  `.cairndex/cache/{thumbnails,subtitles}/` (derived from the library root via
-  `registry.library_package.cache_dir`), never into the server data dir and never
-  beside source media. Removed the now-unused `Settings.cache_dir`. A future
-  `cache_mode` (`inside_library` | `server_local`) is documented for large
-  transcodes.
-
-- **Phase 9 — optimistic concurrency (this branch).** The frequently edited
-  entities carry a `version` integer (`persistence.base.Version`); single-entity
-  `PATCH` routes accept an optional `If-Match: <version>` header and reject a
-  stale edit with 409 (`version_conflict`) before mutating, via
-  `persistence.concurrency.guard_and_bump_version`. `version` is exposed on the
-  read models. Without `If-Match`, edits stay last-write-wins (back-compatible).
-  Frontend wiring (surfacing 409 + reload) is a follow-up.
+- Registry database and library package skeleton.
+- Per-library engine/session cache and library-scoped content route migration.
+- Clean-break schema collapse: no content `storage_roots` table and no
+  `asset_files.storage_root_id`; each `library.db` is scoped by its library root.
+- Registry-owned `job_queue` and in-process worker that opens the target
+  library DB for scan/probe/thumbnail handlers.
+- Per-library portable cache under `.cairndex/cache/{thumbnails,subtitles}/`.
+- Optimistic concurrency for frequent metadata edits via `version` + optional
+  `If-Match`.
+- Eagle import removal; ADR-0004 remains only as superseded history.
 
 ## Tests and validation
 
-Run and passing locally for this PR:
+Reported in the PR before this documentation/ops refresh:
 
-- backend: `ruff check`, `ruff format --check`, `mypy src` (no issues),
-  `pytest` (199 passed);
-- frontend: `lint`, `format:check`, `typecheck`, `test`, `build`, `test:e2e`
-  (OpenAPI + types regenerated for the new grouping routes).
+- backend: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy src`,
+  `uv run pytest` (`210 passed`);
+- frontend: `npm run typecheck`, `npm run lint`, `npm run test`,
+  `npm run build`.
+
+This refresh updated docs, agent instructions, deployment comments/config, and
+the backup helper default/comments. No local test run was performed in this
+session; GitHub CI should validate the updated branch.
 
 ## Known issues / environment gaps
 
-- Eagle import has been removed (out of scope under the per-library model);
-  libraries are populated by scanning, not by migrating from another app.
-- The registry uses `create_all` bootstrap rather than a versioned migration
-  chain; if its schema needs to evolve it will get its own chain.
-- Clean break from pre-release dev data: no global-DB → per-library migration
-  (ADR-0008 decision 10). Existing dev data is discarded; create/scan a library.
-- No authentication yet (`AGENTS.md` §12); single SQLite writer / single uvicorn
-  worker by design (ADR-0001).
+- No authentication yet; the app is still intended for single-owner/local use.
+- Job status is polled and terminal states are surfaced, but long-running scan,
+  probe, and thumbnail jobs still need detailed progress bars in the UI.
+- Grouping review can select/deselect proposals but does not yet provide rich
+  edit-before-apply controls for merge/split/reclassify/rename.
+- Server-side text search / SQLite FTS5 is not implemented; toolbar text search
+  still filters the loaded client-side window.
+- Browse-summary queries need profiling and indexing before assuming large-scale
+  performance.
+- Same-volume high-confidence moved-file repair is implemented; cross-filesystem
+  repair candidates, duplicate/copy handling, and manual repair are future work.
+- File View is read-only. Write mode, reveal/open-with-default-app, and desktop
+  helper/Tauri integration are deferred.
+- Remux/transcode fallback and embedded subtitle extraction are deferred.
 
 ## Next recommended tasks
 
-The server-managed ADR-0008 phases (1–9), their frontend wiring, and the
-per-library maintenance UI actions are all complete. Remaining / follow-up:
-
-- **Bundle grouping redesign (ADR-0009, accepted Option A+ plan).** Fully rolled
-  out — all six phases shipped. Remaining follow-up: interactive edit-before-apply
-  in the review UI (merge/split/reclassify/rename), which the apply engine already
-  supports at the data level.
-- Job progress UI: surface running scan/probe/thumbnail progress (the registry
-  `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
-- Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
+1. Add richer grouping review editing: merge/split/reclassify/rename before
+   apply, while preserving the current safe apply/conflict model.
+2. Surface detailed job progress for Update/scan/probe/thumbnail jobs.
+3. Add server-side text search/FTS and review browse-summary indexes on realistic
+   synthetic libraries.
+4. Continue File View planning toward guarded write mode and safe desktop-native
+   handoff.
+5. Decide the first single-owner authentication mechanism before relying on
+   remote access.
 
 ## Unresolved decisions
 
-- Authentication mechanism (single shared secret vs. per-user) deferred until
-  remote access is wired up.
-- Direct-open desktop mode and its active-owner lease (ADR-0008 phases 10–11)
-  are documented but intentionally unimplemented until that client is built.
+- Authentication mechanism: shared owner secret vs. per-user accounts.
+- Native/desktop host integration design for `open with default app`, reveal in
+  file manager, and future File View write mode.
+- Cache policy for future large transcodes: portable inside-library cache vs.
+  server-local cache.

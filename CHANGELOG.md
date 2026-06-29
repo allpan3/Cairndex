@@ -89,10 +89,9 @@ grouped under `Unreleased` until the first tagged release.
   as `If-Match` on edits; a 409 conflict surfaces an inline notice ("changed
   elsewhere — save again to apply over the latest") and the view refetches the
   current server state instead of silently overwriting another client's change.
-  The sidebar gained a **Library maintenance** row with **Scan**, **Probe**
-  (ffprobe technical metadata), and **Thumbnails** (cover generation) actions —
-  the latter two enqueue the registry jobs that already existed server-side
-  (ADR-0008 phase 7); each disables while running and refetches affected views.
+  The sidebar gained a **Library maintenance** row with **Scan** and **Probe**
+  (ffprobe technical metadata) actions; each disables while running and refetches
+  affected views.
 
 - **Optimistic concurrency for metadata edits (ADR-0008, phase 9).** The
   frequently edited entities (`asset_bundles`, `asset_files`, `tags`,
@@ -108,6 +107,54 @@ grouped under `Unreleased` until the first tagged release.
   model.
 
 ### Changed
+
+- **Documentation refresh for the current development state.** README,
+  `docs/STATUS.md`, architecture, data-model, development, deployment,
+  `AGENTS.md`, and `CLAUDE.md` were refreshed to reflect the implemented
+  per-library package + registry model, current Update/grouping-review workflow,
+  selected-accept semantics, hidden/cache exclusions, removed Eagle importer,
+  and absence of global storage-root content APIs.
+
+- **Production deployment now matches per-library packages.**
+  `docker-compose.prod.yml` mounts the library root writable because
+  `.cairndex/{manifest.json,library.db,cache/}` lives inside the library root.
+  `.env.example`, deployment docs, and `infra/backup.sh` now describe backing up
+  `/data/registry.db` plus each library's `.cairndex/library.db`; cache remains
+  regenerable and source media remains non-destructive in normal app flows.
+
+- **Update library opens grouping review instead of leaving stale provisional cards.**
+  A successful scan job persists an open ADR-0009 grouping plan and returns its
+  id/proposal count in the job result without applying it. The frontend now
+  treats **Update** as the primary maintenance flow: it waits for filesystem
+  discovery/repair, grouping-plan generation, and metadata probe completion
+  before invalidating browse/counts/File View/grouping queries, then opens the
+  grouping review modal when suggestions exist. Provisional scan-created bundles
+  are visibly marked "review" in browse results until the user applies grouping.
+
+- **Hidden library/cache paths are excluded from scan and grouping review.**
+  The scanner now prunes dot-directories such as `.cairndex`, skips hidden
+  files, drops previously scan-staged provisional hidden rows from local metadata
+  on the next scan, and grouping plans ignore hidden paths. Browse also hides
+  hidden-only bundles while preserving legitimate empty bundles.
+
+- **Grouping review supports selected accept.** The review modal now explains
+  that **Regenerate suggestions** reruns the same heuristic against current
+  library state, so unchanged inputs usually produce the same result. Proposals
+  have checkboxes, parent toggles cascade to children, **Select all** /
+  **Deselect all** controls are available, and **Accept selected** applies only
+  the checked proposals. Because apply marks the plan applied, unchecked
+  proposals are treated as intentionally skipped for that plan; regenerate
+  suggestions to review a fresh plan later.
+
+- **Thumbnail actions moved out of the global sidebar.** The backend thumbnail
+  job/API and lazy thumbnail endpoints remain, but the prominent sidebar button
+  is removed. Cover fallback now uses explicit cover, then first image, then
+  selected/first video, so video-only bundles are still thumbnailable.
+
+- **Individual maintenance actions moved behind the Update overflow menu.** The
+  sidebar now shows one primary **Update** button plus a small maintenance menu
+  for exception cases: scan new files, collect metadata, or reopen grouping
+  review.
 
 - **Per-library derived cache (ADR-0008, phase 8).** Thumbnails and converted
   WebVTT subtitles are now cached inside each library's portable

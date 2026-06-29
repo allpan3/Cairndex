@@ -103,6 +103,26 @@
         "title": "ApplyConflictRead",
         "type": "object"
       },
+      "ApplyPlanRequest": {
+        "properties": {
+          "proposal_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Ids"
+          }
+        },
+        "title": "ApplyPlanRequest",
+        "type": "object"
+      },
       "ApplyResultRead": {
         "properties": {
           "bundles_added_to_collections": {
@@ -509,6 +529,9 @@
             "title": "File Count",
             "type": "integer"
           },
+          "grouping_state": {
+            "$ref": "#/components/schemas/GroupingState"
+          },
           "has_cover": {
             "title": "Has Cover",
             "type": "boolean"
@@ -594,7 +617,8 @@
           "height",
           "duration",
           "extension",
-          "date_added"
+          "date_added",
+          "grouping_state"
         ],
         "title": "BundleSummary",
         "type": "object"
@@ -5364,6 +5388,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApplyPlanRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

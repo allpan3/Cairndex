@@ -4,14 +4,14 @@
 
 | Tool | Why | Notes |
 | --- | --- | --- |
-| [`uv`](https://docs.astral.sh/uv/) | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python. |
+| `uv` | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python. |
 | Node.js 20+ | Frontend tooling | `npm` ships with Node; no separate package manager required. |
 | Docker + Compose v2 plugin | Optional, for the containerized dev stack | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`. |
-| `ffmpeg` / `ffprobe` | Media probing/thumbnailing | Not required until Phase 2. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
+| `ffmpeg` / `ffprobe` | Media probing, thumbnails, subtitle conversion | Required for full media behavior. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
 
 Cairndex is developed on macOS and deployed on Linux; avoid macOS-only or
 Linux-only assumptions in code (path separators, case sensitivity, process
-APIs).
+APIs, filesystem identity reliability).
 
 ## Backend (`apps/server`)
 
@@ -49,32 +49,35 @@ npm run format:check      # prettier --check
 npm run typecheck         # tsc --noEmit
 npm run test              # vitest run
 npm run test:e2e          # playwright (boots its own dev server)
+npm run build             # production SPA build
 ```
 
-## Database migrations
+## Databases and local state
 
-The backend uses Alembic over SQLite (WAL). From `apps/server`:
+Cairndex now uses the ADR-0008 per-library model:
 
-```bash
-uv run alembic upgrade head            # apply migrations to the configured DB
-uv run alembic revision --autogenerate -m "describe change"  # after model edits
-uv run alembic downgrade -1            # roll back one revision
-```
+- the server-local registry DB lives under `CAIRNDEX_DATA_DIR` as
+  `registry.db` and tracks registered libraries plus the runtime `job_queue`;
+- each library is a directory with `.cairndex/manifest.json`,
+  `.cairndex/library.db`, and `.cairndex/cache/`;
+- content tables are created in each `library.db` via the current SQLAlchemy
+  metadata bootstrap for this pre-1.0 phase;
+- there is no current global content DB, no `storage_roots` content table, and no
+  `asset_files.storage_root_id`.
 
-The database URL comes from settings (`CAIRNDEX_DATABASE_URL`, or
-`{CAIRNDEX_DATA_DIR}/cairndex.db` by default). Seed a synthetic library for
-UI/manual testing (synthetic metadata only — no real media is created):
+For local manual testing, start the backend and frontend, open the app, use the
+sidebar `+` to create or register a library directory, then run **Update**. Update
+scans files, persists a grouping plan, collects ffprobe metadata, refreshes the
+UI, and opens grouping review when suggestions exist.
 
-```bash
-uv run alembic upgrade head
-uv run python -m cairndex.devtools.seed --bundles 2000
-```
+When changing persistence models, update the relevant bootstrap/tests/docs in the
+same branch. Do not assume an Alembic global-content migration chain is still the
+active mechanism unless a new ADR reinstates one.
 
 ## Frontend API types (generated from OpenAPI)
 
-The frontend's request/response types are generated from the backend's
-OpenAPI schema so the two cannot drift. To regenerate after backend API
-changes:
+The frontend's request/response types are generated from the backend's OpenAPI
+schema so the two cannot drift. Regenerate after backend API changes:
 
 ```bash
 # 1. dump the schema from the backend (apps/server)
@@ -90,9 +93,10 @@ TS 6.
 
 ## Running both together without Docker
 
-Run the two `dev` commands above in separate terminals. The Vite dev server
-proxies `/api/*` to `http://localhost:8000` (see `apps/web/vite.config.ts`),
-so the frontend never needs CORS configuration in development.
+Run the backend and frontend dev commands above in separate terminals. The Vite
+dev server proxies `/api/*` to `http://localhost:8000` (see
+`apps/web/vite.config.ts`), so the frontend never needs CORS configuration in
+development.
 
 ## Running with Docker
 
@@ -100,9 +104,9 @@ so the frontend never needs CORS configuration in development.
 docker compose up --build
 ```
 
-Starts the backend on `:8000` and the frontend dev server on `:5173` with
-source bind-mounted for live reload. This is a development convenience, not
-the NAS production deployment shape — see `docs/deployment.md`.
+Starts the backend on `:8000` and the frontend dev server on `:5173` with source
+bind-mounted for live reload. This is a development convenience, not the NAS
+production deployment shape — see `docs/deployment.md`.
 
 ## Repository conventions
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from cairndex.domain.enums import GroupingState
 from cairndex.grouping.suggester import FileObservation, GroupingPlan, suggest_grouping
 from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.scanning.media_types import is_hidden_relative_path
 
 
 def gather_observations(session: Session) -> list[FileObservation]:
@@ -39,6 +40,7 @@ def gather_observations(session: Session) -> list[FileObservation]:
             bundle_title=title,
         )
         for file_id, relative_path, media_kind, bundle_id, grouping_state, title in rows
+        if not is_hidden_relative_path(relative_path)
     ]
 
 

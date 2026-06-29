@@ -38,12 +38,12 @@ interface SidebarProps {
   libraryId: string | null
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
-  onScan: () => void
-  scanning?: boolean
+  onUpdateLibrary: () => void
+  updating?: boolean
+  onScanFiles: () => void
+  scanningFiles?: boolean
   onProbe: () => void
   probing?: boolean
-  onThumbnails: () => void
-  thumbnailing?: boolean
   onReviewGrouping: () => void
   selection: Selection
   onSelect: (selection: Selection) => void
@@ -100,12 +100,12 @@ export function Sidebar({
   libraryId,
   onChangeLibrary,
   onManageLibraries,
-  onScan,
-  scanning,
+  onUpdateLibrary,
+  updating,
+  onScanFiles,
+  scanningFiles,
   onProbe,
   probing,
-  onThumbnails,
-  thumbnailing,
   onReviewGrouping,
   selection,
   onSelect,
@@ -116,6 +116,7 @@ export function Sidebar({
   onNewSmartCollection,
   onEditSmartCollection,
 }: SidebarProps) {
+  const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   // Scope the displayed collections to the active library (counts are already
   // library-scoped); the global list stays available to the collection picker.
   const tree = useMemo(
@@ -157,36 +158,54 @@ export function Sidebar({
       <div className="sidebar__jobs" role="group" aria-label="Library maintenance">
         <button
           className="sidebar__job"
-          onClick={onScan}
-          title="Scan the library for new, moved, or missing files"
-          disabled={scanning || libraryId === null}
+          onClick={onUpdateLibrary}
+          title="Scan files, prepare grouping suggestions, and update media metadata"
+          disabled={updating || libraryId === null}
         >
-          {scanning ? '⟳ Scanning…' : '⟳ Scan'}
+          {updating ? '⟳ Updating…' : '⟳ Update'}
         </button>
-        <button
-          className="sidebar__job"
-          onClick={onProbe}
-          title="Read media technical metadata (dimensions, duration, codecs)"
-          disabled={probing || libraryId === null}
-        >
-          {probing ? 'ℹ Probing…' : 'ℹ Probe'}
-        </button>
-        <button
-          className="sidebar__job"
-          onClick={onThumbnails}
-          title="Generate cover thumbnails for images and videos"
-          disabled={thumbnailing || libraryId === null}
-        >
-          {thumbnailing ? '▦ Thumbnailing…' : '▦ Thumbnails'}
-        </button>
-        <button
-          className="sidebar__job"
-          onClick={onReviewGrouping}
-          title="Review suggested bundle grouping and apply it"
-          disabled={libraryId === null}
-        >
-          ⧉ Group
-        </button>
+        <div className="sidebar__job-menu">
+          <button
+            className="sidebar__job-more"
+            onClick={() => setJobsMenuOpen((open) => !open)}
+            title="More library maintenance actions"
+            aria-label="More library maintenance actions"
+            aria-expanded={jobsMenuOpen}
+            disabled={libraryId === null}
+          >
+            ⋯
+          </button>
+          {jobsMenuOpen && (
+            <div className="sidebar__job-popover">
+              <button
+                onClick={() => {
+                  setJobsMenuOpen(false)
+                  onScanFiles()
+                }}
+                disabled={scanningFiles}
+              >
+                {scanningFiles ? 'Scanning…' : 'Scan new files'}
+              </button>
+              <button
+                onClick={() => {
+                  setJobsMenuOpen(false)
+                  onProbe()
+                }}
+                disabled={probing}
+              >
+                {probing ? 'Collecting…' : 'Collect metadata'}
+              </button>
+              <button
+                onClick={() => {
+                  setJobsMenuOpen(false)
+                  onReviewGrouping()
+                }}
+              >
+                Review grouping
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="sidebar__modes" role="tablist" aria-label="Browsing surface">

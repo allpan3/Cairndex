@@ -11,6 +11,7 @@ from fastapi import APIRouter, status
 from cairndex.api.deps import LibrarySession
 from cairndex.api.schemas.grouping import (
     ApplyConflictRead,
+    ApplyPlanRequest,
     ApplyResultRead,
     PlanRead,
     PlanSummary,
@@ -52,9 +53,14 @@ def get_plan(plan_id: str, db: LibrarySession) -> PlanRead:
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)
-def apply_plan(plan_id: str, db: LibrarySession) -> ApplyResultRead:
+def apply_plan(
+    plan_id: str, db: LibrarySession, payload: ApplyPlanRequest | None = None
+) -> ApplyResultRead:
     plan = plan_store.get_plan(db, plan_id)  # 404 if unknown
-    result = apply_service.apply_plan(db, plan)
+    proposal_ids = (
+        set(payload.proposal_ids) if payload and payload.proposal_ids is not None else None
+    )
+    result = apply_service.apply_plan(db, plan, proposal_ids=proposal_ids)
     return ApplyResultRead(
         bundles_confirmed=result.bundles_confirmed,
         bundles_removed=result.bundles_removed,

@@ -1,372 +1,326 @@
 # Architecture
 
-> Status: current through the Collections + read-only File View refactor branch.
-> See `AGENTS.md` for the product brief and `docs/STATUS.md` for current gaps,
+> Status: current through PR 36 (`feat/scan-grouping-review`). See
+> `AGENTS.md` for the product brief and `docs/STATUS.md` for current gaps,
 > validation state, and recommended next tasks.
 
 ## 1. System overview
 
-Cairndex is a single-tenant, self-hosted application: one FastAPI backend
-process, one SQLite database, a local cache directory for derived media
-(thumbnails, converted subtitles, future transcodes), and a React frontend
-served to a browser on the same LAN or a private overlay network such as
-Tailscale.
-
-The split backend/client model is important for future TV and remote viewing:
-media and metadata live on a NAS/server, while different clients browse and play
-the library from elsewhere. A desktop-only client could also operate directly on
-an SMB-mounted library path, but the server model gives smoother shared metadata,
-scanning, remote playback, and multi-client behavior.
+Cairndex is a single-owner, self-hosted web application. A FastAPI backend runs
+on the server/NAS that can see the media library path; a React/Vite frontend runs
+in the browser. Content metadata is **per library**, not server-global: each
+library is a directory with a `.cairndex/` package containing its portable
+manifest, content database, and derived-media cache. A separate server-local
+registry tracks which libraries are known and owns the runtime job queue.
 
 ```text
 ┌──────────────┐       HTTP/JSON, /api/v1/*        ┌─────────────────────┐
 │  apps/web    │ ─────────────────────────────────▶ │  apps/server        │
-│  (React/Vite)│ ◀───────────────────────────────── │  (FastAPI)          │
-└──────────────┘                                     │  ├─ API routes      │
-                                                      │  ├─ domain services │
-                                                      │  ├─ job worker      │
-                                                      │  └─ media adapters  │
-                                                      │     (ffmpeg/ffprobe)│
-                                                      └──────────┬──────────┘
-                                                                 │
-                                          ┌──────────────────────┼─────────────────────┐
-                                          ▼                      ▼                     ▼
-                                 SQLite (WAL)            Cache dir (derived)   Storage roots (read,
-                                 metadata only            thumbnails/subs       linked in place)
+│  React/Vite  │ ◀───────────────────────────────── │  FastAPI            │
+└──────┬───────┘                                     │  API + worker       │
+       │ active library id per tab                   └──────────┬──────────┘
+       │                                                        │
+       │                         ┌──────────────────────────────┼──────────────────────────┐
+       │                         ▼                              ▼                          ▼
+       │              registry.db (server-local)       library root on disk       ffmpeg/ffprobe
+       │              registered_libraries            ┌────────────────────┐     derived media
+       │              job_queue                       │ media files         │
+       │                                              │ .cairndex/         │
+       │                                              │   manifest.json     │
+       │                                              │   library.db        │
+       │                                              │   cache/            │
+       │                                              └────────────────────┘
 ```
 
-No component copies, moves, renames, deletes, or rewrites files under a storage
-root in the normal MVP path. The database stores `storage_root_id +
-relative_path` for linked files, never a client-supplied unrestricted absolute
-path.
+Normal Cairndex operations are metadata-only. The current app does not move,
+rename, delete, or rewrite source files. The only filesystem writes in the
+current product path are owner-initiated library package creation and generated
+cache files under `.cairndex/cache/`.
 
 ## 2. Backend (`apps/server`)
 
 The backend is a FastAPI app with a versioned `/api/v1` surface. `create_app()`
-registers structured error handlers, includes all v1 routers, starts the
-in-process worker during lifespan when enabled, and optionally mounts the built
-SPA when `CAIRNDEX_STATIC_DIR` points at a frontend build.
+registers structured error handlers, includes v1 routers, starts the in-process
+worker during lifespan when enabled, and optionally serves the built SPA when
+`CAIRNDEX_STATIC_DIR` points at a frontend build.
 
 Implemented layering:
 
 ```text
-api/         FastAPI routers and request/response schemas
-core/        config, app factory, time, errors, path-safety helpers
-persistence/ SQLAlchemy models, engine/session setup, Alembic migrations
-domain/      enum/domain definitions
-services/    HTTP-agnostic business logic for bundles, tags, collections,
-             filters, jobs, subtitles, file view, etc.
-scanning/    storage-root scanning, fast-add, file classification, fingerprints
-media/       ffprobe/ffmpeg adapters, thumbnailing, playback/subtitle helpers
-jobs/        DB-backed job registry + worker loop
+api/          FastAPI routers and request/response schemas
+core/         config, app factory, time, structured errors, path helpers
+persistence/  content DB models/session helpers for each library.db
+domain/       enum/domain definitions
+services/     HTTP-agnostic bundle, collection, tag, filter, subtitle, file-view logic
+registry/     server-local registered library + job_queue models/services
+jobs/         in-process worker and job context
+scanning/     scan, fast-add, media classification, fingerprints, repair
+media/        ffprobe/ffmpeg adapters, thumbnails, playback/subtitle helpers
+grouping/     ADR-0009 suggester, plan store, and apply service
 ```
 
-API routes currently cover health, storage roots, File View entries, bundles /
-files, tags, tag groups, collections, Smart Collections, filter preview,
-playback/subtitles, and jobs.
+Content endpoints are scoped to one library:
+
+- `GET /api/v1/libraries`, `POST /libraries/create`, `POST /libraries/register`,
+  `GET /libraries/{id}` are registry endpoints.
+- `/api/v1/libraries/{library_id}/bundles`, `/collections`, `/tags`,
+  `/tag-groups`, `/smart-collections`, `/filters`, `/file-view`, `/fast-add`,
+  `/grouping`, `/jobs`, `/files`, and playback/subtitle routes operate on the
+  selected library's `library.db` and library root.
+- `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
+  queue.
+
+A `LibrarySession` dependency resolves `{library_id}` through the registry,
+refuses unknown/unavailable libraries, opens the matching `.cairndex/library.db`,
+and associates the filesystem root with the session. Services that touch files
+resolve paths from this session; clients never send unrestricted absolute paths
+for content operations.
 
 ## 3. Frontend (`apps/web`)
 
-The frontend is an Eagle-inspired dark, three-pane desktop UI:
+The frontend is an Eagle-inspired, dark, three-pane desktop UI:
 
 ```text
 src/
-  api/        typed client over /api/v1 (generated OpenAPI types) +
-              TanStack Query hooks, including an infinite browse query
-  app/        shell pieces: Sidebar, Toolbar, Browser, Inspector, BundleCard,
-              FilterBuilder, CollectionPicker, SmartCollectionEditor, Player,
-              LibraryManager, FileView, FileInspector, layouts
-  state/      usePersistentState (localStorage for layout/zoom/pane widths)
+  api/        typed client over /api/v1 + TanStack Query hooks
+  app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileView,
+              GroupingReview, LibraryManager, SmartCollectionEditor, layouts
+  state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```
 
-Server state lives in TanStack Query. View state such as active browsing mode,
-collection/system view, Smart Collection selection, bundle selection, File View
-path selection, and toolbar search is local React state; durable browse
-preferences persist to localStorage. Collection View's browser is virtualized
-with TanStack Virtual over packed grid/list/justified rows so large loaded
-windows stay responsive. A typed router remains deferred while the app is a
-single shell with mode switches and modals.
+The app picks one active library per browser tab and routes all content requests
+under `/api/v1/libraries/{id}/…`. Switching libraries remounts the workspace to
+avoid cross-library cache bleed. Server state lives in TanStack Query; UI state
+such as active surface, selection, toolbar search, layout, zoom, and pane widths
+lives in React/localStorage.
 
-## 4. Storage and path safety
+Current browsing surfaces:
 
-A `StorageRoot` is an owner-configured, server-visible absolute directory. Its
-`canonical_path` is validated and stored on the server; clients identify roots
-by stable IDs and linked files by root-relative paths.
+- **Collection View:** virtualized bundle browser with grid/list/justified
+  layouts, sidebar system views, Smart Collections, collections, tags, toolbar
+  controls, selection, batch editing, and an in-bundle album/viewer.
+- **File View:** read-only filesystem browser over the active library root,
+  separate from Collection View selection and bundle inspection.
 
-All externally influenced file paths must pass through `core.paths`:
+The current sidebar maintenance flow exposes one primary **Update** button plus a
+small overflow menu for **Scan new files**, **Collect metadata**, and **Review
+grouping**. Update waits for scan/grouping-plan generation and metadata probe to
+finish before invalidating affected queries and opening grouping review when the
+scan produced suggestions.
 
-- `normalize_relative_path()` rejects empty paths, absolute paths, Windows drive
-  and UNC forms, null bytes, and `..` traversal, then stores a clean POSIX
-  relative path.
-- `resolve_within_root()` resolves a normalized relative path under a canonical
-  root and rejects symlink escapes outside the root.
+## 4. Library package and registry
 
-Services re-resolve paths at access time for sensitive operations such as
-streaming, probing, subtitle conversion, thumbnails, and File View listing.
-Storage roots may be read-only or write-enabled in the schema, but current MVP
-behavior is metadata-only and treats source media as immutable.
+A Cairndex library is a directory with this package:
 
-## 5. Domain model
+```text
+<library-root>/
+  media files...
+  .cairndex/
+    manifest.json
+    library.db
+    cache/
+      thumbnails/
+      subtitles/
+```
 
-The implemented schema is documented in `docs/data-model.md` and recorded in
-ADR-0002/0003/0004/0006. The core object graph is:
+The manifest stores the portable library identity and display name. `library.db`
+holds all content metadata for that library. The cache holds reproducible derived
+artifacts and is ignored by scanning/grouping.
 
-- `StorageRoot` — server-visible mounted root with scan status/timestamps.
-- `AssetBundle` — primary user-facing item shown in Collection View,
-  browse/search/collections/tags.
-- `AssetFile` — one physical file linked into one bundle by
-  `storage_root_id + relative_path`, with role, media kind, order,
-  availability, filesystem identity, fingerprint/hash placeholders, and
-  technical metadata.
-- `Tag` — hierarchical tag node using an adjacency list.
-- `TagGroup` — navigational grouping independent of tag hierarchy.
-- `Collection` — hierarchical virtual grouping (formerly "folder"); bundle
-  membership is many-to-many and never moves files on disk. This is the logical
-  surface (Collection View), distinct from physical File View directories.
+The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
+
+- `registered_libraries`: known library roots, manifest paths, availability,
+  schema version, and last-opened timestamps;
+- `job_queue`: scan/probe/thumbnail jobs, progress, cancellation, terminal state,
+  and result payloads.
+
+The registry is runtime/server state, not portable content metadata. Moving a
+library folder should keep its `.cairndex/library.db` and cache with it; the
+server may need to register the new root path.
+
+## 5. Storage and path safety
+
+Within a library, files are addressed by library-relative POSIX paths. The
+content schema stores `AssetFile.relative_path`; there is no `StorageRoot` table
+or `storage_root_id` in the current content DB.
+
+Path safety rules:
+
+- content APIs accept stable ids or library-relative paths, never unrestricted
+  absolute server paths;
+- relative paths are normalized and reject empty paths, absolute forms, Windows
+  drive/UNC forms, NUL bytes, and `..` traversal;
+- file access re-resolves the target under the library root and rejects symlink
+  escapes;
+- hidden dotfiles/dot-directories and known cruft are excluded from scan, File
+  View, and grouping review;
+- sensitive operations such as streaming, thumbnailing, subtitle conversion, and
+  File View raw-file preview re-check existence at access time.
+
+## 6. Domain model
+
+The implemented schema is documented in `docs/data-model.md`. Core objects:
+
+- `AssetBundle` — primary user-facing item in Collection View, search, tags,
+  collections, and Smart Collections. It carries grouping review state
+  (`provisional` or `confirmed`).
+- `AssetFile` — one physical file linked into one bundle by library-relative
+  path, with role, media kind, order, availability, filesystem identity,
+  fingerprint/hash placeholders, source metadata, and technical metadata.
+- `Collection` — hierarchical virtual grouping of bundles. Membership is
+  many-to-many and never moves source files.
+- `Tag` and `TagGroup` — hierarchical tags plus independent tag groups; a tag may
+  belong to multiple groups.
 - `SmartCollection` — saved, versioned filter AST plus optional view defaults
-  (table still named `smart_folders`).
-- `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to
-  a video file.
+  (legacy table name `smart_folders`).
+- `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to a
+  video file.
+- `GroupingPlan` / `GroupingProposal` / `GroupingProposalFile` — durable,
+  reviewable grouping suggestions.
 
-Background jobs are no longer a content-DB model: the queue lives in the registry
-DB as `JobQueueEntry` (`job_queue`), owned by the server (ADR-0008).
+Current schema note: source/origin hyperlink metadata exists at file level
+(`AssetFile.source`). Bundle-level source links are deferred until there is a
+clear product need.
 
-Current schema note: source/link metadata is implemented at the `AssetFile`
-level as `source` (URL, `magnet:`, `ed2k:`, etc.). There is no first-class
-bundle-level hyperlink column in the current MVP schema. If bundle-level source
-pages become important, add them with an explicit migration rather than storing
-ad hoc values in `extra_metadata`.
+## 7. Scanning, repair, and grouping
 
-## 6. Scanning and media processing
+`scan_library()` walks the active library root and is incremental, idempotent,
+and non-destructive.
 
-`scan_storage_root()` walks a storage root, links classifiable media files,
-updates existing rows by relative path, and marks disappeared files `missing`
-instead of deleting metadata. It computes only the quick fingerprint (`size +
-mtime`) plus cheap filesystem identity (`st_dev`/`st_ino`) used for moved-file
-repair — never a full hash — commits in batches, and reports progress through
-the job checkpoint hook. Before creating new bundles it repairs high-confidence
-moves in place, preserving `AssetFile.id` and all bundle metadata; see ADR-0006.
+Scanner behavior:
 
-`fast_add()` manually links selected files or directories and supports either
-one bundle per file or a single bundle for the whole selection. It skips already
-linked files and never mutates source media.
+- classifiable media/subtitle/audio files are observed; hidden paths are skipped;
+- same-path rows are updated in place;
+- disappeared files are marked `missing`, not deleted;
+- appeared paths are matched against disappeared rows for high-confidence
+  same-file repair before creating new rows;
+- repair preserves `AssetFile.id`, bundle membership, tags, collections, rating,
+  notes, cover/primary references, subtitles, and generated cache identity;
+- the scan path reads cheap filesystem identity and quick fingerprint only — no
+  full hashing of large files.
 
-Media probing uses `ffprobe` through a thin adapter, normalizing duration,
-container, codecs, dimensions, frame rate, stream counts, and embedded subtitle
-metadata into `AssetFile.tech_metadata`. Thumbnail generation uses `ffmpeg` and
-writes reproducible derived files under the app cache directory, outside any
-storage root.
+New files discovered by scan are staged into provisional scan-suggestion bundles.
+After scanning, the scan job persists an open grouping plan. The plan is a
+snapshot: it can safely report conflicts if files vanish or are manually changed
+before apply.
 
-## 7. Filtering and Smart Collections
+Grouping behavior:
 
-The filter system uses a canonical JSON AST (`version`, logical nodes, and
-predicate nodes), not raw SQL. Incoming expressions are validated by Pydantic
-and compiled through an allowlisted SQLAlchemy compiler with bound parameters.
-The same compiler path powers live count preview, filtered browse, and saved
-Smart Collection CRUD/browse.
+- the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
+  reasons, parent links, and natural ordering;
+- subject-prefix matching can group videos with sidecars/covers in mixed folders;
+- confirmed bundles are excluded from re-grouping; new files in confirmed-owned
+  directories are proposed as additions;
+- applying a plan is the only step that confirms scan-staged bundles, creates
+  suggested collections, assigns roles, selects cover/primary, and links external
+  subtitles;
+- the apply API supports selected proposal ids. Applying selected proposals marks
+  the plan applied; unchecked proposals are intentionally left unapplied for that
+  plan and can be re-suggested by regenerating against current library state.
 
-The current Smart Collection editor exposes one Eagle-style all/any condition
+## 8. Media processing, thumbnails, playback, and subtitles
+
+`ffprobe` extracts technical metadata into `AssetFile.tech_metadata`. `ffmpeg`
+creates thumbnails and subtitle derivatives.
+
+Derived cache:
+
+- thumbnails live under `.cairndex/cache/thumbnails/`;
+- converted external WebVTT subtitles live under `.cairndex/cache/subtitles/`;
+- cache paths are deterministic and reproducible;
+- cache files are not content assets and are ignored by scan/grouping.
+
+Thumbnail cover fallback is:
+
+1. explicit `cover_file_id` if it points at a thumbnailable file;
+2. first image in the bundle;
+3. selected primary video;
+4. first video in the bundle;
+5. generated placeholder/no thumbnail state.
+
+The global sidebar thumbnail button has been removed, but the backend thumbnail
+job endpoint and lazy bundle/file thumbnail endpoints remain.
+
+Direct playback is implemented around bundle/file routes that serve source bytes
+with safe path resolution and HTTP range behavior. External SRT/VTT subtitles are
+served as browser-native WebVTT through the cache. Embedded subtitle streams are
+detected and represented, but extraction/remux/transcode fallback is deferred.
+
+## 9. Filtering and Smart Collections
+
+Filters use a canonical JSON AST (`version`, logical nodes, predicate nodes), not
+raw SQL. Pydantic validates incoming expressions and an allowlisted SQLAlchemy
+compiler produces bound-parameter queries. The same compiler powers live filter
+preview, filtered browse, and Smart Collection CRUD/browse.
+
+The current Smart Collection editor supports one Eagle-style all/any condition
 group. The AST supports nested boolean groups for a later richer editor.
 
-Current gap: toolbar text search in the frontend filters the already-loaded
-client-side page/window by title. Server-side text search and SQLite FTS5 are
-not implemented yet.
+Current gap: toolbar text search filters the loaded client-side window by title.
+Server-side text search and SQLite FTS5 are not implemented yet.
 
-## 8. Playback and subtitles
+## 10. File View
 
-Direct playback is implemented around a per-bundle manifest:
+File View is a read-only, filesystem-first browser over the active library root:
+`GET /api/v1/libraries/{library_id}/file-view/entries?path=...`.
 
-- `GET /api/v1/bundles/{id}/playback` lists videos, playability, stream URLs,
-  dimensions/duration, and subtitle tracks.
-- `GET /api/v1/files/{id}/stream` resolves the path safely and serves the file
-  with Starlette/FastAPI `FileResponse`, including HTTP Range behavior.
-- `GET /api/v1/subtitles/{id}/vtt` serves external SRT/VTT subtitles as cached
-  browser-native WebVTT.
+It returns directories first, then files, sorted case-insensitively. Each entry
+includes name, library-relative path, kind, size, modified time, extension, MIME
+guess, media classification, native support/openable state, and a cheap
+linked-to-bundle hint. Raw preview bytes for File View entries are served by
+`GET /api/v1/libraries/{library_id}/file?path=...` with the same path-safety
+constraints.
 
-Playability is conservative: unsupported or unreliable containers/codecs are
-reported as fallback states instead of pretending the browser can play every
-file. Embedded subtitle streams are detected and represented as tracks, but
-embedded extraction/remux/transcode fallback is deferred.
+File View selection is independent of Collection View/bundle selection, and the
+right pane shows `FileInspector` rather than the bundle inspector. There are no
+move/rename/delete controls in the current milestone.
 
-## 9. Background jobs
+## 11. Background jobs
 
-A `jobs` table backs a lightweight in-process worker (ADR-0001). The API enqueues
-jobs and exposes status/progress/cancellation endpoints. The worker polls the
-oldest queued job, marks it running, calls a registered handler, and marks a
-terminal status. Handlers report progress through `JobContext.checkpoint()`,
-which commits progress and observes cooperative cancellation.
+The registry-owned `job_queue` backs a lightweight in-process worker. The worker
+claims the oldest queued job, resolves its library, opens the library DB, runs the
+registered handler with a `JobContext`, commits durable content work into the
+library DB, and records progress/result/error back into the registry row.
 
-This is intentionally single-process/single-worker for the SQLite MVP. Scaling
-is by process supervision and tighter scheduling, not Redis/Celery.
+Implemented job types:
 
-## 10. Eagle migration (removed)
+- scan: discovery, repair, provisional staging, grouping-plan generation;
+- probe: ffprobe technical metadata collection;
+- thumbnail: library-wide thumbnail generation/reuse.
 
-Importing from an external Eagle library is **out of scope** and has been
-removed. The former `eagle` reader/planner package, the `services.eagle`
-importer, and the `import_records` table no longer exist. With the per-library
-model (ADR-0008) a Cairndex library is its own portable directory, so content is
-populated by scanning the library root rather than by migrating from another app.
-ADR-0004 is retained as superseded history. Cairndex's UI remains
-Eagle-*inspired* (see `docs/reference/eagle/`); only the import/migration feature
-is gone.
+The worker is intentionally single-process/single-worker for the SQLite MVP.
+Scaling should start with profiling, better scheduling, and bounded concurrency,
+not Redis/Celery.
 
-## 11. Deployment topology
+## 12. Eagle migration/import
 
-Development uses `docker-compose.yml` with separate backend and Vite frontend
-containers or the local quickstart commands from `README.md`.
+The Eagle importer is removed and out of scope under the per-library model. A
+Cairndex library is its own portable directory populated by scanning. ADR-0004
+is retained only as superseded design history. Eagle remains a UI/interaction
+reference, not a data source that the current app imports or synchronizes with.
 
-Production uses `infra/docker/production.Dockerfile` plus
-`docker-compose.prod.yml`: a multi-stage image builds the frontend, installs the
-backend, runs as non-root UID 10001, includes `ffmpeg`/`ffprobe`, applies
-Alembic migrations on startup, serves the built SPA from FastAPI, mounts app
-data at `/data`, and mounts media read-only at `/storage/media` by default.
+## 13. Deployment topology
 
-There is no application authentication yet. Production compose binds to
-`127.0.0.1` by default and is intended to sit behind a private network/Tailscale
-or an authenticating reverse proxy, not the public internet.
+Development uses local `uv`/Vite commands or `docker-compose.yml` with separate
+backend and frontend services. Production uses the Dockerfile/compose stack under
+`infra/` to build the frontend, install the backend, include `ffmpeg`/`ffprobe`,
+run as a non-root user, mount app data at `/data`, and mount media/library paths
+from the host.
 
-## 11a. Library registry and per-library metadata (ADR-0008, in progress)
+There is no application authentication yet. Production compose binds locally by
+default and is intended to sit behind a private network/Tailscale or an
+authenticating reverse proxy, not the public internet.
 
-Cairndex is moving from one global content database to an Eagle-like
-**per-library** model, kept compatible with the server/client split above. The
-direction and the full phase plan are recorded in ADR-0008; this section
-describes the shape and what has landed so far.
+## 14. Known architectural debt
 
-- A **library** is a directory containing a `.cairndex/` marker:
-  `manifest.json` (format/uuid/display name), `library.db` (all of that
-  library's content metadata), and `cache/` (portable derived media). The
-  library travels with the folder.
-- The server keeps a separate **registry** database at
-  `{CAIRNDEX_DATA_DIR}/registry.db` (`cairndex.registry`), distinct from any
-  library DB. It tracks registered libraries (path, availability, schema
-  version) and owns the runtime job queue. It is server-local runtime state,
-  never portable metadata.
-- Library context is routed by path (`/api/v1/libraries/{library_id}/…`); the
-  active library is a client concern, not a server-global setting.
-
-How it works now:
-
-- **Content lives per library.** Each `library.db` holds the full content schema
-  (bundles, files, collections, tags, tag groups, smart collections,
-  subtitles). There is no `storage_roots` table; `asset_files.relative_path`
-  is relative to the library root and unique within the library. A
-  `LibrarySession` dependency (`api/deps.py`) resolves `{library_id}` in the
-  registry, refuses an unavailable library with 404, and yields a session from a
-  per-library engine cache (`registry/library_engine.py`, keyed by id + resolved
-  DB path so a moved library re-opens). Content services that touch the
-  filesystem derive the library root from the session
-  (`persistence.engine.library_root_for_session`).
-- **All content APIs are under `/api/v1/libraries/{library_id}/…`** — bundles,
-  collections, tags, tag-groups, smart-collections, filters, file-view, playback,
-  fast-add, and scan/probe/thumbnail enqueue. The only global routes are health,
-  the libraries registry, and job status.
-- **Jobs are registry-owned.** The in-process worker drains the registry
-  `job_queue`, reads each job's `library_id`, opens that library's DB, runs
-  scan/probe/thumbnail against the library root, writes durable results into
-  `library.db`, and writes progress/terminal state back to the registry row.
-- **Frontend** picks one active library per tab (bootstrapped from
-  `GET /api/v1/libraries`) and routes every content request under it; the sidebar
-  has a library selector and a maintenance row (Scan / Probe / Thumbnails).
-  Metadata edits send the entity `version` as `If-Match`; a 409 surfaces an inline
-  "changed elsewhere" notice and refetches the latest rather than overwriting.
-- **Derived cache is per library (phase 8).** Thumbnails and converted WebVTT
-  subtitles are written under the library's own
-  `<root>/.cairndex/cache/{thumbnails,subtitles}/` (paths derived from the
-  library root via `registry.library_package.cache_dir`), never into the
-  server-global data dir and never beside the source media. The cache therefore
-  travels with the library folder. A future `cache_mode` setting
-  (`inside_library` | `server_local`, default `inside_library`) may let large
-  transcodes opt into a server-local cache; portable cache trades a larger
-  backup footprint for self-containment.
-- **Optimistic concurrency (phase 9).** The frequently edited entities
-  (`asset_bundles`, `asset_files`, `tags`, `collections`, `smart_folders`,
-  `subtitle_tracks`) carry a `version` integer (starts at 1, bumped on each
-  edit; see `persistence.base.Version` + `persistence.concurrency`). Single-entity
-  `PATCH` routes accept an optional `If-Match: <version>` header: when present and
-  stale the edit is rejected with **409** (`version_conflict`) before anything is
-  mutated; when absent the edit is last-write-wins, so existing clients are
-  unaffected. `version` is exposed on the read models so a client can round-trip
-  it. (Increment is explicit in the service layer rather than via
-  `version_id_col`, so internal scan/repair writes never risk `StaleDataError`
-  under the single-writer model.)
-
-Eagle import has been removed entirely (see §10). The ADR-0008 phase sequence
-(registry, per-library engine/routing, schema collapse, worker, cache, and
-optimistic concurrency) is now implemented; the remaining direct-open/native
-modes (phases 10–11) stay future work.
-
-## 12. Browsing surfaces: Collection View and File View
-
-Cairndex has two distinct browsing surfaces:
-
-- **Collection View** — logical, metadata-first, bundle-based. The visible item
-  is an `AssetBundle`; Collections are hierarchical virtual groupings and a
-  bundle may belong to zero or many. Collection membership never moves files.
-- **File View** — physical, filesystem-first, storage-root-scoped. The visible
-  items are real directories and files under a configured storage root. The
-  first milestone is read-only.
-
-The read-only File View backend is `services/file_view.py`, exposed as
-`GET /api/v1/storage-roots/{root_id}/entries?path=...`:
-
-- input is only `storage_root_id + relative_path` (omitted = the root itself),
-  never an absolute server path; absolute paths, traversal attempts, NUL bytes,
-  and symlink escapes are rejected via `core.paths` and a per-entry real-path
-  containment check;
-- hidden entries are excluded (dotfiles/dot-directories cover `.git`, `.DS_Store`,
-  `.env`, etc., plus a small denylist of non-dot cruft like `__pycache__`,
-  `node_modules`, `Thumbs.db`);
-- directories are returned first, then files, each sorted case-insensitively;
-- each entry carries name, relative path, kind (directory/file), size, modified
-  time, extension, a cheap MIME guess, the app's media classification, a
-  `supported` flag (can the app preview/play it natively), and a cheap
-  `linked`/`bundle_id` hint when the exact path is already linked into a bundle;
-- it never moves, renames, deletes, or rewrites anything.
-
-On the frontend, a sidebar mode toggle ("Collections" / "Files") switches the
-center pane between the virtualized bundle browser and `FileView` — a library
-selector + breadcrumbs + a directory/file table with `openable`, `unsupported`,
-and `linked` badges, plus loading/empty/error states (including a friendly "this
-library is currently unavailable" state when a root's directory is offline or
-moved). File View selection is kept entirely separate from Collection/bundle
-selection, and the right pane shows `FileInspector` (path/size/mtime/MIME/
-openable/linked facts) — not the bundle inspector — so a filesystem entry is
-never mistaken for a bundle. There are no move/rename/delete controls in this
-milestone.
-
-Storage roots are presented in the UI as **Libraries** (`LibraryManager`): add
-one by absolute server path with directory autocomplete and an optional
-"create if missing" toggle, and see each library's available/unavailable status.
-Autocomplete is backed by `GET /api/v1/storage-roots/path-suggestions`, which
-lists *directories only* (capped, dotfiles skipped) that the server process can
-see — host filesystem, or only up to the image root inside a container. Because
-that lists directories outside any storage root, it is **owner-configuration
-tooling**, consistent with the single-owner, no-public-internet stance (§11); it
-never returns file contents and creating a library directory is the only write
-the otherwise metadata-only app performs.
-
-No write endpoints exist yet. The module funnels all resolution through the
-storage-root allowlist so later write-mode operations can share path validation.
-ADR-0007 records the product nuance: the split server/client model primarily
-enables future TV and remote viewing, while desktop file actions are more
-naturally macOS/native-client features than normal web-client capabilities.
-
-## 13. Known architectural debt
-
-These are the most important architecture follow-ups after the current branch:
-
-- update/rebase `feat/collections-and-file-view` against current `main` before
-  merge;
-- server-side text search / SQLite FTS5 and removal of client-side-only toolbar
-  search;
-- browse-summary query optimization and query-pattern indexes for larger
-  libraries;
-- first-class merge/split/move-file workflows for multi-file bundles;
-- cross-filesystem moved-file repair and candidate suggestions for ambiguous
-  cases (same-volume repair is implemented — ADR-0006);
-- scheduled scans and stronger scan/probe/thumbnail job scheduling;
-- safe File View write mode plus desktop-client integration (ADR-0007);
+- richer grouping review editing before apply (merge/split/reclassify/rename);
+- detailed progress UI for scan/probe/thumbnail/update jobs;
+- server-side text search / SQLite FTS5;
+- browse-summary query optimization and indexes for larger libraries;
+- cross-filesystem moved-file repair and manual repair candidates;
+- scheduled scans and stronger job scheduling;
+- safe File View write mode plus desktop/native host integration;
 - single-owner authentication before real remote exposure;
-- remux/transcode fallback and embedded subtitle extraction for unsupported
-  browser playback cases.
+- remux/transcode fallback and embedded subtitle extraction;
+- cache policy for future large transcodes (`inside_library` vs server-local).

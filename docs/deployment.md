@@ -1,8 +1,10 @@
 # Deployment
 
-> Status: Phase 8 — production packaging is implemented
-> ([ADR-0005](adr/0005-packaging-and-deployment.md)). This covers both the
-> local dev stack and the hardened single-container NAS/self-host deployment.
+> Status: production packaging exists, and ADR-0008 has moved runtime/content
+> state to a server-local registry plus portable per-library packages. See
+> [ADR-0005](adr/0005-packaging-and-deployment.md) for the original packaging
+> rationale and [ADR-0008](adr/0008-per-library-metadata-and-registry.md) for the
+> current metadata model.
 
 ## Local development stack
 
@@ -17,22 +19,36 @@ docker compose up --build
 docker compose down
 ```
 
-This is for local iteration only (source bind-mounts, hot reload, no media
-volumes). It is **not** how the app runs in production.
+This is for local iteration only (source bind-mounts, hot reload). It is not how
+the app runs in production.
 
 ## Production deployment (NAS / self-host)
 
 One hardened container serves the API and the built frontend on port `8000`.
-See [ADR-0005](adr/0005-packaging-and-deployment.md) for the rationale.
 
 ```bash
-cp .env.example .env          # then edit MEDIA_HOST_PATH (and bind addr/port)
+cp .env.example .env          # then edit MEDIA_HOST_PATH and bind addr/port
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-Then open the bound address (default `http://127.0.0.1:8000`), register a
-storage root whose canonical path is the in-container mount (`/storage/media`),
-and scan it.
+Then open the bound address (default `http://127.0.0.1:8000`), use the app's
+library manager to create or register the mounted path, and run **Update**. A
+Cairndex library root contains its portable `.cairndex/` package:
+
+```text
+/storage/media/
+  media files...
+  .cairndex/
+    manifest.json
+    library.db
+    cache/
+```
+
+The production library mount must be writable because Cairndex creates and
+updates `.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache
+files. This does **not** mean normal app flows mutate source media: the current
+product path remains metadata-only for source files and does not move, rename,
+delete, or rewrite them.
 
 ### Topology
 
@@ -41,17 +57,17 @@ and scan it.
   `python:3.12-slim` runtime that serves the built frontend from FastAPI
   (`CAIRNDEX_STATIC_DIR=/app/web`) behind `/api`. `ffmpeg`/`ffprobe` are
   installed for scanning, thumbnails, and subtitle conversion.
-- **Non-root**: runs as a fixed UID/GID `10001:10001` (`AGENTS.md` §12). Give
-  the app-data volume to that id if you manage permissions on the host.
-- **Read-only media**: your library is mounted **read-only** at
-  `/storage/media` (`AGENTS.md` §3 — metadata-only, originals are never
-  modified). Set the host path via `MEDIA_HOST_PATH` in `.env`.
-- **Writable app-data**: the `cairndex-data` named volume holds the SQLite
-  database (WAL — [ADR-0001](adr/0001-stack-and-database-choice.md)) and the
-  derived-media cache (thumbnails, converted subtitles), at `/data`, entirely
-  outside any storage root.
-- **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`,
-  `no-new-privileges`. The app only ever writes under `/data`.
+- **Non-root**: runs as a fixed UID/GID `10001:10001`. Give the app-data volume
+  and the library root enough permissions for that id to write `/data` and the
+  library's `.cairndex/` package.
+- **Writable app data**: the `cairndex-data` named volume at `/data` holds the
+  server-local `registry.db`, job state, and backups. It is not portable content
+  metadata.
+- **Writable library root**: `MEDIA_HOST_PATH` is mounted at `/storage/media`.
+  The app writes only the `.cairndex/` package and generated cache during the
+  current MVP path; source media operations remain metadata-only.
+- **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
+  `no-new-privileges`. Writable state is limited to mounted volumes.
 
 ### Environment variables
 
@@ -61,36 +77,48 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | Variable | Default (image) | Purpose |
 | --- | --- | --- |
 | `CAIRNDEX_ENVIRONMENT` | `production` | Free-form environment label. |
-| `CAIRNDEX_DATA_DIR` | `/data` | Writable app-data dir (DB + cache). |
-| `CAIRNDEX_STATIC_DIR` | `/app/web` | Built SPA dir the backend serves. Unset → backend serves API only (dev). |
-| `CAIRNDEX_DATABASE_URL` | _(unset)_ | Override DB URL; defaults to `sqlite:///{DATA_DIR}/cairndex.db`. |
+| `CAIRNDEX_DATA_DIR` | `/data` | Server-local app-data dir (`registry.db`, backups, runtime state). |
+| `CAIRNDEX_STATIC_DIR` | `/app/web` | Built SPA dir the backend serves. Unset -> backend serves API only (dev). |
 | `CAIRNDEX_WORKER_ENABLED` | `true` | Run the in-process scan/probe/thumbnail worker. |
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
-`CAIRNDEX_PORT` (default `8000`), `MEDIA_HOST_PATH` (host media library).
+`CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
+root mounted at `/storage/media`).
 
 ### Backups
 
-The SQLite database is the only state worth backing up (the cache is
-regenerable). `infra/backup.sh` makes a consistent hot copy using SQLite's
-online backup API — safe to run while the app is writing — and integrity-checks
-it:
+ADR-0008 split persistent state across multiple SQLite DBs:
+
+- registry DB: `/data/registry.db` inside the container;
+- each library DB: `<library-root>/.cairndex/library.db`, for example
+  `/storage/media/.cairndex/library.db`.
+
+Back up the registry plus every library DB you care about. Generated cache files
+under `.cairndex/cache/` are reproducible and can usually be regenerated.
+
+`infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
+online backup API and integrity-checks it:
 
 ```bash
-# Against the running container (recommended):
-docker exec <container> /app/infra/backup.sh /data/cairndex.db /data/backups
-docker cp <container>:/data/backups ./backups     # pull the copies off the box
+# Back up server-local registry state.
+docker exec <container> /app/infra/backup.sh /data/registry.db /data/backups
+
+# Back up a mounted library's portable content metadata.
+docker exec <container> /app/infra/backup.sh /storage/media/.cairndex/library.db /data/backups
+
+# Pull the copies off the box.
+docker cp <container>:/data/backups ./backups
 ```
 
-Restore is a file copy while the app is **stopped**: `down`, replace the
-database in the `cairndex-data` volume with a backup, `up -d`.
+Restore is a file copy while the app is **stopped**: `down`, replace the relevant
+`registry.db` and/or `library.db` with backup copies, then `up -d`.
 
 ### Remote access and security
 
 There is **no authentication yet** (`AGENTS.md` §12). The compose file binds to
 `127.0.0.1` by default. Do **not** expose this directly to the public internet.
-For remote access, reach it over a private network or Tailscale, or front it
-with a reverse proxy that adds authentication. Optional single-owner auth is a
+For remote access, reach it over a private network or Tailscale, or front it with
+a reverse proxy that adds authentication. Optional single-owner auth is a
 documented follow-up, not yet implemented.
 
 ## Health check
