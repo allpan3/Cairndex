@@ -18,6 +18,7 @@ interface BrowserProps {
   selectedIds: Set<string>
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onContextMenu: (id: string, e: React.MouseEvent) => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -27,7 +28,7 @@ interface BrowserProps {
 }
 
 export function Browser(props: BrowserProps) {
-  const { items, layout, zoom, selectedIds, onSelect, onOpen } = props
+  const { items, layout, zoom, selectedIds, onSelect, onOpen, onContextMenu } = props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
@@ -114,6 +115,7 @@ export function Browser(props: BrowserProps) {
                         selected={selectedIds.has(c.item.id)}
                         onSelect={onSelect}
                         onOpen={onOpen}
+                        onContextMenu={onContextMenu}
                       />
                     ))
                   : row.cards.map((c) => (
@@ -132,6 +134,7 @@ export function Browser(props: BrowserProps) {
                           showMeta={layout === 'grid'}
                           onSelect={onSelect}
                           onOpen={onOpen}
+                          onContextMenu={onContextMenu}
                         />
                       </div>
                     ))}
@@ -162,11 +165,13 @@ function ListRow({
   selected,
   onSelect,
   onOpen,
+  onContextMenu,
 }: {
   item: BundleSummary
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onContextMenu: (id: string, e: React.MouseEvent) => void
 }) {
   return (
     <div
@@ -174,6 +179,7 @@ function ListRow({
       style={{ height: 40, width: '100%' }}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen(item.id)}
+      onContextMenu={(e) => onContextMenu(item.id, e)}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}

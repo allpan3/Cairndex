@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, ValidationError
-from cairndex.persistence.models import Tag
+from cairndex.persistence.models import AssetBundle, Collection, Tag
+from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services import tag_groups as group_service
 from cairndex.services import tags as tag_service
@@ -64,6 +65,37 @@ def test_collection_descendants_and_cycle_guard(session: Session) -> None:
     }
     with pytest.raises(ValidationError):
         collection_service.update_collection(session, root.id, parent_id=leaf.id, set_parent=True)
+
+
+def test_deleting_collection_floats_children_by_default(session: Session) -> None:
+    root = collection_service.create_collection(session, name="root")
+    sub = collection_service.create_collection(session, name="sub", parent_id=root.id)
+
+    collection_service.delete_collection(session, root.id)
+    session.expire_all()
+
+    assert session.get(Collection, root.id) is None
+    reloaded = session.get(Collection, sub.id)
+    assert reloaded is not None  # child survives, floated to the root
+    assert reloaded.parent_id is None
+
+
+def test_deleting_collection_cascade_removes_subtree_but_keeps_bundles(session: Session) -> None:
+    root = collection_service.create_collection(session, name="root")
+    sub = collection_service.create_collection(session, name="sub", parent_id=root.id)
+    leaf = collection_service.create_collection(session, name="leaf", parent_id=sub.id)
+    bundle = bundle_service.create_bundle(session, title="kept")
+    bundle_service.set_bundle_collections(session, bundle.id, [leaf.id])
+
+    collection_service.delete_collection(session, root.id, cascade=True)
+    session.expire_all()
+
+    # The whole subtree is gone…
+    assert session.get(Collection, root.id) is None
+    assert session.get(Collection, sub.id) is None
+    assert session.get(Collection, leaf.id) is None
+    # …but the bundle is metadata-only removed from the collection, not deleted.
+    assert session.get(AssetBundle, bundle.id) is not None
 
 
 # --- Tag groups (many-to-many, independent of hierarchy) ---------------------

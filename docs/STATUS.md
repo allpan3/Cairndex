@@ -2,7 +2,30 @@
 
 ## Current branch / latest commit
 
-Branch: `feat/scan-grouping-review`. Latest commit: see `git log -1`.
+Branch: `feat/remove-and-context-menu`. Latest commit: see `git log -1`.
+
+This branch adds web-UI removal of bundles and collections plus right-click
+context menus. The backend already exposed metadata-only `DELETE /bundles/{id}`
+and `DELETE /collections/{id}`; the frontend now wires them through a reusable
+`ContextMenu` (`apps/web/src/app/ContextMenu.tsx` + `useContextMenu.ts`).
+Right-clicking a bundle card/row offers Open, Remove-from-collection (in a
+collection view), and Delete Bundle (acting on the whole selection when
+multi-selected); the collection tree and Smart Collection rows offer Delete
+collection / Edit / Delete. All deletions confirm in a styled dialog first and
+never touch files on disk. The bundle dialog has an "Also delete contained
+files" checkbox defaulted off — a forward-looking placeholder; filesystem
+deletion is not enabled in the metadata-only milestone, so files are always kept
+for now. Deleting a collection with subcollections offers an "Also delete
+subcollections" checkbox (checked by default); unchecked floats them to the top
+level. Backend support: a `cascade` query param on `DELETE /collections/{id}`
+(default false) bulk-deletes the descendant subtree while keeping bundles/files.
+Covered by `ContextMenu.test.tsx` (vitest), backend `test_taxonomy.py`
+cascade/float cases, and real-browser delete + dialog flows in
+`e2e/library.spec.ts`.
+
+## Earlier branches
+
+ADR-0008 / ADR-0009 work landed on `feat/scan-grouping-review`.
 
 ADR-0008 is implemented: Cairndex now uses portable per-library metadata
 packages (`<root>/.cairndex/{manifest.json,library.db,cache/}`) plus a separate

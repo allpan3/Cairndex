@@ -10,6 +10,29 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Right-click context menus + bundle/collection deletion.** Bundle cards and
+  list rows now have a right-click menu with **Open**, **Remove from this
+  collection** (when browsing inside a collection), and **Delete Bundle**; the
+  collection tree and Smart Collection rows have menus for **Delete collection**
+  and **Edit/Delete**. Deletion is metadata-only and wired to the existing
+  `DELETE /bundles/{id}` and `DELETE /collections/{id}` endpoints — no file on
+  disk is ever touched, and every destructive action confirms in a styled dialog
+  first. Deleting bundles opens `DeleteBundlesDialog` (acting on the whole
+  selection when a multi-selected card is right-clicked) with an **Also delete
+  contained files** checkbox; it defaults off and is a forward-looking
+  placeholder — filesystem deletion is not enabled in the metadata-only
+  milestone, so files are always kept for now. Deleting a collection that has
+  subcollections opens `RemoveCollectionDialog` with an **Also delete
+  subcollections** checkbox, checked by default; unchecking it floats the
+  subcollections to the top level instead. The subcollection choice is backed by
+  a new `cascade` query parameter on `DELETE /collections/{id}` (default
+  `false`) whose service bulk-deletes the descendant subtree while keeping
+  bundles/files. A new reusable `ContextMenu` component (`useContextMenu`)
+  renders a cursor-anchored, viewport-clamped menu in a portal that closes on
+  outside click / Escape / scroll, and `useDeleteBundles` / `useDeleteCollection`
+  refresh the affected browse, count, and tree queries (clearing the view when
+  the in-view collection is deleted).
+
 - **External subtitle auto-link across grouping flows (ADR-0009, phase 6).**
   Grouping a video with its sidecar `.srt`/`.vtt` now links them everywhere a
   bundle is formed, not only via the grouping-plan apply: **fast-add** with
