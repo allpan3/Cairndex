@@ -444,7 +444,11 @@ export interface paths {
         get: operations["get_collection_api_v1_libraries__library_id__collections__collection_id__get"];
         put?: never;
         post?: never;
-        /** Delete Collection */
+        /**
+         * Delete Collection
+         * @description Remove a collection (metadata only). ``cascade=true`` also removes its
+         *     descendant subcollections; otherwise they float to the library root.
+         */
         delete: operations["delete_collection_api_v1_libraries__library_id__collections__collection_id__delete"];
         options?: never;
         head?: never;
@@ -2973,7 +2977,9 @@ export interface operations {
     };
     delete_collection_api_v1_libraries__library_id__collections__collection_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                cascade?: boolean;
+            };
             header?: never;
             path: {
                 collection_id: string;

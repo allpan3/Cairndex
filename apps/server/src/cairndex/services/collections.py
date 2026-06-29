@@ -5,7 +5,7 @@ many-to-many and never moves files on disk — it is independent of the physical
 File View, which browses storage roots directly.
 """
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -87,10 +87,21 @@ def update_collection(
     return collection
 
 
-def delete_collection(session: Session, collection_id: str) -> None:
-    """Delete a collection (metadata only). Children float to root (DB SET NULL);
-    bundle memberships cascade — no bundle or file is deleted."""
-    session.delete(get_collection(session, collection_id))
+def delete_collection(session: Session, collection_id: str, *, cascade: bool = False) -> None:
+    """Delete a collection (metadata only).
+
+    With ``cascade`` the collection *and* all its descendant subcollections are
+    removed; otherwise the direct children float to the library root
+    (DB SET NULL). Either way bundle memberships drop via DB cascade — no bundle
+    or file on disk is ever deleted."""
+    collection = get_collection(session, collection_id)
+    if cascade:
+        # Bulk-delete the whole subtree; the DB SET NULL between deleted rows is
+        # moot and asset_bundle_collections cascades remove the memberships.
+        ids = descendant_ids(session, Collection, collection_id, include_self=True)
+        session.execute(delete(Collection).where(Collection.id.in_(ids)))
+    else:
+        session.delete(collection)
     session.flush()
 
 

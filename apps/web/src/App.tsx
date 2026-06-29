@@ -1,27 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
+import type { CollectionRead, FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
 import { setActiveLibraryId } from './api/client'
 import {
+  useBatchUpdate,
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useDeleteBundles,
+  useDeleteCollection,
   useLibraries,
   useProbe,
   useScan,
+  useSmartCollectionMutations,
   useSmartCollections,
   useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
+import { ContextMenu } from './app/ContextMenu'
+import { type MenuEntry, useContextMenu } from './app/useContextMenu'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
+import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
 import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
+import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
@@ -37,6 +45,24 @@ import { usePersistentState } from './state/usePersistentState'
 interface EditorState {
   existing?: SmartCollectionRead | null
   initialDraft?: FilterDraft
+}
+
+/** `rootId` plus every collection nested beneath it (used to clear a stale
+ * selection when a cascade removal deletes the collection currently in view). */
+function collectionSubtreeIds(collections: CollectionRead[], rootId: string): Set<string> {
+  const childrenOf = new Map<string, string[]>()
+  for (const c of collections)
+    if (c.parent_id) childrenOf.set(c.parent_id, [...(childrenOf.get(c.parent_id) ?? []), c.id])
+  const ids = new Set<string>([rootId])
+  const stack = [rootId]
+  while (stack.length) {
+    const id = stack.pop() as string
+    for (const childId of childrenOf.get(id) ?? []) {
+      ids.add(childId)
+      stack.push(childId)
+    }
+  }
+  return ids
 }
 
 function Resizer({
@@ -155,9 +181,11 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
         collections={[]}
+        onDeleteCollection={noop}
         smartCollections={[]}
         onNewSmartCollection={noop}
         onEditSmartCollection={noop}
+        onDeleteSmartCollection={noop}
       />
       <div className="center">
         <div className="state">
@@ -189,6 +217,8 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
   const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
+  const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
+  const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
 
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
@@ -211,6 +241,11 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     },
   })
   const probe = useProbe()
+  const deleteBundles = useDeleteBundles()
+  const deleteCollection = useDeleteCollection()
+  const smartCollectionMutations = useSmartCollectionMutations()
+  const batch = useBatchUpdate()
+  const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
 
@@ -267,6 +302,102 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     setSelectedIds(new Set())
     setActiveId(null)
   }, [])
+
+  // Right-click on a bundle card/row. Operate on the whole selection when the
+  // clicked card is part of a multi-selection; otherwise target (and select)
+  // just this one. Deletion is confirmed in a dialog (DeleteBundlesDialog).
+  const bundleContextMenu = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
+      const n = targets.length
+      if (n === 1) {
+        setSelectedIds(new Set([id]))
+        setActiveId(id)
+      }
+      const items: MenuEntry[] = [{ label: 'Open', onClick: () => open(id), disabled: n > 1 }]
+      if (selection.collectionId) {
+        const collectionId = selection.collectionId
+        items.push({
+          label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
+          onClick: () =>
+            batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
+        })
+      }
+      items.push(null, {
+        label: n > 1 ? `Delete ${n} bundles` : 'Delete Bundle',
+        danger: true,
+        onClick: () => setDeletingBundles(targets),
+      })
+      menu.open(e, items)
+    },
+    [selectedIds, selection.collectionId, open, batch, menu],
+  )
+
+  const confirmDeleteBundles = useCallback(
+    (deleteFiles: boolean) => {
+      const targets = deletingBundles
+      if (!targets) return
+      // Filesystem deletion isn't wired yet (metadata-only milestone); the
+      // checkbox state is captured for a future write-enabled endpoint.
+      void deleteFiles
+      deleteBundles.mutate(targets, {
+        onSuccess: () => {
+          setDeletingBundles(null)
+          clearSelection()
+          if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
+        },
+      })
+    },
+    [deletingBundles, deleteBundles, clearSelection, openBundleId],
+  )
+
+  // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
+  // choose whether to also remove subcollections; the menu item just opens it.
+  const removeCollection = useCallback(
+    (collection: CollectionRead) => setRemovingCollection(collection),
+    [],
+  )
+
+  const confirmRemoveCollection = useCallback(
+    (cascade: boolean) => {
+      const target = removingCollection
+      if (!target) return
+      deleteCollection.mutate(
+        { id: target.id, cascade },
+        {
+          onSuccess: () => {
+            setRemovingCollection(null)
+            // If the view is on the removed collection (or, when cascading, on
+            // one of its now-gone descendants), fall back to All.
+            const affected = cascade
+              ? collectionSubtreeIds(collections.data ?? [], target.id)
+              : new Set([target.id])
+            if (selection.collectionId && affected.has(selection.collectionId)) {
+              setSelection({ view: 'all', collectionId: null })
+            }
+          },
+        },
+      )
+    },
+    [removingCollection, deleteCollection, collections.data, selection.collectionId],
+  )
+
+  const removeSmartCollection = useCallback(
+    (sc: SmartCollectionRead) => {
+      if (
+        !window.confirm(`Delete smart collection “${sc.name}”? This removes the saved filter only.`)
+      )
+        return
+      smartCollectionMutations.remove.mutate(sc.id, {
+        onSuccess: () => {
+          if (selection.smartCollectionId === sc.id) {
+            setSelection({ view: 'all', collectionId: null })
+          }
+        },
+      })
+    },
+    [smartCollectionMutations.remove, selection.smartCollectionId],
+  )
 
   const moveSelection = useCallback(
     (delta: number) => {
@@ -341,9 +472,11 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         counts={counts.data}
         collections={collections.data ?? []}
         collectionCounts={collectionCounts.data}
+        onDeleteCollection={removeCollection}
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
+        onDeleteSmartCollection={removeSmartCollection}
       />
 
       <div className="center">
@@ -382,6 +515,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
                 selectedIds={selectedIds}
                 onSelect={select}
                 onOpen={open}
+                onContextMenu={bundleContextMenu}
                 isLoading={browse.isLoading}
                 isError={browse.isError}
                 error={browse.error}
@@ -398,6 +532,27 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+
+      <ContextMenu state={menu.state} onClose={menu.close} />
+
+      {deletingBundles && (
+        <DeleteBundlesDialog
+          count={deletingBundles.length}
+          pending={deleteBundles.isPending}
+          onCancel={() => setDeletingBundles(null)}
+          onConfirm={confirmDeleteBundles}
+        />
+      )}
+
+      {removingCollection && (
+        <RemoveCollectionDialog
+          collection={removingCollection}
+          hasChildren={(collections.data ?? []).some((c) => c.parent_id === removingCollection.id)}
+          pending={deleteCollection.isPending}
+          onCancel={() => setRemovingCollection(null)}
+          onConfirm={confirmRemoveCollection}
+        />
+      )}
 
       {reviewingGrouping && (
         <GroupingReview

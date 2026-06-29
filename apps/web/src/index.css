@@ -576,6 +576,52 @@ button {
   color: var(--text-strong);
   border-style: solid;
 }
+/* --- Right-click context menu -------------------------------------------- */
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 180px;
+  max-width: min(280px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: rgba(0, 0, 0, 0.4) 0 10px 30px -8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.context-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.context-menu__item:hover:not(:disabled) {
+  background: var(--bg-2);
+}
+.context-menu__item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+.context-menu__item--danger {
+  color: var(--error);
+}
+.context-menu__item--danger:hover:not(:disabled) {
+  background: var(--error);
+  color: var(--surface);
+}
+.context-menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-strong);
+}
+
 .pick-row {
   display: flex;
   align-items: center;
@@ -758,6 +804,18 @@ code {
   flex-direction: column;
   gap: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+.modal--confirm {
+  width: min(440px, 92vw);
+  gap: 10px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-strong);
+  cursor: pointer;
 }
 .modal__head {
   display: flex;

@@ -100,6 +100,67 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(page.getByText('movie.mp4')).toBeVisible()
 })
 
+test('right-clicking a bundle deletes it via the context menu', async ({ page }) => {
+  await mockApi(page)
+  let deleted: string | null = null
+  await page.route('**/bundles/b0', (r) => {
+    if (r.request().method() === 'DELETE') {
+      deleted = 'b0'
+      return r.fulfill({ status: 204, body: '' })
+    }
+    return r.fallback()
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click({ button: 'right' })
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await menu.getByRole('menuitem', { name: 'Delete Bundle' }).click()
+
+  // Confirm in the styled dialog; the "delete files" box is off by default.
+  const dialog = page.getByRole('dialog', { name: 'Delete bundle' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+  await dialog.getByRole('button', { name: 'Delete' }).click()
+
+  await expect.poll(() => deleted).toBe('b0')
+})
+
+test('deleting a collection offers a subcollections choice', async ({ page }) => {
+  await mockApi(page)
+  const collections = [
+    { id: 'c1', name: 'Movies', parent_id: null },
+    { id: 'c2', name: 'Action', parent_id: 'c1' },
+  ]
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ json: { items: collections, next_cursor: null } }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 2, c2: 1 } } }),
+  )
+  let deleteUrl: string | null = null
+  await page.route('**/collections/c1*', (r) => {
+    if (r.request().method() === 'DELETE') {
+      deleteUrl = r.request().url()
+      return r.fulfill({ status: 204, body: '' })
+    }
+    return r.fallback()
+  })
+
+  await page.goto('/')
+  await page.getByText('Movies').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Delete Collection' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Delete Collection' })
+  await expect(dialog).toBeVisible()
+  // The subcollections checkbox is offered and checked by default.
+  await expect(dialog.getByRole('checkbox')).toBeChecked()
+  await dialog.getByRole('button', { name: 'Delete' }).click()
+
+  // Confirming with the box checked cascades to subcollections.
+  await expect.poll(() => deleteUrl).toContain('cascade=true')
+})
+
 test('layout choice persists across reload', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
