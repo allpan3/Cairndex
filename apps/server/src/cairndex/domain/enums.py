@@ -98,3 +98,27 @@ class GroupingSource(StrEnum):
     MANUAL = "manual"
     FAST_ADD = "fast_add"
     IMPORT = "import"
+
+
+class ProposalKind(StrEnum):
+    """Whether a grouping proposal makes a bundle or a logical container (ADR-0009).
+
+    ``container`` is a logical-collection suggestion (its members are the bundles
+    proposed inside it), never a filesystem-synced rule.
+    """
+
+    BUNDLE = "bundle"
+    CONTAINER = "container"
+
+
+class GroupingPlanStatus(StrEnum):
+    """Lifecycle of a durable grouping plan (ADR-0009).
+
+    A plan is a snapshot of suggestions: ``open`` until the user applies it
+    (``applied``), regeneration ``superseded`` it, or it was ``cancelled``.
+    """
+
+    OPEN = "open"
+    APPLIED = "applied"
+    SUPERSEDED = "superseded"
+    CANCELLED = "cancelled"

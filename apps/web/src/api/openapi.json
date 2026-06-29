@@ -73,6 +73,77 @@
         "title": "AndNode",
         "type": "object"
       },
+      "ApplyConflictRead": {
+        "properties": {
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "title",
+          "reason"
+        ],
+        "title": "ApplyConflictRead",
+        "type": "object"
+      },
+      "ApplyResultRead": {
+        "properties": {
+          "bundles_added_to_collections": {
+            "title": "Bundles Added To Collections",
+            "type": "integer"
+          },
+          "bundles_confirmed": {
+            "title": "Bundles Confirmed",
+            "type": "integer"
+          },
+          "bundles_removed": {
+            "title": "Bundles Removed",
+            "type": "integer"
+          },
+          "collections_created": {
+            "title": "Collections Created",
+            "type": "integer"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ApplyConflictRead"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "subtitles_linked": {
+            "title": "Subtitles Linked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundles_confirmed",
+          "bundles_removed",
+          "collections_created",
+          "bundles_added_to_collections",
+          "subtitles_linked",
+          "conflicts"
+        ],
+        "title": "ApplyResultRead",
+        "type": "object"
+      },
       "BatchResult": {
         "properties": {
           "updated": {
@@ -1300,6 +1371,17 @@
         "title": "Grouping",
         "type": "string"
       },
+      "GroupingPlanStatus": {
+        "description": "Lifecycle of a durable grouping plan (ADR-0009).\n\nA plan is a snapshot of suggestions: ``open`` until the user applies it\n(``applied``), regeneration ``superseded`` it, or it was ``cancelled``.",
+        "enum": [
+          "open",
+          "applied",
+          "superseded",
+          "cancelled"
+        ],
+        "title": "GroupingPlanStatus",
+        "type": "string"
+      },
       "GroupingSource": {
         "description": "What produced a bundle's current grouping (ADR-0009).\n\n``legacy`` backfills bundles created before grouping state existed (they are\ntreated as already confirmed). ``scan_suggestion`` marks provisional bundles\nstaged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user\ndecided directly, so they confirm immediately.",
         "enum": [
@@ -1905,6 +1987,113 @@
         "title": "PathSuggestions",
         "type": "object"
       },
+      "PlanRead": {
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalRead"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "integer"
+          },
+          "scan_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scan Job Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GroupingPlanStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "rule_version",
+          "scan_job_id",
+          "generated_at",
+          "applied_at",
+          "proposals"
+        ],
+        "title": "PlanRead",
+        "type": "object"
+      },
+      "PlanSummary": {
+        "properties": {
+          "applied_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "proposal_count": {
+            "title": "Proposal Count",
+            "type": "integer"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GroupingPlanStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "rule_version",
+          "generated_at",
+          "applied_at",
+          "proposal_count"
+        ],
+        "title": "PlanSummary",
+        "type": "object"
+      },
       "PlayableVideo": {
         "properties": {
           "display_title": {
@@ -2033,6 +2222,113 @@
           "operator"
         ],
         "title": "PredicateNode",
+        "type": "object"
+      },
+      "ProposalFileRead": {
+        "properties": {
+          "asset_file_id": {
+            "title": "Asset File Id",
+            "type": "string"
+          },
+          "proposed_role": {
+            "$ref": "#/components/schemas/FileRole"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_file_id",
+          "relative_path",
+          "proposed_role",
+          "sequence"
+        ],
+        "title": "ProposalFileRead",
+        "type": "object"
+      },
+      "ProposalKind": {
+        "description": "Whether a grouping proposal makes a bundle or a logical container (ADR-0009).\n\n``container`` is a logical-collection suggestion (its members are the bundles\nproposed inside it), never a filesystem-synced rule.",
+        "enum": [
+          "bundle",
+          "container"
+        ],
+        "title": "ProposalKind",
+        "type": "string"
+      },
+      "ProposalRead": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "directory": {
+            "title": "Directory",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalFileRead"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProposalKind"
+          },
+          "parent_proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Proposal Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "directory",
+          "parent_proposal_id",
+          "confidence",
+          "reason",
+          "files"
+        ],
+        "title": "ProposalRead",
         "type": "object"
       },
       "SetIdsRequest": {
@@ -4882,6 +5178,195 @@
         "summary": "Preview",
         "tags": [
           "filters"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans": {
+      "get": {
+        "operationId": "list_plans_api_v1_libraries__library_id__grouping_plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanSummary"
+                  },
+                  "title": "Response List Plans Api V1 Libraries  Library Id  Grouping Plans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Plans",
+        "tags": [
+          "grouping"
+        ]
+      },
+      "post": {
+        "description": "Suggest a grouping for the current library and store it as the active\nplan (superseding any earlier open plan).",
+        "operationId": "generate_plan_api_v1_libraries__library_id__grouping_plans_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Plan",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}": {
+      "get": {
+        "operationId": "get_plan_api_v1_libraries__library_id__grouping_plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Plan",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/apply": {
+      "post": {
+        "operationId": "apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyResultRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Plan",
+        "tags": [
+          "grouping"
         ]
       }
     },
