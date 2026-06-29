@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for creating a library with path autocomplete (ADR-0008).
-// With no libraries, the app shows the manager; creating one transitions into
-// the workspace. No backend required.
+// With no libraries, the app shows an empty shell; clicking "+" opens the
+// manager, and creating one transitions into the workspace. No backend required.
 
 async function mockApi(page: Page) {
   const libraries: Array<Record<string, unknown>> = []
@@ -48,7 +48,11 @@ test('creates a library via the path-autocomplete form', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
 
-  // No libraries yet → the manager is shown. Fill the create form.
+  // No libraries yet → empty shell. Open the manager from the sidebar "+".
+  await expect(page.locator('.center')).toContainText('No library yet')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+
+  // Fill the create form.
   await page.getByLabel('Library name').fill('NAS Media')
   await page.getByLabel('Library path').fill('/mnt')
   await page.getByRole('option', { name: '/mnt/media' }).click()
