@@ -30,7 +30,7 @@ from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 1
+SUGGESTER_RULE_VERSION = 2
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -39,6 +39,7 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # across several video files (multipart), as opposed to bare numbering (ep1, ep2)
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
+_SUBJECT_DELIMITER = re.compile(r"[._\-\s]+")
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,13 @@ def _stem(name: str) -> str:
     return stem or base
 
 
+# Normalize filename stems to the leading subject token used for sidecar matching
+def _subject_prefix(name: str) -> str:
+    """Return the leading filename subject before sidecar delimiters."""
+    stem = _stem(name).lower()
+    return _SUBJECT_DELIMITER.split(stem, maxsplit=1)[0]
+
+
 def _natural_key(name: str) -> list[object]:
     """Sort key that orders ``ep2`` before ``ep10`` (numeric runs compared as
     ints), case-insensitively."""
@@ -184,6 +192,52 @@ def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
     if _is_multipart(videos):
         return 0.75, f"{len(videos)} parts of one video"
     return 0.5, "grouped by folder"
+
+
+# Split a mixed direct-media directory into video-centered bundle candidates
+def _bundle_groups(media: list[FileObservation]) -> list[list[FileObservation]]:
+    """Group direct media into proposed bundle file sets.
+
+    A folder with a single subject remains one bundle. A folder with multiple
+    unrelated videos becomes one video-centered bundle per subject, with
+    sidecars attached by the leading delimiter-separated prefix. Image-only
+    folders intentionally stay one file per proposal so photo dumps do not
+    collapse just because camera filenames share a prefix.
+    """
+    if not media:
+        return []
+    if _is_bundle(media):
+        return [media]
+
+    videos = sorted((f for f in media if f.media_kind is MediaKind.VIDEO), key=_obs_sort_key)
+    if not videos:
+        return [[f] for f in sorted(media, key=_obs_sort_key)]
+
+    groups: list[list[FileObservation]] = [[video] for video in videos]
+    prefix_counts: dict[str, int] = {}
+    for video in videos:
+        prefix = _subject_prefix(video.relative_path)
+        prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+    group_by_prefix = {
+        _subject_prefix(video.relative_path): group
+        for video, group in zip(videos, groups, strict=True)
+        if prefix_counts[_subject_prefix(video.relative_path)] == 1
+    }
+    unassigned: list[FileObservation] = []
+    for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
+        group = group_by_prefix.get(_subject_prefix(f.relative_path))
+        if group is None:
+            unassigned.append(f)
+        else:
+            group.append(f)
+    groups.extend([f] for f in unassigned)
+    return groups
+
+
+# Stable ordering helper for file observations
+def _obs_sort_key(f: FileObservation) -> list[object]:
+    """Sort observations by natural relative path order."""
+    return _natural_key(f.relative_path)
 
 
 # --- role assignment ---------------------------------------------------------
@@ -284,7 +338,7 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
 
     if has_subbundles and not is_root:
         # This folder is a CONTAINER for the bundles found beneath it.
-        direct_count = (1 if media and _is_bundle(media) else len(media)) + len(
+        direct_count = len(_bundle_groups(media)) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
         )
         proposals.append(
@@ -311,21 +365,20 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
         proposals.append(_bundle_proposal(media, node.path, parent, owns_directory=True))
         return proposals
     if is_root:
-        # Unrelated loose files at the root: one bundle each, no root container.
-        proposals.extend(_bundle_proposal([f], "", None, owns_directory=False) for f in media)
+        # Unrelated loose files at the root: bundle by subject where possible, no root container
+        proposals.extend(_direct_media_proposals(media, "", parent_for_children=None))
         return proposals
-    # A container of unrelated items: one single-file bundle per item.
+    # A container of unrelated items: one child bundle per subject or file
+    groups = _bundle_groups(media)
     proposals.append(
         _container_proposal(
             node.path,
             parent,
-            child_count=len(media),
+            child_count=len(groups),
             reason=f"{len(media)} unrelated files",
         )
     )
-    proposals.extend(
-        _bundle_proposal([f], node.path, node.path, owns_directory=False) for f in media
-    )
+    proposals.extend(_direct_media_proposals(media, node.path, parent_for_children=node.path))
     return proposals
 
 
@@ -333,12 +386,10 @@ def _direct_media_proposals(
     media: list[FileObservation], directory: str, *, parent_for_children: str | None
 ) -> list[GroupingProposal]:
     """Proposals for a container's own direct media (those not in a subfolder)."""
-    if not media:
-        return []
-    if _is_bundle(media):
-        return [_bundle_proposal(media, directory, parent_for_children, owns_directory=True)]
+    groups = _bundle_groups(media)
     return [
-        _bundle_proposal([f], directory, parent_for_children, owns_directory=False) for f in media
+        _bundle_proposal(group, directory, parent_for_children, owns_directory=len(groups) == 1)
+        for group in groups
     ]
 
 

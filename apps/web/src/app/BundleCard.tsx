@@ -26,7 +26,10 @@ export function BundleCard({ item, selected, showMeta, onSelect, onOpen }: Bundl
       >
         {!item.has_cover && <div className="card__placeholder">▦</div>}
         {item.has_missing && <span className="card__badge card__badge--missing">missing</span>}
-        {!item.has_missing && item.extension && (
+        {!item.has_missing && item.grouping_state === 'provisional' && (
+          <span className="card__badge card__badge--review">review</span>
+        )}
+        {!item.has_missing && item.grouping_state !== 'provisional' && item.extension && (
           <span className="card__badge">{item.extension}</span>
         )}
         {item.file_count > 1 && (

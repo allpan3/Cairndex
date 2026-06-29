@@ -38,7 +38,7 @@ from cairndex.domain.enums import (
 )
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.fingerprint import quick_fingerprint
-from cairndex.scanning.media_types import classify
+from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
 # Version of the scan-time grouping rule recorded on provisional bundles
 # (ADR-0009). The current rule is still "one provisional bundle per file"; the
@@ -78,9 +78,11 @@ class _Observed:
 
 def _iter_media_files(root_path: Path) -> Iterator[Path]:
     # followlinks=False avoids symlink cycles and escapes out of the root.
-    for dirpath, _dirnames, filenames in os.walk(root_path, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
+        dirnames[:] = [name for name in dirnames if not is_hidden_relative_path(name)]
         for name in filenames:
-            if classify(name) is not None:
+            rel = (Path(dirpath) / name).relative_to(root_path).as_posix()
+            if not is_hidden_relative_path(rel) and classify(name) is not None:
                 yield Path(dirpath) / name
 
 
@@ -165,6 +167,38 @@ def _plan_repairs(
     return repairs
 
 
+# Remove hidden paths previously created by scan staging
+def _drop_ignored_scan_rows(session: Session, files: Iterable[AssetFile]) -> int:
+    """Delete scan-created provisional rows whose paths are now ignored."""
+    ignored = [
+        f
+        for f in files
+        if is_hidden_relative_path(f.relative_path)
+        and f.bundle.grouping_state is GroupingState.PROVISIONAL
+        and f.bundle.grouping_source is GroupingSource.SCAN_SUGGESTION
+    ]
+    deleted_bundle_ids: set[str] = set()
+    deleted = 0
+    for row in ignored:
+        bundle = row.bundle
+        if bundle.id in deleted_bundle_ids:
+            continue
+        if all(is_hidden_relative_path(f.relative_path) for f in bundle.files):
+            session.delete(bundle)
+            deleted_bundle_ids.add(bundle.id)
+            deleted += len(bundle.files)
+            continue
+        if bundle.cover_file_id == row.id:
+            bundle.cover_file_id = None
+        if bundle.primary_file_id == row.id:
+            bundle.primary_file_id = None
+        session.delete(row)
+        deleted += 1
+    if deleted:
+        session.flush()
+    return deleted
+
+
 def scan_library(
     session: Session,
     root_path: Path,
@@ -174,8 +208,12 @@ def scan_library(
 ) -> ScanSummary:
     """Scan a library's root directory. ``root_path`` comes from the registry
     (ADR-0008); all ``AssetFile`` rows in ``session`` belong to this library."""
+    existing_rows = list(session.scalars(select(AssetFile)))
+    _drop_ignored_scan_rows(session, existing_rows)
     existing: dict[str, AssetFile] = {
-        f.relative_path: f for f in session.scalars(select(AssetFile))
+        f.relative_path: f
+        for f in session.scalars(select(AssetFile))
+        if not is_hidden_relative_path(f.relative_path)
     }
 
     # Unreachable root: mark all files missing (availability is tracked in the

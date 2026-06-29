@@ -267,7 +267,9 @@ How it works now:
   `library.db`, and writes progress/terminal state back to the registry row.
 - **Frontend** picks one active library per tab (bootstrapped from
   `GET /api/v1/libraries`) and routes every content request under it; the sidebar
-  has a library selector and a maintenance row (Scan / Probe / Thumbnails).
+  has a library selector and a primary Update action with a small overflow menu
+  for advanced maintenance actions such as scan new files, collect metadata, and
+  grouping review.
   Metadata edits send the entity `version` as `If-Match`; a 409 surfaces an inline
   "changed elsewhere" notice and refetches the latest rather than overwriting.
 - **Derived cache is per library (phase 8).** Thumbnails and converted WebVTT

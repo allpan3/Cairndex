@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from cairndex.domain.enums import GroupingState
+
 
 class BundleSummary(BaseModel):
     id: str
@@ -17,6 +19,7 @@ class BundleSummary(BaseModel):
     duration: float | None
     extension: str | None
     date_added: datetime
+    grouping_state: GroupingState
 
 
 class BundleBrowsePage(BaseModel):

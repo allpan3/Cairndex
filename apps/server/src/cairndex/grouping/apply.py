@@ -60,16 +60,27 @@ class _BundleOutcome:
     target_bundle_id: str | None
 
 
-def apply_plan(session: Session, plan: GroupingPlan) -> ApplyResult:
+def apply_plan(
+    session: Session, plan: GroupingPlan, *, proposal_ids: set[str] | None = None
+) -> ApplyResult:
     """Apply ``plan`` to the library, confirming bundles and creating containers.
 
-    Safe to call more than once; an already-applied proposal becomes a no-op.
+    Safe to call more than once; an already-applied proposal becomes a no-op. When
+    ``proposal_ids`` is set, only that selected subset is accepted.
     """
     if plan.status is GroupingPlanStatus.CANCELLED:
         raise ConflictError("cannot apply a cancelled grouping plan")
 
     result = ApplyResult()
-    proposals = list(plan.proposals)
+    all_proposals = list(plan.proposals)
+    if proposal_ids is not None:
+        if not proposal_ids:
+            raise ConflictError("select at least one grouping proposal to accept")
+        known_ids = {p.id for p in all_proposals}
+        unknown_ids = proposal_ids - known_ids
+        if unknown_ids:
+            raise ConflictError("one or more selected grouping proposals no longer exist")
+    proposals = [p for p in all_proposals if proposal_ids is None or p.id in proposal_ids]
     target_bundle_by_proposal: dict[str, str] = {}
 
     # 1) Bundles first, so containers can reference the resulting bundles.

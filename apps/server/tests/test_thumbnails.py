@@ -129,6 +129,22 @@ def test_cover_fallback_prefers_selected_then_image_then_video(
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
 
 
+# Video-only bundles fall back to their primary playable file for cover thumbnails
+def test_cover_fallback_uses_primary_video_when_no_image(session: Session) -> None:
+    bundle = bundle_service.create_bundle(session, title="b")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="movie.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    bundle_service.update_bundle(session, bundle.id, {"primary_file_id": video.id})
+    session.commit()
+
+    assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
+
+
 @requires_ffmpeg
 def test_serve_bundle_thumbnail_endpoint(
     client: TestClient, library_id: str, library_root: Path
