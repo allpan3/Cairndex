@@ -149,9 +149,9 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
 
   await page.goto('/')
   await page.getByText('Movies').click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Delete collection' }).click()
+  await page.getByRole('menuitem', { name: 'Delete Collection' }).click()
 
-  const dialog = page.getByRole('dialog', { name: 'Delete collection' })
+  const dialog = page.getByRole('dialog', { name: 'Delete Collection' })
   await expect(dialog).toBeVisible()
   // The subcollections checkbox is offered and checked by default.
   await expect(dialog.getByRole('checkbox')).toBeChecked()

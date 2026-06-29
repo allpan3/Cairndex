@@ -43,10 +43,10 @@ export function RemoveCollectionDialog({
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Delete collection"
+        aria-label="Delete Collection"
       >
         <div className="modal__head">
-          <h2>Delete collection</h2>
+          <h2>Delete Collection</h2>
           <button className="modal__close" onClick={onCancel} aria-label="Cancel">
             ×
           </button>
