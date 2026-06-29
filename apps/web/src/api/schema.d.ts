@@ -893,6 +893,8 @@ export interface components {
             collections_created: number;
             /** Conflicts */
             conflicts: components["schemas"]["ApplyConflictRead"][];
+            /** Files Added To Bundles */
+            files_added_to_bundles: number;
             /** Subtitles Linked */
             subtitles_linked: number;
         };
@@ -1645,6 +1647,8 @@ export interface components {
             parent_proposal_id: string | null;
             /** Reason */
             reason: string | null;
+            /** Target Bundle Id */
+            target_bundle_id: string | null;
             /** Title */
             title: string | null;
         };
