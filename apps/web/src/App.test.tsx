@@ -64,8 +64,10 @@ test('shows the empty state when there are no bundles', async () => {
   await waitFor(() => expect(screen.getByText('Nothing here yet.')).toBeInTheDocument())
 })
 
-test('shows the library manager when no library exists', async () => {
+test('shows the empty shell (not a forced dialog) when no library exists', async () => {
   mockApi([])
   renderApp()
-  await waitFor(() => expect(screen.getByText('Libraries')).toBeInTheDocument())
+  // Empty shell with a hint, not the forced "Libraries" manager modal.
+  await waitFor(() => expect(screen.getByText(/No library yet/i)).toBeInTheDocument())
+  expect(screen.queryByRole('heading', { name: 'Libraries' })).not.toBeInTheDocument()
 })
