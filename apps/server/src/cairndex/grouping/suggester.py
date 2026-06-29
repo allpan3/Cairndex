@@ -25,9 +25,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from enum import StrEnum
 
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
@@ -40,11 +39,6 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # across several video files (multipart), as opposed to bare numbering (ep1, ep2)
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
-
-
-class ProposalKind(StrEnum):
-    BUNDLE = "bundle"
-    CONTAINER = "container"
 
 
 @dataclass(frozen=True)
@@ -226,13 +220,16 @@ def _role_for(f: FileObservation, multipart: bool, cover_id: str | None) -> File
 
 
 def _bundle_proposal(
-    files: list[FileObservation], directory: str, parent: str | None
+    files: list[FileObservation],
+    directory: str,
+    parent: str | None,
+    *,
+    owns_directory: bool,
 ) -> GroupingProposal:
     confidence, reason = _bundle_reason(files)
-    title = _basename(directory) if directory else _stem(files[0].relative_path)
-    if len(files) == 1 and directory:
-        # A lone file inside a container reads better titled by its own name.
-        title = _stem(files[0].relative_path)
+    # A bundle that fills its whole folder takes the folder's name; one of several
+    # bundles split out of a container reads better titled by its own file.
+    title = _basename(directory) if owns_directory and directory else _stem(files[0].relative_path)
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
@@ -304,11 +301,11 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
     if not media:
         return []
     if _is_bundle(media):
-        proposals.append(_bundle_proposal(media, node.path, parent))
+        proposals.append(_bundle_proposal(media, node.path, parent, owns_directory=True))
         return proposals
     if is_root:
         # Unrelated loose files at the root: one bundle each, no root container.
-        proposals.extend(_bundle_proposal([f], "", None) for f in media)
+        proposals.extend(_bundle_proposal([f], "", None, owns_directory=False) for f in media)
         return proposals
     # A container of unrelated items: one single-file bundle per item.
     proposals.append(
@@ -319,7 +316,9 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
             reason=f"{len(media)} unrelated files",
         )
     )
-    proposals.extend(_bundle_proposal([f], node.path, node.path) for f in media)
+    proposals.extend(
+        _bundle_proposal([f], node.path, node.path, owns_directory=False) for f in media
+    )
     return proposals
 
 
@@ -330,8 +329,10 @@ def _direct_media_proposals(
     if not media:
         return []
     if _is_bundle(media):
-        return [_bundle_proposal(media, directory, parent_for_children)]
-    return [_bundle_proposal([f], directory, parent_for_children) for f in media]
+        return [_bundle_proposal(media, directory, parent_for_children, owns_directory=True)]
+    return [
+        _bundle_proposal([f], directory, parent_for_children, owns_directory=False) for f in media
+    ]
 
 
 def suggest_grouping(files: Iterable[FileObservation]) -> GroupingPlan:
