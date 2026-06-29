@@ -22,6 +22,7 @@ import { type MenuEntry, useContextMenu } from './app/useContextMenu'
 import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
+import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
 import { GroupingReview } from './app/GroupingReview'
@@ -217,6 +218,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
   const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
   const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
+  const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
 
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
@@ -303,7 +305,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
 
   // Right-click on a bundle card/row. Operate on the whole selection when the
   // clicked card is part of a multi-selection; otherwise target (and select)
-  // just this one. Removal is metadata-only — files are never touched.
+  // just this one. Deletion is confirmed in a dialog (DeleteBundlesDialog).
   const bundleContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
       const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
@@ -322,34 +324,31 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         })
       }
       items.push(null, {
-        label: n > 1 ? `Delete ${n} bundles` : 'Delete bundle',
+        label: n > 1 ? `Delete ${n} bundles` : 'Delete Bundle',
         danger: true,
-        onClick: () => {
-          const ok = window.confirm(
-            `Delete ${n > 1 ? `${n} bundles` : 'this bundle'}? This removes Cairndex ` +
-              'metadata only — the files stay on disk.',
-          )
-          if (!ok) return
-          deleteBundles.mutate(targets, {
-            onSuccess: () => {
-              clearSelection()
-              if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
-            },
-          })
-        },
+        onClick: () => setDeletingBundles(targets),
       })
       menu.open(e, items)
     },
-    [
-      selectedIds,
-      selection.collectionId,
-      open,
-      batch,
-      deleteBundles,
-      clearSelection,
-      openBundleId,
-      menu,
-    ],
+    [selectedIds, selection.collectionId, open, batch, menu],
+  )
+
+  const confirmDeleteBundles = useCallback(
+    (deleteFiles: boolean) => {
+      const targets = deletingBundles
+      if (!targets) return
+      // Filesystem deletion isn't wired yet (metadata-only milestone); the
+      // checkbox state is captured for a future write-enabled endpoint.
+      void deleteFiles
+      deleteBundles.mutate(targets, {
+        onSuccess: () => {
+          setDeletingBundles(null)
+          clearSelection()
+          if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
+        },
+      })
+    },
+    [deletingBundles, deleteBundles, clearSelection, openBundleId],
   )
 
   // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
@@ -535,6 +534,15 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
       <ContextMenu state={menu.state} onClose={menu.close} />
+
+      {deletingBundles && (
+        <DeleteBundlesDialog
+          count={deletingBundles.length}
+          pending={deleteBundles.isPending}
+          onCancel={() => setDeletingBundles(null)}
+          onConfirm={confirmDeleteBundles}
+        />
+      )}
 
       {removingCollection && (
         <RemoveCollectionDialog
