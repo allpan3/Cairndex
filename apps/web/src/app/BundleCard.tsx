@@ -8,14 +8,23 @@ interface BundleCardProps {
   showMeta: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
+  onContextMenu: (id: string, e: React.MouseEvent) => void
 }
 
-export function BundleCard({ item, selected, showMeta, onSelect, onOpen }: BundleCardProps) {
+export function BundleCard({
+  item,
+  selected,
+  showMeta,
+  onSelect,
+  onOpen,
+  onContextMenu,
+}: BundleCardProps) {
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen(item.id)}
+      onContextMenu={(e) => onContextMenu(item.id, e)}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}
