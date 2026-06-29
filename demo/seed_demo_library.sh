@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Generate a demo media folder with REAL, browser-playable media so every
-# implemented feature can be exercised end to end from the GUI:
-#   - bundling (a movie dir → one bundle of video + cover + subtitle)
-#   - direct playback (H.264/AAC MP4 in an mp4 container)
-#   - external subtitle auto-link (basename + language suffix)
-#   - probe (ffprobe tech metadata) and thumbnails (cover generation)
-#   - standalone images for grid/justified/list layouts
+# Generate a demo media folder with REAL, browser-playable media. Today it is
+# useful for direct playback, probe, thumbnails, and standalone image layouts.
+# It also creates realistic future ADR-0009 grouping fixtures:
+#   - a movie dir that should later suggest one bundle of video + cover + subtitle
+#   - external subtitle naming that should later auto-link by basename/language
+#   - standalone images that should later remain separate photo bundles
 #
 # The folder is a plain media tree with NO .cairndex marker, so you can add it
 # from the GUI via "Create new" and then Scan. It lives OUTSIDE the server's
@@ -39,7 +38,7 @@ make_image() {  # <file> <lavfi-source>
   ffmpeg -y -loglevel error -f lavfi -i "$2" -frames:v 1 "$1"
 }
 
-echo "==> Movies/Cosmos (video + poster + subtitle → one bundle)"
+echo "==> Movies/Cosmos (future grouping fixture: video + poster + subtitle)"
 make_video "$DEST/Movies/Cosmos/cosmos.mp4" "testsrc" 300
 make_image "$DEST/Movies/Cosmos/poster.jpg" "mandelbrot=size=854x480"
 cat > "$DEST/Movies/Cosmos/cosmos.en.srt" <<'SRT'
@@ -52,11 +51,11 @@ A journey through the cosmos.
 Subtitles auto-link to the video.
 SRT
 
-echo "==> Movies/Waves (a second video bundle)"
+echo "==> Movies/Waves (future grouping fixture: a second video bundle)"
 make_video "$DEST/Movies/Waves/waves.mp4" "smptebars" 440
 make_image "$DEST/Movies/Waves/cover.jpg" "rgbtestsrc=size=854x480"
 
-echo "==> Photos (standalone images)"
+echo "==> Photos (future grouping fixture: standalone photo bundles)"
 make_image "$DEST/Photos/aurora.jpg"   "gradients=size=800x600"
 make_image "$DEST/Photos/canyon.png"   "mandelbrot=size=800x600"
 make_image "$DEST/Photos/portrait.jpg" "testsrc2=size=600x800"
