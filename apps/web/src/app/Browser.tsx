@@ -182,7 +182,12 @@ function ListRow({
         className="list-row__thumb"
         style={item.has_cover ? { backgroundImage: `url(${thumbnailUrl(item.id)})` } : undefined}
       />
-      <div className="list-row__title">{item.title ?? 'Untitled'}</div>
+      <div className="list-row__title">
+        {item.title ?? 'Untitled'}
+        {item.grouping_state === 'provisional' && (
+          <span className="list-row__state">Needs review</span>
+        )}
+      </div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
       <span className="list-cell">{formatBytes(item.total_size)}</span>

@@ -13,6 +13,21 @@ ADR-0003 auto-link claim holds for every path that forms a bundle. The only
 documented follow-up is interactive edit-before-apply in the review UI
 (merge/split/reclassify/rename).
 
+Current UI follow-up landed on top: scan jobs now persist an open grouping plan
+without applying it, and the visible sidebar maintenance flow is a single
+primary **Update** action. Update waits for discovery/repair, grouping-plan
+generation, and metadata probing before refreshing affected queries, then opens
+grouping review when suggestions exist. Scan new files, Collect metadata, and
+Review grouping remain available from the small maintenance overflow menu for
+exception cases.
+Provisional browse cards are marked for review. Hidden library/cache paths such
+as `.cairndex` are ignored by scan/grouping and previously scan-staged hidden
+rows are cleaned up on rescan. The grouping review UI currently supports
+checkbox-based **Accept selected** with Select all / Deselect all; richer
+edit-before-accept remains the follow-up. The global sidebar Thumbnails action
+was removed; lazy thumbnail serving and the backend thumbnail job endpoint remain
+available.
+
 ## Current milestone
 
 **Suggestion-based bundle grouping (ADR-0009, Option A+).** Scanning a realistic
@@ -168,8 +183,9 @@ per-library maintenance UI actions are all complete. Remaining / follow-up:
   out — all six phases shipped. Remaining follow-up: interactive edit-before-apply
   in the review UI (merge/split/reclassify/rename), which the apply engine already
   supports at the data level.
-- Job progress UI: surface running scan/probe/thumbnail progress (the registry
-  `job_queue` tracks `processed`/`total`; the UI currently fire-and-forgets).
+- Job progress UI: surface detailed running scan/probe/thumbnail progress (the
+  registry `job_queue` tracks `processed`/`total`; the UI now waits for terminal
+  status but still lacks progress bars).
 - Future: direct-open / native desktop modes + active-owner lease (phases 10–11).
 
 ## Unresolved decisions

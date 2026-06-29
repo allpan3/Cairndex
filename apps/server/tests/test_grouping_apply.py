@@ -112,6 +112,29 @@ def test_apply_container_creates_collection_with_member_bundles(
     assert member_titles == {"Cosmos", "Waves"}
 
 
+# Applying a selected subset leaves unselected proposals provisional
+def test_apply_selected_proposals_only(session: Session, library_root: Path) -> None:
+    from cairndex.scanning.scanner import scan_library
+
+    (library_root / "Movies" / "Cosmos").mkdir(parents=True)
+    (library_root / "Movies" / "Cosmos" / "cosmos.mp4").write_text("v")
+    (library_root / "Movies" / "Waves").mkdir()
+    (library_root / "Movies" / "Waves" / "waves.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    plan = plan_store.generate_plan(session)
+    movies = next(p for p in plan.proposals if p.kind.value == "container")
+    cosmos = next(p for p in plan.proposals if p.title == "Cosmos")
+    result = apply_service.apply_plan(session, plan, proposal_ids={movies.id, cosmos.id})
+
+    assert result.bundles_confirmed == 1
+    assert result.collections_created == 1
+    assert result.bundles_added_to_collections == 1
+    states = {b.title: b.grouping_state for b in session.scalars(select(AssetBundle)).all()}
+    assert states["Cosmos"] is GroupingState.CONFIRMED
+    assert states["waves"] is GroupingState.PROVISIONAL
+
+
 def test_apply_skips_proposal_when_a_file_was_manually_regrouped(
     session: Session, library_root: Path
 ) -> None:

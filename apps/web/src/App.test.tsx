@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import App from './App'
@@ -23,7 +23,7 @@ const LIBRARY = {
 function mockApi(libraries: unknown[] = [LIBRARY]) {
   vi.stubGlobal(
     'fetch',
-    vi.fn((url: string) => {
+    vi.fn((url: string, init?: RequestInit) => {
       let body: unknown = {}
       if (url.endsWith('/api/v1/libraries')) body = libraries
       else if (url.includes('/bundles/browse'))
@@ -33,6 +33,91 @@ function mockApi(libraries: unknown[] = [LIBRARY]) {
       else if (url.includes('/collections/counts')) body = { counts: {} }
       else if (url.includes('/collections')) body = { items: [], next_cursor: null }
       else if (url.includes('/smart-collections')) body = []
+      else if (url.includes('/grouping/plans/plan1'))
+        body = {
+          id: 'plan1',
+          status: 'open',
+          rule_version: 2,
+          scan_job_id: 'job1',
+          generated_at: '2026-01-01T00:00:00Z',
+          applied_at: null,
+          proposals: [],
+        }
+      else if (url.includes('/grouping/plans'))
+        body = [
+          {
+            id: 'plan1',
+            status: 'open',
+            rule_version: 2,
+            generated_at: '2026-01-01T00:00:00Z',
+            applied_at: null,
+            proposal_count: 1,
+          },
+        ]
+      else if (url.endsWith('/api/v1/jobs/job1'))
+        body = {
+          id: 'job1',
+          library_id: 'lib1',
+          job_type: 'scan',
+          status: 'succeeded',
+          payload: {},
+          processed: 2,
+          total: 2,
+          result: { grouping_plan_id: 'plan1', grouping_proposal_count: 1 },
+          error: null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:00Z',
+          started_at: '2026-01-01T00:00:00Z',
+          finished_at: '2026-01-01T00:00:01Z',
+        }
+      else if (url.endsWith('/api/v1/jobs/job2'))
+        body = {
+          id: 'job2',
+          library_id: 'lib1',
+          job_type: 'probe',
+          status: 'succeeded',
+          payload: {},
+          processed: 2,
+          total: 2,
+          result: { probed: 0, skipped: 0, failed: 0 },
+          error: null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:01Z',
+          started_at: '2026-01-01T00:00:01Z',
+          finished_at: '2026-01-01T00:00:02Z',
+        }
+      else if (url.endsWith('/jobs/scan') && init?.method === 'POST')
+        body = {
+          id: 'job1',
+          library_id: 'lib1',
+          job_type: 'scan',
+          status: 'queued',
+          payload: {},
+          processed: 0,
+          total: null,
+          result: null,
+          error: null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:00Z',
+          started_at: null,
+          finished_at: null,
+        }
+      else if (url.endsWith('/jobs/probe') && init?.method === 'POST')
+        body = {
+          id: 'job2',
+          library_id: 'lib1',
+          job_type: 'probe',
+          status: 'queued',
+          payload: {},
+          processed: 0,
+          total: null,
+          result: null,
+          error: null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:01Z',
+          started_at: null,
+          finished_at: null,
+        }
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
     }),
   )
@@ -56,6 +141,16 @@ test('renders the shell with the brand and the system views', async () => {
   expect(screen.getByText('Recently Added')).toBeInTheDocument()
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   expect(screen.getByText('Missing Files')).toBeInTheDocument()
+  expect(screen.queryByText(/Thumbnails/i)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Update/i })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Scan/i })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Probe/i })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Group/i })).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'More library maintenance actions' }))
+  expect(screen.getByRole('button', { name: /Scan new files/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Collect metadata/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Review grouping/i })).toBeInTheDocument()
 })
 
 test('shows the empty state when there are no bundles', async () => {
@@ -70,4 +165,13 @@ test('shows the empty shell (not a forced dialog) when no library exists', async
   // Empty shell with a hint, not the forced "Libraries" manager modal.
   await waitFor(() => expect(screen.getByText(/No library yet/i)).toBeInTheDocument())
   expect(screen.queryByRole('heading', { name: 'Libraries' })).not.toBeInTheDocument()
+})
+
+test('opens grouping review after a successful library update with suggestions', async () => {
+  mockApi()
+  renderApp()
+  fireEvent.click(await screen.findByRole('button', { name: /Update/i }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Review grouping' })), {
+    timeout: 2500,
+  })
 })

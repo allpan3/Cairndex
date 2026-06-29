@@ -57,6 +57,10 @@ function buildTree(proposals: GroupingProposal[]): TreeNode[] {
   return make(null)
 }
 
+function collectIds(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((node) => [node.proposal.id, ...collectIds(node.children)])
+}
+
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100)
   const level = value >= 0.8 ? 'high' : value >= 0.6 ? 'mid' : 'low'
@@ -67,12 +71,28 @@ function Confidence({ value }: { value: number }) {
   )
 }
 
-function ProposalNode({ node }: { node: TreeNode }) {
+function ProposalNode({
+  node,
+  selectedIds,
+  onToggle,
+}: {
+  node: TreeNode
+  selectedIds: Set<string>
+  onToggle: (node: TreeNode, checked: boolean) => void
+}) {
   const { proposal, children } = node
+  const checked = selectedIds.has(proposal.id)
   if (proposal.kind === 'container') {
     return (
       <li className="grp-node grp-node--container">
         <div className="grp-row">
+          <input
+            className="grp-check"
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => onToggle(node, e.currentTarget.checked)}
+            aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
+          />
           <span className="grp-kind">📁</span>
           <span className="grp-title">
             {proposal.title || baseName(proposal.directory) || 'Collection'}
@@ -83,7 +103,12 @@ function ProposalNode({ node }: { node: TreeNode }) {
         {children.length > 0 && (
           <ul className="grp-children">
             {children.map((c) => (
-              <ProposalNode key={c.proposal.id} node={c} />
+              <ProposalNode
+                key={c.proposal.id}
+                node={c}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+              />
             ))}
           </ul>
         )}
@@ -94,6 +119,13 @@ function ProposalNode({ node }: { node: TreeNode }) {
   return (
     <li className="grp-node grp-node--bundle">
       <div className="grp-row">
+        <input
+          className="grp-check"
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onToggle(node, e.currentTarget.checked)}
+          aria-label={`Accept ${proposal.title || 'bundle'}`}
+        />
         <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
         <span className="grp-title">
           {isAddition ? `Add to ${proposal.title || 'bundle'}` : proposal.title || '(untitled)'}
@@ -117,7 +149,7 @@ function ResultPanel({ result }: { result: GroupingApplyResult }) {
   return (
     <div className="grp-result">
       <p className="grp-result__line">
-        Confirmed <strong>{result.bundles_confirmed}</strong> bundle(s), created{' '}
+        Accepted <strong>{result.bundles_confirmed}</strong> bundle(s), created{' '}
         <strong>{result.collections_created}</strong> collection(s), added{' '}
         <strong>{result.files_added_to_bundles}</strong> file(s) to existing bundle(s), linked{' '}
         <strong>{result.subtitles_linked}</strong> subtitle(s).
@@ -138,34 +170,71 @@ function ResultPanel({ result }: { result: GroupingApplyResult }) {
   )
 }
 
-export function GroupingReview({ onClose }: { onClose: () => void }) {
+export function GroupingReview({
+  initialPlanId,
+  onClose,
+}: {
+  initialPlanId?: string | null
+  onClose: () => void
+}) {
   const plans = useGroupingPlans()
-  const [chosenId, setChosenId] = useState<string | null>(null)
+  const [chosenId, setChosenId] = useState<string | null>(initialPlanId ?? null)
   const openPlan = plans.data?.find((p) => p.status === 'open') ?? null
   const planId = chosenId ?? openPlan?.id ?? null
   const plan = useGroupingPlan(planId)
   const generate = useGenerateGroupingPlan()
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
+  const allProposalIds = useMemo(() => collectIds(tree), [tree])
+  const selectedIds = useMemo(
+    () => new Set(allProposalIds.filter((id) => !deselectedIds.has(id))),
+    [allProposalIds, deselectedIds],
+  )
+
+  const toggleNode = (node: TreeNode, checked: boolean) => {
+    const ids = collectIds([node])
+    setDeselectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (checked) next.delete(id)
+        else next.add(id)
+      }
+      return next
+    })
+  }
 
   const onGenerate = () =>
     generate.mutate(undefined, {
       onSuccess: (p) => {
         setChosenId(p.id)
         setResult(null)
+        setDeselectedIds(new Set())
+        setNotice('Suggestions regenerated from the current library state.')
       },
     })
 
   const onApply = () => {
-    if (planId) apply.mutate(planId, { onSuccess: setResult })
+    if (planId)
+      apply.mutate(
+        { id: planId, proposalIds: [...selectedIds] },
+        {
+          onSuccess: (r) => {
+            setNotice(null)
+            setResult(r)
+          },
+        },
+      )
   }
 
   const status = plan.data?.status
   const applied = status === 'applied' || result !== null
   const busy = generate.isPending || apply.isPending
   const error = (generate.error ?? apply.error) as Error | null
+  const selectedCount = selectedIds.size
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -184,35 +253,55 @@ export function GroupingReview({ onClose }: { onClose: () => void }) {
 
         <div className="modal__body grp-body">
           <p className="grp-intro">
-            A scan links files but groups one bundle per file. Suggest a grouping, review it, then
-            apply — confirming bundles, creating collections, and linking subtitles. Nothing on disk
-            changes.
+            Review the suggested bundles and collections, then accept only the checked items.
+            Regenerate suggestions reruns the same heuristic against the current library state, so
+            unchanged files usually produce the same result. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
+          {notice && !result && <div className="grp-notice">{notice}</div>}
 
           {result && <ResultPanel result={result} />}
 
           {!result && plan.data && tree.length > 0 && (
-            <ul className="grp-tree">
-              {tree.map((node) => (
-                <ProposalNode key={node.proposal.id} node={node} />
-              ))}
-            </ul>
+            <>
+              <div className="grp-selectbar">
+                <span>{selectedCount} selected</span>
+                <button className="btn btn--compact" onClick={() => setDeselectedIds(new Set())}>
+                  Select all
+                </button>
+                <button
+                  className="btn btn--compact"
+                  onClick={() => setDeselectedIds(new Set(allProposalIds))}
+                >
+                  Deselect all
+                </button>
+              </div>
+              <ul className="grp-tree">
+                {tree.map((node) => (
+                  <ProposalNode
+                    key={node.proposal.id}
+                    node={node}
+                    selectedIds={selectedIds}
+                    onToggle={toggleNode}
+                  />
+                ))}
+              </ul>
+            </>
           )}
 
           {!result && (!plan.data || tree.length === 0) && !plan.isLoading && (
             <div className="grp-empty">
               {planId
-                ? 'This plan has no suggestions. Scan the library, then suggest again.'
-                : 'No suggestions yet. Click “Suggest grouping” to analyze the library.'}
+                ? 'This plan has no suggestions. Scan the library, then regenerate suggestions.'
+                : 'No suggestions yet. Click “Regenerate suggestions” to analyze the library.'}
             </div>
           )}
         </div>
 
         <div className="modal__foot grp-foot">
           <button className="btn" onClick={onGenerate} disabled={busy}>
-            {generate.isPending ? 'Suggesting…' : applied ? 'Suggest again' : 'Suggest grouping'}
+            {generate.isPending ? 'Regenerating…' : 'Regenerate suggestions'}
           </button>
           <div className="grp-foot__spacer" />
           {applied ? (
@@ -223,9 +312,9 @@ export function GroupingReview({ onClose }: { onClose: () => void }) {
             <button
               className="btn btn--primary"
               onClick={onApply}
-              disabled={busy || !plan.data || tree.length === 0 || status !== 'open'}
+              disabled={busy || !plan.data || selectedCount === 0 || status !== 'open'}
             >
-              {apply.isPending ? 'Applying…' : 'Apply grouping'}
+              {apply.isPending ? 'Accepting…' : 'Accept selected'}
             </button>
           )}
         </div>

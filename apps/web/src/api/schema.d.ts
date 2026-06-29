@@ -881,6 +881,11 @@ export interface components {
             /** Title */
             title: string | null;
         };
+        /** ApplyPlanRequest */
+        ApplyPlanRequest: {
+            /** Proposal Ids */
+            proposal_ids?: string[] | null;
+        };
         /** ApplyResultRead */
         ApplyResultRead: {
             /** Bundles Added To Collections */
@@ -1028,6 +1033,7 @@ export interface components {
             extension: string | null;
             /** File Count */
             file_count: number;
+            grouping_state: components["schemas"]["GroupingState"];
             /** Has Cover */
             has_cover: boolean;
             /** Has Missing */
@@ -3338,7 +3344,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApplyPlanRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

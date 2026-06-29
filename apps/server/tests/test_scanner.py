@@ -5,11 +5,20 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.domain.enums import FileAvailability, JobStatus, JobType
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingPlanStatus,
+    GroupingSource,
+    GroupingState,
+    JobStatus,
+    JobType,
+    MediaKind,
+)
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import execute_job
 from cairndex.persistence.engine import create_app_engine
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.persistence.models import AssetBundle, AssetFile, GroupingPlan
 from cairndex.registry import jobs as job_service
 from cairndex.registry import library_package as pkg
 from cairndex.scanning.scanner import scan_library
@@ -98,6 +107,47 @@ def test_unreachable_root_marks_files_missing(
     assert _file_count(session) == 4  # nothing deleted
 
 
+# Hidden library metadata/cache directories are never scanned as assets
+def test_scan_ignores_hidden_directories(session: Session, library_root: Path) -> None:
+    (library_root / ".cairndex" / "cache" / "thumbnails" / "01").mkdir(parents=True, exist_ok=True)
+    (library_root / ".cairndex" / "cache" / "thumbnails" / "01" / "thumb.jpg").write_text("cache")
+    (library_root / "visible.jpg").write_text("image")
+
+    summary = scan_library(session, library_root)
+
+    assert summary.discovered == 1
+    assert summary.created == 1
+    rels = set(session.scalars(select(AssetFile.relative_path)).all())
+    assert rels == {"visible.jpg"}
+
+
+# Previously scanned hidden cache rows are safe to drop when they were provisional
+def test_scan_removes_previously_staged_hidden_rows(session: Session, library_root: Path) -> None:
+    bundle = AssetBundle(
+        title="thumb",
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(bundle)
+    session.flush()
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path=".cairndex/cache/thumbnails/01/thumb.jpg",
+            original_filename="thumb.jpg",
+            display_title="thumb.jpg",
+            role=FileRole.COVER,
+            media_kind=MediaKind.IMAGE,
+        )
+    )
+    session.commit()
+
+    scan_library(session, library_root)
+
+    assert session.scalar(select(func.count()).select_from(AssetFile)) == 0
+    assert session.scalar(select(func.count()).select_from(AssetBundle)) == 0
+
+
 def _count_in_library(library_root: Path) -> int:
     eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
     try:
@@ -137,3 +187,40 @@ def test_scan_can_be_cancelled_and_retried(
 
     assert execute_job(registry_session_factory, retry_id, build_registry()) == JobStatus.SUCCEEDED
     assert _count_in_library(library_root) == 4
+
+
+# Scan jobs persist suggestions but leave discovered bundles provisional
+def test_scan_job_generates_grouping_plan_without_applying(
+    registry_session_factory: sessionmaker[Session],
+    library_id: str,
+    library_root: Path,
+) -> None:
+    (library_root / "Cosmos").mkdir()
+    (library_root / "Cosmos" / "cosmos.mp4").write_text("v")
+    (library_root / "Cosmos" / "cosmos.en.srt").write_text("s")
+
+    with registry_session_factory() as reg:
+        job = job_service.create_job(reg, library_id=library_id, job_type=JobType.SCAN)
+        reg.commit()
+        job_id = job.id
+
+    assert execute_job(registry_session_factory, job_id, build_registry()) == JobStatus.SUCCEEDED
+    with registry_session_factory() as reg:
+        result = job_service.get_job(reg, job_id).result
+
+    assert result is not None
+    assert result["grouping_plan_id"]
+    assert result["grouping_proposal_count"] == 1
+
+    eng = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
+    try:
+        maker = sessionmaker(eng)
+        with maker() as db:
+            plan = db.get(GroupingPlan, result["grouping_plan_id"])
+            assert plan is not None
+            assert plan.status is GroupingPlanStatus.OPEN
+            assert len(plan.proposals) == 1
+            states = set(db.scalars(select(AssetBundle.grouping_state)).all())
+            assert states == {GroupingState.PROVISIONAL}
+    finally:
+        eng.dispose()
