@@ -79,7 +79,7 @@ export function Browser(props: BrowserProps) {
       {!props.isLoading && !props.isError && items.length === 0 && (
         <div className="state">
           <div>Nothing here yet.</div>
-          <div>Scan a storage root or add files to see bundles.</div>
+          <div>Update the library or add files to see bundles.</div>
         </div>
       )}
 
