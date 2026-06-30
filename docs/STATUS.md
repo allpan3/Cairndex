@@ -1,10 +1,10 @@
 # Project status
 
-## Current branch / latest commit
+## Latest merged milestone
 
-Branch: `feat/remove-and-context-menu`. Latest commit: see `git log -1`.
+Latest merged milestone: PR #37 / `feat/remove-and-context-menu`. Latest commit: see `git log -1`.
 
-This branch adds web-UI removal of bundles and collections plus right-click
+This milestone adds web-UI removal of bundles and collections plus right-click
 context menus. The backend already exposed metadata-only `DELETE /bundles/{id}`
 and `DELETE /collections/{id}`; the frontend now wires them through a reusable
 `ContextMenu` (`apps/web/src/app/ContextMenu.tsx` + `useContextMenu.ts`).
@@ -38,16 +38,17 @@ out. The scanner still performs conservative discovery/repair first and stages
 new files as provisional bundles. Scan jobs now also persist a durable grouping
 plan without applying it, so grouping remains a user-reviewed decision.
 
-PR 36 is the current UI/workflow follow-up: the sidebar exposes one primary
-**Update** action, with individual **Scan new files**, **Collect metadata**, and
-**Review grouping** actions in the overflow menu. Update waits for scan/grouping
-plan generation and ffprobe metadata collection, invalidates affected queries,
-and opens grouping review when a scan produced suggestions.
+PR 36 was the UI/workflow follow-up before the removal/context-menu milestone:
+the sidebar exposes one primary **Update** action, with individual **Scan new
+files**, **Collect metadata**, and **Review grouping** actions in the overflow
+menu. Update waits for scan/grouping plan generation and ffprobe metadata
+collection, invalidates affected queries, and opens grouping review when a scan
+produced suggestions.
 
 ## Current milestone
 
-**Library maintenance and grouping review polish.** The current branch makes the
-normal maintenance path match the intended product model:
+**Library maintenance and grouping review polish.** Recent maintenance work made
+the normal maintenance path match the intended product model:
 
 1. scan the active library root;
 2. repair high-confidence moves without changing original files;
@@ -114,7 +115,7 @@ original files.
 - **Phase 6 — external subtitle auto-link across grouping flows.** Fast-add
   single-bundle grouping now runs the same external-subtitle auto-link behavior as
   grouping-plan apply.
-- **Current follow-up — scan grouping review workflow (PR 36).** Scan jobs persist
+- **Follow-up — scan grouping review workflow (merged, #36).** Scan jobs persist
   open grouping plans; Update is the primary maintenance flow; hidden/cache paths
   are excluded; grouping review supports selected accept; the global thumbnail
   action is removed from the sidebar.
