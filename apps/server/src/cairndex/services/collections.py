@@ -2,7 +2,7 @@
 
 A Collection (formerly "folder") groups bundles logically. Membership is
 many-to-many and never moves files on disk — it is independent of the physical
-File View, which browses storage roots directly.
+File View, which browses the active library root directly.
 """
 
 from sqlalchemy import delete, select
