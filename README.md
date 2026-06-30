@@ -11,8 +11,9 @@ rename, or otherwise manage your files in the normal MVP path. A separate
 **File View** browses the underlying directories and files inside the active
 Cairndex library.
 
-See [AGENTS.md](AGENTS.md) for the full product brief and canonical engineering
-rules that govern this repository.
+See [docs/product-brief.md](docs/product-brief.md) for the product model and
+[AGENTS.md](AGENTS.md) for the canonical engineering rules that govern coding
+agents working in this repository.
 
 ## Status
 
@@ -46,7 +47,7 @@ milestone, known gaps, and recommended next tasks.
 
 ```text
 apps/
-  server/   # FastAPI backend (Python 3.12+, SQLAlchemy, SQLite/WAL, ffmpeg)
+  server/   # FastAPI backend (Python 3.12+, SQLAlchemy, SQLite, ffmpeg)
   web/      # React + TypeScript frontend (Vite, TanStack Query/Virtual)
 docs/
   adr/                # Architecture Decision Records
@@ -89,7 +90,8 @@ single-container production stack.
 
 ## Documentation
 
-- [AGENTS.md](AGENTS.md) — canonical product brief and engineering rules
+- [docs/product-brief.md](docs/product-brief.md) — product model, domain concepts, UI direction, and first-release anti-goals
+- [AGENTS.md](AGENTS.md) — canonical agent operating rules and engineering constraints
 - [docs/architecture.md](docs/architecture.md)
 - [docs/development.md](docs/development.md)
 - [docs/deployment.md](docs/deployment.md)
