@@ -37,7 +37,14 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
   )
 }
 
-export function Inspector({ bundleId }: { bundleId: string | null }) {
+export function Inspector({
+  bundleId,
+  onAddFiles,
+}: {
+  bundleId: string | null
+  /** Open the "Add files" manual bundling dialog for this bundle. */
+  onAddFiles?: (bundleId: string) => void
+}) {
   const { data: bundle } = useBundle(bundleId)
 
   if (bundleId === null) {
@@ -56,10 +63,16 @@ export function Inspector({ bundleId }: { bundleId: string | null }) {
   }
   // Keyed by id so draft fields re-initialize when the selection changes
   // (no setState-in-effect needed).
-  return <BundleEditor key={bundle.id} bundle={bundle} />
+  return <BundleEditor key={bundle.id} bundle={bundle} onAddFiles={onAddFiles} />
 }
 
-function BundleEditor({ bundle }: { bundle: BundleRead }) {
+function BundleEditor({
+  bundle,
+  onAddFiles,
+}: {
+  bundle: BundleRead
+  onAddFiles?: (bundleId: string) => void
+}) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundle.version)
@@ -146,6 +159,8 @@ function BundleEditor({ bundle }: { bundle: BundleRead }) {
         bundleVersion={bundle.version}
         coverId={bundle.cover_file_id ?? null}
         primaryId={bundle.primary_file_id ?? null}
+        // Adding unbundled files targets a confirmed bundle only (ADR-0009).
+        onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
       />
     </aside>
   )
@@ -156,11 +171,13 @@ function FileList({
   bundleVersion,
   coverId,
   primaryId,
+  onAddFiles,
 }: {
   bundleId: string
   bundleVersion: number
   coverId: string | null
   primaryId: string | null
+  onAddFiles?: (bundleId: string) => void
 }) {
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
@@ -179,8 +196,18 @@ function FileList({
 
   return (
     <div className="files">
-      <div className="sidebar__heading" style={{ padding: '4px 0' }}>
+      <div className="sidebar__heading sidebar__heading--row" style={{ padding: '4px 0' }}>
         Files in bundle ({files.length})
+        {onAddFiles && (
+          <button
+            className="sidebar__add"
+            onClick={() => onAddFiles(bundleId)}
+            title="Add unbundled files to this bundle"
+            aria-label="Add files to this bundle"
+          >
+            +
+          </button>
+        )}
       </div>
       <ConflictNotice error={update.error} />
       {files.map((f, i) => {

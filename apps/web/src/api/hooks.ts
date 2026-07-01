@@ -11,8 +11,11 @@ import {
   type LibraryRegister,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
+  addUnbundledFilesToBundle,
   batchUpdate,
   browseBundles,
+  createBundleFromUnbundled,
+  createEmptyBundle,
   createLibrary,
   createSmartCollection,
   deleteBundle,
@@ -50,6 +53,9 @@ import {
   reorderFiles,
   setBundleCollections,
   setBundleTags,
+  suggestBundleFromFiles,
+  suggestTargetBundles,
+  suggestUnbundledFilesForBundle,
   updateBundle,
   updateFile,
   updateSmartCollection,
@@ -342,6 +348,75 @@ export function useApplyGroupingPlan() {
         qc.invalidateQueries({ queryKey: [key] })
     },
   })
+}
+
+// --- Manual bundling assistant (Unbundled staging follow-up to ADR-0009) -----
+// Suggestions are generated automatically when a dialog opens (read-only); the
+// mutations are explicit and metadata-only. Each mutation invalidates the full
+// set of library-content surfaces (browse, counts, bundle detail, grouping) so
+// resolved files leave Unbundled and appear in their confirmed bundle.
+
+/** Confirmed bundles the selected unbundled files most likely belong to. */
+export function useTargetSuggestions(fileIds: string[], enabled = true) {
+  return useQuery({
+    queryKey: ['mb-target-suggestions', fileIds],
+    queryFn: () => suggestTargetBundles(fileIds),
+    enabled: enabled && fileIds.length > 0,
+  })
+}
+
+/** Unbundled files that most likely belong in a bundle. */
+export function useUnbundledFileSuggestions(bundleId: string | null) {
+  return useQuery({
+    queryKey: ['mb-file-suggestions', bundleId],
+    queryFn: () => suggestUnbundledFilesForBundle(bundleId as string),
+    enabled: bundleId !== null,
+  })
+}
+
+/** A proposed title/roles for a seed selection, plus nearby unbundled files. */
+export function useBundleDraft(fileIds: string[]) {
+  return useQuery({
+    queryKey: ['mb-bundle-draft', fileIds],
+    queryFn: () => suggestBundleFromFiles(fileIds),
+    enabled: fileIds.length > 0,
+  })
+}
+
+/** Manual search fallback for a target bundle: whole-library FTS over confirmed
+ * bundles (unbundled files are already excluded from the normal browse views). */
+export function useConfirmedBundleSearch(query: string) {
+  const trimmed = query.trim()
+  return useQuery({
+    queryKey: ['mb-bundle-search', trimmed],
+    queryFn: ({ signal }) =>
+      browseBundles(
+        { view: 'all', sort: 'title', order: 'asc', offset: 0, limit: 20, search: trimmed },
+        signal,
+      ),
+    enabled: trimmed.length > 0,
+  })
+}
+
+export function useManualBundling() {
+  const qc = useQueryClient()
+  const invalidate = () => invalidateLibraryContent(qc)
+  return {
+    addFiles: useMutation({
+      mutationFn: ({ bundleId, fileIds }: { bundleId: string; fileIds: string[] }) =>
+        addUnbundledFilesToBundle(bundleId, fileIds),
+      onSuccess: invalidate,
+    }),
+    createFromFiles: useMutation({
+      mutationFn: ({ fileIds, title }: { fileIds: string[]; title?: string | null }) =>
+        createBundleFromUnbundled(fileIds, title),
+      onSuccess: invalidate,
+    }),
+    createEmpty: useMutation({
+      mutationFn: (title?: string | null) => createEmptyBundle(title),
+      onSuccess: invalidate,
+    }),
+  }
 }
 
 /** List directory entries for a library-relative path (null = library root). */

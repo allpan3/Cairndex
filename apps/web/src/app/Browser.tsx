@@ -19,6 +19,8 @@ interface BrowserProps {
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
+  // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
+  onEmptyContextMenu?: (e: React.MouseEvent) => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -70,8 +72,22 @@ export function Browser(props: BrowserProps) {
   // measured once the data arrives — otherwise the virtualizer would size to 0.
   const showGrid = !props.isError && !props.isLoading && items.length > 0
 
+  // Fire the empty-space menu only when the target isn't a card/row (cards call
+  // their own onContextMenu, which bubbles here).
+  const onRootContextMenu = (e: React.MouseEvent) => {
+    if (!props.onEmptyContextMenu) return
+    if ((e.target as HTMLElement).closest('[data-bundle-id]')) return
+    props.onEmptyContextMenu(e)
+  }
+
   return (
-    <div className="browser" ref={setScrollEl} role="listbox" aria-label="Bundles">
+    <div
+      className="browser"
+      ref={setScrollEl}
+      role="listbox"
+      aria-label="Bundles"
+      onContextMenu={onRootContextMenu}
+    >
       {props.isError && (
         <div className="state state--error">
           <div>Couldn’t load the library.</div>

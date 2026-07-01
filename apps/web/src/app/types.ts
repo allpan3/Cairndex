@@ -43,4 +43,5 @@ export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'uncategorized', label: 'Uncategorized', icon: '◌' },
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
   { view: 'missing', label: 'Missing Files', icon: '⚠' },
+  { view: 'unbundled', label: 'Unbundled', icon: '📥' },
 ]

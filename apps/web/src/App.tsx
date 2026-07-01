@@ -7,7 +7,7 @@ import type {
   LibraryRead,
   SmartCollectionRead,
 } from './api/client'
-import { setActiveLibraryId } from './api/client'
+import { fetchBundleFiles, setActiveLibraryId } from './api/client'
 import {
   useBatchUpdate,
   useBrowse,
@@ -38,6 +38,12 @@ import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
+import {
+  AddFilesToBundleDialog,
+  AddToBundleDialog,
+  CreateBundleDialog,
+  CreateEmptyBundleDialog,
+} from './app/ManualBundlingDialogs'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
@@ -261,6 +267,21 @@ function Workspace({
   const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
   const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
 
+  // Manual bundling assistant dialogs (Unbundled staging). Each holds the
+  // *file* ids to act on (unbundled cards are one-file provisional bundles, so
+  // the selected bundle ids are resolved to their file ids before opening).
+  const [addingToBundle, setAddingToBundle] = useState<string[] | null>(null)
+  const [creatingBundle, setCreatingBundle] = useState<string[] | null>(null)
+  const [creatingEmpty, setCreatingEmpty] = useState(false)
+  const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
+  // Transient success banner after a manual bundling action.
+  const [flash, setFlash] = useState<string | null>(null)
+  useEffect(() => {
+    if (flash === null) return
+    const t = setTimeout(() => setFlash(null), 4000)
+    return () => clearTimeout(t)
+  }, [flash])
+
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
@@ -355,9 +376,18 @@ function Workspace({
     setActiveId(null)
   }, [])
 
+  // Unbundled cards are one-file provisional bundles; the manual bundling
+  // service works on file ids, so resolve the selected bundles to their files.
+  const resolveFileIds = useCallback(async (bundleIds: string[]): Promise<string[]> => {
+    const lists = await Promise.all(bundleIds.map((id) => fetchBundleFiles(id)))
+    return lists.flat().map((f) => f.id)
+  }, [])
+
   // Right-click on a bundle card/row. Operate on the whole selection when the
   // clicked card is part of a multi-selection; otherwise target (and select)
-  // just this one. Deletion is confirmed in a dialog (DeleteBundlesDialog).
+  // just this one. Deletion is confirmed in a dialog (DeleteBundlesDialog). In
+  // the Unbundled view the menu offers the manual bundling actions instead of
+  // collection removal.
   const bundleContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
       const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
@@ -366,14 +396,32 @@ function Workspace({
         setSelectedIds(new Set([id]))
         setActiveId(id)
       }
-      const items: MenuEntry[] = [{ label: 'Open', onClick: () => open(id), disabled: n > 1 }]
-      if (selection.collectionId) {
-        const collectionId = selection.collectionId
-        items.push({
-          label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
-          onClick: () =>
-            batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
-        })
+      const items: MenuEntry[] = []
+      if (selection.view === 'unbundled') {
+        items.push(
+          {
+            label: n > 1 ? `Add ${n} files to bundle…` : 'Add to Bundle…',
+            onClick: () => {
+              void resolveFileIds(targets).then(setAddingToBundle)
+            },
+          },
+          {
+            label: n > 1 ? `Create bundle from ${n} files…` : 'Create Bundle…',
+            onClick: () => {
+              void resolveFileIds(targets).then(setCreatingBundle)
+            },
+          },
+        )
+      } else {
+        items.push({ label: 'Open', onClick: () => open(id), disabled: n > 1 })
+        if (selection.collectionId) {
+          const collectionId = selection.collectionId
+          items.push({
+            label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
+            onClick: () =>
+              batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
+          })
+        }
       }
       items.push(null, {
         label: n > 1 ? `Delete ${n} bundles` : 'Delete Bundle',
@@ -382,7 +430,26 @@ function Workspace({
       })
       menu.open(e, items)
     },
-    [selectedIds, selection.collectionId, open, batch, menu],
+    [selectedIds, selection.collectionId, selection.view, open, batch, menu, resolveFileIds],
+  )
+
+  // Right-click empty browser space → create a new (empty) confirmed bundle.
+  const emptyContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      menu.open(e, [{ label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) }])
+    },
+    [menu],
+  )
+
+  const onManualBundlingApplied = useCallback(
+    (message: string) => {
+      setAddingToBundle(null)
+      setCreatingBundle(null)
+      setAddFilesBundleId(null)
+      clearSelection()
+      setFlash(message)
+    },
+    [clearSelection],
   )
 
   const confirmDeleteBundles = useCallback(
@@ -575,6 +642,7 @@ function Workspace({
                 onSelect={select}
                 onOpen={open}
                 onContextMenu={bundleContextMenu}
+                onEmptyContextMenu={emptyContextMenu}
                 isLoading={browse.isLoading}
                 isError={browse.isError}
                 error={browse.error}
@@ -587,7 +655,11 @@ function Workspace({
         )}
       </div>
 
-      {mode === 'file' ? <FileInspector entry={fileEntry} /> : <Inspector bundleId={activeId} />}
+      {mode === 'file' ? (
+        <FileInspector entry={fileEntry} />
+      ) : (
+        <Inspector bundleId={activeId} onAddFiles={(id) => setAddFilesBundleId(id)} />
+      )}
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
@@ -634,6 +706,49 @@ function Workspace({
             clearSelection()
           }}
         />
+      )}
+
+      {addingToBundle && (
+        <AddToBundleDialog
+          fileIds={addingToBundle}
+          onClose={() => setAddingToBundle(null)}
+          onApplied={onManualBundlingApplied}
+        />
+      )}
+
+      {creatingBundle && (
+        <CreateBundleDialog
+          fileIds={creatingBundle}
+          onClose={() => setCreatingBundle(null)}
+          onApplied={onManualBundlingApplied}
+        />
+      )}
+
+      {creatingEmpty && (
+        <CreateEmptyBundleDialog
+          onClose={() => setCreatingEmpty(false)}
+          onCreated={(bundleId) => {
+            // Chain into "add files" so the new empty bundle can pull in
+            // suggested unbundled files (or be left empty).
+            setCreatingEmpty(false)
+            setAddFilesBundleId(bundleId)
+            setFlash('Created an empty bundle.')
+          }}
+        />
+      )}
+
+      {addFilesBundleId && (
+        <AddFilesToBundleDialog
+          bundleId={addFilesBundleId}
+          onClose={() => setAddFilesBundleId(null)}
+          onApplied={onManualBundlingApplied}
+        />
+      )}
+
+      {flash && (
+        <div className="mb-toast" role="status">
+          {flash}
+        </div>
       )}
     </div>
   )

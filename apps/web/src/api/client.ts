@@ -39,9 +39,16 @@ export type PlaybackManifest = components['schemas']['PlaybackManifest']
 export type PlayableVideo = components['schemas']['PlayableVideo']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
 
-export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing'
+export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
 export type SortOrder = 'asc' | 'desc'
+
+// --- Manual bundling assistant (Unbundled staging follow-up to ADR-0009) ------
+export type TargetSuggestion = components['schemas']['TargetSuggestionRead']
+export type FileSuggestion = components['schemas']['FileSuggestionRead']
+export type ProposedRole = components['schemas']['ProposedRoleRead']
+export type BundleDraft = components['schemas']['BundleDraftResponse']
+export type ManualBundleResult = components['schemas']['ManualBundleResultRead']
 
 // --- Active library (one per tab) --------------------------------------------
 let activeLibraryId: string | null = null
@@ -305,6 +312,41 @@ export const applyGroupingPlan = (
     'POST',
     proposalIds ? { proposal_ids: proposalIds } : undefined,
   )
+
+// --- Manual bundling assistant ------------------------------------------------
+// Suggestions are read-only (generated on dialog open); the mutations are the
+// explicit, metadata-only actions that turn unbundled files into confirmed
+// bundles. Nothing here moves, copies, renames, or deletes a file on disk.
+const mb = () => `${lib()}/manual-bundling`
+
+export const suggestTargetBundles = (fileIds: string[], limit = 10) =>
+  send<{ suggestions: TargetSuggestion[] }>(`${mb()}/suggest-targets`, 'POST', {
+    file_ids: fileIds,
+    limit,
+  }).then((r) => r.suggestions)
+
+export const suggestUnbundledFilesForBundle = (bundleId: string, limit = 30) =>
+  getJson<{ suggestions: FileSuggestion[] }>(
+    `${mb()}/bundles/${bundleId}/suggest-files?limit=${limit}`,
+  ).then((r) => r.suggestions)
+
+export const suggestBundleFromFiles = (fileIds: string[], limit = 30) =>
+  send<BundleDraft>(`${mb()}/suggest-bundle`, 'POST', { file_ids: fileIds, limit })
+
+export const addUnbundledFilesToBundle = (targetBundleId: string, fileIds: string[]) =>
+  send<ManualBundleResult>(`${mb()}/add-files`, 'POST', {
+    target_bundle_id: targetBundleId,
+    file_ids: fileIds,
+  })
+
+export const createBundleFromUnbundled = (fileIds: string[], title?: string | null) =>
+  send<ManualBundleResult>(`${mb()}/create-bundle`, 'POST', {
+    file_ids: fileIds,
+    title: title ?? null,
+  })
+
+export const createEmptyBundle = (title?: string | null) =>
+  send<ManualBundleResult>(`${mb()}/create-empty-bundle`, 'POST', { title: title ?? null })
 
 // --- File View (read-only filesystem browsing) -------------------------------
 export function fetchFileViewEntries(
