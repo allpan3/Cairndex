@@ -63,6 +63,10 @@ interface SidebarProps {
   maintenanceError?: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
+  // Unbundled is a Files-surface view (a flat "to-bundle queue"), so it routes
+  // into Files mode rather than selecting a bundle browse view.
+  onOpenUnbundled?: () => void
+  fileScope?: 'browse' | 'unbundled'
   counts?: ViewCounts
   collections: CollectionRead[]
   collectionCounts?: Record<string, number>
@@ -131,6 +135,8 @@ export function Sidebar({
   maintenanceError,
   selection,
   onSelect,
+  onOpenUnbundled,
+  fileScope,
   counts,
   collections,
   collectionCounts,
@@ -275,7 +281,7 @@ export function Sidebar({
           className={`mode-tab${mode === 'collection' ? ' mode-tab--active' : ''}`}
           onClick={() => onMode('collection')}
         >
-          Collections
+          Bundles
         </button>
         <button
           role="tab"
@@ -289,12 +295,19 @@ export function Sidebar({
 
       <div className="sidebar__section">
         {SYSTEM_VIEWS.map((v) => {
-          const active = selection.collectionId === null && selection.view === v.view
+          // Unbundled lives in the Files surface; the rest are bundle browse
+          // views (only active in Bundles mode).
+          const isUnbundled = v.view === 'unbundled'
+          const active = isUnbundled
+            ? mode === 'file' && fileScope === 'unbundled'
+            : mode === 'collection' && selection.collectionId === null && selection.view === v.view
           return (
             <button
               key={v.view}
               className={`nav-item${active ? ' nav-item--active' : ''}`}
-              onClick={() => onSelect({ view: v.view, collectionId: null })}
+              onClick={() =>
+                isUnbundled ? onOpenUnbundled?.() : onSelect({ view: v.view, collectionId: null })
+              }
             >
               <span className="nav-item__icon">{viewIcon(v.view)}</span>
               <span className="nav-item__label">{v.label}</span>

@@ -5,6 +5,7 @@ import {
   type BrowseParams,
   type BundlePatch,
   type FilePatch,
+  type FileSelection,
   type FilterExpression,
   type JobRead,
   type LibraryCreate,
@@ -17,6 +18,7 @@ import {
   createBundleFromUnbundled,
   createEmptyBundle,
   createLibrary,
+  fetchUnbundledFiles,
   createSmartCollection,
   deleteBundle,
   deleteCollection,
@@ -95,6 +97,7 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     'collection-counts',
     'tag-counts',
     'file-view',
+    'unbundled-files',
     'grouping-plans',
     'grouping-plan',
     'bundle',
@@ -356,12 +359,27 @@ export function useApplyGroupingPlan() {
 // set of library-content surfaces (browse, counts, bundle detail, grouping) so
 // resolved files leave Unbundled and appear in their confirmed bundle.
 
+const hasSelection = (sel: FileSelection) =>
+  (sel.fileIds?.length ?? 0) > 0 || (sel.relativePaths?.length ?? 0) > 0
+
+/** The flat "to-bundle queue": all not-yet-bundled files, cross-library. */
+export function useUnbundledFiles(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ['unbundled-files'],
+    queryFn: ({ pageParam, signal }) => fetchUnbundledFiles(pageParam, 200, signal),
+    initialPageParam: 0,
+    getNextPageParam: (last) =>
+      last.offset + last.limit < last.total ? last.offset + last.limit : undefined,
+    enabled,
+  })
+}
+
 /** Confirmed bundles the selected unbundled files most likely belong to. */
-export function useTargetSuggestions(fileIds: string[], enabled = true) {
+export function useTargetSuggestions(sel: FileSelection, enabled = true) {
   return useQuery({
-    queryKey: ['mb-target-suggestions', fileIds],
-    queryFn: () => suggestTargetBundles(fileIds),
-    enabled: enabled && fileIds.length > 0,
+    queryKey: ['mb-target-suggestions', sel],
+    queryFn: () => suggestTargetBundles(sel),
+    enabled: enabled && hasSelection(sel),
   })
 }
 
@@ -375,11 +393,11 @@ export function useUnbundledFileSuggestions(bundleId: string | null) {
 }
 
 /** A proposed title/roles for a seed selection, plus nearby unbundled files. */
-export function useBundleDraft(fileIds: string[]) {
+export function useBundleDraft(sel: FileSelection) {
   return useQuery({
-    queryKey: ['mb-bundle-draft', fileIds],
-    queryFn: () => suggestBundleFromFiles(fileIds),
-    enabled: fileIds.length > 0,
+    queryKey: ['mb-bundle-draft', sel],
+    queryFn: () => suggestBundleFromFiles(sel),
+    enabled: hasSelection(sel),
   })
 }
 
@@ -403,13 +421,13 @@ export function useManualBundling() {
   const invalidate = () => invalidateLibraryContent(qc)
   return {
     addFiles: useMutation({
-      mutationFn: ({ bundleId, fileIds }: { bundleId: string; fileIds: string[] }) =>
-        addUnbundledFilesToBundle(bundleId, fileIds),
+      mutationFn: ({ bundleId, sel }: { bundleId: string; sel: FileSelection }) =>
+        addUnbundledFilesToBundle(bundleId, sel),
       onSuccess: invalidate,
     }),
     createFromFiles: useMutation({
-      mutationFn: ({ fileIds, title }: { fileIds: string[]; title?: string | null }) =>
-        createBundleFromUnbundled(fileIds, title),
+      mutationFn: ({ sel, title }: { sel: FileSelection; title?: string | null }) =>
+        createBundleFromUnbundled(sel, title),
       onSuccess: invalidate,
     }),
     createEmpty: useMutation({

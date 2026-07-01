@@ -1629,6 +1629,19 @@ code {
 .file-view__root {
   max-width: 220px;
 }
+.file-view__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.file-view__hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.file-view__more {
+  margin: 10px auto;
+  display: block;
+}
 .file-view__crumbs {
   display: flex;
   align-items: center;

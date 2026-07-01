@@ -339,11 +339,19 @@ Added, Uncategorized, Untagged, Missing, and every collection, so unaccepted sca
 suggestions never masquerade as real bundles. Collections still contain confirmed
 bundles only, never loose files.
 
+Unbundled files are surfaced in the **Files** browsing surface, not as bundle
+cards: the sidebar's **Unbundled** view opens a flat, cross-library list of the
+not-yet-bundled files with the file inspector, and the Files directory tree badges
+each file `unlinked` / `unbundled` / (openable). The two primary browsing surfaces
+are **Bundles** (bundle-first: system views, Smart Collections, the collection
+tree, tags) and **Files** (the library-root filesystem browser).
+
 Confirming unbundled files is either bulk (grouping review, above) or by hand via
-the **manual bundling assistant**. The assistant can add selected unbundled files
-to an existing confirmed bundle, create a confirmed bundle from selected unbundled
-files, create an empty confirmed bundle, or add suggested unbundled files from
-inside a bundle. It offers automatic ranked suggestions (target bundles for
+the **manual bundling assistant**, reachable by right-clicking files in either
+Files surface. The assistant can add selected files to an existing confirmed
+bundle, create a confirmed bundle from selected files, create an empty confirmed
+bundle, or add suggested unbundled files from inside a bundle. A file that is not
+yet linked is auto-linked (staged as provisional) when an action is applied. It offers automatic ranked suggestions (target bundles for
 selected files; unbundled files for a bundle; a bundle draft from a seed) computed
 only from the library DB and search index — never a filesystem scan — each with a
 confidence and a human-readable reason. Suggestions are automatic on open but

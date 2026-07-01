@@ -1,11 +1,17 @@
 import type { FileViewEntry } from '../api/client'
 import { formatBytes, formatDate } from '../lib/format'
 
+/** Tri-state bundle membership shown in the File inspector / Files surface. */
+function bundleStatus(entry: FileViewEntry): string {
+  if (entry.kind === 'directory') return '—'
+  if (!entry.linked) return 'Unlinked'
+  return entry.unbundled ? 'Unbundled (awaiting bundling)' : 'In a bundle'
+}
+
 /**
  * Right-pane details for a File View selection. Deliberately *not* the bundle
  * inspector: a filesystem entry is a path, not a bundle, so this shows only
- * file/path facts. Link/add-to-bundle actions are deferred to a later
- * write-mode milestone.
+ * file/path facts plus its bundle status.
  */
 export function FileInspector({ entry }: { entry: FileViewEntry | null }) {
   if (entry === null) {
@@ -25,7 +31,7 @@ export function FileInspector({ entry }: { entry: FileViewEntry | null }) {
     ['MIME', entry.mime_type ?? '—'],
     ['Media kind', entry.media_kind ?? '—'],
     ['Openable', entry.kind === 'directory' ? '—' : entry.supported ? 'Yes' : 'No'],
-    ['Linked', entry.linked ? 'In a bundle' : 'Not linked'],
+    ['Status', bundleStatus(entry)],
   ]
 
   return (

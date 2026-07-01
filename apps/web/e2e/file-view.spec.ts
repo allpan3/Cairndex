@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 
 // Hermetic mock for the read-only File View: switch surfaces, list the active
-// library's files, see openable/unsupported/linked badges, and navigate into a
-// directory. No backend required (ADR-0008: File View is library-scoped).
+// library's files, see openable/unsupported/unlinked/unbundled badges, and
+// navigate into a directory. No backend required (ADR-0008: File View is
+// library-scoped).
 
 function entry(name: string, over: Record<string, unknown> = {}) {
   return {
@@ -17,6 +18,7 @@ function entry(name: string, over: Record<string, unknown> = {}) {
     supported: false,
     linked: false,
     bundle_id: null,
+    unbundled: false,
     ...over,
   }
 }
@@ -61,7 +63,13 @@ async function mockApi(page: Page) {
           path: '',
           entries: [
             entry('Show', { relative_path: 'Show', kind: 'directory', size_bytes: null }),
-            entry('poster.jpg', { media_kind: 'image', supported: true, linked: true }),
+            entry('poster.jpg', {
+              media_kind: 'image',
+              supported: true,
+              linked: true,
+              bundle_id: 'b1',
+              unbundled: true,
+            }),
             entry('notes.txt', { supported: false }),
           ],
         },
@@ -81,8 +89,9 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
   await expect(page.locator('.file-row__name', { hasText: 'Show' })).toBeVisible()
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('openable')
-  await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('linked')
+  await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('unbundled')
   await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unsupported')
+  await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unlinked')
 
   // No destructive controls in this milestone.
   await expect(page.getByRole('button', { name: /delete|rename|move/i })).toHaveCount(0)
