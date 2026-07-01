@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from sqlalchemy import Table, bindparam, insert, update
+from sqlalchemy import Engine, Table, bindparam, insert, update
 from sqlalchemy.orm import Session
 
 from cairndex.core.ids import new_id
@@ -45,6 +45,7 @@ from cairndex.persistence.models import (
     tag_group_memberships,
 )
 from cairndex.registry import library_package as pkg
+from cairndex.search import drop_maintenance_triggers, ensure_search_schema, rebuild
 
 # A small fraction of files are marked missing so the Missing system view and
 # its query path have realistic (non-empty, non-dominant) selectivity.
@@ -138,6 +139,17 @@ def generate_synthetic_library(
     per row)."""
     rng = random.Random(seed)
     now = utcnow()
+
+    # Suspend FTS5 search-index maintenance triggers for the bulk load. Those
+    # triggers recompute one bundle's search row per write, which is the right
+    # behavior for normal interactive/scan writes but pathological here: SQLite
+    # fires a trigger per row even inside an executemany-style batch, and many
+    # small individual FTS5 DELETE+INSERT operations fragment the index and get
+    # progressively slower as it grows (100k+ bundles turns a few seconds into
+    # hours). Triggers are restored and the index rebuilt in one efficient pass
+    # at the end instead.
+    drop_maintenance_triggers(session)
+    session.commit()
 
     # --- Taxonomy ---------------------------------------------------------
     tag_rows = _tag_rows(n_tags, rng, now)
@@ -284,6 +296,13 @@ def generate_synthetic_library(
         if (i + 1) % _BATCH == 0:
             flush()
     flush()
+
+    # Restore normal maintenance for future writes, then populate the search
+    # index in one set-based pass (a single INSERT...SELECT from the view).
+    engine = cast(Engine, session.get_bind())
+    ensure_search_schema(engine)
+    rebuild(session)
+    session.commit()
 
     return GenerateSummary(
         bundles=n_bundles,

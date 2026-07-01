@@ -146,6 +146,23 @@ def ensure_search_schema(engine: Engine) -> None:
             )
 
 
+def drop_maintenance_triggers(session: Session) -> None:
+    """Drop all FTS maintenance triggers (leaves the table/view intact).
+
+    For bulk-loading tools only (e.g. ``devtools.synthetic_library``): the
+    triggers recompute one bundle's FTS row per write via a correlated view,
+    which is fine for normal interactive/scan writes but pathological under a
+    tight bulk-insert loop — SQLite trigger firing is per row even inside an
+    ``executemany``-style batch, and many small FTS5 DELETE+INSERT operations
+    fragment the index and get progressively slower as it grows. Callers must
+    call :func:`ensure_search_schema` + :func:`rebuild` afterward to restore
+    normal maintenance and repopulate the index in one efficient pass.
+    """
+    for name, _ in _TRIGGERS:
+        session.execute(text(f"DROP TRIGGER IF EXISTS {name}"))
+    session.flush()
+
+
 def rebuild(session: Session) -> int:
     """Drop and repopulate the whole index from current rows. Returns row count."""
     session.execute(text(f"DELETE FROM {FTS_TABLE}"))

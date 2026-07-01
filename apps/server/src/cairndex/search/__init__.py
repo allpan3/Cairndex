@@ -14,6 +14,8 @@ deletion — keeps the index current with no application plumbing. A one-shot
 """
 
 from cairndex.search.index import (
+    FTS_TABLE,
+    drop_maintenance_triggers,
     ensure_search_schema,
     matching_ids_select,
     rebuild,
@@ -22,6 +24,8 @@ from cairndex.search.index import (
 )
 
 __all__ = [
+    "FTS_TABLE",
+    "drop_maintenance_triggers",
     "ensure_search_schema",
     "matching_ids_select",
     "rebuild",

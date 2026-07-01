@@ -5,7 +5,7 @@ tools' value is at 100k scale, exercised manually."""
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.devtools import benchmark_queries
@@ -14,6 +14,9 @@ from cairndex.persistence.base import Base
 from cairndex.persistence.engine import create_app_engine
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.registry import library_package as pkg
+from cairndex.search import FTS_TABLE
+from cairndex.services import browse as browse_service
+from cairndex.services import bundles as bundle_service
 
 
 def _fresh_session(db_path: Path) -> tuple[Session, object]:
@@ -70,6 +73,35 @@ def test_generate_is_deterministic(tmp_path: Path) -> None:
             engine.dispose()  # type: ignore[attr-defined]
 
     assert gen("a.db") == gen("b.db")
+
+
+def test_generate_rebuilds_search_index_and_restores_triggers(tmp_path: Path) -> None:
+    """Regression test: the bulk generator must suspend FTS maintenance
+    triggers during the load (they are pathologically slow per-row at scale —
+    see synthetic_library.generate_synthetic_library) and restore them
+    afterward, leaving a correct, fully-populated, and live search index."""
+    root = tmp_path / "lib"
+    root.mkdir()
+    pkg.create_package(root, "Search Regression")  # pre-creates the FTS schema
+    engine = create_app_engine(database_url=f"sqlite:///{pkg.db_path(root).as_posix()}")
+    with Session(engine) as session:
+        summary = generate_synthetic_library(
+            session, n_bundles=60, n_collections=10, n_tags=15, seed=3
+        )
+        # The index is fully populated (not left empty by suspended triggers).
+        fts_count = session.execute(text(f"SELECT count(*) FROM {FTS_TABLE}")).scalar_one()
+        assert fts_count == summary.bundles
+
+        # A generated bundle is actually findable by title.
+        hit = browse_service.browse_bundles(session, search="Synthetic Bundle 000005", limit=5)
+        assert [b.title for b in hit.items] == ["Synthetic Bundle 000005"]
+
+        # Triggers are restored: a post-generation write is indexed immediately.
+        bundle_service.create_bundle(session, title="Post-Generation Probe")
+        session.commit()
+        probe = browse_service.browse_bundles(session, search="Probe", limit=5)
+        assert [b.title for b in probe.items] == ["Post-Generation Probe"]
+    engine.dispose()
 
 
 def test_benchmark_runs_on_generated_library(tmp_path: Path) -> None:
