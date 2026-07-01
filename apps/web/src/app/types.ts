@@ -40,8 +40,9 @@ export interface SystemViewDef {
 export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'all', label: 'All', icon: '▦' },
   { view: 'recent', label: 'Recently Added', icon: '🕗' },
-  { view: 'unbundled', label: 'Unbundled', icon: '📥' },
   { view: 'uncategorized', label: 'Uncategorized', icon: '◌' },
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
   { view: 'missing', label: 'Missing Files', icon: '⚠' },
+  // Kept last: the file-first "to-bundle queue" (its count is highlighted).
+  { view: 'unbundled', label: 'Unbundled', icon: '📥' },
 ]
