@@ -35,6 +35,7 @@ class ViewCounts(BaseModel):
     uncategorized: int
     untagged: int
     missing: int
+    unbundled: int
 
 
 class CountsResponse(BaseModel):
