@@ -595,7 +595,14 @@ export function useFileMutations(bundleId: string) {
     }),
     remove: useMutation({
       mutationFn: (fileId: string) => removeFile(bundleId, fileId),
-      onSuccess: invalidate,
+      // Removing a file re-stages it into Unbundled (a fresh provisional bundle),
+      // so the Unbundled list, File View badges, and the sidebar count must
+      // refresh too — not just this bundle's files.
+      onSuccess: () => {
+        invalidate()
+        for (const key of ['unbundled-files', 'file-view', 'view-counts'])
+          qc.invalidateQueries({ queryKey: [key] })
+      },
     }),
   }
 }
