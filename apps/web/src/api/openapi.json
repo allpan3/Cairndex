@@ -598,6 +598,17 @@
       },
       "BundleSummary": {
         "properties": {
+          "cover_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Key"
+          },
           "date_added": {
             "format": "date-time",
             "title": "Date Added",
@@ -712,6 +723,7 @@
           "total_size",
           "has_missing",
           "has_cover",
+          "cover_key",
           "media_kind",
           "width",
           "height",

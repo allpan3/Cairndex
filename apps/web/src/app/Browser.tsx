@@ -216,7 +216,11 @@ function ListRow({
     >
       <div
         className="list-row__thumb"
-        style={item.has_cover ? { backgroundImage: `url(${thumbnailUrl(item.id)})` } : undefined}
+        style={
+          item.has_cover
+            ? { backgroundImage: `url(${thumbnailUrl(item.id, item.cover_key)})` }
+            : undefined
+        }
       />
       <div className="list-row__title">
         {item.title ?? 'Untitled'}

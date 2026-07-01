@@ -362,6 +362,35 @@ def test_deleting_unbundled_bundle_removes_the_file(session: Session) -> None:
     assert session.get(AssetFile, file_id) is None
 
 
+def test_removing_a_file_from_a_bundle_restages_it_as_unbundled(session: Session) -> None:
+    """Removing a file from a bundle does not unlink it from the library: it
+    returns to Unbundled (a new provisional/scan_suggestion one-file bundle), id
+    preserved, and any cover/primary pointer to it on the source is cleared."""
+    video = _unbundled(session, "clip/main.mp4")
+    extra = _unbundled(session, "clip/extra.jpg")
+    result = apply_service.create_bundle_from_unbundled(session, [video.id, extra.id], title="Clip")
+    session.commit()
+    bundle_id = result.bundle_id
+    bundle_service.update_bundle(session, bundle_id, {"cover_file_id": extra.id})
+    session.commit()
+
+    bundle_service.remove_file(session, bundle_id, extra.id)
+    session.commit()
+    session.expire_all()  # the shared test session keeps rows unexpired on commit
+
+    source = session.get(AssetBundle, bundle_id)
+    assert source is not None  # the source bundle survives
+    assert source.cover_file_id is None  # the dangling cover pointer was cleared
+    assert {f.id for f in source.files} == {video.id}
+
+    row = session.get(AssetFile, extra.id)
+    assert row is not None  # id preserved — not unlinked from disk-tracking
+    assert row.bundle_id != bundle_id
+    parent = row.bundle
+    assert parent.grouping_state is GroupingState.PROVISIONAL
+    assert parent.grouping_source is GroupingSource.SCAN_SUGGESTION
+
+
 # --- suggestions -------------------------------------------------------------
 def test_suggest_target_bundles_ranks_same_folder_first(session: Session) -> None:
     show = _confirmed_with_video(session, "Cosmos", "cosmos/ep01.mp4")

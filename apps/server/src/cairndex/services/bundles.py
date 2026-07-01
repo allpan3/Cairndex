@@ -99,16 +99,37 @@ def update_bundle(
     return bundle
 
 
+def _restage_file(session: Session, asset_file: AssetFile) -> AssetBundle:
+    """Move ``asset_file`` into a fresh provisional/``scan_suggestion`` one-file
+    bundle so it falls back into the **Unbundled** view — exactly as a scan would
+    stage it. ``AssetFile.id`` is preserved (its thumbnail cache and any
+    file-level notes survive). Returns the new staging bundle.
+
+    The file is moved by FK reassignment (as grouping apply does): reassigning to
+    a pending parent via the ``bundle`` relationship would trip delete-orphan on
+    the old collection.
+    """
+    staged = AssetBundle(
+        title=Path(asset_file.original_filename).stem or asset_file.original_filename,
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(staged)
+    session.flush()
+    asset_file.bundle_id = staged.id
+    asset_file.sequence = 0
+    return staged
+
+
 def delete_bundle(session: Session, bundle_id: str) -> None:
     """Delete a bundle (metadata only; the files on disk are never touched,
     AGENTS.md §3).
 
     Deleting a *confirmed* bundle only dissolves the grouping: each still-linked
     file is re-staged into its own provisional/``scan_suggestion`` one-file bundle
-    so it falls back into the **Unbundled** view — exactly as a scan would stage
-    it — preserving ``AssetFile.id`` (so its thumbnail cache and any file-level
-    notes survive). The emptied original bundle (and its bundle-level tags,
-    collections, cover/primary, and subtitle links) is then removed.
+    so it falls back into the **Unbundled** view (see ``_restage_file``). The
+    emptied original bundle (and its bundle-level tags, collections, cover/primary,
+    and subtitle links) is then removed.
 
     Deleting an already-unbundled (provisional) bundle, or an empty bundle, just
     removes its rows — that is how a loose file is dropped from the library.
@@ -117,17 +138,7 @@ def delete_bundle(session: Session, bundle_id: str) -> None:
     files = list(bundle.files)
     if bundle.grouping_state is GroupingState.CONFIRMED and files:
         for f in files:
-            staged = AssetBundle(
-                title=Path(f.original_filename).stem or f.original_filename,
-                grouping_state=GroupingState.PROVISIONAL,
-                grouping_source=GroupingSource.SCAN_SUGGESTION,
-            )
-            session.add(staged)
-            session.flush()
-            # Move by FK (as grouping apply does): reassigning to a pending parent
-            # via the relationship would trip delete-orphan on the old collection.
-            f.bundle_id = staged.id
-            f.sequence = 0
+            _restage_file(session, f)
         session.flush()
         # The files' FK now points at the staged bundles, so drop the stale
         # ``bundle.files`` collection: the delete-orphan cascade must see it empty
@@ -241,14 +252,26 @@ def reorder_files(session: Session, bundle_id: str, ordered_ids: list[str]) -> l
 
 
 def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
-    """Unlink a file from its bundle (metadata only; the file stays on disk).
+    """Remove a file from its bundle (metadata only; the file stays on disk).
 
-    If the file was the bundle's cover/primary, those references are cleared
-    (DB SET NULL)."""
+    The file is not unlinked from the library — it is re-staged into its own
+    provisional/``scan_suggestion`` one-file bundle (see ``_restage_file``) so it
+    falls back into the **Unbundled** view rather than being dropped, mirroring
+    what deleting its bundle does. ``AssetFile.id`` is preserved. If the file was
+    the source bundle's cover/primary, those references are cleared (DB SET NULL
+    once the FK moves away)."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None or asset_file.bundle_id != bundle_id:
         raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
-    session.delete(asset_file)
+    source = get_bundle(session, bundle_id)
+    # Clear cover/primary pointers on the source bundle before the FK moves, so a
+    # stale reference to the departed file can't linger.
+    if source.cover_file_id == file_id:
+        source.cover_file_id = None
+    if source.primary_file_id == file_id:
+        source.primary_file_id = None
+    session.flush()
+    _restage_file(session, asset_file)
     session.flush()
 
 

@@ -61,9 +61,13 @@ in a dedicated **Unbundled** view (hidden from All/Recent/Collections), and a ne
 `cairndex.manual_bundling` service + `/manual-bundling/*` API + web dialogs let
 the owner turn unbundled files into confirmed bundles by hand with automatic,
 never-auto-applied suggestions. All metadata-only; see the notes below and
-`CHANGELOG.md`. Backend `uv run ruff check/format --check/mypy` clean, `pytest`
-253 passed; frontend typecheck/lint/format/test/build clean and Playwright 17
-specs pass (incl. `e2e/manual-bundling.spec.ts`). Not yet merged.
+`CHANGELOG.md`. Two follow-up fixes on top: removing a file from a bundle (the
+inspector ×) now re-stages it back into **Unbundled** instead of unlinking it
+(shared `_restage_file` helper with `delete_bundle`), and a changed cover now
+shows without a manual refresh via a `cover_key` cache-buster on browse summaries
+and the inspector thumbnail URL. Backend `uv run ruff check/format --check/mypy`
+clean, `pytest` 265 passed; frontend typecheck/lint/format/test/build clean and
+Playwright 17 specs pass (incl. `e2e/manual-bundling.spec.ts`). Not yet merged.
 
 **Maintenance-readiness sequence complete (#38–#41).** Job progress, large-library
 browse indexing + benchmark tooling, whole-library FTS5 search, and an optional

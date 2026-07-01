@@ -31,7 +31,11 @@ export function BundleCard({
     >
       <div
         className="card__thumb"
-        style={item.has_cover ? { backgroundImage: `url(${thumbnailUrl(item.id)})` } : undefined}
+        style={
+          item.has_cover
+            ? { backgroundImage: `url(${thumbnailUrl(item.id, item.cover_key)})` }
+            : undefined
+        }
       >
         {!item.has_cover && <div className="card__placeholder">▦</div>}
         {item.has_missing && <span className="card__badge card__badge--missing">missing</span>}

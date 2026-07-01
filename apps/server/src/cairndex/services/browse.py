@@ -66,6 +66,10 @@ class BundleSummary:
     total_size: int
     has_missing: bool
     has_cover: bool
+    # Id of the file the cover thumbnail is derived from (or None). Changes when
+    # the cover selection changes, so the client uses it to bust the browser's
+    # image cache on the (otherwise-stable) thumbnail URL.
+    cover_key: str | None
     media_kind: str | None
     width: int | None
     height: int | None
@@ -226,6 +230,29 @@ def browse_bundles(
     return BundlePage(items=summaries, total=total, offset=offset, limit=limit)
 
 
+def _effective_cover_id(bundle: AssetBundle, files: list[AssetFile]) -> str | None:
+    """Id of the file the cover thumbnail is derived from, computed from the
+    already-loaded ``files`` (no extra queries). Mirrors the precedence in
+    ``media.thumbnails.effective_cover_file`` (selected cover → first image →
+    primary video → first video) — keep the two in sync."""
+    thumbnailable = (MediaKind.IMAGE, MediaKind.VIDEO)
+    if bundle.cover_file_id is not None:
+        cover = next((f for f in files if f.id == bundle.cover_file_id), None)
+        if cover is not None and cover.media_kind in thumbnailable:
+            return cover.id
+    image = next((f for f in files if f.media_kind is MediaKind.IMAGE), None)
+    if image is not None:
+        return image.id
+    if bundle.primary_file_id is not None:
+        primary = next((f for f in files if f.id == bundle.primary_file_id), None)
+        if primary is not None and primary.media_kind is MediaKind.VIDEO:
+            return primary.id
+    video = next((f for f in files if f.media_kind is MediaKind.VIDEO), None)
+    if video is not None:
+        return video.id
+    return None
+
+
 def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     files = list(
         session.scalars(
@@ -239,6 +266,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     has_cover = bundle.cover_file_id is not None or any(
         f.media_kind in (MediaKind.IMAGE, MediaKind.VIDEO) for f in files
     )
+    cover_key = _effective_cover_id(bundle, files)
 
     # The representative file for card stats: chosen primary, else first video,
     # else first file.
@@ -262,6 +290,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         total_size=total_size,
         has_missing=has_missing,
         has_cover=has_cover,
+        cover_key=cover_key,
         media_kind=str(primary.media_kind) if primary else None,
         width=meta.get("width"),
         height=meta.get("height"),
