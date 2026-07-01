@@ -249,6 +249,18 @@ grouped under `Unreleased` until the first tagged release.
   internal scan/repair writes never risk `StaleDataError` under the single-writer
   model.
 
+### Fixed
+
+- **The Unbundled list now refreshes after applying a grouping plan or deleting a
+  bundle.** Applying a grouping plan (which confirms bundles, so files leave
+  Unbundled) and deleting a confirmed bundle (which re-stages its files back into
+  Unbundled) now invalidate the `unbundled-files` and `file-view` query caches — so
+  the Unbundled Files list and File View badges update immediately instead of only
+  after a manual page refresh (the sidebar count already updated). The grouping
+  review modal also shows a reminder that a plan is a snapshot: if files were
+  bundled/changed since it was generated, regenerate for a fresh plan — already
+  bundled files are skipped on apply, never overridden.
+
 ### Changed
 
 - **Unbundled is now a file-first Files-surface view; the two top-left tabs are
