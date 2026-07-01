@@ -44,5 +44,5 @@ export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
   { view: 'missing', label: 'Missing Files', icon: '⚠' },
   // Kept last: the file-first "to-bundle queue" (its count is highlighted).
-  { view: 'unbundled', label: 'Unbundled', icon: '📥' },
+  { view: 'unbundled', label: 'Unbundled', icon: '⚟' },
 ]
