@@ -55,6 +55,16 @@ produced suggestions.
 
 ## Current milestone
 
+**Unbundled staging + manual bundling assistant (branch
+`feat/manual-bundling`).** Scan-staged provisional bundles are now surfaced only
+in a dedicated **Unbundled** view (hidden from All/Recent/Collections), and a new
+`cairndex.manual_bundling` service + `/manual-bundling/*` API + web dialogs let
+the owner turn unbundled files into confirmed bundles by hand with automatic,
+never-auto-applied suggestions. All metadata-only; see the notes below and
+`CHANGELOG.md`. Backend `uv run ruff check/format --check/mypy` clean, `pytest`
+253 passed; frontend typecheck/lint/format/test/build clean and Playwright 17
+specs pass (incl. `e2e/manual-bundling.spec.ts`). Not yet merged.
+
 **Maintenance-readiness sequence complete (#38–#41).** Job progress, large-library
 browse indexing + benchmark tooling, whole-library FTS5 search, and an optional
 per-library passphrase lock all landed. The next candidates are richer
@@ -91,9 +101,20 @@ original files.
   the plan is then marked applied, so unchecked proposals are intentionally left
   unapplied for that plan. Regenerate suggestions after library changes if the
   owner wants a fresh plan.
-- **Provisional browse state:** browse summaries expose `grouping_state`, and
-  provisional scan-created bundles show a visible “Needs review”/review marker
-  until grouping is applied.
+- **Unbundled staging:** scan-created provisional bundles (`grouping_state =
+  provisional`, `grouping_source = scan_suggestion`) are treated as *unbundled*
+  files: browse confines them to the dedicated **Unbundled** system view (+ an
+  `unbundled` view count) and hides them from All, Recent, Uncategorized,
+  Untagged, Missing, and every collection until confirmed. Browse summaries still
+  expose `grouping_state`, so an Unbundled card can show a “Needs review” marker.
+- **Manual bundling assistant:** `cairndex.manual_bundling` confirms unbundled
+  files by hand — add to an existing confirmed bundle, create a bundle from
+  selected files, create an empty bundle, or add suggested files from a bundle’s
+  inspector. Suggestions (target bundles / unbundled files / a bundle draft) are
+  automatic on dialog open, ranked with a confidence + reason, and computed only
+  from the DB + FTS index; applying is always explicit and metadata-only (files
+  re-parented, emptied provisional bundles reaped, subtitles auto-linked). Shared
+  membership logic lives in `grouping/membership.py`.
 - **Hidden/cache exclusions:** scan and grouping ignore dot-directories/files and
   known hidden/cruft names such as `.cairndex`, `.DS_Store`, `__pycache__`,
   `node_modules`, and `Thumbs.db`. Rescan cleans up scan-staged provisional rows
@@ -162,6 +183,16 @@ redaction), `test_devtools_perf.py` (generator + benchmark), `test_search.py`
 (FTS coverage/freshness/escaping/API), `test_auth.py` (hashing, session
 scoping/expiry, the full lock gate), and e2e flows for the progress bar,
 whole-library search, and the passphrase unlock.
+
+For `feat/manual-bundling` (not yet merged): backend `pytest` is `253 passed`
+locally with all static gates clean; frontend gates clean and Playwright is 17
+specs. New coverage: `test_browse.py` (Unbundled view/counts + hiding from normal
+views/collections), `test_manual_bundling.py` (all mutations, role/cover/primary
+assignment, subtitle auto-link after add, confirmed bundles undisturbed, unbundled
+source guard, metadata-only invariance, suggestion ranking),
+`test_manual_bundling_api.py` (end-to-end over a real scan through the API), and
+`e2e/manual-bundling.spec.ts` (Unbundled view + create-from-files + add-to-bundle
+dialogs).
 
 ## Known issues / environment gaps
 

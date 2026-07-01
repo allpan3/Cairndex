@@ -331,6 +331,27 @@ Bundles are formed by scanning the library and grouping related files. Grouping 
 
 Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links external subtitles, and creates the logical collections a CONTAINER suggests, never touching the filesystem.
 
+A scan stages each newly discovered file as a *provisional* one-file bundle.
+Until the owner confirms it, that file is treated as **unbundled**
+(`grouping_state = provisional`, `grouping_source = scan_suggestion`): it lives
+only in a dedicated **Unbundled** system view and is hidden from All, Recently
+Added, Uncategorized, Untagged, Missing, and every collection, so unaccepted scan
+suggestions never masquerade as real bundles. Collections still contain confirmed
+bundles only, never loose files.
+
+Confirming unbundled files is either bulk (grouping review, above) or by hand via
+the **manual bundling assistant**. The assistant can add selected unbundled files
+to an existing confirmed bundle, create a confirmed bundle from selected unbundled
+files, create an empty confirmed bundle, or add suggested unbundled files from
+inside a bundle. It offers automatic ranked suggestions (target bundles for
+selected files; unbundled files for a bundle; a bundle draft from a seed) computed
+only from the library DB and search index — never a filesystem scan — each with a
+confidence and a human-readable reason. Suggestions are automatic on open but
+**applying is always explicit**, and every action is metadata-only: files are
+re-parented and emptied provisional bundles removed, but nothing on disk is moved,
+copied, renamed, or deleted. Assigning an unbundled file to a collection first
+confirms or creates a bundle, then adds that bundle to the collection.
+
 Current workflow details:
 
 - scan jobs persist an open grouping plan without applying it;
@@ -359,7 +380,7 @@ Recommended layout:
 - right inspector: selected bundle metadata and files, or selected file/directory details in File View;
 - modal/detail viewer: media preview, playback, and grouping review.
 
-System views should include All, Uncategorized, Untagged, Recently Added / Recently Used, Random, All Tags, Missing Files, and Trash later where useful.
+System views should include All, Uncategorized, Untagged, Recently Added / Recently Used, Unbundled (scan-staged files awaiting bundling/confirmation), Random, All Tags, Missing Files, and Trash later where useful.
 
 ### Collection View layouts
 
