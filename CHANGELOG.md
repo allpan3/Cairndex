@@ -251,6 +251,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **`synthetic_library` no longer takes hours at 100k+ bundles.** The devtool
+  regressed when whole-library FTS5 search landed: every bulk insert into
+  `asset_bundles`/`asset_files`/the tag/collection association tables fired a
+  search-index maintenance trigger (one per row, even inside an
+  executemany-style batch), and many small individual FTS5 DELETE+INSERT
+  operations fragment the index and get progressively slower as it grows — 20k
+  bundles didn't finish in 3+ minutes. The generator now suspends those
+  triggers for the bulk load (`search.drop_maintenance_triggers`) and restores
+  them plus rebuilds the index in one set-based pass
+  (`ensure_search_schema` + `search.rebuild`) afterward. 100k bundles is back to
+  ~7s; a new regression test (`test_generate_rebuilds_search_index_and_restores_triggers`)
+  asserts the index is fully populated and triggers are live for subsequent
+  writes.
+
 - **Removing a file from a bundle now returns it to Unbundled instead of
   unlinking it.** The bundle inspector's per-file remove (×) previously deleted the
   file's `AssetFile` row, dropping it from the library entirely (only re-scanning
