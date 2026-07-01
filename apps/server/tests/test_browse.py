@@ -3,7 +3,14 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
+from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services.browse import (
@@ -12,6 +19,29 @@ from cairndex.services.browse import (
     browse_bundles,
     view_counts,
 )
+
+
+def _unbundled(session: Session, relative_path: str, *, title: str | None = None) -> AssetBundle:
+    """Create a scan-staged provisional one-file bundle (an "unbundled" file)."""
+    bundle = AssetBundle(
+        title=title,
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(bundle)
+    session.flush()
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path=relative_path,
+            original_filename=relative_path.rsplit("/", 1)[-1],
+            display_title=relative_path.rsplit("/", 1)[-1],
+            role=FileRole.OTHER,
+            media_kind=MediaKind.VIDEO,
+        )
+    )
+    session.flush()
+    return bundle
 
 
 def test_browse_returns_enriched_summaries(session: Session) -> None:
@@ -85,6 +115,52 @@ def test_view_counts(session: Session) -> None:
     assert counts["uncategorized"] == 2
     assert counts["untagged"] == 2
     assert counts["missing"] == 0
+    assert counts["unbundled"] == 0
+
+
+def test_unbundled_files_hidden_from_normal_views(session: Session) -> None:
+    """Scan-staged provisional bundles belong only in the Unbundled view."""
+    confirmed = bundle_service.create_bundle(session, title="real")
+    bundle_service.add_file(
+        session,
+        confirmed.id,
+        relative_path="real/movie.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    _unbundled(session, "loose/clip.mp4", title="clip")
+    _unbundled(session, "loose/other.mp4", title="other")
+    session.commit()
+
+    # Normal views never surface the scan-staged files.
+    for view in (
+        SystemView.ALL,
+        SystemView.RECENT,
+        SystemView.UNCATEGORIZED,
+        SystemView.UNTAGGED,
+    ):
+        page = browse_bundles(session, view=view)
+        assert [s.title for s in page.items] == ["real"], view
+
+    # The dedicated view shows only them.
+    unbundled = browse_bundles(session, view=SystemView.UNBUNDLED)
+    assert unbundled.total == 2
+    assert sorted(s.title for s in unbundled.items) == ["clip", "other"]
+
+    counts = view_counts(session)
+    assert counts["all"] == 1
+    assert counts["unbundled"] == 2
+
+
+def test_unbundled_files_hidden_from_collection_views(session: Session) -> None:
+    collection = collection_service.create_collection(session, name="C")
+    confirmed = bundle_service.create_bundle(session, title="real")
+    bundle_service.set_bundle_collections(session, confirmed.id, [collection.id])
+    _unbundled(session, "loose/clip.mp4", title="clip")
+    session.commit()
+
+    page = browse_bundles(session, collection_id=collection.id)
+    assert [s.title for s in page.items] == ["real"]
 
 
 # Hidden-only bundles are not visible library browse items

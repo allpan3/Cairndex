@@ -18,8 +18,14 @@ from typing import Any
 
 from sqlalchemy import Select, exists, false, func, not_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
-from cairndex.domain.enums import FileAvailability, GroupingState, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
@@ -40,6 +46,7 @@ class SystemView(StrEnum):
     UNCATEGORIZED = "uncategorized"  # in no collection
     UNTAGGED = "untagged"  # has no tags
     MISSING = "missing"  # has at least one missing file
+    UNBUNDLED = "unbundled"  # scan-staged files awaiting bundling/confirmation
 
 
 class BundleSort(StrEnum):
@@ -74,6 +81,19 @@ class BundlePage:
     total: int
     offset: int
     limit: int
+
+
+# A scan stages every newly discovered file as a provisional one-file bundle
+# (grouping_source=scan_suggestion). Until the user bundles or confirms it — via
+# grouping review or the manual bundling assistant — it is an "unbundled" file:
+# it belongs only in the dedicated Unbundled view and is hidden from All, Recent,
+# Uncategorized, Untagged, Missing, and every collection. Confirmed bundles and
+# legacy/manual/fast-add bundles are never unbundled.
+def _unbundled_predicate() -> ColumnElement[bool]:
+    """SQL predicate: a scan-staged provisional bundle not yet confirmed."""
+    return (AssetBundle.grouping_state == GroupingState.PROVISIONAL) & (
+        AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION
+    )
 
 
 def _file_count_sq() -> Any:
@@ -180,6 +200,12 @@ def browse_bundles(
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
         stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
+        # The Unbundled view shows *only* scan-staged provisional bundles; every
+        # other view (and any collection) hides them until they are confirmed.
+        if view is SystemView.UNBUNDLED and collection_id is None:
+            stmt = stmt.where(_unbundled_predicate())
+        else:
+            stmt = stmt.where(not_(_unbundled_predicate()))
         if predicate is not None:
             stmt = stmt.where(predicate)
         if search_pred is not None:
@@ -249,8 +275,13 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
 def view_counts(session: Session) -> dict[str, int]:
     """Counts for the sidebar system views (scoped to this library DB)."""
 
-    def _count(*where: Any) -> int:
+    def _count(*where: Any, include_unbundled: bool = False) -> int:
         stmt = select(func.count()).select_from(AssetBundle).where(_visible_file_exists())
+        # Every normal view excludes scan-staged provisional bundles; only the
+        # dedicated Unbundled count includes them.
+        stmt = stmt.where(
+            _unbundled_predicate() if include_unbundled else not_(_unbundled_predicate())
+        )
         for clause in where:
             stmt = stmt.where(clause)
         return session.scalar(stmt) or 0
@@ -264,12 +295,14 @@ def view_counts(session: Session) -> dict[str, int]:
             & (AssetFile.availability == FileAvailability.MISSING)
         )
     )
+    unbundled = _count(include_unbundled=True)
     return {
         "all": total,
         "recent": total,
         "uncategorized": uncategorized,
         "untagged": untagged,
         "missing": missing,
+        "unbundled": unbundled,
     }
 
 
