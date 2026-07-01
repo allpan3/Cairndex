@@ -67,11 +67,13 @@ export const IconFolder = () => (
   </Svg>
 )
 
-// Inbox — the staging tray of files awaiting bundling (the Unbundled view).
-export const IconInbox = () => (
+// Loose stack — three scattered, slightly-tilted tiles standing for loose,
+// ungrouped files awaiting bundling (the Unbundled view).
+export const IconLooseStack = () => (
   <Svg>
-    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+    <rect x="3" y="4" width="7" height="7" rx="1.5" transform="rotate(-10 6.5 7.5)" />
+    <rect x="14" y="5" width="7" height="7" rx="1.5" transform="rotate(9 17.5 8.5)" />
+    <rect x="8.5" y="13" width="7" height="7" rx="1.5" transform="rotate(-4 12 16.5)" />
   </Svg>
 )
 
