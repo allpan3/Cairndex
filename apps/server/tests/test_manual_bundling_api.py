@@ -121,6 +121,37 @@ def test_suggest_targets_endpoint(
     assert suggestions and suggestions[0]["bundle_id"] == bundle_id
 
 
+def test_deleting_a_bundle_returns_files_to_unbundled(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}"
+    files = _file_ids_in_unbundled(client, base)
+
+    # Confirm all three files into one bundle → Unbundled empties.
+    created = client.post(
+        f"{base}/manual-bundling/create-bundle",
+        json={"file_ids": list(files.values()), "title": "Feature"},
+    )
+    bundle_id = created.json()["bundle_id"]
+    counts = client.get(f"{base}/bundles/counts").json()
+    assert counts["all"] == 1 and counts["unbundled"] == 0
+
+    # Deleting the confirmed bundle dissolves it: the files fall back to Unbundled.
+    assert client.delete(f"{base}/bundles/{bundle_id}").status_code == 204
+    counts = client.get(f"{base}/bundles/counts").json()
+    assert counts["all"] == 0
+    assert counts["unbundled"] == 3
+    # The same three files are back on disk and re-listed as unbundled.
+    for name in ("movie/feature.mp4", "movie/feature.srt", "movie/cover.jpg"):
+        assert (library_root / name).exists()
+    assert set(_file_ids_in_unbundled(client, base)) == {
+        "movie/feature.mp4",
+        "movie/feature.srt",
+        "movie/cover.jpg",
+    }
+
+
 def test_create_empty_bundle_endpoint(client: TestClient, library_id: str) -> None:
     base = f"/api/v1/libraries/{library_id}"
     created = client.post(f"{base}/manual-bundling/create-empty-bundle", json={"title": "Empty"})

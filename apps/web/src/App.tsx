@@ -670,6 +670,7 @@ function Workspace({
         <DeleteBundlesDialog
           count={deletingBundles.length}
           pending={deleteBundles.isPending}
+          filesReturnToUnbundled={selection.view !== 'unbundled'}
           onCancel={() => setDeletingBundles(null)}
           onConfirm={confirmDeleteBundles}
         />

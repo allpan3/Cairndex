@@ -251,6 +251,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Deleting a confirmed bundle now dissolves it back to Unbundled.** Instead of
+  forgetting the bundle's file rows, `delete_bundle` re-stages each still-linked
+  file into its own provisional/`scan_suggestion` one-file bundle (metadata-only,
+  `AssetFile.id` preserved), so the files fall back into the **Unbundled** view and
+  can be re-bundled — matching what a scan would stage. Deleting an already
+  unbundled (provisional) bundle, or an empty bundle, still removes its rows (the
+  way to drop a loose file from the library). Files on disk are never touched. The
+  delete-confirmation dialog explains the Unbundled fallback. Covered by
+  `test_manual_bundling.py` (`test_deleting_confirmed_bundle_restages_files_as_unbundled`,
+  `test_deleting_unbundled_bundle_removes_the_file`).
+
 - **Membership filters use a non-correlated semijoin.** Tag/collection filters
   (and their "include descendants" variants) now compile to
   `AssetBundle.id IN (SELECT bundle_id FROM assoc WHERE member_id IN (…))` — the
