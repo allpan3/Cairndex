@@ -10,6 +10,41 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Unbundled staging + manual bundling assistant (follow-up to ADR-0009).** A
+  scan stages every newly discovered file as a *provisional* one-file bundle; the
+  library browser now treats those as **unbundled** files (`grouping_state =
+  provisional` + `grouping_source = scan_suggestion`) and confines them to a
+  dedicated **Unbundled** system view. They are hidden from All, Recently Added,
+  Uncategorized, Untagged, Missing, and every collection until the owner confirms
+  them — so unaccepted scan suggestions no longer masquerade as real bundles.
+  `GET /bundles/counts` gained an `unbundled` count and browse a `view=unbundled`.
+  A new `cairndex.manual_bundling` service turns unbundled files into confirmed
+  bundles by hand, all **metadata-only** (files are re-parented and emptied
+  provisional bundles reaped; nothing on disk is moved/copied/renamed/deleted):
+  - **Add to Bundle** — fold selected unbundled files into an existing *confirmed*
+    bundle (roles assigned, sequences appended, external subtitles auto-linked).
+  - **Create Bundle** — confirm a new bundle from one or more selected unbundled
+    files (heuristic title/roles, cover/primary chosen), optionally pulling in
+    suggested nearby files.
+  - **Create empty Bundle** — make a confirmed empty bundle, then add suggested
+    files.
+  - **Add Files** (from a bundle's inspector) — pull suggested unbundled files
+    into that bundle.
+  Suggestions (target bundles for selected files; unbundled files for a bundle; a
+  bundle draft from a seed) are generated automatically when a dialog opens, ranked
+  with a confidence + human reason, and come only from the library DB and FTS index
+  — never a filesystem scan. **Applying is always explicit.** The suggester's
+  name-parsing/role heuristics and the file-membership + source-reaping logic are
+  reused from grouping (extracted to `grouping/membership.py`). New library-scoped
+  routes under `/libraries/{id}/manual-bundling/*`; OpenAPI + frontend types
+  regenerated. Web UI adds the Unbundled sidebar view, context-menu actions on
+  unbundled cards, an empty-space/toolbar "Create Bundle…", the inspector "Add
+  Files…" action, and four suggestion dialogs with empty/loading/error states and a
+  success toast. Covered by `test_browse.py` (view/counts/hiding),
+  `test_manual_bundling.py` + `test_manual_bundling_api.py` (suggestions, all
+  mutations, subtitle auto-link, confirmed bundles undisturbed, metadata-only), and
+  `e2e/manual-bundling.spec.ts` (Unbundled view, create-from-files, add-to-bundle).
+
 - **Optional per-library owner passphrase lock (ADR-0010).** Each library can
   independently require an owner passphrase — a lightweight private-LAN/Tailscale
   guardrail, **not** public-internet hardening and **not** multi-user auth. Only a
