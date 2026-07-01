@@ -149,8 +149,11 @@ session; GitHub CI should validate the updated branch.
 ## Known issues / environment gaps
 
 - No authentication yet; the app is still intended for single-owner/local use.
-- Job status is polled and terminal states are surfaced, but long-running scan,
-  probe, and thumbnail jobs still need detailed progress bars in the UI.
+- Job progress is now observable: scan/probe/thumbnail jobs report a coarse
+  phase + message with throttled progress writes, and the sidebar shows a live
+  (determinate/indeterminate) progress bar under Update plus redacted error
+  text. Branch `feat/job-progress-observability`. Cancellation is wired but has
+  no dedicated UI button yet.
 - Grouping review can select/deselect proposals but does not yet provide rich
   edit-before-apply controls for merge/split/reclassify/rename.
 - Server-side text search / SQLite FTS5 is not implemented; toolbar text search
@@ -167,12 +170,11 @@ session; GitHub CI should validate the updated branch.
 
 1. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Surface detailed job progress for Update/scan/probe/thumbnail jobs.
-3. Add server-side text search/FTS and review browse-summary indexes on realistic
+2. Add server-side text search/FTS and review browse-summary indexes on realistic
    synthetic libraries.
-4. Continue File View planning toward guarded write mode and safe desktop-native
+3. Continue File View planning toward guarded write mode and safe desktop-native
    handoff.
-5. Decide the first single-owner authentication mechanism before relying on
+4. Decide the first single-owner authentication mechanism before relying on
    remote access.
 
 ## Unresolved decisions

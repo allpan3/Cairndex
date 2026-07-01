@@ -56,12 +56,18 @@ export type BrowseQuery = Omit<BrowseParams, 'offset'>
 
 const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
-// Wait for a queued/running job to finish so dependent queries refetch fresh data
-async function waitForJob(job: JobRead): Promise<JobRead> {
+type JobProgressFn = (job: JobRead | null) => void
+
+// Wait for a queued/running job to finish so dependent queries refetch fresh
+// data. ``onProgress`` (when given) receives each polled snapshot so the UI can
+// render live phase/message/progress; it fires for the initial state too.
+async function waitForJob(job: JobRead, onProgress?: JobProgressFn): Promise<JobRead> {
   let current = job
+  onProgress?.(current)
   while (!TERMINAL_JOB_STATUSES.has(current.status)) {
     await new Promise((resolve) => setTimeout(resolve, 500))
     current = await fetchJob(job.id)
+    onProgress?.(current)
   }
   if (current.status === 'failed') {
     throw new Error(current.error ?? 'Background job failed.')
@@ -194,57 +200,68 @@ function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => v
   }
 }
 
+interface MaintenanceOptions {
+  onGroupingPlan?: (planId: string) => void
+  // Receives each polled job snapshot (and null when the run settles) so the
+  // sidebar can render a live progress bar with phase/message.
+  onProgress?: JobProgressFn
+}
+
 /** Enqueue scan-only discovery/repair and grouping suggestion preparation */
-export function useScan(options: { onGroupingPlan?: (planId: string) => void } = {}) {
+export function useScan(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const scanJob = await waitForJob(await enqueueScan())
+      const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
       return scanJob
     },
     onSuccess: (job) => {
       invalidateLibraryContent(qc)
       notifyGroupingPlan(job, options.onGroupingPlan)
     },
+    onSettled: () => options.onProgress?.(null),
   })
 }
 
 /** Enqueue the primary library update flow: scan, grouping suggestions, then metadata probe */
-export function useUpdateLibrary(options: { onGroupingPlan?: (planId: string) => void } = {}) {
+export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const scanJob = await waitForJob(await enqueueScan())
-      await waitForJob(await enqueueProbe())
+      const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      await waitForJob(await enqueueProbe(), options.onProgress)
       return scanJob
     },
     onSuccess: (job) => {
       invalidateLibraryContent(qc)
       notifyGroupingPlan(job, options.onGroupingPlan)
     },
+    onSettled: () => options.onProgress?.(null),
   })
 }
 
 // Probe (ffprobe tech metadata) and thumbnail generation are library-wide jobs
 // enqueued to the registry queue (ADR-0008 phase 7); the worker runs them async.
 // We invalidate the views whose contents they refresh once the job is accepted.
-export function useProbe() {
+export function useProbe(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => waitForJob(await enqueueProbe()),
+    mutationFn: async () => waitForJob(await enqueueProbe(), options.onProgress),
     onSuccess: () => {
       for (const key of ['bundle', 'bundle-files', 'browse']) {
         qc.invalidateQueries({ queryKey: [key] })
       }
     },
+    onSettled: () => options.onProgress?.(null),
   })
 }
 
-export function useThumbnails() {
+export function useThumbnails(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async () => waitForJob(await enqueueThumbnails()),
+    mutationFn: async () => waitForJob(await enqueueThumbnails(), options.onProgress),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
+    onSettled: () => options.onProgress?.(null),
   })
 }
 

@@ -13,6 +13,8 @@ class JobRead(BaseModel):
     library_id: str
     job_type: JobType
     status: JobStatus
+    phase: str | None
+    message: str | None
     payload: dict[str, Any]
     processed: int
     total: int | None

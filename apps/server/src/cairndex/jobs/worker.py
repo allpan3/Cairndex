@@ -12,16 +12,24 @@ cleanly to a CANCELLED terminal state.
 """
 
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.domain.enums import JobStatus, JobType, LibraryStatus
+from cairndex.domain.enums import JobPhase, JobStatus, JobType, LibraryStatus
+from cairndex.jobs.errors import safe_error_message
 from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.registry.library_engine import get_library_sessionmaker
+
+# Minimum seconds between registry progress writes on the hot checkpoint path.
+# A huge scan checkpoints every batch; without throttling that is one registry
+# commit per batch. Phase changes and progress completion bypass the throttle so
+# the UI never misses a transition or stalls at "almost done".
+_PROGRESS_MIN_INTERVAL = 0.5
 
 
 class JobCancelled(Exception):
@@ -31,6 +39,12 @@ class JobCancelled(Exception):
 class JobContext:
     """Handed to a job handler: the library's content session + root, its
     payload, and progress/cancel reporting (which targets the registry queue).
+
+    Progress carries a coarse ``phase`` and an optional human ``message`` in
+    addition to processed/total counts. Registry writes on the hot
+    ``checkpoint`` path are throttled (``_PROGRESS_MIN_INTERVAL``) to avoid a
+    DB commit per batch on large libraries; cancellation is still checked every
+    call so a cancel is honoured promptly.
     """
 
     def __init__(
@@ -41,25 +55,69 @@ class JobContext:
         job_id: str,
         payload: dict[str, Any],
         library_root: Path,
+        progress_min_interval: float = _PROGRESS_MIN_INTERVAL,
     ) -> None:
         self.session = session
         self.registry_session = registry_session
         self.job_id = job_id
         self.payload = payload
         self.library_root = library_root
+        self.phase: JobPhase | None = None
+        self.message: str | None = None
+        self._progress_min_interval = progress_min_interval
+        self._last_write = 0.0
 
-    def checkpoint(self, processed: int, total: int | None = None) -> None:
+    def set_phase(self, phase: JobPhase, message: str | None = None) -> None:
+        """Move to a new phase, write it immediately, and honour cancellation.
+
+        Phase transitions are infrequent, so they always flush to the registry
+        (bypassing the progress throttle) and reset the per-phase count.
+        """
+        self.phase = phase
+        self.message = message
+        self.session.commit()
+        job_service.update_progress(
+            self.registry_session,
+            self.job_id,
+            processed=0,
+            total=None,
+            phase=phase.value,
+            message=message,
+        )
+        self.registry_session.commit()
+        self._last_write = time.monotonic()
+        self._raise_if_cancelled()
+
+    def checkpoint(
+        self, processed: int, total: int | None = None, *, message: str | None = None
+    ) -> None:
         """Persist progress to the registry and abort if cancellation is requested.
 
         The content session is committed first so its durable work is visible,
         then the registry row is updated/committed so the API and the cancel
-        flag observe a fresh snapshot.
+        flag observe a fresh snapshot. The registry write itself is throttled
+        unless the work just completed (``processed >= total``) so the bar can
+        reach 100%.
         """
         self.session.commit()
-        job_service.update_progress(
-            self.registry_session, self.job_id, processed=processed, total=total
-        )
-        self.registry_session.commit()
+        if message is not None:
+            self.message = message
+        now = time.monotonic()
+        complete = total is not None and processed >= total
+        if complete or (now - self._last_write) >= self._progress_min_interval:
+            job_service.update_progress(
+                self.registry_session,
+                self.job_id,
+                processed=processed,
+                total=total,
+                phase=self.phase.value if self.phase is not None else None,
+                message=self.message,
+            )
+            self.registry_session.commit()
+            self._last_write = now
+        self._raise_if_cancelled()
+
+    def _raise_if_cancelled(self) -> None:
         if job_service.is_cancel_requested(self.registry_session, self.job_id):
             raise JobCancelled
 
@@ -127,7 +185,12 @@ def execute_job(
                 return JobStatus.CANCELLED
             except Exception as exc:  # noqa: BLE001 — record any handler failure
                 content.rollback()
-                job_service.mark_finished(reg, job_id, status=JobStatus.FAILED, error=str(exc))
+                job_service.mark_finished(
+                    reg,
+                    job_id,
+                    status=JobStatus.FAILED,
+                    error=safe_error_message(exc, library_root=library_root),
+                )
                 reg.commit()
                 return JobStatus.FAILED
 

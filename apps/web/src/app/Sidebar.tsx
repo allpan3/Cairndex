@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react'
 
-import type { CollectionRead, LibraryRead, SmartCollectionRead, ViewCounts } from '../api/client'
+import type {
+  CollectionRead,
+  JobRead,
+  LibraryRead,
+  SmartCollectionRead,
+  ViewCounts,
+} from '../api/client'
 import { ContextMenu } from './ContextMenu'
+import { JobProgress } from './JobProgress'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
   IconAlert,
@@ -47,6 +54,8 @@ interface SidebarProps {
   onProbe: () => void
   probing?: boolean
   onReviewGrouping: () => void
+  activeJob?: JobRead | null
+  maintenanceError?: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
   counts?: ViewCounts
@@ -111,6 +120,8 @@ export function Sidebar({
   onProbe,
   probing,
   onReviewGrouping,
+  activeJob,
+  maintenanceError,
   selection,
   onSelect,
   counts,
@@ -228,6 +239,17 @@ export function Sidebar({
           )}
         </div>
       </div>
+
+      {activeJob && (
+        <div className="sidebar__job-progress">
+          <JobProgress job={activeJob} />
+        </div>
+      )}
+      {!activeJob && maintenanceError && (
+        <div className="sidebar__job-error" role="alert">
+          {maintenanceError}
+        </div>
+      )}
 
       <div className="sidebar__modes" role="tablist" aria-label="Browsing surface">
         <button

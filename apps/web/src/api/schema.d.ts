@@ -1372,10 +1372,14 @@ export interface components {
             job_type: components["schemas"]["JobType"];
             /** Library Id */
             library_id: string;
+            /** Message */
+            message: string | null;
             /** Payload */
             payload: {
                 [key: string]: unknown;
             };
+            /** Phase */
+            phase: string | null;
             /** Processed */
             processed: number;
             /** Result */

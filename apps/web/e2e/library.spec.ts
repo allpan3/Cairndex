@@ -91,6 +91,71 @@ test('renders the shell and browses bundles', async ({ page }) => {
   await expect(page.getByText('40 items')).toBeVisible()
 })
 
+function jobRead(over: Record<string, unknown>) {
+  return {
+    id: 'job',
+    library_id: 'lib1',
+    job_type: 'scan',
+    status: 'running',
+    phase: null,
+    message: null,
+    payload: {},
+    processed: 0,
+    total: null,
+    result: null,
+    error: null,
+    cancel_requested: false,
+    created_at: '2026-06-25T00:00:00Z',
+    started_at: '2026-06-25T00:00:00Z',
+    finished_at: null,
+    ...over,
+  }
+}
+
+test('Update surfaces live job progress with phase and counts', async ({ page }) => {
+  await mockApi(page)
+  // Scan job: enqueue returns a running snapshot, then polling completes it.
+  let scanPolls = 0
+  await page.route('**/jobs/scan', (r) =>
+    r.fulfill({
+      json: jobRead({ id: 'job-scan', phase: 'discovering', processed: 42, total: 100 }),
+    }),
+  )
+  await page.route('**/jobs/probe', (r) =>
+    r.fulfill({
+      json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
+    }),
+  )
+  await page.route('**/api/v1/jobs/job-scan', (r) => {
+    scanPolls += 1
+    const done = scanPolls >= 2
+    r.fulfill({
+      json: jobRead({
+        id: 'job-scan',
+        status: done ? 'succeeded' : 'running',
+        phase: done ? null : 'discovering',
+        processed: done ? 100 : 42,
+        total: 100,
+        result: done ? { grouping_proposal_count: 0 } : null,
+        finished_at: done ? '2026-06-25T00:01:00Z' : null,
+      }),
+    })
+  })
+  await page.route('**/api/v1/jobs/job-probe', (r) =>
+    r.fulfill({
+      json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /Update/ }).click()
+
+  // The progress bar with the current phase + determinate count is visible while running.
+  await expect(page.getByRole('progressbar')).toBeVisible()
+  await expect(page.getByText('Discovering files')).toBeVisible()
+  await expect(page.getByText('42/100')).toBeVisible()
+})
+
 test('selecting a bundle opens the inspector', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

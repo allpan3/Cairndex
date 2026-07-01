@@ -8,6 +8,7 @@ registry via ``ctx.library_root`` (ADR-0008).
 
 from typing import Any
 
+from cairndex.domain.enums import JobPhase
 from cairndex.grouping import plan_store
 from cairndex.jobs.worker import JobContext
 from cairndex.scanning.scanner import scan_library
@@ -21,9 +22,12 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         ctx.session,
         ctx.library_root,
         on_progress=lambda processed, total: ctx.checkpoint(processed, total),
+        on_phase=lambda name: ctx.set_phase(JobPhase(name)),
         batch_size=batch_size,
     )
+    ctx.set_phase(JobPhase.GROUPING, "Generating grouping suggestions")
     plan = plan_store.generate_plan(ctx.session, scan_job_id=ctx.job_id)
+    ctx.set_phase(JobPhase.FINALIZING)
     return {
         "discovered": summary.discovered,
         "created": summary.created,

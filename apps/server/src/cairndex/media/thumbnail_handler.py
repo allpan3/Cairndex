@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from cairndex.domain.enums import JobPhase
 from cairndex.jobs.worker import JobContext
 from cairndex.media.thumbnails import generate_for_library
 
@@ -9,6 +10,7 @@ from cairndex.media.thumbnails import generate_for_library
 def thumbnail_job_handler(ctx: JobContext) -> dict[str, Any]:
     force = bool(ctx.payload.get("force", False))
 
+    ctx.set_phase(JobPhase.THUMBNAILING, "Generating thumbnails")
     summary = generate_for_library(
         ctx.session,
         force=force,
