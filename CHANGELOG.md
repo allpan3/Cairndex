@@ -258,7 +258,10 @@ grouped under `Unreleased` until the first tagged release.
   `scan_suggestion` one-file bundle (metadata-only, `AssetFile.id` preserved, and
   any cover/primary pointer on the source cleared), so the file falls back into the
   **Unbundled** view — mirroring what deleting its bundle does. Shared with
-  `delete_bundle` via a new `_restage_file` helper. Covered by
+  `delete_bundle` via a new `_restage_file` helper. The remove mutation now also
+  invalidates the `unbundled-files`, `file-view`, and `view-counts` caches so the
+  Unbundled list, File View badges, and sidebar count update at once instead of
+  only after a manual refresh. Covered by
   `test_manual_bundling.py::test_removing_a_file_from_a_bundle_restages_it_as_unbundled`.
 
 - **A new cover shows immediately instead of after a manual refresh.** The bundle
