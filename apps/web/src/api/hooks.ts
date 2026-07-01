@@ -22,7 +22,10 @@ import {
   enqueueProbe,
   enqueueScan,
   enqueueThumbnails,
+  fetchAuthStatus,
   fetchJob,
+  lockLibrary,
+  unlockLibrary,
   fetchGroupingPlan,
   fetchGroupingPlans,
   generateGroupingPlan,
@@ -185,6 +188,35 @@ export function useLibraryMutations() {
     }),
     register: useMutation({
       mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+// --- Per-library passphrase lock (ADR-0010) ----------------------------------
+/** Lock state of a library for the current session; drives the lock screen. */
+export function useLibraryAuth(libraryId: string | null) {
+  return useQuery({
+    queryKey: ['auth-status', libraryId],
+    queryFn: ({ signal }) => fetchAuthStatus(libraryId!, signal),
+    enabled: libraryId !== null,
+  })
+}
+
+export function useLibraryLock(libraryId: string | null) {
+  const qc = useQueryClient()
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['auth-status', libraryId] })
+    // A lock/unlock flips content accessibility, so refresh the library surfaces.
+    invalidateLibraryContent(qc)
+  }
+  return {
+    unlock: useMutation({
+      mutationFn: (passphrase: string) => unlockLibrary(libraryId!, passphrase),
+      onSuccess: invalidate,
+    }),
+    lock: useMutation({
+      mutationFn: () => lockLibrary(libraryId!),
       onSuccess: invalidate,
     }),
   }

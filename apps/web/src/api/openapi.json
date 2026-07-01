@@ -169,6 +169,25 @@
         "title": "ApplyResultRead",
         "type": "object"
       },
+      "AuthStatus": {
+        "description": "Lock state of a library for the current session (ADR-0010).",
+        "properties": {
+          "protected": {
+            "title": "Protected",
+            "type": "boolean"
+          },
+          "unlocked": {
+            "title": "Unlocked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "protected",
+          "unlocked"
+        ],
+        "title": "AuthStatus",
+        "type": "object"
+      },
       "BatchResult": {
         "properties": {
           "updated": {
@@ -2925,6 +2944,20 @@
         "title": "TagUpdate",
         "type": "object"
       },
+      "UnlockRequest": {
+        "properties": {
+          "passphrase": {
+            "minLength": 1,
+            "title": "Passphrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "passphrase"
+        ],
+        "title": "UnlockRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -3365,6 +3398,190 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/auth/lock": {
+      "post": {
+        "operationId": "lock_api_v1_libraries__library_id__auth_lock_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lock",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/auth/status": {
+      "get": {
+        "operationId": "auth_status_api_v1_libraries__library_id__auth_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Status",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/auth/unlock": {
+      "post": {
+        "operationId": "unlock_api_v1_libraries__library_id__auth_unlock_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlock",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/bundles": {
       "get": {
         "operationId": "list_bundles_api_v1_libraries__library_id__bundles_get",
@@ -3405,6 +3622,22 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -3444,6 +3677,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -3496,6 +3745,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -3643,6 +3908,22 @@
               ],
               "title": "Q"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -3683,6 +3964,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -3736,6 +4033,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -3787,6 +4100,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -3828,6 +4157,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -3896,6 +4241,22 @@
               "description": "Expected entity version for optimistic concurrency.",
               "title": "If-Match"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "requestBody": {
@@ -3957,6 +4318,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4005,6 +4382,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4067,6 +4460,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4119,6 +4528,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4180,6 +4605,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4255,6 +4696,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4323,6 +4780,22 @@
               ],
               "description": "Expected entity version for optimistic concurrency.",
               "title": "If-Match"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4394,6 +4867,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4442,6 +4931,22 @@
             "schema": {
               "title": "Bundle Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4494,6 +4999,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4542,6 +5063,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4604,6 +5141,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4673,6 +5226,22 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4712,6 +5281,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4764,6 +5349,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4827,6 +5428,22 @@
               "title": "Cascade",
               "type": "boolean"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -4868,6 +5485,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -4936,6 +5569,22 @@
               "description": "Expected entity version for optimistic concurrency.",
               "title": "If-Match"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "requestBody": {
@@ -4987,6 +5636,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5050,6 +5715,22 @@
               "title": "Path",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5107,6 +5788,22 @@
               ],
               "title": "Path"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5159,6 +5856,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5209,6 +5922,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5248,6 +5977,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5301,6 +6046,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5345,6 +6106,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5397,6 +6174,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5447,6 +6240,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5633,6 +6442,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5676,6 +6501,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5738,6 +6579,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -5779,6 +6636,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5847,6 +6720,22 @@
               "description": "Expected entity version for optimistic concurrency.",
               "title": "If-Match"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "requestBody": {
@@ -5908,6 +6797,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -5977,6 +6882,22 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6016,6 +6937,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6078,6 +7015,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6119,6 +7072,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6168,6 +7137,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6230,6 +7215,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6278,6 +7279,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6359,6 +7376,22 @@
               ],
               "title": "Cursor"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6398,6 +7431,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6451,6 +7500,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6502,6 +7567,22 @@
               "title": "Library Id",
               "type": "string"
             }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
           }
         ],
         "responses": {
@@ -6543,6 +7624,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],
@@ -6610,6 +7707,22 @@
               ],
               "description": "Expected entity version for optimistic concurrency.",
               "title": "If-Match"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
             }
           }
         ],

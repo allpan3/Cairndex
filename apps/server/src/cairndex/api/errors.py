@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from cairndex.api.schemas.common import ErrorBody
 from cairndex.core.errors import (
+    AuthRequiredError,
     ConflictError,
     DomainError,
     NotFoundError,
@@ -12,6 +13,7 @@ from cairndex.core.errors import (
 # Domain error -> HTTP status. Anything not listed falls back to 400.
 _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
     (NotFoundError, 404),
+    (AuthRequiredError, 401),
     (ConflictError, 409),
     (ValidationError, 422),
 ]

@@ -16,6 +16,8 @@ import {
   useDeleteBundles,
   useDeleteCollection,
   useLibraries,
+  useLibraryAuth,
+  useLibraryLock,
   useProbe,
   useScan,
   useSmartCollectionMutations,
@@ -33,6 +35,7 @@ import { FileInspector } from './app/FileInspector'
 import { FileView } from './app/FileView'
 import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
+import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
 import { Inspector } from './app/Inspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
@@ -134,6 +137,13 @@ export default function App() {
   // run after commit) target the right library.
   if (libraryId) setActiveLibraryId(libraryId)
 
+  // Per-library lock (ADR-0010): resolve lock state before mounting the
+  // workspace, so a protected+locked library shows its passphrase screen and
+  // never fires content queries while locked.
+  const auth = useLibraryAuth(libraryId)
+  const lock = useLibraryLock(libraryId)
+  const locked = auth.data?.protected === true && auth.data.unlocked === false
+
   if (librariesQuery.isLoading) {
     return <div className="app-loading">Loading…</div>
   }
@@ -150,6 +160,20 @@ export default function App() {
     )
   }
 
+  if (locked) {
+    return (
+      <LockScreen
+        key={libraryId}
+        libraries={libraries}
+        libraryId={libraryId}
+        onChangeLibrary={setChosenId}
+        onUnlock={(passphrase) => lock.unlock.mutate(passphrase)}
+        unlocking={lock.unlock.isPending}
+        error={lock.unlock.error?.message ?? null}
+      />
+    )
+  }
+
   return (
     <>
       <Workspace
@@ -158,6 +182,8 @@ export default function App() {
         libraryId={libraryId}
         onChangeLibrary={setChosenId}
         onManage={() => setManaging(true)}
+        canLock={auth.data?.protected === true}
+        onLock={() => lock.lock.mutate()}
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
     </>
@@ -208,9 +234,18 @@ interface WorkspaceProps {
   libraryId: string
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  canLock: boolean
+  onLock: () => void
 }
 
-function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: WorkspaceProps) {
+function Workspace({
+  libraries,
+  libraryId,
+  onChangeLibrary,
+  onManage,
+  canLock,
+  onLock,
+}: WorkspaceProps) {
   const [prefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
@@ -469,6 +504,8 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
         onManageLibraries={onManage}
+        canLock={canLock}
+        onLock={onLock}
         onUpdateLibrary={() => updateLibrary.mutate()}
         updating={updateLibrary.isPending}
         onScanFiles={() => scanFiles.mutate()}

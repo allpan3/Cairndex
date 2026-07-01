@@ -47,6 +47,8 @@ interface SidebarProps {
   libraryId: string | null
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
+  canLock?: boolean
+  onLock?: () => void
   onUpdateLibrary: () => void
   updating?: boolean
   onScanFiles: () => void
@@ -113,6 +115,8 @@ export function Sidebar({
   libraryId,
   onChangeLibrary,
   onManageLibraries,
+  canLock,
+  onLock,
   onUpdateLibrary,
   updating,
   onScanFiles,
@@ -177,6 +181,16 @@ export function Sidebar({
             </option>
           ))}
         </select>
+        {canLock && (
+          <button
+            className="sidebar__library-manage"
+            onClick={onLock}
+            aria-label="Lock library"
+            title="Lock this library"
+          >
+            🔒
+          </button>
+        )}
         <button
           className="sidebar__library-manage"
           onClick={onManageLibraries}

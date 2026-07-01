@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from cairndex.api.v1 import (
+    auth,
     bundles,
     filters,
     grouping,
@@ -20,6 +21,8 @@ router = APIRouter(prefix="/api/v1")
 router.include_router(health.router)
 router.include_router(libraries.router)
 router.include_router(jobs.router)
+# Per-library auth (reachable while locked — the way to unlock; not content-gated).
+router.include_router(auth.router)
 # Library-scoped content routes (/api/v1/libraries/{library_id}/...).
 router.include_router(library_collections.router)
 router.include_router(library_files.router)

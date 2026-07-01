@@ -1,11 +1,13 @@
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, Header, Query
+from fastapi import Cookie, Depends, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import NotFoundError
+from cairndex.auth import SESSION_COOKIE, is_protected, session_store
+from cairndex.core.errors import AuthRequiredError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.persistence.engine import get_session as _get_session
 from cairndex.registry import services as registry_service
@@ -38,7 +40,11 @@ def get_registry_db() -> Iterator[Session]:
 RegistryDbSession = Annotated[Session, Depends(get_registry_db)]
 
 
-def get_library_session(library_id: str, registry: RegistryDbSession) -> Iterator[Session]:
+def get_library_session(
+    library_id: str,
+    registry: RegistryDbSession,
+    session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> Iterator[Session]:
     """Yield a content session bound to one library's ``library.db`` (ADR-0008).
 
     Resolves ``library_id`` (path param) in the registry, refuses an
@@ -46,10 +52,19 @@ def get_library_session(library_id: str, registry: RegistryDbSession) -> Iterato
     transactional session from the per-library engine cache. This is how
     library-scoped content routes (``/api/v1/libraries/{library_id}/…``) reach
     the right database without any server-global "active library".
+
+    Also the single choke point for the optional per-library passphrase lock
+    (ADR-0010): a protected library with no valid unlock in the caller's session
+    is refused with 401 before any content is read. Unprotected libraries and
+    the ``auth/*`` endpoints are unaffected.
     """
     library = registry_service.get_library(registry, library_id)  # 404 if unknown
     if library.status != LibraryStatus.AVAILABLE:
         raise NotFoundError(f"library {library_id!r} is currently unavailable")
+
+    root = Path(library.root_path)
+    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
+        raise AuthRequiredError(f"library {library_id!r} is locked")
 
     session = get_library_sessionmaker(library)()
     try:

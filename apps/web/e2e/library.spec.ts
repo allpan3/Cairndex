@@ -189,6 +189,29 @@ test('toolbar search queries the whole library, not just the loaded page', async
   await expect(page.getByText('Movie 0')).toHaveCount(0)
 })
 
+test('a protected library shows a lock screen and unlocks with the passphrase', async ({
+  page,
+}) => {
+  await mockApi(page)
+  let unlocked = false
+  await page.route('**/auth/status', (r) => r.fulfill({ json: { protected: true, unlocked } }))
+  await page.route('**/auth/unlock', (r) => {
+    unlocked = true
+    return r.fulfill({ json: { protected: true, unlocked: true } })
+  })
+
+  await page.goto('/')
+  // Locked: the passphrase screen is shown and no bundle content is rendered.
+  await expect(page.getByText(/is locked/)).toBeVisible()
+  await expect(page.getByText('Movie 0')).toHaveCount(0)
+
+  await page.getByLabel('Owner passphrase').fill('open-sesame')
+  await page.getByRole('button', { name: 'Unlock' }).click()
+
+  // After unlocking, the workspace mounts and content loads.
+  await expect(page.getByText('Movie 0')).toBeVisible()
+})
+
 test('right-clicking a bundle deletes it via the context menu', async ({ page }) => {
   await mockApi(page)
   let deleted: string | null = null

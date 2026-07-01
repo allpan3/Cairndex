@@ -10,6 +10,29 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Optional per-library owner passphrase lock (ADR-0010).** Each library can
+  independently require an owner passphrase — a lightweight private-LAN/Tailscale
+  guardrail, **not** public-internet hardening and **not** multi-user auth. Only a
+  PBKDF2-HMAC-SHA256 hash is stored, in the library's portable `manifest.json`
+  (`auth` block), set/cleared with `python -m cairndex.devtools.set_passphrase`
+  (never through a content API, never logged). Unlocking is a server-side session
+  bound to an opaque HTTP-only `SameSite=Lax` cookie whose record maps to a set of
+  unlocked library ids, each with its own expiry — so unlocking library A never
+  unlocks library B, and each protected library is unlocked on its own. New routes
+  `GET/POST /libraries/{id}/auth/status|unlock|lock` stay reachable while locked;
+  the content gate lives in the one `get_library_session` dependency every
+  library-scoped route already uses, returning 401 for a protected library with no
+  valid unlock. Wrong passphrases return a generic 401. The registry library list,
+  health, static assets, and the auth endpoints remain accessible while locked. In
+  the UI, a protected+locked active library shows a passphrase screen (with a
+  library switcher) before any content query runs; the sidebar gains a Lock action;
+  switching to a different protected library shows its own lock screen. Covered by
+  `test_auth.py` (hashing, session scoping/expiry, manifest config, and the full
+  API gate incl. A-doesn't-unlock-B, unprotected-C, wrong-passphrase, manual lock)
+  and an `e2e/library.spec.ts` unlock flow. OpenAPI + frontend types regenerated;
+  `.env.example` and `docs/deployment.md` updated. Sessions are in-memory
+  (single-owner, single-process), so a restart re-locks.
+
 - **Whole-library indexed metadata search (SQLite FTS5).** The toolbar search box
   now searches the entire active library — bundle title/note, each file's display
   title, original filename, relative path, source URL and media kind, plus tag

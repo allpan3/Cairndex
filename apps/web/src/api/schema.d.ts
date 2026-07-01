@@ -160,6 +160,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/auth/lock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lock */
+        post: operations["lock_api_v1_libraries__library_id__auth_lock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Status */
+        get: operations["auth_status_api_v1_libraries__library_id__auth_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/auth/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unlock */
+        post: operations["unlock_api_v1_libraries__library_id__auth_unlock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles": {
         parameters: {
             query?: never;
@@ -906,6 +957,16 @@ export interface components {
             files_added_to_bundles: number;
             /** Subtitles Linked */
             subtitles_linked: number;
+        };
+        /**
+         * AuthStatus
+         * @description Lock state of a library for the current session (ADR-0010).
+         */
+        AuthStatus: {
+            /** Protected */
+            protected: boolean;
+            /** Unlocked */
+            unlocked: boolean;
         };
         /** BatchResult */
         BatchResult: {
@@ -1834,6 +1895,11 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /** UnlockRequest */
+        UnlockRequest: {
+            /** Passphrase */
+            passphrase: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2131,6 +2197,109 @@ export interface operations {
             };
         };
     };
+    lock_api_v1_libraries__library_id__auth_lock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_status_api_v1_libraries__library_id__auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unlock_api_v1_libraries__library_id__auth_unlock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_bundles_api_v1_libraries__library_id__bundles_get: {
         parameters: {
             query?: {
@@ -2141,7 +2310,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2172,7 +2343,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2207,7 +2380,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2251,7 +2426,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2282,7 +2459,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2317,7 +2496,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2349,7 +2530,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2381,7 +2564,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2414,7 +2599,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2450,7 +2637,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2482,7 +2671,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2518,7 +2709,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2550,7 +2743,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2586,7 +2781,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2623,7 +2820,9 @@ export interface operations {
                 file_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2657,7 +2856,9 @@ export interface operations {
                 file_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2694,7 +2895,9 @@ export interface operations {
                 file_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2726,7 +2929,9 @@ export interface operations {
                 library_id: string;
                 bundle_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2758,7 +2963,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2790,7 +2997,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2826,7 +3035,9 @@ export interface operations {
                 bundle_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2860,7 +3071,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2891,7 +3104,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2926,7 +3141,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2958,7 +3175,9 @@ export interface operations {
                 collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -2992,7 +3211,9 @@ export interface operations {
                 collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3025,7 +3246,9 @@ export interface operations {
                 collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3060,7 +3283,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3097,7 +3322,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3130,7 +3357,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3162,7 +3391,9 @@ export interface operations {
                 file_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3194,7 +3425,9 @@ export interface operations {
                 file_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3225,7 +3458,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3260,7 +3495,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3291,7 +3528,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3323,7 +3562,9 @@ export interface operations {
                 plan_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3355,7 +3596,9 @@ export interface operations {
                 plan_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: {
             content: {
@@ -3483,7 +3726,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3514,7 +3759,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3550,7 +3797,9 @@ export interface operations {
                 smart_collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3582,7 +3831,9 @@ export interface operations {
                 smart_collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3615,7 +3866,9 @@ export interface operations {
                 smart_collection_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3651,7 +3904,9 @@ export interface operations {
                 track_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3685,7 +3940,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3716,7 +3973,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3752,7 +4011,9 @@ export interface operations {
                 group_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3784,7 +4045,9 @@ export interface operations {
                 group_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3814,7 +4077,9 @@ export interface operations {
                 group_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3850,7 +4115,9 @@ export interface operations {
                 group_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3882,7 +4149,9 @@ export interface operations {
                 group_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3920,7 +4189,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3951,7 +4222,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -3986,7 +4259,9 @@ export interface operations {
             path: {
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4018,7 +4293,9 @@ export interface operations {
                 tag_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4050,7 +4327,9 @@ export interface operations {
                 tag_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4083,7 +4362,9 @@ export interface operations {
                 tag_id: string;
                 library_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
         };
         requestBody: {
             content: {

@@ -19,6 +19,7 @@ export type LibraryRead = components['schemas']['LibraryRead']
 export type LibraryCreate = components['schemas']['LibraryCreate']
 export type LibraryRegister = components['schemas']['LibraryRegister']
 export type JobRead = components['schemas']['JobRead']
+export type AuthStatus = components['schemas']['AuthStatus']
 export type FileViewEntry = components['schemas']['FileViewEntryRead']
 export type FileViewListing = components['schemas']['FileViewListingRead']
 export type FileRead = components['schemas']['FileRead']
@@ -267,6 +268,16 @@ export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`,
 /** Fetch the current status/result for a background job. */
 export const fetchJob = (id: string, signal?: AbortSignal) =>
   getJson<JobRead>(`/api/v1/jobs/${id}`, signal)
+
+// --- Per-library passphrase lock (ADR-0010) ----------------------------------
+export const fetchAuthStatus = (libraryId: string, signal?: AbortSignal) =>
+  getJson<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/status`, signal)
+
+export const unlockLibrary = (libraryId: string, passphrase: string) =>
+  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/unlock`, 'POST', { passphrase })
+
+export const lockLibrary = (libraryId: string) =>
+  send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
 
 // --- Grouping plans (ADR-0009) ------------------------------------------------
 export type GroupingPlan = components['schemas']['PlanRead']
