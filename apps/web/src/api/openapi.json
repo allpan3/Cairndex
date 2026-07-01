@@ -1518,10 +1518,32 @@
             "title": "Library Id",
             "type": "string"
           },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
           "payload": {
             "additionalProperties": true,
             "title": "Payload",
             "type": "object"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
           },
           "processed": {
             "title": "Processed",
@@ -1571,6 +1593,8 @@
           "library_id",
           "job_type",
           "status",
+          "phase",
+          "message",
           "payload",
           "processed",
           "total",

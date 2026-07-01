@@ -51,6 +51,10 @@ SCAN_GROUPING_RULE_VERSION = 1
 # work already committed is preserved.
 ProgressFn = Callable[[int, int | None], None]
 
+# Called when the scan enters a new coarse phase (the value is a
+# ``domain.enums.JobPhase``). Optional so the scanner stays usable outside a job.
+PhaseFn = Callable[[str], None]
+
 
 @dataclass(frozen=True)
 class ScanSummary:
@@ -205,6 +209,7 @@ def scan_library(
     root_path: Path,
     *,
     on_progress: ProgressFn | None = None,
+    on_phase: PhaseFn | None = None,
     batch_size: int = 200,
 ) -> ScanSummary:
     """Scan a library's root directory. ``root_path`` comes from the registry
@@ -224,6 +229,8 @@ def scan_library(
         session.commit()
         return ScanSummary(0, 0, 0, missing)
 
+    if on_phase is not None:
+        on_phase("discovering")
     total = _count_media_files(root_path)
     seen: set[str] = set()
     new_obs: list[_Observed] = []  # bounded: one lightweight record per new path
@@ -249,6 +256,8 @@ def scan_library(
                 on_progress(processed, total)
 
     # Pass 2: repair moves before creating anything new.
+    if on_phase is not None:
+        on_phase("reconciling")
     missing_rows = [row for rel, row in existing.items() if rel not in seen]
     repairs = _plan_repairs(new_obs, missing_rows)
     repaired_rel = {obs.rel for obs, _ in repairs}

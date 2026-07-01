@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import type { CollectionRead, FileViewEntry, LibraryRead, SmartCollectionRead } from './api/client'
+import type {
+  CollectionRead,
+  FileViewEntry,
+  JobRead,
+  LibraryRead,
+  SmartCollectionRead,
+} from './api/client'
 import { setActiveLibraryId } from './api/client'
 import {
   useBatchUpdate,
@@ -223,24 +229,29 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const [mode, setMode] = useState<AppMode>('collection')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+  // Live snapshot of the running maintenance job (scan/probe/thumbnail) so the
+  // sidebar can render a determinate/indeterminate progress bar. Null when idle.
+  const [activeJob, setActiveJob] = useState<JobRead | null>(null)
 
   const collections = useCollections()
   const smartCollections = useSmartCollections()
   const counts = useViewCounts()
   const collectionCounts = useCollectionCounts()
   const updateLibrary = useUpdateLibrary({
+    onProgress: setActiveJob,
     onGroupingPlan: (planId) => {
       setReviewPlanId(planId)
       setReviewingGrouping(true)
     },
   })
   const scanFiles = useScan({
+    onProgress: setActiveJob,
     onGroupingPlan: (planId) => {
       setReviewPlanId(planId)
       setReviewingGrouping(true)
     },
   })
-  const probe = useProbe()
+  const probe = useProbe({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
   const deleteCollection = useDeleteCollection()
   const smartCollectionMutations = useSmartCollectionMutations()
@@ -458,6 +469,10 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
         scanningFiles={scanFiles.isPending}
         onProbe={() => probe.mutate()}
         probing={probe.isPending}
+        activeJob={activeJob}
+        maintenanceError={
+          updateLibrary.error?.message ?? scanFiles.error?.message ?? probe.error?.message ?? null
+        }
         onReviewGrouping={() => {
           setReviewPlanId(null)
           setReviewingGrouping(true)

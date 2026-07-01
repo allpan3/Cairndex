@@ -10,6 +10,27 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Job progress & observability.** Background jobs (scan/probe/thumbnail) now
+  report a coarse **phase** (`discovering` → `reconciling` → `grouping` →
+  `finalizing` for a scan; `probing`/`thumbnailing` for the others) and an
+  optional human **message** alongside the existing processed/total counts and
+  terminal `result`/`error`. The registry `job_queue` gained nullable `phase`
+  and `message` columns (added additively to existing registry DBs — no manual
+  migration); `JobRead` exposes both and OpenAPI/frontend types were
+  regenerated. The worker's `JobContext` gained `set_phase(...)` (phase changes
+  flush immediately) and throttles the hot `checkpoint(...)` registry write to
+  at most one commit per 0.5s — so a multi-terabyte scan no longer commits the
+  registry once per batch — while still checking cancellation every call and
+  always flushing 100%. Handler errors are sanitized before storage
+  (`jobs/errors.py`): the exception type is kept but the library root and any
+  absolute paths are redacted, so a failed job never leaks private filenames.
+  The sidebar renders a live progress bar under **Update** — determinate when a
+  total is known, indeterminate otherwise — with the current phase/count, and a
+  redacted error line if a maintenance job fails. Covered by backend
+  `test_jobs.py` (phase/message, terminal phase clear, path redaction, API
+  exposure) and an `e2e/library.spec.ts` flow asserting the bar appears with
+  phase and counts during Update.
+
 - **Dedicated product brief.** Product mission, fixed decisions, canonical domain
   model, File View direction, grouping behavior, UI direction, future
   compatibility notes, and first-release anti-goals now live in

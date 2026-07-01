@@ -76,12 +76,23 @@ def mark_running(session: Session, job_id: str) -> None:
 
 
 def update_progress(
-    session: Session, job_id: str, *, processed: int, total: int | None = None
+    session: Session,
+    job_id: str,
+    *,
+    processed: int | None = None,
+    total: int | None = None,
+    phase: str | None = None,
+    message: str | None = None,
 ) -> None:
     job = get_job(session, job_id)
-    job.processed = processed
+    if processed is not None:
+        job.processed = processed
     if total is not None:
         job.total = total
+    if phase is not None:
+        job.phase = phase
+    if message is not None:
+        job.message = message
     session.flush()
 
 
@@ -108,10 +119,15 @@ def mark_finished(
     status: JobStatus,
     result: dict[str, Any] | None = None,
     error: str | None = None,
+    message: str | None = None,
 ) -> None:
     job = get_job(session, job_id)
     job.status = status
     job.result = result
     job.error = error
+    # A terminal job is no longer in any working phase; keep an optional final
+    # human-readable summary line in ``message`` instead.
+    job.phase = None
+    job.message = message
     job.finished_at = utcnow()
     session.flush()

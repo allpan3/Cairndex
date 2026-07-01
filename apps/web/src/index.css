@@ -1530,6 +1530,66 @@ code {
   opacity: 0.5;
   cursor: default;
 }
+.sidebar__job-progress {
+  padding: 0 12px 8px;
+}
+.sidebar__job-error {
+  margin: 0 12px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  background: rgb(248 113 113 / 12%);
+  color: var(--error);
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.job-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.job-progress__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.job-progress__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-progress__count {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.job-progress__track {
+  position: relative;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.job-progress__bar {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.job-progress__track--indeterminate .job-progress__bar {
+  width: 40%;
+  animation: job-progress-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes job-progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}
 .sidebar__modes {
   display: flex;
   gap: 4px;

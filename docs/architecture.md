@@ -289,6 +289,14 @@ Implemented job types:
 - probe: ffprobe technical metadata collection;
 - thumbnail: library-wide thumbnail generation/reuse.
 
+Progress is observable: each job row carries a coarse `phase` and optional
+`message` plus processed/total counts, a terminal `result` summary, and a
+sanitized `error`. `JobContext.set_phase(...)` flushes phase transitions
+immediately, while `checkpoint(...)` throttles the registry progress write
+(≤ one commit per 0.5s) so a huge scan does not commit the registry per batch;
+cancellation is still polled every checkpoint. Stored errors are redacted
+(`jobs/errors.py`) to keep private filenames/paths out of the API/UI.
+
 The worker is intentionally single-process/single-worker for the SQLite MVP.
 Scaling should start with profiling, better scheduling, and bounded concurrency,
 not Redis/Celery.
@@ -315,7 +323,6 @@ authenticating reverse proxy, not the public internet.
 ## 14. Known architectural debt
 
 - richer grouping review editing before apply (merge/split/reclassify/rename);
-- detailed progress UI for scan/probe/thumbnail/update jobs;
 - server-side text search / SQLite FTS5;
 - browse-summary query optimization and indexes for larger libraries;
 - cross-filesystem moved-file repair and manual repair candidates;

@@ -65,6 +65,11 @@ class JobQueueEntry(RegistryBase):
         default=JobStatus.QUEUED,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Coarse human-readable progress (Milestone: job observability). ``phase`` is
+    # one of ``domain.enums.JobPhase`` but stored as free text so adding phases
+    # never needs a migration; ``message`` is an optional short status line.
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed: Mapped[int] = mapped_column(Integer, default=0)
     total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

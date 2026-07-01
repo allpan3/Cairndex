@@ -64,6 +64,23 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class JobPhase(StrEnum):
+    """Coarse stage a running job is in, for human-readable progress.
+
+    Phases are advisory labels surfaced in the UI, not a strict state machine:
+    a scan moves through ``discovering`` → ``reconciling`` → ``grouping`` →
+    ``finalizing``; probe/thumbnail jobs report ``probing``/``thumbnailing``.
+    Stored as a plain string column so new phases never require a migration.
+    """
+
+    DISCOVERING = "discovering"
+    RECONCILING = "reconciling"
+    GROUPING = "grouping"
+    PROBING = "probing"
+    THUMBNAILING = "thumbnailing"
+    FINALIZING = "finalizing"
+
+
 class Grouping(StrEnum):
     """How fast-add groups selected files into bundles."""
 
