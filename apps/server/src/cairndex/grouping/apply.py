@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError
@@ -27,6 +27,7 @@ from cairndex.domain.enums import (
     GroupingState,
     ProposalKind,
 )
+from cairndex.grouping.membership import reap_source_bundles
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -242,27 +243,7 @@ def _cleanup_sources(
 ) -> None:
     """Remove provisional bundles emptied by a merge; repair dangling cover/
     primary references on any that still hold files (a split)."""
-    for bundle in source_bundles:
-        remaining = (
-            session.scalar(
-                select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle.id)
-            )
-            or 0
-        )
-        if remaining == 0:
-            session.delete(bundle)
-            result.bundles_removed += 1
-        else:
-            _clear_dangling_refs(session, bundle)
-
-
-def _clear_dangling_refs(session: Session, bundle: AssetBundle) -> None:
-    for attr in ("cover_file_id", "primary_file_id"):
-        ref_id = getattr(bundle, attr)
-        if ref_id is not None:
-            ref = session.get(AssetFile, ref_id)
-            if ref is None or ref.bundle_id != bundle.id:
-                setattr(bundle, attr, None)
+    result.bundles_removed += reap_source_bundles(session, source_bundles)
 
 
 def _bundle_holds_exactly(session: Session, bundle_id: str, file_ids: set[str]) -> bool:
