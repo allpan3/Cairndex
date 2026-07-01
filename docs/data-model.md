@@ -57,7 +57,11 @@ Recent, Uncategorized, Untagged, Missing, and every collection until confirmed.
 The manual bundling assistant (`cairndex.manual_bundling`) confirms them by hand
 — re-parenting `AssetFile` rows (preserving ids), reaping emptied provisional
 source bundles, and auto-linking subtitles — reusing the same metadata-only
-membership helpers (`grouping/membership.py`) as grouping apply.
+membership helpers (`grouping/membership.py`) as grouping apply. The inverse also
+holds: deleting a *confirmed* bundle re-stages its files into fresh provisional
+one-file bundles (they fall back to Unbundled), while deleting a provisional
+bundle removes its rows — so `delete_bundle` never orphans a file the user still
+has on disk.
 
 Current schema note: bundles do **not** have a first-class hyperlink/source
 column. Origin/source metadata is stored per file on `asset_files.source`. If

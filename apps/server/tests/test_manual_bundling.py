@@ -206,6 +206,50 @@ def test_operations_are_metadata_only(session: Session) -> None:
     assert after == before  # same ids, same on-disk paths
 
 
+# --- delete falls back to Unbundled ------------------------------------------
+def test_deleting_confirmed_bundle_restages_files_as_unbundled(session: Session) -> None:
+    """Deleting a confirmed bundle dissolves it: its files return to Unbundled
+    (new provisional/scan_suggestion one-file bundles) with ids preserved."""
+    video = _unbundled(session, "movie/feature.mp4")
+    cover = _unbundled(session, "movie/cover.jpg")
+    result = apply_service.create_bundle_from_unbundled(
+        session, [video.id, cover.id], title="Feature"
+    )
+    session.commit()
+    bundle_id = result.bundle_id
+    file_ids = {video.id, cover.id}
+
+    bundle_service.delete_bundle(session, bundle_id)
+    session.commit()
+    session.expire_all()  # the shared test session keeps rows unexpired on commit
+
+    # The confirmed bundle is gone; both files survive, each in its own fresh
+    # provisional (unbundled) bundle.
+    assert session.get(AssetBundle, bundle_id) is None
+    for fid in file_ids:
+        row = session.get(AssetFile, fid)
+        assert row is not None  # id preserved
+        assert row.bundle_id != bundle_id
+        parent = row.bundle
+        assert parent.grouping_state is GroupingState.PROVISIONAL
+        assert parent.grouping_source is GroupingSource.SCAN_SUGGESTION
+
+
+def test_deleting_unbundled_bundle_removes_the_file(session: Session) -> None:
+    """Deleting an already-unbundled bundle removes its row — the way to drop a
+    loose file from the library (it does not loop back into Unbundled)."""
+    loose = _unbundled(session, "loose/clip.mp4")
+    session.commit()
+    bundle_id = loose.bundle_id
+    file_id = loose.id
+
+    bundle_service.delete_bundle(session, bundle_id)
+    session.commit()
+
+    assert session.get(AssetBundle, bundle_id) is None
+    assert session.get(AssetFile, file_id) is None
+
+
 # --- suggestions -------------------------------------------------------------
 def test_suggest_target_bundles_ranks_same_folder_first(session: Session) -> None:
     show = _confirmed_with_video(session, "Cosmos", "cosmos/ep01.mp4")

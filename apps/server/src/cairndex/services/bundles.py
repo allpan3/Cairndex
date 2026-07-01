@@ -21,7 +21,7 @@ from cairndex.core.paths import (
     resolve_within_root,
 )
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
 from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import (
@@ -100,9 +100,40 @@ def update_bundle(
 
 
 def delete_bundle(session: Session, bundle_id: str) -> None:
-    """Delete a bundle and its file *rows* (metadata only). The physical files
-    on disk are never touched (AGENTS.md §3)."""
-    session.delete(get_bundle(session, bundle_id))
+    """Delete a bundle (metadata only; the files on disk are never touched,
+    AGENTS.md §3).
+
+    Deleting a *confirmed* bundle only dissolves the grouping: each still-linked
+    file is re-staged into its own provisional/``scan_suggestion`` one-file bundle
+    so it falls back into the **Unbundled** view — exactly as a scan would stage
+    it — preserving ``AssetFile.id`` (so its thumbnail cache and any file-level
+    notes survive). The emptied original bundle (and its bundle-level tags,
+    collections, cover/primary, and subtitle links) is then removed.
+
+    Deleting an already-unbundled (provisional) bundle, or an empty bundle, just
+    removes its rows — that is how a loose file is dropped from the library.
+    """
+    bundle = get_bundle(session, bundle_id)
+    files = list(bundle.files)
+    if bundle.grouping_state is GroupingState.CONFIRMED and files:
+        for f in files:
+            staged = AssetBundle(
+                title=Path(f.original_filename).stem or f.original_filename,
+                grouping_state=GroupingState.PROVISIONAL,
+                grouping_source=GroupingSource.SCAN_SUGGESTION,
+            )
+            session.add(staged)
+            session.flush()
+            # Move by FK (as grouping apply does): reassigning to a pending parent
+            # via the relationship would trip delete-orphan on the old collection.
+            f.bundle_id = staged.id
+            f.sequence = 0
+        session.flush()
+        # The files' FK now points at the staged bundles, so drop the stale
+        # ``bundle.files`` collection: the delete-orphan cascade must see it empty
+        # (and not re-claim the re-staged files) when the bundle is deleted.
+        session.expire(bundle, ["files"])
+    session.delete(bundle)
     session.flush()
 
 

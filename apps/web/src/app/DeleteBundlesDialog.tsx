@@ -5,6 +5,9 @@ interface DeleteBundlesDialogProps {
   /** How many bundles will be deleted (≥ 1). */
   count: number
   pending: boolean
+  /** True when the targets are confirmed bundles, whose files fall back into the
+   * Unbundled view rather than being dropped from the library. */
+  filesReturnToUnbundled?: boolean
   onCancel: () => void
   /** `deleteFiles` reflects the checkbox; filesystem deletion is not wired yet. */
   onConfirm: (deleteFiles: boolean) => void
@@ -20,6 +23,7 @@ interface DeleteBundlesDialogProps {
 export function DeleteBundlesDialog({
   count,
   pending,
+  filesReturnToUnbundled = false,
   onCancel,
   onConfirm,
 }: DeleteBundlesDialogProps) {
@@ -52,7 +56,10 @@ export function DeleteBundlesDialog({
         </div>
 
         <div className="modal__preview">
-          Delete {noun}? This removes the Cairndex metadata — by default the files stay on disk.
+          Delete {noun}? This removes the Cairndex metadata — the files always stay on disk.
+          {filesReturnToUnbundled
+            ? ' Their files fall back into Unbundled, so you can re-bundle them.'
+            : ''}
         </div>
 
         <label className="check-row">
