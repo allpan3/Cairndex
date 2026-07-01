@@ -1924,3 +1924,115 @@ code {
   opacity: 0.5;
   cursor: default;
 }
+
+/* --- Manual bundling assistant dialogs (Unbundled staging) ----------------- */
+.modal--mb {
+  width: min(560px, 92vw);
+  gap: 10px;
+}
+.mb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mb-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.mb-hint {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.mb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+.mb-list:empty {
+  display: none;
+}
+.mb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.mb-row:hover {
+  background: var(--accent-soft);
+}
+.mb-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.mb-row__name {
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mb-row__dir,
+.mb-row__reason {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mb-confidence {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+}
+.mb-confidence--high {
+  color: #4ade80;
+  border-color: #2f5d3a;
+  background: rgba(74, 222, 128, 0.12);
+}
+.mb-confidence--med {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.mb-state {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 2px;
+}
+.mb-state--error {
+  color: #ff6b6b;
+}
+.mb-selected {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.mb-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 200;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-strong);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
