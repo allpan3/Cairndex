@@ -298,6 +298,9 @@ export function Sidebar({
           // Unbundled lives in the Files surface; the rest are bundle browse
           // views (only active in Bundles mode).
           const isUnbundled = v.view === 'unbundled'
+          // Unbundled and Missing Files are "needs attention" queues: highlight a
+          // non-zero count (zero stays neutral).
+          const hinted = isUnbundled || v.view === 'missing'
           const active = isUnbundled
             ? mode === 'file' && fileScope === 'unbundled'
             : mode === 'collection' && selection.collectionId === null && selection.view === v.view
@@ -314,7 +317,7 @@ export function Sidebar({
               {counts && (
                 <span
                   className={`nav-item__count${
-                    isUnbundled && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
+                    hinted && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
                   }`}
                 >
                   {counts[v.view]}
