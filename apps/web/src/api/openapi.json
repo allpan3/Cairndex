@@ -7,8 +7,14 @@
             "items": {
               "type": "string"
             },
-            "minItems": 1,
             "title": "File Ids",
+            "type": "array"
+          },
+          "relative_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relative Paths",
             "type": "array"
           },
           "role_overrides": {
@@ -31,8 +37,7 @@
           }
         },
         "required": [
-          "target_bundle_id",
-          "file_ids"
+          "target_bundle_id"
         ],
         "title": "AddFilesRequest",
         "type": "object"
@@ -934,8 +939,14 @@
             "items": {
               "type": "string"
             },
-            "minItems": 1,
             "title": "File Ids",
+            "type": "array"
+          },
+          "relative_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relative Paths",
             "type": "array"
           },
           "role_overrides": {
@@ -964,9 +975,6 @@
             "title": "Title"
           }
         },
-        "required": [
-          "file_ids"
-        ],
         "title": "CreateBundleFromFilesRequest",
         "type": "object"
       },
@@ -1466,6 +1474,10 @@
           "supported": {
             "title": "Supported",
             "type": "boolean"
+          },
+          "unbundled": {
+            "title": "Unbundled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1479,7 +1491,8 @@
           "media_kind",
           "supported",
           "linked",
-          "bundle_id"
+          "bundle_id",
+          "unbundled"
         ],
         "title": "FileViewEntryRead",
         "type": "object"
@@ -2937,7 +2950,6 @@
             "items": {
               "type": "string"
             },
-            "minItems": 1,
             "title": "File Ids",
             "type": "array"
           },
@@ -2947,11 +2959,15 @@
             "minimum": 1.0,
             "title": "Limit",
             "type": "integer"
+          },
+          "relative_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relative Paths",
+            "type": "array"
           }
         },
-        "required": [
-          "file_ids"
-        ],
         "title": "SuggestBundleFromFilesRequest",
         "type": "object"
       },
@@ -2961,7 +2977,6 @@
             "items": {
               "type": "string"
             },
-            "minItems": 1,
             "title": "File Ids",
             "type": "array"
           },
@@ -2971,11 +2986,15 @@
             "minimum": 1.0,
             "title": "Limit",
             "type": "integer"
+          },
+          "relative_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relative Paths",
+            "type": "array"
           }
         },
-        "required": [
-          "file_ids"
-        ],
         "title": "SuggestTargetsRequest",
         "type": "object"
       },
@@ -3274,6 +3293,38 @@
           "suggestions"
         ],
         "title": "TargetSuggestionsResponse",
+        "type": "object"
+      },
+      "UnbundledFilesPage": {
+        "description": "A flat, cross-library page of not-yet-bundled files (the provisional\nscan rows), shaped like File View entries so one file row renders both.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FileViewEntryRead"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "UnbundledFilesPage",
         "type": "object"
       },
       "UnlockRequest": {
@@ -7185,6 +7236,88 @@
           }
         },
         "summary": "Suggest Targets",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/unbundled-files": {
+      "get": {
+        "description": "A flat, cross-library page of files awaiting bundling (provisional scan\nrows), shaped like File View entries so the Files surface renders them.",
+        "operationId": "list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnbundledFilesPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Unbundled Files",
         "tags": [
           "manual-bundling"
         ]

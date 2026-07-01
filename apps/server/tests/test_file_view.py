@@ -7,9 +7,39 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import (
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
+from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.services import bundles as bundle_service
 from cairndex.services import file_view as service
+
+
+def _stage_unbundled(session: Session, relative_path: str) -> AssetFile:
+    """Link a path into a scan-staged provisional (unbundled) one-file bundle."""
+    name = relative_path.rsplit("/", 1)[-1]
+    bundle = AssetBundle(
+        title=name.rsplit(".", 1)[0],
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(bundle)
+    session.flush()
+    row = AssetFile(
+        bundle_id=bundle.id,
+        relative_path=relative_path,
+        original_filename=name,
+        display_title=name,
+        role=FileRole.OTHER,
+        media_kind=MediaKind.VIDEO,
+        size_bytes=10,
+    )
+    session.add(row)
+    session.flush()
+    return row
 
 
 def _make_media(root: Path) -> None:
@@ -67,7 +97,55 @@ def test_linked_file_is_flagged(session: Session, library_root: Path) -> None:
     by_name = {e.name: e for e in service.list_entries(session, path="Show").entries}
     assert by_name["cover.jpg"].linked is True
     assert by_name["cover.jpg"].bundle_id == bundle.id
+    # Linked into a *confirmed* bundle → not unbundled.
+    assert by_name["cover.jpg"].unbundled is False
     assert by_name["notes.txt"].linked is False
+    assert by_name["notes.txt"].unbundled is False
+
+
+def test_unbundled_flag_tracks_provisional_bundles(session: Session, library_root: Path) -> None:
+    _make_media(library_root)
+    # ep1.mkv staged as a provisional (unbundled) file; cover.jpg confirmed.
+    _stage_unbundled(session, "Show/S01/ep1.mkv")
+    confirmed = bundle_service.create_bundle(session, title="c")
+    bundle_service.add_file(
+        session,
+        confirmed.id,
+        relative_path="Show/cover.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+
+    s01 = {e.name: e for e in service.list_entries(session, path="Show/S01").entries}
+    assert s01["ep1.mkv"].linked is True and s01["ep1.mkv"].unbundled is True
+
+    show = {e.name: e for e in service.list_entries(session, path="Show").entries}
+    assert show["cover.jpg"].linked is True and show["cover.jpg"].unbundled is False
+    assert show["notes.txt"].unbundled is False  # unlinked
+
+
+def test_list_unbundled_files_flat(session: Session, library_root: Path) -> None:
+    _stage_unbundled(session, "movie/feature.mp4")
+    _stage_unbundled(session, "photos/sunset.jpg")
+    # A confirmed file must not appear in the unbundled queue.
+    confirmed = bundle_service.create_bundle(session, title="real")
+    bundle_service.add_file(
+        session,
+        confirmed.id,
+        relative_path="movie/other.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    page = service.list_unbundled_files(session)
+    assert page.total == 2
+    paths = [e.relative_path for e in page.items]
+    assert paths == ["movie/feature.mp4", "photos/sunset.jpg"]  # sorted by path
+    feature = page.items[0]
+    assert feature.kind == "file" and feature.linked is True and feature.unbundled is True
+    assert feature.supported is True and feature.media_kind == "video"
 
 
 def test_traversal_and_absolute_paths_rejected(session: Session, library_root: Path) -> None:

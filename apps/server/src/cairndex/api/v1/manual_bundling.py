@@ -5,9 +5,12 @@ and create endpoints are the explicit, metadata-only mutations that turn
 unbundled (scan-staged provisional) files into confirmed bundles.
 """
 
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import LibrarySession
+from cairndex.api.schemas.file_view import FileViewEntryRead, UnbundledFilesPage
 from cairndex.api.schemas.manual_bundling import (
     AddFilesRequest,
     BundleDraftResponse,
@@ -24,8 +27,28 @@ from cairndex.api.schemas.manual_bundling import (
 )
 from cairndex.manual_bundling import apply as apply_service
 from cairndex.manual_bundling import suggest as suggest_service
+from cairndex.services import file_view as file_view_service
+from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/libraries/{library_id}/manual-bundling", tags=["manual-bundling"])
+
+
+# --- the Unbundled "to-bundle queue" (read-only) -----------------------------
+@router.get("/unbundled-files", response_model=UnbundledFilesPage)
+def list_unbundled_files(
+    db: LibrarySession,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
+) -> UnbundledFilesPage:
+    """A flat, cross-library page of files awaiting bundling (provisional scan
+    rows), shaped like File View entries so the Files surface renders them."""
+    page = file_view_service.list_unbundled_files(db, offset=offset, limit=limit)
+    return UnbundledFilesPage(
+        items=[FileViewEntryRead(**vars(e)) for e in page.items],
+        total=page.total,
+        offset=page.offset,
+        limit=page.limit,
+    )
 
 
 # --- suggestions (read-only) -------------------------------------------------
@@ -34,7 +57,9 @@ def suggest_targets(
     payload: SuggestTargetsRequest, db: LibrarySession
 ) -> TargetSuggestionsResponse:
     """Confirmed bundles the selected unbundled files most likely belong to."""
-    results = suggest_service.suggest_target_bundles(db, payload.file_ids, limit=payload.limit)
+    results = suggest_service.suggest_target_bundles(
+        db, payload.file_ids, relative_paths=payload.relative_paths, limit=payload.limit
+    )
     return TargetSuggestionsResponse(
         suggestions=[
             TargetSuggestionRead(
@@ -59,7 +84,9 @@ def suggest_bundle_from_files(
     payload: SuggestBundleFromFilesRequest, db: LibrarySession
 ) -> BundleDraftResponse:
     """A proposed title/roles for a seed selection, plus nearby unbundled files."""
-    draft = suggest_service.suggest_bundle_from_files(db, payload.file_ids, limit=payload.limit)
+    draft = suggest_service.suggest_bundle_from_files(
+        db, payload.file_ids, relative_paths=payload.relative_paths, limit=payload.limit
+    )
     return BundleDraftResponse(
         proposed_title=draft.proposed_title,
         roles=[
@@ -83,6 +110,7 @@ def add_files_to_bundle(payload: AddFilesRequest, db: LibrarySession) -> ManualB
         db,
         payload.target_bundle_id,
         payload.file_ids,
+        relative_paths=payload.relative_paths,
         role_overrides=payload.role_overrides,
     )
     return _result_read(result)
@@ -96,7 +124,11 @@ def create_bundle_from_files(
 ) -> ManualBundleResultRead:
     """Confirm a new bundle from one or more selected unbundled files."""
     result = apply_service.create_bundle_from_unbundled(
-        db, payload.file_ids, title=payload.title, role_overrides=payload.role_overrides
+        db,
+        payload.file_ids,
+        relative_paths=payload.relative_paths,
+        title=payload.title,
+        role_overrides=payload.role_overrides,
     )
     return _result_read(result)
 

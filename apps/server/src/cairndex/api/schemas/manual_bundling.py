@@ -6,19 +6,32 @@ an asset-file id to a chosen :class:`FileRole`, letting the client override the
 heuristic's role for any file before applying.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from cairndex.domain.enums import FileRole, MediaKind
 
 
+class _FileSelection(BaseModel):
+    """Selected unbundled files, as ``file_ids`` (Unbundled list) and/or
+    ``relative_paths`` (File View — unlinked paths are staged at apply time).
+    At least one file must be supplied across the two."""
+
+    file_ids: list[str] = Field(default_factory=list)
+    relative_paths: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_some(self) -> "_FileSelection":
+        if not self.file_ids and not self.relative_paths:
+            raise ValueError("select at least one file (file_ids or relative_paths)")
+        return self
+
+
 # --- suggestion requests -----------------------------------------------------
-class SuggestTargetsRequest(BaseModel):
-    file_ids: list[str] = Field(min_length=1)
+class SuggestTargetsRequest(_FileSelection):
     limit: int = Field(default=10, ge=1, le=50)
 
 
-class SuggestBundleFromFilesRequest(BaseModel):
-    file_ids: list[str] = Field(min_length=1)
+class SuggestBundleFromFilesRequest(_FileSelection):
     limit: int = Field(default=30, ge=1, le=100)
 
 
@@ -60,14 +73,12 @@ class BundleDraftResponse(BaseModel):
 
 
 # --- apply requests ----------------------------------------------------------
-class AddFilesRequest(BaseModel):
+class AddFilesRequest(_FileSelection):
     target_bundle_id: str
-    file_ids: list[str] = Field(min_length=1)
     role_overrides: dict[str, FileRole] | None = None
 
 
-class CreateBundleFromFilesRequest(BaseModel):
-    file_ids: list[str] = Field(min_length=1)
+class CreateBundleFromFilesRequest(_FileSelection):
     title: str | None = None
     role_overrides: dict[str, FileRole] | None = None
 

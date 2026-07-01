@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
 from cairndex.grouping.suggester import (
     _COVER_STEMS,
@@ -39,6 +40,7 @@ from cairndex.grouping.suggester import (
     FileObservation as _Observation,
 )
 from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.scanning.media_types import classify
 from cairndex.search import matching_ids_select, to_match_query
 
 # Cap the candidate set each generator scores, so suggestions stay fast on large
@@ -233,19 +235,62 @@ def _unbundled_files_for(
 # --- generators --------------------------------------------------------------
 
 
-def _selected_rows(session: Session, file_ids: list[str]) -> list[AssetFile]:
-    rows = [session.get(AssetFile, fid) for fid in dict.fromkeys(file_ids)]
-    return [r for r in rows if r is not None]
+@dataclass(frozen=True)
+class _Seed:
+    """A selected file for suggestion, from either a linked ``file_id`` or a
+    File-View ``relative_path``. ``identity`` is the file id when linked, else the
+    path (used only as a role key; unlinked paths have no row yet)."""
+
+    identity: str
+    relative_path: str
+    media_kind: MediaKind
+    name: str
+
+
+def _seeds(
+    session: Session, file_ids: list[str] | None, relative_paths: list[str] | None
+) -> list[_Seed]:
+    """Read-only resolution of selected ids/paths to seeds (no staging), deduped
+    by path. Unlinked paths are classified for a media kind."""
+    seeds: list[_Seed] = []
+    seen: set[str] = set()
+    for fid in dict.fromkeys(file_ids or []):
+        row = session.get(AssetFile, fid)
+        if row is None or row.relative_path in seen:
+            continue
+        seen.add(row.relative_path)
+        seeds.append(_Seed(row.id, row.relative_path, row.media_kind, row.original_filename))
+    for raw in relative_paths or []:
+        try:
+            rel = normalize_relative_path(raw)
+        except PathSafetyError:
+            continue
+        if rel in seen:
+            continue
+        seen.add(rel)
+        existing = session.scalar(select(AssetFile).where(AssetFile.relative_path == rel))
+        name = rel.rsplit("/", 1)[-1]
+        if existing is not None:
+            seeds.append(_Seed(existing.id, rel, existing.media_kind, existing.original_filename))
+        else:
+            classification = classify(name)
+            kind = classification[0] if classification else MediaKind.OTHER
+            seeds.append(_Seed(rel, rel, kind, name))
+    return seeds
 
 
 def suggest_target_bundles(
-    session: Session, file_ids: list[str], *, limit: int = 10
+    session: Session,
+    file_ids: list[str] | None = None,
+    *,
+    relative_paths: list[str] | None = None,
+    limit: int = 10,
 ) -> list[TargetSuggestion]:
     """Rank confirmed bundles the selected unbundled files most likely join."""
-    selected = _selected_rows(session, file_ids)
+    selected = _seeds(session, file_ids, relative_paths)
     if not selected:
         return []
-    selected_ctx = _file_context([(r.relative_path, r.media_kind) for r in selected])
+    selected_ctx = _file_context([(s.relative_path, s.media_kind) for s in selected])
 
     candidate_ids = _dir_bundle_ids(session, selected_ctx.dirs, confirmed=True, cap=_CANDIDATE_CAP)
     candidate_ids |= _fts_bundle_ids(
@@ -267,8 +312,8 @@ def suggest_target_bundles(
     for bundle in bundles:
         bundle_ctx = _file_context(files_by_bundle.get(bundle.id, []), title=bundle.title)
         best: tuple[float, str] | None = None
-        for row in selected:
-            scored = _score(row.relative_path, row.media_kind, bundle_ctx)
+        for seed in selected:
+            scored = _score(seed.relative_path, seed.media_kind, bundle_ctx)
             if scored is not None and (best is None or scored[0] > best[0]):
                 best = scored
         if best is not None:
@@ -308,28 +353,35 @@ def suggest_unbundled_files_for_bundle(
 
 
 def suggest_bundle_from_files(
-    session: Session, file_ids: list[str], *, limit: int = 30
+    session: Session,
+    file_ids: list[str] | None = None,
+    *,
+    relative_paths: list[str] | None = None,
+    limit: int = 30,
 ) -> BundleDraft:
     """Propose a title + per-file roles for a seed selection, plus nearby
     unbundled files worth including."""
-    selected = _selected_rows(session, file_ids)
+    selected = _seeds(session, file_ids, relative_paths)
     if not selected:
         return BundleDraft(proposed_title="")
 
-    observations = [_Observation(r.id, r.relative_path, r.media_kind) for r in selected]
-    by_id = {r.id: r for r in selected}
+    observations = [_Observation(s.identity, s.relative_path, s.media_kind) for s in selected]
+    by_id = {s.identity: s for s in selected}
     roles = [
         ProposedRole(p.asset_file_id, by_id[p.asset_file_id].relative_path, p.role, p.sequence)
         for p in _assign_roles(observations)
     ]
 
-    video = next((r for r in selected if r.media_kind is MediaKind.VIDEO), selected[0])
-    proposed_title = _stem(video.relative_path) or video.original_filename
+    video = next((s for s in selected if s.media_kind is MediaKind.VIDEO), selected[0])
+    proposed_title = _stem(video.relative_path) or video.name
 
-    seed_ctx = _file_context([(r.relative_path, r.media_kind) for r in selected])
-    seed_ids = {r.id for r in selected}
+    seed_ctx = _file_context([(s.relative_path, s.media_kind) for s in selected])
+    seed_ids = {s.identity for s in selected}
+    seed_paths = {s.relative_path for s in selected}
     additional: list[FileSuggestion] = []
     for row in _unbundled_files_for(session, seed_ctx, exclude=seed_ids, cap=_CANDIDATE_CAP):
+        if row.relative_path in seed_paths:
+            continue  # a selected path that is already a provisional row
         scored = _score(row.relative_path, row.media_kind, seed_ctx)
         if scored is not None:
             additional.append(

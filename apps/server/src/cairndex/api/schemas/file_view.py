@@ -21,9 +21,21 @@ class FileViewEntryRead(BaseModel):
     # True when this exact path is already linked into a bundle.
     linked: bool
     bundle_id: str | None
+    # True when linked into a scan-staged provisional bundle (not yet confirmed).
+    unbundled: bool
 
 
 class FileViewListingRead(BaseModel):
     # The relative directory listed ("" = the library root itself).
     path: str
     entries: list[FileViewEntryRead]
+
+
+class UnbundledFilesPage(BaseModel):
+    """A flat, cross-library page of not-yet-bundled files (the provisional
+    scan rows), shaped like File View entries so one file row renders both."""
+
+    items: list[FileViewEntryRead]
+    total: int
+    offset: int
+    limit: int

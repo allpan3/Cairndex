@@ -857,6 +857,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/manual-bundling/unbundled-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Unbundled Files
+         * @description A flat, cross-library page of files awaiting bundling (provisional scan
+         *     rows), shaped like File View entries so the Files surface renders them.
+         */
+        get: operations["list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/smart-collections": {
         parameters: {
             query?: never;
@@ -1030,7 +1051,9 @@ export interface components {
         /** AddFilesRequest */
         AddFilesRequest: {
             /** File Ids */
-            file_ids: string[];
+            file_ids?: string[];
+            /** Relative Paths */
+            relative_paths?: string[];
             /** Role Overrides */
             role_overrides?: {
                 [key: string]: components["schemas"]["FileRole"];
@@ -1330,7 +1353,9 @@ export interface components {
         /** CreateBundleFromFilesRequest */
         CreateBundleFromFilesRequest: {
             /** File Ids */
-            file_ids: string[];
+            file_ids?: string[];
+            /** Relative Paths */
+            relative_paths?: string[];
             /** Role Overrides */
             role_overrides?: {
                 [key: string]: components["schemas"]["FileRole"];
@@ -1494,6 +1519,8 @@ export interface components {
             size_bytes: number | null;
             /** Supported */
             supported: boolean;
+            /** Unbundled */
+            unbundled: boolean;
         };
         /** FileViewListingRead */
         FileViewListingRead: {
@@ -2010,22 +2037,26 @@ export interface components {
         /** SuggestBundleFromFilesRequest */
         SuggestBundleFromFilesRequest: {
             /** File Ids */
-            file_ids: string[];
+            file_ids?: string[];
             /**
              * Limit
              * @default 30
              */
             limit: number;
+            /** Relative Paths */
+            relative_paths?: string[];
         };
         /** SuggestTargetsRequest */
         SuggestTargetsRequest: {
             /** File Ids */
-            file_ids: string[];
+            file_ids?: string[];
             /**
              * Limit
              * @default 10
              */
             limit: number;
+            /** Relative Paths */
+            relative_paths?: string[];
         };
         /**
          * SystemView
@@ -2126,6 +2157,21 @@ export interface components {
         TargetSuggestionsResponse: {
             /** Suggestions */
             suggestions: components["schemas"]["TargetSuggestionRead"][];
+        };
+        /**
+         * UnbundledFilesPage
+         * @description A flat, cross-library page of not-yet-bundled files (the provisional
+         *     scan rows), shaped like File View entries so one file row renders both.
+         */
+        UnbundledFilesPage: {
+            /** Items */
+            items: components["schemas"]["FileViewEntryRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
         };
         /** UnlockRequest */
         UnlockRequest: {
@@ -4161,6 +4207,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TargetSuggestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnbundledFilesPage"];
                 };
             };
             /** @description Validation Error */
