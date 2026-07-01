@@ -337,12 +337,15 @@ export function useApplyGroupingPlan() {
     mutationFn: ({ id, proposalIds }: { id: string; proposalIds?: string[] }) =>
       applyGroupingPlan(id, proposalIds),
     onSuccess: () => {
-      // Applying confirms bundles and may create collections + subtitle links.
+      // Applying confirms bundles and may create collections + subtitle links —
+      // so files leave Unbundled and the File View badges change.
       for (const key of [
         'browse',
         'view-counts',
         'collections',
         'collection-counts',
+        'unbundled-files',
+        'file-view',
         'grouping-plans',
         'grouping-plan',
         'bundle',
@@ -607,11 +610,15 @@ export function useDeleteBundles() {
   return useMutation({
     mutationFn: (ids: string[]) => Promise.all(ids.map((id) => deleteBundle(id))),
     onSuccess: () => {
+      // Deleting a confirmed bundle re-stages its files into Unbundled, so the
+      // Unbundled list + File View badges must refresh too.
       for (const key of [
         'browse',
         'view-counts',
         'collection-counts',
         'tag-counts',
+        'unbundled-files',
+        'file-view',
         'bundle',
         'bundle-files',
       ])
