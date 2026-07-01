@@ -227,29 +227,46 @@ function FileList({
               </div>
             </div>
             <div className="file-row__actions">
-              <button title="Move up" onClick={() => move(i, -1)} disabled={i === 0}>
+              <button
+                className="tip"
+                data-tip="Move up"
+                aria-label="Move up"
+                onClick={() => move(i, -1)}
+                disabled={i === 0}
+              >
                 ↑
               </button>
               <button
-                title="Move down"
+                className="tip"
+                data-tip="Move down"
+                aria-label="Move down"
                 onClick={() => move(i, 1)}
                 disabled={i === files.length - 1}
               >
                 ↓
               </button>
               <button
-                title="Set as primary"
+                className="tip"
+                data-tip="Set as primary (played first)"
+                aria-label="Set as primary file"
                 onClick={() => update.mutate({ primary_file_id: f.id })}
               >
                 ▶
               </button>
               {thumbnailable && (
-                <button title="Set as cover" onClick={() => update.mutate({ cover_file_id: f.id })}>
+                <button
+                  className="tip"
+                  data-tip="Set as cover"
+                  aria-label="Set as cover"
+                  onClick={() => update.mutate({ cover_file_id: f.id })}
+                >
                   ★
                 </button>
               )}
               <button
-                title="Remove from bundle (keeps the file on disk)"
+                className="tip"
+                data-tip="Remove from bundle (keeps the file)"
+                aria-label="Remove from bundle (keeps the file on disk)"
                 onClick={() => remove.mutate(f.id)}
               >
                 ×

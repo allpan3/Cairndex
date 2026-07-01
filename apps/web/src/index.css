@@ -458,6 +458,36 @@ button {
   cursor: default;
 }
 
+/* Immediate, styled tooltip for icon buttons (clearer than the slow native
+   title). The bubble is right-anchored so it extends left into the panel and
+   never clips at the window edge. */
+.tip {
+  position: relative;
+}
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  white-space: nowrap;
+  background: var(--bg);
+  color: var(--text-strong);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 400;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease 0.15s;
+}
+.tip:hover::after,
+.tip:focus-visible::after {
+  opacity: 1;
+}
+
 .stars {
   color: var(--star);
   letter-spacing: 2px;
