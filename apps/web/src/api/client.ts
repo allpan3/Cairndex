@@ -382,8 +382,16 @@ export function fetchBundleFiles(id: string, signal?: AbortSignal): Promise<File
   return getJson<FileRead[]>(`${lib()}/bundles/${id}/files`, signal)
 }
 
-export function thumbnailUrl(bundleId: string): string {
-  return `${lib()}/bundles/${bundleId}/thumbnail`
+/**
+ * URL for a bundle's cover thumbnail. The endpoint path is stable, so the
+ * browser would serve a stale cached image after the cover changes; passing
+ * `coverKey` (the id of the file the cover derives from — `cover_key` on a
+ * browse summary, or `cover_file_id` on a bundle) appends a cache-busting query
+ * param so a new cover shows without a manual refresh.
+ */
+export function thumbnailUrl(bundleId: string, coverKey?: string | null): string {
+  const base = `${lib()}/bundles/${bundleId}/thumbnail`
+  return coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base
 }
 
 export function fileThumbnailUrl(bundleId: string, fileId: string): string {

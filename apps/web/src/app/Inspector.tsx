@@ -92,7 +92,7 @@ function BundleEditor({
     <aside className="inspector">
       <div
         className="inspector__cover"
-        style={{ backgroundImage: `url(${thumbnailUrl(bundleId)})` }}
+        style={{ backgroundImage: `url(${thumbnailUrl(bundleId, bundle.cover_file_id)})` }}
       >
         {hasVideo && (
           <button

@@ -251,6 +251,24 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Removing a file from a bundle now returns it to Unbundled instead of
+  unlinking it.** The bundle inspector's per-file remove (×) previously deleted the
+  file's `AssetFile` row, dropping it from the library entirely (only re-scanning
+  brought it back). It now re-stages the file into its own provisional/
+  `scan_suggestion` one-file bundle (metadata-only, `AssetFile.id` preserved, and
+  any cover/primary pointer on the source cleared), so the file falls back into the
+  **Unbundled** view — mirroring what deleting its bundle does. Shared with
+  `delete_bundle` via a new `_restage_file` helper. Covered by
+  `test_manual_bundling.py::test_removing_a_file_from_a_bundle_restages_it_as_unbundled`.
+
+- **A new cover shows immediately instead of after a manual refresh.** The bundle
+  thumbnail URL (`/bundles/{id}/thumbnail`) is stable, so the browser served a
+  stale cached image after the cover changed. Browse summaries (and the inspector)
+  now carry a `cover_key` — the id of the file the cover is derived from — which
+  the client appends as a cache-busting `?c=` param; it changes when the cover
+  changes, so the grid card and inspector cover update at once. Covered by
+  `test_browse.py::test_summary_cover_key_tracks_the_selected_cover`.
+
 - **The Unbundled list now refreshes after applying a grouping plan or deleting a
   bundle.** Applying a grouping plan (which confirms bundles, so files leave
   Unbundled) and deleting a confirmed bundle (which re-stages its files back into

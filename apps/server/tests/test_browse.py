@@ -67,6 +67,29 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.extension == "mp4" and s.media_kind == "video"
     assert s.has_cover is True
     assert s.grouping_state == bundle.grouping_state
+    # The lone video is the derived cover, so it drives the cache-busting key.
+    assert s.cover_key == f.id
+
+
+def test_summary_cover_key_tracks_the_selected_cover(session: Session) -> None:
+    """cover_key follows the effective cover so the client can bust the thumbnail
+    cache: it starts on the derived cover (first image) and moves when the owner
+    picks a different one."""
+    bundle = bundle_service.create_bundle(session, title="Album")
+    first = bundle_service.add_file(
+        session, bundle.id, relative_path="a/1.jpg", role=FileRole.IMAGE, media_kind=MediaKind.IMAGE
+    )
+    second = bundle_service.add_file(
+        session, bundle.id, relative_path="a/2.jpg", role=FileRole.IMAGE, media_kind=MediaKind.IMAGE
+    )
+    session.commit()
+
+    # No explicit cover yet → derived from the first image.
+    assert browse_bundles(session).items[0].cover_key == first.id
+
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": second.id})
+    session.commit()
+    assert browse_bundles(session).items[0].cover_key == second.id
 
 
 def test_system_views_filter(session: Session) -> None:

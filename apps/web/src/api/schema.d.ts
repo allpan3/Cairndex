@@ -1252,6 +1252,8 @@ export interface components {
         BundleSort: "date_added" | "title" | "rating" | "size" | "file_count";
         /** BundleSummary */
         BundleSummary: {
+            /** Cover Key */
+            cover_key: string | null;
             /**
              * Date Added
              * Format: date-time
