@@ -115,11 +115,28 @@ Restore is a file copy while the app is **stopped**: `down`, replace the relevan
 
 ### Remote access and security
 
-There is **no authentication yet** (`AGENTS.md` §12). The compose file binds to
-`127.0.0.1` by default. Do **not** expose this directly to the public internet.
-For remote access, reach it over a private network or Tailscale, or front it with
-a reverse proxy that adds authentication. Optional single-owner auth is a
-documented follow-up, not yet implemented.
+The compose file binds to `127.0.0.1` by default. Do **not** expose this directly
+to the public internet. For remote access, reach it over a private network or
+Tailscale, or front it with a reverse proxy that adds authentication.
+
+An **optional per-library owner passphrase lock** (ADR-0010) is available as a
+lightweight guardrail. Each library independently chooses no lock or a passphrase;
+enable one with:
+
+```bash
+uv run python -m cairndex.devtools.set_passphrase --library-root /path/to/library
+# remove it later with --clear
+```
+
+Only a PBKDF2 hash is stored (in the library's portable manifest); unlocking is a
+server-side session bound to an opaque HTTP-only cookie and scoped to that one
+library (unlocking one protected library never unlocks another). Sessions are
+in-memory, so a restart re-locks everything.
+
+This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
+adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains
+unsupported without a separate hardened reverse proxy. Full multi-user accounts
+are out of scope.
 
 ## Health check
 

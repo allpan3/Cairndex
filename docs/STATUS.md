@@ -148,7 +148,13 @@ session; GitHub CI should validate the updated branch.
 
 ## Known issues / environment gaps
 
-- No authentication yet; the app is still intended for single-owner/local use.
+- Optional per-library owner passphrase lock (ADR-0010) is implemented: a library
+  can require a passphrase (hash in its manifest; set via
+  `cairndex.devtools.set_passphrase`), gated by a library-scoped server session
+  (opaque HTTP-only cookie). It is a private LAN/Tailscale guardrail, not
+  public-internet hardening and not multi-user auth. Branch
+  `feat/per-library-passphrase-lock`. Sessions are in-memory (re-lock on restart);
+  no rate limiting/lockout.
 - Job progress is now observable: scan/probe/thumbnail jobs report a coarse
   phase + message with throttled progress writes, and the sidebar shows a live
   (determinate/indeterminate) progress bar under Update plus redacted error
@@ -178,12 +184,12 @@ session; GitHub CI should validate the updated branch.
 
 1. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Add an optional per-library owner passphrase lock (private LAN/Tailscale
-   guardrail; not public-internet hardening).
-3. Continue File View planning toward guarded write mode and safe desktop-native
+2. Continue File View planning toward guarded write mode and safe desktop-native
    handoff.
-4. Consider relevance ranking for text search (results currently keep the active
+3. Consider relevance ranking for text search (results currently keep the active
    sort).
+4. Consider hardening the passphrase lock for wider exposure (rate limiting,
+   lockout, persistent sessions) if it ever needs to face more than a trusted LAN.
 
 ## Unresolved decisions
 

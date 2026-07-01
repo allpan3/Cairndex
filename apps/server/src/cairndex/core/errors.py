@@ -40,3 +40,13 @@ class ValidationError(DomainError):
     """Input that is well-formed but semantically invalid."""
 
     code = "validation_error"
+
+
+class AuthRequiredError(DomainError):
+    """A protected library's content was requested without a valid unlock (ADR-0010).
+
+    A private-network guardrail, not multi-user auth. Maps to 401; the client
+    should show that library's passphrase screen and unlock before retrying.
+    """
+
+    code = "auth_required"

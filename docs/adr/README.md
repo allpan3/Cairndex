@@ -28,3 +28,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0007](0007-file-view-host-integration.md) | File View native handoff / host integration | accepted |
 | [0008](0008-per-library-metadata-and-registry.md) | Per-library metadata and a server-side registry | accepted |
 | [0009](0009-bundle-grouping-and-suggestions.md) | Suggestion-based bundle grouping (Option A+) | accepted |
+| [0010](0010-per-library-passphrase-lock.md) | Per-library optional owner passphrase lock | accepted |

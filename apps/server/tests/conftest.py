@@ -23,10 +23,14 @@ def _dispose_library_engines() -> Iterator[None]:
     """Release any per-library engines opened during a test (ADR-0008).
 
     The cache is process-global; disposing after each test closes handles to
-    temp ``library.db`` files so their tmp dirs can be cleaned up.
+    temp ``library.db`` files so their tmp dirs can be cleaned up. Also clears
+    the process-global auth session store (ADR-0010) so unlocks never leak.
     """
     yield
     dispose_all_library_engines()
+    from cairndex.auth import session_store
+
+    session_store.clear()
 
 
 @pytest.fixture(autouse=True, scope="session")
