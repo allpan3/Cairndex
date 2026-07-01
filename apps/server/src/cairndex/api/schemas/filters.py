@@ -31,3 +31,5 @@ class BrowseRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=MAX_LIMIT)
     filter: FilterExpression | None = None
+    # Whole-library full-text search over bundle/file/tag/collection metadata.
+    q: str | None = None

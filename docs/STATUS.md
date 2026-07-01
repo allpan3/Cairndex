@@ -156,8 +156,12 @@ session; GitHub CI should validate the updated branch.
   no dedicated UI button yet.
 - Grouping review can select/deselect proposals but does not yet provide rich
   edit-before-apply controls for merge/split/reclassify/rename.
-- Server-side text search / SQLite FTS5 is not implemented; toolbar text search
-  still filters the loaded client-side window.
+- Whole-library indexed metadata search (SQLite FTS5) is implemented: the toolbar
+  search box queries a per-library `bundle_search` FTS5 index (kept fresh by
+  triggers; rebuildable via `cairndex.devtools.reindex_search`) over
+  bundle/file/tag/collection metadata, composing with views/collections/filters.
+  Branch `feat/indexed-metadata-search`. Ranking is match-only for now (results
+  keep the active sort, not a relevance score).
 - Browse-summary queries are profiled with synthetic-library + benchmark
   devtools; targeted indexes (`asset_files.bundle_id` + association-table reverse
   indexes) plus a non-correlated membership semijoin take browse/counts/filters
@@ -174,12 +178,12 @@ session; GitHub CI should validate the updated branch.
 
 1. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Add server-side text search/FTS across the whole active library (browse-summary
-   indexes and synthetic-library/benchmark tooling now exist to validate it).
+2. Add an optional per-library owner passphrase lock (private LAN/Tailscale
+   guardrail; not public-internet hardening).
 3. Continue File View planning toward guarded write mode and safe desktop-native
    handoff.
-4. Decide the first single-owner authentication mechanism before relying on
-   remote access.
+4. Consider relevance ranking for text search (results currently keep the active
+   sort).
 
 ## Unresolved decisions
 

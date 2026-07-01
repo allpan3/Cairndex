@@ -36,12 +36,13 @@ metadata collection, and grouping-review actions remain in the maintenance
 menu. There are no global storage-root content APIs in the current model.
 
 The app is still pre-1.0 and should not be exposed directly to the public
-internet. Important follow-ups include single-owner authentication, server-side
-text search/FTS, browse-query performance/indexing, scheduled scans and progress
-bars, richer edit-before-apply grouping review, File View write-mode and
-desktop-client integration, cross-filesystem repair candidates, and media
-fallback/remux/transcoding. See [docs/STATUS.md](docs/STATUS.md) for the current
-milestone, known gaps, and recommended next tasks.
+internet. Important follow-ups include single-owner authentication, richer
+edit-before-apply grouping review, File View write-mode and desktop-client
+integration, cross-filesystem repair candidates, and media
+fallback/remux/transcoding. Job progress bars, large-library browse indexing, and
+whole-library indexed text search (SQLite FTS5) are now implemented. See
+[docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
+recommended next tasks.
 
 ## Repository layout
 

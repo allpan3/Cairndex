@@ -56,6 +56,7 @@ def browse_bundles(
     order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
+    q: Annotated[str | None, Query()] = None,
 ) -> BundleBrowsePage:
     return _browse_page(
         db,
@@ -66,6 +67,7 @@ def browse_bundles(
         descending=order == "desc",
         offset=offset,
         limit=limit,
+        search=q,
     )
 
 
@@ -83,6 +85,7 @@ def browse_bundles_filtered(payload: BrowseRequest, db: LibrarySession) -> Bundl
         offset=payload.offset,
         limit=payload.limit,
         filter_expr=payload.filter,
+        search=payload.q,
     )
 
 

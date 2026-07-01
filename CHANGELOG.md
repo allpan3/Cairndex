@@ -10,6 +10,25 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Whole-library indexed metadata search (SQLite FTS5).** The toolbar search box
+  now searches the entire active library — bundle title/note, each file's display
+  title, original filename, relative path, source URL and media kind, plus tag
+  and collection names — instead of filtering only the loaded/paginated rows. Each
+  library DB carries a per-library `bundle_search` FTS5 table kept fresh by SQLite
+  triggers over the underlying tables, so every write path (interactive edits,
+  scan, moved-file repair, grouping apply, deletion, tag/collection rename) updates
+  the index automatically; a `python -m cairndex.devtools.reindex_search` command
+  rebuilds it for one library (initial fill / drift recovery). Browse gained a `q`
+  parameter (GET and POST `/bundles/browse`) that composes as a non-correlated FTS
+  semijoin, so search stacks with the active system view, collection, Smart
+  Collection/filter, sort, and pagination. User input is tokenized into safe quoted
+  prefix terms, so FTS operators can't cause a syntax error. The frontend debounces
+  the search box (250 ms) into the backend query, shows Searching/No-matches states,
+  and no longer does client-side window filtering. Covered by `test_search.py`
+  (coverage, freshness on edit/delete/tag-rename, filter composition, escaping,
+  rebuild, API) and an `e2e/library.spec.ts` flow proving search finds a bundle not
+  in the first loaded page. OpenAPI + frontend types regenerated.
+
 - **Job progress & observability.** Background jobs (scan/probe/thumbnail) now
   report a coarse **phase** (`discovering` → `reconciling` → `grouping` →
   `finalizing` for a scan; `probing`/`thumbnailing` for the others) and an
