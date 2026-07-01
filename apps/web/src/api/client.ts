@@ -146,12 +146,15 @@ export interface BrowseParams {
   offset: number
   limit: number
   filter?: FilterExpression | null
+  // Whole-library full-text search over metadata (title/filename/tag/etc.).
+  search?: string | null
 }
 
 export function browseBundles(
   params: BrowseParams,
   signal?: AbortSignal,
 ): Promise<BundleBrowsePage> {
+  const search = params.search?.trim() ? params.search.trim() : null
   // A filter AST can't ride in a query string, so filtered browsing POSTs the
   // whole request; the unfiltered path stays a cacheable GET.
   if (params.filter) {
@@ -164,6 +167,7 @@ export function browseBundles(
       offset: params.offset,
       limit: params.limit,
       filter: params.filter,
+      q: search,
     })
   }
   const q = new URLSearchParams({
@@ -177,6 +181,7 @@ export function browseBundles(
     q.set('collection_id', params.collectionId)
     q.set('include_descendants', String(params.includeDescendants ?? false))
   }
+  if (search) q.set('q', search)
   return getJson<BundleBrowsePage>(`${lib()}/bundles/browse?${q.toString()}`, signal)
 }
 

@@ -165,6 +165,30 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(page.getByText('movie.mp4')).toBeVisible()
 })
 
+test('toolbar search queries the whole library, not just the loaded page', async ({ page }) => {
+  await mockApi(page)
+  // A q-aware browse route: with ?q=gem it returns a bundle that is NOT in the
+  // default first page (proving search hits the backend, not the loaded window).
+  const gem = { ...bundle(0), id: 'gem', title: 'Hidden Gem' }
+  await page.route('**/bundles/browse**', (r) => {
+    const url = new URL(r.request().url())
+    const q = url.searchParams.get('q')
+    if (q && q.toLowerCase().includes('gem')) {
+      return r.fulfill({ json: { items: [gem], total: 1, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Movie 0')).toBeVisible()
+  await expect(page.getByText('Hidden Gem')).toHaveCount(0) // not in the first page
+
+  await page.getByRole('searchbox', { name: 'Search' }).fill('gem')
+  await expect(page.getByText('Hidden Gem')).toBeVisible() // found via backend search
+  await expect(page.getByText('Movie 0')).toHaveCount(0)
+})
+
 test('right-clicking a bundle deletes it via the context menu', async ({ page }) => {
   await mockApi(page)
   let deleted: string | null = null

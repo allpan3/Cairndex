@@ -33,10 +33,11 @@ export function Toolbar({ title, total, search, onSearch, prefs, onPrefs }: Tool
 
       <input
         type="search"
-        placeholder="Search loaded…"
+        placeholder="Search library…"
         value={search}
         onChange={(e) => onSearch(e.target.value)}
         aria-label="Search"
+        title="Search titles, filenames, tags, and collections across the whole library"
       />
 
       <select

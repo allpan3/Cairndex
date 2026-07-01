@@ -257,8 +257,19 @@ preview, filtered browse, and Smart Collection CRUD/browse.
 The current Smart Collection editor supports one Eagle-style all/any condition
 group. The AST supports nested boolean groups for a later richer editor.
 
-Current gap: toolbar text search filters the loaded client-side window by title.
-Server-side text search and SQLite FTS5 are not implemented yet.
+Text search is whole-library and indexed (`cairndex.search`). Each library DB
+carries a `bundle_search` FTS5 table that indexes, per bundle, its title/note,
+its files' display titles/filenames/paths/sources/media kind, and its tag and
+collection names — assembled by a `bundle_search_source` view. SQLite triggers
+over the underlying tables keep it fresh on every write path (edits, scan,
+repair, grouping apply, deletion, tag/collection rename), so no application
+plumbing maintains it; `ensure_search_schema` creates and first-populates it on
+library open, and `devtools.reindex_search` rebuilds it. Browse's `q` parameter
+tokenizes user input into safe quoted prefix terms and composes as a
+non-correlated FTS semijoin (`AssetBundle.id IN (SELECT bundle_id FROM
+bundle_search WHERE bundle_search MATCH ?)`), so it stacks with views,
+collections, filters, sort, and pagination. Results keep the active sort;
+relevance ranking is future work.
 
 ## 10. File View
 
@@ -323,7 +334,6 @@ authenticating reverse proxy, not the public internet.
 ## 14. Known architectural debt
 
 - richer grouping review editing before apply (merge/split/reclassify/rename);
-- server-side text search / SQLite FTS5;
 - browse-summary query optimization and indexes for larger libraries;
 - cross-filesystem moved-file repair and manual repair candidates;
 - scheduled scans and stronger job scheduling;

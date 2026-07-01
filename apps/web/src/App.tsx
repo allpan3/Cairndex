@@ -263,6 +263,14 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
   const activeSmartCollection =
     smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
 
+  // Debounce the toolbar search so each keystroke doesn't hit the backend; the
+  // debounced value drives a whole-library FTS query (not a loaded-window filter).
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250)
+    return () => clearTimeout(t)
+  }, [search])
+
   const browse = useBrowse({
     view: selection.view,
     collectionId: selection.collectionId,
@@ -271,15 +279,13 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
     order: prefs.order,
     limit: 100,
     filter: activeSmartCollection?.filter ?? null,
+    search: debouncedSearch.trim() || null,
   })
 
+  // Backend search returns the matching page directly — no client-side filtering.
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
   const total = browse.data?.pages[0]?.total ?? 0
-  const filtered = useMemo(() => {
-    if (!search.trim()) return items
-    const q = search.toLowerCase()
-    return items.filter((i) => (i.title ?? '').toLowerCase().includes(q))
-  }, [items, search])
+  const filtered = items
 
   const title = useMemo(() => {
     if (activeSmartCollection) return activeSmartCollection.name
@@ -525,6 +531,7 @@ function Workspace({ libraries, libraryId, onChangeLibrary, onManage }: Workspac
               <Browser
                 items={filtered}
                 total={total}
+                searchQuery={debouncedSearch.trim() || undefined}
                 layout={prefs.layout}
                 zoom={prefs.zoom}
                 selectedIds={selectedIds}

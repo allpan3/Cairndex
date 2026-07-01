@@ -275,6 +275,17 @@
             "title": "Order",
             "type": "string"
           },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
           "sort": {
             "$ref": "#/components/schemas/BundleSort",
             "default": "date_added"
@@ -3615,6 +3626,22 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           }
         ],

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from cairndex.persistence.engine import create_app_engine, ensure_content_indexes
 from cairndex.registry import library_package as pkg
 from cairndex.registry.models import RegisteredLibrary
+from cairndex.search import ensure_search_schema
 
 
 @dataclass
@@ -52,6 +53,8 @@ def get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session
         # Backfill any content indexes added after this library DB was created
         # (create_all won't add them to an existing table). Once per open.
         ensure_content_indexes(engine)
+        # Create/populate the FTS5 search index + maintenance triggers if missing.
+        ensure_search_schema(engine)
         maker = sessionmaker(bind=engine, expire_on_commit=False, future=True)
         _cache[library.id] = _Cached(db_path=db_path, engine=engine, sessionmaker=maker)
         return maker

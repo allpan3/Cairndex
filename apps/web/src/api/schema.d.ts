@@ -953,6 +953,8 @@ export interface components {
              * @default desc
              */
             order: string;
+            /** Q */
+            q?: string | null;
             /** @default date_added */
             sort: components["schemas"]["BundleSort"];
             /** @default all */
@@ -2243,6 +2245,7 @@ export interface operations {
                 order?: string;
                 offset?: number;
                 limit?: number;
+                q?: string | null;
             };
             header?: never;
             path: {

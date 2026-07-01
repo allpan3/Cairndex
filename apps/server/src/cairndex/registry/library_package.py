@@ -101,10 +101,13 @@ def detect(root: Path) -> LibraryManifest | None:
 
 
 def _init_library_db(target: Path) -> None:
-    """Create a library.db with the current content schema."""
+    """Create a library.db with the current content schema + FTS search index."""
+    from cairndex.search import ensure_search_schema
+
     engine = create_app_engine(database_url=f"sqlite:///{target.as_posix()}")
     try:
         Base.metadata.create_all(engine)
+        ensure_search_schema(engine)
     finally:
         engine.dispose()
 

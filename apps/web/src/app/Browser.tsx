@@ -25,6 +25,9 @@ interface BrowserProps {
   hasNextPage: boolean
   isFetchingNextPage: boolean
   fetchNextPage: () => void
+  // When set, an empty result is shown as "no matches" for this query rather
+  // than the generic "nothing here yet" state.
+  searchQuery?: string
 }
 
 export function Browser(props: BrowserProps) {
@@ -75,11 +78,22 @@ export function Browser(props: BrowserProps) {
           <code>{props.error instanceof Error ? props.error.message : 'Unknown error'}</code>
         </div>
       )}
-      {props.isLoading && <div className="state">Loading library…</div>}
+      {props.isLoading && (
+        <div className="state">{props.searchQuery ? 'Searching…' : 'Loading library…'}</div>
+      )}
       {!props.isLoading && !props.isError && items.length === 0 && (
         <div className="state">
-          <div>Nothing here yet.</div>
-          <div>Update the library or add files to see bundles.</div>
+          {props.searchQuery ? (
+            <>
+              <div>No matches for “{props.searchQuery}”.</div>
+              <div>Try a different title, filename, tag, or collection.</div>
+            </>
+          ) : (
+            <>
+              <div>Nothing here yet.</div>
+              <div>Update the library or add files to see bundles.</div>
+            </>
+          )}
         </div>
       )}
 

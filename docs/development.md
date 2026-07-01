@@ -109,6 +109,19 @@ uv run python -m cairndex.devtools.benchmark_queries \
     --library-root /tmp/cairndex-synth --iterations 20 --explain
 ```
 
+## Search index
+
+Whole-library text search uses a per-library SQLite FTS5 index (`bundle_search`)
+kept fresh by triggers. It is created and first-populated automatically when a
+library DB is opened. To rebuild it for one library (after a bulk external change
+or to recover from drift):
+
+```bash
+uv run python -m cairndex.devtools.reindex_search --library-root /path/to/library
+# or by registry id:
+uv run python -m cairndex.devtools.reindex_search --library-id <id>
+```
+
 ## Running both together without Docker
 
 Run the backend and frontend dev commands above in separate terminals. The Vite

@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Select, exists, func, not_, select
+from sqlalchemy import Select, exists, false, func, not_, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability, GroupingState, MediaKind
@@ -30,6 +30,7 @@ from cairndex.persistence.models import (
     asset_bundle_collections,
     asset_bundle_tags,
 )
+from cairndex.search import search_predicate, to_match_query
 from cairndex.services.collections import collection_descendant_ids
 
 
@@ -164,14 +165,26 @@ def browse_bundles(
     offset: int = 0,
     limit: int = 100,
     filter_expr: FilterExpression | None = None,
+    search: str | None = None,
 ) -> BundlePage:
     # A saved Smart Collection and a simple toolbar filter both arrive here as
     # the same compiled predicate, so they share one ranking/pagination path.
     predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
+    # Toolbar text search: a whole-library FTS5 match, composed as a non-correlated
+    # semijoin so it stacks with the active view/collection/filter and sort. An
+    # all-punctuation query yields no usable terms → match nothing.
+    search_pred = None
+    if search is not None and search.strip():
+        match = to_match_query(search)
+        search_pred = search_predicate(match) if match is not None else false()
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
         stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
-        return stmt.where(predicate) if predicate is not None else stmt
+        if predicate is not None:
+            stmt = stmt.where(predicate)
+        if search_pred is not None:
+            stmt = stmt.where(search_pred)
+        return stmt
 
     base = _scoped(select(AssetBundle.id).where(_visible_file_exists()))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
