@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type {
   CollectionRead,
+  FileSelection,
   FileViewEntry,
   JobRead,
   LibraryRead,
   SmartCollectionRead,
 } from './api/client'
-import { fetchBundleFiles, setActiveLibraryId } from './api/client'
+import { setActiveLibraryId } from './api/client'
 import {
   useBatchUpdate,
   useBrowse,
@@ -267,11 +268,11 @@ function Workspace({
   const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
   const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
 
-  // Manual bundling assistant dialogs (Unbundled staging). Each holds the
-  // *file* ids to act on (unbundled cards are one-file provisional bundles, so
-  // the selected bundle ids are resolved to their file ids before opening).
-  const [addingToBundle, setAddingToBundle] = useState<string[] | null>(null)
-  const [creatingBundle, setCreatingBundle] = useState<string[] | null>(null)
+  // Manual bundling assistant dialogs. Each holds the selection to act on —
+  // File-View/Unbundled files as relative paths (unlinked ones auto-linked at
+  // apply) or backend file ids.
+  const [addingToBundle, setAddingToBundle] = useState<FileSelection | null>(null)
+  const [creatingBundle, setCreatingBundle] = useState<FileSelection | null>(null)
   const [creatingEmpty, setCreatingEmpty] = useState(false)
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // Transient success banner after a manual bundling action.
@@ -283,6 +284,9 @@ function Workspace({
   }, [flash])
 
   const [mode, setMode] = useState<AppMode>('collection')
+  // The Files surface has two scopes: browse the directory tree, or the flat
+  // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
+  const [fileScope, setFileScope] = useState<'browse' | 'unbundled'>('browse')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
   // Live snapshot of the running maintenance job (scan/probe/thumbnail) so the
@@ -376,18 +380,9 @@ function Workspace({
     setActiveId(null)
   }, [])
 
-  // Unbundled cards are one-file provisional bundles; the manual bundling
-  // service works on file ids, so resolve the selected bundles to their files.
-  const resolveFileIds = useCallback(async (bundleIds: string[]): Promise<string[]> => {
-    const lists = await Promise.all(bundleIds.map((id) => fetchBundleFiles(id)))
-    return lists.flat().map((f) => f.id)
-  }, [])
-
-  // Right-click on a bundle card/row. Operate on the whole selection when the
-  // clicked card is part of a multi-selection; otherwise target (and select)
-  // just this one. Deletion is confirmed in a dialog (DeleteBundlesDialog). In
-  // the Unbundled view the menu offers the manual bundling actions instead of
-  // collection removal.
+  // Right-click on a bundle card/row (Bundles surface). Operate on the whole
+  // selection when the clicked card is part of a multi-selection; otherwise
+  // target (and select) just this one. Deletion is confirmed in a dialog.
   const bundleContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
       const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
@@ -396,32 +391,14 @@ function Workspace({
         setSelectedIds(new Set([id]))
         setActiveId(id)
       }
-      const items: MenuEntry[] = []
-      if (selection.view === 'unbundled') {
-        items.push(
-          {
-            label: n > 1 ? `Add ${n} files to bundle…` : 'Add to Bundle…',
-            onClick: () => {
-              void resolveFileIds(targets).then(setAddingToBundle)
-            },
-          },
-          {
-            label: n > 1 ? `Create bundle from ${n} files…` : 'Create Bundle…',
-            onClick: () => {
-              void resolveFileIds(targets).then(setCreatingBundle)
-            },
-          },
-        )
-      } else {
-        items.push({ label: 'Open', onClick: () => open(id), disabled: n > 1 })
-        if (selection.collectionId) {
-          const collectionId = selection.collectionId
-          items.push({
-            label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
-            onClick: () =>
-              batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
-          })
-        }
+      const items: MenuEntry[] = [{ label: 'Open', onClick: () => open(id), disabled: n > 1 }]
+      if (selection.collectionId) {
+        const collectionId = selection.collectionId
+        items.push({
+          label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
+          onClick: () =>
+            batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
+        })
       }
       items.push(null, {
         label: n > 1 ? `Delete ${n} bundles` : 'Delete Bundle',
@@ -430,7 +407,18 @@ function Workspace({
       })
       menu.open(e, items)
     },
-    [selectedIds, selection.collectionId, selection.view, open, batch, menu, resolveFileIds],
+    [selectedIds, selection.collectionId, open, batch, menu],
+  )
+
+  // Files-surface context actions (Unbundled list or the directory tree) operate
+  // on relative paths; unlinked paths are auto-linked server-side at apply.
+  const bundleFilePaths = useCallback(
+    (paths: string[]) => setAddingToBundle({ relativePaths: paths }),
+    [],
+  )
+  const createBundleFromPaths = useCallback(
+    (paths: string[]) => setCreatingBundle({ relativePaths: paths }),
+    [],
   )
 
   // Right-click empty browser space → create a new (empty) confirmed bundle.
@@ -566,7 +554,16 @@ function Workspace({
     >
       <Sidebar
         mode={mode}
-        onMode={setMode}
+        onMode={(m) => {
+          setMode(m)
+          if (m === 'file') setFileScope('browse')
+        }}
+        fileScope={fileScope}
+        onOpenUnbundled={() => {
+          setMode('file')
+          setFileScope('unbundled')
+          setFileEntry(null)
+        }}
         libraries={libraries}
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
@@ -608,13 +605,17 @@ function Workspace({
         {mode === 'file' ? (
           <FileView
             libraryName={libraryName}
+            scope={fileScope}
             path={filePath}
             selectedPath={fileEntry?.relative_path ?? null}
             onNavigate={(path) => {
               setFilePath(path)
               setFileEntry(null)
+              setFileScope('browse')
             }}
             onSelectEntry={setFileEntry}
+            onAddToBundle={bundleFilePaths}
+            onCreateBundle={createBundleFromPaths}
           />
         ) : (
           <>
@@ -711,7 +712,7 @@ function Workspace({
 
       {addingToBundle && (
         <AddToBundleDialog
-          fileIds={addingToBundle}
+          selection={addingToBundle}
           onClose={() => setAddingToBundle(null)}
           onApplied={onManualBundlingApplied}
         />
@@ -719,7 +720,7 @@ function Workspace({
 
       {creatingBundle && (
         <CreateBundleDialog
-          fileIds={creatingBundle}
+          selection={creatingBundle}
           onClose={() => setCreatingBundle(null)}
           onApplied={onManualBundlingApplied}
         />

@@ -101,19 +101,25 @@ original files.
   the plan is then marked applied, so unchecked proposals are intentionally left
   unapplied for that plan. Regenerate suggestions after library changes if the
   owner wants a fresh plan.
-- **Unbundled staging:** scan-created provisional bundles (`grouping_state =
-  provisional`, `grouping_source = scan_suggestion`) are treated as *unbundled*
-  files: browse confines them to the dedicated **Unbundled** system view (+ an
-  `unbundled` view count) and hides them from All, Recent, Uncategorized,
-  Untagged, Missing, and every collection until confirmed. Browse summaries still
-  expose `grouping_state`, so an Unbundled card can show a “Needs review” marker.
+- **Unbundled staging (file-first):** scan-created provisional bundles
+  (`grouping_state = provisional`, `grouping_source = scan_suggestion`) are treated
+  as *unbundled files* and hidden from All/Recent/Uncategorized/Untagged/Missing
+  and every collection (browse keeps a `view=unbundled` + count for the hiding
+  logic). The two top-left tabs are **Bundles** (renamed from Collections) and
+  **Files**; the sidebar **Unbundled** view opens the **Files** surface as a flat,
+  cross-library list of not-yet-bundled files (`GET /manual-bundling/unbundled-files`)
+  with the file inspector. File View entries carry a derived `unbundled` flag and
+  badge each path `unlinked` / `unbundled` / (openable).
 - **Manual bundling assistant:** `cairndex.manual_bundling` confirms unbundled
   files by hand — add to an existing confirmed bundle, create a bundle from
   selected files, create an empty bundle, or add suggested files from a bundle’s
-  inspector. Suggestions (target bundles / unbundled files / a bundle draft) are
-  automatic on dialog open, ranked with a confidence + reason, and computed only
-  from the DB + FTS index; applying is always explicit and metadata-only (files
-  re-parented, emptied provisional bundles reaped, subtitles auto-linked). Shared
+  inspector — reachable by right-clicking files in either Files surface.
+  Suggestions (target bundles / unbundled files / a bundle draft) are automatic on
+  dialog open, ranked with a confidence + reason, and computed only from the DB +
+  FTS index; applying is always explicit and metadata-only (files re-parented,
+  emptied provisional bundles reaped, subtitles auto-linked). Apply/suggest accept
+  `relative_paths` as well as `file_ids`; an unlinked File-View path is staged as
+  provisional at apply, and a path in a confirmed bundle is rejected. Shared
   membership logic lives in `grouping/membership.py`.
 - **Hidden/cache exclusions:** scan and grouping ignore dot-directories/files and
   known hidden/cruft names such as `.cairndex`, `.DS_Store`, `__pycache__`,

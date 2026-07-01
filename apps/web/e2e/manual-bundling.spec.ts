@@ -1,31 +1,28 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Hermetic e2e for the manual bundling assistant (Unbundled staging). The API is
-// mocked so the Unbundled view, context-menu actions, and dialogs can be
-// exercised in a real browser without a running backend.
+// Hermetic e2e for the file-first manual bundling flow. The API is mocked so the
+// Unbundled Files surface, badges, file inspector, and context-menu dialogs can
+// be exercised in a real browser without a running backend.
 
-function unbundledBundle(i: number) {
+function fileEntry(over: Record<string, unknown>) {
   return {
-    id: `u${i}`,
-    title: `clip${i}`,
-    rating: null,
-    file_count: 1,
-    total_size: 1000,
-    has_missing: false,
-    has_cover: false,
-    media_kind: 'video',
-    width: null,
-    height: null,
-    duration: null,
+    name: 'x',
+    relative_path: 'x',
+    kind: 'file',
+    size_bytes: 1000,
+    modified_at: '2026-06-25T00:00:00Z',
     extension: 'mp4',
-    date_added: '2026-06-25T00:00:00Z',
-    grouping_state: 'provisional',
+    mime_type: 'video/mp4',
+    media_kind: 'video',
+    supported: true,
+    linked: true,
+    bundle_id: 'u0',
+    unbundled: true,
+    ...over,
   }
 }
 
 async function mockApi(page: Page) {
-  const unbundled = [unbundledBundle(0), unbundledBundle(1)]
-
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
@@ -36,79 +33,52 @@ async function mockApi(page: Page) {
   )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
-      json: { all: 3, recent: 3, uncategorized: 3, untagged: 3, missing: 0, unbundled: 2 },
+      json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0, unbundled: 2 },
     }),
   )
   await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
   await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
   await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
-
-  // Browse: return the unbundled cards only for the Unbundled view.
-  await page.route('**/bundles/browse**', (r) => {
-    const url = r.request().url()
-    const items = url.includes('view=unbundled') ? unbundled : []
-    r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
-  })
-
-  // Each unbundled card is a one-file provisional bundle; its files endpoint
-  // resolves the file id the manual bundling service acts on.
-  await page.route('**/bundles/u0/files', (r) =>
-    r.fulfill({ json: [{ id: 'f0', bundle_id: 'u0', relative_path: 'movie/clip0.mp4' }] }),
-  )
-  await page.route('**/bundles/u1/files', (r) =>
-    r.fulfill({ json: [{ id: 'f1', bundle_id: 'u1', relative_path: 'movie/clip1.mp4' }] }),
-  )
-  await page.route('**/bundles/u0', (r) =>
-    r.fulfill({
-      json: {
-        id: 'u0',
-        title: 'clip0',
-        note: null,
-        rating: null,
-        cover_file_id: null,
-        primary_file_id: null,
-        grouping_state: 'provisional',
-        version: 1,
-        created_at: '2026-06-25T00:00:00Z',
-        imported_at: '2026-06-25T00:00:00Z',
-        updated_at: '2026-06-25T00:00:00Z',
-      },
-    }),
+  await page.route('**/bundles/browse**', (r) =>
+    r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
 }
 
-test('Unbundled view lists staged files and creates a bundle from them', async ({ page }) => {
+test('Unbundled opens the Files surface as a file list and creates a bundle', async ({ page }) => {
   await mockApi(page)
-
-  const draftCalls: unknown[] = []
-  await page.route('**/manual-bundling/suggest-bundle', (r) => {
-    draftCalls.push(r.request().postDataJSON())
+  await page.route('**/manual-bundling/unbundled-files**', (r) =>
     r.fulfill({
       json: {
-        proposed_title: 'clip0',
-        roles: [
-          { file_id: 'f0', relative_path: 'movie/clip0.mp4', role: 'primary_video', sequence: 0 },
+        items: [
+          fileEntry({ name: 'feature.mp4', relative_path: 'movie/feature.mp4' }),
+          fileEntry({
+            name: 'notes.txt',
+            relative_path: 'movie/notes.txt',
+            extension: 'txt',
+            media_kind: null,
+            supported: false,
+          }),
         ],
-        additional: [
-          {
-            file_id: 'f1',
-            relative_path: 'movie/clip1.mp4',
-            media_kind: 'video',
-            confidence: 0.8,
-            reason: 'same folder',
-          },
-        ],
+        total: 2,
+        offset: 0,
+        limit: 200,
       },
-    })
+    }),
+  )
+
+  let draftPaths: string[] = []
+  await page.route('**/manual-bundling/suggest-bundle', (r) => {
+    draftPaths = r.request().postDataJSON().relative_paths
+    r.fulfill({ json: { proposed_title: 'feature', roles: [], additional: [] } })
   })
-  let createBody: { file_ids: string[]; title: string | null } | null = null
+  let createBody: { relative_paths: string[]; title: string | null } | null = null
   await page.route('**/manual-bundling/create-bundle', (r) => {
     createBody = r.request().postDataJSON()
     r.fulfill({
       json: {
         bundle_id: 'new',
-        files_added: 2,
-        bundles_removed: 1,
+        files_added: 1,
+        bundles_removed: 0,
         subtitles_linked: 0,
         created: true,
       },
@@ -117,37 +87,51 @@ test('Unbundled view lists staged files and creates a bundle from them', async (
 
   await page.goto('/')
 
-  // The Unbundled system view is present with its count and lists the files.
-  const unbundledNav = page.getByRole('button', { name: /Unbundled/ })
-  await expect(unbundledNav).toBeVisible()
-  await unbundledNav.click()
-  await expect(page.getByText('clip0')).toBeVisible()
-  await expect(page.getByText('clip1')).toBeVisible()
+  // Click the Unbundled system view → the Files surface (file-first, not cards).
+  await page.getByRole('button', { name: /Unbundled/ }).click()
+  await expect(page.getByText('2 files awaiting bundling', { exact: false })).toBeVisible()
+  const row = page.locator('.file-row', { hasText: 'feature.mp4' })
+  await expect(row).toBeVisible()
+  await expect(row.getByText('unbundled')).toBeVisible()
+  await expect(row.getByText('openable')).toBeVisible()
 
-  // Right-click a card → Create Bundle… opens the dialog with the suggestion.
-  await page.locator('[data-bundle-id="u0"]').click({ button: 'right' })
+  // Selecting a file shows FILE metadata (Status), not bundle metadata.
+  await row.click()
+  const status = page.locator('.file-meta__row', { hasText: 'Status' })
+  await expect(status).toContainText('Unbundled')
+
+  // Right-click → Create Bundle… seeds the dialog with the file's path.
+  await row.click({ button: 'right' })
   await page.getByRole('menuitem', { name: /Create Bundle/ }).click()
-
   const dialog = page.getByRole('dialog', { name: 'Create bundle' })
   await expect(dialog).toBeVisible()
-  // Proposed title seeded from the draft.
-  await expect(dialog.getByLabel('Title')).toHaveValue('clip0')
-  // The nearby file is offered as an addition; include it.
-  const extra = dialog.getByText('clip1.mp4')
-  await expect(extra).toBeVisible()
-  await extra.click()
+  await expect(dialog.getByLabel('Title')).toHaveValue('feature')
+  expect(draftPaths).toEqual(['movie/feature.mp4'])
 
   await dialog.getByRole('button', { name: 'Create bundle' }).click()
-
-  // Applied explicitly: create-bundle called with the seed + the checked extra.
   await expect(page.getByText(/Created a bundle/)).toBeVisible()
   expect(createBody).not.toBeNull()
-  expect(createBody!.file_ids).toEqual(expect.arrayContaining(['f0', 'f1']))
+  expect(createBody!.relative_paths).toEqual(['movie/feature.mp4'])
 })
 
-test('Add to Bundle dialog shows a suggested target and applies', async ({ page }) => {
+test('File tree: an unlinked file is badged and can be added to a bundle', async ({ page }) => {
   await mockApi(page)
-
+  await page.route('**/file-view/entries**', (r) =>
+    r.fulfill({
+      json: {
+        path: '',
+        entries: [
+          fileEntry({
+            name: 'loose.mp4',
+            relative_path: 'loose.mp4',
+            linked: false,
+            bundle_id: null,
+            unbundled: false,
+          }),
+        ],
+      },
+    }),
+  )
   await page.route('**/manual-bundling/suggest-targets', (r) =>
     r.fulfill({
       json: {
@@ -157,14 +141,14 @@ test('Add to Bundle dialog shows a suggested target and applies', async ({ page 
       },
     }),
   )
-  let addBody: { target_bundle_id: string; file_ids: string[] } | null = null
+  let addBody: { target_bundle_id: string; relative_paths: string[] } | null = null
   await page.route('**/manual-bundling/add-files', (r) => {
     addBody = r.request().postDataJSON()
     r.fulfill({
       json: {
         bundle_id: 'target',
         files_added: 1,
-        bundles_removed: 1,
+        bundles_removed: 0,
         subtitles_linked: 0,
         created: false,
       },
@@ -172,21 +156,21 @@ test('Add to Bundle dialog shows a suggested target and applies', async ({ page 
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: /Unbundled/ }).click()
-  await expect(page.getByText('clip0')).toBeVisible()
+  await page.getByRole('tab', { name: 'Files' }).click()
 
-  await page.locator('[data-bundle-id="u0"]').click({ button: 'right' })
+  const row = page.locator('.file-row', { hasText: 'loose.mp4' })
+  await expect(row).toBeVisible()
+  await expect(row.getByText('unlinked')).toBeVisible()
+
+  await row.click({ button: 'right' })
   await page.getByRole('menuitem', { name: /Add to Bundle/ }).click()
-
   const dialog = page.getByRole('dialog', { name: 'Add to bundle' })
   await expect(dialog).toBeVisible()
-  // The suggested target renders with its reason; pick it.
-  await expect(dialog.getByText('Existing Movie')).toBeVisible()
   await dialog.getByText('Existing Movie').click()
   await dialog.getByRole('button', { name: 'Add to bundle' }).click()
 
   await expect(page.getByText(/Added 1 file/)).toBeVisible()
   expect(addBody).not.toBeNull()
   expect(addBody!.target_bundle_id).toBe('target')
-  expect(addBody!.file_ids).toEqual(['f0'])
+  expect(addBody!.relative_paths).toEqual(['loose.mp4'])
 })

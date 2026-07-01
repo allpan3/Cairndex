@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { FileSuggestion, TargetSuggestion } from '../api/client'
+import type { FileSelection, FileSuggestion, TargetSuggestion } from '../api/client'
 import {
   useBundle,
   useBundleDraft,
@@ -128,22 +128,24 @@ function EmptyOrError({
 function SelectedFilesNote({ count }: { count: number }) {
   return (
     <div className="mb-selected">
-      {count} unbundled file{count === 1 ? '' : 's'} selected
+      {count} file{count === 1 ? '' : 's'} selected
     </div>
   )
 }
 
+const selCount = (s: FileSelection) => (s.fileIds?.length ?? 0) + (s.relativePaths?.length ?? 0)
+
 // --- Add to existing bundle --------------------------------------------------
 export function AddToBundleDialog({
-  fileIds,
+  selection,
   onClose,
   onApplied,
 }: {
-  fileIds: string[]
+  selection: FileSelection
   onClose: () => void
   onApplied: (message: string) => void
 }) {
-  const suggestions = useTargetSuggestions(fileIds)
+  const suggestions = useTargetSuggestions(selection)
   const [targetId, setTargetId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const search = useConfirmedBundleSearch(query)
@@ -172,7 +174,7 @@ export function AddToBundleDialog({
   const apply = () => {
     if (!targetId) return
     addFiles.mutate(
-      { bundleId: targetId, fileIds },
+      { bundleId: targetId, sel: selection },
       {
         onSuccess: (r) =>
           onApplied(`Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`),
@@ -187,7 +189,7 @@ export function AddToBundleDialog({
       onClose={onClose}
       footer={
         <>
-          <SelectedFilesNote count={fileIds.length} />
+          <SelectedFilesNote count={selCount(selection)} />
           <span className="toolbar__spacer" />
           <button className="btn" onClick={onClose} disabled={addFiles.isPending}>
             Cancel
@@ -249,15 +251,15 @@ export function AddToBundleDialog({
 
 // --- Create bundle from selected unbundled files -----------------------------
 export function CreateBundleDialog({
-  fileIds,
+  selection,
   onClose,
   onApplied,
 }: {
-  fileIds: string[]
+  selection: FileSelection
   onClose: () => void
   onApplied: (message: string) => void
 }) {
-  const draft = useBundleDraft(fileIds)
+  const draft = useBundleDraft(selection)
   // `null` until the user types: the field then shows the suggested title as it
   // arrives, without a setState-in-effect (derived, not synced).
   const [typedTitle, setTypedTitle] = useState<string | null>(null)
@@ -275,9 +277,14 @@ export function CreateBundleDialog({
     })
 
   const apply = () => {
-    const all = [...fileIds, ...extra]
+    // The seed selection (ids and/or paths) plus any checked additional files
+    // (suggested unbundled files, always backend ids).
+    const sel: FileSelection = {
+      fileIds: [...(selection.fileIds ?? []), ...extra],
+      relativePaths: selection.relativePaths,
+    }
     createFromFiles.mutate(
-      { fileIds: all, title: title.trim() || null },
+      { sel, title: title.trim() || null },
       {
         onSuccess: (r) =>
           onApplied(
@@ -288,6 +295,7 @@ export function CreateBundleDialog({
   }
 
   const additional = draft.data?.additional ?? []
+  const seedCount = selCount(selection)
 
   return (
     <Modal
@@ -296,7 +304,7 @@ export function CreateBundleDialog({
       onClose={onClose}
       footer={
         <>
-          <SelectedFilesNote count={fileIds.length + extra.size} />
+          <SelectedFilesNote count={seedCount + extra.size} />
           <span className="toolbar__spacer" />
           <button className="btn" onClick={onClose} disabled={createFromFiles.isPending}>
             Cancel
@@ -304,7 +312,7 @@ export function CreateBundleDialog({
           <button
             className="btn btn--primary"
             onClick={apply}
-            disabled={fileIds.length === 0 || createFromFiles.isPending}
+            disabled={seedCount === 0 || createFromFiles.isPending}
           >
             {createFromFiles.isPending ? 'Creating…' : 'Create bundle'}
           </button>
@@ -387,7 +395,7 @@ export function AddFilesToBundleDialog({
 
   const apply = () => {
     addFiles.mutate(
-      { bundleId, fileIds: [...checked] },
+      { bundleId, sel: { fileIds: [...checked] } },
       {
         onSuccess: (r) =>
           onApplied(`Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`),

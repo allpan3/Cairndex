@@ -319,9 +319,20 @@ export const applyGroupingPlan = (
 // bundles. Nothing here moves, copies, renames, or deletes a file on disk.
 const mb = () => `${lib()}/manual-bundling`
 
-export const suggestTargetBundles = (fileIds: string[], limit = 10) =>
+// A selection of unbundled files, as backend ids (Unbundled list) and/or File
+// View relative paths (unlinked paths are auto-linked server-side at apply).
+export interface FileSelection {
+  fileIds?: string[]
+  relativePaths?: string[]
+}
+const selBody = (s: FileSelection) => ({
+  file_ids: s.fileIds ?? [],
+  relative_paths: s.relativePaths ?? [],
+})
+
+export const suggestTargetBundles = (sel: FileSelection, limit = 10) =>
   send<{ suggestions: TargetSuggestion[] }>(`${mb()}/suggest-targets`, 'POST', {
-    file_ids: fileIds,
+    ...selBody(sel),
     limit,
   }).then((r) => r.suggestions)
 
@@ -330,23 +341,29 @@ export const suggestUnbundledFilesForBundle = (bundleId: string, limit = 30) =>
     `${mb()}/bundles/${bundleId}/suggest-files?limit=${limit}`,
   ).then((r) => r.suggestions)
 
-export const suggestBundleFromFiles = (fileIds: string[], limit = 30) =>
-  send<BundleDraft>(`${mb()}/suggest-bundle`, 'POST', { file_ids: fileIds, limit })
+export const suggestBundleFromFiles = (sel: FileSelection, limit = 30) =>
+  send<BundleDraft>(`${mb()}/suggest-bundle`, 'POST', { ...selBody(sel), limit })
 
-export const addUnbundledFilesToBundle = (targetBundleId: string, fileIds: string[]) =>
+export const addUnbundledFilesToBundle = (targetBundleId: string, sel: FileSelection) =>
   send<ManualBundleResult>(`${mb()}/add-files`, 'POST', {
     target_bundle_id: targetBundleId,
-    file_ids: fileIds,
+    ...selBody(sel),
   })
 
-export const createBundleFromUnbundled = (fileIds: string[], title?: string | null) =>
+export const createBundleFromUnbundled = (sel: FileSelection, title?: string | null) =>
   send<ManualBundleResult>(`${mb()}/create-bundle`, 'POST', {
-    file_ids: fileIds,
+    ...selBody(sel),
     title: title ?? null,
   })
 
 export const createEmptyBundle = (title?: string | null) =>
   send<ManualBundleResult>(`${mb()}/create-empty-bundle`, 'POST', { title: title ?? null })
+
+// The flat "to-bundle queue": a cross-library page of not-yet-bundled files,
+// shaped like File View entries so one file row renders both surfaces.
+export type UnbundledFilesPage = components['schemas']['UnbundledFilesPage']
+export const fetchUnbundledFiles = (offset = 0, limit = 200, signal?: AbortSignal) =>
+  getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?offset=${offset}&limit=${limit}`, signal)
 
 // --- File View (read-only filesystem browsing) -------------------------------
 export function fetchFileViewEntries(

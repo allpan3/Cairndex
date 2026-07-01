@@ -37,8 +37,8 @@ grouped under `Unreleased` until the first tagged release.
   name-parsing/role heuristics and the file-membership + source-reaping logic are
   reused from grouping (extracted to `grouping/membership.py`). New library-scoped
   routes under `/libraries/{id}/manual-bundling/*`; OpenAPI + frontend types
-  regenerated. Web UI adds the Unbundled sidebar view, context-menu actions on
-  unbundled cards, an empty-space/toolbar "Create Bundle…", the inspector "Add
+  regenerated. Web UI adds the Unbundled view (now a file-first Files surface —
+  see *Changed*), an empty-space/toolbar "Create Bundle…", the inspector "Add
   Files…" action, and four suggestion dialogs with empty/loading/error states and a
   success toast. Covered by `test_browse.py` (view/counts/hiding),
   `test_manual_bundling.py` + `test_manual_bundling_api.py` (suggestions, all
@@ -250,6 +250,23 @@ grouped under `Unreleased` until the first tagged release.
   model.
 
 ### Changed
+
+- **Unbundled is now a file-first Files-surface view; the two top-left tabs are
+  Bundles + Files.** Scan-staged files were previously shown as *bundle cards* in
+  a browse view; they are now presented as **files**. The "Collections" tab is
+  renamed **Bundles** (the bundle-first surface: system views, Smart Collections,
+  the Collections tree, Tags); **Files** is the filesystem browser. Clicking
+  **Unbundled** switches to the Files surface showing a flat, cross-library list
+  of the not-yet-bundled files (a new `GET /manual-bundling/unbundled-files`),
+  with the *file* inspector rather than bundle metadata. File View entries carry a
+  new `unbundled` flag and show **`unlinked`** / **`unbundled`** / `openable`
+  badges (the old `linked` badge is gone; a file in a confirmed bundle shows no
+  status badge). Any File-View file can be right-clicked to **Add to Bundle… /
+  Create Bundle…**; unlinked files are auto-linked (staged as provisional) at
+  apply time. The manual bundling apply/suggest endpoints accept `relative_paths`
+  in addition to `file_ids`. Covered by extended `test_file_view.py`,
+  `test_manual_bundling*.py`, and a rewritten `e2e/manual-bundling.spec.ts`
+  (Unbundled Files surface + create-from-files; File-tree unlinked → add-to-bundle).
 
 - **Deleting a confirmed bundle now dissolves it back to Unbundled.** Instead of
   forgetting the bundle's file rows, `delete_bundle` re-stages each still-linked

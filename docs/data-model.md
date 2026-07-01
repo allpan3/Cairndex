@@ -63,6 +63,14 @@ one-file bundles (they fall back to Unbundled), while deleting a provisional
 bundle removes its rows — so `delete_bundle` never orphans a file the user still
 has on disk.
 
+The **Files** surface reflects the same derived state per path: a File View entry
+carries `linked` plus a derived `unbundled` flag (its owning bundle is
+`provisional` + `scan_suggestion`), so the UI can badge a path `unlinked` /
+`unbundled` / (in a confirmed bundle). Bundling a File-View selection accepts
+`relative_paths`: an unlinked path is staged into a provisional one-file bundle at
+apply time (reusing `scanning.fast_add._link`) then confirmed; a path already in a
+confirmed bundle is rejected. All still metadata-only.
+
 Current schema note: bundles do **not** have a first-class hyperlink/source
 column. Origin/source metadata is stored per file on `asset_files.source`. If
 bundle-level source pages become important, add an explicit nullable column or
