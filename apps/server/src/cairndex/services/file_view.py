@@ -25,9 +25,10 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
+from cairndex.domain.enums import GroupingSource, GroupingState
 from cairndex.persistence.engine import library_root_for_session
-from cairndex.persistence.models import AssetFile
-from cairndex.scanning.media_types import classify
+from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.scanning.media_types import classify, is_hidden_relative_path
 
 # Non-dotfile names we still hide: caches, OS/DB cruft, thumbnails. Dotfiles and
 # dot-directories (e.g. .git, .DS_Store, .env, the .cairndex marker) are hidden
@@ -63,6 +64,18 @@ class FileViewEntry:
     # Cheap "already linked into a bundle" hint for this exact path.
     linked: bool
     bundle_id: str | None
+    # True when linked into a scan-staged *provisional* bundle — i.e. the file is
+    # known but not yet in a confirmed bundle ("unbundled"). False for unlinked
+    # files and for files already in a confirmed bundle.
+    unbundled: bool
+
+
+@dataclass(frozen=True)
+class _Link:
+    """A path's bundle membership, for the File View linked/unbundled badges."""
+
+    bundle_id: str
+    unbundled: bool  # in a provisional/scan_suggestion bundle (not yet confirmed)
 
 
 @dataclass(frozen=True)
@@ -119,6 +132,62 @@ def list_entries(session: Session, *, path: str | None = None) -> FileViewListin
     return FileViewListing(path=rel_norm, entries=[*dirs, *files])
 
 
+@dataclass(frozen=True)
+class UnbundledFilesPage:
+    items: list[FileViewEntry]
+    total: int
+    offset: int
+    limit: int
+
+
+def list_unbundled_files(
+    session: Session, *, offset: int = 0, limit: int = 100
+) -> UnbundledFilesPage:
+    """A flat, cross-library page of *unbundled* files — those linked into a
+    scan-staged provisional bundle and not yet confirmed (the "to-bundle queue").
+
+    A cheap DB query (no filesystem walk): entries are built from the stored
+    ``AssetFile`` rows, shaped like File View entries so one file row renders both
+    the tree and this list. Ordered by path for stable pagination.
+    """
+    unbundled = (AssetBundle.grouping_state == GroupingState.PROVISIONAL) & (
+        AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION
+    )
+    base = (
+        select(AssetFile.relative_path, AssetFile.bundle_id, AssetFile.size_bytes, AssetFile.mtime)
+        .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        .where(unbundled)
+    )
+    rows = [r for r in session.execute(base).all() if not is_hidden_relative_path(r[0])]
+    rows.sort(key=lambda r: r[0].lower())
+    total = len(rows)
+    items = [_unbundled_entry(*r) for r in rows[offset : offset + limit]]
+    return UnbundledFilesPage(items=items, total=total, offset=offset, limit=limit)
+
+
+def _unbundled_entry(
+    relative_path: str, bundle_id: str, size_bytes: int | None, mtime: datetime | None
+) -> FileViewEntry:
+    name = relative_path.rsplit("/", 1)[-1]
+    _, _, ext = name.rpartition(".")
+    extension = ext.lower() if ext and ext != name else None
+    classification = classify(name)
+    return FileViewEntry(
+        name=name,
+        relative_path=relative_path,
+        kind="file",
+        size_bytes=size_bytes,
+        modified_at=mtime,
+        extension=extension,
+        mime_type=mimetypes.guess_type(name)[0],
+        media_kind=str(classification[0]) if classification else None,
+        supported=classification is not None,
+        linked=True,
+        bundle_id=bundle_id,
+        unbundled=True,
+    )
+
+
 def resolve_entry_path(session: Session, path: str) -> Path:
     """Resolve a library-relative file path to a safe absolute path for serving.
 
@@ -153,7 +222,7 @@ def _build_entry(
     dirent: os.DirEntry[str],
     parent_rel: str,
     root_real: Path,
-    linked: dict[str, str],
+    linked: dict[str, _Link],
 ) -> FileViewEntry | None:
     # Reject symlinks (and any entry) whose real location escapes the root.
     try:
@@ -182,12 +251,13 @@ def _build_entry(
             supported=False,
             linked=False,
             bundle_id=None,
+            unbundled=False,
         )
 
     _, _, ext = name.rpartition(".")
     extension = ext.lower() if ext and ext != name else None
     classification = classify(name)
-    bundle_id = linked.get(child_rel)
+    link = linked.get(child_rel)
     return FileViewEntry(
         name=name,
         relative_path=child_rel,
@@ -198,22 +268,33 @@ def _build_entry(
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,
         supported=classification is not None,
-        linked=bundle_id is not None,
-        bundle_id=bundle_id,
+        linked=link is not None,
+        bundle_id=link.bundle_id if link is not None else None,
+        unbundled=link.unbundled if link is not None else False,
     )
 
 
-def _linked_paths(session: Session, parent_rel: str) -> dict[str, str]:
-    """Map ``relative_path -> bundle_id`` for files already linked directly under
-    ``parent_rel`` in this library, so listed entries can show a linked badge
-    without a per-file query."""
+def _linked_paths(session: Session, parent_rel: str) -> dict[str, _Link]:
+    """Map ``relative_path -> _Link`` for files already linked directly under
+    ``parent_rel`` in this library, so listed entries can show the linked/
+    unbundled badges without a per-file query. Joins the owning bundle to know
+    whether the grouping is still provisional (scan-staged) or confirmed."""
     prefix = f"{parent_rel}/" if parent_rel else ""
-    stmt = select(AssetFile.relative_path, AssetFile.bundle_id)
+    stmt = select(
+        AssetFile.relative_path,
+        AssetFile.bundle_id,
+        AssetBundle.grouping_state,
+        AssetBundle.grouping_source,
+    ).join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
     if prefix:
         stmt = stmt.where(AssetFile.relative_path.startswith(prefix))
-    out: dict[str, str] = {}
-    for rel_path, bundle_id in session.execute(stmt):
+    out: dict[str, _Link] = {}
+    for rel_path, bundle_id, grouping_state, grouping_source in session.execute(stmt):
         remainder = rel_path[len(prefix) :]
         if "/" not in remainder:  # direct child, not nested nested
-            out[rel_path] = bundle_id
+            unbundled = (
+                grouping_state is GroupingState.PROVISIONAL
+                and grouping_source is GroupingSource.SCAN_SUGGESTION
+            )
+            out[rel_path] = _Link(bundle_id=bundle_id, unbundled=unbundled)
     return out

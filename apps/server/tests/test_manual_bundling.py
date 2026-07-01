@@ -1,6 +1,8 @@
 """Manual bundling assistant: unbundled staging, suggestions, and metadata-only
 confirm mutations (Unbundled staging follow-up to ADR-0009)."""
 
+from pathlib import Path
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -204,6 +206,73 @@ def test_operations_are_metadata_only(session: Session) -> None:
 
     after = {f.id: f.relative_path for f in session.scalars(select(AssetFile)).all()}
     assert after == before  # same ids, same on-disk paths
+
+
+# --- paths-in (auto-link) from File View -------------------------------------
+def test_create_bundle_from_relative_paths_autolinks_unlinked(
+    session: Session, library_root: Path
+) -> None:
+    """A File-View path with no AssetFile row is staged then confirmed."""
+    (library_root / "clips").mkdir()
+    (library_root / "clips" / "a.mp4").write_text("v")
+    (library_root / "clips" / "b.mp4").write_text("v")
+    session.commit()
+
+    result = apply_service.create_bundle_from_unbundled(
+        session, relative_paths=["clips/a.mp4", "clips/b.mp4"], title="Clips"
+    )
+
+    bundle = session.get(AssetBundle, result.bundle_id)
+    assert bundle is not None and bundle.grouping_state is GroupingState.CONFIRMED
+    assert result.files_added == 2
+    paths = {
+        f.relative_path
+        for f in session.scalars(select(AssetFile).where(AssetFile.bundle_id == bundle.id))
+    }
+    assert paths == {"clips/a.mp4", "clips/b.mp4"}
+
+
+def test_add_files_from_paths_mixes_linked_and_unlinked(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "s").mkdir()
+    (library_root / "s" / "ep.mp4").write_text("v")
+    (library_root / "s" / "ep.srt").write_text("s")
+    target = _confirmed_with_video(session, "Show", "s/ep.mp4")
+    # ep.mp4 is confirmed (target's file); ep.srt is unlinked on disk.
+    session.commit()
+
+    result = apply_service.add_unbundled_files_to_bundle(
+        session, target.id, relative_paths=["s/ep.srt"]
+    )
+    assert result.files_added == 1
+    assert result.subtitles_linked == 1  # auto-linked to the video
+    linked = session.scalar(select(AssetFile).where(AssetFile.relative_path == "s/ep.srt"))
+    assert linked is not None and linked.bundle_id == target.id
+
+
+def test_paths_in_rejects_confirmed_file(session: Session, library_root: Path) -> None:
+    (library_root / "m").mkdir()
+    (library_root / "m" / "movie.mp4").write_text("v")
+    _confirmed_with_video(session, "Movie", "m/movie.mp4")
+    session.commit()
+    with pytest.raises(ValidationError, match="confirmed"):
+        apply_service.create_bundle_from_unbundled(session, relative_paths=["m/movie.mp4"])
+
+
+def test_suggest_bundle_from_paths_without_staging(session: Session, library_root: Path) -> None:
+    """Suggestions over unlinked paths stay read-only (no rows created)."""
+    (library_root / "d").mkdir()
+    (library_root / "d" / "song.mp4").write_text("v")
+    (library_root / "d" / "cover.jpg").write_text("i")
+    session.commit()
+    before = session.scalar(select(AssetFile.id))
+    assert before is None  # nothing linked yet
+
+    draft = suggest_service.suggest_bundle_from_files(session, relative_paths=["d/song.mp4"])
+    assert draft.proposed_title == "song"
+    # Still nothing linked — suggesting must not write.
+    assert session.scalar(select(AssetFile.id)) is None
 
 
 # --- delete falls back to Unbundled ------------------------------------------
