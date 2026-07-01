@@ -1,27 +1,35 @@
 # Project status
 
-## Latest merged milestone
+## Latest merged milestones
 
-Latest merged milestone: PR #37 / `feat/remove-and-context-menu`. Latest commit: see `git log -1`.
+Maintenance-readiness sequence, merged as four independent PRs (#38–#41):
 
-This milestone adds web-UI removal of bundles and collections plus right-click
-context menus. The backend already exposed metadata-only `DELETE /bundles/{id}`
-and `DELETE /collections/{id}`; the frontend now wires them through a reusable
-`ContextMenu` (`apps/web/src/app/ContextMenu.tsx` + `useContextMenu.ts`).
-Right-clicking a bundle card/row offers Open, Remove-from-collection (in a
-collection view), and Delete Bundle (acting on the whole selection when
-multi-selected); the collection tree and Smart Collection rows offer Delete
-collection / Edit / Delete. All deletions confirm in a styled dialog first and
-never touch files on disk. The bundle dialog has an "Also delete contained
-files" checkbox defaulted off — a forward-looking placeholder; filesystem
-deletion is not enabled in the metadata-only milestone, so files are always kept
-for now. Deleting a collection with subcollections offers an "Also delete
-subcollections" checkbox (checked by default); unchecked floats them to the top
-level. Backend support: a `cascade` query param on `DELETE /collections/{id}`
-(default false) bulk-deletes the descendant subtree while keeping bundles/files.
-Covered by `ContextMenu.test.tsx` (vitest), backend `test_taxonomy.py`
-cascade/float cases, and real-browser delete + dialog flows in
-`e2e/library.spec.ts`.
+- **#38 — Job progress & observability (`feat/job-progress-observability`).**
+  Scan/probe/thumbnail jobs report a coarse `phase` + `message` with throttled
+  registry progress writes and path-redacted terminal errors; the sidebar shows
+  a live determinate/indeterminate progress bar under Update.
+- **#39 — Large-library perf baselines + indexing (`perf/large-library-baselines`).**
+  `cairndex.devtools.synthetic_library` + `benchmark_queries` devtools; measured
+  SQLite indexes (`asset_files.bundle_id` + association-table reverse indexes,
+  backfilled by `ensure_content_indexes` on library open) and a non-correlated
+  membership **semijoin** in the filter compiler and browse. Browse went from
+  ~5.4 s to ~12 ms and view-counts ~12 s to ~14 ms at 5k bundles; all paths stay
+  interactive at 100k. Baselines in `docs/performance.md`.
+- **#40 — Whole-library indexed search (`feat/indexed-metadata-search`).**
+  Per-library `bundle_search` FTS5 index (title/note, file
+  title/filename/path/source/media-kind, tag + collection names) kept fresh by
+  SQLite triggers; browse gained a `q` param composed as an FTS semijoin;
+  `cairndex.devtools.reindex_search` rebuilds it. The toolbar search now covers
+  the whole library, not the loaded window.
+- **#41 — Per-library passphrase lock (`feat/per-library-passphrase-lock`, ADR-0010).**
+  Optional owner passphrase per library (PBKDF2 hash in the manifest), unlocked
+  via a library-scoped in-memory server session (opaque HTTP-only cookie), gated
+  in `get_library_session`; `set_passphrase` CLI + frontend LockScreen. A private
+  LAN/Tailscale guardrail, not public-internet hardening or multi-user auth.
+
+Before this sequence, PR #37 (`feat/remove-and-context-menu`) added web-UI
+removal of bundles/collections and right-click context menus (metadata-only,
+`cascade` param on `DELETE /collections/{id}`).
 
 ## Earlier branches
 
@@ -47,8 +55,14 @@ produced suggestions.
 
 ## Current milestone
 
-**Library maintenance and grouping review polish.** Recent maintenance work made
-the normal maintenance path match the intended product model:
+**Maintenance-readiness sequence complete (#38–#41).** Job progress, large-library
+browse indexing + benchmark tooling, whole-library FTS5 search, and an optional
+per-library passphrase lock all landed. The next candidates are richer
+edit-before-apply grouping review, File View write-mode planning, and search
+relevance ranking (see *Next recommended tasks*).
+
+The grouping/maintenance flow it builds on is unchanged — the normal maintenance
+path matches the intended product model:
 
 1. scan the active library root;
 2. repair high-confidence moves without changing original files;
@@ -135,16 +149,19 @@ original files.
 
 ## Tests and validation
 
-Reported in the PR before this documentation/ops refresh:
+For the maintenance-readiness sequence (#38–#41), each branch ran the full gates
+locally and on GitHub CI (Backend / Frontend / Docker build) before merge:
 
 - backend: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy src`,
-  `uv run pytest` (`210 passed`);
-- frontend: `npm run typecheck`, `npm run lint`, `npm run test`,
-  `npm run build`.
+  `uv run pytest` (`235 passed` on `main` after #41);
+- frontend: `npm run typecheck`, `npm run lint`, `npm run format:check`,
+  `npm run test`, `npm run build`, and Playwright `npm run test:e2e` (15 specs).
 
-This refresh updated docs, agent instructions, deployment comments/config, and
-the backup helper default/comments. No local test run was performed in this
-session; GitHub CI should validate the updated branch.
+New coverage added by the sequence: `test_jobs.py` (phase/message, path
+redaction), `test_devtools_perf.py` (generator + benchmark), `test_search.py`
+(FTS coverage/freshness/escaping/API), `test_auth.py` (hashing, session
+scoping/expiry, the full lock gate), and e2e flows for the progress bar,
+whole-library search, and the passphrase unlock.
 
 ## Known issues / environment gaps
 
