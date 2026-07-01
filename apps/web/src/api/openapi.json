@@ -1,6 +1,42 @@
 {
   "components": {
     "schemas": {
+      "AddFilesRequest": {
+        "properties": {
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "File Ids",
+            "type": "array"
+          },
+          "role_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/FileRole"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Overrides"
+          },
+          "target_bundle_id": {
+            "title": "Target Bundle Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_bundle_id",
+          "file_ids"
+        ],
+        "title": "AddFilesRequest",
+        "type": "object"
+      },
       "AndNode-Input": {
         "additionalProperties": false,
         "properties": {
@@ -409,6 +445,35 @@
           }
         },
         "title": "BundleCreate",
+        "type": "object"
+      },
+      "BundleDraftResponse": {
+        "properties": {
+          "additional": {
+            "items": {
+              "$ref": "#/components/schemas/FileSuggestionRead"
+            },
+            "title": "Additional",
+            "type": "array"
+          },
+          "proposed_title": {
+            "title": "Proposed Title",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedRoleRead"
+            },
+            "title": "Roles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "proposed_title",
+          "roles",
+          "additional"
+        ],
+        "title": "BundleDraftResponse",
         "type": "object"
       },
       "BundleRead": {
@@ -863,6 +928,65 @@
         "title": "CountsResponse",
         "type": "object"
       },
+      "CreateBundleFromFilesRequest": {
+        "properties": {
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "File Ids",
+            "type": "array"
+          },
+          "role_overrides": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/FileRole"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Overrides"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "file_ids"
+        ],
+        "title": "CreateBundleFromFilesRequest",
+        "type": "object"
+      },
+      "CreateEmptyBundleRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "CreateEmptyBundleRequest",
+        "type": "object"
+      },
       "FastAddRequest": {
         "properties": {
           "bundle_title": {
@@ -1144,6 +1268,54 @@
         ],
         "title": "FileRole",
         "type": "string"
+      },
+      "FileSuggestionRead": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "media_kind": {
+            "$ref": "#/components/schemas/MediaKind"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "relative_path",
+          "media_kind",
+          "confidence",
+          "reason"
+        ],
+        "title": "FileSuggestionRead",
+        "type": "object"
+      },
+      "FileSuggestionsResponse": {
+        "properties": {
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/FileSuggestionRead"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "FileSuggestionsResponse",
+        "type": "object"
       },
       "FileUpdate": {
         "properties": {
@@ -1772,6 +1944,39 @@
         ],
         "title": "LibraryStatus",
         "type": "string"
+      },
+      "ManualBundleResultRead": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "bundles_removed": {
+            "title": "Bundles Removed",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "files_added": {
+            "title": "Files Added",
+            "type": "integer"
+          },
+          "subtitles_linked": {
+            "title": "Subtitles Linked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "files_added",
+          "bundles_removed",
+          "subtitles_linked",
+          "created"
+        ],
+        "title": "ManualBundleResultRead",
+        "type": "object"
       },
       "MediaKind": {
         "description": "Coarse media classification, independent of the in-bundle role.",
@@ -2431,6 +2636,33 @@
         "title": "ProposalRead",
         "type": "object"
       },
+      "ProposedRoleRead": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/FileRole"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_id",
+          "relative_path",
+          "role",
+          "sequence"
+        ],
+        "title": "ProposedRoleRead",
+        "type": "object"
+      },
       "SetIdsRequest": {
         "properties": {
           "ids": {
@@ -2699,13 +2931,62 @@
         "title": "SubtitleTrackRead",
         "type": "object"
       },
+      "SuggestBundleFromFilesRequest": {
+        "properties": {
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "File Ids",
+            "type": "array"
+          },
+          "limit": {
+            "default": 30,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_ids"
+        ],
+        "title": "SuggestBundleFromFilesRequest",
+        "type": "object"
+      },
+      "SuggestTargetsRequest": {
+        "properties": {
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "File Ids",
+            "type": "array"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_ids"
+        ],
+        "title": "SuggestTargetsRequest",
+        "type": "object"
+      },
       "SystemView": {
         "enum": [
           "all",
           "recent",
           "uncategorized",
           "untagged",
-          "missing"
+          "missing",
+          "unbundled"
         ],
         "title": "SystemView",
         "type": "string"
@@ -2944,6 +3225,57 @@
         "title": "TagUpdate",
         "type": "object"
       },
+      "TargetSuggestionRead": {
+        "properties": {
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "title",
+          "confidence",
+          "reason"
+        ],
+        "title": "TargetSuggestionRead",
+        "type": "object"
+      },
+      "TargetSuggestionsResponse": {
+        "properties": {
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/TargetSuggestionRead"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suggestions"
+        ],
+        "title": "TargetSuggestionsResponse",
+        "type": "object"
+      },
       "UnlockRequest": {
         "properties": {
           "passphrase": {
@@ -3012,6 +3344,10 @@
             "title": "Recent",
             "type": "integer"
           },
+          "unbundled": {
+            "title": "Unbundled",
+            "type": "integer"
+          },
           "uncategorized": {
             "title": "Uncategorized",
             "type": "integer"
@@ -3026,7 +3362,8 @@
           "recent",
           "uncategorized",
           "untagged",
-          "missing"
+          "missing",
+          "unbundled"
         ],
         "title": "ViewCounts",
         "type": "object"
@@ -6427,6 +6764,429 @@
         "summary": "Enqueue Thumbnails",
         "tags": [
           "library-files"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/add-files": {
+      "post": {
+        "description": "Fold selected unbundled files into an existing confirmed bundle.",
+        "operationId": "add_files_to_bundle_api_v1_libraries__library_id__manual_bundling_add_files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBundleResultRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Files To Bundle",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/bundles/{bundle_id}/suggest-files": {
+      "get": {
+        "description": "Unbundled files that most likely belong in ``bundle_id``.",
+        "operationId": "suggest_files_for_bundle_api_v1_libraries__library_id__manual_bundling_bundles__bundle_id__suggest_files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileSuggestionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suggest Files For Bundle",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/create-bundle": {
+      "post": {
+        "description": "Confirm a new bundle from one or more selected unbundled files.",
+        "operationId": "create_bundle_from_files_api_v1_libraries__library_id__manual_bundling_create_bundle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBundleFromFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBundleResultRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Bundle From Files",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/create-empty-bundle": {
+      "post": {
+        "description": "Create a confirmed, empty bundle (files added next).",
+        "operationId": "create_empty_bundle_api_v1_libraries__library_id__manual_bundling_create_empty_bundle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEmptyBundleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualBundleResultRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Empty Bundle",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/suggest-bundle": {
+      "post": {
+        "description": "A proposed title/roles for a seed selection, plus nearby unbundled files.",
+        "operationId": "suggest_bundle_from_files_api_v1_libraries__library_id__manual_bundling_suggest_bundle_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestBundleFromFilesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suggest Bundle From Files",
+        "tags": [
+          "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/manual-bundling/suggest-targets": {
+      "post": {
+        "description": "Confirmed bundles the selected unbundled files most likely belong to.",
+        "operationId": "suggest_targets_api_v1_libraries__library_id__manual_bundling_suggest_targets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggestTargetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetSuggestionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suggest Targets",
+        "tags": [
+          "manual-bundling"
         ]
       }
     },

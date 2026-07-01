@@ -10,6 +10,7 @@ from cairndex.api.v1 import (
     libraries,
     library_collections,
     library_files,
+    manual_bundling,
     playback,
     smart_collections,
     tag_groups,
@@ -33,3 +34,4 @@ router.include_router(smart_collections.router)
 router.include_router(filters.router)
 router.include_router(playback.router)
 router.include_router(grouping.router)
+router.include_router(manual_bundling.router)

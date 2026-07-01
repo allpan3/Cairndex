@@ -737,6 +737,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/manual-bundling/add-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Files To Bundle
+         * @description Fold selected unbundled files into an existing confirmed bundle.
+         */
+        post: operations["add_files_to_bundle_api_v1_libraries__library_id__manual_bundling_add_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/manual-bundling/bundles/{bundle_id}/suggest-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggest Files For Bundle
+         * @description Unbundled files that most likely belong in ``bundle_id``.
+         */
+        get: operations["suggest_files_for_bundle_api_v1_libraries__library_id__manual_bundling_bundles__bundle_id__suggest_files_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/manual-bundling/create-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Bundle From Files
+         * @description Confirm a new bundle from one or more selected unbundled files.
+         */
+        post: operations["create_bundle_from_files_api_v1_libraries__library_id__manual_bundling_create_bundle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/manual-bundling/create-empty-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Empty Bundle
+         * @description Create a confirmed, empty bundle (files added next).
+         */
+        post: operations["create_empty_bundle_api_v1_libraries__library_id__manual_bundling_create_empty_bundle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/manual-bundling/suggest-bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Bundle From Files
+         * @description A proposed title/roles for a seed selection, plus nearby unbundled files.
+         */
+        post: operations["suggest_bundle_from_files_api_v1_libraries__library_id__manual_bundling_suggest_bundle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/manual-bundling/suggest-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Targets
+         * @description Confirmed bundles the selected unbundled files most likely belong to.
+         */
+        post: operations["suggest_targets_api_v1_libraries__library_id__manual_bundling_suggest_targets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/smart-collections": {
         parameters: {
             query?: never;
@@ -907,6 +1027,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddFilesRequest */
+        AddFilesRequest: {
+            /** File Ids */
+            file_ids: string[];
+            /** Role Overrides */
+            role_overrides?: {
+                [key: string]: components["schemas"]["FileRole"];
+            } | null;
+            /** Target Bundle Id */
+            target_bundle_id: string;
+        };
         /** AndNode */
         "AndNode-Input": {
             /** Children */
@@ -1048,6 +1179,15 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** BundleDraftResponse */
+        BundleDraftResponse: {
+            /** Additional */
+            additional: components["schemas"]["FileSuggestionRead"][];
+            /** Proposed Title */
+            proposed_title: string;
+            /** Roles */
+            roles: components["schemas"]["ProposedRoleRead"][];
+        };
         /** BundleRead */
         BundleRead: {
             /** Cover File Id */
@@ -1187,6 +1327,22 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** CreateBundleFromFilesRequest */
+        CreateBundleFromFilesRequest: {
+            /** File Ids */
+            file_ids: string[];
+            /** Role Overrides */
+            role_overrides?: {
+                [key: string]: components["schemas"]["FileRole"];
+            } | null;
+            /** Title */
+            title?: string | null;
+        };
+        /** CreateEmptyBundleRequest */
+        CreateEmptyBundleRequest: {
+            /** Title */
+            title?: string | null;
+        };
         /** FastAddRequest */
         FastAddRequest: {
             /** Bundle Title */
@@ -1285,6 +1441,23 @@ export interface components {
          * @enum {string}
          */
         FileRole: "primary_video" | "video_part" | "alternate_version" | "cover" | "image" | "screenshot" | "album_image" | "subtitle" | "attachment" | "generated_derivative" | "other";
+        /** FileSuggestionRead */
+        FileSuggestionRead: {
+            /** Confidence */
+            confidence: number;
+            /** File Id */
+            file_id: string;
+            media_kind: components["schemas"]["MediaKind"];
+            /** Reason */
+            reason: string;
+            /** Relative Path */
+            relative_path: string;
+        };
+        /** FileSuggestionsResponse */
+        FileSuggestionsResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["FileSuggestionRead"][];
+        };
         /** FileUpdate */
         FileUpdate: {
             /** Display Title */
@@ -1526,6 +1699,19 @@ export interface components {
          * @enum {string}
          */
         LibraryStatus: "available" | "unavailable";
+        /** ManualBundleResultRead */
+        ManualBundleResultRead: {
+            /** Bundle Id */
+            bundle_id: string;
+            /** Bundles Removed */
+            bundles_removed: number;
+            /** Created */
+            created: boolean;
+            /** Files Added */
+            files_added: number;
+            /** Subtitles Linked */
+            subtitles_linked: number;
+        };
         /**
          * MediaKind
          * @description Coarse media classification, independent of the in-bundle role.
@@ -1734,6 +1920,16 @@ export interface components {
             /** Title */
             title: string | null;
         };
+        /** ProposedRoleRead */
+        ProposedRoleRead: {
+            /** File Id */
+            file_id: string;
+            /** Relative Path */
+            relative_path: string;
+            role: components["schemas"]["FileRole"];
+            /** Sequence */
+            sequence: number;
+        };
         /** SetIdsRequest */
         SetIdsRequest: {
             /** Ids */
@@ -1811,11 +2007,31 @@ export interface components {
             /** Src */
             src: string | null;
         };
+        /** SuggestBundleFromFilesRequest */
+        SuggestBundleFromFilesRequest: {
+            /** File Ids */
+            file_ids: string[];
+            /**
+             * Limit
+             * @default 30
+             */
+            limit: number;
+        };
+        /** SuggestTargetsRequest */
+        SuggestTargetsRequest: {
+            /** File Ids */
+            file_ids: string[];
+            /**
+             * Limit
+             * @default 10
+             */
+            limit: number;
+        };
         /**
          * SystemView
          * @enum {string}
          */
-        SystemView: "all" | "recent" | "uncategorized" | "untagged" | "missing";
+        SystemView: "all" | "recent" | "uncategorized" | "untagged" | "missing" | "unbundled";
         /** TagCreate */
         TagCreate: {
             /** Color */
@@ -1895,6 +2111,22 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /** TargetSuggestionRead */
+        TargetSuggestionRead: {
+            /** Bundle Id */
+            bundle_id: string;
+            /** Confidence */
+            confidence: number;
+            /** Reason */
+            reason: string;
+            /** Title */
+            title: string | null;
+        };
+        /** TargetSuggestionsResponse */
+        TargetSuggestionsResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["TargetSuggestionRead"][];
+        };
         /** UnlockRequest */
         UnlockRequest: {
             /** Passphrase */
@@ -1921,6 +2153,8 @@ export interface components {
             missing: number;
             /** Recent */
             recent: number;
+            /** Unbundled */
+            unbundled: number;
             /** Uncategorized */
             uncategorized: number;
             /** Untagged */
@@ -3706,6 +3940,227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_files_to_bundle_api_v1_libraries__library_id__manual_bundling_add_files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddFilesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBundleResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_files_for_bundle_api_v1_libraries__library_id__manual_bundling_bundles__bundle_id__suggest_files_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileSuggestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_bundle_from_files_api_v1_libraries__library_id__manual_bundling_create_bundle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBundleFromFilesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBundleResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_empty_bundle_api_v1_libraries__library_id__manual_bundling_create_empty_bundle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEmptyBundleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualBundleResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_bundle_from_files_api_v1_libraries__library_id__manual_bundling_suggest_bundle_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestBundleFromFilesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleDraftResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_targets_api_v1_libraries__library_id__manual_bundling_suggest_targets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestTargetsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */
