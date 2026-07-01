@@ -311,7 +311,15 @@ export function Sidebar({
             >
               <span className="nav-item__icon">{viewIcon(v.view)}</span>
               <span className="nav-item__label">{v.label}</span>
-              {counts && <span className="nav-item__count">{counts[v.view]}</span>}
+              {counts && (
+                <span
+                  className={`nav-item__count${
+                    isUnbundled && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
+                  }`}
+                >
+                  {counts[v.view]}
+                </span>
+              )}
             </button>
           )
         })}
