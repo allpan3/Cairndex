@@ -91,6 +91,24 @@ lint/format). `gen:api` uses `npx openapi-typescript` rather than a pinned
 devDependency because that tool's TypeScript peer range does not yet include
 TS 6.
 
+## Large-library performance tooling
+
+To profile browse/query performance at scale, generate a synthetic library and
+benchmark it (no real media is touched). See [performance.md](performance.md)
+for the recorded baselines and the indexes/query rewrite they justify.
+
+```bash
+# From apps/server — generate a synthetic library on disk (fast bulk inserts)
+uv run python -m cairndex.devtools.synthetic_library \
+    --library-root /tmp/cairndex-synth \
+    --bundles 100000 --files-per-bundle 1-5 \
+    --collections 1000 --tags 2000 --seed 1234
+
+# Time the hot paths; --explain dumps EXPLAIN QUERY PLAN, --json writes a report
+uv run python -m cairndex.devtools.benchmark_queries \
+    --library-root /tmp/cairndex-synth --iterations 20 --explain
+```
+
 ## Running both together without Docker
 
 Run the backend and frontend dev commands above in separate terminals. The Vite

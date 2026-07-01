@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
@@ -43,6 +43,28 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     if engine.dialect.name == "sqlite":
         event.listen(engine, "connect", _apply_sqlite_pragmas)
     return engine
+
+
+def ensure_content_indexes(engine: Engine) -> None:
+    """Create any model-defined content indexes missing from a library DB.
+
+    Library DBs are bootstrapped with ``create_all`` (there is no migration
+    chain in use), but ``create_all`` never adds a *new* index to a table that
+    already exists — so a library created before an index was added would miss
+    it. This issues ``CREATE INDEX IF NOT EXISTS`` for each metadata index whose
+    table is present (idempotent, cheap), and is called once per library engine
+    open. Skips tables that do not exist yet (e.g. a not-yet-created DB).
+    """
+    from cairndex.persistence import models  # noqa: F401 — populate metadata
+    from cairndex.persistence.base import Base
+
+    existing = set(inspect(engine).get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing:
+                continue
+            for index in table.indexes:
+                index.create(bind=conn, checkfirst=True)
 
 
 @lru_cache

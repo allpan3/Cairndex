@@ -97,6 +97,7 @@ single-container production stack.
 - [docs/deployment.md](docs/deployment.md)
 - [docs/data-model.md](docs/data-model.md)
 - [docs/filter-language.md](docs/filter-language.md)
+- [docs/performance.md](docs/performance.md) — large-library benchmark tooling and baselines
 - [docs/adr/](docs/adr/) — Architecture Decision Records
 - [docs/STATUS.md](docs/STATUS.md) — current milestone and known issues
 - [CHANGELOG.md](CHANGELOG.md)

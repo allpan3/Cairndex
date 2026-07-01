@@ -114,10 +114,14 @@ def _apply_view(
             if include_descendants
             else [collection_id]
         )
+        # Non-correlated semijoin over the (indexed) collection_id, computed once
+        # — not a per-bundle correlated EXISTS — so a descendant filter over a
+        # large collection subtree stays fast (perf/M2: ~2.6s → ~0.1s at 100k).
         stmt = stmt.where(
-            exists().where(
-                (asset_bundle_collections.c.bundle_id == AssetBundle.id)
-                & asset_bundle_collections.c.collection_id.in_(ids)
+            AssetBundle.id.in_(
+                select(asset_bundle_collections.c.bundle_id).where(
+                    asset_bundle_collections.c.collection_id.in_(ids)
+                )
             )
         )
         return stmt

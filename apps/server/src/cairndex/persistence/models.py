@@ -22,6 +22,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -59,6 +60,9 @@ asset_bundle_tags = Table(
         ForeignKey("tags.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    # The composite PK indexes the leading bundle_id; this reverse index serves
+    # tag_counts' GROUP BY tag_id and tag-scoped lookups (measured: perf/M2).
+    Index("ix_asset_bundle_tags_tag_id", "tag_id"),
 )
 
 asset_bundle_collections = Table(
@@ -76,6 +80,9 @@ asset_bundle_collections = Table(
         ForeignKey("collections.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    # Reverse index (PK leads with bundle_id) for collection_counts' GROUP BY
+    # collection_id and collection-scoped lookups (measured: perf/M2).
+    Index("ix_asset_bundle_collections_collection_id", "collection_id"),
 )
 
 tag_group_memberships = Table(
@@ -175,7 +182,13 @@ class AssetFile(Base):
     __tablename__ = "asset_files"
 
     id: Mapped[UlidPk]
-    bundle_id: Mapped[UlidFk] = mapped_column(ForeignKey("asset_bundles.id", ondelete="CASCADE"))
+    # Indexed: SQLite does not auto-index FKs, and nearly every browse/count path
+    # correlates asset_files by bundle_id (visible-file EXISTS, per-bundle
+    # summary, size/count, missing-file checks). The single highest-impact index
+    # measured in perf/M2 — without it these are full asset_files scans per row.
+    bundle_id: Mapped[UlidFk] = mapped_column(
+        ForeignKey("asset_bundles.id", ondelete="CASCADE"), index=True
+    )
 
     # Normalized path relative to the library root (ADR-0008). The library DB is
     # itself the storage scope, so there is no storage-root reference anymore.

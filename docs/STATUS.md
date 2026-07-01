@@ -158,8 +158,12 @@ session; GitHub CI should validate the updated branch.
   edit-before-apply controls for merge/split/reclassify/rename.
 - Server-side text search / SQLite FTS5 is not implemented; toolbar text search
   still filters the loaded client-side window.
-- Browse-summary queries need profiling and indexing before assuming large-scale
-  performance.
+- Browse-summary queries are profiled with synthetic-library + benchmark
+  devtools; targeted indexes (`asset_files.bundle_id` + association-table reverse
+  indexes) plus a non-correlated membership semijoin take browse/counts/filters
+  from seconds to single-digit/low-tens of ms at 5k and keep all paths
+  comfortably interactive (browse ~120 ms, filters <150 ms) at 100k bundles (see
+  `docs/performance.md`). Branch `perf/large-library-baselines`.
 - Same-volume high-confidence moved-file repair is implemented; cross-filesystem
   repair candidates, duplicate/copy handling, and manual repair are future work.
 - File View is read-only. Write mode, reveal/open-with-default-app, and desktop
@@ -170,8 +174,8 @@ session; GitHub CI should validate the updated branch.
 
 1. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Add server-side text search/FTS and review browse-summary indexes on realistic
-   synthetic libraries.
+2. Add server-side text search/FTS across the whole active library (browse-summary
+   indexes and synthetic-library/benchmark tooling now exist to validate it).
 3. Continue File View planning toward guarded write mode and safe desktop-native
    handoff.
 4. Decide the first single-owner authentication mechanism before relying on

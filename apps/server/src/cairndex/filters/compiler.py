@@ -138,7 +138,13 @@ def _membership(
     ids: list[str] = node.value
 
     def has(in_ids: list[str]) -> Bool:
-        return exists().where((bundle_col == AssetBundle.id) & member_col.in_(in_ids))
+        # Non-correlated semijoin (``bundle IN (SELECT ... WHERE member IN ids)``)
+        # rather than a per-bundle correlated EXISTS. The inner match set is
+        # computed once (via the association-table indexes) instead of once per
+        # candidate bundle — decisive when descendant expansion makes ``in_ids``
+        # large: measured ~7.2s → ~0.15s for tag-descendant filters at 100k
+        # bundles (perf/M2). Semantically identical to the EXISTS form.
+        return AssetBundle.id.in_(select(bundle_col).where(member_col.in_(in_ids)))
 
     if node.operator == "contains_all":
         clauses = [

@@ -31,6 +31,23 @@ grouped under `Unreleased` until the first tagged release.
   exposure) and an `e2e/library.spec.ts` flow asserting the bar appears with
   phase and counts during Update.
 
+- **Large-library performance baselines + targeted indexes.** Two devtools under
+  `cairndex.devtools`: `synthetic_library` generates a real on-disk library and
+  bulk-populates it (batched core inserts; 100k bundles / ~300k files in ~6s, no
+  real media touched), and `benchmark_queries` times the hot browse/count/filter
+  paths over `--iterations` runs with an optional `--explain` that dumps the
+  actual SQLite `EXPLAIN QUERY PLAN`. Profiling a synthetic library showed the
+  browse/count/filter paths doing a full `asset_files` scan per bundle (SQLite
+  does not auto-index a foreign key) and the sidebar count group-bys falling back
+  to a temp B-tree. Three measured indexes were added — `asset_files.bundle_id`
+  (the dominant fix), and reverse indexes on `asset_bundle_collections.collection_id`
+  and `asset_bundle_tags.tag_id` for the count group-bys — taking browse from
+  ~5.4 s to ~12 ms and view-counts from ~12 s to ~14 ms on a 5k-bundle library
+  (see `docs/performance.md`). Indexes are defined on the models (new libraries
+  get them via `create_all`) and backfilled idempotently into existing library
+  DBs on open via `persistence.engine.ensure_content_indexes`, since library DBs
+  have no migration chain.
+
 - **Dedicated product brief.** Product mission, fixed decisions, canonical domain
   model, File View direction, grouping behavior, UI direction, future
   compatibility notes, and first-release anti-goals now live in
@@ -156,6 +173,15 @@ grouped under `Unreleased` until the first tagged release.
   model.
 
 ### Changed
+
+- **Membership filters use a non-correlated semijoin.** Tag/collection filters
+  (and their "include descendants" variants) now compile to
+  `AssetBundle.id IN (SELECT bundle_id FROM assoc WHERE member_id IN (…))` — the
+  match set computed once via the association-table index — instead of a
+  per-bundle correlated `EXISTS`. Applied in both `filters.compiler` (Smart
+  Collections / toolbar filters) and `services.browse` (collection browsing);
+  semantically identical. Measured (perf/M2): tag-descendant filter ~7.2 s →
+  ~0.13 s and collection-descendant ~2.6 s → ~0.07 s at 100k bundles.
 
 - **Agent documentation cleanup.** `AGENTS.md` is now focused on agent execution
   rules: required reading, source-of-truth order, safety constraints, stack and
