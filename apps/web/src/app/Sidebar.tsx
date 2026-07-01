@@ -17,7 +17,7 @@ import {
   IconFilter,
   IconFolder,
   IconGrid,
-  IconInbox,
+  IconLooseStack,
   IconTag,
 } from './icons'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
@@ -39,7 +39,7 @@ function viewIcon(view: SystemView): ReactNode {
     case 'missing':
       return <IconAlert />
     case 'unbundled':
-      return <IconInbox />
+      return <IconLooseStack />
   }
 }
 
