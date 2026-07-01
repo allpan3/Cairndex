@@ -258,14 +258,6 @@ export function GroupingReview({
             unchanged files usually produce the same result. Nothing on disk changes.
           </p>
 
-          {!result && plan.data && (
-            <p className="grp-hint">
-              This plan is a snapshot from when it was generated. If you’ve bundled or changed files
-              since, click <strong>Regenerate suggestions</strong> for a fresh plan — any files you
-              already bundled are skipped on apply, never overridden.
-            </p>
-          )}
-
           {error && <div className="grp-error">{error.message}</div>}
           {notice && !result && <div className="grp-notice">{notice}</div>}
 
