@@ -14,6 +14,8 @@ from cairndex.domain.enums import (
     GroupingState,
     MediaKind,
 )
+from cairndex.grouping import apply as grouping_apply
+from cairndex.grouping import plan_store
 from cairndex.manual_bundling import apply as apply_service
 from cairndex.manual_bundling import suggest as suggest_service
 from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
@@ -273,6 +275,47 @@ def test_suggest_bundle_from_paths_without_staging(session: Session, library_roo
     assert draft.proposed_title == "song"
     # Still nothing linked — suggesting must not write.
     assert session.scalar(select(AssetFile.id)) is None
+
+
+# --- stale grouping plan vs. manual bundling ---------------------------------
+def test_applying_stale_plan_does_not_override_manual_bundling(session: Session) -> None:
+    """A grouping plan generated before manual bundling is safe to apply: a
+    proposal whose files are now in a *confirmed* manual bundle is reported as a
+    conflict and skipped — it never re-groups the user's confirmed decision.
+
+    (This is the reported scenario: Update → don't apply → manually bundle some
+    files → reopen Review grouping → Apply. Confirmed bundles win; regenerating
+    the suggestions afterward gives a fresh plan.)
+    """
+    video = _unbundled(session, "movie/feature.mp4")
+    sub = _unbundled(session, "movie/feature.srt")
+    session.commit()
+
+    # Snapshot the suggestions (one BUNDLE proposal grouping the video + sidecar).
+    plan = plan_store.generate_plan(session)
+    session.commit()
+    assert any(p.kind.value == "bundle" for p in plan.proposals)
+
+    # Manually confirm the video into its own bundle *before* applying the plan.
+    manual = apply_service.create_bundle_from_unbundled(session, [video.id], title="My Cut")
+    session.commit()
+
+    # Applying the now-stale plan must not disturb the confirmed manual bundle.
+    result = grouping_apply.apply_plan(session, plan)
+    session.commit()
+
+    assert result.conflicts, "the proposal touching the confirmed file should conflict"
+    assert result.bundles_confirmed == 0
+    reloaded = session.get(AssetFile, video.id)
+    assert reloaded is not None and reloaded.bundle_id == manual.bundle_id  # untouched
+    manual_bundle = session.get(AssetBundle, manual.bundle_id)
+    assert manual_bundle is not None
+    assert manual_bundle.grouping_state is GroupingState.CONFIRMED
+    assert manual_bundle.title == "My Cut"
+    # The subtitle the proposal also wanted is left as an unbundled file.
+    sub_row = session.get(AssetFile, sub.id)
+    assert sub_row is not None
+    assert sub_row.bundle.grouping_state is GroupingState.PROVISIONAL
 
 
 # --- delete falls back to Unbundled ------------------------------------------
