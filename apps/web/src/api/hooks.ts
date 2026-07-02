@@ -1,9 +1,16 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import {
   type BatchUpdate,
   type BrowseParams,
   type BundlePatch,
+  type CollectionCreate,
   type FilePatch,
   type FileSelection,
   type FilterExpression,
@@ -12,12 +19,15 @@ import {
   type LibraryRegister,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
+  type TagCreate,
   addUnbundledFilesToBundle,
   batchUpdate,
   browseBundles,
   createBundleFromUnbundled,
+  createCollection,
   createEmptyBundle,
   createLibrary,
+  createTag,
   fetchUnbundledFiles,
   createSmartCollection,
   deleteBundle,
@@ -35,6 +45,7 @@ import {
   fetchGroupingPlans,
   generateGroupingPlan,
   fetchAllCollections,
+  fetchCollectionStats,
   fetchBundle,
   fetchBundleCollections,
   fetchBundleFiles,
@@ -52,6 +63,8 @@ import {
   previewFilter,
   registerLibrary,
   removeFile,
+  renameCollection,
+  updateCollection,
   reorderFiles,
   setBundleCollections,
   setBundleTags,
@@ -467,6 +480,15 @@ export function useTags() {
   return useQuery({ queryKey: ['tags'], queryFn: ({ signal }) => fetchTags(signal) })
 }
 
+/** Create a tag inline from a picker's search box (no matches → "Create …"). */
+export function useCreateTag() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: TagCreate) => createTag(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
 export function useTagGroups() {
   return useQuery({ queryKey: ['tag-groups'], queryFn: ({ signal }) => fetchTagGroups(signal) })
 }
@@ -657,6 +679,55 @@ export function useDeleteCollection() {
   })
 }
 
+/** Create a collection (sidebar "+ Collection"); refetches the tree and the
+ * per-collection counts so the new (empty) collection shows its 0 right away. */
+export function useCreateCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: CollectionCreate) => createCollection(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['collections'] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+    },
+  })
+}
+
+/** Rename a collection (sidebar inline-edit after creating or on request). */
+export function useRenameCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+      renameCollection(id, name, version),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+  })
+}
+
+/** Counts for the collection inspector (direct/leaf bundles + subcollections). */
+export function useCollectionStats(collectionId: string | null) {
+  return useQuery({
+    queryKey: ['collection-stats', collectionId],
+    queryFn: ({ signal }) => fetchCollectionStats(collectionId as string, signal),
+    enabled: collectionId !== null,
+  })
+}
+
+/** Edit a collection's name/note/cover from the collection inspector. */
+export function useUpdateCollection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      patch,
+      version,
+    }: {
+      id: string
+      patch: { name?: string; note?: string | null; cover_bundle_id?: string | null }
+      version?: number
+    }) => updateCollection(id, patch, version),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+  })
+}
+
 export function useBatchUpdate() {
   const qc = useQueryClient()
   return useMutation({
@@ -666,6 +737,66 @@ export function useBatchUpdate() {
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
+      qc.invalidateQueries({ queryKey: ['bundle-tags'] })
+      qc.invalidateQueries({ queryKey: ['bundle-collections'] })
+    },
+  })
+}
+
+function intersectAll(sets: string[][]): Set<string> {
+  if (sets.length === 0) return new Set()
+  let acc = new Set(sets[0])
+  for (const ids of sets.slice(1)) {
+    const next = new Set(ids)
+    acc = new Set([...acc].filter((id) => next.has(id)))
+  }
+  return acc
+}
+
+/** Tag ids common to every one of `ids` — the multi-bundle inspector shows
+ * these as already-assigned, mirroring the single-bundle editor. Reuses the
+ * same query key as `useBundleTags` so the caches share entries. */
+export function useCommonBundleTags(ids: string[]) {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ['bundle-tags', id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => fetchBundleTags(id, signal),
+    })),
+  })
+  const isLoading = results.some((r) => r.isLoading)
+  const loaded = results
+    .map((r) => r.data?.tag_ids)
+    .filter((ids): ids is string[] => ids !== undefined)
+  return { commonTagIds: intersectAll(loaded), isLoading }
+}
+
+/** Collection ids common to every one of `ids` — see `useCommonBundleTags`. */
+export function useCommonBundleCollections(ids: string[]) {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ['bundle-collections', id],
+      queryFn: ({ signal }: { signal: AbortSignal }) => fetchBundleCollections(id, signal),
+    })),
+  })
+  const isLoading = results.some((r) => r.isLoading)
+  const loaded = results
+    .map((r) => r.data?.collection_ids)
+    .filter((ids): ids is string[] => ids !== undefined)
+  return { commonCollectionIds: intersectAll(loaded), isLoading }
+}
+
+/** Overwrite title and/or rating across every bundle in a multi-selection.
+ * Fires one PATCH per bundle in parallel (there's no bulk endpoint for scalar
+ * fields, only membership) with no If-Match — a bulk overwrite is an explicit,
+ * one-shot action, and per-row versions aren't loaded in the browse grid. */
+export function useBulkUpdateBundles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ids, patch }: { ids: string[]; patch: BundlePatch }) =>
+      Promise.all(ids.map((id) => updateBundle(id, patch))),
+    onSuccess: (_data, { ids }) => {
+      qc.invalidateQueries({ queryKey: ['browse'] })
+      for (const id of ids) qc.invalidateQueries({ queryKey: ['bundle', id] })
     },
   })
 }

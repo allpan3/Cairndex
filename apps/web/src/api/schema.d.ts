@@ -507,6 +507,48 @@ export interface paths {
         patch: operations["update_collection_api_v1_libraries__library_id__collections__collection_id__patch"];
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/collections/{collection_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Collection Stats
+         * @description Bundle/subcollection counts for the collection inspector.
+         */
+        get: operations["get_collection_stats_api_v1_libraries__library_id__collections__collection_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/collections/{collection_id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Collection Thumbnail
+         * @description Serve the collection's cover thumbnail — the chosen cover bundle's cover,
+         *     or an auto-picked bundle from the subtree. 404 if the collection has no
+         *     thumbnailable bundle; 503 if ffmpeg is unavailable.
+         */
+        get: operations["get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/fast-add": {
         parameters: {
             query?: never;
@@ -1314,6 +1356,8 @@ export interface components {
         };
         /** CollectionRead */
         CollectionRead: {
+            /** Cover Bundle Id */
+            cover_bundle_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1323,6 +1367,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Note */
+            note?: string | null;
             /** Parent Id */
             parent_id: string | null;
             /** Sort Order */
@@ -1335,10 +1381,26 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * CollectionStats
+         * @description Counts shown in the collection inspector.
+         */
+        CollectionStats: {
+            /** Direct Bundles */
+            direct_bundles: number;
+            /** Subcollections */
+            subcollections: number;
+            /** Total Bundles */
+            total_bundles: number;
+        };
         /** CollectionUpdate */
         CollectionUpdate: {
+            /** Cover Bundle Id */
+            cover_bundle_id?: string | null;
             /** Name */
             name?: string | null;
+            /** Note */
+            note?: string | null;
             /** Parent Id */
             parent_id?: string | null;
         };
@@ -3545,6 +3607,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CollectionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_stats_api_v1_libraries__library_id__collections__collection_id__stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                collection_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

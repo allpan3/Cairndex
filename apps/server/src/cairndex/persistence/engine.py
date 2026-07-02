@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event, inspect
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
@@ -45,26 +45,44 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     return engine
 
 
+# Nullable columns added to long-lived content tables after their first
+# release. ``create_all`` never alters an existing table, and there is no
+# migration chain, so a library created before a column existed is patched
+# additively on open. Each entry is (table, column, SQLite type).
+_ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("collections", "note", "TEXT"),
+    ("collections", "cover_bundle_id", "VARCHAR(26)"),
+)
+
+
 def ensure_content_indexes(engine: Engine) -> None:
-    """Create any model-defined content indexes missing from a library DB.
+    """Bring a library DB up to the current model shape without migrations.
 
     Library DBs are bootstrapped with ``create_all`` (there is no migration
-    chain in use), but ``create_all`` never adds a *new* index to a table that
-    already exists — so a library created before an index was added would miss
-    it. This issues ``CREATE INDEX IF NOT EXISTS`` for each metadata index whose
-    table is present (idempotent, cheap), and is called once per library engine
-    open. Skips tables that do not exist yet (e.g. a not-yet-created DB).
+    chain in use), but ``create_all`` never adds a *new* index or column to a
+    table that already exists — so a library created before one was added would
+    miss it. This issues ``CREATE INDEX IF NOT EXISTS`` for each metadata index
+    and ``ALTER TABLE ADD COLUMN`` for each missing additive column whose table
+    is present (idempotent, cheap), once per library engine open. Skips tables
+    that do not exist yet (e.g. a not-yet-created DB).
     """
     from cairndex.persistence import models  # noqa: F401 — populate metadata
     from cairndex.persistence.base import Base
 
-    existing = set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    existing = set(inspector.get_table_names())
     with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
             if table.name not in existing:
                 continue
             for index in table.indexes:
                 index.create(bind=conn, checkfirst=True)
+        for table_name, column, sql_type in _ADDITIVE_CONTENT_COLUMNS:
+            if table_name not in existing:
+                continue
+            columns = {col["name"] for col in inspector.get_columns(table_name)}
+            if column not in columns:
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {sql_type}"))
 
 
 @lru_cache

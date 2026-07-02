@@ -10,6 +10,56 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Create a tag or collection directly from the picker.** In the tag and
+  collection pickers (single-bundle editors and the multi-bundle bulk
+  editor), typing a search offers a **Create "…"** row whenever the search
+  doesn't already name an existing tag/collection exactly — even if it's a
+  substring of one (e.g. searching "Act" while "Action" exists still offers
+  to create "Act" as its own tag, alongside the "Action" partial match).
+  Clicking it creates the tag/collection (top-level) and assigns it
+  immediately — no need to leave the picker to add a new one first.
+
+- **Multi-bundle bulk editor.** Selecting 2+ bundles no longer shows a top
+  "batch bar" — the right panel becomes a bulk editor instead: a title field
+  that overwrites every selected bundle, a rating control (shows the shared
+  value, or unset when they differ) that likewise overwrites all, and
+  tag/collection pickers where items common to every selected bundle show as
+  assigned; toggling one adds or removes it across the whole selection via the
+  batch endpoint. Files/size are rolled up (sum). No note field — a note is
+  inherently per-bundle prose, not something to overwrite in bulk.
+
+- **Subcollection cards: drag-select, click-to-deselect, and root-level
+  browsing.** The folder cards above the bundle grid now support the same
+  left-click marquee drag and empty-space-deselects behavior as the bundle
+  grid, kept as a separate selection track — a subcollection selection and a
+  bundle selection are mutually exclusive, since acting on both at once isn't
+  meaningful. The **All** view now also shows every root-level collection as
+  cards above the bundle grid, not just inside a collection. Folder cards got
+  a subtle stacked-sheet treatment (offset shadow layers) so they read as
+  folders rather than bundles, and their footer now shows both the direct
+  bundle count and the subcollection count.
+
+- Collection and bundle titles commit on **Enter** (in addition to blur), like
+  the sidebar's inline rename box.
+
+- **Collection cover cards.** Subcollections now render as folder cards with a
+  cover image — the collection's chosen cover bundle, or an auto-picked bundle
+  from anywhere in its subtree — and scale with the toolbar zoom slider like
+  bundle cards. Right-click a bundle in a collection → **Set as collection
+  cover**. Adds a `collections.cover_bundle_id` column (additive; falls back
+  gracefully if the cover bundle is deleted), `GET /collections/{id}/thumbnail`,
+  and `cover_bundle_id` on `CollectionUpdate`/`CollectionRead`. The cover also
+  shows atop the collection inspector.
+
+- **Collection inspector (title, note, counts).** Single-clicking a
+  subcollection in a collection's view selects it and shows a right-pane
+  inspector with an editable title and a freeform **note**, plus counts:
+  bundles directly in the collection, total distinct bundles across the whole
+  subtree, and direct subcollections. Double-click still navigates in. Adds a
+  `collections.note` column (bootstrapped additively on library open — no
+  migration), `GET /collections/{id}/stats`, and `note` on
+  `CollectionUpdate`/`CollectionRead`.
+
 - **Unbundled staging + manual bundling assistant (follow-up to ADR-0009).** A
   scan stages every newly discovered file as a *provisional* one-file bundle; the
   library browser now treats those as **unbundled** files (`grouping_state =
@@ -250,6 +300,34 @@ grouped under `Unreleased` until the first tagged release.
   model.
 
 ### Fixed
+
+- **Marquee drag-select could inflate the scroll area with empty space,
+  runaway-growing without bound.** The drag-selection overlay's size was
+  computed straight from raw mouse coordinates; dragging past the loaded
+  content (in either the bundle grid or the collection cards) let it grow
+  past its container's real content size — and since it's absolutely
+  positioned inside an `overflow: auto` container, that inflated the
+  container's scrollable area. Because auto-scroll then had more room to
+  advance into, and advancing let the overlay grow further, the two fed each
+  other every animation frame: a single ~400px drag paused near the bottom
+  edge for about a second inflated one container from 232px to over 14,000px
+  of scrollable height. The overlay's rectangle is now clamped to the
+  content's true size (measured once at drag start), which keeps the overlay
+  inside real content and breaks the feedback loop.
+
+- The empty-inspector placeholder ("Select a bundle to see its details.") now
+  also mentions collections, since single-clicking a collection card shows
+  its details there too.
+
+- **Bundle cards no longer show a duration badge on image bundles.** The
+  runtime badge (bottom-right of the card thumbnail) rendered whenever the
+  primary file's `tech_metadata` happened to carry a stray `duration`, even for
+  a JPG/PNG bundle showing an image type badge — it's now gated on the
+  bundle's `media_kind` being video.
+
+- Right-click context menu items are consistently Title Case (e.g. "Set as
+  Collection Cover", "Remove from This Collection", "Delete N Bundles", "Add N
+  Files to Bundle…").
 
 - **`synthetic_library` no longer takes hours at 100k+ bundles.** The devtool
   regressed when whole-library FTS5 search landed: every bulk insert into

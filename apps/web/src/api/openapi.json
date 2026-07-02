@@ -848,6 +848,17 @@
       },
       "CollectionRead": {
         "properties": {
+          "cover_bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Bundle Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -860,6 +871,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "parent_id": {
             "anyOf": [
@@ -898,8 +920,43 @@
         "title": "CollectionRead",
         "type": "object"
       },
+      "CollectionStats": {
+        "description": "Counts shown in the collection inspector.",
+        "properties": {
+          "direct_bundles": {
+            "title": "Direct Bundles",
+            "type": "integer"
+          },
+          "subcollections": {
+            "title": "Subcollections",
+            "type": "integer"
+          },
+          "total_bundles": {
+            "title": "Total Bundles",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "direct_bundles",
+          "total_bundles",
+          "subcollections"
+        ],
+        "title": "CollectionStats",
+        "type": "object"
+      },
       "CollectionUpdate": {
         "properties": {
+          "cover_bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Bundle Id"
+          },
           "name": {
             "anyOf": [
               {
@@ -912,6 +969,17 @@
               }
             ],
             "title": "Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           },
           "parent_id": {
             "anyOf": [
@@ -6020,6 +6088,140 @@
           }
         },
         "summary": "Update Collection",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/collections/{collection_id}/stats": {
+      "get": {
+        "description": "Bundle/subcollection counts for the collection inspector.",
+        "operationId": "get_collection_stats_api_v1_libraries__library_id__collections__collection_id__stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionStats"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection Stats",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/collections/{collection_id}/thumbnail": {
+      "get": {
+        "description": "Serve the collection's cover thumbnail \u2014 the chosen cover bundle's cover,\nor an auto-picked bundle from the subtree. 404 if the collection has no\nthumbnailable bundle; 503 if ffmpeg is unavailable.",
+        "operationId": "get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "collection_id",
+            "required": true,
+            "schema": {
+              "title": "Collection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Collection Thumbnail",
         "tags": [
           "library-collections"
         ]

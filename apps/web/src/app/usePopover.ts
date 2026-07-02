@@ -8,17 +8,35 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * (e.g. the inspector's `overflow: auto`). `pos` is the computed viewport
  * coordinates: top below the anchor, right-aligned to the anchor's right.
  */
+interface PopoverPos {
+  top?: number
+  bottom?: number
+  right: number
+  maxHeight: number
+}
+
 export function usePopover() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const [pos, setPos] = useState<PopoverPos | null>(null)
 
   const reposition = useCallback(() => {
     const el = ref.current
     if (!el) return
     const r = el.getBoundingClientRect()
-    setPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    const margin = 8
+    const right = window.innerWidth - r.right
+    const spaceBelow = window.innerHeight - r.bottom - margin
+    const spaceAbove = r.top - margin
+    const cap = (h: number) => Math.max(160, Math.min(520, h))
+    // Open below when there's room; otherwise flip above the anchor. Either way
+    // the panel is capped to the available space so it never runs off-screen.
+    if (spaceBelow >= 240 || spaceBelow >= spaceAbove) {
+      setPos({ top: r.bottom + 4, right, maxHeight: cap(spaceBelow) })
+    } else {
+      setPos({ bottom: window.innerHeight - r.top + 4, right, maxHeight: cap(spaceAbove) })
+    }
   }, [])
 
   useEffect(() => {

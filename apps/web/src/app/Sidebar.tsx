@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   CollectionRead,
@@ -71,6 +71,15 @@ interface SidebarProps {
   collections: CollectionRead[]
   collectionCounts?: Record<string, number>
   onDeleteCollection: (collection: CollectionRead) => void
+  onCreateCollection: (
+    payload: { name: string; parent_id: string | null },
+    callbacks: { onSuccess: (created: CollectionRead) => void; onError: (err: unknown) => void },
+  ) => void
+  onRenameCollection: (
+    id: string,
+    name: string,
+    callbacks: { onSuccess: () => void; onError: (err: unknown) => void },
+  ) => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -95,24 +104,6 @@ function buildTree(collections: CollectionRead[]): TreeNode[] {
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((collection) => ({ collection, children: make(collection.id) }))
   return make(null)
-}
-
-/**
- * Prune the tree to collections relevant to the active library: keep a node if
- * it (or any descendant) has at least one bundle in the current library. The
- * supplied counts are already library-scoped, so an empty-in-this-library
- * collection drops out. While counts are still loading the full tree is shown
- * (avoids a flash of "no collections"). The global collection list is left
- * untouched for the collection picker — only the sidebar display is scoped.
- */
-function pruneTree(nodes: TreeNode[], counts?: Record<string, number>): TreeNode[] {
-  if (!counts) return nodes
-  const keep = (n: TreeNode): TreeNode | null => {
-    const children = n.children.map(keep).filter((c): c is TreeNode => c !== null)
-    const hasOwn = (counts[n.collection.id] ?? 0) > 0
-    return hasOwn || children.length > 0 ? { collection: n.collection, children } : null
-  }
-  return nodes.map(keep).filter((c): c is TreeNode => c !== null)
 }
 
 export function Sidebar({
@@ -141,6 +132,8 @@ export function Sidebar({
   collections,
   collectionCounts,
   onDeleteCollection,
+  onCreateCollection,
+  onRenameCollection,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -148,12 +141,76 @@ export function Sidebar({
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const menu = useContextMenu()
-  // Scope the displayed collections to the active library (counts are already
-  // library-scoped); the global list stays available to the collection picker.
-  const tree = useMemo(
-    () => pruneTree(buildTree(collections), collectionCounts),
-    [collections, collectionCounts],
-  )
+
+  // Id of the collection currently showing an inline rename box — set right
+  // after "+ Collection" creates one, so the user can type its name in place.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
+  // Branch expand/collapse is normally per-node local state (depth 0 open by
+  // default), but creating a collection nested under the currently open one
+  // needs to force its ancestor chain open so the new node is visible.
+  const [expandedOverride, setExpandedOverride] = useState<Set<string>>(new Set())
+  const [collapsedOverride, setCollapsedOverride] = useState<Set<string>>(new Set())
+  const isExpanded = (id: string, depth: number) =>
+    expandedOverride.has(id) ? true : collapsedOverride.has(id) ? false : depth < 1
+  const toggleExpanded = (id: string, depth: number) => {
+    const willExpand = !isExpanded(id, depth)
+    setExpandedOverride((prev) => {
+      const s = new Set(prev)
+      if (willExpand) s.add(id)
+      else s.delete(id)
+      return s
+    })
+    setCollapsedOverride((prev) => {
+      const s = new Set(prev)
+      if (willExpand) s.delete(id)
+      else s.add(id)
+      return s
+    })
+  }
+
+  // Every collection in the active library is shown (collections are per-library
+  // under ADR-0008), including empty ones — a folder shouldn't vanish just
+  // because it has no bundles yet.
+  const tree = useMemo(() => buildTree(collections), [collections])
+
+  // "+ Collection": create it under the collection currently open (or at the
+  // top level when browsing a system view/smart collection), pick a name
+  // that doesn't collide with its siblings, expand its ancestor chain so it's
+  // visible, then drop straight into the inline rename box.
+  const handleNewCollection = () => {
+    setCreateError(null)
+    const parentId = selection.collectionId ?? null
+    const siblingNames = new Set(
+      collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
+    )
+    let name = 'New Collection'
+    for (let n = 2; siblingNames.has(name); n++) name = `New Collection ${n}`
+
+    onCreateCollection(
+      { name, parent_id: parentId },
+      {
+        onSuccess: (created) => {
+          if (parentId) {
+            const ancestors = new Set<string>()
+            let cur: string | null = parentId
+            while (cur) {
+              ancestors.add(cur)
+              cur = collections.find((c) => c.id === cur)?.parent_id ?? null
+            }
+            setExpandedOverride((prev) => new Set([...prev, ...ancestors]))
+            setCollapsedOverride((prev) => {
+              const s = new Set(prev)
+              for (const id of ancestors) s.delete(id)
+              return s
+            })
+          }
+          setEditingId(created.id)
+        },
+        onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
+      },
+    )
+  }
 
   const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
     menu.open(e, [
@@ -376,7 +433,26 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__section">
-        <div className="sidebar__heading">Collections</div>
+        <div className="sidebar__heading sidebar__heading--row">
+          Collections
+          <button
+            className="sidebar__add"
+            onClick={handleNewCollection}
+            aria-label="New collection"
+            title={
+              selection.collectionId
+                ? 'New collection inside the current one'
+                : 'New top-level collection'
+            }
+          >
+            +
+          </button>
+        </div>
+        {createError && (
+          <div className="sidebar__heading" role="alert">
+            {createError}
+          </div>
+        )}
         {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
         {tree.map((node) => (
           <CollectionBranch
@@ -387,6 +463,11 @@ export function Sidebar({
             onSelect={onSelect}
             onContextMenu={collectionMenu}
             collectionCounts={collectionCounts}
+            isExpanded={isExpanded}
+            onToggle={toggleExpanded}
+            editingId={editingId}
+            onRenameCollection={onRenameCollection}
+            onDoneEditing={() => setEditingId(null)}
           />
         ))}
       </div>
@@ -403,6 +484,11 @@ function CollectionBranch({
   onSelect,
   onContextMenu,
   collectionCounts,
+  isExpanded,
+  onToggle,
+  editingId,
+  onRenameCollection,
+  onDoneEditing,
 }: {
   node: TreeNode
   depth: number
@@ -410,17 +496,23 @@ function CollectionBranch({
   onSelect: (selection: Selection) => void
   onContextMenu: (collection: CollectionRead, e: React.MouseEvent) => void
   collectionCounts?: Record<string, number>
+  isExpanded: (id: string, depth: number) => boolean
+  onToggle: (id: string, depth: number) => void
+  editingId: string | null
+  onRenameCollection: SidebarProps['onRenameCollection']
+  onDoneEditing: () => void
 }) {
-  const [expanded, setExpanded] = useState(depth < 1)
   const active = selection.collectionId === node.collection.id
   const hasChildren = node.children.length > 0
+  const expanded = isExpanded(node.collection.id, depth)
+  const editing = editingId === node.collection.id
 
   return (
     <>
       <div
         className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => onSelect({ view: 'all', collectionId: node.collection.id })}
+        onClick={() => !editing && onSelect({ view: 'all', collectionId: node.collection.id })}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
@@ -429,7 +521,7 @@ function CollectionBranch({
           className="collection-row__toggle"
           onClick={(e) => {
             e.stopPropagation()
-            setExpanded((v) => !v)
+            onToggle(node.collection.id, depth)
           }}
           aria-label={expanded ? 'Collapse' : 'Expand'}
         >
@@ -438,8 +530,18 @@ function CollectionBranch({
         <span className="nav-item__icon">
           <IconFolder />
         </span>
-        <span className="nav-item__label">{node.collection.name}</span>
-        <span className="nav-item__count">{collectionCounts?.[node.collection.id] ?? ''}</span>
+        {editing ? (
+          <CollectionRenameInput
+            collection={node.collection}
+            onRenameCollection={onRenameCollection}
+            onDone={onDoneEditing}
+          />
+        ) : (
+          <>
+            <span className="nav-item__label">{node.collection.name}</span>
+            <span className="nav-item__count">{collectionCounts?.[node.collection.id] ?? ''}</span>
+          </>
+        )}
       </div>
       {expanded &&
         node.children.map((child) => (
@@ -451,8 +553,80 @@ function CollectionBranch({
             onSelect={onSelect}
             onContextMenu={onContextMenu}
             collectionCounts={collectionCounts}
+            isExpanded={isExpanded}
+            onToggle={onToggle}
+            editingId={editingId}
+            onRenameCollection={onRenameCollection}
+            onDoneEditing={onDoneEditing}
           />
         ))}
     </>
+  )
+}
+
+/** Inline rename box: focused with its text pre-selected so the first
+ * keystroke replaces the placeholder name outright (Explorer/Finder-style
+ * "New Folder" behavior). Enter/blur commits, Escape cancels. */
+function CollectionRenameInput({
+  collection,
+  onRenameCollection,
+  onDone,
+}: {
+  collection: CollectionRead
+  onRenameCollection: SidebarProps['onRenameCollection']
+  onDone: () => void
+}) {
+  const [value, setValue] = useState(collection.name)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  // Focus + select-all once on mount (not on every keystroke re-render) so
+  // the first character typed replaces the placeholder name outright.
+  useEffect(() => {
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
+
+  const commit = () => {
+    const trimmed = value.trim()
+    if (trimmed === '' || trimmed === collection.name) {
+      onDone()
+      return
+    }
+    onRenameCollection(collection.id, trimmed, {
+      onSuccess: onDone,
+      onError: (err) => setError(err instanceof Error ? err.message : 'Could not rename'),
+    })
+  }
+
+  return (
+    <span className="nav-item__label collection-row__rename">
+      <input
+        ref={inputRef}
+        className="edit edit--inline"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value)
+          setError(null)
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            inputRef.current?.blur()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onDone()
+          }
+        }}
+        aria-label={`Rename ${collection.name}`}
+      />
+      {error && (
+        <span className="collection-row__rename-error" role="alert">
+          {error}
+        </span>
+      )}
+    </span>
   )
 }

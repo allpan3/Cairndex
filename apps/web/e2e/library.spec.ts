@@ -165,6 +165,33 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(page.getByText('movie.mp4')).toBeVisible()
 })
 
+test('drag-selects multiple bundles with a marquee', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  const cards = page.locator('.card')
+  await expect(cards.first()).toBeVisible()
+
+  const browserBox = await page.locator('.browser').boundingBox()
+  const target = await cards.nth(1).boundingBox()
+  if (!browserBox || !target) throw new Error('missing bounding box')
+
+  // Drag from the empty gutter left of the grid (just right of the sidebar's
+  // resizer handle), through card 0, into card 1.
+  const gutterX = browserBox.x + 8
+  await page.mouse.move(gutterX, browserBox.y + 2)
+  await page.mouse.down()
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 })
+  await page.mouse.up()
+
+  await expect(cards.nth(0)).toHaveClass(/card--selected/)
+  await expect(cards.nth(1)).toHaveClass(/card--selected/)
+  await expect(page.locator('.inspector__multi-head')).toContainText('2 bundles selected')
+
+  // A plain click on empty space (no drag) clears the selection.
+  await page.mouse.click(gutterX, browserBox.y + 2)
+  await expect(page.locator('.inspector__multi-head')).toHaveCount(0)
+})
+
 test('toolbar search queries the whole library, not just the loaded page', async ({ page }) => {
   await mockApi(page)
   // A q-aware browse route: with ?q=gem it returns a bundle that is NOT in the
@@ -260,7 +287,7 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
   })
 
   await page.goto('/')
-  await page.getByText('Movies').click({ button: 'right' })
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Delete Collection' }).click()
 
   const dialog = page.getByRole('dialog', { name: 'Delete Collection' })
@@ -271,6 +298,215 @@ test('deleting a collection offers a subcollections choice', async ({ page }) =>
 
   // Confirming with the box checked cascades to subcollections.
   await expect.poll(() => deleteUrl).toContain('cascade=true')
+})
+
+test('the sidebar "+" creates a collection with an inline rename box', async ({ page }) => {
+  await mockApi(page)
+  const state: { collections: Array<{ id: string; name: string; parent_id: string | null }> } = {
+    collections: [],
+  }
+  let nextId = 1
+  await page.route('**/collections?*', (r) => {
+    if (r.request().method() !== 'GET') return r.fallback()
+    return r.fulfill({ json: { items: state.collections, next_cursor: null } })
+  })
+  // Mirror the backend: every collection appears in counts (0 when empty).
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({
+      json: { counts: Object.fromEntries(state.collections.map((c) => [c.id, 0])) },
+    }),
+  )
+  await page.route('**/collections', (r) => {
+    if (r.request().method() !== 'POST') return r.fallback()
+    const body = r.request().postDataJSON() as { name: string; parent_id: string | null }
+    const created = { id: `c${nextId++}`, name: body.name, parent_id: body.parent_id }
+    state.collections.push(created)
+    return r.fulfill({ status: 201, json: created })
+  })
+  await page.route('**/collections/c1', (r) => {
+    if (r.request().method() !== 'PATCH') return r.fallback()
+    const body = r.request().postDataJSON() as { name: string }
+    const target = state.collections.find((c) => c.id === 'c1')
+    if (target) target.name = body.name
+    return r.fulfill({ json: target })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'New collection' }).click()
+
+  // Created at the top level (no collection open), with the rename box
+  // focused and its placeholder name pre-selected for immediate typing.
+  const input = page.getByRole('textbox', { name: 'Rename New Collection' })
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue('New Collection')
+  await input.fill('Documentaries')
+  await input.press('Enter')
+
+  // The renamed collection stays visible in the sidebar tree, even with no
+  // bundles in it yet, and shows a 0 count.
+  const row = page.locator('.sidebar .collection-row', { hasText: 'Documentaries' })
+  await expect(row).toBeVisible()
+  await expect(row.locator('.nav-item__count')).toHaveText('0')
+
+  // It persists across a reload — an empty collection is not pruned from the
+  // sidebar (regression: previously vanished on refresh).
+  await page.reload()
+  await expect(page.locator('.sidebar .collection-row', { hasText: 'Documentaries' })).toBeVisible()
+})
+
+test('a collection shows a subcollections strip and a direct/descendant toggle', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: 'Movies', parent_id: null },
+          { id: 'c2', name: 'Docs', parent_id: 'c1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 1, c2: 2 } } }),
+  )
+  await page.route('**/collections/c2/stats', (r) =>
+    r.fulfill({ json: { direct_bundles: 2, total_bundles: 2, subcollections: 0 } }),
+  )
+  // Browse varies by collection_id + include_descendants: Movies has 1 direct
+  // bundle, 3 with descendants included.
+  await page.route('**/bundles/browse**', (r) => {
+    const url = new URL(r.request().url())
+    const cid = url.searchParams.get('collection_id')
+    const withDesc = url.searchParams.get('include_descendants') === 'true'
+    if (cid === 'c1') {
+      const items = withDesc ? [bundle(0), bundle(1), bundle(2)] : [bundle(0)]
+      return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+
+  await page.goto('/')
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click()
+
+  // Collection header: a "Subcollections" section with a folder tile for the
+  // child, a "Contents" section, and only the direct bundle in the grid.
+  await expect(page.locator('.collhead')).toContainText('Subcollections (1)')
+  await expect(page.locator('.collhead')).toContainText('Contents (1)')
+  await expect(page.locator('.collcard', { hasText: 'Docs' })).toBeVisible()
+  await expect(page.locator('.toolbar__count')).toHaveText('1 items')
+
+  // Toggling "Show subcollection contents" pulls in descendant bundles.
+  await page.getByRole('checkbox', { name: 'Show subcollection contents' }).check()
+  await expect(page.locator('.toolbar__count')).toHaveText('3 items')
+
+  // Folding "Contents" hides the bundle grid.
+  await page.getByRole('button', { name: /Contents \(/ }).click()
+  await expect(page.locator('.browser')).toHaveCount(0)
+  await page.getByRole('button', { name: /Contents \(/ }).click() // re-expand
+
+  // Single-clicking a subcollection tile selects it → the collection inspector
+  // shows its editable title and counts (it does NOT navigate).
+  await page.locator('.collcard', { hasText: 'Docs' }).click()
+  await expect(page.locator('.inspector input[aria-label="Collection title"]')).toHaveValue('Docs')
+  await expect(page.locator('.inspector')).toContainText('Subcollections')
+  await expect(page.locator('.toolbar__title')).toHaveText('Movies') // still in Movies
+
+  // Double-clicking navigates into it (no subcollections of its own).
+  await page.locator('.collcard', { hasText: 'Docs' }).dblclick()
+  await expect(page.locator('.toolbar__title')).toHaveText('Docs')
+  await expect(page.locator('.collhead')).toHaveCount(0)
+})
+
+test('drag-selects subcollection cards with a marquee, and empty space deselects', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: 'Movies', parent_id: null },
+          { id: 'c2', name: 'Docs', parent_id: 'c1' },
+          { id: 'c3', name: 'Shorts', parent_id: 'c1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 1, c2: 2, c3: 1 } } }),
+  )
+  await page.route('**/bundles/browse**', (r) => {
+    const url = new URL(r.request().url())
+    const cid = url.searchParams.get('collection_id')
+    if (cid === 'c1') {
+      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+
+  await page.goto('/')
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click()
+
+  const cards = page.locator('.collcard')
+  await expect(cards).toHaveCount(2)
+  const grid = page.locator('.collcard__grid')
+  const gridBox = await grid.boundingBox()
+  const second = await cards.nth(1).boundingBox()
+  if (!gridBox || !second) throw new Error('missing bounding box')
+
+  // Drag from the grid's empty top-left corner, through both cards.
+  await page.mouse.move(gridBox.x + 2, gridBox.y + 2)
+  await page.mouse.down()
+  await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2, { steps: 5 })
+  await page.mouse.up()
+
+  await expect(cards.nth(0)).toHaveClass(/collcard--selected/)
+  await expect(cards.nth(1)).toHaveClass(/collcard--selected/)
+  // Multi-collection selection replaces the single-collection inspector with a
+  // simple summary, and never selects bundles at the same time.
+  await expect(page.locator('.inspector')).toContainText('2 collections selected')
+
+  // A plain click on empty space (no drag) clears the subcollection selection,
+  // same as it does for bundles.
+  await page.mouse.click(gridBox.x + 2, gridBox.y + 2)
+  await expect(page.locator('.collcard--selected')).toHaveCount(0)
+})
+
+test('right-click a bundle in a collection sets it as the collection cover', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
+    }),
+  )
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: { c1: 1 } } }))
+  await page.route('**/bundles/browse**', (r) => {
+    const cid = new URL(r.request().url()).searchParams.get('collection_id')
+    if (cid === 'c1') {
+      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+  let coverPatch: { cover_bundle_id?: string } | null = null
+  await page.route('**/collections/c1', (r) => {
+    if (r.request().method() !== 'PATCH') return r.fallback()
+    coverPatch = r.request().postDataJSON() as { cover_bundle_id?: string }
+    return r.fulfill({ json: { id: 'c1', name: 'Movies', parent_id: null, cover_bundle_id: 'b0' } })
+  })
+
+  await page.goto('/')
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click()
+  await page.locator('[data-bundle-id="b0"]').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Set as collection cover' }).click()
+
+  await expect.poll(() => coverPatch?.cover_bundle_id).toBe('b0')
 })
 
 test('layout choice persists across reload', async ({ page }) => {

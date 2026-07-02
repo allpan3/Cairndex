@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import type { TagRead } from '../api/client'
 import {
   useBundleTags,
+  useCreateTag,
   useSetBundleTags,
   useTagCounts,
   useTagGroupMemberships,
@@ -31,6 +32,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
   const { data: groups = [] } = useTagGroups()
   const { data: memberships = {} } = useTagGroupMemberships()
   const setTags = useSetBundleTags(bundleId)
+  const createTag = useCreateTag()
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
@@ -68,7 +70,22 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
     setTags.mutate([...next])
   }
 
+  // "Create <search>" (shown only when the search has no matches): make a new
+  // top-level tag and assign it immediately.
+  const handleCreate = (name: string) => {
+    createTag.mutate(
+      { name },
+      { onSuccess: (created) => setTags.mutate([...assigned, created.id]) },
+    )
+  }
+
   const match = (t: TagRead) => !search || t.name.toLowerCase().includes(search.toLowerCase())
+  const trimmedSearch = search.trim()
+  // "Create <search>" offers a *new* tag with this exact name — shown whenever
+  // the search doesn't already name an existing tag exactly, even if it's a
+  // substring of one (e.g. searching "Act" while "Action" exists should still
+  // offer to create "Act" as its own tag).
+  const hasExactMatch = tags.some((t) => t.name.toLowerCase() === trimmedSearch.toLowerCase())
   const flat = flattenHierarchy(tags)
   const groupedIds = new Set(Object.values(memberships).flat())
 
@@ -142,7 +159,12 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
               <div
                 className="picker__panel"
                 ref={panelRef}
-                style={{ top: pos.top, right: pos.right }}
+                style={{
+                  top: pos.top,
+                  bottom: pos.bottom,
+                  right: pos.right,
+                  maxHeight: pos.maxHeight,
+                }}
               >
                 <input
                   className="edit picker__search"
@@ -181,7 +203,9 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
                     </button>
                   </div>
                 )}
-                {sections.length === 0 && <div className="pick-group">No matching tags</div>}
+                {sections.length === 0 && trimmedSearch === '' && (
+                  <div className="pick-group">No matching tags</div>
+                )}
                 {sections.map((section) => {
                   const collapsed = collapsedSections.has(section.key)
                   return (
@@ -198,6 +222,17 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
                     </section>
                   )
                 })}
+                {trimmedSearch !== '' && !hasExactMatch && (
+                  <div
+                    className="pick-row pick-row--create"
+                    onClick={() => handleCreate(trimmedSearch)}
+                    role="option"
+                    aria-selected={false}
+                  >
+                    <span className="pick-row__create-icon">+</span>
+                    <span className="pick-row__name">Create &ldquo;{trimmedSearch}&rdquo;</span>
+                  </div>
+                )}
               </div>,
               document.body,
             )}

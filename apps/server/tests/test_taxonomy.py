@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, ValidationError
-from cairndex.persistence.models import AssetBundle, Collection, Tag
+from cairndex.persistence.models import AssetBundle, AssetFile, Collection, Tag
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services import tag_groups as group_service
@@ -96,6 +96,76 @@ def test_deleting_collection_cascade_removes_subtree_but_keeps_bundles(session: 
     assert session.get(Collection, leaf.id) is None
     # …but the bundle is metadata-only removed from the collection, not deleted.
     assert session.get(AssetBundle, bundle.id) is not None
+
+
+def test_collection_note_is_editable_and_clearable(session: Session) -> None:
+    c = collection_service.create_collection(session, name="c")
+    assert c.note is None
+    collection_service.update_collection(session, c.id, note="a folder note", set_note=True)
+    session.expire_all()
+    assert session.get(Collection, c.id).note == "a folder note"
+    # Whitespace-only note clears back to NULL.
+    collection_service.update_collection(session, c.id, note="   ", set_note=True)
+    session.expire_all()
+    assert session.get(Collection, c.id).note is None
+
+
+def test_collection_stats_count_direct_leaf_bundles_and_subcollections(session: Session) -> None:
+    root = collection_service.create_collection(session, name="root")
+    sub_a = collection_service.create_collection(session, name="a", parent_id=root.id)
+    sub_b = collection_service.create_collection(session, name="b", parent_id=root.id)
+    collection_service.create_collection(session, name="a1", parent_id=sub_a.id)
+
+    b_direct = bundle_service.create_bundle(session, title="direct")
+    bundle_service.set_bundle_collections(session, b_direct.id, [root.id])
+    b_nested = bundle_service.create_bundle(session, title="nested")
+    bundle_service.set_bundle_collections(session, b_nested.id, [sub_a.id])
+    # A bundle in two subcollections must be counted once for total_bundles.
+    b_shared = bundle_service.create_bundle(session, title="shared")
+    bundle_service.set_bundle_collections(session, b_shared.id, [sub_a.id, sub_b.id])
+
+    stats = collection_service.collection_stats(session, root.id)
+    assert stats.direct_bundles == 1  # only b_direct is directly in root
+    assert stats.total_bundles == 3  # direct + nested + shared (distinct across subtree)
+    assert stats.subcollections == 2  # sub_a, sub_b (direct children only)
+
+
+def test_collection_cover_prefers_chosen_bundle_then_auto_picks(session: Session) -> None:
+    from cairndex.domain.enums import FileRole, MediaKind
+
+    root = collection_service.create_collection(session, name="root")
+    sub = collection_service.create_collection(session, name="sub", parent_id=root.id)
+
+    # A bundle with a thumbnailable file, nested in a subcollection.
+    nested = bundle_service.create_bundle(session, title="nested")
+    session.add(
+        AssetFile(
+            bundle_id=nested.id,
+            relative_path="a.jpg",
+            original_filename="a.jpg",
+            display_title="a.jpg",
+            role=FileRole.OTHER,
+            media_kind=MediaKind.IMAGE,
+        )
+    )
+    bundle_service.set_bundle_collections(session, nested.id, [sub.id])
+    session.flush()
+
+    # No explicit cover → auto-picks the nested bundle from the subtree.
+    assert collection_service.resolve_cover_bundle_id(session, root.id) == nested.id
+
+    # An explicit, valid cover wins.
+    chosen = bundle_service.create_bundle(session, title="chosen")
+    bundle_service.set_bundle_collections(session, chosen.id, [root.id])
+    collection_service.update_collection(
+        session, root.id, cover_bundle_id=chosen.id, set_cover=True
+    )
+    assert collection_service.resolve_cover_bundle_id(session, root.id) == chosen.id
+
+    # A stale cover (bundle deleted) falls back to auto-pick.
+    bundle_service.delete_bundle(session, chosen.id)
+    session.expire_all()
+    assert collection_service.resolve_cover_bundle_id(session, root.id) == nested.id
 
 
 # --- Tag groups (many-to-many, independent of hierarchy) ---------------------

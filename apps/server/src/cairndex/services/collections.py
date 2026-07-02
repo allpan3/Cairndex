@@ -5,14 +5,22 @@ many-to-many and never moves files on disk — it is independent of the physical
 File View, which browses the active library root directly.
 """
 
-from sqlalchemy import delete, select
+from dataclasses import dataclass
+
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
+from cairndex.domain.enums import MediaKind
 from cairndex.persistence.concurrency import guard_and_bump_version
-from cairndex.persistence.models import Collection
+from cairndex.persistence.models import (
+    AssetBundle,
+    AssetFile,
+    Collection,
+    asset_bundle_collections,
+)
 from cairndex.services.hierarchy import descendant_ids, is_descendant
 from cairndex.services.pagination import keyset_page
 
@@ -59,6 +67,10 @@ def update_collection(
     name: str | None = None,
     parent_id: str | None = None,
     set_parent: bool = False,
+    note: str | None = None,
+    set_note: bool = False,
+    cover_bundle_id: str | None = None,
+    set_cover: bool = False,
     expected_version: int | None = None,
 ) -> Collection:
     collection = get_collection(session, collection_id)
@@ -69,6 +81,16 @@ def update_collection(
         if not cleaned:
             raise ValidationError("name must not be empty")
         collection.name = cleaned
+
+    if set_note:
+        # Empty/whitespace-only note clears it.
+        trimmed = (note or "").strip()
+        collection.note = trimmed or None
+
+    if set_cover:
+        if cover_bundle_id is not None and session.get(AssetBundle, cover_bundle_id) is None:
+            raise ValidationError(f"bundle {cover_bundle_id!r} does not exist")
+        collection.cover_bundle_id = cover_bundle_id
 
     if set_parent:
         if parent_id == collection_id:
@@ -110,3 +132,68 @@ def collection_descendant_ids(
 ) -> list[str]:
     get_collection(session, collection_id)
     return descendant_ids(session, Collection, collection_id, include_self=include_self)
+
+
+@dataclass(frozen=True)
+class CollectionStats:
+    direct_bundles: int
+    total_bundles: int
+    subcollections: int
+
+
+def collection_stats(session: Session, collection_id: str) -> CollectionStats:
+    """Counts for the collection inspector: bundles directly in this collection,
+    distinct bundles across the whole subtree, and direct child subcollections."""
+    get_collection(session, collection_id)  # 404 if missing
+    direct = (
+        session.scalar(
+            select(func.count())
+            .select_from(asset_bundle_collections)
+            .where(asset_bundle_collections.c.collection_id == collection_id)
+        )
+        or 0
+    )
+    subtree = descendant_ids(session, Collection, collection_id, include_self=True)
+    total = (
+        session.scalar(
+            select(func.count(func.distinct(asset_bundle_collections.c.bundle_id))).where(
+                asset_bundle_collections.c.collection_id.in_(subtree)
+            )
+        )
+        or 0
+    )
+    subcollections = (
+        session.scalar(
+            select(func.count())
+            .select_from(Collection)
+            .where(Collection.parent_id == collection_id)
+        )
+        or 0
+    )
+    return CollectionStats(
+        direct_bundles=int(direct), total_bundles=int(total), subcollections=int(subcollections)
+    )
+
+
+_THUMBNAILABLE_KINDS = (MediaKind.IMAGE, MediaKind.VIDEO)
+
+
+def resolve_cover_bundle_id(session: Session, collection_id: str) -> str | None:
+    """The bundle to derive this collection's cover from: the explicitly chosen
+    ``cover_bundle_id`` when it still exists, otherwise the earliest bundle
+    anywhere in the subtree that has a thumbnailable (image/video) file. None if
+    the collection has no such bundle."""
+    collection = get_collection(session, collection_id)
+    if collection.cover_bundle_id and session.get(AssetBundle, collection.cover_bundle_id):
+        return collection.cover_bundle_id
+    subtree = descendant_ids(session, Collection, collection_id, include_self=True)
+    stmt = (
+        select(AssetBundle.id)
+        .join(asset_bundle_collections, asset_bundle_collections.c.bundle_id == AssetBundle.id)
+        .join(AssetFile, AssetFile.bundle_id == AssetBundle.id)
+        .where(asset_bundle_collections.c.collection_id.in_(subtree))
+        .where(AssetFile.media_kind.in_(_THUMBNAILABLE_KINDS))
+        .order_by(AssetBundle.created_at)
+        .limit(1)
+    )
+    return session.scalar(stmt)

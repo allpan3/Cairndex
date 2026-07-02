@@ -76,19 +76,19 @@ export function Toolbar({ title, total, search, onSearch, prefs, onPrefs }: Tool
         ))}
       </div>
 
-      {prefs.layout !== 'list' && (
-        <div className="zoom">
-          <input
-            type="range"
-            min={120}
-            max={360}
-            step={10}
-            value={prefs.zoom}
-            onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
-            aria-label="Zoom"
-          />
-        </div>
-      )}
+      {/* Always shown (even in list view, where it drives row height) so the
+          controls to its left don't shift when switching layouts. */}
+      <div className="zoom">
+        <input
+          type="range"
+          min={120}
+          max={360}
+          step={10}
+          value={prefs.zoom}
+          onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
+          aria-label="Zoom"
+        />
+      </div>
     </div>
   )
 }
