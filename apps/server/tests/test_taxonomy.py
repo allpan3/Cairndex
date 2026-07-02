@@ -93,6 +93,45 @@ def test_collection_descendants_and_cycle_guard(session: Session) -> None:
         collection_service.update_collection(session, root.id, parent_id=leaf.id, set_parent=True)
 
 
+def test_new_collection_appends_after_siblings_in_manual_order(session: Session) -> None:
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+    # Each top-level collection appends after the previous one.
+    assert [a.sort_order, b.sort_order, c.sort_order] == [0, 1, 2]
+    # Nested collections have their own per-parent order sequence.
+    child1 = collection_service.create_collection(session, name="c1", parent_id=a.id)
+    child2 = collection_service.create_collection(session, name="c2", parent_id=a.id)
+    assert [child1.sort_order, child2.sort_order] == [0, 1]
+
+
+def test_reorder_collections_rewrites_one_sibling_group(session: Session) -> None:
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+
+    collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id, b.id])
+    assert [c.sort_order, a.sort_order, b.sort_order] == [0, 1, 2]
+
+    # A partial or cross-parent list is rejected so the order stays well-defined.
+    with pytest.raises(ValidationError):
+        collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id])
+
+
+def test_cleanup_collection_order_sorts_every_sibling_group_by_name(session: Session) -> None:
+    root = collection_service.create_collection(session, name="root")
+    # Deliberately create children out of alphabetical order.
+    charlie = collection_service.create_collection(session, name="charlie", parent_id=root.id)
+    alpha = collection_service.create_collection(session, name="alpha", parent_id=root.id)
+    bravo = collection_service.create_collection(session, name="bravo", parent_id=root.id)
+
+    collection_service.cleanup_collection_order(session)
+    assert [alpha.sort_order, bravo.sort_order, charlie.sort_order] == [0, 1, 2]
+
+    collection_service.cleanup_collection_order(session, descending=True)
+    assert [charlie.sort_order, bravo.sort_order, alpha.sort_order] == [0, 1, 2]
+
+
 def test_deleting_collection_floats_children_by_default(session: Session) -> None:
     root = collection_service.create_collection(session, name="root")
     sub = collection_service.create_collection(session, name="sub", parent_id=root.id)

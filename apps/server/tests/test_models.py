@@ -6,11 +6,12 @@ sets), independent of any service-layer logic.
 """
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.persistence.engine import ensure_content_indexes
 from cairndex.persistence.models import AssetBundle, AssetFile, Tag
 
 
@@ -103,6 +104,27 @@ def test_tag_adjacency_parent_child(session: Session) -> None:
     assert [c.name for c in loaded.children] == ["thriller"]
     assert child.parent is not None
     assert child.parent.name == "genre"
+
+
+def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> None:
+    # Simulate a library created before the manual-ordering columns existed by
+    # dropping them, then prove the additive bootstrap patches them back in
+    # (create_all never alters an existing table — see engine._ADDITIVE_CONTENT_COLUMNS).
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE asset_bundles DROP COLUMN manual_order"))
+        conn.execute(text("ALTER TABLE asset_bundle_collections DROP COLUMN sort_order"))
+
+    inspector = inspect(engine)
+    assert "manual_order" not in {c["name"] for c in inspector.get_columns("asset_bundles")}
+    assert "sort_order" not in {
+        c["name"] for c in inspector.get_columns("asset_bundle_collections")
+    }
+
+    ensure_content_indexes(engine)
+
+    inspector = inspect(engine)
+    assert "manual_order" in {c["name"] for c in inspector.get_columns("asset_bundles")}
+    assert "sort_order" in {c["name"] for c in inspector.get_columns("asset_bundle_collections")}
 
 
 def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:

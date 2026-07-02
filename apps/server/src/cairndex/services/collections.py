@@ -43,7 +43,19 @@ def create_collection(session: Session, *, name: str, parent_id: str | None = No
         raise ValidationError("name must not be empty")
     _require_parent(session, parent_id)
 
-    collection = Collection(name=name, parent_id=parent_id)
+    # Append after existing siblings in the manual order (drag-reorder / Clean up
+    # by… rewrite this later). NULL parent groups the top-level collections.
+    next_order = (
+        session.scalar(
+            select(func.coalesce(func.max(Collection.sort_order), -1)).where(
+                Collection.parent_id.is_(None)
+                if parent_id is None
+                else Collection.parent_id == parent_id
+            )
+        )
+        or 0
+    ) + 1
+    collection = Collection(name=name, parent_id=parent_id, sort_order=next_order)
     session.add(collection)
     try:
         session.flush()
@@ -58,6 +70,63 @@ def list_collections(
     session: Session, *, limit: int, cursor: str | None
 ) -> tuple[list[Collection], str | None]:
     return keyset_page(session, select(Collection), Collection.id, limit, cursor)
+
+
+def _siblings(session: Session, parent_id: str | None) -> list[Collection]:
+    """All collections directly under ``parent_id`` (NULL = top level)."""
+    return list(
+        session.scalars(
+            select(Collection).where(
+                Collection.parent_id.is_(None)
+                if parent_id is None
+                else Collection.parent_id == parent_id
+            )
+        )
+    )
+
+
+def reorder_collections(
+    session: Session, *, parent_id: str | None, ordered_ids: list[str]
+) -> list[Collection]:
+    """Set each collection's ``sort_order`` from its position in ``ordered_ids``.
+
+    ``ordered_ids`` must be exactly the collections directly under ``parent_id``
+    (a manual drag-reorder rewrites one sibling group at a time). Cross-parent or
+    partial lists are rejected so the persisted order stays well-defined.
+    """
+    siblings = _siblings(session, parent_id)
+    by_id = {c.id: c for c in siblings}
+    if set(ordered_ids) != set(by_id):
+        raise ValidationError("ordered ids must be exactly the collections under this parent")
+    now = utcnow()
+    for order, cid in enumerate(ordered_ids):
+        collection = by_id[cid]
+        if collection.sort_order != order:
+            collection.sort_order = order
+            collection.updated_at = now
+    session.flush()
+    return [by_id[cid] for cid in ordered_ids]
+
+
+def cleanup_collection_order(session: Session, *, descending: bool = False) -> None:
+    """Rewrite every sibling group's ``sort_order`` to alphabetical name order.
+
+    The one meaningful automatic order for collections (there is no per-collection
+    metadata like rating/size to sort by). Applies to every parent scope so the
+    whole tree is tidied in one pass, matching how the UI shows all levels.
+    """
+    all_collections = list(session.scalars(select(Collection)))
+    groups: dict[str | None, list[Collection]] = {}
+    for c in all_collections:
+        groups.setdefault(c.parent_id, []).append(c)
+    now = utcnow()
+    for siblings in groups.values():
+        siblings.sort(key=lambda c: c.name.casefold(), reverse=descending)
+        for order, collection in enumerate(siblings):
+            if collection.sort_order != order:
+                collection.sort_order = order
+                collection.updated_at = now
+    session.flush()
 
 
 def update_collection(

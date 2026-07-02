@@ -52,6 +52,10 @@ def create_app_engine(database_url: str | None = None) -> Engine:
 _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("collections", "note", "TEXT"),
     ("collections", "cover_bundle_id", "VARCHAR(26)"),
+    # Manual-ordering columns (drag-reorder + "Clean up by…"): per-collection
+    # bundle order on the membership table, global bundle order on the bundle.
+    ("asset_bundle_collections", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 

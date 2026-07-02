@@ -14,9 +14,11 @@ import {
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useCleanupCollectionOrder,
   useCreateCollection,
   useDeleteBundles,
   useDeleteCollection,
+  useReorderCollections,
   useLibraries,
   useLibraryAuth,
   useLibraryLock,
@@ -55,6 +57,7 @@ import {
   CreateBundleDialog,
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
+import { CleanupOrderDialog } from './app/CleanupOrderDialog'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -236,6 +239,7 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         onDeleteCollection={noop}
         onCreateCollection={noop}
         onRenameCollection={noop}
+        onReorderCollections={noop}
         smartCollections={[]}
         onNewSmartCollection={noop}
         onEditSmartCollection={noop}
@@ -286,6 +290,9 @@ function Workspace({
   const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
   const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
   const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
+  // "Clean up by…" dialogs (rewrite the manual order). Collections offer Title
+  // A–Z/Z–A; bundles reuse the toolbar sorts (Slice 2).
+  const [cleaningCollections, setCleaningCollections] = useState(false)
 
   // Manual bundling assistant dialogs. Each holds the selection to act on —
   // File-View/Unbundled files as relative paths (unlinked ones auto-linked at
@@ -336,6 +343,8 @@ function Workspace({
   const createCollection = useCreateCollection()
   const renameCollection = useRenameCollection()
   const updateCollection = useUpdateCollection()
+  const reorderCollections = useReorderCollections()
+  const cleanupCollectionOrder = useCleanupCollectionOrder()
   const smartCollectionMutations = useSmartCollectionMutations()
   const batch = useBatchUpdate()
   const menu = useContextMenu()
@@ -386,9 +395,12 @@ function Workspace({
     const all = collections.data ?? []
     const parentId = selection.collectionId ?? null
     if (parentId === null && !isAllView) return []
-    return all
-      .filter((c) => (c.parent_id ?? null) === parentId)
-      .sort((a, b) => a.name.localeCompare(b.name))
+    return (
+      all
+        .filter((c) => (c.parent_id ?? null) === parentId)
+        // Manual order (shared with the sidebar), name as the stable tie-break.
+        .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
+    )
   }, [collections.data, selection.collectionId, isAllView])
 
   // Direct subcollection count per collection id (for the card footers).
@@ -759,6 +771,9 @@ function Workspace({
         onRenameCollection={(id, name, callbacks) =>
           renameCollection.mutate({ id, name }, callbacks)
         }
+        onReorderCollections={(parentId, orderedIds) =>
+          reorderCollections.mutate({ parentId, orderedIds })
+        }
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -810,6 +825,18 @@ function Workspace({
                     onToggleShowContents={selection.collectionId ? setShowSubContents : undefined}
                     onSelectSubcollection={selectCollection}
                     onMarqueeSelect={selectCollectionsMany}
+                    onCleanup={() => setCleaningCollections(true)}
+                    onReorderCollections={
+                      // Reorder writes one sibling group; disabled in the
+                      // flattened view where cards span multiple parents (Slice 3).
+                      selection.collectionId && showSubContents
+                        ? undefined
+                        : (orderedIds) =>
+                            reorderCollections.mutate({
+                              parentId: selection.collectionId ?? null,
+                              orderedIds,
+                            })
+                    }
                     onOpenSubcollection={(id) => {
                       setSelection({ view: 'all', collectionId: id })
                       clearSelection()
@@ -898,6 +925,24 @@ function Workspace({
           filesReturnToUnbundled={selection.view !== 'unbundled'}
           onCancel={() => setDeletingBundles(null)}
           onConfirm={confirmDeleteBundles}
+        />
+      )}
+
+      {cleaningCollections && (
+        <CleanupOrderDialog
+          title="Clean up collection order"
+          description="Overwrite the manual order of every collection level with alphabetical order by name."
+          choices={[
+            { key: 'asc', label: 'Title (A–Z)' },
+            { key: 'desc', label: 'Title (Z–A)' },
+          ]}
+          pending={cleanupCollectionOrder.isPending}
+          onCancel={() => setCleaningCollections(false)}
+          onConfirm={(key) =>
+            cleanupCollectionOrder.mutate(key as 'asc' | 'desc', {
+              onSuccess: () => setCleaningCollections(false),
+            })
+          }
         />
       )}
 

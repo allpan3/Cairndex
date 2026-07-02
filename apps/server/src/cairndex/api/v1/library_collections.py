@@ -11,8 +11,10 @@ from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
+    CollectionCleanup,
     CollectionCreate,
     CollectionRead,
+    CollectionReorder,
     CollectionStats,
     CollectionUpdate,
 )
@@ -39,6 +41,24 @@ def create_collection(payload: CollectionCreate, db: LibrarySession) -> Collecti
 def list_collections(db: LibrarySession, page: Pagination) -> Page[CollectionRead]:
     rows, next_cursor = service.list_collections(db, limit=page.limit, cursor=page.cursor)
     return Page(items=[CollectionRead.model_validate(c) for c in rows], next_cursor=next_cursor)
+
+
+@router.put("/reorder", response_model=list[CollectionRead])
+def reorder_collections(payload: CollectionReorder, db: LibrarySession) -> list[CollectionRead]:
+    """Persist a manual drag-reorder of one sibling group (NULL parent = top
+    level). The sidebar tree and the main-browser folder cards both render from
+    this ``sort_order`` so a reorder in either surface updates both."""
+    rows = service.reorder_collections(
+        db, parent_id=payload.parent_id, ordered_ids=payload.ordered_ids
+    )
+    return [CollectionRead.model_validate(c) for c in rows]
+
+
+@router.post("/cleanup-order", status_code=status.HTTP_204_NO_CONTENT)
+def cleanup_collection_order(payload: CollectionCleanup, db: LibrarySession) -> None:
+    """Rewrite the manual order of every sibling group to alphabetical name
+    order (ascending or descending) — the "Clean up by… Title" action."""
+    service.cleanup_collection_order(db, descending=payload.order == "desc")
 
 
 @router.get("/{collection_id}", response_model=CollectionRead)

@@ -11,6 +11,7 @@ import {
   type BrowseParams,
   type BundlePatch,
   type CollectionCreate,
+  type CollectionRead,
   type FacetParams,
   type FilePatch,
   type FileSelection,
@@ -70,6 +71,8 @@ import {
   removeFile,
   renameCollection,
   updateCollection,
+  reorderCollections,
+  cleanupCollectionOrder,
   reorderFiles,
   setBundleCollections,
   setBundleTags,
@@ -795,6 +798,40 @@ export function useUpdateCollection() {
       patch: { name?: string; note?: string | null; cover_bundle_id?: string | null }
       version?: number
     }) => updateCollection(id, patch, version),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+  })
+}
+
+/** Persist a manual drag-reorder of one sibling group. Optimistic so the
+ * dragged folder snaps to its new slot immediately in both the sidebar tree and
+ * the main-browser grid (they share the ['collections'] cache); roll back on
+ * error. */
+export function useReorderCollections() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ parentId, orderedIds }: { parentId: string | null; orderedIds: string[] }) =>
+      reorderCollections(parentId, orderedIds),
+    onMutate: async ({ orderedIds }) => {
+      await qc.cancelQueries({ queryKey: ['collections'] })
+      const prev = qc.getQueryData<CollectionRead[]>(['collections'])
+      const orderById = new Map(orderedIds.map((id, i) => [id, i]))
+      qc.setQueryData<CollectionRead[]>(['collections'], (old) =>
+        old?.map((c) => (orderById.has(c.id) ? { ...c, sort_order: orderById.get(c.id)! } : c)),
+      )
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['collections'], ctx.prev)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+  })
+}
+
+/** "Clean up by… Title": rewrite every sibling group's manual order. */
+export function useCleanupCollectionOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (order: 'asc' | 'desc') => cleanupCollectionOrder(order),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
 }

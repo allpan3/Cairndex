@@ -20,6 +20,7 @@ import {
   IconLooseStack,
   IconTag,
 } from './icons'
+import { moveBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 
 import type { SystemView } from '../api/client'
@@ -82,6 +83,8 @@ interface SidebarProps {
     name: string,
     callbacks: { onSuccess: () => void; onError: (err: unknown) => void },
   ) => void
+  // Persist a manual drag-reorder of one sibling group (parentId null = top level).
+  onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -103,7 +106,8 @@ function buildTree(collections: CollectionRead[]): TreeNode[] {
   }
   const make = (parent: string | null): TreeNode[] =>
     (byParent.get(parent) ?? [])
-      .sort((a, b) => a.name.localeCompare(b.name))
+      // Manual order (drag-reorder / Clean up by…), name as the stable tie-break.
+      .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
       .map((collection) => ({ collection, children: make(collection.id) }))
   return make(null)
 }
@@ -137,6 +141,7 @@ export function Sidebar({
   onDeleteCollection,
   onCreateCollection,
   onRenameCollection,
+  onReorderCollections,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -144,6 +149,9 @@ export function Sidebar({
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const menu = useContextMenu()
+  // Id of the collection row currently being dragged for manual reorder (null
+  // when no drag is in progress).
+  const [dragCollId, setDragCollId] = useState<string | null>(null)
 
   // Id of the collection currently showing an inline rename box — set right
   // after "+ Collection" creates one, so the user can type its name in place.
@@ -476,6 +484,8 @@ export function Sidebar({
             key={node.collection.id}
             node={node}
             depth={0}
+            parentId={null}
+            siblingIds={tree.map((n) => n.collection.id)}
             selection={selection}
             onSelect={onSelect}
             onContextMenu={collectionMenu}
@@ -485,6 +495,9 @@ export function Sidebar({
             editingId={editingId}
             onRenameCollection={onRenameCollection}
             onDoneEditing={() => setEditingId(null)}
+            dragCollId={dragCollId}
+            onDragCollId={setDragCollId}
+            onReorderCollections={onReorderCollections}
           />
         ))}
       </div>
@@ -497,6 +510,8 @@ export function Sidebar({
 function CollectionBranch({
   node,
   depth,
+  parentId,
+  siblingIds,
   selection,
   onSelect,
   onContextMenu,
@@ -506,9 +521,14 @@ function CollectionBranch({
   editingId,
   onRenameCollection,
   onDoneEditing,
+  dragCollId,
+  onDragCollId,
+  onReorderCollections,
 }: {
   node: TreeNode
   depth: number
+  parentId: string | null
+  siblingIds: string[]
   selection: Selection
   onSelect: (selection: Selection) => void
   onContextMenu: (collection: CollectionRead, e: React.MouseEvent) => void
@@ -518,21 +538,45 @@ function CollectionBranch({
   editingId: string | null
   onRenameCollection: SidebarProps['onRenameCollection']
   onDoneEditing: () => void
+  dragCollId: string | null
+  onDragCollId: (id: string | null) => void
+  onReorderCollections: SidebarProps['onReorderCollections']
 }) {
   const active = selection.collectionId === node.collection.id
   const hasChildren = node.children.length > 0
   const expanded = isExpanded(node.collection.id, depth)
   const editing = editingId === node.collection.id
+  // A drop only reorders within the same sibling group; a drag from another
+  // parent is ignored (reparenting collections isn't a drag gesture here).
+  const isDropTarget =
+    dragCollId !== null && dragCollId !== node.collection.id && siblingIds.includes(dragCollId)
 
   return (
     <>
       <div
-        className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
+        className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
+          isDropTarget ? ' collection-row--drop' : ''
+        }`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => !editing && onSelect({ view: 'all', collectionId: node.collection.id })}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
+        draggable={!editing}
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          onDragCollId(node.collection.id)
+        }}
+        onDragEnd={() => onDragCollId(null)}
+        onDragOver={(e) => {
+          if (isDropTarget) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (!isDropTarget) return
+          e.preventDefault()
+          onReorderCollections(parentId, moveBefore(siblingIds, dragCollId, node.collection.id))
+          onDragCollId(null)
+        }}
       >
         <button
           className="collection-row__toggle"
@@ -566,6 +610,8 @@ function CollectionBranch({
             key={child.collection.id}
             node={child}
             depth={depth + 1}
+            parentId={node.collection.id}
+            siblingIds={node.children.map((c) => c.collection.id)}
             selection={selection}
             onSelect={onSelect}
             onContextMenu={onContextMenu}
@@ -575,6 +621,9 @@ function CollectionBranch({
             editingId={editingId}
             onRenameCollection={onRenameCollection}
             onDoneEditing={onDoneEditing}
+            dragCollId={dragCollId}
+            onDragCollId={onDragCollId}
+            onReorderCollections={onReorderCollections}
           />
         ))}
     </>

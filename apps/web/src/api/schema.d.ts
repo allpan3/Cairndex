@@ -467,6 +467,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/collections/cleanup-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Collection Order
+         * @description Rewrite the manual order of every sibling group to alphabetical name
+         *     order (ascending or descending) — the "Clean up by… Title" action.
+         */
+        post: operations["cleanup_collection_order_api_v1_libraries__library_id__collections_cleanup_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/collections/counts": {
         parameters: {
             query?: never;
@@ -477,6 +498,28 @@ export interface paths {
         /** Collection Counts */
         get: operations["collection_counts_api_v1_libraries__library_id__collections_counts_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/collections/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Collections
+         * @description Persist a manual drag-reorder of one sibling group (NULL parent = top
+         *     level). The sidebar tree and the main-browser folder cards both render from
+         *     this ``sort_order`` so a reorder in either surface updates both.
+         */
+        put: operations["reorder_collections_api_v1_libraries__library_id__collections_reorder_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1369,6 +1412,18 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * CollectionCleanup
+         * @description Rewrite every sibling group's manual order to alphabetical name order.
+         */
+        CollectionCleanup: {
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+        };
         /** CollectionCreate */
         CollectionCreate: {
             /** Name */
@@ -1402,6 +1457,16 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
+        };
+        /**
+         * CollectionReorder
+         * @description Manual drag-reorder of one sibling group (NULL parent = top level).
+         */
+        CollectionReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+            /** Parent Id */
+            parent_id?: string | null;
         };
         /**
          * CollectionStats
@@ -3539,6 +3604,41 @@ export interface operations {
             };
         };
     };
+    cleanup_collection_order_api_v1_libraries__library_id__collections_cleanup_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionCleanup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     collection_counts_api_v1_libraries__library_id__collections_counts_get: {
         parameters: {
             query?: never;
@@ -3559,6 +3659,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_collections_api_v1_libraries__library_id__collections_reorder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionRead"][];
                 };
             };
             /** @description Validation Error */
