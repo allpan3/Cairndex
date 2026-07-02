@@ -1,9 +1,10 @@
 # Project status
 
-## Active branch: `feat/adhoc-filters-tag-mgmt` (not yet merged)
+## Latest merged: ad-hoc filters + tag management (#46)
 
-Eagle-like ad-hoc filtering + tag management, in three reviewable slices on top
-of `main` (which now includes the collection-view GUI rework, merged as #45).
+Eagle-like ad-hoc filtering + tag management, merged as **#46**
+(`feat/adhoc-filters-tag-mgmt`), in three reviewable slices on top of `main`
+(which already included the collection-view GUI rework, #45).
 
 - **Slice 1 — ad-hoc Tags filter.** A funnel button in the bundle toolbar reveals
   a filter row with a **Tags** chip. Its popover has an Any/All/Equal rule + a
@@ -44,8 +45,8 @@ Demo Vault (Tags include/exclude, Rating stars + Unrated=22, All Tags page,
 double-click→global Equal filter) — all metadata-only, no demo data mutated.
 
 Out of scope (explicit follow-ups): Types filter, Collections toolbar filter,
-Starred tags, tag reparenting by drag, exact tag-set equality, URL/localStorage
-persistence of ad-hoc filters.
+Starred tags, exact tag-set equality, URL/localStorage persistence of ad-hoc
+filters.
 
 ## Earlier: `feat/collection-view` (merged, #45)
 
