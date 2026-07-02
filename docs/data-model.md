@@ -39,8 +39,13 @@ storage scope, and `asset_files.relative_path` is relative to the library root.
 `id`, `title` (nullable), `note`, `rating` (nullable int, CHECK 0-5; NULL =
 unrated), `cover_file_id` / `primary_file_id` (nullable FKs to `asset_files`,
 `SET NULL`, `use_alter` to break the FK cycle), `extra_metadata` (JSON),
-`grouping_state`, `grouping_source`, `grouping_rule_version`, `confirmed_at`,
-`version`, `created_at`, `imported_at`, `updated_at`.
+`manual_order` (int, `server_default 0`), `grouping_state`, `grouping_source`,
+`grouping_rule_version`, `confirmed_at`, `version`, `created_at`, `imported_at`,
+`updated_at`.
+
+`manual_order` is the global owner-defined ("custom") order used when browsing
+All/system views with the **Manual** sort (drag-reorder / "Clean up by…"). The
+per-collection order lives on `asset_bundle_collections.sort_order` instead.
 
 Grouping review state (ADR-0009): scan stages newly discovered files into
 `provisional` / `scan_suggestion` bundles that await user review. Explicit user
@@ -141,7 +146,11 @@ View; membership never moves source files.
 ### `asset_bundle_tags` / `asset_bundle_collections`
 
 Many-to-many membership tables with composite PKs and CASCADE FKs. Collection
-membership is virtual and never moves files on disk.
+membership is virtual and never moves files on disk. `asset_bundle_collections`
+also carries `sort_order` (int, `server_default 0`): the bundle's manual order
+*within that collection*, used by the **Manual** browse sort and rewritten by
+drag-reorder / "Clean up by…". The global counterpart is
+`asset_bundles.manual_order`.
 
 ### `smart_folders` (model `SmartCollection`)
 
