@@ -1054,27 +1054,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/libraries/{library_id}/tag-groups/{group_id}/tags/order": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Reorder Group Tags
-         * @description Reorder tags within a group (membership sort_order only; never touches tag
-         *     hierarchy parent_id).
-         */
-        put: operations["reorder_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_order_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/libraries/{library_id}/tags": {
         parameters: {
             query?: never;
@@ -1103,27 +1082,6 @@ export interface paths {
         /** Tag Counts */
         get: operations["tag_counts_api_v1_libraries__library_id__tags_counts_get"];
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/libraries/{library_id}/tags/reorder": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Reorder Tags
-         * @description Reorder sibling tags (All Tags drag-reorder). Reorders among siblings
-         *     only — hierarchy ``parent_id`` is never changed.
-         */
-        put: operations["reorder_tags_api_v1_libraries__library_id__tags_reorder_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2124,14 +2082,6 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
-        /**
-         * ReorderTagsRequest
-         * @description Reorder tags within a group (membership sort_order only).
-         */
-        ReorderTagsRequest: {
-            /** Tag Ids */
-            tag_ids: string[];
-        };
         /** SetIdsRequest */
         SetIdsRequest: {
             /** Ids */
@@ -2307,17 +2257,6 @@ export interface components {
             updated_at: string;
             /** Version */
             version: number;
-        };
-        /**
-         * TagReorder
-         * @description Reorder sibling tags in the hierarchy (All Tags drag-reorder). Every id
-         *     must already sit directly under ``parent_id``; hierarchy is never changed.
-         */
-        TagReorder: {
-            /** Ordered Ids */
-            ordered_ids: string[];
-            /** Parent Id */
-            parent_id?: string | null;
         };
         /** TagUpdate */
         TagUpdate: {
@@ -5007,44 +4946,6 @@ export interface operations {
             };
         };
     };
-    reorder_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_order_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                group_id: string;
-                library_id: string;
-            };
-            cookie?: {
-                cairndex_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReorderTagsRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TagGroupTags"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_tags_api_v1_libraries__library_id__tags_get: {
         parameters: {
             query?: {
@@ -5138,43 +5039,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    reorder_tags_api_v1_libraries__library_id__tags_reorder_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                library_id: string;
-            };
-            cookie?: {
-                cairndex_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagReorder"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TagRead"][];
                 };
             };
             /** @description Validation Error */

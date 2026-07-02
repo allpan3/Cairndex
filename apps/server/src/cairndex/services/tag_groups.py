@@ -100,25 +100,3 @@ def list_group_tag_ids(session: Session, group_id: str) -> list[str]:
         .order_by(tag_group_memberships.c.sort_order, tag_group_memberships.c.tag_id)
     ).all()
     return [row[0] for row in rows]
-
-
-def reorder_group_tags(session: Session, group_id: str, ordered_tag_ids: list[str]) -> TagGroup:
-    """Reorder tags *within* a group by rewriting membership ``sort_order``. This
-    is group-display order only — it never touches tag hierarchy ``parent_id``."""
-    group = get_tag_group(session, group_id)
-    member_ids = {t.id for t in group.tags}
-    unknown = [tid for tid in ordered_tag_ids if tid not in member_ids]
-    if unknown:
-        raise ValidationError(f"tags not in this group: {sorted(unknown)}")
-    for index, tag_id in enumerate(ordered_tag_ids):
-        session.execute(
-            update(tag_group_memberships)
-            .where(
-                (tag_group_memberships.c.group_id == group_id)
-                & (tag_group_memberships.c.tag_id == tag_id)
-            )
-            .values(sort_order=index)
-        )
-    group.updated_at = utcnow()
-    session.flush()
-    return group

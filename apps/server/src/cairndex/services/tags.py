@@ -114,26 +114,6 @@ def delete_tag(session: Session, tag_id: str) -> None:
     session.flush()
 
 
-def reorder_tags(session: Session, *, parent_id: str | None, ordered_ids: list[str]) -> list[Tag]:
-    """Set explicit ``sort_order`` for a set of sibling tags (drag-reorder in the
-    All Tags hierarchy). Reorders among siblings only — every id must already sit
-    directly under ``parent_id``; this never changes ``parent_id`` (no drag
-    reparenting in this version)."""
-    tags = list(session.scalars(select(Tag).where(Tag.id.in_(ordered_ids)))) if ordered_ids else []
-    by_id = {t.id: t for t in tags}
-    missing = set(ordered_ids) - set(by_id)
-    if missing:
-        raise ValidationError(f"unknown tag ids: {sorted(missing)}")
-    for tag in tags:
-        if (tag.parent_id or None) != (parent_id or None):
-            raise ValidationError("can only reorder tags among the same parent")
-    for index, tag_id in enumerate(ordered_ids):
-        by_id[tag_id].sort_order = index
-        by_id[tag_id].updated_at = utcnow()
-    session.flush()
-    return tags
-
-
 def tag_descendant_ids(session: Session, tag_id: str, *, include_self: bool = True) -> list[str]:
     get_tag(session, tag_id)
     return descendant_ids(session, Tag, tag_id, include_self=include_self)

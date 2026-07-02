@@ -3,7 +3,6 @@ from fastapi import APIRouter, status
 from cairndex.api.deps import LibrarySession, Pagination
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
-    ReorderTagsRequest,
     SetTagsRequest,
     TagGroupCreate,
     TagGroupRead,
@@ -50,14 +49,4 @@ def set_group_tags(group_id: str, payload: SetTagsRequest, db: LibrarySession) -
 @router.get("/{group_id}/tags", response_model=TagGroupTags)
 def get_group_tags(group_id: str, db: LibrarySession) -> TagGroupTags:
     # Ordered by membership sort_order (the group's display order).
-    return TagGroupTags(group_id=group_id, tag_ids=service.list_group_tag_ids(db, group_id))
-
-
-@router.put("/{group_id}/tags/order", response_model=TagGroupTags)
-def reorder_group_tags(
-    group_id: str, payload: ReorderTagsRequest, db: LibrarySession
-) -> TagGroupTags:
-    """Reorder tags within a group (membership sort_order only; never touches tag
-    hierarchy parent_id)."""
-    service.reorder_group_tags(db, group_id, payload.tag_ids)
     return TagGroupTags(group_id=group_id, tag_ids=service.list_group_tag_ids(db, group_id))

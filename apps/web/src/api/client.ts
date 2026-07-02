@@ -480,18 +480,6 @@ export const updateTag = (
 ) => send<TagRead>(`${lib()}/tags/${id}`, 'PATCH', patch, version)
 
 export const deleteTag = (id: string) => send<void>(`${lib()}/tags/${id}`, 'DELETE')
-
-/** Reorder sibling tags in the hierarchy (drag-reorder among siblings only). */
-export const reorderTags = (parentId: string | null, orderedIds: string[]) =>
-  send<TagRead[]>(`${lib()}/tags/reorder`, 'PUT', { parent_id: parentId, ordered_ids: orderedIds })
-
-/** Reorder tags within a group (membership sort_order only). */
-export const reorderGroupTags = (groupId: string, orderedIds: string[]) =>
-  send<{ group_id: string; tag_ids: string[] }>(
-    `${lib()}/tag-groups/${groupId}/tags/order`,
-    'PUT',
-    { tag_ids: orderedIds },
-  )
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>(`${lib()}/tag-groups`, signal)
 
