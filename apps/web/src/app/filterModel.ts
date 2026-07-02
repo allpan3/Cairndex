@@ -5,7 +5,7 @@ import type { FilterExpression } from '../api/client'
 // predicate rows. This is the shape the UI produces *and* round-trips; the
 // underlying AST supports arbitrary nesting, but the editor exposes one level.
 
-export type FieldKind = 'text' | 'number' | 'bool' | 'date' | 'tags' | 'collections'
+export type FieldKind = 'text' | 'number' | 'bool' | 'date' | 'tags' | 'collections' | 'rating'
 
 export interface FieldDef {
   field: string
@@ -25,7 +25,9 @@ export const FIELDS: FieldDef[] = [
   { field: 'source', label: 'Source', kind: 'text', operators: ['contains', 'not_contains'] },
   { field: 'filename', label: 'Filename', kind: 'text', operators: ['contains', 'not_contains'] },
   { field: 'extension', label: 'Extension', kind: 'text', operators: ['equals'] },
-  { field: 'rating', label: 'Rating', kind: 'number', operators: ['eq', 'gte', 'lte', 'gt', 'lt'] },
+  // Rating uses a star picker + the Unrated (is_null) operator — a typed UI is
+  // clearer than raw numbers here.
+  { field: 'rating', label: 'Rating', kind: 'rating', operators: ['eq', 'gte', 'lte', 'is_null'] },
   {
     field: 'file_count',
     label: 'File count',
@@ -62,6 +64,7 @@ export const OP_LABELS: Record<string, string> = {
   contains_any: 'any of',
   contains_all: 'all of',
   contains_none: 'none of',
+  is_null: 'is unrated',
 }
 
 export interface Condition {
@@ -81,6 +84,7 @@ export const fieldDef = (field: string): FieldDef =>
 
 export function defaultValue(kind: FieldKind): unknown {
   if (kind === 'number') return 0
+  if (kind === 'rating') return 3
   if (kind === 'bool') return true
   if (kind === 'tags' || kind === 'collections') return []
   return ''
@@ -105,7 +109,8 @@ export function draftToExpression(draft: FilterDraft): FilterExpression {
     .map((r) => ({
       field: r.field,
       operator: r.operator,
-      value: r.value,
+      // The rating "Unrated" (is_null) operator carries a boolean, not a star.
+      value: r.operator === 'is_null' ? true : r.value,
       include_descendants: r.include_descendants,
     }))
   if (children.length === 0) return { version: 1, root: null }

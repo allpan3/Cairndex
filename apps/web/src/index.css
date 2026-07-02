@@ -358,6 +358,92 @@ button {
   font-size: 11px;
 }
 
+/* --- Rating filter popover + star row ------------------------------------ */
+.filter-chip__badge--text {
+  padding: 0 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.rating-filter__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.rating-filter__title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.rating-filter__ops button {
+  padding: 3px 9px;
+  font-size: 13px;
+}
+.stars {
+  display: flex;
+  gap: 4px;
+}
+.star {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 4px;
+  color: var(--border-strong);
+}
+.star__glyph {
+  font-size: 20px;
+  line-height: 1;
+}
+.star--on .star__glyph {
+  color: var(--star);
+}
+.star:hover .star__glyph {
+  color: var(--star);
+  opacity: 0.8;
+}
+.star__count {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.rating-filter__unrated {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.rating-filter__unrated:hover {
+  background: var(--bg-2);
+}
+.rating-filter__unrated.is-active {
+  color: var(--text-strong);
+}
+.rating-filter__unrated .pick-row__count {
+  margin-left: auto;
+}
+.rating-filter__unrated.is-active .pick-row__box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* Star row inside a Smart Collection filter row: smaller, inline. */
+.filter-row__val .stars .star {
+  padding: 0 2px;
+}
+.filter-row__val .star__glyph {
+  font-size: 17px;
+}
+
 .browser {
   flex: 1;
   min-height: 0;

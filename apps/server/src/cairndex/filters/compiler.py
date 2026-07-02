@@ -204,6 +204,11 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
     if field == "source":
         return _file_exists(_text_on(AssetFile.source, o, v))
     if field == "rating":
+        # ``is_null`` is a rating-specific operator for the "Unrated" filter
+        # (rating IS NULL). Kept off the generic numeric path so every numeric
+        # field doesn't silently accept null.
+        if o == "is_null":
+            return AssetBundle.rating.is_(None) if _as_bool(v) else AssetBundle.rating.isnot(None)
         return _numeric(AssetBundle.rating, o, v)
     if field == "file_count":
         return _numeric(_file_count_col(), o, v)

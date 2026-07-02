@@ -63,7 +63,12 @@ async function mockApi(
 
   // Faceted counts for the popover.
   await page.route('**/filters/facets', (r) =>
-    r.fulfill({ json: { tags: { t1: 2, t2: 1 }, ratings: null } }),
+    r.fulfill({
+      json: {
+        tags: { t1: 2, t2: 1 },
+        ratings: { '1': 0, '2': 0, '3': 1, '4': 1, '5': 1, unrated: 1 },
+      },
+    }),
   )
 
   await page.route('**/bundles/browse**', (r) => {
@@ -111,6 +116,30 @@ test('ad-hoc Tags filter: left-click includes, right-click excludes', async ({ p
   await expect
     .poll(() => JSON.stringify(lastBrowsePost()?.filter ?? null))
     .toContain('contains_none')
+})
+
+test('ad-hoc Rating filter: star picker and Unrated', async ({ page }) => {
+  const { lastBrowsePost } = await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Filters' }).click()
+  await page.getByRole('button', { name: 'Filter by rating' }).click()
+
+  // Pick 4 stars → rating ≥ 4 (default operator), filtered browse.
+  await page.getByRole('radio', { name: '4 stars' }).click()
+  await expect(page.locator('.filter-chip__badge--text')).toHaveText('≥4')
+  await expect
+    .poll(() => JSON.stringify(lastBrowsePost()?.filter ?? null))
+    .toContain('"operator":"gte"')
+
+  // Switch to Unrated → is_null filter.
+  await page.getByRole('button', { name: 'Unrated' }).click()
+  await expect(page.locator('.filter-chip__badge--text')).toHaveText('Unrated')
+  await expect.poll(() => JSON.stringify(lastBrowsePost()?.filter ?? null)).toContain('is_null')
+
+  // Clicking Unrated again clears the filter.
+  await page.getByRole('button', { name: 'Unrated' }).click()
+  await expect(page.locator('.filter-chip__badge--text')).toHaveCount(0)
 })
 
 test('Equal rule hides the subtags toggle', async ({ page }) => {
