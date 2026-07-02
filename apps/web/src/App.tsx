@@ -290,7 +290,7 @@ function Workspace({
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
   const [reviewPlanId, setReviewPlanId] = useState<string | null>(null)
-  const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
+  const [removingCollections, setRemovingCollections] = useState<CollectionRead[] | null>(null)
   const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
   // "Clean up by…" dialogs (rewrite the manual order). Collections offer Title
   // A–Z/Z–A; bundles reuse the toolbar sorts.
@@ -393,20 +393,35 @@ function Workspace({
     setSelectedCollectionIds(new Set())
   }
   // The folder cards shown above the grid: a collection's direct subcollections
-  // when viewing one, or every root (top-level) collection in the All view.
+  // when viewing one, or every root (top-level) collection in the All view. When
+  // "Show subcollection contents" is on inside a collection, the section flattens
+  // to *every* descendant collection (depth-first, manual order) so the folders
+  // match the grid, which then shows the whole subtree's bundles.
   const isAllView =
     selection.view === 'all' && !selection.collectionId && !selection.smartCollectionId
   const headerCollections = useMemo(() => {
     const all = collections.data ?? []
     const parentId = selection.collectionId ?? null
     if (parentId === null && !isAllView) return []
-    return (
-      all
-        .filter((c) => (c.parent_id ?? null) === parentId)
-        // Manual order (shared with the sidebar), name as the stable tie-break.
-        .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-    )
-  }, [collections.data, selection.collectionId, isAllView])
+    // Manual order (shared with the sidebar), name as the stable tie-break.
+    const bySortOrder = (a: CollectionRead, b: CollectionRead) =>
+      a.sort_order - b.sort_order || a.name.localeCompare(b.name)
+    if (selection.collectionId && showSubContents) {
+      const childrenOf = new Map<string, CollectionRead[]>()
+      for (const c of all)
+        if (c.parent_id) childrenOf.set(c.parent_id, [...(childrenOf.get(c.parent_id) ?? []), c])
+      const flat: CollectionRead[] = []
+      const walk = (pid: string) => {
+        for (const child of (childrenOf.get(pid) ?? []).sort(bySortOrder)) {
+          flat.push(child)
+          walk(child.id)
+        }
+      }
+      walk(selection.collectionId)
+      return flat
+    }
+    return all.filter((c) => (c.parent_id ?? null) === parentId).sort(bySortOrder)
+  }, [collections.data, selection.collectionId, isAllView, showSubContents])
 
   // Direct subcollection count per collection id (for the card footers).
   const subCounts = useMemo(() => {
@@ -636,32 +651,71 @@ function Workspace({
   // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
   // choose whether to also remove subcollections; the menu item just opens it.
   const removeCollection = useCallback(
-    (collection: CollectionRead) => setRemovingCollection(collection),
+    (collection: CollectionRead) => setRemovingCollections([collection]),
     [],
+  )
+
+  // Right-click a folder card in the main browser. Operate on the whole
+  // subcollection selection when the clicked card is part of a multi-selection;
+  // otherwise target (and select) just this one. Mirrors bundleContextMenu.
+  const collectionContextMenu = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      const targetIds =
+        selectedCollectionIds.has(id) && selectedCollectionIds.size > 1
+          ? [...selectedCollectionIds]
+          : [id]
+      if (targetIds.length === 1) {
+        setSelectedCollectionIds(new Set([id]))
+        setSelectedIds(new Set())
+        setActiveId(null)
+      }
+      const n = targetIds.length
+      const targets = (collections.data ?? []).filter((c) => targetIds.includes(c.id))
+      menu.open(e, [
+        {
+          label: n > 1 ? `Delete ${n} Collections` : 'Delete Collection',
+          danger: true,
+          onClick: () => setRemovingCollections(targets),
+        },
+      ])
+    },
+    [selectedCollectionIds, collections.data, menu],
   )
 
   const confirmRemoveCollection = useCallback(
     (cascade: boolean) => {
-      const target = removingCollection
-      if (!target) return
-      deleteCollection.mutate(
-        { id: target.id, cascade },
-        {
-          onSuccess: () => {
-            setRemovingCollection(null)
-            // If the view is on the removed collection (or, when cascading, on
-            // one of its now-gone descendants), fall back to All.
-            const affected = cascade
-              ? collectionSubtreeIds(collections.data ?? [], target.id)
-              : new Set([target.id])
-            if (selection.collectionId && affected.has(selection.collectionId)) {
-              setSelection({ view: 'all', collectionId: null })
+      const targets = removingCollections
+      if (!targets || targets.length === 0) return
+      // When cascading, drop any target that is itself a descendant of another
+      // selected target — its parent's cascade already removes it, so deleting it
+      // again would 404.
+      const ids = new Set(targets.map((t) => t.id))
+      const effective = cascade
+        ? targets.filter((t) => {
+            let cur = t.parent_id
+            while (cur) {
+              if (ids.has(cur)) return false
+              cur = collections.data?.find((c) => c.id === cur)?.parent_id ?? null
             }
-          },
+            return true
+          })
+        : targets
+      // Every collection whose view would become stale once these are gone.
+      const affected = new Set<string>()
+      for (const t of effective)
+        for (const id of cascade ? collectionSubtreeIds(collections.data ?? [], t.id) : [t.id])
+          affected.add(id)
+      Promise.all(effective.map((t) => deleteCollection.mutateAsync({ id: t.id, cascade }))).then(
+        () => {
+          setRemovingCollections(null)
+          setSelectedCollectionIds(new Set())
+          if (selection.collectionId && affected.has(selection.collectionId)) {
+            setSelection({ view: 'all', collectionId: null })
+          }
         },
       )
     },
-    [removingCollection, deleteCollection, collections.data, selection.collectionId],
+    [removingCollections, deleteCollection, collections.data, selection.collectionId],
   )
 
   const removeSmartCollection = useCallback(
@@ -836,6 +890,7 @@ function Workspace({
                     onToggleShowContents={selection.collectionId ? setShowSubContents : undefined}
                     onSelectSubcollection={selectCollection}
                     onMarqueeSelect={selectCollectionsMany}
+                    onContextMenuSubcollection={collectionContextMenu}
                     onCleanup={() => setCleaningCollections(true)}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the
@@ -1007,12 +1062,14 @@ function Workspace({
         />
       )}
 
-      {removingCollection && (
+      {removingCollections && (
         <RemoveCollectionDialog
-          collection={removingCollection}
-          hasChildren={(collections.data ?? []).some((c) => c.parent_id === removingCollection.id)}
+          collections={removingCollections}
+          hasChildren={(collections.data ?? []).some((c) =>
+            removingCollections.some((t) => t.id === c.parent_id),
+          )}
           pending={deleteCollection.isPending}
-          onCancel={() => setRemovingCollection(null)}
+          onCancel={() => setRemovingCollections(null)}
           onConfirm={confirmRemoveCollection}
         />
       )}
