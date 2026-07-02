@@ -728,6 +728,14 @@ button {
 .collection-row--drop {
   box-shadow: inset 2px 0 0 0 var(--accent);
 }
+/* Bundle card / list-row reorder drop target (Manual sort) — a leading accent
+   edge marks where the dragged item will land. */
+.browser__cardslot[data-drop] .card {
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+.list-row[data-drop] {
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
    slider (set inline). */

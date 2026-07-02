@@ -43,7 +43,9 @@ export type PlayableVideo = components['schemas']['PlayableVideo']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
-export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count'
+export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count' | 'manual'
+// The real (non-manual) sorts a "Clean up by…" can rewrite the manual order to.
+export type CleanupSort = Exclude<BundleSort, 'manual'>
 export type SortOrder = 'asc' | 'desc'
 
 // --- Manual bundling assistant (Unbundled staging follow-up to ADR-0009) ------
@@ -532,6 +534,21 @@ export const updateFile = (bundleId: string, fileId: string, patch: FilePatch, v
 
 export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
+
+// Manual drag-reorder of bundles (MANUAL sort). collectionId null = global order.
+export const reorderBundles = (collectionId: string | null, orderedIds: string[]) =>
+  send<void>(`${lib()}/bundles/reorder`, 'PUT', {
+    collection_id: collectionId,
+    ordered_ids: orderedIds,
+  })
+
+// "Clean up by…": rewrite the whole scope's manual order to a chosen toolbar sort.
+export const cleanupBundleOrder = (
+  collectionId: string | null,
+  sort: CleanupSort,
+  order: SortOrder,
+) =>
+  send<void>(`${lib()}/bundles/cleanup-order`, 'POST', { collection_id: collectionId, sort, order })
 
 export const removeFile = (bundleId: string, fileId: string) =>
   send<void>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'DELETE')

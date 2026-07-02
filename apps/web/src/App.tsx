@@ -14,10 +14,12 @@ import {
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useCleanupBundleOrder,
   useCleanupCollectionOrder,
   useCreateCollection,
   useDeleteBundles,
   useDeleteCollection,
+  useReorderBundles,
   useReorderCollections,
   useLibraries,
   useLibraryAuth,
@@ -291,8 +293,9 @@ function Workspace({
   const [removingCollection, setRemovingCollection] = useState<CollectionRead | null>(null)
   const [deletingBundles, setDeletingBundles] = useState<string[] | null>(null)
   // "Clean up by…" dialogs (rewrite the manual order). Collections offer Title
-  // A–Z/Z–A; bundles reuse the toolbar sorts (Slice 2).
+  // A–Z/Z–A; bundles reuse the toolbar sorts.
   const [cleaningCollections, setCleaningCollections] = useState(false)
+  const [cleaningBundles, setCleaningBundles] = useState(false)
 
   // Manual bundling assistant dialogs. Each holds the selection to act on —
   // File-View/Unbundled files as relative paths (unlinked ones auto-linked at
@@ -345,6 +348,8 @@ function Workspace({
   const updateCollection = useUpdateCollection()
   const reorderCollections = useReorderCollections()
   const cleanupCollectionOrder = useCleanupCollectionOrder()
+  const reorderBundles = useReorderBundles()
+  const cleanupBundleOrder = useCleanupBundleOrder()
   const smartCollectionMutations = useSmartCollectionMutations()
   const batch = useBatchUpdate()
   const menu = useContextMenu()
@@ -420,6 +425,11 @@ function Workspace({
   )
 
   const includeSubContents = selection.collectionId !== null && showSubContents
+  // Manual order scope: a single collection uses its own membership order; the
+  // All/system views and a descendant-inclusive collection use the global order
+  // (mirrors browse's MANUAL sort). Drives drag-reorder and "Clean up by…".
+  const manualScopeCollectionId =
+    selection.collectionId && !includeSubContents ? selection.collectionId : null
   const browse = useBrowse({
     view: selection.view,
     collectionId: selection.collectionId,
@@ -810,6 +820,7 @@ function Workspace({
               adHocFilters={adHocFilters}
               onAdHocFilters={setAdHocFilters}
               facetContext={facetContext}
+              onCleanupOrder={() => setCleaningBundles(true)}
             />
             {openBundleId ? (
               <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
@@ -880,6 +891,15 @@ function Workspace({
                     onOpen={open}
                     onContextMenu={bundleContextMenu}
                     onEmptyContextMenu={emptyContextMenu}
+                    onReorder={
+                      prefs.sort === 'manual'
+                        ? (orderedIds) =>
+                            reorderBundles.mutate({
+                              collectionId: manualScopeCollectionId,
+                              orderedIds,
+                            })
+                        : undefined
+                    }
                     isLoading={browse.isLoading}
                     isError={browse.isError}
                     error={browse.error}
@@ -943,6 +963,47 @@ function Workspace({
               onSuccess: () => setCleaningCollections(false),
             })
           }
+        />
+      )}
+
+      {cleaningBundles && (
+        <CleanupOrderDialog
+          title="Clean up bundle order"
+          description={
+            manualScopeCollectionId
+              ? 'Overwrite this collection’s manual order with a chosen sort.'
+              : 'Overwrite the global manual order with a chosen sort.'
+          }
+          choices={[
+            { key: 'title:asc', label: 'Title (A–Z)' },
+            { key: 'title:desc', label: 'Title (Z–A)' },
+            { key: 'date_added:desc', label: 'Date Added (newest first)' },
+            { key: 'date_added:asc', label: 'Date Added (oldest first)' },
+            { key: 'rating:desc', label: 'Rating (high → low)' },
+            { key: 'rating:asc', label: 'Rating (low → high)' },
+            { key: 'size:desc', label: 'Size (large → small)' },
+            { key: 'size:asc', label: 'Size (small → large)' },
+            { key: 'file_count:desc', label: 'File Count (most first)' },
+            { key: 'file_count:asc', label: 'File Count (fewest first)' },
+          ]}
+          pending={cleanupBundleOrder.isPending}
+          onCancel={() => setCleaningBundles(false)}
+          onConfirm={(key) => {
+            const [sort, order] = key.split(':') as [
+              'date_added' | 'title' | 'rating' | 'size' | 'file_count',
+              'asc' | 'desc',
+            ]
+            cleanupBundleOrder.mutate(
+              { collectionId: manualScopeCollectionId, sort, order },
+              {
+                onSuccess: () => {
+                  setCleaningBundles(false)
+                  // Land on the manual order the cleanup just wrote.
+                  setPrefs({ ...prefs, sort: 'manual', order: 'asc' })
+                },
+              },
+            )
+          }}
         />
       )}
 

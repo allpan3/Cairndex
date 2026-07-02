@@ -17,6 +17,8 @@ from cairndex.services.browse import (
     BundleSort,
     SystemView,
     browse_bundles,
+    cleanup_bundle_order,
+    reorder_bundles,
     view_counts,
 )
 
@@ -224,6 +226,55 @@ def test_browse_endpoint_and_counts_routing(client: TestClient, library_id: str)
     counts = client.get(f"{base}/bundles/counts")
     assert counts.status_code == 200
     assert counts.json()["all"] == 1
+
+
+def _confirmed(session: Session, title: str) -> AssetBundle:
+    """A confirmed bundle with one visible file (so browse doesn't hide it)."""
+    bundle = bundle_service.create_bundle(session, title=title)
+    bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path=f"m/{title}.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.flush()
+    return bundle
+
+
+def _browse_ids(session: Session, **kwargs: object) -> list[str]:
+    page = browse_bundles(session, sort=BundleSort.MANUAL, descending=False, **kwargs)  # type: ignore[arg-type]
+    return [s.id for s in page.items]
+
+
+def test_manual_sort_uses_global_order_in_all_view(session: Session) -> None:
+    a, b, c = (_confirmed(session, t) for t in ("a", "b", "c"))
+    reorder_bundles(session, collection_id=None, ordered_ids=[c.id, a.id, b.id])
+    assert _browse_ids(session, view=SystemView.ALL) == [c.id, a.id, b.id]
+
+
+def test_manual_sort_uses_membership_order_inside_a_collection(session: Session) -> None:
+    coll = collection_service.create_collection(session, name="C")
+    a, b, c = (_confirmed(session, t) for t in ("a", "b", "c"))
+    for bundle in (a, b, c):
+        bundle_service.set_bundle_collections(session, bundle.id, [coll.id])
+    # A collection order distinct from the global order proves the two are separate.
+    reorder_bundles(session, collection_id=coll.id, ordered_ids=[b.id, c.id, a.id])
+    reorder_bundles(session, collection_id=None, ordered_ids=[a.id, b.id, c.id])
+
+    assert _browse_ids(session, collection_id=coll.id) == [b.id, c.id, a.id]
+    assert _browse_ids(session, view=SystemView.ALL) == [a.id, b.id, c.id]
+
+
+def test_cleanup_bundle_order_by_title_rewrites_collection_membership(session: Session) -> None:
+    coll = collection_service.create_collection(session, name="C")
+    # Added out of alphabetical order.
+    gamma, alpha, beta = (_confirmed(session, t) for t in ("gamma", "alpha", "beta"))
+    for bundle in (gamma, alpha, beta):
+        bundle_service.set_bundle_collections(session, bundle.id, [coll.id])
+
+    cleanup_bundle_order(session, collection_id=coll.id, sort=BundleSort.TITLE, descending=False)
+    assert _browse_ids(session, collection_id=coll.id) == [alpha.id, beta.id, gamma.id]
 
 
 def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None:

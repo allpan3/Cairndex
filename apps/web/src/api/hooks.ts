@@ -1,4 +1,5 @@
 import {
+  type InfiniteData,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -9,9 +10,13 @@ import {
 import {
   type BatchUpdate,
   type BrowseParams,
+  type BundleBrowsePage,
   type BundlePatch,
+  type BundleSummary,
+  type CleanupSort,
   type CollectionCreate,
   type CollectionRead,
+  type SortOrder,
   type FacetParams,
   type FilePatch,
   type FileSelection,
@@ -73,6 +78,8 @@ import {
   updateCollection,
   reorderCollections,
   cleanupCollectionOrder,
+  reorderBundles,
+  cleanupBundleOrder,
   reorderFiles,
   setBundleCollections,
   setBundleTags,
@@ -833,6 +840,75 @@ export function useCleanupCollectionOrder() {
   return useMutation({
     mutationFn: (order: 'asc' | 'desc') => cleanupCollectionOrder(order),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+  })
+}
+
+/** Re-order the loaded browse items to match `orderedIds`, preserving each
+ * infinite-query page's length (so the virtualizer's offsets stay valid). Items
+ * not named keep their relative order at the tail. */
+function reorderBrowsePages(
+  data: InfiniteData<BundleBrowsePage>,
+  orderedIds: string[],
+): InfiniteData<BundleBrowsePage> {
+  const all = data.pages.flatMap((p) => p.items as BundleSummary[])
+  const byId = new Map(all.map((i) => [i.id, i]))
+  const wanted = new Set(orderedIds)
+  const ordered: BundleSummary[] = orderedIds.flatMap((id) => {
+    const item = byId.get(id)
+    return item ? [item] : []
+  })
+  for (const item of all) if (!wanted.has(item.id)) ordered.push(item)
+  let idx = 0
+  const pages = data.pages.map((p) => {
+    const items = ordered.slice(idx, idx + p.items.length)
+    idx += p.items.length
+    return { ...p, items }
+  })
+  return { ...data, pages }
+}
+
+/** Persist a manual drag-reorder of bundles (MANUAL sort). Optimistically
+ * re-orders every cached browse page so the dragged card holds its new slot,
+ * then invalidates to reconcile with the server. */
+export function useReorderBundles() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      collectionId,
+      orderedIds,
+    }: {
+      collectionId: string | null
+      orderedIds: string[]
+    }) => reorderBundles(collectionId, orderedIds),
+    onMutate: async ({ orderedIds }) => {
+      await qc.cancelQueries({ queryKey: ['browse'] })
+      const snapshots = qc.getQueriesData<InfiniteData<BundleBrowsePage>>({ queryKey: ['browse'] })
+      qc.setQueriesData<InfiniteData<BundleBrowsePage>>({ queryKey: ['browse'] }, (old) =>
+        old ? reorderBrowsePages(old, orderedIds) : old,
+      )
+      return { snapshots }
+    },
+    onError: (_e, _v, ctx) => {
+      for (const [key, data] of ctx?.snapshots ?? []) qc.setQueryData(key, data)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['browse'] }),
+  })
+}
+
+/** "Clean up by…": rewrite the manual order of the whole scope to a chosen sort. */
+export function useCleanupBundleOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      collectionId,
+      sort,
+      order,
+    }: {
+      collectionId: string | null
+      sort: CleanupSort
+      order: SortOrder
+    }) => cleanupBundleOrder(collectionId, sort, order),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
   })
 }
 
