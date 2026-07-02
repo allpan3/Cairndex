@@ -1,5 +1,48 @@
 # Project status
 
+## In progress: collection & bundle ordering UX (`feat/collection-bundle-ordering`)
+
+Branch off `main` (latest `main`: `6ecf850`). Six reviewable slices, not yet a PR:
+
+- **Slice 0 — data model.** New `asset_bundle_collections.sort_order`
+  (per-collection bundle order) and `asset_bundles.manual_order` (global bundle
+  order), both `server_default 0`, patched into existing library DBs via the
+  additive `ensure_content_indexes` bootstrap (no migration chain).
+- **Slice 1 — collection ordering.** Collections order by `sort_order` (name
+  tie-break) in both the sidebar tree and the main-browser folder cards; native
+  drag-reorder in either surface updates both (`PUT …/collections/reorder`).
+  `create_collection` appends after siblings. "Clean up by… Title" A–Z/Z–A
+  (`POST …/collections/cleanup-order`). Shared `moveBefore()` + `CleanupOrderDialog`.
+- **Slice 2 — bundle manual order.** `BundleSort.MANUAL` (membership order inside
+  one collection, global `manual_order` elsewhere); Toolbar **Manual** sort +
+  drag-reorder in `Browser`; "Clean up by…" over the five toolbar sorts × asc/desc
+  (`PUT …/bundles/reorder`, `POST …/bundles/cleanup-order`). Drag is best-effort
+  over the loaded window; cleanup is the deterministic full-scope rewrite.
+- **Slice 3 — flatten subcollections.** "Show subcollection contents" now also
+  flattens every descendant collection into the Subcollections section
+  (depth-first, manual order).
+- **Slice 4 — folder-card context menu.** Right-click folder cards → Delete
+  Collection / Delete N Collections (multi-select); generalized
+  `RemoveCollectionDialog` for multi-delete.
+- **Slice 5 — decoupled sizing.** Folder cards follow their own smaller curve off
+  the shared zoom slider (`collectionCardWidth`, max ~180px by mid-slider); slider
+  floor dropped to 80px.
+- **Slice 6 — Shift-range select** for bundle cards and folder cards.
+
+Verified: backend `ruff`/`ruff format --check`/`mypy` clean, `pytest` **288
+passed** (new: engine ensure-columns in `test_models`, collection reorder/cleanup/
+append in `test_taxonomy`, bundle MANUAL ordering + reorder/cleanup in
+`test_browse`). Frontend `lint`/`format:check`/`typecheck`/`vitest`/`build` clean;
+Playwright **37 passed** (new `e2e/ordering.spec.ts`). Manually verified against
+the local Synthetic Library via the browser preview (decoupled sizing, Manual sort
++ Clean up button, flatten → 165 descendants, folder Delete-Collection menu,
+Shift-range select) plus a reversible live `collections/reorder` round-trip
+(swapped then restored the root order). OpenAPI + `schema.d.ts` regenerated.
+
+Out of scope / known limitation: bundle drag-reorder only rewrites the loaded
+window (use "Clean up by…" for a full deterministic order); reparenting collections
+by drag is not a gesture here (drag reorders within a sibling group only).
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**
