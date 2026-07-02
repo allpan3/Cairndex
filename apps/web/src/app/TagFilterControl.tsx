@@ -137,12 +137,18 @@ function TagFilterPanel({
   }
 
   // Tags shown: the whole hierarchy, scoped to a selected group (groups are
-  // navigation/display only — they never filter bundles by group).
+  // navigation/display only — they never filter bundles by group). A tag that
+  // isn't present at all in the current view (facet count 0) is hidden, unless
+  // it's already selected here — so a selection never silently disappears. While
+  // the counts are still loading, show everything rather than flashing empty.
   const flat = flattenHierarchy(tags)
   const groupMember = groupFilter !== null ? new Set(memberships[groupFilter] ?? []) : null
   const match = (tag: TagRead) => !search || tag.name.toLowerCase().includes(search.toLowerCase())
+  const countsLoaded = facets.data !== undefined
+  const seen = (id: string) => !countsLoaded || (counts[id] ?? 0) > 0 || inc.has(id) || exc.has(id)
   const rows = flat.filter(
-    ({ item }) => (groupMember === null || groupMember.has(item.id)) && match(item),
+    ({ item }) =>
+      (groupMember === null || groupMember.has(item.id)) && match(item) && seen(item.id),
   )
 
   return (
