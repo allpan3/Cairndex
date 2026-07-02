@@ -20,12 +20,17 @@ of `main` (which now includes the collection-view GUI rework, merged as #45).
   (Unrated). Toolbar Rating chip = star row + `=`/`≥`/`≤` + an Unrated row; the
   Smart Collection editor's rating row uses the same star picker and an "is
   unrated" operator, so saved collections round-trip it.
-- **Slice 3 — All Tags page.** A sidebar entry opens a management surface
-  (`mode='tags'`): left panel (All Tags / Uncategorized / groups) + a searchable,
-  drag-reorderable tag hierarchy with counts and Chinese-aware ordering.
-  Backend: safe tag delete (block a parent with children), `PUT /tags/reorder`
-  (siblings only, no reparenting), `PUT /tag-groups/{id}/tags/order`, ordered
-  group-tag listing. Double-clicking a tag applies a global Equal/direct filter.
+- **Slice 3 — All Tags page.** A sidebar entry (below Untagged) opens a
+  management surface (`mode='tags'`): left panel (All / Uncategorized / groups,
+  each with a tag count) + an Eagle-style, pinyin-segmented, multi-column
+  **accordion grid** of top-level tags that expand in place to reveal children
+  (folded = rolled-up subtree count, expanded = direct). **Drag reparents** a tag
+  (onto another = nest; onto empty space = top level); the tree is name/pinyin
+  ordered, so manual sibling ordering was dropped (the `PUT /tags/reorder`
+  endpoint remains but is unused by the UI). Backend safe tag delete blocks a
+  parent with children. Double-clicking a tag applies a global Equal/direct
+  filter. (Initial cut was a single-column drag-reorder tree; reworked per review
+  into the accordion grid with reparent-by-drag.)
 
 Both toolbar filters and Smart Collections compile to the one canonical
 FilterExpression AST and stack under AND with the view/collection and text search.

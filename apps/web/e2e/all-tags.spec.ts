@@ -100,16 +100,19 @@ test('All Tags: groups + Uncategorized, and double-click applies a global filter
   await expect(page.locator('.alltags__nav', { hasText: 'Uncategorized' })).toBeVisible()
   await expect(page.locator('.alltags__nav', { hasText: 'Genre' })).toBeVisible()
 
-  // The hierarchy shows parent, child, and the ungrouped leaf.
-  await expect(page.locator('.alltags__row')).toHaveCount(3)
+  // Top level shows the two roots (parent, leaf); the child is nested under
+  // "parent" (collapsed by default), so only two tiles render.
+  await expect(page.locator('.tagtile')).toHaveCount(2)
+  await expect(page.locator('.tagtile__name', { hasText: 'parent' })).toBeVisible()
+  await expect(page.locator('.tagtile__name', { hasText: 'leaf' })).toBeVisible()
 
   // Type a search so we can prove double-click clears it.
   await page.getByRole('searchbox', { name: 'Search tags' }).fill('leaf')
-  await expect(page.locator('.alltags__row')).toHaveCount(1)
+  await expect(page.locator('.tagtile')).toHaveCount(1)
 
   // Double-click the leaf → navigate to All bundles with a global Equal/direct
   // tag filter, and the toolbar search is cleared.
-  await page.locator('.alltags__row', { hasText: 'leaf' }).dblclick()
+  await page.locator('.tagtile__head', { hasText: 'leaf' }).dblclick()
   await expect(page.locator('.toolbar__title')).toHaveText('All')
   await expect(page.locator('.filter-chip__badge')).toHaveText('1')
   await expect
@@ -122,10 +125,10 @@ test('All Tags: right-click rename; parent-with-children delete is blocked', asy
   await openAllTags(page)
 
   // Right-click the leaf → Rename Tag → commit via Enter → PATCH fires.
-  await page.locator('.alltags__row', { hasText: 'leaf' }).click({ button: 'right' })
+  await page.locator('.tagtile__head', { hasText: 'leaf' }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Rename Tag' }).click()
-  await page.locator('.alltags__rename').fill('renamed leaf')
-  await page.locator('.alltags__rename').press('Enter')
+  await page.locator('.tagtile__rename').fill('renamed leaf')
+  await page.locator('.tagtile__rename').press('Enter')
   await expect.poll(() => patched()).toContain('leaf')
 
   // Deleting a parent that has children is blocked client-side (a friendly
@@ -135,12 +138,12 @@ test('All Tags: right-click rename; parent-with-children delete is blocked', asy
     alert = d.message()
     void d.dismiss()
   })
-  await page.locator('.alltags__row', { hasText: 'parent' }).click({ button: 'right' })
+  await page.locator('.tagtile__head', { hasText: 'parent' }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Delete Tag' }).click()
   await expect.poll(() => alert).toContain('child tags')
 })
 
-// NOTE: the drag-reorder behavior (reorder among siblings only; no reparenting)
-// is covered by a fast, deterministic unit test of the pure `planReorder`
-// (src/app/AllTagsPage.reorder.test.ts) rather than a flaky native-HTML5-DnD
-// Playwright drag, plus the backend `reorder_tags` sibling/cross-parent tests.
+// NOTE: reparent-by-drag isn't driven here — native HTML5 DnD is unreliable in
+// Playwright. It's exercised against the live app in the browser preview, and its
+// validity rules (no self, no cycle, cache count updates) plus pinyin bucketing
+// are covered by unit tests + the backend update_tag reparent/cycle tests.

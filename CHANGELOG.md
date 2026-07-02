@@ -30,17 +30,21 @@ grouped under `Unreleased` until the first tagged release.
   editor's rating row now uses the same star picker and gains an "is unrated"
   operator, so saved collections round-trip it. See `docs/filter-language.md`.
 
-- **All Tags management page.** A new sidebar entry opens a management surface
-  (not a bundle collection, not a folder): a left panel (All Tags /
-  Uncategorized / tag groups, display-only scoping) and a searchable, hierarchical
-  tag list with counts, custom (drag) order, and Chinese-aware (pinyin) fallback
-  ordering. Drag reorders **among siblings only** (no reparenting). Right-click a
-  tag to **Rename** or **Delete** it (deleting a parent that still has children is
-  blocked with a friendly message; a leaf deletes and drops its assignments via
-  cascade — no file or bundle touched). Double-clicking a tag jumps to **All**
-  bundles, clears the search, and applies a global Equal/direct tag filter. New
-  endpoints: `PUT /tags/reorder`, `PUT /tag-groups/{id}/tags/order`; tag-group
-  tag listing is now returned in membership order.
+- **All Tags management page.** A new sidebar entry (right below **Untagged**)
+  opens a management surface — not a bundle collection, not a folder. A left
+  panel scopes the view (**All** / **Uncategorized** / tag groups, each with a
+  tag count); the main panel is an Eagle-style, **pinyin-segmented, multi-column
+  accordion grid** of top-level tags. A tag with children shows a chevron and
+  **expands in place** to a full-width row listing its children (recursively);
+  folded it shows its **rolled-up subtree count**, expanded its **direct** count.
+  **Drag a tag onto another to nest it** (reparent) or onto empty space to make
+  it top-level — the tree is name/pinyin-ordered, so there's no manual sibling
+  order to keep. Right-click a tag to **Rename** or **Delete** it (deleting a
+  parent that still has children is blocked with a friendly message; a leaf
+  deletes and drops its assignments via cascade — no file or bundle touched).
+  Double-clicking a tag jumps to **All** bundles, clears the search, and applies
+  a global Equal/direct tag filter. The right inspector is hidden on this page so
+  the grid gets the full width.
 
 - **Create a tag or collection directly from the picker.** In the tag and
   collection pickers (single-bundle editors and the multi-bundle bulk
