@@ -96,7 +96,7 @@ test('All Tags: groups + Uncategorized, and double-click applies a global filter
   await openAllTags(page)
 
   // Left panel shows All Tags, Uncategorized, and the group.
-  await expect(page.locator('.alltags__nav', { hasText: 'All Tags' })).toBeVisible()
+  await expect(page.locator('.alltags__nav', { hasText: 'All' })).toBeVisible()
   await expect(page.locator('.alltags__nav', { hasText: 'Uncategorized' })).toBeVisible()
   await expect(page.locator('.alltags__nav', { hasText: 'Genre' })).toBeVisible()
 

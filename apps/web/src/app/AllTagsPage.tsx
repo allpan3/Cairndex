@@ -131,6 +131,10 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
 
   const byId = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const groupedIds = useMemo(() => new Set(Object.values(memberships).flat()), [memberships])
+  const uncategorizedCount = useMemo(
+    () => tags.filter((t) => !groupedIds.has(t.id)).length,
+    [tags, groupedIds],
+  )
   const childrenCount = useMemo(() => {
     const map = new Map<string, number>()
     for (const t of tags) if (t.parent_id) map.set(t.parent_id, (map.get(t.parent_id) ?? 0) + 1)
@@ -228,13 +232,16 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
           className={`alltags__nav${panel === 'all' ? ' is-active' : ''}`}
           onClick={() => setPanel('all')}
         >
-          <IconTag /> All Tags
+          <IconTag />
+          <span className="alltags__nav-label">All</span>
+          <span className="alltags__nav-count">{tags.length}</span>
         </button>
         <button
           className={`alltags__nav${panel === 'uncategorized' ? ' is-active' : ''}`}
           onClick={() => setPanel('uncategorized')}
         >
-          Uncategorized
+          <span className="alltags__nav-label">Uncategorized</span>
+          <span className="alltags__nav-count">{uncategorizedCount}</span>
         </button>
         {groups.length > 0 && <div className="alltags__side-head">Tag Groups</div>}
         {groups.map((g) => (
@@ -243,7 +250,8 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
             className={`alltags__nav${groupId === g.id ? ' is-active' : ''}`}
             onClick={() => setPanel({ groupId: g.id })}
           >
-            {g.name}
+            <span className="alltags__nav-label">{g.name}</span>
+            <span className="alltags__nav-count">{memberships[g.id]?.length ?? 0}</span>
           </button>
         ))}
       </div>
@@ -252,7 +260,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
         <div className="alltags__toolbar">
           <span className="alltags__title">
             {panel === 'all'
-              ? 'All Tags'
+              ? 'All'
               : panel === 'uncategorized'
                 ? 'Uncategorized'
                 : (groups.find((g) => g.id === groupId)?.name ?? 'Group')}
