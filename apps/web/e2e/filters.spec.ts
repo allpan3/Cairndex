@@ -125,12 +125,12 @@ test('ad-hoc Rating filter: star picker and Unrated', async ({ page }) => {
   await page.getByRole('button', { name: 'Filters' }).click()
   await page.getByRole('button', { name: 'Filter by rating' }).click()
 
-  // Pick 4 stars → rating ≥ 4 (default operator), filtered browse.
+  // Pick 4 stars → rating = 4 (Equal is the default operator), filtered browse.
   await page.getByRole('radio', { name: '4 stars' }).click()
-  await expect(page.locator('.filter-chip__badge--text')).toHaveText('≥4')
+  await expect(page.locator('.filter-chip__badge--text')).toHaveText('=4')
   await expect
     .poll(() => JSON.stringify(lastBrowsePost()?.filter ?? null))
-    .toContain('"operator":"gte"')
+    .toContain('"operator":"eq"')
 
   // Switch to Unrated → is_null filter.
   await page.getByRole('button', { name: 'Unrated' }).click()

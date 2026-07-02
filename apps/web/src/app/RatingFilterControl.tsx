@@ -85,7 +85,7 @@ function RatingFilterPanel({
   ctx: FacetContext
 }) {
   const rating = filters.rating
-  const [op, setOp] = useState<RatingOp>(rating?.op ?? 'gte')
+  const [op, setOp] = useState<RatingOp>(rating?.op ?? 'eq')
 
   const baseFilter = useMemo(
     () =>
