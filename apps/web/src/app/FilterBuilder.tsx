@@ -11,6 +11,7 @@ import {
   fieldDef,
   newCondition,
 } from './filterModel'
+import { StarRow } from './Stars'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 // --- Component ---------------------------------------------------------------
@@ -130,6 +131,19 @@ function ValueEditor({
           />
           + sub
         </label>
+      </span>
+    )
+  }
+  if (def.kind === 'rating') {
+    // "is unrated" (is_null) needs no value; otherwise pick a star (1..5).
+    if (row.operator === 'is_null') return <span className="filter-row__val" />
+    return (
+      <span className="filter-row__val">
+        <StarRow
+          value={Number(row.value) || 0}
+          onPick={(n) => onChange({ value: n })}
+          ariaLabel="Rating value"
+        />
       </span>
     )
   }

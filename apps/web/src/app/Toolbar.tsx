@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { BundleSort } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
 import { IconFilter } from './icons'
+import { RatingFilterControl } from './RatingFilterControl'
 import { TagFilterControl } from './TagFilterControl'
 import type { BrowsePrefs, LayoutMode } from './types'
 
@@ -131,6 +132,11 @@ export function Toolbar({
         <div className="filterbar" role="group" aria-label="Filters">
           <span className="filterbar__label">Filter</span>
           <TagFilterControl filters={adHocFilters} onChange={onAdHocFilters} ctx={facetContext} />
+          <RatingFilterControl
+            filters={adHocFilters}
+            onChange={onAdHocFilters}
+            ctx={facetContext}
+          />
           {filtersActive && (
             <button
               className="filterbar__clear"
