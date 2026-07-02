@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { TagRead } from '../api/client'
 import {
@@ -48,6 +48,59 @@ function buildForest(tags: TagRead[]): Row[] {
   }
   walk(null, 0)
   return out
+}
+
+// A big structural move (e.g. reordering whole subtrees) shifts hundreds of
+// rows; animating them all is janky and pointless. Above this many moved rows we
+// just snap.
+const FLIP_MAX_ROWS = 80
+
+// FLIP animation: when `signature` (the visible row order) changes but the *set*
+// of rows is the same — i.e. a reorder, not a filter/panel switch — slide each
+// moved row from its previous position to its new one. Runs only on order change
+// (keyed on `signature`), so hovering/dropline updates don't thrash layout. Uses
+// the Web Animations API so each row cleans itself up (no lingering inline
+// transform even if a frame is dropped) — a plain rAF-based FLIP can leave rows
+// stuck offset when rAF is throttled (e.g. a backgrounded tab).
+function useReorderFlip(signature: string) {
+  const listRef = useRef<HTMLDivElement>(null)
+  const prev = useRef<{ ids: Set<string>; pos: Map<string, number> }>({
+    ids: new Set(),
+    pos: new Map(),
+  })
+
+  useLayoutEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const rows = [...el.querySelectorAll<HTMLElement>('[data-flip-id]')]
+    const pos = new Map<string, number>()
+    for (const r of rows) pos.set(r.dataset.flipId as string, r.offsetTop)
+    const ids = new Set(pos.keys())
+
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const sameSet =
+      ids.size === prev.current.ids.size && [...ids].every((id) => prev.current.ids.has(id))
+    if (!reduce && sameSet && prev.current.pos.size && typeof rows[0]?.animate === 'function') {
+      const moved: [HTMLElement, number][] = []
+      for (const r of rows) {
+        const dy =
+          (prev.current.pos.get(r.dataset.flipId as string) ?? 0) -
+          (pos.get(r.dataset.flipId as string) ?? 0)
+        if (dy) moved.push([r, dy])
+      }
+      if (moved.length && moved.length <= FLIP_MAX_ROWS) {
+        for (const [r, dy] of moved) {
+          r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], {
+            duration: 200,
+            easing: 'cubic-bezier(0.2, 0, 0, 1)',
+          })
+        }
+      }
+    }
+    prev.current = { ids, pos }
+  }, [signature])
+
+  return listRef
 }
 
 type Panel = 'all' | 'uncategorized' | { groupId: string }
@@ -103,6 +156,9 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
 
   const q = search.trim().toLowerCase()
   const visible = q ? rows.filter((r) => r.tag.name.toLowerCase().includes(q)) : rows
+
+  // Slide rows to their new spots after a reorder (FLIP), keyed on the row order.
+  const flipRef = useReorderFlip(visible.map((r) => r.tag.id).join(','))
 
   const startDelete = (tag: TagRead) => {
     // First-version safe delete: block a parent with children with a friendly
@@ -213,7 +269,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
           />
         </div>
 
-        <div className="alltags__list">
+        <div className="alltags__list" ref={flipRef}>
           {visible.length === 0 && (
             <div className="state">
               {tags.length === 0 ? 'No tags yet.' : 'No tags match this filter.'}
@@ -228,6 +284,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
             return (
               <div
                 key={t.id}
+                data-flip-id={t.id}
                 className={`alltags__row${dragging ? ' alltags__row--dragging' : ''}${
                   hinted ? ` alltags__row--drop-${hinted}` : ''
                 }`}
