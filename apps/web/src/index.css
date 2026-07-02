@@ -528,6 +528,7 @@ button {
   padding: 6px 8px;
 }
 .alltags__row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -540,6 +541,26 @@ button {
 }
 .alltags__row--dragging {
   opacity: 0.5;
+}
+/* Insertion line showing exactly where a dragged tag will land, indented to the
+   target's sibling level. */
+.alltags__row--drop-before::before,
+.alltags__row--drop-after::after {
+  content: '';
+  position: absolute;
+  left: var(--drop-indent, 10px);
+  right: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  z-index: 2;
+  pointer-events: none;
+}
+.alltags__row--drop-before::before {
+  top: -1px;
+}
+.alltags__row--drop-after::after {
+  bottom: -1px;
 }
 .alltags__grip {
   color: var(--text-muted);
