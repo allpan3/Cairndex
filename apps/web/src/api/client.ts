@@ -202,6 +202,34 @@ export function previewFilter(filter: FilterExpression, signal?: AbortSignal): P
   )
 }
 
+// --- Faceted counts (toolbar filter popovers) --------------------------------
+export type FacetResponse = components['schemas']['FacetResponse']
+
+export interface FacetParams {
+  view: SystemView
+  collectionId?: string | null
+  includeDescendants?: boolean
+  q?: string | null
+  // Base filter for the *other* active categories (must exclude the category
+  // whose facet counts are being shown).
+  filter?: FilterExpression | null
+  facets: string[]
+  // Whether parent-tag counts roll up descendants (Any/All) or stay direct (Equal).
+  tagIncludeDescendants?: boolean
+}
+
+export function fetchFacets(params: FacetParams, signal?: AbortSignal): Promise<FacetResponse> {
+  return sendSignal<FacetResponse>(`${lib()}/filters/facets`, 'POST', signal, {
+    view: params.view,
+    collection_id: params.collectionId ?? null,
+    include_descendants: params.includeDescendants ?? false,
+    q: params.q?.trim() || null,
+    filter: params.filter ?? null,
+    facets: params.facets,
+    tag_include_descendants: params.tagIncludeDescendants ?? true,
+  })
+}
+
 // --- Smart Collections -------------------------------------------------------
 export const fetchSmartCollections = (signal?: AbortSignal) =>
   getJson<SmartCollectionRead[]>(`${lib()}/smart-collections`, signal)

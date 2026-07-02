@@ -40,6 +40,13 @@ import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
+import {
+  type AdHocFilters,
+  type FacetContext,
+  adHocFiltersToExpression,
+  combineFilters,
+  emptyAdHocFilters,
+} from './app/adHocFilters'
 import { Inspector } from './app/Inspector'
 import {
   AddFilesToBundleDialog,
@@ -265,6 +272,10 @@ function Workspace({
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
+  // Ad-hoc toolbar filters (Eagle-style). Local UI state only — not persisted to
+  // localStorage or the URL in this milestone. Composes with the active Smart
+  // Collection and the current view/collection/search.
+  const [adHocFilters, setAdHocFilters] = useState<AdHocFilters>(emptyAdHocFilters)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
@@ -387,16 +398,34 @@ function Workspace({
     return map
   }, [collections.data])
 
+  // Smart Collection filter AND the ad-hoc toolbar filter stack into one AST
+  // (both compile to the same canonical shape). Null filters are ignored.
+  const smartFilter = activeSmartCollection?.filter ?? null
+  const combinedFilter = useMemo(
+    () => combineFilters(smartFilter, adHocFiltersToExpression(adHocFilters)),
+    [smartFilter, adHocFilters],
+  )
+
+  const includeSubContents = selection.collectionId !== null && showSubContents
   const browse = useBrowse({
     view: selection.view,
     collectionId: selection.collectionId,
-    includeDescendants: selection.collectionId !== null && showSubContents,
+    includeDescendants: includeSubContents,
     sort: prefs.sort,
     order: prefs.order,
     limit: 100,
-    filter: activeSmartCollection?.filter ?? null,
+    filter: combinedFilter,
     search: debouncedSearch.trim() || null,
   })
+
+  // Context the toolbar's facet-count popovers need (each strips its own category).
+  const facetContext: FacetContext = {
+    view: selection.view,
+    collectionId: selection.collectionId,
+    includeDescendants: includeSubContents,
+    q: debouncedSearch.trim() || null,
+    smartFilter,
+  }
 
   // Backend search returns the matching page directly — no client-side filtering.
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
@@ -737,6 +766,9 @@ function Workspace({
               onSearch={setSearch}
               prefs={prefs}
               onPrefs={setPrefs}
+              adHocFilters={adHocFilters}
+              onAdHocFilters={setAdHocFilters}
+              facetContext={facetContext}
             />
             {openBundleId ? (
               <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />

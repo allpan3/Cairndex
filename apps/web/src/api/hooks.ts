@@ -11,6 +11,7 @@ import {
   type BrowseParams,
   type BundlePatch,
   type CollectionCreate,
+  type FacetParams,
   type FilePatch,
   type FileSelection,
   type FilterExpression,
@@ -51,6 +52,7 @@ import {
   fetchBundleFiles,
   fetchBundleTags,
   fetchCollectionCounts,
+  fetchFacets,
   fetchFileViewEntries,
   fetchLibraries,
   fetchPlaybackManifest,
@@ -137,6 +139,16 @@ export function useViewCounts() {
   return useQuery({
     queryKey: ['view-counts'],
     queryFn: ({ signal }) => fetchViewCounts(signal),
+  })
+}
+
+/** Faceted counts for a toolbar filter popover, scoped to the current browse
+ * context. Keyed by the full params so it refetches when the scope changes. */
+export function useFacets(params: FacetParams, enabled = true) {
+  return useQuery({
+    queryKey: ['facets', params],
+    queryFn: ({ signal }) => fetchFacets(params, signal),
+    enabled,
   })
 }
 
