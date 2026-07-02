@@ -89,7 +89,8 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
 
   // Click the Unbundled system view → the Files surface (file-first, not cards).
   await page.getByRole('button', { name: /Unbundled/ }).click()
-  await expect(page.getByText('2 files awaiting bundling', { exact: false })).toBeVisible()
+  await expect(page.locator('.toolbar__title')).toHaveText('Unbundled')
+  await expect(page.locator('.toolbar__count')).toHaveText('2 items')
   const row = page.locator('.file-row', { hasText: 'feature.mp4' })
   await expect(row).toBeVisible()
   await expect(row.getByText('unbundled')).toBeVisible()
@@ -173,4 +174,53 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
   expect(addBody).not.toBeNull()
   expect(addBody!.target_bundle_id).toBe('target')
   expect(addBody!.relative_paths).toEqual(['loose.mp4'])
+})
+
+test('File view grid layout supports drag-to-select', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/file-view/entries**', (r) =>
+    r.fulfill({
+      json: {
+        path: '',
+        entries: [
+          fileEntry({ name: 'a.mp4', relative_path: 'a.mp4' }),
+          fileEntry({ name: 'b.mp4', relative_path: 'b.mp4' }),
+          fileEntry({ name: 'c.mp4', relative_path: 'c.mp4' }),
+        ],
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Files' }).click()
+  await page.getByRole('button', { name: 'Grid' }).click()
+
+  const cards = page.locator('[data-relpath]')
+  await expect(cards).toHaveCount(3)
+
+  const wrapperBox = await page.locator('.file-view__wrapper').boundingBox()
+  const lastCard = await cards.nth(2).boundingBox()
+  if (!wrapperBox || !lastCard) throw new Error('missing bounding box')
+
+  // Drag from the empty grid padding (past the sidebar's resizer handle),
+  // through all three cards.
+  const gutterX = wrapperBox.x + 8
+  await page.mouse.move(gutterX, wrapperBox.y + 2)
+  await page.mouse.down()
+  await page.mouse.move(lastCard.x + lastCard.width / 2, lastCard.y + lastCard.height / 2, {
+    steps: 5,
+  })
+  await page.mouse.up()
+
+  await expect(cards.nth(0)).toHaveClass(/card--selected/)
+  await expect(cards.nth(1)).toHaveClass(/card--selected/)
+  await expect(cards.nth(2)).toHaveClass(/card--selected/)
+
+  // The bundling context menu operates on the whole drag-selected set.
+  await cards.nth(0).click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: 'Add 3 files to bundle…' })).toBeVisible()
+
+  // A plain click on empty space (no drag) clears the selection.
+  await page.mouse.click(gutterX, wrapperBox.y + 2)
+  await expect(cards.nth(0)).not.toHaveClass(/card--selected/)
 })

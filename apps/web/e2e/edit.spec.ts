@@ -21,20 +21,25 @@ function summary(id: string, title: string) {
   }
 }
 
+function bundleDetail(id: string, title: string) {
+  return {
+    id,
+    title,
+    note: null as string | null,
+    source_url: null as string | null,
+    rating: 0 as number | null,
+    cover_file_id: null,
+    primary_file_id: null,
+    created_at: '2026-06-25T00:00:00Z',
+    imported_at: '2026-06-25T00:00:00Z',
+    updated_at: '2026-06-25T00:00:00Z',
+  }
+}
+
 async function mockApi(page: Page) {
   const state = {
-    bundle: {
-      id: 'b0',
-      title: 'Movie 0',
-      note: null as string | null,
-      source_url: null as string | null,
-      rating: 0 as number | null,
-      cover_file_id: null,
-      primary_file_id: null,
-      created_at: '2026-06-25T00:00:00Z',
-      imported_at: '2026-06-25T00:00:00Z',
-      updated_at: '2026-06-25T00:00:00Z',
-    },
+    bundle: bundleDetail('b0', 'Movie 0'),
+    bundleB1: bundleDetail('b1', 'Movie 1'),
     tagIds: [] as string[],
   }
 
@@ -46,10 +51,16 @@ async function mockApi(page: Page) {
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 } }),
   )
+  // Reads titles/ratings from `state` at request time (not just at mockApi
+  // setup) so a PATCH made via the inspector is reflected on refetch — the
+  // multi-select bulk-rename test asserts the grid picks up the new titles.
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
       json: {
-        items: [summary('b0', 'Movie 0'), summary('b1', 'Movie 1')],
+        items: [
+          { ...summary('b0', state.bundle.title ?? 'Movie 0'), rating: state.bundle.rating },
+          { ...summary('b1', state.bundleB1.title ?? 'Movie 1'), rating: state.bundleB1.rating },
+        ],
         total: 2,
         offset: 0,
         limit: 100,
@@ -95,6 +106,22 @@ async function mockApi(page: Page) {
     }
     await r.fulfill({ json: state.bundle })
   })
+
+  // b1 mirrors b0 (empty tags/collections) so the multi-bundle inspector's
+  // per-bundle queries resolve deterministically in the multi-select test.
+  await page.route('**/bundles/b1/files', (r) => r.fulfill({ json: [] }))
+  await page.route('**/bundles/b1/collections', (r) =>
+    r.fulfill({ json: { bundle_id: 'b1', collection_ids: [] } }),
+  )
+  await page.route('**/bundles/b1/tags', (r) =>
+    r.fulfill({ json: { bundle_id: 'b1', tag_ids: [] } }),
+  )
+  await page.route('**/bundles/b1', async (r) => {
+    if (r.request().method() === 'PATCH') {
+      Object.assign(state.bundleB1, r.request().postDataJSON())
+    }
+    await r.fulfill({ json: state.bundleB1 })
+  })
 }
 
 test('editing the rating persists', async ({ page }) => {
@@ -116,7 +143,148 @@ test('assigning a tag adds a chip', async ({ page }) => {
   await expect(page.locator('.inspector .chip')).toContainText('Action')
 })
 
-test('multi-select shows the batch bar', async ({ page }) => {
+test('the collection picker assigns, surfaces recent, and filters to selected', async ({
+  page,
+}) => {
+  await mockApi(page)
+  // Two collections (parent + child) and a stateful membership route.
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: 'Movies', parent_id: null },
+          { id: 'c2', name: 'Docs', parent_id: 'c1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  let memberIds: string[] = []
+  await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'PUT') {
+      memberIds = (r.request().postDataJSON() as { ids: string[] }).ids
+    }
+    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: memberIds } })
+  })
+
+  await page.goto('/')
+  // Start from a clean recent list so the Recent section is deterministic.
+  await page.evaluate(() => localStorage.removeItem('cairndex.recentCollections'))
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: '+ Collection' }).click()
+
+  const panel = page.locator('.picker__panel')
+  await expect(panel).toBeVisible()
+  // Assigning a collection adds a chip and populates the Recent section.
+  await panel.locator('.pick-row', { hasText: 'Docs' }).click()
+  await expect(page.locator('.inspector .chip')).toContainText('Docs')
+  await expect(panel).toContainText('Recent')
+
+  // The "show only selected" filter narrows the list to assigned collections.
+  await page.getByRole('button', { name: 'Show only selected' }).click()
+  await expect(panel.locator('.pick-row')).toHaveCount(1)
+  await expect(panel.locator('.pick-row')).toContainText('Docs')
+})
+
+test('typing an unmatched search offers to create a new tag', async ({ page }) => {
+  await mockApi(page)
+  const tags = [
+    { id: 't1', parent_id: null, name: 'Action', color: null, sort_order: 0 },
+  ] as Record<string, unknown>[]
+  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: tags, next_cursor: null } }))
+  await page.route('**/tags', async (r) => {
+    if (r.request().method() !== 'POST') return r.fallback()
+    const body = r.request().postDataJSON() as { name: string }
+    const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }
+    tags.push(created)
+    await r.fulfill({ status: 201, json: created })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: '+ Tag' }).click()
+  await page.locator('.picker__search').fill('Thriller')
+
+  const createRow = page.locator('.pick-row--create')
+  await expect(createRow).toContainText('Create')
+  await expect(createRow).toContainText('Thriller')
+  await createRow.click()
+
+  // The new tag is created and assigned to the bundle immediately.
+  await expect(page.locator('.inspector .chip')).toContainText('Thriller')
+})
+
+test('a search that partially matches an existing tag still offers to create the exact text', async ({
+  page,
+}) => {
+  await mockApi(page)
+  const tags = [
+    { id: 't1', parent_id: null, name: 'Action', color: null, sort_order: 0 },
+  ] as Record<string, unknown>[]
+  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: tags, next_cursor: null } }))
+  await page.route('**/tags', async (r) => {
+    if (r.request().method() !== 'POST') return r.fallback()
+    const body = r.request().postDataJSON() as { name: string }
+    const created = { id: 'new-tag', parent_id: null, color: null, sort_order: 0, ...body }
+    tags.push(created)
+    await r.fulfill({ status: 201, json: created })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: '+ Tag' }).click()
+  // "Act" is a substring of the seeded "Action" tag — both the partial match
+  // and a "Create" offer for the exact typed text should show.
+  await page.locator('.picker__search').fill('Act')
+
+  await expect(page.locator('.picker__panel .pick-row', { hasText: 'Action' })).toBeVisible()
+  const createRow = page.locator('.pick-row--create')
+  await expect(createRow).toContainText('Create')
+  await expect(createRow).toContainText('Act')
+  await createRow.click()
+
+  // The new "Act" tag is assigned; the pre-existing "Action" tag is untouched
+  // (creating doesn't collide with or reuse the partial match).
+  const chips = page.locator('.inspector .chip')
+  await expect(chips.filter({ hasText: 'Act' })).toHaveCount(1)
+  await expect(chips.filter({ hasText: 'Action' })).toHaveCount(0)
+})
+
+test('typing an unmatched search offers to create a new collection', async ({ page }) => {
+  await mockApi(page)
+  const collections = [{ id: 'c1', name: 'Movies', parent_id: null }] as Record<string, unknown>[]
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({ json: { items: collections, next_cursor: null } }),
+  )
+  await page.route('**/collections', async (r) => {
+    if (r.request().method() !== 'POST') return r.fallback()
+    const body = r.request().postDataJSON() as { name: string; parent_id: string | null }
+    const created = { id: 'new-col', note: null, cover_bundle_id: null, ...body }
+    collections.push(created)
+    await r.fulfill({ status: 201, json: created })
+  })
+  let memberIds: string[] = []
+  await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'PUT') {
+      memberIds = (r.request().postDataJSON() as { ids: string[] }).ids
+    }
+    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: memberIds } })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: '+ Collection' }).click()
+  await page.locator('.picker__search').fill('Documentaries')
+
+  const createRow = page.locator('.pick-row--create')
+  await expect(createRow).toContainText('Create')
+  await expect(createRow).toContainText('Documentaries')
+  await createRow.click()
+
+  await expect(page.locator('.inspector .chip')).toContainText('Documentaries')
+})
+
+test('multi-select shows a bulk editor in the right panel, not a top bar', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
   await page.locator('.card').nth(0).click()
@@ -124,5 +292,22 @@ test('multi-select shows the batch bar', async ({ page }) => {
     .locator('.card')
     .nth(1)
     .click({ modifiers: ['Meta'] })
-  await expect(page.locator('.batchbar')).toContainText('2 selected')
+
+  await expect(page.locator('.inspector__multi-head')).toContainText('2 bundles selected')
+  await expect(page.locator('.batchbar')).toHaveCount(0)
+
+  // Renaming overwrites the title on every selected bundle (a PATCH per id).
+  const patchedB0 = page.waitForResponse(
+    (r) => r.url().includes('/bundles/b0') && r.request().method() === 'PATCH',
+  )
+  const patchedB1 = page.waitForResponse(
+    (r) => r.url().includes('/bundles/b1') && r.request().method() === 'PATCH',
+  )
+  await page.getByLabel('Title').fill('Renamed All')
+  await page.getByLabel('Title').press('Enter')
+  await patchedB0
+  await patchedB1
+
+  // Both cards pick up the new title once the browse grid refetches.
+  await expect(page.locator('.card__title')).toHaveText(['Renamed All', 'Renamed All'])
 })

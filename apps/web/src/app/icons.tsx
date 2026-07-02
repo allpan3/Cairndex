@@ -119,3 +119,11 @@ export const IconFile = () => (
     <path d="M14 2v4a2 2 0 0 0 2 2h4" />
   </Svg>
 )
+
+/** Checkbox-with-check glyph — the "show only selected" filter toggle. */
+export const IconCheckSquare = () => (
+  <Svg>
+    <rect x="3" y="3" width="18" height="18" rx="4" />
+    <path d="M8 12l2.5 2.5L16 9" />
+  </Svg>
+)

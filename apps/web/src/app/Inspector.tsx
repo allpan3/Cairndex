@@ -19,7 +19,7 @@ function ConflictNotice({ error }: { error: unknown }) {
   )
 }
 
-function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+export function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <span className="stars" role="radiogroup" aria-label="Rating">
       {[1, 2, 3, 4, 5].map((n) => (
@@ -50,7 +50,7 @@ export function Inspector({
   if (bundleId === null) {
     return (
       <aside className="inspector">
-        <div className="state">Select a bundle to see its details.</div>
+        <div className="state">Select a bundle or collection to see its details.</div>
       </aside>
     )
   }
@@ -115,6 +115,9 @@ function BundleEditor({
         placeholder="Untitled"
         onChange={(e) => setTitle(e.target.value)}
         onBlur={() => commit('title', title)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
         aria-label="Title"
       />
 

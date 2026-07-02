@@ -14,7 +14,13 @@ export interface Row {
 
 const GAP = 10
 const META_HEIGHT = 44 // title + sub line under a grid card
-export const LIST_ROW_HEIGHT = 40
+
+/** Map the shared zoom (120–360, a grid card's target width) to a list row
+ * height, so the one zoom slider drives both layouts. Default zoom 200 → 40px
+ * (the previous fixed row height); clamped to a comfortable 34–72px range. */
+export function listRowHeight(zoom: number): number {
+  return Math.round(Math.max(34, Math.min(72, zoom * 0.2)))
+}
 
 function aspect(item: BundleSummary): number {
   if (item.width && item.height) return item.width / item.height
@@ -31,8 +37,9 @@ export function computeRows(
   if (containerWidth <= 0 || items.length === 0) return []
 
   if (layout === 'list') {
+    const rowH = listRowHeight(zoom)
     return items.map((item) => ({
-      height: LIST_ROW_HEIGHT,
+      height: rowH,
       cards: [{ item, x: 0, width: containerWidth }],
     }))
   }

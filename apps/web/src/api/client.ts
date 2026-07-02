@@ -15,6 +15,8 @@ export type BundleSummary = components['schemas']['BundleSummary']
 export type BundleBrowsePage = components['schemas']['BundleBrowsePage']
 export type ViewCounts = components['schemas']['ViewCounts']
 export type CollectionRead = components['schemas']['CollectionRead']
+export type CollectionCreate = components['schemas']['CollectionCreate']
+export type CollectionStats = components['schemas']['CollectionStats']
 export type LibraryRead = components['schemas']['LibraryRead']
 export type LibraryCreate = components['schemas']['LibraryCreate']
 export type LibraryRegister = components['schemas']['LibraryRegister']
@@ -25,6 +27,7 @@ export type FileViewListing = components['schemas']['FileViewListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type TagRead = components['schemas']['TagRead']
+export type TagCreate = components['schemas']['TagCreate']
 export type TagGroupRead = components['schemas']['TagGroupRead']
 export type BundlePatch = components['schemas']['BundleUpdate']
 export type FilePatch = components['schemas']['FileUpdate']
@@ -248,6 +251,21 @@ async function fetchAllPaged<T>(path: string, signal?: AbortSignal): Promise<T[]
 export const fetchAllCollections = (signal?: AbortSignal) =>
   fetchAllPaged<CollectionRead>(`${lib()}/collections`, signal)
 
+export const createCollection = (payload: CollectionCreate) =>
+  send<CollectionRead>(`${lib()}/collections`, 'POST', payload)
+
+export const renameCollection = (id: string, name: string, version?: number) =>
+  send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', { name }, version)
+
+export const updateCollection = (
+  id: string,
+  patch: { name?: string; note?: string | null; cover_bundle_id?: string | null },
+  version?: number,
+) => send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', patch, version)
+
+export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
+  getJson<CollectionStats>(`${lib()}/collections/${id}/stats`, signal)
+
 // --- Libraries (registry) ----------------------------------------------------
 export const fetchLibraries = (signal?: AbortSignal): Promise<LibraryRead[]> =>
   getJson<LibraryRead[]>('/api/v1/libraries', signal)
@@ -398,6 +416,16 @@ export function fileThumbnailUrl(bundleId: string, fileId: string): string {
   return `${lib()}/bundles/${bundleId}/files/${fileId}/thumbnail`
 }
 
+/**
+ * URL for a collection's cover thumbnail (its chosen or auto-picked cover
+ * bundle). `coverKey` (the collection's `cover_bundle_id`) busts the browser
+ * cache when the cover changes.
+ */
+export function collectionThumbnailUrl(collectionId: string, coverKey?: string | null): string {
+  const base = `${lib()}/collections/${collectionId}/thumbnail`
+  return coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base
+}
+
 export function fileContentUrl(fileId: string): string {
   return `${lib()}/files/${fileId}/content`
 }
@@ -413,6 +441,7 @@ export function fileStreamUrl(fileId: string): string {
 
 // --- Taxonomy (for the tag editor) ------------------------------------------
 export const fetchTags = (signal?: AbortSignal) => fetchAllPaged<TagRead>(`${lib()}/tags`, signal)
+export const createTag = (payload: TagCreate) => send<TagRead>(`${lib()}/tags`, 'POST', payload)
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>(`${lib()}/tag-groups`, signal)
 

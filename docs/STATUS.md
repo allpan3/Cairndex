@@ -1,5 +1,102 @@
 # Project status
 
+## Active branch: `feat/collection-view` (not yet merged)
+
+GUI-only work, on top of `main`. Not covered by the "Latest merged milestones"
+section below (that section predates this branch and hasn't been reconciled
+with it — treat this section as authoritative for current collection/browse
+UI state, and the rest of this doc as backend/maintenance history).
+
+Latest session's changes (frontend-only, no backend files touched):
+
+- **Subcollection cards get the same left-click marquee drag-select as the
+  bundle grid** (`useMarqueeSelect`, scoped to `.collcard__grid`/`.collhead`
+  so a drag there can't also pick up bundle cards), plus click-on-empty-space
+  deselects. Subcollection selection (`selectedCollectionIds: Set<string>`)
+  and bundle selection (`selectedIds`) are mutually exclusive — selecting one
+  clears the other.
+- **The "All" view now shows root-level collections as cards** above the
+  bundle grid, via the same `CollectionHeader` component used inside a
+  collection (generalized with a `sectionLabel` prop: "Collections" at the
+  root, "Subcollections" inside a collection).
+- Folder cards got a **stacked-sheet visual** (offset box-shadow "sheets")
+  and their footer shows **both** the direct bundle count and the
+  subcollection count.
+- **Collection and bundle titles commit on Enter**, not just blur.
+- Fixed: bundle cards showed a duration badge on image bundles when the
+  primary file's metadata had a stray `duration` — now gated on `media_kind
+  === 'video'`.
+- **Removed the top "batch bar"** (`BatchBar.tsx`, deleted) for 2+ selected
+  bundles. Replaced with a right-panel `MultiBundleInspector`: title
+  overwrites all, rating shows the common value (or unset) and overwrites all,
+  tags/collections common to every selected bundle show as assigned and
+  toggling adds/removes across the whole selection (via the existing
+  `POST /bundles/batch` endpoint — no backend change needed), size/files are
+  summed. No note field (bulk-overwriting prose doesn't make sense). New
+  hooks: `useCommonBundleTags`, `useCommonBundleCollections`,
+  `useBulkUpdateBundles` (parallel PATCH per id, no `If-Match` — a bulk
+  overwrite is an explicit one-shot action and per-row versions aren't loaded
+  in the browse grid).
+- Right-click context menu items are now consistently Title Case.
+
+Verified: frontend `lint`/`format:check`/`typecheck`/`vitest` (9)/`build`
+clean; Playwright **24/24** passed (added a subcollection-marquee test and
+rewrote the multi-select test for the new right-panel editor). Manually
+exercised in the browser preview (marquee + deselect on both bundles and
+subcollections, Enter-commit on both title fields, bulk rename/rating/
+tag-picker/collection-picker on a real 2-bundle selection against the local
+demo library, then reverted those demo-data edits via direct API calls so the
+demo library is unchanged for review).
+
+**Follow-up fixes session (same day):**
+
+- **Fixed a marquee-drag runaway-scroll bug.** The drag-selection overlay was
+  sized from raw, unclamped mouse coordinates; dragging past the loaded
+  content inflated the container's scrollable area (since the overlay is an
+  absolutely-positioned child of an `overflow: auto` container), and because
+  that gave auto-scroll more room to advance — which let the overlay grow
+  further — the two fed each other every animation frame. A ~400px drag
+  paused near the bottom edge for ~1s inflated one container's scrollable
+  height from 232px to 14,198px, confirmed via direct DOM measurement before
+  and after the fix. Fixed in `useMarqueeSelect.ts` by clamping every
+  content-space point to the wrapper's true `scrollWidth`/`scrollHeight`,
+  measured once at drag start (before the overlay exists) — applies to both
+  the bundle grid and the collection cards (shared hook). No dedicated
+  automated test added (hard to assert scrollHeight growth reliably in
+  Playwright); verified via direct `scrollHeight` measurement in the browser
+  preview before/after, with mouseup/mousemove sequences reproducing the
+  original bug.
+- **"Create '<search>'" in the tag/collection pickers.** Typing a search (in
+  the single-bundle TagEditor/CollectionPicker, and the multi-bundle bulk
+  editor's pickers) shows a "+ Create "…"" row whenever the search doesn't
+  already name an existing tag/collection *exactly* — including when it's a
+  substring of one (searching "Act" while "Action" exists still offers to
+  create "Act", alongside the "Action" partial match; first cut only showed
+  it when there were zero matches at all, corrected same-day per feedback).
+  Clicking it creates a top-level tag/collection and assigns it immediately.
+  New `POST /tags` client call + `useCreateTag` hook (the endpoint already
+  existed; only the frontend was missing). e2e-covered (both single-bundle
+  pickers, incl. the partial-match case); the multi-bundle picker's create
+  path shares the same `BulkPicker` component and is exercised the same way
+  manually.
+- Empty-inspector placeholder now says "Select a bundle or collection…".
+- Confirmed (not a bug): a collection with only subcollections and no direct
+  bundles already resolves its cover correctly from anywhere in its subtree
+  (`resolve_cover_bundle_id` walks the full recursive descendant set, not
+  just direct children) — covered by
+  `test_collection_cover_prefers_chosen_bundle_then_auto_picks`.
+
+Verified: frontend gate green again (lint/format/typecheck/vitest 9/build);
+Playwright **27/27** (3 create-tag/create-collection tests, incl. the
+partial-match case). Manually verified the runaway-scroll fix and all create
+flows (incl. partial-match) in the browser preview against the real demo
+library, then reverted the demo-data mutations (2 created tags + 1 created
+collection, across both rounds) via direct API `DELETE` calls.
+
+Not yet a PR — branch also carries the prior collection-view slices (picker
+redesign, empty-collection sidebar fix, collection inspector, cover cards)
+from earlier sessions.
+
 ## Latest merged milestones
 
 Maintenance-readiness sequence, merged as four independent PRs (#38–#41):
@@ -248,6 +345,17 @@ dialogs).
    sort).
 4. Consider hardening the passphrase lock for wider exposure (rate limiting,
    lockout, persistent sessions) if it ever needs to face more than a trusted LAN.
+5. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
+   browser — breadcrumb + count + search + sort + layout + zoom; single-click
+   selects and drives the inspector, double-click navigates/opens):
+   - File search is currently a **client-side name filter of the loaded
+     listing**. Add whole-library/recursive file search (file titles are
+     already in the `bundle_search` FTS index, but that returns bundles, not
+     File-View entries — needs a file-entry-shaped search path).
+   - Enrich File-View metadata in the inspector: for a **directory**, show its
+     child count (needs the backend `list_entries`/entry schema to carry a
+     `child_count`). (A collection's note is already editable — see the
+     collection inspector, `feat/collection-view`.)
 
 ## Unresolved decisions
 

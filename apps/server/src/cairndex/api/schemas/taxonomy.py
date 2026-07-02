@@ -41,6 +41,8 @@ class CollectionCreate(BaseModel):
 class CollectionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     parent_id: str | None = None
+    note: str | None = None
+    cover_bundle_id: str | None = None
 
 
 class CollectionRead(BaseModel):
@@ -49,11 +51,24 @@ class CollectionRead(BaseModel):
     id: str
     parent_id: str | None
     name: str
+    note: str | None = None
+    cover_bundle_id: str | None = None
     sort_order: int
     created_at: datetime
     updated_at: datetime
     # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
     version: int
+
+
+class CollectionStats(BaseModel):
+    """Counts shown in the collection inspector."""
+
+    # Bundles directly in this collection (not counting subcollections).
+    direct_bundles: int
+    # Distinct bundles in this collection and every descendant subcollection.
+    total_bundles: int
+    # Direct child subcollections.
+    subcollections: int
 
 
 # --- Tag groups --------------------------------------------------------------

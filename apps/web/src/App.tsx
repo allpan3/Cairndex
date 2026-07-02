@@ -14,12 +14,15 @@ import {
   useBrowse,
   useCollectionCounts,
   useCollections,
+  useCreateCollection,
   useDeleteBundles,
   useDeleteCollection,
   useLibraries,
   useLibraryAuth,
   useLibraryLock,
   useProbe,
+  useRenameCollection,
+  useUpdateCollection,
   useScan,
   useSmartCollectionMutations,
   useSmartCollections,
@@ -28,7 +31,6 @@ import {
 } from './api/hooks'
 import { ContextMenu } from './app/ContextMenu'
 import { type MenuEntry, useContextMenu } from './app/useContextMenu'
-import { BatchBar } from './app/BatchBar'
 import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
@@ -45,6 +47,9 @@ import {
   CreateBundleDialog,
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
+import { CollectionHeader } from './app/CollectionHeader'
+import { CollectionInspector } from './app/CollectionInspector'
+import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
@@ -221,6 +226,8 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         onSelect={noop}
         collections={[]}
         onDeleteCollection={noop}
+        onCreateCollection={noop}
+        onRenameCollection={noop}
         smartCollections={[]}
         onNewSmartCollection={noop}
         onEditSmartCollection={noop}
@@ -314,6 +321,9 @@ function Workspace({
   const probe = useProbe({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
   const deleteCollection = useDeleteCollection()
+  const createCollection = useCreateCollection()
+  const renameCollection = useRenameCollection()
+  const updateCollection = useUpdateCollection()
   const smartCollectionMutations = useSmartCollectionMutations()
   const batch = useBatchUpdate()
   const menu = useContextMenu()
@@ -331,10 +341,56 @@ function Workspace({
     return () => clearTimeout(t)
   }, [search])
 
+  // When viewing a collection, its direct subcollections are shown as folder
+  // tiles above the grid; the toggle (persisted) decides whether the grid also
+  // includes bundles from those subcollections. Off by default: a collection
+  // shows only its own bundles, like a folder shows only its own files.
+  const [showSubContents, setShowSubContents] = usePersistentState(
+    'cairndex.showSubcollectionContents',
+    false,
+  )
+  const [subcollapsed, setSubcollapsed] = useState(false)
+  const [contentsCollapsed, setContentsCollapsed] = useState(false)
+  // Subcollections selected (click or marquee) for their inspector, distinct
+  // from navigating into one (double-click). A Set so drag-select can pick
+  // several. Mutually exclusive with the bundle selection — selecting either
+  // clears the other, since acting on both at once is meaningless.
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<string>>(new Set())
+  // Each collection opens with both sections expanded (don't carry a fold from
+  // the previously-viewed collection). Reset during render on change rather than
+  // in an effect — React's "adjust state when a prop changes" pattern.
+  const [foldedFor, setFoldedFor] = useState(selection.collectionId)
+  if (foldedFor !== selection.collectionId) {
+    setFoldedFor(selection.collectionId)
+    setSubcollapsed(false)
+    setContentsCollapsed(false)
+    setSelectedCollectionIds(new Set())
+  }
+  // The folder cards shown above the grid: a collection's direct subcollections
+  // when viewing one, or every root (top-level) collection in the All view.
+  const isAllView =
+    selection.view === 'all' && !selection.collectionId && !selection.smartCollectionId
+  const headerCollections = useMemo(() => {
+    const all = collections.data ?? []
+    const parentId = selection.collectionId ?? null
+    if (parentId === null && !isAllView) return []
+    return all
+      .filter((c) => (c.parent_id ?? null) === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [collections.data, selection.collectionId, isAllView])
+
+  // Direct subcollection count per collection id (for the card footers).
+  const subCounts = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const c of collections.data ?? [])
+      if (c.parent_id) map[c.parent_id] = (map[c.parent_id] ?? 0) + 1
+    return map
+  }, [collections.data])
+
   const browse = useBrowse({
     view: selection.view,
     collectionId: selection.collectionId,
-    includeDescendants: selection.collectionId !== null,
+    includeDescendants: selection.collectionId !== null && showSubContents,
     sort: prefs.sort,
     order: prefs.order,
     limit: 100,
@@ -346,6 +402,14 @@ function Workspace({
   const items = useMemo(() => browse.data?.pages.flatMap((p) => p.items) ?? [], [browse.data])
   const total = browse.data?.pages[0]?.total ?? 0
   const filtered = items
+
+  // Exactly one subcollection selected → show its inspector; several → a small
+  // multi-selection summary (see the right panel below).
+  const singleSelectedCollectionId =
+    selectedCollectionIds.size === 1 ? [...selectedCollectionIds][0] : null
+  const selectedCollection = singleSelectedCollectionId
+    ? (collections.data?.find((c) => c.id === singleSelectedCollectionId) ?? null)
+    : null
 
   const title = useMemo(() => {
     if (activeSmartCollection) return activeSmartCollection.name
@@ -367,12 +431,48 @@ function Workspace({
       setSelectedIds(new Set([id]))
     }
     setActiveId(id)
+    setSelectedCollectionIds(new Set())
+  }, [])
+
+  // Marquee (drag-to-select) result from Browser — the full resulting
+  // selection, already merged with the pre-drag selection when additive.
+  // Always clears the subcollection selection (an empty result is an
+  // empty-space click that deselects everything).
+  const selectMany = useCallback((ids: string[]) => {
+    setSelectedIds(new Set(ids))
+    setActiveId(ids.length ? (ids[ids.length - 1] ?? null) : null)
+    setSelectedCollectionIds(new Set())
   }, [])
 
   const open = useCallback((id: string) => {
     setSelectedIds(new Set([id]))
     setActiveId(id)
+    setSelectedCollectionIds(new Set())
     setOpenBundleId(id)
+  }, [])
+
+  // Click a subcollection card (with modifier = toggle). Clears the bundle
+  // selection to keep the two mutually exclusive.
+  const selectCollection = useCallback((id: string, e: React.MouseEvent) => {
+    setSelectedCollectionIds((prev) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      }
+      return new Set([id])
+    })
+    setSelectedIds(new Set())
+    setActiveId(null)
+  }, [])
+
+  // Marquee result over the subcollection cards — replaces the subcollection
+  // selection wholesale and clears the bundle selection.
+  const selectCollectionsMany = useCallback((ids: string[]) => {
+    setSelectedCollectionIds(new Set(ids))
+    setSelectedIds(new Set())
+    setActiveId(null)
   }, [])
 
   const clearSelection = useCallback(() => {
@@ -395,19 +495,25 @@ function Workspace({
       if (selection.collectionId) {
         const collectionId = selection.collectionId
         items.push({
-          label: n > 1 ? `Remove ${n} from this collection` : 'Remove from this collection',
+          label: 'Set as Collection Cover',
+          disabled: n > 1,
+          onClick: () =>
+            updateCollection.mutate({ id: collectionId, patch: { cover_bundle_id: id } }),
+        })
+        items.push({
+          label: n > 1 ? `Remove ${n} from This Collection` : 'Remove from This Collection',
           onClick: () =>
             batch.mutate({ bundle_ids: targets, remove_collection_ids: [collectionId] }),
         })
       }
       items.push(null, {
-        label: n > 1 ? `Delete ${n} bundles` : 'Delete Bundle',
+        label: n > 1 ? `Delete ${n} Bundles` : 'Delete Bundle',
         danger: true,
         onClick: () => setDeletingBundles(targets),
       })
       menu.open(e, items)
     },
-    [selectedIds, selection.collectionId, open, batch, menu],
+    [selectedIds, selection.collectionId, open, batch, menu, updateCollection],
   )
 
   // Files-surface context actions (Unbundled list or the directory tree) operate
@@ -589,12 +695,17 @@ function Workspace({
           setMode('collection')
           setSelection(s)
           clearSelection()
+          setSelectedCollectionIds(new Set())
           setOpenBundleId(null)
         }}
         counts={counts.data}
         collections={collections.data ?? []}
         collectionCounts={collectionCounts.data}
         onDeleteCollection={removeCollection}
+        onCreateCollection={(payload, callbacks) => createCollection.mutate(payload, callbacks)}
+        onRenameCollection={(id, name, callbacks) =>
+          renameCollection.mutate({ id, name }, callbacks)
+        }
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -627,30 +738,72 @@ function Workspace({
               prefs={prefs}
               onPrefs={setPrefs}
             />
-            {selectedIds.size >= 2 && !openBundleId && (
-              <BatchBar ids={[...selectedIds]} onClear={clearSelection} />
-            )}
             {openBundleId ? (
               <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
             ) : (
-              <Browser
-                items={filtered}
-                total={total}
-                searchQuery={debouncedSearch.trim() || undefined}
-                layout={prefs.layout}
-                zoom={prefs.zoom}
-                selectedIds={selectedIds}
-                onSelect={select}
-                onOpen={open}
-                onContextMenu={bundleContextMenu}
-                onEmptyContextMenu={emptyContextMenu}
-                isLoading={browse.isLoading}
-                isError={browse.isError}
-                error={browse.error}
-                hasNextPage={browse.hasNextPage}
-                isFetchingNextPage={browse.isFetchingNextPage}
-                fetchNextPage={browse.fetchNextPage}
-              />
+              <>
+                {headerCollections.length > 0 && (
+                  <CollectionHeader
+                    subcollections={headerCollections}
+                    sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
+                    counts={collectionCounts.data}
+                    subcounts={subCounts}
+                    showContents={selection.collectionId ? showSubContents : undefined}
+                    onToggleShowContents={selection.collectionId ? setShowSubContents : undefined}
+                    onSelectSubcollection={selectCollection}
+                    onMarqueeSelect={selectCollectionsMany}
+                    onOpenSubcollection={(id) => {
+                      setSelection({ view: 'all', collectionId: id })
+                      clearSelection()
+                      setSelectedCollectionIds(new Set())
+                      setOpenBundleId(null)
+                    }}
+                    selectedIds={selectedCollectionIds}
+                    zoom={prefs.zoom}
+                    subcollapsed={subcollapsed}
+                    onToggleSubcollapsed={() => setSubcollapsed((v) => !v)}
+                    contentsCount={total}
+                    contentsCollapsed={contentsCollapsed}
+                    onToggleContents={() => setContentsCollapsed((v) => !v)}
+                  />
+                )}
+                {!(headerCollections.length > 0 && contentsCollapsed) && (
+                  <Browser
+                    items={filtered}
+                    total={total}
+                    searchQuery={debouncedSearch.trim() || undefined}
+                    emptyState={
+                      selection.collectionId && headerCollections.length > 0 && !showSubContents ? (
+                        <>
+                          <div>No bundles directly in this collection.</div>
+                          <div>
+                            Open a subcollection above, or tick “Show subcollection contents”.
+                          </div>
+                        </>
+                      ) : selection.collectionId ? (
+                        <>
+                          <div>This collection is empty.</div>
+                          <div>Add bundles to it from the grid or file view.</div>
+                        </>
+                      ) : undefined
+                    }
+                    layout={prefs.layout}
+                    zoom={prefs.zoom}
+                    selectedIds={selectedIds}
+                    onSelect={select}
+                    onMarqueeSelect={selectMany}
+                    onOpen={open}
+                    onContextMenu={bundleContextMenu}
+                    onEmptyContextMenu={emptyContextMenu}
+                    isLoading={browse.isLoading}
+                    isError={browse.isError}
+                    error={browse.error}
+                    hasNextPage={browse.hasNextPage}
+                    isFetchingNextPage={browse.isFetchingNextPage}
+                    fetchNextPage={browse.fetchNextPage}
+                  />
+                )}
+              </>
             )}
           </>
         )}
@@ -658,6 +811,19 @@ function Workspace({
 
       {mode === 'file' ? (
         <FileInspector entry={fileEntry} />
+      ) : selectedCollection ? (
+        <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
+      ) : selectedCollectionIds.size > 1 ? (
+        <aside className="inspector">
+          <div className="state">{selectedCollectionIds.size} collections selected</div>
+        </aside>
+      ) : selectedIds.size > 1 ? (
+        <MultiBundleInspector
+          key={[...selectedIds].sort().join(',')}
+          ids={[...selectedIds]}
+          items={filtered.filter((i) => selectedIds.has(i.id))}
+          onClear={clearSelection}
+        />
       ) : (
         <Inspector bundleId={activeId} onAddFiles={(id) => setAddFilesBundleId(id)} />
       )}

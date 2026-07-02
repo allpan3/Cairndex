@@ -287,6 +287,13 @@ class Collection(Base):
         String(26), ForeignKey("collections.id", ondelete="SET NULL"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(255))
+    # Freeform owner note/description for the collection (shown in the inspector).
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A bundle inside the collection whose cover is used as the collection cover
+    # (set via "Set as collection cover"). NULL → auto-pick a bundle in the tree.
+    cover_bundle_id: Mapped[str | None] = mapped_column(
+        String(26), ForeignKey("asset_bundles.id", ondelete="SET NULL"), nullable=True
+    )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[CreatedAt]

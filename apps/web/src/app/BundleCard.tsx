@@ -19,6 +19,10 @@ export function BundleCard({
   onOpen,
   onContextMenu,
 }: BundleCardProps) {
+  // Duration only makes sense for a video-backed card; an image bundle whose
+  // primary file happens to carry a stray "duration" in its metadata shouldn't
+  // show a runtime badge next to a JPG type badge.
+  const isVideo = item.media_kind === 'video'
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
@@ -50,14 +54,16 @@ export function BundleCard({
             {item.file_count}
           </span>
         )}
-        {item.duration ? <span className="card__dur">{formatDuration(item.duration)}</span> : null}
+        {isVideo && item.duration ? (
+          <span className="card__dur">{formatDuration(item.duration)}</span>
+        ) : null}
       </div>
       {showMeta && (
         <div className="card__meta">
           <div className="card__title">{item.title ?? 'Untitled'}</div>
           <div className="card__sub">
             <span>
-              {item.duration
+              {isVideo && item.duration
                 ? formatDuration(item.duration)
                 : formatDimensions(item.width, item.height)}
             </span>

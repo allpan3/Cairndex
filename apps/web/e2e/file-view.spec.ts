@@ -96,8 +96,9 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   // No destructive controls in this milestone.
   await expect(page.getByRole('button', { name: /delete|rename|move/i })).toHaveCount(0)
 
-  // Navigate into a directory; breadcrumb updates and the nested file shows.
-  await page.locator('.file-row__name', { hasText: 'Show' }).click()
+  // Navigate into a directory (double-click); breadcrumb updates and the
+  // nested file shows. Single-click only selects (drives the inspector).
+  await page.locator('.file-row__name', { hasText: 'Show' }).dblclick()
   await expect(page.locator('.file-view__crumbs')).toContainText('Show')
   await expect(page.locator('.file-row__name', { hasText: 'clip.mp4' })).toBeVisible()
 

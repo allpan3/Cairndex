@@ -1,12 +1,13 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { BundleSummary } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
-import { computeRows } from './layout'
+import { computeRows, type PlacedCard, type Row } from './layout'
 import type { LayoutMode } from './types'
+import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 const H_PADDING = 12
 
@@ -17,6 +18,9 @@ interface BrowserProps {
   zoom: number
   selectedIds: Set<string>
   onSelect: (id: string, e: React.MouseEvent) => void
+  // Fired continuously while a marquee drag is in progress (and once more on
+  // mouseup) with the full resulting selection — replaces selectedIds wholesale.
+  onMarqueeSelect: (ids: string[]) => void
   onOpen: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
   // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
@@ -30,14 +34,19 @@ interface BrowserProps {
   // When set, an empty result is shown as "no matches" for this query rather
   // than the generic "nothing here yet" state.
   searchQuery?: string
+  // Overrides the generic empty-state body (e.g. a collection whose bundles all
+  // live in subcollections). Ignored while a search is active.
+  emptyState?: React.ReactNode
 }
 
 export function Browser(props: BrowserProps) {
-  const { items, layout, zoom, selectedIds, onSelect, onOpen, onContextMenu } = props
+  const { items, layout, zoom, selectedIds, onSelect, onOpen, onContextMenu, onMarqueeSelect } =
+    props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(0)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
     if (!scrollEl) return
@@ -50,6 +59,51 @@ export function Browser(props: BrowserProps) {
 
   const rows = useMemo(() => computeRows(items, layout, width, zoom), [items, layout, width, zoom])
 
+  // Cumulative top offset of each row in content space — mirrors what the
+  // virtualizer derives from estimateSize, so marquee math stays in sync with
+  // rendered positions without needing to measure the (possibly unmounted,
+  // virtualized-away) DOM nodes.
+  const rowTops = useMemo(() => {
+    const tops: number[] = []
+    let acc = 0
+    for (const row of rows) {
+      tops.push(acc)
+      acc += row.height
+    }
+    return tops
+  }, [rows])
+
+  const cardRect = (rowIndex: number, row: Row, card: PlacedCard): MarqueeRect => {
+    const top = rowTops[rowIndex] ?? 0
+    if (layout === 'list') return { left: 0, top, width, height: row.height }
+    return { left: card.x, top, width: card.width, height: row.height - 10 }
+  }
+
+  const idsInRect = (rect: MarqueeRect): string[] => {
+    const ids: string[] = []
+    for (let ri = 0; ri < rows.length; ri++) {
+      const row = rows[ri]
+      if (!row) continue
+      const top = rowTops[ri] ?? 0
+      if (top > rect.top + rect.height) break
+      if (top + row.height < rect.top) continue
+      for (const card of row.cards) {
+        if (rectsIntersect(rect, cardRect(ri, row, card))) ids.push(card.item.id)
+      }
+    }
+    return ids
+  }
+
+  const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
+    getScrollEl: () => scrollEl,
+    getWrapperEl: () => wrapperRef.current,
+    isBackgroundTarget: (target) =>
+      !target.closest('[data-bundle-id]') && !target.closest('.list-row--head'),
+    hitTest: idsInRect,
+    getBaseSelection: () => selectedIds,
+    onChange: onMarqueeSelect,
+  })
+
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable fns; safe here
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -57,6 +111,14 @@ export function Browser(props: BrowserProps) {
     estimateSize: (i) => rows[i]?.height ?? 100,
     overscan: 6,
   })
+
+  // The virtualizer caches row sizes and only re-derives them when the row
+  // count changes. Grid zoom changes the column count (so it recomputes), but
+  // list zoom keeps one row per item — so force a re-measure when zoom/layout
+  // change, otherwise list rows wouldn't grow/shrink with the slider.
+  useEffect(() => {
+    virtualizer.measure()
+  }, [zoom, layout, width, virtualizer])
 
   // Load the next page when the user scrolls near the end.
   const virtualItems = virtualizer.getVirtualItems()
@@ -82,10 +144,11 @@ export function Browser(props: BrowserProps) {
 
   return (
     <div
-      className="browser"
+      className={`browser${marqueeRect ? ' browser--dragging' : ''}`}
       ref={setScrollEl}
       role="listbox"
       aria-label="Bundles"
+      onMouseDown={onBackgroundMouseDown}
       onContextMenu={onRootContextMenu}
     >
       {props.isError && (
@@ -105,10 +168,12 @@ export function Browser(props: BrowserProps) {
               <div>Try a different title, filename, tag, or collection.</div>
             </>
           ) : (
-            <>
-              <div>Nothing here yet.</div>
-              <div>Update the library or add files to see bundles.</div>
-            </>
+            (props.emptyState ?? (
+              <>
+                <div>Nothing here yet.</div>
+                <div>Update the library or add files to see bundles.</div>
+              </>
+            ))
           )}
         </div>
       )}
@@ -116,12 +181,26 @@ export function Browser(props: BrowserProps) {
       {showGrid && layout === 'list' && <ListHeader />}
       {showGrid && (
         <div
+          ref={wrapperRef}
           style={{
             height: virtualizer.getTotalSize(),
             position: 'relative',
             margin: `0 ${H_PADDING}px`,
           }}
         >
+          {marqueeRect && (
+            <div
+              className="marquee"
+              style={{
+                position: 'absolute',
+                left: marqueeRect.left,
+                top: marqueeRect.top,
+                width: marqueeRect.width,
+                height: marqueeRect.height,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
           {virtualItems.map((vRow) => {
             const row = rows[vRow.index]
             if (!row) return null
@@ -206,7 +285,7 @@ function ListRow({
   return (
     <div
       className={`list-row${selected ? ' list-row--selected' : ''}`}
-      style={{ height: 40, width: '100%' }}
+      style={{ height: '100%', width: '100%' }}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen(item.id)}
       onContextMenu={(e) => onContextMenu(item.id, e)}
