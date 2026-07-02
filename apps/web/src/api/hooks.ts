@@ -11,6 +11,7 @@ import {
   type BrowseParams,
   type BundlePatch,
   type CollectionCreate,
+  type FacetParams,
   type FilePatch,
   type FileSelection,
   type FilterExpression,
@@ -20,6 +21,7 @@ import {
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
   type TagCreate,
+  type TagRead,
   addUnbundledFilesToBundle,
   batchUpdate,
   browseBundles,
@@ -28,6 +30,8 @@ import {
   createEmptyBundle,
   createLibrary,
   createTag,
+  deleteTag,
+  updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
   deleteBundle,
@@ -51,6 +55,7 @@ import {
   fetchBundleFiles,
   fetchBundleTags,
   fetchCollectionCounts,
+  fetchFacets,
   fetchFileViewEntries,
   fetchLibraries,
   fetchPlaybackManifest,
@@ -137,6 +142,16 @@ export function useViewCounts() {
   return useQuery({
     queryKey: ['view-counts'],
     queryFn: ({ signal }) => fetchViewCounts(signal),
+  })
+}
+
+/** Faceted counts for a toolbar filter popover, scoped to the current browse
+ * context. Keyed by the full params so it refetches when the scope changes. */
+export function useFacets(params: FacetParams, enabled = true) {
+  return useQuery({
+    queryKey: ['facets', params],
+    queryFn: ({ signal }) => fetchFacets(params, signal),
+    enabled,
   })
 }
 
@@ -487,6 +502,62 @@ export function useCreateTag() {
     mutationFn: (payload: TagCreate) => createTag(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
   })
+}
+
+/** Rename/delete/reparent tags for the All Tags management page (Slice 3). */
+export function useTagMutations() {
+  const qc = useQueryClient()
+  // A tag change can affect the tree, its counts, group membership, and any
+  // browse/filter that references tags.
+  const invalidate = () => {
+    for (const key of [
+      'tags',
+      'tag-counts',
+      'tag-group-memberships',
+      'browse',
+      'bundle-tags',
+      'view-counts',
+    ])
+      qc.invalidateQueries({ queryKey: [key] })
+  }
+  return {
+    rename: useMutation({
+      mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+        updateTag(id, { name }, version),
+      // onSettled so a 409 conflict also refetches the latest tag state.
+      onSettled: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteTag(id),
+      onSuccess: invalidate,
+    }),
+    // Drag-to-reparent: move a tag under a new parent (null = top level). The tree
+    // is ordered by name, so there's no manual sibling order to maintain.
+    // Optimistic so the tag jumps to its new home immediately; roll back on error.
+    reparent: useMutation({
+      mutationFn: ({
+        id,
+        parentId,
+        version,
+      }: {
+        id: string
+        parentId: string | null
+        version?: number
+      }) => updateTag(id, { parent_id: parentId }, version),
+      onMutate: async ({ id, parentId }) => {
+        await qc.cancelQueries({ queryKey: ['tags'] })
+        const prev = qc.getQueryData<TagRead[]>(['tags'])
+        qc.setQueryData<TagRead[]>(['tags'], (old) =>
+          old?.map((t) => (t.id === id ? { ...t, parent_id: parentId } : t)),
+        )
+        return { prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev) qc.setQueryData(['tags'], ctx.prev)
+      },
+      onSettled: invalidate,
+    }),
+  }
 }
 
 export function useTagGroups() {

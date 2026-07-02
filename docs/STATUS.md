@@ -1,11 +1,56 @@
 # Project status
 
-## Active branch: `feat/collection-view` (not yet merged)
+## Active branch: `feat/adhoc-filters-tag-mgmt` (not yet merged)
 
-GUI-only work, on top of `main`. Not covered by the "Latest merged milestones"
-section below (that section predates this branch and hasn't been reconciled
-with it — treat this section as authoritative for current collection/browse
-UI state, and the rest of this doc as backend/maintenance history).
+Eagle-like ad-hoc filtering + tag management, in three reviewable slices on top
+of `main` (which now includes the collection-view GUI rework, merged as #45).
+
+- **Slice 1 — ad-hoc Tags filter.** A funnel button in the bundle toolbar reveals
+  a filter row with a **Tags** chip. Its popover has an Any/All/Equal rule + a
+  subtags toggle, tag-group tabs (display-only scoping), search, and a tag tree:
+  left-click includes, right-click excludes (mutually exclusive; browser context
+  menu suppressed). Counts are **faceted** — a new
+  `POST /filters/facets` endpoint returns tag/rating counts scoped to the current
+  browse context and the *other* active categories (never global static counts),
+  with parent-tag counts rolled up as distinct-bundle counts in Any/All or direct
+  in Equal. `apply_scope()` was extracted in `services/browse.py` so the grid,
+  its counts, and facets scope identically. Tag Equal/direct needs no new AST —
+  it maps to `contains_any` with `include_descendants=false`.
+- **Slice 2 — Rating filter.** A rating-specific `is_null` compiler operator
+  (Unrated). Toolbar Rating chip = star row + `=`/`≥`/`≤` + an Unrated row; the
+  Smart Collection editor's rating row uses the same star picker and an "is
+  unrated" operator, so saved collections round-trip it.
+- **Slice 3 — All Tags page.** A sidebar entry (below Untagged) opens a
+  management surface (`mode='tags'`): left panel (All / Uncategorized / groups,
+  each with a tag count) + an Eagle-style, pinyin-segmented, multi-column
+  **accordion grid** of top-level tags that expand in place to reveal children
+  (folded = rolled-up subtree count, expanded = direct). **Drag reparents** a tag
+  (onto another = nest; onto empty space = top level); the tree is name/pinyin
+  ordered, so manual sibling ordering was dropped (the `PUT /tags/reorder`
+  endpoint remains but is unused by the UI). Backend safe tag delete blocks a
+  parent with children. Double-clicking a tag applies a global Equal/direct
+  filter. (Initial cut was a single-column drag-reorder tree; reworked per review
+  into the accordion grid with reparent-by-drag.)
+
+Both toolbar filters and Smart Collections compile to the one canonical
+FilterExpression AST and stack under AND with the view/collection and text search.
+
+Verified: backend `ruff`/`ruff format --check`/`mypy` clean, `pytest` green
+(new `test_facets.py`; rating/tag/reorder cases in `test_filters.py`/
+`test_taxonomy.py`). Frontend `lint`/`format:check`/`typecheck`/`vitest`/`build`
+clean; Playwright green (new `e2e/filters.spec.ts`, `e2e/all-tags.spec.ts`, plus
+the Smart Collection unrated round-trip). Manually exercised against the local
+Demo Vault (Tags include/exclude, Rating stars + Unrated=22, All Tags page,
+double-click→global Equal filter) — all metadata-only, no demo data mutated.
+
+Out of scope (explicit follow-ups): Types filter, Collections toolbar filter,
+Starred tags, tag reparenting by drag, exact tag-set equality, URL/localStorage
+persistence of ad-hoc filters.
+
+## Earlier: `feat/collection-view` (merged, #45)
+
+GUI-only work. Treat this section as the collection/browse UI history; the rest
+of this doc is backend/maintenance history.
 
 Latest session's changes (frontend-only, no backend files touched):
 

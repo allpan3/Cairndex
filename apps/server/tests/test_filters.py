@@ -105,6 +105,23 @@ def test_text_and_rating(session: Session) -> None:
     assert got == {a.id}
 
 
+def test_rating_is_null_matches_unrated(session: Session) -> None:
+    rated = bundle_service.create_bundle(session, title="rated", rating=3)
+    unrated = bundle_service.create_bundle(session, title="unrated", rating=None)
+    session.commit()
+
+    # is_null / true → only the unrated bundle.
+    assert _matches(
+        session,
+        {"version": 1, "root": {"field": "rating", "operator": "is_null", "value": True}},
+    ) == {unrated.id}
+    # is_null / false → only rated bundles (rating IS NOT NULL).
+    assert _matches(
+        session,
+        {"version": 1, "root": {"field": "rating", "operator": "is_null", "value": False}},
+    ) == {rated.id}
+
+
 def test_not_and_or(session: Session) -> None:
     a = bundle_service.create_bundle(session, title="alpha", rating=5)
     b = bundle_service.create_bundle(session, title="beta", rating=1)

@@ -33,3 +33,28 @@ class BrowseRequest(BaseModel):
     filter: FilterExpression | None = None
     # Whole-library full-text search over bundle/file/tag/collection metadata.
     q: str | None = None
+
+
+class FacetRequest(BaseModel):
+    """Faceted counts over the current browse scope, for the toolbar filter
+    popovers. The scope mirrors a browse request (view/collection/search plus a
+    base filter), but the base ``filter`` must exclude the facet category being
+    shown so a category's own selections don't shrink its own counts."""
+
+    view: SystemView = SystemView.ALL
+    collection_id: str | None = None
+    include_descendants: bool = False
+    q: str | None = None
+    filter: FilterExpression | None = None
+    # Which facets to compute; anything else is ignored.
+    facets: list[str] = Field(default_factory=lambda: ["tags"])
+    # Whether parent-tag counts roll up their descendants (Any/All mode) or stay
+    # direct-only (Equal/direct mode). Ignored for the rating facet.
+    tag_include_descendants: bool = True
+
+
+class FacetResponse(BaseModel):
+    # Present only when requested. Tag map: tag id → matching-bundle count.
+    tags: dict[str, int] | None = None
+    # Rating map: "0".."5" or "unrated" → matching-bundle count.
+    ratings: dict[str, int] | None = None

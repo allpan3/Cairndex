@@ -38,6 +38,7 @@ from cairndex.persistence.models import (
 )
 from cairndex.search import search_predicate, to_match_query
 from cairndex.services.collections import collection_descendant_ids
+from cairndex.services.hierarchy import descendant_ids
 
 
 class SystemView(StrEnum):
@@ -165,6 +166,44 @@ def _apply_view(
     return stmt
 
 
+def _search_predicate(search: str | None) -> Any:
+    """Compile a toolbar search string into an FTS semijoin predicate, or None.
+
+    An all-punctuation query yields no usable terms → ``false()`` (match nothing).
+    """
+    if search is None or not search.strip():
+        return None
+    match = to_match_query(search)
+    return search_predicate(match) if match is not None else false()
+
+
+def apply_scope(
+    stmt: Select[Any],
+    session: Session,
+    *,
+    view: SystemView,
+    collection_id: str | None,
+    include_descendants: bool,
+    predicate: Any,
+    search_pred: Any,
+) -> Select[Any]:
+    """Apply the full browse scope (view/collection, unbundled hiding, filter AST,
+    search) to any ``select`` over ``AssetBundle``. Shared by the browse grid, its
+    counts, and the facet-count endpoint so all three scope identically."""
+    stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
+    # The Unbundled view shows *only* scan-staged provisional bundles; every other
+    # view (and any collection) hides them until they are confirmed.
+    if view is SystemView.UNBUNDLED and collection_id is None:
+        stmt = stmt.where(_unbundled_predicate())
+    else:
+        stmt = stmt.where(not_(_unbundled_predicate()))
+    if predicate is not None:
+        stmt = stmt.where(predicate)
+    if search_pred is not None:
+        stmt = stmt.where(search_pred)
+    return stmt
+
+
 def _apply_sort(stmt: Select[Any], sort: BundleSort, descending: bool) -> Select[Any]:
     column = {
         BundleSort.DATE_ADDED: AssetBundle.created_at,
@@ -195,26 +234,19 @@ def browse_bundles(
     # the same compiled predicate, so they share one ranking/pagination path.
     predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
     # Toolbar text search: a whole-library FTS5 match, composed as a non-correlated
-    # semijoin so it stacks with the active view/collection/filter and sort. An
-    # all-punctuation query yields no usable terms → match nothing.
-    search_pred = None
-    if search is not None and search.strip():
-        match = to_match_query(search)
-        search_pred = search_predicate(match) if match is not None else false()
+    # semijoin so it stacks with the active view/collection/filter and sort.
+    search_pred = _search_predicate(search)
 
     def _scoped(stmt: Select[Any]) -> Select[Any]:
-        stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
-        # The Unbundled view shows *only* scan-staged provisional bundles; every
-        # other view (and any collection) hides them until they are confirmed.
-        if view is SystemView.UNBUNDLED and collection_id is None:
-            stmt = stmt.where(_unbundled_predicate())
-        else:
-            stmt = stmt.where(not_(_unbundled_predicate()))
-        if predicate is not None:
-            stmt = stmt.where(predicate)
-        if search_pred is not None:
-            stmt = stmt.where(search_pred)
-        return stmt
+        return apply_scope(
+            stmt,
+            session,
+            view=view,
+            collection_id=collection_id,
+            include_descendants=include_descendants,
+            predicate=predicate,
+            search_pred=search_pred,
+        )
 
     base = _scoped(select(AssetBundle.id).where(_visible_file_exists()))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
@@ -355,4 +387,103 @@ def tag_counts(session: Session) -> dict[str, int]:
     counts = {tag_id: count for tag_id, count in rows}
     for (tag_id,) in session.execute(select(Tag.id)).all():
         counts.setdefault(tag_id, 0)
+    return counts
+
+
+# The "unrated" bucket key for rating facets (JSON keys are strings; None → this).
+UNRATED_KEY = "unrated"
+
+
+@dataclass(frozen=True)
+class FacetCounts:
+    # Per tag id → count of matching bundles in the current browse scope. Present
+    # only when tags were requested.
+    tags: dict[str, int] | None
+    # Rating value ("0".."5") or "unrated" → count. Present only when requested.
+    ratings: dict[str, int] | None
+
+
+def facet_counts(
+    session: Session,
+    *,
+    view: SystemView = SystemView.ALL,
+    collection_id: str | None = None,
+    include_descendants: bool = False,
+    filter_expr: FilterExpression | None = None,
+    search: str | None = None,
+    want_tags: bool = False,
+    want_ratings: bool = False,
+    tag_include_descendants: bool = True,
+) -> FacetCounts:
+    """Faceted counts over the *current browse scope* — the same view/collection,
+    search, and base filter the grid is showing — not global static counts.
+
+    The base ``filter_expr`` must already exclude the facet category being
+    displayed (the caller composes it from the *other* active categories), so the
+    tag popover's own include/exclude selections don't shrink their own counts.
+
+    Tag counts follow the active tag rule: with ``tag_include_descendants`` a
+    parent tag counts bundles matching it *or any descendant* (distinct); without
+    it, direct membership only. Both are computed over the scoped bundle set.
+    """
+    predicate = compile_expression(session, filter_expr) if filter_expr is not None else None
+    scoped = apply_scope(
+        select(AssetBundle.id).where(_visible_file_exists()),
+        session,
+        view=view,
+        collection_id=collection_id,
+        include_descendants=include_descendants,
+        predicate=predicate,
+        search_pred=_search_predicate(search),
+    )
+    scoped_sq = scoped.subquery()
+    scoped_ids = select(scoped_sq.c.id)
+
+    tags = _tag_facet(session, scoped_ids, tag_include_descendants) if want_tags else None
+    ratings = _rating_facet(session, scoped_ids) if want_ratings else None
+    return FacetCounts(tags=tags, ratings=ratings)
+
+
+def _tag_facet(session: Session, scoped_ids: Any, include_descendants: bool) -> dict[str, int]:
+    # Direct (leaf) counts in one grouped pass over the association-table index.
+    rows = session.execute(
+        select(asset_bundle_tags.c.tag_id, func.count())
+        .where(asset_bundle_tags.c.bundle_id.in_(scoped_ids))
+        .group_by(asset_bundle_tags.c.tag_id)
+    ).all()
+    direct = {tag_id: count for tag_id, count in rows}
+
+    all_tags = session.execute(select(Tag.id, Tag.parent_id)).all()
+    counts = {tag_id: direct.get(tag_id, 0) for (tag_id, _parent) in all_tags}
+    if not include_descendants:
+        return counts
+
+    # Roll a parent up over its subtree as a *distinct*-bundle count (a bundle
+    # tagged with both a parent and a child must not be double-counted). Only tags
+    # that actually have children need the extra query; leaves keep direct counts.
+    parents_with_children = {parent for (_tid, parent) in all_tags if parent is not None}
+    for tag_id in counts:
+        if tag_id not in parents_with_children:
+            continue
+        subtree = descendant_ids(session, Tag, tag_id, include_self=True)
+        counts[tag_id] = (
+            session.scalar(
+                select(func.count(func.distinct(asset_bundle_tags.c.bundle_id)))
+                .where(asset_bundle_tags.c.bundle_id.in_(scoped_ids))
+                .where(asset_bundle_tags.c.tag_id.in_(subtree))
+            )
+            or 0
+        )
+    return counts
+
+
+def _rating_facet(session: Session, scoped_ids: Any) -> dict[str, int]:
+    rows = session.execute(
+        select(AssetBundle.rating, func.count())
+        .where(AssetBundle.id.in_(scoped_ids))
+        .group_by(AssetBundle.rating)
+    ).all()
+    counts: dict[str, int] = {}
+    for rating, count in rows:
+        counts[UNRATED_KEY if rating is None else str(rating)] = count
     return counts

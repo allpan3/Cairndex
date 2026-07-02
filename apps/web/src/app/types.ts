@@ -2,8 +2,9 @@ import type { BundleSort, SortOrder, SystemView } from '../api/client'
 
 export type LayoutMode = 'grid' | 'justified' | 'list'
 
-// The two browsing surfaces: logical (bundle-first) vs. physical (filesystem).
-export type AppMode = 'collection' | 'file'
+// The browsing/management surfaces: logical (bundle-first), physical
+// (filesystem), and the All Tags management page.
+export type AppMode = 'collection' | 'file' | 'tags'
 
 export interface Selection {
   view: SystemView
