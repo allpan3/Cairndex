@@ -58,7 +58,7 @@ export function Toolbar({
         <span className="toolbar__spacer" />
 
         <button
-          className={`seg toolbar__filter-toggle${filtersOpen || filtersActive ? ' is-active' : ''}`}
+          className={`seg toolbar__filter-toggle${filtersOpen ? ' is-active' : ''}`}
           onClick={() => setFiltersOpen((o) => !o)}
           aria-label="Filters"
           aria-pressed={filtersOpen}
