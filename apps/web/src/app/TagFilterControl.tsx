@@ -13,7 +13,8 @@ import {
   withoutCategory,
 } from './adHocFilters'
 import { IconTag } from './icons'
-import { flattenHierarchy, usePopover } from './usePopover'
+import { PickGuides } from './PickGuides'
+import { usePopover, visibleHierarchy } from './usePopover'
 
 const RULES: { value: TagRule; label: string; title: string }[] = [
   { value: 'any', label: 'Any', title: 'Match any selected tag (contains_any)' },
@@ -88,6 +89,14 @@ function TagFilterPanel({
 
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const toggleCollapse = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   // Facet counts scoped to everything *except* the tags category, so this
   // popover's own include/exclude don't shrink its own numbers.
@@ -136,19 +145,41 @@ function TagFilterPanel({
     setTags({ include: [...include], exclude: [...exclude] })
   }
 
-  // Tags shown: the whole hierarchy, scoped to a selected group (groups are
-  // navigation/display only — they never filter bundles by group). A tag that
-  // isn't present at all in the current view (facet count 0) is hidden, unless
-  // it's already selected here — so a selection never silently disappears. While
-  // the counts are still loading, show everything rather than flashing empty.
-  const flat = flattenHierarchy(tags)
+  // Tags shown as a foldable tree, scoped to a selected group (groups are
+  // navigation/display only — they never filter bundles by group). A tag not
+  // present in the current view (facet count 0) is hidden unless selected here or
+  // an ancestor of a shown tag (so parents stay reachable); counts still loading
+  // → show everything. Searching auto-expands so matches never hide in a fold.
+  const byId = new Map(tags.map((tg) => [tg.id, tg]))
+  const childOf = new Map<string | null, TagRead[]>()
+  for (const tg of tags) {
+    const k = tg.parent_id ?? null
+    childOf.set(k, [...(childOf.get(k) ?? []), tg])
+  }
   const groupMember = groupFilter !== null ? new Set(memberships[groupFilter] ?? []) : null
   const match = (tag: TagRead) => !search || tag.name.toLowerCase().includes(search.toLowerCase())
   const countsLoaded = facets.data !== undefined
   const seen = (id: string) => !countsLoaded || (counts[id] ?? 0) > 0 || inc.has(id) || exc.has(id)
-  const rows = flat.filter(
-    ({ item }) =>
-      (groupMember === null || groupMember.has(item.id)) && match(item) && seen(item.id),
+  const shown = (id: string): boolean => {
+    const tag = byId.get(id)
+    return (
+      tag !== undefined && (groupMember === null || groupMember.has(id)) && seen(id) && match(tag)
+    )
+  }
+  // Keep a tag if it (or any descendant) is shown, so a hidden/0-count parent
+  // still appears as a fold node above its shown children.
+  const keepMemo = new Map<string, boolean>()
+  const keep = (id: string): boolean => {
+    const cached = keepMemo.get(id)
+    if (cached !== undefined) return cached
+    let k = shown(id)
+    for (const c of childOf.get(id) ?? []) if (keep(c.id)) k = true
+    keepMemo.set(id, k)
+    return k
+  }
+  const rows = visibleHierarchy(
+    tags.filter((tg) => keep(tg.id)),
+    search ? new Set() : collapsed,
   )
 
   return (
@@ -209,14 +240,13 @@ function TagFilterPanel({
       )}
 
       {rows.length === 0 && <div className="pick-group">No matching tags</div>}
-      {rows.map(({ item, depth }) => {
+      {rows.map(({ item, depth, hasChildren }) => {
         const on = inc.has(item.id)
         const off = exc.has(item.id)
         return (
           <div
             key={item.id}
             className={`pick-row tag-filter__row${on ? ' pick-row--on' : ''}${off ? ' tag-filter__row--exc' : ''}`}
-            style={{ paddingLeft: 6 + depth * 14 }}
             onClick={() => toggleInclude(item.id)}
             onContextMenu={(e) => {
               e.preventDefault()
@@ -226,6 +256,7 @@ function TagFilterPanel({
             aria-selected={on}
             title="Left-click to include · right-click to exclude"
           >
+            <PickGuides depth={depth} />
             <span
               className={`pick-row__box${on ? ' pick-row__box--on' : ''}${off ? ' pick-row__box--exc' : ''}`}
             >
@@ -233,6 +264,20 @@ function TagFilterPanel({
             </span>
             <span className="pick-row__name">{item.name}</span>
             <span className="pick-row__count">{counts[item.id] ?? 0}</span>
+            {hasChildren ? (
+              <button
+                className="pick-row__toggle"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleCollapse(item.id)
+                }}
+                aria-label={collapsed.has(item.id) ? 'Expand' : 'Collapse'}
+              >
+                {collapsed.has(item.id) ? '›' : '⌄'}
+              </button>
+            ) : (
+              <span className="pick-row__toggle" aria-hidden="true" />
+            )}
           </div>
         )
       })}

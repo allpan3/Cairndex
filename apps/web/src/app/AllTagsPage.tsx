@@ -9,7 +9,6 @@ import {
   useTags,
 } from '../api/hooks'
 import { ContextMenu } from './ContextMenu'
-import { IconTag } from './icons'
 import { alphaBucket, bucketOrder } from './pinyin'
 import { useContextMenu } from './useContextMenu'
 
@@ -220,7 +219,7 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
               onClick={() => toggleExpand(tag.id)}
               aria-label={open ? 'Collapse' : 'Expand'}
             >
-              {open ? '▾' : '▸'}
+              {open ? '⌄' : '›'}
             </button>
           ) : (
             <span className="tagtile__chevron tagtile__chevron--leaf" aria-hidden />
@@ -254,7 +253,6 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
           className={`alltags__nav${panel === 'all' ? ' is-active' : ''}`}
           onClick={() => setPanel('all')}
         >
-          <IconTag />
           <span className="alltags__nav-label">All</span>
           <span className="alltags__nav-count">{tags.length}</span>
         </button>

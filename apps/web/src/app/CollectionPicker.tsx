@@ -10,6 +10,7 @@ import {
 } from '../api/hooks'
 import { usePersistentState } from '../state/usePersistentState'
 import { IconCheckSquare } from './icons'
+import { PickGuides } from './PickGuides'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 interface CollectionRow {
@@ -129,11 +130,11 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
     return (
       <div
         className={`pick-row${on ? ' pick-row--on' : ''}`}
-        style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => toggle(item.id)}
         role="option"
         aria-selected={on}
       >
+        <PickGuides depth={depth} />
         <span className={`pick-row__box${on ? ' pick-row__box--on' : ''}`}>{on ? '✓' : ''}</span>
         <span className="pick-row__name">{item.name}</span>
         {parent && <span className="pick-row__parent">{parent.name}</span>}
