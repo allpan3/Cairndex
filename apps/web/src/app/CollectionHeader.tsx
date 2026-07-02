@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import { IconFolder } from './icons'
+import { collectionCardWidth } from './layout'
 import { moveBefore } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -236,7 +237,10 @@ export function CollectionHeader({
           ref={gridRef}
           className="collcard__grid"
           style={{
-            gridTemplateColumns: `repeat(auto-fill, minmax(${zoom}px, 1fr))`,
+            // Folder cards follow their own (smaller) curve off the shared zoom
+            // slider — see collectionCardWidth — so they don't grow as large as
+            // bundle tiles.
+            gridTemplateColumns: `repeat(auto-fill, minmax(${collectionCardWidth(zoom)}px, 1fr))`,
             position: 'relative',
           }}
         >

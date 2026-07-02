@@ -285,6 +285,10 @@ function Workspace({
   const [adHocFilters, setAdHocFilters] = useState<AdHocFilters>(emptyAdHocFilters)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Anchors for Shift-range selection: the last plainly-clicked bundle / folder
+  // card. Shift+click selects the inclusive range from the anchor to the click.
+  const [bundleAnchor, setBundleAnchor] = useState<string | null>(null)
+  const [collectionAnchor, setCollectionAnchor] = useState<string | null>(null)
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -486,20 +490,39 @@ function Workspace({
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
   }, [selection, collections.data, activeSmartCollection])
 
-  const select = useCallback((id: string, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
-      })
-    } else {
-      setSelectedIds(new Set([id]))
-    }
-    setActiveId(id)
-    setSelectedCollectionIds(new Set())
-  }, [])
+  const select = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      // Shift+click: select the inclusive range from the anchor to this card,
+      // over the current render order.
+      if (e.shiftKey && bundleAnchor) {
+        const ids = filtered.map((i) => i.id)
+        const a = ids.indexOf(bundleAnchor)
+        const b = ids.indexOf(id)
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          setSelectedIds(new Set(ids.slice(lo, hi + 1)))
+          setActiveId(id)
+          setSelectedCollectionIds(new Set())
+          return
+        }
+      }
+      if (e.metaKey || e.ctrlKey) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        })
+      } else {
+        setSelectedIds(new Set([id]))
+      }
+      // A plain/toggle click (re)sets the range anchor.
+      setBundleAnchor(id)
+      setActiveId(id)
+      setSelectedCollectionIds(new Set())
+    },
+    [filtered, bundleAnchor],
+  )
 
   // Marquee (drag-to-select) result from Browser — the full resulting
   // selection, already merged with the pre-drag selection when additive.
@@ -518,21 +541,37 @@ function Workspace({
     setOpenBundleId(id)
   }, [])
 
-  // Click a subcollection card (with modifier = toggle). Clears the bundle
-  // selection to keep the two mutually exclusive.
-  const selectCollection = useCallback((id: string, e: React.MouseEvent) => {
-    setSelectedCollectionIds((prev) => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey) {
-        const next = new Set(prev)
-        if (next.has(id)) next.delete(id)
-        else next.add(id)
-        return next
+  // Click a subcollection card (with modifier = toggle, Shift = range). Clears
+  // the bundle selection to keep the two mutually exclusive.
+  const selectCollection = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      if (e.shiftKey && collectionAnchor) {
+        const ids = headerCollections.map((c) => c.id)
+        const a = ids.indexOf(collectionAnchor)
+        const b = ids.indexOf(id)
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          setSelectedCollectionIds(new Set(ids.slice(lo, hi + 1)))
+          setSelectedIds(new Set())
+          setActiveId(null)
+          return
+        }
       }
-      return new Set([id])
-    })
-    setSelectedIds(new Set())
-    setActiveId(null)
-  }, [])
+      setSelectedCollectionIds((prev) => {
+        if (e.metaKey || e.ctrlKey) {
+          const next = new Set(prev)
+          if (next.has(id)) next.delete(id)
+          else next.add(id)
+          return next
+        }
+        return new Set([id])
+      })
+      setCollectionAnchor(id)
+      setSelectedIds(new Set())
+      setActiveId(null)
+    },
+    [headerCollections, collectionAnchor],
+  )
 
   // Marquee result over the subcollection cards — replaces the subcollection
   // selection wholesale and clears the bundle selection.
