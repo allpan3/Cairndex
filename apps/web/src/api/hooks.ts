@@ -21,6 +21,7 @@ import {
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
   type TagCreate,
+  type TagRead,
   addUnbundledFilesToBundle,
   batchUpdate,
   browseBundles,
@@ -532,15 +533,46 @@ export function useTagMutations() {
       mutationFn: (id: string) => deleteTag(id),
       onSuccess: invalidate,
     }),
+    // Optimistic: reflect the new order in the cache immediately so the list
+    // animates on drop (not after the round-trip); roll back on error, and
+    // reconcile with the server on settle.
     reorder: useMutation({
       mutationFn: ({ parentId, orderedIds }: { parentId: string | null; orderedIds: string[] }) =>
         reorderTags(parentId, orderedIds),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+      onMutate: async ({ orderedIds }) => {
+        await qc.cancelQueries({ queryKey: ['tags'] })
+        const prev = qc.getQueryData<TagRead[]>(['tags'])
+        qc.setQueryData<TagRead[]>(['tags'], (old) =>
+          old?.map((t) => {
+            const idx = orderedIds.indexOf(t.id)
+            return idx >= 0 ? { ...t, sort_order: idx } : t
+          }),
+        )
+        return { prev }
+      },
+      onError: (_e, _v, ctx) => {
+        if (ctx?.prev) qc.setQueryData(['tags'], ctx.prev)
+      },
+      onSettled: () => qc.invalidateQueries({ queryKey: ['tags'] }),
     }),
     reorderInGroup: useMutation({
       mutationFn: ({ groupId, orderedIds }: { groupId: string; orderedIds: string[] }) =>
         reorderGroupTags(groupId, orderedIds),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ['tag-group-memberships'] }),
+      onMutate: async ({ groupId, orderedIds }) => {
+        await qc.cancelQueries({ queryKey: ['tag-group-memberships'] })
+        const prev = qc.getQueriesData<Record<string, string[]>>({
+          queryKey: ['tag-group-memberships'],
+        })
+        qc.setQueriesData<Record<string, string[]>>(
+          { queryKey: ['tag-group-memberships'] },
+          (old) => (old ? { ...old, [groupId]: orderedIds } : old),
+        )
+        return { prev }
+      },
+      onError: (_e, _v, ctx) => {
+        for (const [key, data] of ctx?.prev ?? []) qc.setQueryData(key, data)
+      },
+      onSettled: () => qc.invalidateQueries({ queryKey: ['tag-group-memberships'] }),
     }),
   }
 }
