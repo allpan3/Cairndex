@@ -85,9 +85,34 @@ exactly this set.
 | `title` / `name`, `note`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `note`/`source`/`filename` use contains/not_contains in the UI) | string |
 | `extension` | `equals`, `in`, `not_in` | string / list |
 | `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
+| `rating` (also) | `is_null` | boolean (`true` = unrated, `rating IS NULL`) |
 | `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
 | `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
 | `has_cover`, `has_missing` | `equals` | boolean |
+
+### Rating "Unrated" (`is_null`)
+
+`rating` accepts a rating-specific `is_null` operator: `true` matches bundles with
+no rating (`AssetBundle.rating IS NULL`), `false` matches rated bundles
+(`IS NOT NULL`). It is deliberately scoped to `rating` — the generic numeric
+compiler path does not accept null, so other numeric fields cannot smuggle in a
+null comparison. The toolbar Rating filter's "Unrated" row and the Smart
+Collection editor's rating "is unrated" operator both emit this node, so they
+round-trip identically.
+
+### Tag rules (toolbar) → operators
+
+The Eagle-style toolbar Tags filter maps its per-category rule onto the same
+`tags` operators (no new AST):
+
+| Toolbar rule | Operator | `include_descendants` |
+| --- | --- | --- |
+| **Equal / direct** | `contains_any` | `false` — exact *direct* membership only; a parent tag applied directly still matches, but descendants are never expanded. Multiple selections mean direct membership in *any* of them. |
+| **Any** | `contains_any` | toggle (default `true`) |
+| **All** | `contains_all` | toggle (default `true`) |
+| **Exclude** (right-click) | `contains_none` | direct-only in Equal mode, else follows the same toggle |
+
+Excluded tags are always forbidden and AND-compose with the included tags.
 
 Node shapes are disambiguated structurally (`extra="forbid"` + Pydantic's
 smart union): logical nodes carry `op` (`and`/`or` over `children`, `not`
@@ -100,6 +125,16 @@ matches everything.
 - `POST /api/v1/bundles/browse` — same params as `GET /browse` plus an
   optional `filter`; this is the shared path for ad-hoc filters and Smart
   Collections, so equivalent expressions return identical results.
+- `POST /api/v1/libraries/{library_id}/filters/facets` — faceted counts for the
+  toolbar filter popovers. Request: `{ view, collection_id, include_descendants,
+  q, filter, facets: ["tags"|"ratings"], tag_include_descendants }`. Response:
+  `{ tags: { <tag_id>: n }, ratings: { "0".."5"|"unrated": n } }`. Counts are
+  scoped to the current browse context (view/collection/search + the base
+  `filter`), computed server-side (never by fetching bundles). The base `filter`
+  must exclude the facet category being shown, so a category's own selections
+  don't shrink its own counts. Tag counts follow the active rule:
+  `tag_include_descendants` rolls a parent up over its subtree as a *distinct*
+  bundle count (Any/All), otherwise direct membership only (Equal/direct).
 - `GET|POST|PATCH|DELETE /api/v1/smart-collections` — persisted named filters.
   The stored AST is validated and compiled on write, so an unsupported filter
   is rejected at save time, never at browse.

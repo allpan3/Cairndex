@@ -81,7 +81,8 @@ test('build, preview, save, and browse a Smart Collection', async ({ page }) => 
   await page.getByLabel('Smart collection name').fill('Highly rated')
   await page.getByLabel('Field').selectOption('rating')
   await page.getByLabel('Operator').selectOption('gte')
-  await page.getByLabel('Value').fill('4')
+  // Rating uses a star picker (not a text value): pick 4 stars.
+  await page.getByRole('radio', { name: '4 stars' }).click()
 
   // Live count from POST /filters/preview.
   await expect(page.locator('.modal__preview')).toContainText('1 matching bundle')
@@ -91,4 +92,22 @@ test('build, preview, save, and browse a Smart Collection', async ({ page }) => 
   // The saved collection appears in the sidebar and drives a filtered browse.
   await expect(page.locator('.nav-item__label', { hasText: 'Highly rated' })).toBeVisible()
   await expect(page.locator('.toolbar__count')).toContainText('1 items')
+})
+
+test('rating Unrated (is_null) round-trips through the Smart Collection editor', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'New smart collection' }).click()
+  await page.getByLabel('Smart collection name').fill('Unrated')
+  await page.getByLabel('Field').selectOption('rating')
+  await page.getByLabel('Operator').selectOption('is_null')
+  await page.getByRole('button', { name: 'Create' }).click()
+
+  // Reopen it: the operator must round-trip back to "is unrated".
+  await expect(page.locator('.nav-item__label', { hasText: 'Unrated' })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit Unrated', exact: true }).click()
+  await expect(page.getByLabel('Operator')).toHaveValue('is_null')
 })

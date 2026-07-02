@@ -61,10 +61,10 @@ export function usePopover() {
   return { open, setOpen, ref, panelRef, pos }
 }
 
+type HierItem = { id: string; parent_id: string | null; name: string }
+
 /** Order hierarchical items (parent_id self-ref) depth-first with a depth. */
-export function flattenHierarchy<T extends { id: string; parent_id: string | null; name: string }>(
-  items: T[],
-): { item: T; depth: number }[] {
+export function flattenHierarchy<T extends HierItem>(items: T[]): { item: T; depth: number }[] {
   const byParent = new Map<string | null, T[]>()
   for (const it of items) {
     const key = it.parent_id ?? null
@@ -75,6 +75,34 @@ export function flattenHierarchy<T extends { id: string; parent_id: string | nul
     for (const it of (byParent.get(parent) ?? []).sort((a, b) => a.name.localeCompare(b.name))) {
       out.push({ item: it, depth })
       walk(it.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return out
+}
+
+/**
+ * Depth-first rows for a foldable tree: skips descendants of any collapsed row,
+ * and flags whether each row has children (for a fold chevron). A parent that
+ * isn't itself in `items` makes its children top-level, so a filtered subset
+ * still renders as a sensible forest.
+ */
+export function visibleHierarchy<T extends HierItem>(
+  items: T[],
+  collapsed: Set<string>,
+): { item: T; depth: number; hasChildren: boolean }[] {
+  const ids = new Set(items.map((i) => i.id))
+  const byParent = new Map<string | null, T[]>()
+  for (const it of items) {
+    const key = it.parent_id && ids.has(it.parent_id) ? it.parent_id : null
+    byParent.set(key, [...(byParent.get(key) ?? []), it])
+  }
+  const out: { item: T; depth: number; hasChildren: boolean }[] = []
+  const walk = (parent: string | null, depth: number) => {
+    for (const it of (byParent.get(parent) ?? []).sort((a, b) => a.name.localeCompare(b.name))) {
+      const hasChildren = (byParent.get(it.id) ?? []).length > 0
+      out.push({ item: it, depth, hasChildren })
+      if (hasChildren && !collapsed.has(it.id)) walk(it.id, depth + 1)
     }
   }
   walk(null, 0)

@@ -1,6 +1,6 @@
 """Tag domain service: hierarchy (adjacency list) independent of tag groups."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -95,10 +95,43 @@ def update_tag(
 
 
 def delete_tag(session: Session, tag_id: str) -> None:
-    """Delete a tag (metadata only). Children float to root (DB SET NULL);
-    group memberships and bundle associations cascade."""
-    session.delete(get_tag(session, tag_id))
+    """Delete a leaf tag (metadata only). Bundle/tag assignments and tag-group
+    memberships fall away via FK cascade; no file or bundle is touched.
+
+    First-version safe behavior (All Tags page): a tag with child tags is *not*
+    cascaded — deletion is blocked with a friendly error so the owner deletes or
+    moves the children first. Only leaf tags delete outright.
+    """
+    tag = get_tag(session, tag_id)
+    child_count = (
+        session.scalar(select(func.count()).select_from(Tag).where(Tag.parent_id == tag_id)) or 0
+    )
+    if child_count:
+        raise ConflictError(
+            "this tag has child tags — delete or move them first, then delete the parent tag"
+        )
+    session.delete(tag)
     session.flush()
+
+
+def reorder_tags(session: Session, *, parent_id: str | None, ordered_ids: list[str]) -> list[Tag]:
+    """Set explicit ``sort_order`` for a set of sibling tags (drag-reorder in the
+    All Tags hierarchy). Reorders among siblings only — every id must already sit
+    directly under ``parent_id``; this never changes ``parent_id`` (no drag
+    reparenting in this version)."""
+    tags = list(session.scalars(select(Tag).where(Tag.id.in_(ordered_ids)))) if ordered_ids else []
+    by_id = {t.id: t for t in tags}
+    missing = set(ordered_ids) - set(by_id)
+    if missing:
+        raise ValidationError(f"unknown tag ids: {sorted(missing)}")
+    for tag in tags:
+        if (tag.parent_id or None) != (parent_id or None):
+            raise ValidationError("can only reorder tags among the same parent")
+    for index, tag_id in enumerate(ordered_ids):
+        by_id[tag_id].sort_order = index
+        by_id[tag_id].updated_at = utcnow()
+    session.flush()
+    return tags
 
 
 def tag_descendant_ids(session: Session, tag_id: str, *, include_self: bool = True) -> list[str]:

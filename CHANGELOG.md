@@ -10,6 +10,42 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Eagle-style ad-hoc toolbar filters (Tags + Rating).** A funnel button in the
+  bundle toolbar reveals a filter row. **Tags** opens a popover with search, tag
+  groups (display-only scoping), and a tag tree: left-click includes a tag,
+  right-click excludes it (visually distinct blue check vs. red struck minus),
+  with a per-category **Any / All / Equal** rule and a **subtags** (descendant)
+  toggle. Equal is exact *direct* membership only (a directly-applied parent tag
+  still matches; no descendant expansion). **Rating** offers a star row with a
+  `=` / `≥` / `≤` operator and an **Unrated** row (clicking the selected star or
+  Unrated again clears it). Filters stack under AND with the active Smart
+  Collection, the current view/collection, and the text search — all via the one
+  canonical FilterExpression AST. Popover counts are **faceted**: scoped to the
+  current browse context and the other active filter categories (a new
+  `POST /filters/facets` endpoint), never global static counts. Ad-hoc filters
+  are local UI state (not persisted to localStorage or the URL yet).
+
+- **Rating "Unrated" filter (`rating is_null`).** A rating-specific compiler
+  operator matches unrated bundles (`rating IS NULL`); the Smart Collection
+  editor's rating row now uses the same star picker and gains an "is unrated"
+  operator, so saved collections round-trip it. See `docs/filter-language.md`.
+
+- **All Tags management page.** A new sidebar entry (right below **Untagged**)
+  opens a management surface — not a bundle collection, not a folder. A left
+  panel scopes the view (**All** / **Uncategorized** / tag groups, each with a
+  tag count); the main panel is an Eagle-style, **pinyin-segmented, multi-column
+  accordion grid** of top-level tags. A tag with children shows a chevron and
+  **expands in place** to a full-width row listing its children (recursively);
+  folded it shows its **rolled-up subtree count**, expanded its **direct** count.
+  **Drag a tag onto another to nest it** (reparent) or onto empty space to make
+  it top-level — the tree is name/pinyin-ordered, so there's no manual sibling
+  order to keep. Right-click a tag to **Rename** or **Delete** it (deleting a
+  parent that still has children is blocked with a friendly message; a leaf
+  deletes and drops its assignments via cascade — no file or bundle touched).
+  Double-clicking a tag jumps to **All** bundles, clears the search, and applies
+  a global Equal/direct tag filter. The right inspector is hidden on this page so
+  the grid gets the full width.
+
 - **Create a tag or collection directly from the picker.** In the tag and
   collection pickers (single-bundle editors and the multi-bundle bulk
   editor), typing a search offers a **Create "…"** row whenever the search

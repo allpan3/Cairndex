@@ -102,6 +102,20 @@ hidden paths, so portable cache files do not remain as user-visible assets.
 `id`, `parent_id` (self-FK, `SET NULL`), `name`, `color`, `sort_order`,
 `version`, timestamps. Unique `(parent_id, name)`.
 
+The All Tags management page orders tags by **name (Chinese-aware / pinyin)**, not
+by `sort_order`, and its drag gesture **reparents** a tag (sets `parent_id`, via
+`update_tag` with the existing cycle guard) rather than reordering siblings. The
+`sort_order` column and the `PUT /tags/reorder` endpoint remain for an explicit
+manual sibling order but are not driven by the current UI.
+
+**Tag deletion (safe-delete):** the delete service blocks a tag that still has
+child tags (a friendly 409, no cascade) so the owner deletes or moves the
+children first. A *leaf* tag deletes outright; its bundle/tag assignments and
+tag-group memberships fall away via the association tables' FK cascade, and no
+file or bundle is ever touched. (The schema's `parent_id ON DELETE SET NULL`
+would still float orphans if a row were force-deleted, but the service path never
+reaches it while children exist.)
+
 ### `tag_groups`
 
 `id`, `name` (unique), `sort_order`, timestamps.
@@ -109,7 +123,11 @@ hidden paths, so portable cache files do not remain as user-visible assets.
 ### `tag_group_memberships`
 
 Many-to-many tags to groups: `group_id` + `tag_id` composite PK, both CASCADE,
-plus `sort_order`. A group is not a hierarchy parent.
+plus `sort_order`. A group is not a hierarchy parent. `sort_order` is the tag's
+display order *within that group*; `PUT /tag-groups/{id}/tags/order` rewrites it
+and `GET /tag-groups/{id}/tags` returns member ids in that order. Reordering
+inside a group only touches this membership order — it never changes a tag's
+hierarchy `parent_id`.
 
 ### `collections`
 
@@ -223,4 +241,5 @@ artifacts, not `AssetFile` rows, and scanners intentionally ignore them.
 - Index plan beyond current PK/unique constraints, especially for server-side
   text search/SQLite FTS5, browse-summary aggregation, tag/collection membership
   queries, and larger-library benchmarks.
-- Tag/collection delete service semantics beyond current FK defaults.
+- Collection delete service semantics beyond current FK defaults (tag delete now
+  has explicit safe-delete semantics — see `tags` above).

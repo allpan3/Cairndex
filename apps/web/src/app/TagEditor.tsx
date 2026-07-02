@@ -11,11 +11,13 @@ import {
   useTagGroups,
   useTags,
 } from '../api/hooks'
-import { flattenHierarchy, usePopover } from './usePopover'
+import { PickGuides } from './PickGuides'
+import { flattenHierarchy, usePopover, visibleHierarchy } from './usePopover'
 
 interface TagRow {
   item: TagRead
   depth: number
+  hasChildren: boolean
   label?: string
 }
 
@@ -38,6 +40,8 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
   const [groupFilter, setGroupFilter] = useState<string | null>(null)
   const [filterExpanded, setFilterExpanded] = useState(false)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  // Folded parent tags (hierarchy fold, like the collection picker).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const assigned = new Set(bundleTags?.tag_ids ?? [])
   const byId = new Map(tags.map((t) => [t.id, t]))
@@ -47,6 +51,14 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
+      return next
+    })
+
+  const toggleCollapse = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
 
@@ -70,8 +82,7 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
     setTags.mutate([...next])
   }
 
-  // "Create <search>" (shown only when the search has no matches): make a new
-  // top-level tag and assign it immediately.
+  // "Create <search>": make a new top-level tag and assign it immediately.
   const handleCreate = (name: string) => {
     createTag.mutate(
       { name },
@@ -81,58 +92,76 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
 
   const match = (t: TagRead) => !search || t.name.toLowerCase().includes(search.toLowerCase())
   const trimmedSearch = search.trim()
-  // "Create <search>" offers a *new* tag with this exact name — shown whenever
-  // the search doesn't already name an existing tag exactly, even if it's a
-  // substring of one (e.g. searching "Act" while "Action" exists should still
-  // offer to create "Act" as its own tag).
   const hasExactMatch = tags.some((t) => t.name.toLowerCase() === trimmedSearch.toLowerCase())
-  const flat = flattenHierarchy(tags)
   const groupedIds = new Set(Object.values(memberships).flat())
 
-  // First section: the currently selected tags, shown flat with their full
-  // hierarchical path (e.g. "genre/comedy") for quick removal. They also stay
-  // highlighted in their group sections below. When a group is filtered, only
-  // selected tags belonging to that group are shown here.
+  // A section's rows: a foldable tree normally; while searching, a flat list of
+  // matches so nothing hides inside a collapsed parent.
+  const rowsForSection = (sectionTags: TagRead[]): TagRow[] =>
+    trimmedSearch
+      ? flattenHierarchy(sectionTags)
+          .filter(({ item }) => match(item))
+          .map(({ item }) => ({ item, depth: 0, hasChildren: false }))
+      : visibleHierarchy(sectionTags, collapsed)
+
+  // First section: the currently selected tags, shown flat with their full path.
   const sections: Section[] = []
   const filterMember = groupFilter !== null ? new Set(memberships[groupFilter] ?? []) : null
-  const selectedRows = [...assigned]
+  const selectedRows: TagRow[] = [...assigned]
     .map((id) => byId.get(id))
     .filter(
       (t): t is TagRead =>
         t !== undefined && match(t) && (filterMember === null || filterMember.has(t.id)),
     )
-    .map((item) => ({ item, depth: 0, label: pathOf(item) }))
+    .map((item) => ({ item, depth: 0, hasChildren: false, label: pathOf(item) }))
   if (selectedRows.length > 0)
     sections.push({ key: '__selected', title: 'Selected', rows: selectedRows })
 
-  // One section per group (respecting the filter row), preserving hierarchy.
+  // One section per group (respecting the filter row), as a foldable tree.
   for (const g of groups) {
     if (groupFilter !== null && groupFilter !== g.id) continue
-    const member = new Set(memberships[g.id] ?? [])
-    const rows = flat.filter(({ item }) => member.has(item.id) && match(item))
+    const memberIds = new Set(memberships[g.id] ?? [])
+    const rows = rowsForSection(tags.filter((t) => memberIds.has(t.id)))
     if (rows.length > 0) sections.push({ key: g.id, title: g.name, rows })
   }
 
   // Tags with no group fall into a synthetic "Others" section.
   if (groupFilter === null) {
-    const rows = flat.filter(({ item }) => !groupedIds.has(item.id) && match(item))
+    const rows = rowsForSection(tags.filter((t) => !groupedIds.has(t.id)))
     if (rows.length > 0) sections.push({ key: '__others', title: 'Others', rows })
   }
 
-  const renderRow = ({ item, depth, label }: TagRow) => (
-    <div
-      key={item.id}
-      className={`pick-row${assigned.has(item.id) ? ' pick-row--on' : ''}`}
-      style={{ paddingLeft: 6 + depth * 14 }}
-      onClick={() => toggle(item.id)}
-      role="option"
-      aria-selected={assigned.has(item.id)}
-    >
-      <span className="pick-row__check">{assigned.has(item.id) ? '✓' : ''}</span>
-      <span>{label ?? item.name}</span>
-      <span className="pick-row__count">{counts[item.id] ?? 0}</span>
-    </div>
-  )
+  const renderRow = ({ item, depth, hasChildren, label }: TagRow) => {
+    const on = assigned.has(item.id)
+    return (
+      <div
+        key={item.id}
+        className={`pick-row${on ? ' pick-row--on' : ''}`}
+        onClick={() => toggle(item.id)}
+        role="option"
+        aria-selected={on}
+      >
+        <PickGuides depth={depth} />
+        <span className={`pick-row__box${on ? ' pick-row__box--on' : ''}`}>{on ? '✓' : ''}</span>
+        <span className="pick-row__name">{label ?? item.name}</span>
+        <span className="pick-row__count">{counts[item.id] ?? 0}</span>
+        {hasChildren ? (
+          <button
+            className="pick-row__toggle"
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleCollapse(item.id)
+            }}
+            aria-label={collapsed.has(item.id) ? 'Expand' : 'Collapse'}
+          >
+            {collapsed.has(item.id) ? '›' : '⌄'}
+          </button>
+        ) : (
+          <span className="pick-row__toggle" aria-hidden="true" />
+        )}
+      </div>
+    )
+  }
 
   return (
     <>
@@ -207,18 +236,18 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
                   <div className="pick-group">No matching tags</div>
                 )}
                 {sections.map((section) => {
-                  const collapsed = collapsedSections.has(section.key)
+                  const sectionCollapsed = collapsedSections.has(section.key)
                   return (
                     <section className="pick-section" key={section.key}>
                       <button
                         className="pick-section__title"
                         onClick={() => toggleSection(section.key)}
-                        aria-expanded={!collapsed}
+                        aria-expanded={!sectionCollapsed}
                       >
-                        <span className="pick-row__toggle">{collapsed ? '›' : '⌄'}</span>
+                        <span className="pick-row__toggle">{sectionCollapsed ? '›' : '⌄'}</span>
                         {section.title}
                       </button>
-                      {!collapsed && section.rows.map(renderRow)}
+                      {!sectionCollapsed && section.rows.map(renderRow)}
                     </section>
                   )
                 })}

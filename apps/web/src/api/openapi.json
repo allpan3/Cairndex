@@ -1075,6 +1075,100 @@
         "title": "CreateEmptyBundleRequest",
         "type": "object"
       },
+      "FacetRequest": {
+        "description": "Faceted counts over the current browse scope, for the toolbar filter\npopovers. The scope mirrors a browse request (view/collection/search plus a\nbase filter), but the base ``filter`` must exclude the facet category being\nshown so a category's own selections don't shrink its own counts.",
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "facets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Facets",
+            "type": "array"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_descendants": {
+            "default": false,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "tag_include_descendants": {
+            "default": true,
+            "title": "Tag Include Descendants",
+            "type": "boolean"
+          },
+          "view": {
+            "$ref": "#/components/schemas/SystemView",
+            "default": "all"
+          }
+        },
+        "title": "FacetRequest",
+        "type": "object"
+      },
+      "FacetResponse": {
+        "properties": {
+          "ratings": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "title": "FacetResponse",
+        "type": "object"
+      },
       "FastAddRequest": {
         "properties": {
           "bundle_title": {
@@ -2756,6 +2850,23 @@
         "title": "ProposedRoleRead",
         "type": "object"
       },
+      "ReorderTagsRequest": {
+        "description": "Reorder tags within a group (membership sort_order only).",
+        "properties": {
+          "tag_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tag Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tag_ids"
+        ],
+        "title": "ReorderTagsRequest",
+        "type": "object"
+      },
       "SetIdsRequest": {
         "properties": {
           "ids": {
@@ -3280,6 +3391,34 @@
           "version"
         ],
         "title": "TagRead",
+        "type": "object"
+      },
+      "TagReorder": {
+        "description": "Reorder sibling tags in the hierarchy (All Tags drag-reorder). Every id\nmust already sit directly under ``parent_id``; hierarchy is never changed.",
+        "properties": {
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordered Ids",
+            "type": "array"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "TagReorder",
         "type": "object"
       },
       "TagUpdate": {
@@ -6568,6 +6707,75 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/filters/facets": {
+      "post": {
+        "description": "Faceted counts for the toolbar filter popovers, scoped to the current\nbrowse context (view/collection/search + a base filter for the *other*\nactive categories). Counts stay server-side \u2014 never by fetching bundles.",
+        "operationId": "facets_api_v1_libraries__library_id__filters_facets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Facets",
+        "tags": [
+          "filters"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/filters/preview": {
       "post": {
         "operationId": "preview_api_v1_libraries__library_id__filters_preview_post",
@@ -8443,6 +8651,84 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/tag-groups/{group_id}/tags/order": {
+      "put": {
+        "description": "Reorder tags within a group (membership sort_order only; never touches tag\nhierarchy parent_id).",
+        "operationId": "reorder_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderTagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagGroupTags"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Group Tags",
+        "tags": [
+          "tag-groups"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/tags": {
       "get": {
         "operationId": "list_tags_api_v1_libraries__library_id__tags_get",
@@ -8648,6 +8934,79 @@
           }
         },
         "summary": "Tag Counts",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/tags/reorder": {
+      "put": {
+        "description": "Reorder sibling tags (All Tags drag-reorder). Reorders among siblings\nonly \u2014 hierarchy ``parent_id`` is never changed.",
+        "operationId": "reorder_tags_api_v1_libraries__library_id__tags_reorder_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TagRead"
+                  },
+                  "title": "Response Reorder Tags Api V1 Libraries  Library Id  Tags Reorder Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Tags",
         "tags": [
           "tags"
         ]
