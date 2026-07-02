@@ -1287,14 +1287,17 @@ button {
 .pick-row--on {
   color: var(--text-strong);
 }
-/* Vertical hierarchy guides: one thin rule per ancestor level. */
+/* Vertical hierarchy guides: one thin rule per ancestor level. The negative
+   block margin bleeds the lines into the row's 3px vertical padding so they meet
+   the neighbouring rows' guides and read as continuous lines (not dashes). */
 .pick-guides {
   flex: 0 0 auto;
   align-self: stretch;
   display: inline-flex;
+  margin-block: -3px;
 }
 .pick-guide {
-  width: 13px;
+  width: 14px;
   align-self: stretch;
   border-left: 1px solid var(--border);
 }
