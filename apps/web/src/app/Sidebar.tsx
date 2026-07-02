@@ -66,6 +66,8 @@ interface SidebarProps {
   // Unbundled is a Files-surface view (a flat "to-bundle queue"), so it routes
   // into Files mode rather than selecting a bundle browse view.
   onOpenUnbundled?: () => void
+  // All Tags is a management surface (mode='tags'), not a bundle browse view.
+  onOpenAllTags?: () => void
   fileScope?: 'browse' | 'unbundled'
   counts?: ViewCounts
   collections: CollectionRead[]
@@ -127,6 +129,7 @@ export function Sidebar({
   selection,
   onSelect,
   onOpenUnbundled,
+  onOpenAllTags,
   fileScope,
   counts,
   collections,
@@ -383,6 +386,18 @@ export function Sidebar({
             </button>
           )
         })}
+      </div>
+
+      <div className="sidebar__section">
+        <button
+          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
+          onClick={() => onOpenAllTags?.()}
+        >
+          <span className="nav-item__icon">
+            <IconTag />
+          </span>
+          <span className="nav-item__label">All Tags</span>
+        </button>
       </div>
 
       <div className="sidebar__section">
