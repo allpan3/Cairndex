@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   CollectionRead,
@@ -365,39 +365,41 @@ export function Sidebar({
             ? mode === 'file' && fileScope === 'unbundled'
             : mode === 'collection' && selection.collectionId === null && selection.view === v.view
           return (
-            <button
-              key={v.view}
-              className={`nav-item${active ? ' nav-item--active' : ''}`}
-              onClick={() =>
-                isUnbundled ? onOpenUnbundled?.() : onSelect({ view: v.view, collectionId: null })
-              }
-            >
-              <span className="nav-item__icon">{viewIcon(v.view)}</span>
-              <span className="nav-item__label">{v.label}</span>
-              {counts && (
-                <span
-                  className={`nav-item__count${
-                    hinted && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
-                  }`}
+            <Fragment key={v.view}>
+              <button
+                className={`nav-item${active ? ' nav-item--active' : ''}`}
+                onClick={() =>
+                  isUnbundled ? onOpenUnbundled?.() : onSelect({ view: v.view, collectionId: null })
+                }
+              >
+                <span className="nav-item__icon">{viewIcon(v.view)}</span>
+                <span className="nav-item__label">{v.label}</span>
+                {counts && (
+                  <span
+                    className={`nav-item__count${
+                      hinted && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
+                    }`}
+                  >
+                    {counts[v.view]}
+                  </span>
+                )}
+              </button>
+              {/* All Tags (a management surface, not a browse view) sits right
+                  below Untagged since it's about the tag vocabulary. */}
+              {v.view === 'untagged' && (
+                <button
+                  className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
+                  onClick={() => onOpenAllTags?.()}
                 >
-                  {counts[v.view]}
-                </span>
+                  <span className="nav-item__icon">
+                    <IconTag />
+                  </span>
+                  <span className="nav-item__label">All Tags</span>
+                </button>
               )}
-            </button>
+            </Fragment>
           )
         })}
-      </div>
-
-      <div className="sidebar__section">
-        <button
-          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
-          onClick={() => onOpenAllTags?.()}
-        >
-          <span className="nav-item__icon">
-            <IconTag />
-          </span>
-          <span className="nav-item__label">All Tags</span>
-        </button>
       </div>
 
       <div className="sidebar__section">
