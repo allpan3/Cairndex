@@ -8,9 +8,11 @@ from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCou
 from cairndex.api.schemas.bundles import (
     BatchResult,
     BatchUpdate,
+    BundleCleanupOrder,
     BundleCollections,
     BundleCreate,
     BundleRead,
+    BundleReorder,
     BundleTags,
     BundleUpdate,
     FileLink,
@@ -92,6 +94,26 @@ def browse_bundles_filtered(payload: BrowseRequest, db: LibrarySession) -> Bundl
 @router.get("/counts", response_model=ViewCounts)
 def bundle_view_counts(db: LibrarySession) -> ViewCounts:
     return ViewCounts(**browse_service.view_counts(db))
+
+
+@router.put("/reorder", status_code=status.HTTP_204_NO_CONTENT)
+def reorder_bundles(payload: BundleReorder, db: LibrarySession) -> None:
+    """Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``
+    scopes it to a collection's membership order; null = the global order."""
+    browse_service.reorder_bundles(
+        db, collection_id=payload.collection_id, ordered_ids=payload.ordered_ids
+    )
+
+
+@router.post("/cleanup-order", status_code=status.HTTP_204_NO_CONTENT)
+def cleanup_bundle_order(payload: BundleCleanupOrder, db: LibrarySession) -> None:
+    """ "Clean up by…": rewrite the whole scope's manual order to a chosen sort."""
+    browse_service.cleanup_bundle_order(
+        db,
+        collection_id=payload.collection_id,
+        sort=BundleSort(payload.sort),
+        descending=payload.order == "desc",
+    )
 
 
 @router.post("/batch", response_model=BatchResult)

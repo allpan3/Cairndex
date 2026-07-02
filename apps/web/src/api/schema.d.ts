@@ -268,6 +268,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/cleanup-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cleanup Bundle Order
+         * @description "Clean up by…": rewrite the whole scope's manual order to a chosen sort.
+         */
+        post: operations["cleanup_bundle_order_api_v1_libraries__library_id__bundles_cleanup_order_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/counts": {
         parameters: {
             query?: never;
@@ -278,6 +298,27 @@ export interface paths {
         /** Bundle View Counts */
         get: operations["bundle_view_counts_api_v1_libraries__library_id__bundles_counts_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Bundles
+         * @description Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``
+         *     scopes it to a collection's membership order; null = the global order.
+         */
+        put: operations["reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1293,6 +1334,26 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * BundleCleanupOrder
+         * @description Rewrite the manual order of every bundle in scope to a chosen toolbar sort.
+         *     ``sort`` is one of the real sorts (not ``manual``); rejected otherwise.
+         */
+        BundleCleanupOrder: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "date_added" | "title" | "rating" | "size" | "file_count";
+        };
         /** BundleCollections */
         BundleCollections: {
             /** Bundle Id */
@@ -1353,10 +1414,21 @@ export interface components {
             version: number;
         };
         /**
+         * BundleReorder
+         * @description Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
+         *     order to a collection's membership; null = the global All/system-view order.
+         */
+        BundleReorder: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
+        /**
          * BundleSort
          * @enum {string}
          */
-        BundleSort: "date_added" | "title" | "rating" | "size" | "file_count";
+        BundleSort: "date_added" | "title" | "rating" | "size" | "file_count" | "manual";
         /** BundleSummary */
         BundleSummary: {
             /** Cover Key */
@@ -2959,6 +3031,41 @@ export interface operations {
             };
         };
     };
+    cleanup_bundle_order_api_v1_libraries__library_id__bundles_cleanup_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleCleanupOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bundle_view_counts_api_v1_libraries__library_id__bundles_counts_get: {
         parameters: {
             query?: never;
@@ -2980,6 +3087,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ViewCounts"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

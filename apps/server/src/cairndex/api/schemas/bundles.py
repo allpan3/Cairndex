@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -72,6 +72,23 @@ class FileUpdate(BaseModel):
 
 class FileReorder(BaseModel):
     ordered_ids: list[str] = Field(min_length=1)
+
+
+class BundleReorder(BaseModel):
+    """Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
+    order to a collection's membership; null = the global All/system-view order."""
+
+    collection_id: str | None = None
+    ordered_ids: list[str] = Field(min_length=1)
+
+
+class BundleCleanupOrder(BaseModel):
+    """Rewrite the manual order of every bundle in scope to a chosen toolbar sort.
+    ``sort`` is one of the real sorts (not ``manual``); rejected otherwise."""
+
+    collection_id: str | None = None
+    sort: Literal["date_added", "title", "rating", "size", "file_count"]
+    order: Literal["asc", "desc"] = "asc"
 
 
 class BatchUpdate(BaseModel):

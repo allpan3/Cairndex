@@ -6,6 +6,7 @@ import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
 import { computeRows, type PlacedCard, type Row } from './layout'
+import { moveBefore } from './reorder'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -25,6 +26,9 @@ interface BrowserProps {
   onContextMenu: (id: string, e: React.MouseEvent) => void
   // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
   onEmptyContextMenu?: (e: React.MouseEvent) => void
+  // When set (Manual sort), cards/rows become drag-reorderable; a drop fires the
+  // full resulting order of loaded items.
+  onReorder?: (orderedIds: string[]) => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -40,11 +44,50 @@ interface BrowserProps {
 }
 
 export function Browser(props: BrowserProps) {
-  const { items, layout, zoom, selectedIds, onSelect, onOpen, onContextMenu, onMarqueeSelect } =
-    props
+  const {
+    items,
+    layout,
+    zoom,
+    selectedIds,
+    onSelect,
+    onOpen,
+    onContextMenu,
+    onMarqueeSelect,
+    onReorder,
+  } = props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
+  // Id of the card/row being dragged for manual reorder (null when idle).
+  const [dragId, setDragId] = useState<string | null>(null)
+  // Drag handlers for a card/row, active only when reordering is enabled.
+  const dragProps = (id: string) => {
+    if (!onReorder) return {}
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move'
+        setDragId(id)
+      },
+      onDragEnd: () => setDragId(null),
+      onDragOver: (e: React.DragEvent) => {
+        if (dragId !== null && dragId !== id) e.preventDefault()
+      },
+      onDrop: (e: React.DragEvent) => {
+        if (dragId === null || dragId === id) return
+        e.preventDefault()
+        onReorder(
+          moveBefore(
+            items.map((i) => i.id),
+            dragId,
+            id,
+          ),
+        )
+        setDragId(null)
+      },
+      'data-drop': dragId !== null && dragId !== id ? '' : undefined,
+    }
+  }
   const [width, setWidth] = useState(0)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
@@ -225,17 +268,20 @@ export function Browser(props: BrowserProps) {
                         onSelect={onSelect}
                         onOpen={onOpen}
                         onContextMenu={onContextMenu}
+                        dragProps={dragProps(c.item.id)}
                       />
                     ))
                   : row.cards.map((c) => (
                       <div
                         key={c.item.id}
+                        className="browser__cardslot"
                         style={{
                           position: 'absolute',
                           left: c.x,
                           width: c.width,
                           height: row.height - 10,
                         }}
+                        {...dragProps(c.item.id)}
                       >
                         <BundleCard
                           item={c.item}
@@ -275,12 +321,14 @@ function ListRow({
   onSelect,
   onOpen,
   onContextMenu,
+  dragProps,
 }: {
   item: BundleSummary
   selected: boolean
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
+  dragProps?: React.HTMLAttributes<HTMLDivElement> & { draggable?: boolean }
 }) {
   return (
     <div
@@ -292,6 +340,7 @@ function ListRow({
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}
+      {...dragProps}
     >
       <div
         className="list-row__thumb"

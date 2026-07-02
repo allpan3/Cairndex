@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Select, exists, false, func, not_, select
+from sqlalchemy import Select, exists, false, func, not_, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -56,6 +56,10 @@ class BundleSort(StrEnum):
     RATING = "rating"
     SIZE = "size"
     FILE_COUNT = "file_count"
+    # Owner-defined manual order (drag-reorder / "Clean up by…"). Inside a single
+    # collection it uses that collection's membership order; elsewhere the global
+    # AssetBundle.manual_order.
+    MANUAL = "manual"
 
 
 @dataclass(frozen=True)
@@ -204,13 +208,38 @@ def apply_scope(
     return stmt
 
 
-def _apply_sort(stmt: Select[Any], sort: BundleSort, descending: bool) -> Select[Any]:
+def _manual_order_column(collection_id: str | None, include_descendants: bool) -> Any:
+    """The column MANUAL sort orders by: the bundle's order *within* a single
+    collection (its membership ``sort_order``) when scoped to one, else the global
+    ``AssetBundle.manual_order``. Descendant views span multiple collections, so
+    they fall back to the global order."""
+    if collection_id is not None and not include_descendants:
+        return (
+            select(asset_bundle_collections.c.sort_order)
+            .where(
+                (asset_bundle_collections.c.bundle_id == AssetBundle.id)
+                & (asset_bundle_collections.c.collection_id == collection_id)
+            )
+            .scalar_subquery()
+        )
+    return AssetBundle.manual_order
+
+
+def _apply_sort(
+    stmt: Select[Any],
+    sort: BundleSort,
+    descending: bool,
+    *,
+    collection_id: str | None = None,
+    include_descendants: bool = False,
+) -> Select[Any]:
     column = {
         BundleSort.DATE_ADDED: AssetBundle.created_at,
         BundleSort.TITLE: AssetBundle.title,
         BundleSort.RATING: AssetBundle.rating,
         BundleSort.SIZE: _size_sq(),
         BundleSort.FILE_COUNT: _file_count_sq(),
+        BundleSort.MANUAL: _manual_order_column(collection_id, include_descendants),
     }[sort]
     ordering = column.desc() if descending else column.asc()
     # AssetBundle.id (ULID) is the stable tie-breaker for deterministic paging.
@@ -252,7 +281,13 @@ def browse_bundles(
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
 
     page_stmt = (
-        _apply_sort(_scoped(select(AssetBundle).where(_visible_file_exists())), sort, descending)
+        _apply_sort(
+            _scoped(select(AssetBundle).where(_visible_file_exists())),
+            sort,
+            descending,
+            collection_id=collection_id,
+            include_descendants=include_descendants,
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -260,6 +295,66 @@ def browse_bundles(
 
     summaries = [_summarize(session, bundle) for bundle in bundles]
     return BundlePage(items=summaries, total=total, offset=offset, limit=limit)
+
+
+def _write_manual_order(
+    session: Session, collection_id: str | None, ordered_ids: list[str]
+) -> None:
+    """Assign each id its 0-based position as the manual order — into the given
+    collection's membership ``sort_order`` when scoped to one, else the global
+    ``AssetBundle.manual_order``."""
+    if collection_id is not None:
+        for order, bundle_id in enumerate(ordered_ids):
+            session.execute(
+                update(asset_bundle_collections)
+                .where(
+                    (asset_bundle_collections.c.bundle_id == bundle_id)
+                    & (asset_bundle_collections.c.collection_id == collection_id)
+                )
+                .values(sort_order=order)
+            )
+    else:
+        for order, bundle_id in enumerate(ordered_ids):
+            session.execute(
+                update(AssetBundle).where(AssetBundle.id == bundle_id).values(manual_order=order)
+            )
+    session.flush()
+
+
+def reorder_bundles(session: Session, *, collection_id: str | None, ordered_ids: list[str]) -> None:
+    """Persist a manual drag-reorder of bundles (MANUAL sort).
+
+    ``ordered_ids`` is the client's current on-screen order — best-effort over the
+    loaded window (each listed id takes its position; ids not listed keep their
+    stored order). "Clean up by…" rewrites the whole scope deterministically.
+    """
+    _write_manual_order(session, collection_id, ordered_ids)
+
+
+def cleanup_bundle_order(
+    session: Session,
+    *,
+    collection_id: str | None,
+    sort: BundleSort,
+    descending: bool,
+) -> None:
+    """Rewrite the manual order of every bundle in scope to a chosen sort key.
+
+    Computes the full scoped ordering server-side (not just a loaded page), so the
+    resulting manual order is dense and deterministic across the whole collection
+    (or the global order when ``collection_id`` is None)."""
+    scoped = apply_scope(
+        select(AssetBundle.id).where(_visible_file_exists()),
+        session,
+        view=SystemView.ALL,
+        collection_id=collection_id,
+        include_descendants=False,
+        predicate=None,
+        search_pred=None,
+    )
+    ordered = _apply_sort(scoped, sort, descending, collection_id=collection_id)
+    ids = list(session.scalars(ordered))
+    _write_manual_order(session, collection_id, ids)
 
 
 def _effective_cover_id(bundle: AssetBundle, files: list[AssetFile]) -> str | None:

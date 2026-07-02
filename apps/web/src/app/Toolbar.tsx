@@ -18,6 +18,8 @@ interface ToolbarProps {
   adHocFilters: AdHocFilters
   onAdHocFilters: (f: AdHocFilters) => void
   facetContext: FacetContext
+  // Open the "Clean up by…" dialog to rewrite the bundle manual order.
+  onCleanupOrder: () => void
 }
 
 const SORTS: { value: BundleSort; label: string }[] = [
@@ -26,6 +28,7 @@ const SORTS: { value: BundleSort; label: string }[] = [
   { value: 'rating', label: 'Rating' },
   { value: 'size', label: 'Size' },
   { value: 'file_count', label: 'File Count' },
+  { value: 'manual', label: 'Manual' },
 ]
 
 const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
@@ -44,6 +47,7 @@ export function Toolbar({
   adHocFilters,
   onAdHocFilters,
   facetContext,
+  onCleanupOrder,
 }: ToolbarProps) {
   const filtersActive = anyAdHocActive(adHocFilters)
   // The second filter row starts open when a filter is already active, so a
@@ -79,7 +83,11 @@ export function Toolbar({
 
         <select
           value={prefs.sort}
-          onChange={(e) => onPrefs({ ...prefs, sort: e.target.value as BundleSort })}
+          onChange={(e) => {
+            const sort = e.target.value as BundleSort
+            // Manual order reads low→high, so default it to ascending when picked.
+            onPrefs({ ...prefs, sort, order: sort === 'manual' ? 'asc' : prefs.order })
+          }}
           aria-label="Sort by"
         >
           {SORTS.map((s) => (
@@ -97,6 +105,16 @@ export function Toolbar({
         >
           {prefs.order === 'desc' ? '↓' : '↑'}
         </button>
+        {prefs.sort === 'manual' && (
+          <button
+            className="seg"
+            style={{ padding: '5px 8px', cursor: 'pointer' }}
+            onClick={onCleanupOrder}
+            title="Clean up the manual order by a chosen sort"
+          >
+            Clean up…
+          </button>
+        )}
 
         <div className="seg" role="group" aria-label="Layout">
           {LAYOUTS.map((l) => (

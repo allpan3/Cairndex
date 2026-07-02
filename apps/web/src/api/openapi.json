@@ -389,6 +389,47 @@
         "title": "BundleBrowsePage",
         "type": "object"
       },
+      "BundleCleanupOrder": {
+        "description": "Rewrite the manual order of every bundle in scope to a chosen toolbar sort.\n``sort`` is one of the real sorts (not ``manual``); rejected otherwise.",
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "sort": {
+            "enum": [
+              "date_added",
+              "title",
+              "rating",
+              "size",
+              "file_count"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sort"
+        ],
+        "title": "BundleCleanupOrder",
+        "type": "object"
+      },
       "BundleCollections": {
         "properties": {
           "bundle_id": {
@@ -585,13 +626,43 @@
         "title": "BundleRead",
         "type": "object"
       },
+      "BundleReorder": {
+        "description": "Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the\norder to a collection's membership; null = the global All/system-view order.",
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Ordered Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "BundleReorder",
+        "type": "object"
+      },
       "BundleSort": {
         "enum": [
           "date_added",
           "title",
           "rating",
           "size",
-          "file_count"
+          "file_count",
+          "manual"
         ],
         "title": "BundleSort",
         "type": "string"
@@ -4628,6 +4699,68 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/bundles/cleanup-order": {
+      "post": {
+        "description": "\"Clean up by\u2026\": rewrite the whole scope's manual order to a chosen sort.",
+        "operationId": "cleanup_bundle_order_api_v1_libraries__library_id__bundles_cleanup_order_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleCleanupOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Bundle Order",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/bundles/counts": {
       "get": {
         "operationId": "bundle_view_counts_api_v1_libraries__library_id__bundles_counts_get",
@@ -4681,6 +4814,68 @@
           }
         },
         "summary": "Bundle View Counts",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/reorder": {
+      "put": {
+        "description": "Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``\nscopes it to a collection's membership order; null = the global order.",
+        "operationId": "reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Bundles",
         "tags": [
           "bundles"
         ]
