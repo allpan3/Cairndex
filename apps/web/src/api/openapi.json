@@ -820,6 +820,22 @@
         "title": "BundleUpdate",
         "type": "object"
       },
+      "CollectionCleanup": {
+        "description": "Rewrite every sibling group's manual order to alphabetical name order.",
+        "properties": {
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          }
+        },
+        "title": "CollectionCleanup",
+        "type": "object"
+      },
       "CollectionCreate": {
         "properties": {
           "name": {
@@ -918,6 +934,35 @@
           "version"
         ],
         "title": "CollectionRead",
+        "type": "object"
+      },
+      "CollectionReorder": {
+        "description": "Manual drag-reorder of one sibling group (NULL parent = top level).",
+        "properties": {
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Ordered Ids",
+            "type": "array"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "CollectionReorder",
         "type": "object"
       },
       "CollectionStats": {
@@ -5900,6 +5945,68 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/collections/cleanup-order": {
+      "post": {
+        "description": "Rewrite the manual order of every sibling group to alphabetical name\norder (ascending or descending) \u2014 the \"Clean up by\u2026 Title\" action.",
+        "operationId": "cleanup_collection_order_api_v1_libraries__library_id__collections_cleanup_order_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCleanup"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Collection Order",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/collections/counts": {
       "get": {
         "operationId": "collection_counts_api_v1_libraries__library_id__collections_counts_get",
@@ -5953,6 +6060,79 @@
           }
         },
         "summary": "Collection Counts",
+        "tags": [
+          "library-collections"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/collections/reorder": {
+      "put": {
+        "description": "Persist a manual drag-reorder of one sibling group (NULL parent = top\nlevel). The sidebar tree and the main-browser folder cards both render from\nthis ``sort_order`` so a reorder in either surface updates both.",
+        "operationId": "reorder_collections_api_v1_libraries__library_id__collections_reorder_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionRead"
+                  },
+                  "title": "Response Reorder Collections Api V1 Libraries  Library Id  Collections Reorder Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Collections",
         "tags": [
           "library-collections"
         ]

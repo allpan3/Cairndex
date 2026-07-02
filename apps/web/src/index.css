@@ -703,6 +703,31 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
+.collsec__controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.collsec__cleanup {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.collsec__cleanup:hover {
+  color: var(--text-strong);
+}
+/* Drop indicator while dragging a folder card / sidebar row onto a reorder
+   target — a leading accent edge marks where the dragged item will land. */
+.collcard--drop {
+  border-color: var(--accent);
+}
+.collection-row--drop {
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
    slider (set inline). */

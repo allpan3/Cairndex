@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +44,19 @@ class CollectionUpdate(BaseModel):
     parent_id: str | None = None
     note: str | None = None
     cover_bundle_id: str | None = None
+
+
+class CollectionReorder(BaseModel):
+    """Manual drag-reorder of one sibling group (NULL parent = top level)."""
+
+    parent_id: str | None = None
+    ordered_ids: list[str] = Field(min_length=1)
+
+
+class CollectionCleanup(BaseModel):
+    """Rewrite every sibling group's manual order to alphabetical name order."""
+
+    order: Literal["asc", "desc"] = "asc"
 
 
 class CollectionRead(BaseModel):

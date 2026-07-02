@@ -80,6 +80,10 @@ asset_bundle_collections = Table(
         ForeignKey("collections.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    # Manual ("custom") order of a bundle *within* this collection, maintained by
+    # drag-reorder and rewritten by "Clean up by…". Distinct from the global
+    # AssetBundle.manual_order used in All/system views. Lower sorts first.
+    Column("sort_order", Integer, nullable=False, default=0, server_default="0"),
     # Reverse index (PK leads with bundle_id) for collection_counts' GROUP BY
     # collection_id and collection-scoped lookups (measured: perf/M2).
     Index("ix_asset_bundle_collections_collection_id", "collection_id"),
@@ -131,6 +135,13 @@ class AssetBundle(Base):
     )
 
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Global manual ("custom") order used when browsing All / system views with
+    # BundleSort.MANUAL (drag-reorder, rewritten by "Clean up by…"). Per-collection
+    # order lives on asset_bundle_collections.sort_order instead. Lower sorts first.
+    # server_default so a row inserted without it (a pre-existing/legacy bundle)
+    # is filled by the DB rather than violating NOT NULL.
+    manual_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Grouping state (ADR-0009). Scan stages files in PROVISIONAL bundles; only
     # an explicit user action confirms a grouping. Defaults make a bare

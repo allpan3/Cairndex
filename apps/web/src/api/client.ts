@@ -294,6 +294,18 @@ export const updateCollection = (
 export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
   getJson<CollectionStats>(`${lib()}/collections/${id}/stats`, signal)
 
+// Persist a manual drag-reorder of one sibling group (parentId null = top level).
+// The sidebar tree and main-browser folder cards share this sort_order.
+export const reorderCollections = (parentId: string | null, orderedIds: string[]) =>
+  send<CollectionRead[]>(`${lib()}/collections/reorder`, 'PUT', {
+    parent_id: parentId,
+    ordered_ids: orderedIds,
+  })
+
+// "Clean up by… Title": rewrite every sibling group's manual order alphabetically.
+export const cleanupCollectionOrder = (order: 'asc' | 'desc') =>
+  send<void>(`${lib()}/collections/cleanup-order`, 'POST', { order })
+
 // --- Libraries (registry) ----------------------------------------------------
 export const fetchLibraries = (signal?: AbortSignal): Promise<LibraryRead[]> =>
   getJson<LibraryRead[]>('/api/v1/libraries', signal)

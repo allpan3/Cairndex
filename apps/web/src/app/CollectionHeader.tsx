@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import { IconFolder } from './icons'
+import { moveBefore } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
@@ -24,6 +25,14 @@ interface CollectionHeaderProps {
   onSelectSubcollection: (id: string, e: React.MouseEvent) => void
   onMarqueeSelect: (ids: string[]) => void
   onOpenSubcollection: (id: string) => void
+  // Right-click a folder card (mirrors the sidebar's Delete Collection menu).
+  onContextMenuSubcollection?: (id: string, e: React.MouseEvent) => void
+  // Persist a manual drag-reorder of the folder cards (these all share one
+  // parent). Omitted when reordering doesn't apply (e.g. the flattened view).
+  onReorderCollections?: (orderedIds: string[]) => void
+  // Open the "Clean up by…" dialog for collections. Omitted when there's nothing
+  // to tidy.
+  onCleanup?: () => void
   selectedIds: Set<string>
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
   // bundle grid.
@@ -53,6 +62,13 @@ function CollectionCard({
   selected,
   onSelect,
   onOpen,
+  onContextMenu,
+  draggable,
+  isDropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
 }: {
   collection: CollectionRead
   count: number
@@ -60,15 +76,30 @@ function CollectionCard({
   selected: boolean
   onSelect: (e: React.MouseEvent) => void
   onOpen: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
+  draggable?: boolean
+  isDropTarget?: boolean
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  onDragOver?: (e: React.DragEvent) => void
+  onDrop?: (e: React.DragEvent) => void
 }) {
   const [hasCover, setHasCover] = useState(true)
   return (
     <button
-      className={`collcard${selected ? ' collcard--selected' : ''}`}
+      className={`collcard${selected ? ' collcard--selected' : ''}${
+        isDropTarget ? ' collcard--drop' : ''
+      }`}
       onClick={onSelect}
       onDoubleClick={onOpen}
+      onContextMenu={onContextMenu}
       title={collection.name}
       data-collection-id={collection.id}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       <div className="collcard__thumb">
         <span className="collcard__thumb-icon">
@@ -119,6 +150,9 @@ export function CollectionHeader({
   onSelectSubcollection,
   onMarqueeSelect,
   onOpenSubcollection,
+  onContextMenuSubcollection,
+  onReorderCollections,
+  onCleanup,
   selectedIds,
   zoom,
   subcollapsed,
@@ -132,6 +166,9 @@ export function CollectionHeader({
   // testing and the marquee rect stay relative to the grid.
   const scrollElRef = useRef<HTMLDivElement | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
+  // Id of the folder card being dragged for manual reorder (null when idle).
+  const [dragId, setDragId] = useState<string | null>(null)
+  const siblingIds = subcollections.map((c) => c.id)
 
   const hitTest = (rect: MarqueeRect): string[] => {
     const gridEl = gridRef.current
@@ -176,16 +213,23 @@ export function CollectionHeader({
           <Caret open={!subcollapsed} />
           {sectionLabel} ({subcollections.length})
         </button>
-        {onToggleShowContents && (
-          <label className="collsec__check">
-            <input
-              type="checkbox"
-              checked={showContents ?? false}
-              onChange={(e) => onToggleShowContents(e.target.checked)}
-            />
-            Show subcollection contents
-          </label>
-        )}
+        <div className="collsec__controls">
+          {onToggleShowContents && (
+            <label className="collsec__check">
+              <input
+                type="checkbox"
+                checked={showContents ?? false}
+                onChange={(e) => onToggleShowContents(e.target.checked)}
+              />
+              Show subcollection contents
+            </label>
+          )}
+          {onCleanup && (
+            <button className="collsec__cleanup" onClick={onCleanup} title="Clean up folder order">
+              Clean up…
+            </button>
+          )}
+        </div>
       </div>
       {!subcollapsed && (
         <div
@@ -218,6 +262,25 @@ export function CollectionHeader({
               selected={selectedIds.has(c.id)}
               onSelect={(e) => onSelectSubcollection(c.id, e)}
               onOpen={() => onOpenSubcollection(c.id)}
+              onContextMenu={
+                onContextMenuSubcollection ? (e) => onContextMenuSubcollection(c.id, e) : undefined
+              }
+              draggable={onReorderCollections !== undefined}
+              isDropTarget={dragId !== null && dragId !== c.id}
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move'
+                setDragId(c.id)
+              }}
+              onDragEnd={() => setDragId(null)}
+              onDragOver={(e) => {
+                if (dragId !== null && dragId !== c.id) e.preventDefault()
+              }}
+              onDrop={(e) => {
+                if (dragId === null || dragId === c.id || !onReorderCollections) return
+                e.preventDefault()
+                onReorderCollections(moveBefore(siblingIds, dragId, c.id))
+                setDragId(null)
+              }}
             />
           ))}
         </div>
