@@ -470,6 +470,28 @@ export function fileStreamUrl(fileId: string): string {
 // --- Taxonomy (for the tag editor) ------------------------------------------
 export const fetchTags = (signal?: AbortSignal) => fetchAllPaged<TagRead>(`${lib()}/tags`, signal)
 export const createTag = (payload: TagCreate) => send<TagRead>(`${lib()}/tags`, 'POST', payload)
+
+// All Tags management (Slice 3). Metadata-only: renaming/deleting/reordering a
+// tag never touches a file or bundle.
+export const updateTag = (
+  id: string,
+  patch: { name?: string; parent_id?: string | null; color?: string | null },
+  version?: number,
+) => send<TagRead>(`${lib()}/tags/${id}`, 'PATCH', patch, version)
+
+export const deleteTag = (id: string) => send<void>(`${lib()}/tags/${id}`, 'DELETE')
+
+/** Reorder sibling tags in the hierarchy (drag-reorder among siblings only). */
+export const reorderTags = (parentId: string | null, orderedIds: string[]) =>
+  send<TagRead[]>(`${lib()}/tags/reorder`, 'PUT', { parent_id: parentId, ordered_ids: orderedIds })
+
+/** Reorder tags within a group (membership sort_order only). */
+export const reorderGroupTags = (groupId: string, orderedIds: string[]) =>
+  send<{ group_id: string; tag_ids: string[] }>(
+    `${lib()}/tag-groups/${groupId}/tags/order`,
+    'PUT',
+    { tag_ids: orderedIds },
+  )
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>(`${lib()}/tag-groups`, signal)
 

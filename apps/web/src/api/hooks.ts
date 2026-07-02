@@ -29,6 +29,10 @@ import {
   createEmptyBundle,
   createLibrary,
   createTag,
+  deleteTag,
+  reorderGroupTags,
+  reorderTags,
+  updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
   deleteBundle,
@@ -499,6 +503,46 @@ export function useCreateTag() {
     mutationFn: (payload: TagCreate) => createTag(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
   })
+}
+
+/** Rename/delete/reorder tags for the All Tags management page (Slice 3). */
+export function useTagMutations() {
+  const qc = useQueryClient()
+  // A tag change can affect the tree, its counts, group membership order, and
+  // any browse/filter that references tags.
+  const invalidate = () => {
+    for (const key of [
+      'tags',
+      'tag-counts',
+      'tag-group-memberships',
+      'browse',
+      'bundle-tags',
+      'view-counts',
+    ])
+      qc.invalidateQueries({ queryKey: [key] })
+  }
+  return {
+    rename: useMutation({
+      mutationFn: ({ id, name, version }: { id: string; name: string; version?: number }) =>
+        updateTag(id, { name }, version),
+      // onSettled so a 409 conflict also refetches the latest tag state.
+      onSettled: invalidate,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => deleteTag(id),
+      onSuccess: invalidate,
+    }),
+    reorder: useMutation({
+      mutationFn: ({ parentId, orderedIds }: { parentId: string | null; orderedIds: string[] }) =>
+        reorderTags(parentId, orderedIds),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+    }),
+    reorderInGroup: useMutation({
+      mutationFn: ({ groupId, orderedIds }: { groupId: string; orderedIds: string[] }) =>
+        reorderGroupTags(groupId, orderedIds),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['tag-group-memberships'] }),
+    }),
+  }
 }
 
 export function useTagGroups() {

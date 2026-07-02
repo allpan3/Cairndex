@@ -29,6 +29,7 @@ import {
   useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
+import { AllTagsPage } from './app/AllTagsPage'
 import { ContextMenu } from './app/ContextMenu'
 import { type MenuEntry, useContextMenu } from './app/useContextMenu'
 import { Browser } from './app/Browser'
@@ -509,6 +510,23 @@ function Workspace({
     setActiveId(null)
   }, [])
 
+  // Double-clicking a tag on the All Tags page: go to All bundles, clear the
+  // text search, and apply a global Equal/direct tag filter (direct membership
+  // only — no descendant expansion), whether the tag is a parent or a leaf.
+  const applyTagFilterGlobally = useCallback((tagId: string) => {
+    setMode('collection')
+    setSelection({ view: 'all', collectionId: null })
+    setSearch('')
+    setAdHocFilters({
+      tags: { rule: 'equal', includeDescendants: false, include: [tagId], exclude: [] },
+      rating: null,
+    })
+    setSelectedIds(new Set())
+    setActiveId(null)
+    setSelectedCollectionIds(new Set())
+    setOpenBundleId(null)
+  }, [])
+
   // Right-click on a bundle card/row (Bundles surface). Operate on the whole
   // selection when the clicked card is part of a multi-selection; otherwise
   // target (and select) just this one. Deletion is confirmed in a dialog.
@@ -699,6 +717,12 @@ function Workspace({
           setFileScope('unbundled')
           setFileEntry(null)
         }}
+        onOpenAllTags={() => {
+          setMode('tags')
+          clearSelection()
+          setSelectedCollectionIds(new Set())
+          setOpenBundleId(null)
+        }}
         libraries={libraries}
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
@@ -742,7 +766,9 @@ function Workspace({
       />
 
       <div className="center">
-        {mode === 'file' ? (
+        {mode === 'tags' ? (
+          <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
+        ) : mode === 'file' ? (
           <FileView
             libraryName={libraryName}
             scope={fileScope}
@@ -841,7 +867,9 @@ function Workspace({
         )}
       </div>
 
-      {mode === 'file' ? (
+      {mode === 'tags' ? (
+        <aside className="inspector" />
+      ) : mode === 'file' ? (
         <FileInspector entry={fileEntry} />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
