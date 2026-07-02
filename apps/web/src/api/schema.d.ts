@@ -655,6 +655,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/filters/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Facets
+         * @description Faceted counts for the toolbar filter popovers, scoped to the current
+         *     browse context (view/collection/search + a base filter for the *other*
+         *     active categories). Counts stay server-side — never by fetching bundles.
+         */
+        post: operations["facets_api_v1_libraries__library_id__filters_facets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/filters/preview": {
         parameters: {
             query?: never;
@@ -1431,6 +1453,45 @@ export interface components {
         CreateEmptyBundleRequest: {
             /** Title */
             title?: string | null;
+        };
+        /**
+         * FacetRequest
+         * @description Faceted counts over the current browse scope, for the toolbar filter
+         *     popovers. The scope mirrors a browse request (view/collection/search plus a
+         *     base filter), but the base ``filter`` must exclude the facet category being
+         *     shown so a category's own selections don't shrink its own counts.
+         */
+        FacetRequest: {
+            /** Collection Id */
+            collection_id?: string | null;
+            /** Facets */
+            facets?: string[];
+            filter?: components["schemas"]["FilterExpression-Input"] | null;
+            /**
+             * Include Descendants
+             * @default false
+             */
+            include_descendants: boolean;
+            /** Q */
+            q?: string | null;
+            /**
+             * Tag Include Descendants
+             * @default true
+             */
+            tag_include_descendants: boolean;
+            /** @default all */
+            view: components["schemas"]["SystemView"];
+        };
+        /** FacetResponse */
+        FacetResponse: {
+            /** Ratings */
+            ratings?: {
+                [key: string]: number;
+            } | null;
+            /** Tags */
+            tags?: {
+                [key: string]: number;
+            } | null;
         };
         /** FastAddRequest */
         FastAddRequest: {
@@ -3850,6 +3911,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    facets_api_v1_libraries__library_id__filters_facets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FacetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacetResponse"];
                 };
             };
             /** @description Validation Error */

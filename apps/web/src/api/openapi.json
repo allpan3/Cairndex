@@ -1075,6 +1075,100 @@
         "title": "CreateEmptyBundleRequest",
         "type": "object"
       },
+      "FacetRequest": {
+        "description": "Faceted counts over the current browse scope, for the toolbar filter\npopovers. The scope mirrors a browse request (view/collection/search plus a\nbase filter), but the base ``filter`` must exclude the facet category being\nshown so a category's own selections don't shrink its own counts.",
+        "properties": {
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "facets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Facets",
+            "type": "array"
+          },
+          "filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterExpression-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_descendants": {
+            "default": false,
+            "title": "Include Descendants",
+            "type": "boolean"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "tag_include_descendants": {
+            "default": true,
+            "title": "Tag Include Descendants",
+            "type": "boolean"
+          },
+          "view": {
+            "$ref": "#/components/schemas/SystemView",
+            "default": "all"
+          }
+        },
+        "title": "FacetRequest",
+        "type": "object"
+      },
+      "FacetResponse": {
+        "properties": {
+          "ratings": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratings"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "title": "FacetResponse",
+        "type": "object"
+      },
       "FastAddRequest": {
         "properties": {
           "bundle_title": {
@@ -6565,6 +6659,75 @@
         "summary": "Stream File",
         "tags": [
           "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/filters/facets": {
+      "post": {
+        "description": "Faceted counts for the toolbar filter popovers, scoped to the current\nbrowse context (view/collection/search + a base filter for the *other*\nactive categories). Counts stay server-side \u2014 never by fetching bundles.",
+        "operationId": "facets_api_v1_libraries__library_id__filters_facets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FacetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Facets",
+        "tags": [
+          "filters"
         ]
       }
     },
