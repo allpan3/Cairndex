@@ -15,11 +15,30 @@ export interface Row {
 const GAP = 10
 const META_HEIGHT = 44 // title + sub line under a grid card
 
-/** Map the shared zoom (120–360, a grid card's target width) to a list row
- * height, so the one zoom slider drives both layouts. Default zoom 200 → 40px
- * (the previous fixed row height); clamped to a comfortable 34–72px range. */
+// Shared zoom-slider bounds (a grid bundle card's target width in px). The floor
+// is deliberately small so both bundle and folder cards can shrink further than
+// before; folder cards remap this range onto their own smaller curve.
+export const ZOOM_MIN = 80
+export const ZOOM_MAX = 360
+
+/** Map the shared zoom (a grid card's target width) to a list row height, so the
+ * one zoom slider drives both layouts. Default zoom 200 → 40px (the previous
+ * fixed row height); clamped to a comfortable 34–72px range. */
 export function listRowHeight(zoom: number): number {
   return Math.round(Math.max(34, Math.min(72, zoom * 0.2)))
+}
+
+/** Folder (collection) cards scale off the *same* zoom slider as bundle cards
+ * but on their own curve: smaller, and topping out around the slider's midpoint
+ * (~half the bundle range) so folders never grow as large as bundle tiles. Below
+ * ZOOM_MIN..midpoint they ramp from MIN to MAX, then hold at MAX. */
+export function collectionCardWidth(zoom: number): number {
+  const MIN = 72
+  const MAX = 180
+  const start = ZOOM_MIN
+  const midpoint = (ZOOM_MIN + ZOOM_MAX) / 2 // reach MAX around the slider middle
+  const t = Math.max(0, Math.min(1, (zoom - start) / (midpoint - start)))
+  return Math.round(MIN + t * (MAX - MIN))
 }
 
 function aspect(item: BundleSummary): number {

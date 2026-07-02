@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { BundleSort } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
 import { IconFilter } from './icons'
+import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
 import { TagFilterControl } from './TagFilterControl'
 import type { BrowsePrefs, LayoutMode } from './types'
@@ -136,8 +137,8 @@ export function Toolbar({
         <div className="zoom">
           <input
             type="range"
-            min={120}
-            max={360}
+            min={ZOOM_MIN}
+            max={ZOOM_MAX}
             step={10}
             value={prefs.zoom}
             onChange={(e) => onPrefs({ ...prefs, zoom: Number(e.target.value) })}
