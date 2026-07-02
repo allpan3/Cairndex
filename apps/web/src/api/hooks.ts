@@ -31,8 +31,6 @@ import {
   createLibrary,
   createTag,
   deleteTag,
-  reorderGroupTags,
-  reorderTags,
   updateTag,
   fetchUnbundledFiles,
   createSmartCollection,
@@ -506,11 +504,11 @@ export function useCreateTag() {
   })
 }
 
-/** Rename/delete/reorder tags for the All Tags management page (Slice 3). */
+/** Rename/delete/reparent tags for the All Tags management page (Slice 3). */
 export function useTagMutations() {
   const qc = useQueryClient()
-  // A tag change can affect the tree, its counts, group membership order, and
-  // any browse/filter that references tags.
+  // A tag change can affect the tree, its counts, group membership, and any
+  // browse/filter that references tags.
   const invalidate = () => {
     for (const key of [
       'tags',
@@ -533,46 +531,31 @@ export function useTagMutations() {
       mutationFn: (id: string) => deleteTag(id),
       onSuccess: invalidate,
     }),
-    // Optimistic: reflect the new order in the cache immediately so the list
-    // animates on drop (not after the round-trip); roll back on error, and
-    // reconcile with the server on settle.
-    reorder: useMutation({
-      mutationFn: ({ parentId, orderedIds }: { parentId: string | null; orderedIds: string[] }) =>
-        reorderTags(parentId, orderedIds),
-      onMutate: async ({ orderedIds }) => {
+    // Drag-to-reparent: move a tag under a new parent (null = top level). The tree
+    // is ordered by name, so there's no manual sibling order to maintain.
+    // Optimistic so the tag jumps to its new home immediately; roll back on error.
+    reparent: useMutation({
+      mutationFn: ({
+        id,
+        parentId,
+        version,
+      }: {
+        id: string
+        parentId: string | null
+        version?: number
+      }) => updateTag(id, { parent_id: parentId }, version),
+      onMutate: async ({ id, parentId }) => {
         await qc.cancelQueries({ queryKey: ['tags'] })
         const prev = qc.getQueryData<TagRead[]>(['tags'])
         qc.setQueryData<TagRead[]>(['tags'], (old) =>
-          old?.map((t) => {
-            const idx = orderedIds.indexOf(t.id)
-            return idx >= 0 ? { ...t, sort_order: idx } : t
-          }),
+          old?.map((t) => (t.id === id ? { ...t, parent_id: parentId } : t)),
         )
         return { prev }
       },
       onError: (_e, _v, ctx) => {
         if (ctx?.prev) qc.setQueryData(['tags'], ctx.prev)
       },
-      onSettled: () => qc.invalidateQueries({ queryKey: ['tags'] }),
-    }),
-    reorderInGroup: useMutation({
-      mutationFn: ({ groupId, orderedIds }: { groupId: string; orderedIds: string[] }) =>
-        reorderGroupTags(groupId, orderedIds),
-      onMutate: async ({ groupId, orderedIds }) => {
-        await qc.cancelQueries({ queryKey: ['tag-group-memberships'] })
-        const prev = qc.getQueriesData<Record<string, string[]>>({
-          queryKey: ['tag-group-memberships'],
-        })
-        qc.setQueriesData<Record<string, string[]>>(
-          { queryKey: ['tag-group-memberships'] },
-          (old) => (old ? { ...old, [groupId]: orderedIds } : old),
-        )
-        return { prev }
-      },
-      onError: (_e, _v, ctx) => {
-        for (const [key, data] of ctx?.prev ?? []) qc.setQueryData(key, data)
-      },
-      onSettled: () => qc.invalidateQueries({ queryKey: ['tag-group-memberships'] }),
+      onSettled: invalidate,
     }),
   }
 }

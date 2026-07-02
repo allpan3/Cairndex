@@ -533,65 +533,112 @@ button {
 .alltags__toolbar input[type='search'] {
   width: 200px;
 }
-.alltags__list {
+/* Scroll area that also acts as the "drop to top level" target when dragging. */
+.alltags__grid-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 8px;
+  padding: 6px 10px 24px;
 }
-.alltags__row {
-  position: relative;
+.alltags__grid-scroll--root {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  border-radius: 6px;
+}
+/* --- Alphabet sections --------------------------------------------------- */
+.tagsec {
+  margin-top: 6px;
+}
+.tagsec__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 4px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.tagsec__count {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.tagsec__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 12px;
+}
+/* --- Tag tile (a grid cell; expands full-width to reveal children) -------- */
+.tagtile {
+  min-width: 0;
+}
+/* An expanded parent claims a full grid row so its children sit beneath it
+   without leaving gaps in the surrounding columns. */
+.tagtile--open {
+  grid-column: 1 / -1;
+}
+.tagtile--dragging {
+  opacity: 0.45;
+}
+.tagtile--drop > .tagtile__head {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-soft);
+}
+.tagtile__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: 4px;
+  padding: 4px 6px;
   border-radius: 5px;
   cursor: pointer;
 }
-.alltags__row:hover {
+.tagtile__head:hover {
   background: var(--bg-2);
 }
-.alltags__row--dragging {
-  opacity: 0.5;
-}
-/* Insertion line showing exactly where a dragged tag will land, indented to the
-   target's sibling level. */
-.alltags__row--drop-before::before,
-.alltags__row--drop-after::after {
-  content: '';
-  position: absolute;
-  left: var(--drop-indent, 10px);
-  right: 8px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-  z-index: 2;
-  pointer-events: none;
-}
-.alltags__row--drop-before::before {
-  top: -1px;
-}
-.alltags__row--drop-after::after {
-  bottom: -1px;
-}
-.alltags__grip {
+.tagtile__chevron {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
   color: var(--text-muted);
-  cursor: grab;
-  font-size: 12px;
-  user-select: none;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
 }
-.alltags__name {
+.tagtile__chevron--leaf {
+  cursor: default;
+}
+.tagtile__chevron:hover {
+  color: var(--text-strong);
+}
+.tagtile__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.alltags__row-count {
+.tagtile__count {
   color: var(--text-muted);
   font-size: 12px;
 }
-.alltags__rename {
+.tagtile__rename {
   flex: 1;
+  min-width: 0;
+}
+/* Children of an expanded tile: their own responsive grid, indented with a rule
+   so the hierarchy reads clearly. */
+.tagtile__children {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 10px;
+  margin: 2px 0 6px 10px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
 }
 
 .browser {

@@ -697,7 +697,7 @@ function Workspace({
 
   return (
     <div
-      className="app"
+      className={`app${mode === 'tags' ? ' app--no-inspector' : ''}`}
       style={
         {
           ['--sidebar-w']: `${sidebarW}px`,
@@ -867,9 +867,7 @@ function Workspace({
         )}
       </div>
 
-      {mode === 'tags' ? (
-        <aside className="inspector" />
-      ) : mode === 'file' ? (
+      {mode === 'tags' ? null : mode === 'file' ? (
         <FileInspector entry={fileEntry} />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />

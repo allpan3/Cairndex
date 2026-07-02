@@ -102,11 +102,11 @@ hidden paths, so portable cache files do not remain as user-visible assets.
 `id`, `parent_id` (self-FK, `SET NULL`), `name`, `color`, `sort_order`,
 `version`, timestamps. Unique `(parent_id, name)`.
 
-`sort_order` is the explicit sibling display order used by the All Tags page and
-the tag pickers; `PUT /tags/reorder` rewrites it for a set of siblings (reorder
-among siblings only — it never changes `parent_id`, so there is no drag
-reparenting). The All Tags page falls back to Chinese-aware (pinyin) name order
-for tags that share a `sort_order`.
+The All Tags management page orders tags by **name (Chinese-aware / pinyin)**, not
+by `sort_order`, and its drag gesture **reparents** a tag (sets `parent_id`, via
+`update_tag` with the existing cycle guard) rather than reordering siblings. The
+`sort_order` column and the `PUT /tags/reorder` endpoint remain for an explicit
+manual sibling order but are not driven by the current UI.
 
 **Tag deletion (safe-delete):** the delete service blocks a tag that still has
 child tags (a friendly 409, no cascade) so the owner deletes or moves the
