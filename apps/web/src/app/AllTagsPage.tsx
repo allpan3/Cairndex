@@ -10,7 +10,7 @@ import {
 } from '../api/hooks'
 import { ContextMenu } from './ContextMenu'
 import { IconTag } from './icons'
-import { planReorder } from './tagReorder'
+import { type DropPosition, planReorder, siblingKeyOf } from './tagReorder'
 import { useContextMenu } from './useContextMenu'
 
 // Chinese-aware ordering: prefer pinyin collation for zh, fall back to a general
@@ -71,6 +71,10 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const [search, setSearch] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
+  // Where a valid drop would land, so we can draw an insertion line at that spot.
+  const [dropHint, setDropHint] = useState<{ targetId: string; position: DropPosition } | null>(
+    null,
+  )
 
   const byId = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const groupedIds = useMemo(() => new Set(Object.values(memberships).flat()), [memberships])
@@ -124,16 +128,34 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     ])
   }
 
+  const parentOf = (tid: string) => byId.get(tid)?.parent_id ?? null
+  const hasTag = (tid: string) => byId.has(tid)
+
+  // True when dragging the current `dragId` onto `row` is a valid sibling drop
+  // (same sibling group; never reparent). Drives whether we allow the drop and
+  // show the insertion line.
+  const isValidTarget = (row: Row): boolean =>
+    dragId !== null &&
+    dragId !== row.tag.id &&
+    siblingKeyOf(dragId, groupId, parentOf, hasTag) === row.parentKey
+
+  const endDrag = () => {
+    setDragId(null)
+    setDropHint(null)
+  }
+
   const onDrop = (target: Row) => {
     const id = dragId
-    setDragId(null)
+    const position = dropHint?.targetId === target.tag.id ? dropHint.position : 'before'
+    endDrag()
     if (id === null) return
     const plan = planReorder({
       dragId: id,
       target,
+      position,
       groupId,
-      parentOf: (tid) => byId.get(tid)?.parent_id ?? null,
-      hasTag: (tid) => byId.has(tid),
+      parentOf,
+      hasTag,
       siblingIds: rows.filter((r) => r.parentKey === target.parentKey).map((r) => r.tag.id),
       groupOrder: groupId ? (memberships[groupId] ?? []) : [],
     })
@@ -201,18 +223,31 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
             const t = row.tag
             const dragging = dragId === t.id
             const canReorder = !q // dragging while searching would reorder a filtered subset
+            const indent = 10 + row.depth * 16
+            const hinted = dropHint?.targetId === t.id ? dropHint.position : null
             return (
               <div
                 key={t.id}
-                className={`alltags__row${dragging ? ' alltags__row--dragging' : ''}`}
-                style={{ paddingLeft: 10 + row.depth * 16 }}
+                className={`alltags__row${dragging ? ' alltags__row--dragging' : ''}${
+                  hinted ? ` alltags__row--drop-${hinted}` : ''
+                }`}
+                style={
+                  { paddingLeft: indent, ['--drop-indent']: `${indent}px` } as React.CSSProperties
+                }
                 draggable={canReorder && renamingId !== t.id}
                 onDragStart={() => setDragId(t.id)}
-                onDragEnd={() => setDragId(null)}
+                onDragEnd={endDrag}
                 onDragOver={(e) => {
-                  // Allow the drop cursor for any potential target; the sibling
-                  // constraint (no reparenting) is enforced in onDrop.
-                  if (canReorder && dragId && dragId !== t.id) e.preventDefault()
+                  // Only a valid sibling target accepts the drop (no reparenting).
+                  // Pick before/after from which half of the row the cursor is over,
+                  // so the insertion line shows exactly where the tag will land.
+                  if (!canReorder || !isValidTarget(row)) return
+                  e.preventDefault()
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const position: DropPosition =
+                    e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+                  if (dropHint?.targetId !== t.id || dropHint.position !== position)
+                    setDropHint({ targetId: t.id, position })
                 }}
                 onDrop={() => onDrop(row)}
                 onDoubleClick={() => onApplyTagFilter(t.id)}

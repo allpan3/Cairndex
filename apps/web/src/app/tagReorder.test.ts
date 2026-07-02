@@ -1,19 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
-import { moveWithin, planReorder } from './tagReorder'
+import { moveTo, planReorder } from './tagReorder'
 
 // A minimal target for the pure planner (only tag.id + parentKey are read).
 const row = (id: string, parentKey: string | null) => ({ tag: { id }, parentKey })
 
-describe('moveWithin', () => {
-  it('inserts after the target when dragging down', () => {
-    expect(moveWithin(['a', 'b', 'c'], 'a', 'c')).toEqual(['b', 'c', 'a'])
+describe('moveTo', () => {
+  it('inserts after the target', () => {
+    expect(moveTo(['a', 'b', 'c'], 'a', 'b', 'after')).toEqual(['b', 'a', 'c'])
   })
-  it('inserts before the target when dragging up', () => {
-    expect(moveWithin(['a', 'b', 'c'], 'c', 'a')).toEqual(['c', 'a', 'b'])
+  it('inserts before the target', () => {
+    expect(moveTo(['a', 'b', 'c'], 'c', 'b', 'before')).toEqual(['a', 'c', 'b'])
   })
-  it('is a no-op dropping on itself', () => {
-    expect(moveWithin(['a', 'b'], 'a', 'a')).toEqual(['a', 'b'])
+  it('can move an item to the very end (after the last)', () => {
+    expect(moveTo(['a', 'b', 'c'], 'a', 'c', 'after')).toEqual(['b', 'c', 'a'])
+  })
+  it('leaves the order unchanged for an unknown target', () => {
+    expect(moveTo(['a', 'b'], 'a', 'z', 'after')).toEqual(['a', 'b'])
   })
 })
 
@@ -23,10 +26,11 @@ describe('planReorder', () => {
   const parentOf = (id: string) => parents[id] ?? null
   const hasTag = (id: string) => id in parents
 
-  it('reorders root-level siblings', () => {
+  it('reorders root-level siblings, honoring the drop position', () => {
     const plan = planReorder({
       dragId: 'leaf',
       target: row('p', null),
+      position: 'before',
       groupId: null,
       parentOf,
       hasTag,
@@ -42,6 +46,7 @@ describe('planReorder', () => {
     const plan = planReorder({
       dragId: 'c',
       target: row('leaf', null),
+      position: 'after',
       groupId: null,
       parentOf,
       hasTag,
@@ -55,6 +60,7 @@ describe('planReorder', () => {
     const plan = planReorder({
       dragId: 'a',
       target: row('b', 'group:g1'),
+      position: 'after',
       groupId: 'g1',
       parentOf,
       hasTag,
@@ -68,6 +74,7 @@ describe('planReorder', () => {
     const plan = planReorder({
       dragId: 'p',
       target: row('p', null),
+      position: 'before',
       groupId: null,
       parentOf,
       hasTag,

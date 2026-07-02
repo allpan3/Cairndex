@@ -7,48 +7,71 @@ export interface ReorderTarget {
   parentKey: string | null
 }
 
+// Which side of the target row the dragged tag drops onto (from the cursor's
+// position over the row). Drives both the insertion and the drop-line indicator.
+export type DropPosition = 'before' | 'after'
+
 export type ReorderPlan =
   | { kind: 'siblings'; parentId: string | null; orderedIds: string[] }
   | { kind: 'group'; groupId: string; orderedIds: string[] }
 
-/** New sibling order after dragging `dragId` onto `targetId` — insert after when
- * dragging down, before when dragging up (natural drag semantics). */
-export function moveWithin(order: string[], dragId: string, targetId: string): string[] {
-  const from = order.indexOf(dragId)
-  const to = order.indexOf(targetId)
-  if (from < 0 || to < 0 || from === to) return order
+/** New order after moving `dragId` to just before/after `targetId`. */
+export function moveTo(
+  order: string[],
+  dragId: string,
+  targetId: string,
+  position: DropPosition,
+): string[] {
   const without = order.filter((id) => id !== dragId)
   const ti = without.indexOf(targetId)
-  without.splice(from < to ? ti + 1 : ti, 0, dragId)
+  if (ti < 0) return order
+  without.splice(position === 'after' ? ti + 1 : ti, 0, dragId)
   return without
 }
 
+/** The sibling-group key of a tag: its parent id when the parent is in view, else
+ * the hierarchy root (null); or the group when scoped to a group. Reorder is
+ * constrained to a single sibling group — this is how "same siblings" is decided. */
+export function siblingKeyOf(
+  id: string,
+  groupId: string | null,
+  parentOf: (id: string) => string | null | undefined,
+  hasTag: (id: string) => boolean,
+): string | null {
+  if (groupId) return `group:${groupId}`
+  const parent = parentOf(id)
+  return parent && hasTag(parent) ? parent : null
+}
+
 /**
- * Decide the reorder to apply when `dragId` is dropped on `target`, or null when
- * the drop is invalid. Reorders among siblings only: the drag source and target
- * must share a sibling group — never reparent (no dragging a child out of its
- * parent).
+ * Decide the reorder to apply when `dragId` is dropped `position` a `target`, or
+ * null when the drop is invalid. Reorders among siblings only: the drag source
+ * and target must share a sibling group — never reparent (no dragging a child out
+ * of its parent).
  */
 export function planReorder(opts: {
   dragId: string
   target: ReorderTarget
+  position: DropPosition
   groupId: string | null
   parentOf: (id: string) => string | null | undefined
   hasTag: (id: string) => boolean
   siblingIds: string[]
   groupOrder: string[]
 }): ReorderPlan | null {
-  const { dragId, target, groupId, parentOf, hasTag, siblingIds, groupOrder } = opts
+  const { dragId, target, position, groupId, parentOf, hasTag, siblingIds, groupOrder } = opts
   if (dragId === target.tag.id) return null
-  const srcParent = parentOf(dragId)
-  const srcKey = groupId ? `group:${groupId}` : srcParent && hasTag(srcParent) ? srcParent : null
-  if (srcKey !== target.parentKey) return null
+  if (siblingKeyOf(dragId, groupId, parentOf, hasTag) !== target.parentKey) return null
   if (groupId) {
-    return { kind: 'group', groupId, orderedIds: moveWithin(groupOrder, dragId, target.tag.id) }
+    return {
+      kind: 'group',
+      groupId,
+      orderedIds: moveTo(groupOrder, dragId, target.tag.id, position),
+    }
   }
   return {
     kind: 'siblings',
     parentId: target.parentKey,
-    orderedIds: moveWithin(siblingIds, dragId, target.tag.id),
+    orderedIds: moveTo(siblingIds, dragId, target.tag.id, position),
   }
 }
