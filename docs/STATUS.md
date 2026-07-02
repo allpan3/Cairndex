@@ -27,8 +27,9 @@ Eagle-like ad-hoc filtering + tag management, merged as **#46**
   **accordion grid** of top-level tags that expand in place to reveal children
   (folded = rolled-up subtree count, expanded = direct). **Drag reparents** a tag
   (onto another = nest; onto empty space = top level); the tree is name/pinyin
-  ordered, so manual sibling ordering was dropped (the `PUT /tags/reorder`
-  endpoint remains but is unused by the UI). Backend safe tag delete blocks a
+  ordered, so manual sibling ordering was dropped (the `PUT /tags/reorder` and
+  `PUT /tag-groups/{id}/tags/order` endpoints were removed). Backend safe tag
+  delete blocks a
   parent with children. Double-clicking a tag applies a global Equal/direct
   filter. (Initial cut was a single-column drag-reorder tree; reworked per review
   into the accordion grid with reparent-by-drag.)

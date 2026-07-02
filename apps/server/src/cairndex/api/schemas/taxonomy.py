@@ -18,14 +18,6 @@ class TagUpdate(BaseModel):
     color: str | None = Field(default=None, max_length=32)
 
 
-class TagReorder(BaseModel):
-    """Reorder sibling tags in the hierarchy (All Tags drag-reorder). Every id
-    must already sit directly under ``parent_id``; hierarchy is never changed."""
-
-    parent_id: str | None = None
-    ordered_ids: list[str]
-
-
 class TagRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,12 +91,6 @@ class TagGroupRead(BaseModel):
 
 
 class SetTagsRequest(BaseModel):
-    tag_ids: list[str]
-
-
-class ReorderTagsRequest(BaseModel):
-    """Reorder tags within a group (membership sort_order only)."""
-
     tag_ids: list[str]
 
 

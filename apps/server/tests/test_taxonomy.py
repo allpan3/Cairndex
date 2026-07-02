@@ -68,27 +68,14 @@ def test_deleting_leaf_tag_removes_assignments(session: Session) -> None:
     assert [t.id for t in reloaded.tags] == []
 
 
-def test_reorder_tags_among_siblings(session: Session) -> None:
+def test_reparent_moves_tag_under_new_parent(session: Session) -> None:
+    # The All Tags page reparents by drag (via update_tag); reordering siblings is
+    # no longer a thing (the tree is name-ordered).
     a = tag_service.create_tag(session, name="a")
     b = tag_service.create_tag(session, name="b")
-    c = tag_service.create_tag(session, name="c")
-    session.commit()
-
-    tag_service.reorder_tags(session, parent_id=None, ordered_ids=[c.id, a.id, b.id])
+    tag_service.update_tag(session, b.id, parent_id=a.id, set_parent=True)
     session.expire_all()
-    assert session.get(Tag, c.id).sort_order == 0
-    assert session.get(Tag, a.id).sort_order == 1
-    assert session.get(Tag, b.id).sort_order == 2
-
-
-def test_reorder_tags_rejects_cross_parent(session: Session) -> None:
-    parent = tag_service.create_tag(session, name="p")
-    child = tag_service.create_tag(session, name="child", parent_id=parent.id)
-    root = tag_service.create_tag(session, name="root")
-    session.commit()
-    # child (under parent) and root (top-level) are not siblings.
-    with pytest.raises(ValidationError):
-        tag_service.reorder_tags(session, parent_id=None, ordered_ids=[root.id, child.id])
+    assert session.get(Tag, b.id).parent_id == a.id
 
 
 # --- Collection hierarchy ----------------------------------------------------
@@ -242,21 +229,15 @@ def test_set_group_tags_rejects_unknown_tag(session: Session) -> None:
         group_service.set_group_tags(session, group.id, ["nope"])
 
 
-def test_reorder_group_tags_orders_membership_not_hierarchy(session: Session) -> None:
+def test_group_membership_lists_in_assigned_order(session: Session) -> None:
     group = group_service.create_tag_group(session, name="G")
-    parent = tag_service.create_tag(session, name="parent")
-    a = tag_service.create_tag(session, name="a", parent_id=parent.id)
-    b = tag_service.create_tag(session, name="b", parent_id=parent.id)
-    group_service.set_group_tags(session, group.id, [a.id, b.id])
+    a = tag_service.create_tag(session, name="a")
+    b = tag_service.create_tag(session, name="b")
+    # set_group_tags stamps membership sort_order from the given order, and
+    # list_group_tag_ids returns it in that order.
+    group_service.set_group_tags(session, group.id, [b.id, a.id])
     session.commit()
-
-    group_service.reorder_group_tags(session, group.id, [b.id, a.id])
-    session.expire_all()
-    # Membership display order changed…
     assert group_service.list_group_tag_ids(session, group.id) == [b.id, a.id]
-    # …but the tag hierarchy is untouched.
-    assert session.get(Tag, a.id).parent_id == parent.id
-    assert session.get(Tag, b.id).parent_id == parent.id
 
 
 # --- API smoke ---------------------------------------------------------------
@@ -275,33 +256,18 @@ def test_tag_and_group_api_flow(client: TestClient, library_id: str) -> None:
     assert {t["id"] for t in listed["items"]} == {parent["id"], child["id"]}
 
 
-def test_tag_reorder_and_safe_delete_api(client: TestClient, library_id: str) -> None:
+def test_tag_reparent_and_safe_delete_api(client: TestClient, library_id: str) -> None:
     base = f"/api/v1/libraries/{library_id}"
     parent = client.post(f"{base}/tags", json={"name": "parent"}).json()
-    a = client.post(f"{base}/tags", json={"name": "a", "parent_id": parent["id"]}).json()
-    b = client.post(f"{base}/tags", json={"name": "b", "parent_id": parent["id"]}).json()
+    a = client.post(f"{base}/tags", json={"name": "a"}).json()
 
-    # Reorder the two children among themselves.
-    r = client.put(
-        f"{base}/tags/reorder",
-        json={"parent_id": parent["id"], "ordered_ids": [b["id"], a["id"]]},
-    )
+    # Reparent "a" under "parent" via PATCH (the All Tags drag gesture).
+    r = client.patch(f"{base}/tags/{a['id']}", json={"parent_id": parent["id"]})
     assert r.status_code == 200
-    order = {t["id"]: t["sort_order"] for t in r.json()}
-    assert order[b["id"]] == 0 and order[a["id"]] == 1
+    assert r.json()["parent_id"] == parent["id"]
 
-    # Deleting the parent (has children) is blocked with 409.
-    blocked = client.delete(f"{base}/tags/{parent['id']}")
-    assert blocked.status_code == 409
-
-    # Group membership reorder endpoint.
-    group = client.post(f"{base}/tag-groups", json={"name": "G"}).json()
-    client.put(f"{base}/tag-groups/{group['id']}/tags", json={"tag_ids": [a["id"], b["id"]]})
-    reordered = client.put(
-        f"{base}/tag-groups/{group['id']}/tags/order", json={"tag_ids": [b["id"], a["id"]]}
-    )
-    assert reordered.status_code == 200
-    assert reordered.json()["tag_ids"] == [b["id"], a["id"]]
+    # Deleting the parent (now has a child) is blocked with 409.
+    assert client.delete(f"{base}/tags/{parent['id']}").status_code == 409
 
     # A leaf tag deletes fine.
     assert client.delete(f"{base}/tags/{a['id']}").status_code == 204

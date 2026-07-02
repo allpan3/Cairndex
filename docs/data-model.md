@@ -105,8 +105,9 @@ hidden paths, so portable cache files do not remain as user-visible assets.
 The All Tags management page orders tags by **name (Chinese-aware / pinyin)**, not
 by `sort_order`, and its drag gesture **reparents** a tag (sets `parent_id`, via
 `update_tag` with the existing cycle guard) rather than reordering siblings. The
-`sort_order` column and the `PUT /tags/reorder` endpoint remain for an explicit
-manual sibling order but are not driven by the current UI.
+`sort_order` column is retained (harmless, defaults to 0) but no longer written —
+the manual sibling-reorder endpoint (`PUT /tags/reorder`) was removed once the UI
+switched to name ordering + reparent-by-drag.
 
 **Tag deletion (safe-delete):** the delete service blocks a tag that still has
 child tags (a friendly 409, no cascade) so the owner deletes or moves the
@@ -124,10 +125,11 @@ reaches it while children exist.)
 
 Many-to-many tags to groups: `group_id` + `tag_id` composite PK, both CASCADE,
 plus `sort_order`. A group is not a hierarchy parent. `sort_order` is the tag's
-display order *within that group*; `PUT /tag-groups/{id}/tags/order` rewrites it
-and `GET /tag-groups/{id}/tags` returns member ids in that order. Reordering
-inside a group only touches this membership order — it never changes a tag's
-hierarchy `parent_id`.
+display order *within that group*: `set_group_tags` stamps it from the assignment
+order and `GET /tag-groups/{id}/tags` returns member ids in that order (the
+dedicated `PUT /tag-groups/{id}/tags/order` reorder endpoint was removed with the
+tag-reorder cleanup). Group membership never changes a tag's hierarchy
+`parent_id`.
 
 ### `collections`
 
