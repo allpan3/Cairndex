@@ -4,8 +4,10 @@ import { createPortal } from 'react-dom'
 import type { CollectionRead } from '../api/client'
 
 interface RemoveCollectionDialogProps {
-  collection: CollectionRead
-  /** Whether the collection has any subcollections (controls the checkbox). */
+  /** The collection(s) to delete (one from the sidebar/single card, several from
+   * a multi-selection in the main browser). */
+  collections: CollectionRead[]
+  /** Whether any target has subcollections (controls the cascade checkbox). */
   hasChildren: boolean
   pending: boolean
   onCancel: () => void
@@ -14,13 +16,12 @@ interface RemoveCollectionDialogProps {
 }
 
 /**
- * Confirm deleting a collection. Deletion is metadata-only — bundles and files
- * are always kept. When the collection has subcollections the owner chooses
- * (checked by default) whether to delete them too or float them to the top
- * level.
+ * Confirm deleting one or more collections. Deletion is metadata-only — bundles
+ * and files are always kept. When any target has subcollections the owner chooses
+ * (checked by default) whether to delete them too or float them to the top level.
  */
 export function RemoveCollectionDialog({
-  collection,
+  collections,
   hasChildren,
   pending,
   onCancel,
@@ -36,6 +37,10 @@ export function RemoveCollectionDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [onCancel])
 
+  const count = collections.length
+  const title = count > 1 ? `Delete ${count} Collections` : 'Delete Collection'
+  const target = count > 1 ? `these ${count} collections` : `“${collections[0]?.name ?? ''}”`
+
   return createPortal(
     <div className="modal-backdrop" onMouseDown={onCancel}>
       <div
@@ -43,18 +48,18 @@ export function RemoveCollectionDialog({
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Delete Collection"
+        aria-label={title}
       >
         <div className="modal__head">
-          <h2>Delete Collection</h2>
+          <h2>{title}</h2>
           <button className="modal__close" onClick={onCancel} aria-label="Cancel">
             ×
           </button>
         </div>
 
         <div className="modal__preview">
-          Delete “{collection.name}”? The bundles and files inside it are kept — only the collection
-          is deleted.
+          Delete {target}? The bundles and files inside {count > 1 ? 'them' : 'it'} are kept — only
+          the collection{count > 1 ? 's are' : ' is'} deleted.
         </div>
 
         {hasChildren && (
