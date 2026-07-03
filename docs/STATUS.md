@@ -74,6 +74,40 @@ rows** (bundle + file views) and Shift-range file selection. All frontend gates
 green; Playwright 39 passed. Verified in the browser against the Synthetic Library
 (incl. a reversible live reparent + move round-trip).
 
+**Third follow-up round (review feedback):**
+
+- Fold arrows reverted to a **solid disclosure triangle** (slightly larger, kept
+  narrow) — `IconChevron` in `app/icons.tsx`, `.chevron`/`.chevron--lg` sizes.
+- **Collection drag-reorder reliability:** the drop zone is recomputed from the
+  cursor at drop time (a stale hover slot no longer turns a reorder into a
+  reparent); cross-parent edge drops reparent+reorder (`moveCollection` in
+  `App.tsx` = `PATCH parent_id` then `collections/reorder`), so a subcollection
+  can be dropped out to the **top level**; a `CollectionListEnd` drop zone below
+  the last sidebar row catches drags "behind the last collection".
+- **Alt/Option bundle drag** fixed on macOS (drag advertises `copyMove` +
+  reflects copy/move cursor) so add-to-collection-without-removing works.
+- **Stuck "drop into" highlight** fixed by gating folder-card / sidebar-row drop
+  feedback on the live `dragItem` (a bundle drag begins in the Browser and never
+  fires those surfaces' `onDragEnd`).
+- **File Browser directories** now join drag-select + Shift-range select like
+  files (bundling targets still filter to files).
+- **"Review grouping" → "Suggest grouping" (ADR-0011):** the manual action now
+  re-proposes grouping for every **uncategorized** bundle (incl. confirmed ones
+  whose collections were removed) + unbundled files; **Update**/scan keeps the
+  narrower `new` scope. Suggestion scope added to `grouping/service.py`
+  `gather_observations(scope=…)` + `plan_store.generate_plan(scope=…)`; the
+  manual `POST …/grouping/plans` selects `uncategorized`. Internal
+  provisional/confirmed state kept (apply still protects confirmed bundles); the
+  user-facing **"Needs review" badge removed**.
+
+Verified: backend `ruff`/`format`/`mypy` clean, **pytest 291 passed** (new
+`tests/test_grouping_scope.py`). Frontend `lint`/`format`/`typecheck`/`vitest`/
+`build` clean. Browser-verified the triangle icon and the "Suggest grouping"
+rename / removed review badge against the Synthetic Library; native DnD and the
+File Browser weren't exercisable there (synthetic files aren't on disk), and the
+manual suggest pass is too heavy to run live over 33k uncategorized bundles —
+covered by unit/service tests instead.
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**

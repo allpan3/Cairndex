@@ -58,13 +58,24 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **"Review grouping" is now "Suggest grouping" and is categorization-driven**
+  (ADR-0011). The manual action re-proposes grouping for **every bundle that
+  isn't filed into a collection** — including a previously confirmed one whose
+  collections were later removed — plus still-unbundled files; bundles already in
+  a collection are left untouched. Routine **Update**/scan keeps its narrower
+  scope (only files not yet in a confirmed grouping). The internal
+  provisional/confirmed state is unchanged (it still protects confirmed bundles
+  at apply time and drives re-scan additions) but the user-facing **"Needs
+  review" badge is removed** — there's no "review" state to track.
+- Fold arrows are back to a **solid disclosure triangle** (slightly larger, kept
+  narrow), replacing the chevron.
 - **The All tab is now a browser root:** with "Show subcollection contents" off it
   shows the top-level collections plus _uncategorized_ bundles (and their manual
   order); turning it on flattens to every collection and bundle. There is no
   global manual order spanning all bundles — reordering and "Clean up…" are
   disabled (and the menu item greyed) whenever contents are flattened.
-- Fold arrows now use a **chevron icon** (larger on the Collections / Smart
-  Collections section headings).
+- Fold arrows are a **solid disclosure triangle** (larger on the Collections /
+  Smart Collections section headings).
 
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
@@ -401,6 +412,22 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- **Collection drag-reorder could silently misfire (~1 in 8) or drop a move.**
+  The drop zone is now recomputed from the cursor at drop time (a stale hover
+  slot no longer turns an intended reorder into a reparent). Dropping a
+  collection on the gap before/after a row in a **different** parent group now
+  reparents it into that group at that slot — so a subcollection can be moved out
+  to the **top level** — and a drop zone below the last sidebar row catches a
+  drag aimed "behind the last collection".
+- **Bundle drag with Option/Alt held was rejected on macOS.** The drag now
+  advertises `copyMove` (and reflects copy vs move as the cursor), so
+  Option-drag to *add* bundles to a collection (without removing them from the
+  current one) works.
+- **A "drop into" highlight could stick on the last-hovered folder card / sidebar
+  row** after a bundle drag (which begins in the Browser and never fired those
+  surfaces' `onDragEnd`). The highlight is now gated on the live drag.
+- **File Browser directories now take part in drag-select and Shift-range
+  select** like files (bundling targets still filter to files only).
 - **Marquee drag-select could inflate the scroll area with empty space,
   runaway-growing without bound.** The drag-selection overlay's size was
   computed straight from raw mouse coordinates; dragging past the loaded

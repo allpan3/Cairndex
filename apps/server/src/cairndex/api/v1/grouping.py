@@ -36,8 +36,15 @@ def _summary(plan: object) -> PlanSummary:
 @router.post("/plans", response_model=PlanRead, status_code=status.HTTP_201_CREATED)
 def generate_plan(db: LibrarySession) -> PlanRead:
     """Suggest a grouping for the current library and store it as the active
-    plan (superseding any earlier open plan)."""
-    plan = plan_store.generate_plan(db)
+    plan (superseding any earlier open plan).
+
+    This is the manual "Suggest grouping" entrypoint, so it uses the
+    ``uncategorized`` scope: every bundle not yet filed into a collection —
+    including a previously confirmed one whose collections were later removed —
+    is re-proposed for grouping, alongside still-unbundled files. Routine
+    scan/Update generation stays on the ``new`` scope (confirmed groupings are
+    left untouched)."""
+    plan = plan_store.generate_plan(db, scope="uncategorized")
     return PlanRead.model_validate(plan)
 
 

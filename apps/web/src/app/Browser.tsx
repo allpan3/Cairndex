@@ -387,12 +387,7 @@ function ListRow({
             : undefined
         }
       />
-      <div className="list-row__title">
-        {item.title ?? 'Untitled'}
-        {item.grouping_state === 'provisional' && (
-          <span className="list-row__state">Needs review</span>
-        )}
-      </div>
+      <div className="list-row__title">{item.title ?? 'Untitled'}</div>
       <span className="list-cell">{formatDimensions(item.width, item.height)}</span>
       <span className="list-cell">{item.extension ?? '—'}</span>
       <span className="list-cell">{formatBytes(item.total_size)}</span>
