@@ -24,8 +24,10 @@ function Svg({ children, className = 'icon' }: { children: ReactNode; className?
   )
 }
 
-/** Fold chevron — points down when open, right when collapsed. `className`
- * selects the size (`.chevron` default, `.chevron--lg` for section headings). */
+/** Fold caret — a small solid triangle pointing down when open, right when
+ * collapsed (the classic disclosure triangle; narrow so it barely widens a row).
+ * `className` selects the size (`.chevron` default, `.chevron--lg` for section
+ * headings). */
 export const IconChevron = ({
   open = false,
   className = 'chevron',
@@ -34,7 +36,11 @@ export const IconChevron = ({
   className?: string
 }) => (
   <Svg className={className}>
-    {open ? <polyline points="6 9 12 15 18 9" /> : <polyline points="9 18 15 12 9 6" />}
+    {open ? (
+      <polygon points="6 9 18 9 12 16" fill="currentColor" stroke="none" />
+    ) : (
+      <polygon points="9 6 16 12 9 18" fill="currentColor" stroke="none" />
+    )}
   </Svg>
 )
 

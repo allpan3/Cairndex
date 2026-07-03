@@ -766,6 +766,14 @@ button {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+/* Drop zone below the last top-level collection row — lets a drag land "behind
+   the last collection" (append to the top level / move a subcollection out). */
+.collection-list-end {
+  height: 16px;
+}
+.collection-list-end--over {
+  border-top: 2px solid var(--accent);
+}
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
    slider (set inline). */
@@ -2566,14 +2574,14 @@ code {
 /* Fold chevron (foldable-section arrows). Small by default (branch toggles /
    collsec carets); the --lg variant is used for the sidebar section headings. */
 .chevron {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   display: block;
 }
 .chevron--lg {
-  width: 15px;
-  height: 15px;
+  width: 17px;
+  height: 17px;
 }
 /* The filename ellipsizes but keeps a readable floor; when the row is too
    narrow for everything, the status badges (after it) clip instead of the

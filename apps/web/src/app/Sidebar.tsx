@@ -89,6 +89,9 @@ interface SidebarProps {
   ) => void
   // Persist a manual drag-reorder of one sibling group (parentId null = top level).
   onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
+  // Move a collection into a different parent group at a specific slot (reparent
+  // + reorder). newParentId null = the top level.
+  onMoveCollection?: (id: string, newParentId: string | null, orderedIds: string[]) => void
   // Right-click the Collections heading → clean up the collection manual order.
   onCleanupCollections?: () => void
   // Cross-surface drag: the current payload + callbacks to reparent a collection
@@ -154,6 +157,7 @@ export function Sidebar({
   onCreateCollection,
   onRenameCollection,
   onReorderCollections,
+  onMoveCollection,
   onCleanupCollections,
   dragItem = null,
   onDragItem,
@@ -531,10 +535,26 @@ export function Sidebar({
                 dropSlot={dropSlot}
                 onDropSlot={setDropSlot}
                 onReorderCollections={onReorderCollections}
+                onMoveCollection={onMoveCollection}
                 onReparentCollection={onReparentCollection}
                 onMoveBundlesInto={onMoveBundlesInto}
               />
             ))}
+            {/* A drop target below the last row so a collection can be dropped in
+                the empty space "behind the last collection" to land at the end of
+                the top level (reordering, or moving a subcollection out). */}
+            {tree.length > 0 && (
+              <CollectionListEnd
+                topLevelIds={tree.map((n) => n.collection.id)}
+                dragItem={dragItem}
+                onMoveCollection={onMoveCollection}
+                onReorderCollections={onReorderCollections}
+                onEndDrag={() => {
+                  onDragItem?.(null)
+                  setDropSlot(null)
+                }}
+              />
+            )}
           </>
         )}
       </div>
@@ -602,6 +622,7 @@ function CollectionBranch({
   dropSlot,
   onDropSlot,
   onReorderCollections,
+  onMoveCollection,
   onReparentCollection,
   onMoveBundlesInto,
 }: {
@@ -623,6 +644,7 @@ function CollectionBranch({
   dropSlot: { id: string; zone: 'before' | 'into' | 'after' } | null
   onDropSlot: (v: { id: string; zone: 'before' | 'into' | 'after' } | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
+  onMoveCollection?: SidebarProps['onMoveCollection']
   onReparentCollection?: (id: string, targetId: string) => void
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
 }) {
@@ -631,7 +653,10 @@ function CollectionBranch({
   const expanded = isExpanded(node.collection.id, depth)
   const editing = editingId === node.collection.id
   const id = node.collection.id
-  const slotZone = dropSlot?.id === id ? dropSlot.zone : null
+  // Only reflect the hover slot while a drag is live — a bundle drag begins in
+  // the Browser and never fires a sidebar row's onDragEnd, so gating on dragItem
+  // prevents the highlight from sticking after such a drag ends.
+  const slotZone = dragItem && dropSlot?.id === id ? dropSlot.zone : null
   const endDrag = () => {
     onDragItem?.(null)
     onDropSlot(null)
@@ -656,13 +681,16 @@ function CollectionBranch({
         }}
         onDragEnd={endDrag}
         onDragOver={(e) => {
-          // Bundles → move into this collection; a folder → reorder within the
-          // same sibling group (edges) or reparent into any other collection.
+          // Bundles → move into this collection; a folder → drop on the top/bottom
+          // edge to place before/after this row (reorder within, or reparent into,
+          // this row's group), or on the middle to reparent *into* this collection.
           let zone: 'before' | 'into' | 'after' | null = null
-          if (dragItem?.kind === 'bundles') zone = 'into'
-          else if (dragItem?.kind === 'collection' && dragItem.id !== id) {
+          if (dragItem?.kind === 'bundles') {
+            zone = 'into'
+            e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+          } else if (dragItem?.kind === 'collection' && dragItem.id !== id) {
             const r = e.currentTarget.getBoundingClientRect()
-            zone = siblingIds.includes(dragItem.id) ? dropZone(e, r, 'vertical', true) : 'into'
+            zone = dropZone(e, r, 'vertical', true)
           }
           if (zone === null) return
           e.preventDefault()
@@ -670,15 +698,28 @@ function CollectionBranch({
         }}
         onDrop={(e) => {
           if (!dragItem) return
-          const zone = dropSlot?.id === id ? dropSlot.zone : 'into'
           if (dragItem.kind === 'bundles') {
             e.preventDefault()
             onMoveBundlesInto?.(id, e.altKey)
           } else if (dragItem.id !== id) {
             e.preventDefault()
-            if (zone === 'into') onReparentCollection?.(dragItem.id, id)
-            else
+            // Recompute the zone from the cursor at drop time — the last dragover
+            // may not have settled on this row, and a stale slot would silently
+            // turn an intended reorder into a reparent ("move fails" ~1 in 8).
+            const r = e.currentTarget.getBoundingClientRect()
+            const zone = dropZone(e, r, 'vertical', true)
+            if (zone === 'into') {
+              onReparentCollection?.(dragItem.id, id)
+            } else if (siblingIds.includes(dragItem.id)) {
               onReorderCollections(parentId, moveTo(siblingIds, dragItem.id, id, zone === 'before'))
+            } else {
+              // From another parent group: reparent into this row's group at the slot.
+              onMoveCollection?.(
+                dragItem.id,
+                parentId,
+                moveTo([...siblingIds, dragItem.id], dragItem.id, id, zone === 'before'),
+              )
+            }
           }
           endDrag()
         }}
@@ -731,11 +772,57 @@ function CollectionBranch({
             dropSlot={dropSlot}
             onDropSlot={onDropSlot}
             onReorderCollections={onReorderCollections}
+            onMoveCollection={onMoveCollection}
             onReparentCollection={onReparentCollection}
             onMoveBundlesInto={onMoveBundlesInto}
           />
         ))}
     </>
+  )
+}
+
+/** A slim drop target rendered after the last top-level row. Dropping a
+ * collection here lands it at the end of the top level — the natural target when
+ * dragging "past the last collection" into the empty space below the tree, and
+ * the way to move a nested subcollection out to the top level. */
+function CollectionListEnd({
+  topLevelIds,
+  dragItem,
+  onMoveCollection,
+  onReorderCollections,
+  onEndDrag,
+}: {
+  topLevelIds: string[]
+  dragItem: DragItem | null
+  onMoveCollection?: SidebarProps['onMoveCollection']
+  onReorderCollections: SidebarProps['onReorderCollections']
+  onEndDrag: () => void
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <div
+      className={`collection-list-end${over ? ' collection-list-end--over' : ''}`}
+      onDragOver={(e) => {
+        if (dragItem?.kind !== 'collection') return
+        e.preventDefault()
+        if (!over) setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false)
+        if (dragItem?.kind !== 'collection') return
+        e.preventDefault()
+        const id = dragItem.id
+        const rest = topLevelIds.filter((x) => x !== id)
+        if (topLevelIds.includes(id)) {
+          // Already top-level: just move it to the end.
+          onReorderCollections(null, [...rest, id])
+        } else {
+          onMoveCollection?.(id, null, [...rest, id])
+        }
+        onEndDrag()
+      }}
+    />
   )
 }
 

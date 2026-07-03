@@ -40,6 +40,10 @@ interface CollectionHeaderProps {
   dragItem: DragItem | null
   onDragItem: (item: DragItem | null) => void
   onReparentCollection: (id: string, targetId: string) => void
+  // Parent of the folder cards shown here (the viewed collection, or null in the
+  // All view) — used to place a card dragged in from another parent group.
+  parentId: string | null
+  onMoveCollection: (id: string, newParentId: string | null, orderedIds: string[]) => void
   onMoveBundlesInto: (targetId: string, alt: boolean) => void
   selectedIds: Set<string>
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
@@ -172,6 +176,8 @@ export function CollectionHeader({
   dragItem,
   onDragItem,
   onReparentCollection,
+  parentId,
+  onMoveCollection,
   onMoveBundlesInto,
   selectedIds,
   zoom,
@@ -198,6 +204,11 @@ export function CollectionHeader({
     setDropSlot(null)
     onDragItem(null)
   }
+  // Only show hover feedback while a drag is actually in flight. A bundle drag
+  // starts in the Browser, so this card's own onDragEnd never fires for it —
+  // gating on dragItem keeps the "drop into" highlight from sticking on the
+  // last-hovered folder card after such a drag ends.
+  const activeSlot = dragItem ? dropSlot : null
   const siblingIds = subcollections.map((c) => c.id)
 
   const hitTest = (rect: MarqueeRect): string[] => {
@@ -298,8 +309,10 @@ export function CollectionHeader({
                 onContextMenuSubcollection ? (e) => onContextMenuSubcollection(c.id, e) : undefined
               }
               draggable
-              drop={dropSlot?.id === c.id && dropSlot.zone !== 'into' ? dropSlot.zone : undefined}
-              dropInto={dropSlot?.id === c.id && dropSlot.zone === 'into'}
+              drop={
+                activeSlot?.id === c.id && activeSlot.zone !== 'into' ? activeSlot.zone : undefined
+              }
+              dropInto={activeSlot?.id === c.id && activeSlot.zone === 'into'}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move'
                 onDragItem({ kind: 'collection', id: c.id })
@@ -309,8 +322,11 @@ export function CollectionHeader({
                 // Bundles dropped on a folder always mean "move into"; a folder
                 // hovering another can reorder (edges) or reparent (center).
                 let zone: 'before' | 'into' | 'after' | null = null
-                if (dragItem?.kind === 'bundles') zone = 'into'
-                else if (dragItem?.kind === 'collection' && dragItem.id !== c.id) {
+                if (dragItem?.kind === 'bundles') {
+                  zone = 'into'
+                  // Reflect Alt = "add (copy) into" vs plain "move into".
+                  e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+                } else if (dragItem?.kind === 'collection' && dragItem.id !== c.id) {
                   const r = e.currentTarget.getBoundingClientRect()
                   // Reorder edges only when this sibling group is reorderable.
                   zone = onReorderCollections ? dropZone(e, r, 'horizontal', true) : 'into'
@@ -323,15 +339,27 @@ export function CollectionHeader({
               }}
               onDrop={(e) => {
                 if (dragItem === null) return
-                const zone = dropSlot?.id === c.id ? dropSlot.zone : 'into'
                 if (dragItem.kind === 'bundles') {
                   e.preventDefault()
                   onMoveBundlesInto(c.id, e.altKey)
                 } else if (dragItem.id !== c.id) {
                   e.preventDefault()
-                  if (zone === 'into') onReparentCollection(dragItem.id, c.id)
-                  else
+                  // Recompute the zone from the cursor at drop time (a stale slot
+                  // would silently turn an intended reorder into a reparent).
+                  const r = e.currentTarget.getBoundingClientRect()
+                  const zone = onReorderCollections ? dropZone(e, r, 'horizontal', true) : 'into'
+                  if (zone === 'into') {
+                    onReparentCollection(dragItem.id, c.id)
+                  } else if (siblingIds.includes(dragItem.id)) {
                     onReorderCollections?.(moveTo(siblingIds, dragItem.id, c.id, zone === 'before'))
+                  } else {
+                    // Dragged in from another parent group (e.g. the sidebar).
+                    onMoveCollection(
+                      dragItem.id,
+                      parentId,
+                      moveTo([...siblingIds, dragItem.id], dragItem.id, c.id, zone === 'before'),
+                    )
+                  }
                 }
                 clearDrag()
               }}
