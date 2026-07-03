@@ -7,10 +7,10 @@
  */
 import type { ReactNode } from 'react'
 
-function Svg({ children }: { children: ReactNode }) {
+function Svg({ children, className = 'icon' }: { children: ReactNode; className?: string }) {
   return (
     <svg
-      className="icon"
+      className={className}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -23,6 +23,20 @@ function Svg({ children }: { children: ReactNode }) {
     </svg>
   )
 }
+
+/** Fold chevron — points down when open, right when collapsed. `className`
+ * selects the size (`.chevron` default, `.chevron--lg` for section headings). */
+export const IconChevron = ({
+  open = false,
+  className = 'chevron',
+}: {
+  open?: boolean
+  className?: string
+}) => (
+  <Svg className={className}>
+    {open ? <polyline points="6 9 12 15 18 9" /> : <polyline points="9 18 15 12 9 6" />}
+  </Svg>
+)
 
 export const IconGrid = () => (
   <Svg>

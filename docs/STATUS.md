@@ -60,6 +60,20 @@ multi-select; double-click-to-open / single-click-metadata confirmed. New
 persisted keys; `e2e/ordering.spec.ts` updated (6 specs). All gates green;
 Playwright 39 passed.
 
+**Second follow-up round (review feedback):** chevron fold icons (bigger on the
+sidebar section headings); the **All tab** now shows top-level collections +
+*uncategorized* bundles by default and flattens to everything with the toggle
+(there is no global manual order — reorder/"Clean up…" are disabled and greyed
+when flattened); **cross-surface drag** to reparent collections (center = into,
+edge = reorder) and move bundles into a collection (Alt = add without removing),
+in both the sidebar and the main browser (`app/dnd.ts` `DragItem`/`dropZone`,
+App-level `dragItem`, `PATCH …/collections/{id}` `parent_id` reparent, batch
+add/remove for bundle moves); bundle-album file selection (click/drag/Shift, the
+inspector keeps the bundle) + **"Locate in File Browser"**; drag-select on **list
+rows** (bundle + file views) and Shift-range file selection. All frontend gates
+green; Playwright 39 passed. Verified in the browser against the Synthetic Library
+(incl. a reversible live reparent + move round-trip).
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**

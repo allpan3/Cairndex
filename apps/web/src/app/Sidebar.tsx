@@ -12,6 +12,7 @@ import { JobProgress } from './JobProgress'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
   IconAlert,
+  IconChevron,
   IconCircleDashed,
   IconClock,
   IconFilter,
@@ -20,6 +21,8 @@ import {
   IconLooseStack,
   IconTag,
 } from './icons'
+import type { DragItem } from './dnd'
+import { dropZone } from './dnd'
 import { moveTo } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
@@ -88,6 +91,12 @@ interface SidebarProps {
   onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
   // Right-click the Collections heading → clean up the collection manual order.
   onCleanupCollections?: () => void
+  // Cross-surface drag: the current payload + callbacks to reparent a collection
+  // or move bundles into a collection by dropping on a sidebar row.
+  dragItem?: DragItem | null
+  onDragItem?: (item: DragItem | null) => void
+  onReparentCollection?: (id: string, targetId: string) => void
+  onMoveBundlesInto?: (targetId: string, alt: boolean) => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -146,6 +155,10 @@ export function Sidebar({
   onRenameCollection,
   onReorderCollections,
   onCleanupCollections,
+  dragItem = null,
+  onDragItem,
+  onReparentCollection,
+  onMoveBundlesInto,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -153,10 +166,12 @@ export function Sidebar({
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const menu = useContextMenu()
-  // Manual-reorder drag: the dragged collection id + the current gap (which row,
-  // before/after it) so the drop slots between rows rather than onto one.
-  const [dragCollId, setDragCollId] = useState<string | null>(null)
-  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  // Drop feedback for the hovered collection row (before/after = reorder gap,
+  // into = reparent/add). The dragged payload comes from the App-level dragItem.
+  const [dropSlot, setDropSlot] = useState<{
+    id: string
+    zone: 'before' | 'into' | 'after'
+  } | null>(null)
   // Fold state for the two sidebar sections (persisted).
   const [smartCollapsed, setSmartCollapsed] = usePersistentState(
     'cairndex.sidebar.smartCollapsed',
@@ -511,11 +526,13 @@ export function Sidebar({
                 editingId={editingId}
                 onRenameCollection={onRenameCollection}
                 onDoneEditing={() => setEditingId(null)}
-                dragCollId={dragCollId}
-                onDragCollId={setDragCollId}
+                dragItem={dragItem}
+                onDragItem={onDragItem}
                 dropSlot={dropSlot}
                 onDropSlot={setDropSlot}
                 onReorderCollections={onReorderCollections}
+                onReparentCollection={onReparentCollection}
+                onMoveBundlesInto={onMoveBundlesInto}
               />
             ))}
           </>
@@ -555,7 +572,9 @@ function SectionHeading({
           accessible name. */}
       <button className="sidebar__heading-toggle" onClick={onToggle} aria-expanded={!collapsed}>
         {label}
-        <span className="sidebar__heading-caret">{collapsed ? '▸' : '▾'}</span>
+        <span className="sidebar__heading-caret">
+          <IconChevron open={!collapsed} className="chevron chevron--lg" />
+        </span>
       </button>
       <button className="sidebar__add" onClick={onAdd} aria-label={addLabel} title={addTitle}>
         +
@@ -578,11 +597,13 @@ function CollectionBranch({
   editingId,
   onRenameCollection,
   onDoneEditing,
-  dragCollId,
-  onDragCollId,
+  dragItem,
+  onDragItem,
   dropSlot,
   onDropSlot,
   onReorderCollections,
+  onReparentCollection,
+  onMoveBundlesInto,
 }: {
   node: TreeNode
   depth: number
@@ -597,31 +618,33 @@ function CollectionBranch({
   editingId: string | null
   onRenameCollection: SidebarProps['onRenameCollection']
   onDoneEditing: () => void
-  dragCollId: string | null
-  onDragCollId: (id: string | null) => void
-  dropSlot: { id: string; before: boolean } | null
-  onDropSlot: (v: { id: string; before: boolean } | null) => void
+  dragItem: DragItem | null
+  onDragItem?: (item: DragItem | null) => void
+  dropSlot: { id: string; zone: 'before' | 'into' | 'after' } | null
+  onDropSlot: (v: { id: string; zone: 'before' | 'into' | 'after' } | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
+  onReparentCollection?: (id: string, targetId: string) => void
+  onMoveBundlesInto?: (targetId: string, alt: boolean) => void
 }) {
   const active = selection.collectionId === node.collection.id
   const hasChildren = node.children.length > 0
   const expanded = isExpanded(node.collection.id, depth)
   const editing = editingId === node.collection.id
   const id = node.collection.id
-  // A drop only reorders within the same sibling group; a drag from another
-  // parent is ignored (reparenting collections isn't a drag gesture here).
-  const canDrop = dragCollId !== null && dragCollId !== id && siblingIds.includes(dragCollId)
+  const slotZone = dropSlot?.id === id ? dropSlot.zone : null
   const endDrag = () => {
-    onDragCollId(null)
+    onDragItem?.(null)
     onDropSlot(null)
   }
 
   return (
     <>
       <div
-        className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
+        className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
+          slotZone === 'into' ? ' collection-row--drop-into' : ''
+        }`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        data-drop={dropSlot?.id === id ? (dropSlot.before ? 'before' : 'after') : undefined}
+        data-drop={slotZone && slotZone !== 'into' ? slotZone : undefined}
         onClick={() => !editing && onSelect({ view: 'all', collectionId: id })}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
@@ -629,21 +652,34 @@ function CollectionBranch({
         draggable={!editing}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
-          onDragCollId(id)
+          onDragItem?.({ kind: 'collection', id })
         }}
         onDragEnd={endDrag}
         onDragOver={(e) => {
-          if (!canDrop) return
+          // Bundles → move into this collection; a folder → reorder within the
+          // same sibling group (edges) or reparent into any other collection.
+          let zone: 'before' | 'into' | 'after' | null = null
+          if (dragItem?.kind === 'bundles') zone = 'into'
+          else if (dragItem?.kind === 'collection' && dragItem.id !== id) {
+            const r = e.currentTarget.getBoundingClientRect()
+            zone = siblingIds.includes(dragItem.id) ? dropZone(e, r, 'vertical', true) : 'into'
+          }
+          if (zone === null) return
           e.preventDefault()
-          const r = e.currentTarget.getBoundingClientRect()
-          const before = e.clientY < r.top + r.height / 2
-          if (dropSlot?.id !== id || dropSlot.before !== before) onDropSlot({ id, before })
+          if (dropSlot?.id !== id || dropSlot.zone !== zone) onDropSlot({ id, zone })
         }}
         onDrop={(e) => {
-          if (!canDrop || dragCollId === null) return
-          e.preventDefault()
-          const before = dropSlot?.id === id ? dropSlot.before : true
-          onReorderCollections(parentId, moveTo(siblingIds, dragCollId, id, before))
+          if (!dragItem) return
+          const zone = dropSlot?.id === id ? dropSlot.zone : 'into'
+          if (dragItem.kind === 'bundles') {
+            e.preventDefault()
+            onMoveBundlesInto?.(id, e.altKey)
+          } else if (dragItem.id !== id) {
+            e.preventDefault()
+            if (zone === 'into') onReparentCollection?.(dragItem.id, id)
+            else
+              onReorderCollections(parentId, moveTo(siblingIds, dragItem.id, id, zone === 'before'))
+          }
           endDrag()
         }}
       >
@@ -655,7 +691,7 @@ function CollectionBranch({
           }}
           aria-label={expanded ? 'Collapse' : 'Expand'}
         >
-          {hasChildren ? (expanded ? '▾' : '▸') : ''}
+          {hasChildren ? <IconChevron open={expanded} /> : ''}
         </button>
         <span className="nav-item__icon">
           <IconFolder />
@@ -690,11 +726,13 @@ function CollectionBranch({
             editingId={editingId}
             onRenameCollection={onRenameCollection}
             onDoneEditing={onDoneEditing}
-            dragCollId={dragCollId}
-            onDragCollId={onDragCollId}
+            dragItem={dragItem}
+            onDragItem={onDragItem}
             dropSlot={dropSlot}
             onDropSlot={onDropSlot}
             onReorderCollections={onReorderCollections}
+            onReparentCollection={onReparentCollection}
+            onMoveBundlesInto={onMoveBundlesInto}
           />
         ))}
     </>

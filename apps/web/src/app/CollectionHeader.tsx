@@ -2,7 +2,9 @@ import { useRef, useState } from 'react'
 
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
-import { IconFolder } from './icons'
+import type { DragItem } from './dnd'
+import { dropZone } from './dnd'
+import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth } from './layout'
 import { moveTo } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -33,6 +35,12 @@ interface CollectionHeaderProps {
   onReorderCollections?: (orderedIds: string[]) => void
   // Right-click on empty section space → the folder-order context menu (Clean up…).
   onSectionContextMenu?: (e: React.MouseEvent) => void
+  // Cross-surface drag: the current payload + callbacks to start a collection
+  // drag, reparent a collection into another, or move bundles into a collection.
+  dragItem: DragItem | null
+  onDragItem: (item: DragItem | null) => void
+  onReparentCollection: (id: string, targetId: string) => void
+  onMoveBundlesInto: (targetId: string, alt: boolean) => void
   selectedIds: Set<string>
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
   // bundle grid.
@@ -47,7 +55,11 @@ interface CollectionHeaderProps {
 }
 
 function Caret({ open }: { open: boolean }) {
-  return <span className="collsec__caret">{open ? '▾' : '▸'}</span>
+  return (
+    <span className="collsec__caret">
+      <IconChevron open={open} />
+    </span>
+  )
 }
 
 /** A folder card with a cover image (the collection's chosen/auto-picked cover
@@ -65,6 +77,7 @@ function CollectionCard({
   onContextMenu,
   draggable,
   drop,
+  dropInto,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -79,6 +92,8 @@ function CollectionCard({
   onContextMenu?: (e: React.MouseEvent) => void
   draggable?: boolean
   drop?: 'before' | 'after'
+  // Highlight the whole card as a "move into" target (reparent / add bundles).
+  dropInto?: boolean
   onDragStart?: (e: React.DragEvent) => void
   onDragEnd?: () => void
   onDragOver?: (e: React.DragEvent) => void
@@ -87,13 +102,15 @@ function CollectionCard({
   const [hasCover, setHasCover] = useState(true)
   return (
     <button
-      className={`collcard${selected ? ' collcard--selected' : ''}`}
+      className={`collcard${selected ? ' collcard--selected' : ''}${
+        dropInto ? ' collcard--drop-into' : ''
+      }`}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
       title={collection.name}
       data-collection-id={collection.id}
-      data-drop={drop}
+      data-drop={dropInto ? undefined : drop}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -152,6 +169,10 @@ export function CollectionHeader({
   onContextMenuSubcollection,
   onReorderCollections,
   onSectionContextMenu,
+  dragItem,
+  onDragItem,
+  onReparentCollection,
+  onMoveBundlesInto,
   selectedIds,
   zoom,
   subcollapsed,
@@ -165,13 +186,17 @@ export function CollectionHeader({
   // testing and the marquee rect stay relative to the grid.
   const scrollElRef = useRef<HTMLDivElement | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
-  // Manual-reorder drag: the id being dragged + the current gap (which card, and
-  // before/after it) so the drop slots between cards rather than onto one.
-  const [dragId, setDragId] = useState<string | null>(null)
-  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  // Drop feedback for the hovered folder card: which card and which zone
+  // (before/after = reorder gap, into = reparent/add). The dragged item itself
+  // comes from the App-level dragItem (so a bundle or a folder from elsewhere can
+  // be dropped here).
+  const [dropSlot, setDropSlot] = useState<{
+    id: string
+    zone: 'before' | 'into' | 'after'
+  } | null>(null)
   const clearDrag = () => {
-    setDragId(null)
     setDropSlot(null)
+    onDragItem(null)
   }
   const siblingIds = subcollections.map((c) => c.id)
 
@@ -272,27 +297,42 @@ export function CollectionHeader({
               onContextMenu={
                 onContextMenuSubcollection ? (e) => onContextMenuSubcollection(c.id, e) : undefined
               }
-              draggable={onReorderCollections !== undefined}
-              drop={dropSlot?.id === c.id ? (dropSlot.before ? 'before' : 'after') : undefined}
+              draggable
+              drop={dropSlot?.id === c.id && dropSlot.zone !== 'into' ? dropSlot.zone : undefined}
+              dropInto={dropSlot?.id === c.id && dropSlot.zone === 'into'}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move'
-                setDragId(c.id)
+                onDragItem({ kind: 'collection', id: c.id })
               }}
               onDragEnd={clearDrag}
               onDragOver={(e) => {
-                if (dragId === null || dragId === c.id) return
+                // Bundles dropped on a folder always mean "move into"; a folder
+                // hovering another can reorder (edges) or reparent (center).
+                let zone: 'before' | 'into' | 'after' | null = null
+                if (dragItem?.kind === 'bundles') zone = 'into'
+                else if (dragItem?.kind === 'collection' && dragItem.id !== c.id) {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  // Reorder edges only when this sibling group is reorderable.
+                  zone = onReorderCollections ? dropZone(e, r, 'horizontal', true) : 'into'
+                }
+                if (zone === null) return
                 e.preventDefault()
-                const r = e.currentTarget.getBoundingClientRect()
-                const before = e.clientX < r.left + r.width / 2
                 setDropSlot((prev) =>
-                  prev?.id === c.id && prev.before === before ? prev : { id: c.id, before },
+                  prev?.id === c.id && prev.zone === zone ? prev : { id: c.id, zone },
                 )
               }}
               onDrop={(e) => {
-                if (dragId === null || dragId === c.id || !onReorderCollections) return
-                e.preventDefault()
-                const before = dropSlot?.id === c.id ? dropSlot.before : true
-                onReorderCollections(moveTo(siblingIds, dragId, c.id, before))
+                if (dragItem === null) return
+                const zone = dropSlot?.id === c.id ? dropSlot.zone : 'into'
+                if (dragItem.kind === 'bundles') {
+                  e.preventDefault()
+                  onMoveBundlesInto(c.id, e.altKey)
+                } else if (dragItem.id !== c.id) {
+                  e.preventDefault()
+                  if (zone === 'into') onReparentCollection(dragItem.id, c.id)
+                  else
+                    onReorderCollections?.(moveTo(siblingIds, dragItem.id, c.id, zone === 'before'))
+                }
                 clearDrag()
               }}
             />

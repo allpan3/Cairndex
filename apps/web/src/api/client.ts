@@ -289,7 +289,13 @@ export const renameCollection = (id: string, name: string, version?: number) =>
 
 export const updateCollection = (
   id: string,
-  patch: { name?: string; note?: string | null; cover_bundle_id?: string | null },
+  patch: {
+    name?: string
+    note?: string | null
+    cover_bundle_id?: string | null
+    // Reparent (drag a collection into another; null = move to top level).
+    parent_id?: string | null
+  },
   version?: number,
 ) => send<CollectionRead>(`${lib()}/collections/${id}`, 'PATCH', patch, version)
 

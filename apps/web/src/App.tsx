@@ -62,6 +62,7 @@ import {
   CreateEmptyBundleDialog,
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
+import type { DragItem } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -295,6 +296,9 @@ function Workspace({
   // card. Shift+click selects the inclusive range from the anchor to the click.
   const [bundleAnchor, setBundleAnchor] = useState<string | null>(null)
   const [collectionAnchor, setCollectionAnchor] = useState<string | null>(null)
+  // What's currently being dragged (bundles or a collection), so folder cards and
+  // sidebar rows can accept cross-surface drops (reparent / move into collection).
+  const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
@@ -328,6 +332,9 @@ function Workspace({
   const [fileScope, setFileScope] = useState<'browse' | 'unbundled'>('browse')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+  // A file to highlight after "Locate in File Browser" (until the user navigates
+  // or picks another entry), independent of the loaded fileEntry object.
+  const [locatedPath, setLocatedPath] = useState<string | null>(null)
   // Live snapshot of the running maintenance job (scan/probe/thumbnail) so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
@@ -494,8 +501,12 @@ function Workspace({
     [prefs, setPrefs, sortKey],
   )
 
+  // In the All tab the grid is scoped like a file-browser root: with the toggle
+  // OFF it shows only *uncategorized* bundles (top-level "loose" items) alongside
+  // the root collection folders; with the toggle ON it flattens to every bundle.
+  const browseView = isAllView && !showSubContents ? 'uncategorized' : selection.view
   const browse = useBrowse({
-    view: selection.view,
+    view: browseView,
     collectionId: selection.collectionId,
     includeDescendants: includeSubContents,
     sort: effectiveSort.sort,
@@ -507,7 +518,7 @@ function Workspace({
 
   // Context the toolbar's facet-count popovers need (each strips its own category).
   const facetContext: FacetContext = {
-    view: selection.view,
+    view: browseView,
     collectionId: selection.collectionId,
     includeDescendants: includeSubContents,
     q: debouncedSearch.trim() || null,
@@ -702,10 +713,15 @@ function Workspace({
       menu.open(e, [
         { label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) },
         null,
-        { label: 'Clean Up Order…', onClick: () => setCleaningBundles(true) },
+        {
+          label: 'Clean Up Order…',
+          onClick: () => setCleaningBundles(true),
+          // Reordering a flattened list is meaningless — no manual order to tidy.
+          disabled: headerFlattened,
+        },
       ])
     },
-    [menu],
+    [menu, headerFlattened],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -771,12 +787,43 @@ function Workspace({
     [selectedCollectionIds, collections.data, menu],
   )
 
+  // Drag a collection onto another → reparent it (cycle/self guarded server-side).
+  const reparentCollection = useCallback(
+    (id: string, newParentId: string | null) => {
+      if (id === newParentId) return
+      updateCollection.mutate({ id, patch: { parent_id: newParentId } })
+    },
+    [updateCollection],
+  )
+
+  // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
+  // "add") remove them from the collection currently in view. Reads the dragged
+  // bundle ids from the active dragItem.
+  const moveBundlesToCollection = useCallback(
+    (targetCollectionId: string, alt: boolean) => {
+      if (dragItem?.kind !== 'bundles' || dragItem.ids.length === 0) return
+      batch.mutate({
+        bundle_ids: dragItem.ids,
+        add_collection_ids: [targetCollectionId],
+        remove_collection_ids: alt || !selection.collectionId ? [] : [selection.collectionId],
+      })
+      clearSelection()
+    },
+    [batch, dragItem, selection.collectionId, clearSelection],
+  )
+
   // Right-click empty space in the subcollection section → clean up folder order.
   const collectionSectionContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      menu.open(e, [{ label: 'Clean Up Order…', onClick: () => setCleaningCollections(true) }])
+      menu.open(e, [
+        {
+          label: 'Clean Up Order…',
+          onClick: () => setCleaningCollections(true),
+          disabled: headerFlattened,
+        },
+      ])
     },
-    [menu],
+    [menu, headerFlattened],
   )
 
   const confirmRemoveCollection = useCallback(
@@ -936,6 +983,10 @@ function Workspace({
           reorderCollections.mutate({ parentId, orderedIds })
         }
         onCleanupCollections={() => setCleaningCollections(true)}
+        dragItem={dragItem}
+        onDragItem={setDragItem}
+        onReparentCollection={reparentCollection}
+        onMoveBundlesInto={moveBundlesToCollection}
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -950,13 +1001,17 @@ function Workspace({
             libraryName={libraryName}
             scope={fileScope}
             path={filePath}
-            selectedPath={fileEntry?.relative_path ?? null}
+            selectedPath={locatedPath ?? fileEntry?.relative_path ?? null}
             onNavigate={(path) => {
               setFilePath(path)
               setFileEntry(null)
+              setLocatedPath(null)
               setFileScope('browse')
             }}
-            onSelectEntry={setFileEntry}
+            onSelectEntry={(entry) => {
+              setFileEntry(entry)
+              setLocatedPath(null)
+            }}
             onAddToBundle={bundleFilePaths}
             onCreateBundle={createBundleFromPaths}
           />
@@ -981,7 +1036,21 @@ function Workspace({
               facetContext={facetContext}
             />
             {openBundleId ? (
-              <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
+              <BundleAlbum
+                bundleId={openBundleId}
+                onBack={() => setOpenBundleId(null)}
+                onLocateFile={(relativePath) => {
+                  const dir = relativePath.includes('/')
+                    ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+                    : ''
+                  setMode('file')
+                  setFileScope('browse')
+                  setFilePath(dir)
+                  setFileEntry(null)
+                  setLocatedPath(relativePath)
+                  setOpenBundleId(null)
+                }}
+              />
             ) : (
               <>
                 {headerCollections.length > 0 && (
@@ -996,6 +1065,10 @@ function Workspace({
                     onMarqueeSelect={selectCollectionsMany}
                     onContextMenuSubcollection={collectionContextMenu}
                     onSectionContextMenu={collectionSectionContextMenu}
+                    dragItem={dragItem}
+                    onDragItem={setDragItem}
+                    onReparentCollection={reparentCollection}
+                    onMoveBundlesInto={moveBundlesToCollection}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the
                       // flattened view where cards span multiple parents.
@@ -1051,7 +1124,10 @@ function Workspace({
                     onContextMenu={bundleContextMenu}
                     onEmptyContextMenu={emptyContextMenu}
                     onReorder={
-                      effectiveSort.sort === 'manual'
+                      // Reordering only makes sense on a non-flattened list (a
+                      // single collection's own bundles, or the All tab's
+                      // uncategorized bundles) — disabled when contents are flattened.
+                      effectiveSort.sort === 'manual' && !headerFlattened
                         ? (orderedIds) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,
@@ -1059,6 +1135,8 @@ function Workspace({
                             })
                         : undefined
                     }
+                    onBundleDragStart={(ids) => setDragItem({ kind: 'bundles', ids })}
+                    onBundleDragEnd={() => setDragItem(null)}
                     isLoading={browse.isLoading}
                     isError={browse.isError}
                     error={browse.error}

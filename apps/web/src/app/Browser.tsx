@@ -29,6 +29,11 @@ interface BrowserProps {
   // When set (Manual sort), cards/rows become drag-reorderable; a drop fires the
   // full resulting order of loaded items.
   onReorder?: (orderedIds: string[]) => void
+  // Cross-surface drag: a bundle drag begins (carrying the whole selection when
+  // the dragged card is selected) so folder cards / the sidebar can accept a
+  // "move into collection" drop. onBundleDragEnd clears that state.
+  onBundleDragStart?: (ids: string[]) => void
+  onBundleDragEnd?: () => void
   isLoading: boolean
   isError: boolean
   error?: unknown
@@ -54,6 +59,8 @@ export function Browser(props: BrowserProps) {
     onContextMenu,
     onMarqueeSelect,
     onReorder,
+    onBundleDragStart,
+    onBundleDragEnd,
   } = props
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
@@ -66,19 +73,24 @@ export function Browser(props: BrowserProps) {
   const clearDrag = () => {
     setDragId(null)
     setDropSlot(null)
+    onBundleDragEnd?.()
   }
-  // Drag handlers for a card/row, active only when reordering is enabled.
+  // Drag handlers for a card/row. A card is draggable when it can be reordered
+  // (Manual sort) or moved into a collection (always, if the parent wired the
+  // cross-surface hook). Reorder over/drop only fire when onReorder is set.
   const dragProps = (id: string) => {
-    if (!onReorder) return {}
+    if (!onReorder && !onBundleDragStart) return {}
     return {
       draggable: true,
       onDragStart: (e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = 'move'
         setDragId(id)
+        // Carry the whole selection when dragging a selected card, else just this.
+        onBundleDragStart?.(selectedIds.has(id) ? [...selectedIds] : [id])
       },
       onDragEnd: clearDrag,
       onDragOver: (e: React.DragEvent) => {
-        if (dragId === null || dragId === id) return
+        if (!onReorder || dragId === null || dragId === id) return
         e.preventDefault()
         // Insert before/after based on which half of the target the cursor is in
         // — horizontally for grid/justified tiles, vertically for list rows.
@@ -88,7 +100,7 @@ export function Browser(props: BrowserProps) {
         setDropSlot((prev) => (prev?.id === id && prev.before === before ? prev : { id, before }))
       },
       onDrop: (e: React.DragEvent) => {
-        if (dragId === null || dragId === id) return
+        if (!onReorder || dragId === null || dragId === id) return
         e.preventDefault()
         onReorder(
           moveTo(
@@ -155,8 +167,15 @@ export function Browser(props: BrowserProps) {
   const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollEl,
     getWrapperEl: () => wrapperRef.current,
-    isBackgroundTarget: (target) =>
-      !target.closest('[data-bundle-id]') && !target.closest('.list-row--head'),
+    // A drag can rubber-band from empty space always, and *from a list row* when
+    // rows aren't reorder-draggable (list rows fill the width, so there'd be no
+    // empty space to grab otherwise; a plain click still selects via the 4px
+    // threshold). In manual sort the native row-drag owns the gesture instead.
+    isBackgroundTarget: (target) => {
+      if (target.closest('.list-row--head')) return false
+      if (!target.closest('[data-bundle-id]')) return true
+      return layout === 'list' && !onReorder
+    },
     hitTest: idsInRect,
     getBaseSelection: () => selectedIds,
     onChange: onMarqueeSelect,

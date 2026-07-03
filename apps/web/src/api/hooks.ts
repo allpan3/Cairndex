@@ -802,10 +802,18 @@ export function useUpdateCollection() {
       version,
     }: {
       id: string
-      patch: { name?: string; note?: string | null; cover_bundle_id?: string | null }
+      patch: {
+        name?: string
+        note?: string | null
+        cover_bundle_id?: string | null
+        parent_id?: string | null
+      }
       version?: number
     }) => updateCollection(id, patch, version),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['collections'] })
+      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+    },
   })
 }
 

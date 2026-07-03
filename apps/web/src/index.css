@@ -149,7 +149,10 @@ button {
   cursor: pointer;
 }
 .collection-row__toggle {
-  width: 14px;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -691,8 +694,9 @@ button {
   color: var(--text-strong);
 }
 .collsec__caret {
-  width: 10px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .collsec__check {
   display: inline-flex;
@@ -751,6 +755,16 @@ button {
 .list-row[data-drop='after']::after,
 .collection-row[data-drop='after']::after {
   bottom: -1px;
+}
+/* "Move into" drop target (reparent a collection / add bundles): highlight the
+   whole folder card or sidebar row rather than a gap line. */
+.collcard--drop-into {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.collection-row--drop-into {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
@@ -1537,7 +1551,8 @@ code {
   color: var(--text);
 }
 .sidebar__heading-caret {
-  font-size: 9px;
+  display: inline-flex;
+  align-items: center;
   opacity: 0;
 }
 .sidebar__heading-toggle:hover .sidebar__heading-caret {
@@ -2051,10 +2066,12 @@ code {
   color: var(--text-muted);
   font-size: 12px;
 }
-.album__grid {
+.album__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+}
+.album__grid {
   padding: 12px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -2071,9 +2088,14 @@ code {
   cursor: pointer;
   padding: 0;
   text-align: left;
+  user-select: none;
 }
 .album-tile:hover {
   border-color: var(--border-strong);
+}
+.album-tile--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .album-tile__thumb {
   aspect-ratio: 1;
@@ -2540,6 +2562,18 @@ code {
   height: 16px;
   flex: 0 0 auto;
   display: block;
+}
+/* Fold chevron (foldable-section arrows). Small by default (branch toggles /
+   collsec carets); the --lg variant is used for the sidebar section headings. */
+.chevron {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  display: block;
+}
+.chevron--lg {
+  width: 15px;
+  height: 15px;
 }
 /* The filename ellipsizes but keeps a readable floor; when the row is too
    narrow for everything, the status badges (after it) clip instead of the
