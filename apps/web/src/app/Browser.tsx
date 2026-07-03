@@ -293,7 +293,7 @@ export function Browser(props: BrowserProps) {
             margin: `0 ${H_PADDING}px`,
           }}
         >
-          {marqueeRect && layout !== 'list' && (
+          {marqueeRect && (
             <div
               className="marquee"
               style={{

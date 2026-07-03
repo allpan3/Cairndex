@@ -147,6 +147,12 @@ button {
 }
 .collection-row {
   cursor: pointer;
+  /* Compact + close to the edge: tighter gap and a small left inset; nesting is
+     shown by the guide rails, not by padding. --guide-bleed matches the row's
+     vertical padding so the rails join across rows. */
+  gap: 3px;
+  padding-left: 4px;
+  --guide-bleed: 6px;
 }
 .collection-row__toggle {
   width: 12px;
@@ -771,8 +777,13 @@ button {
 .collection-list-end {
   height: 16px;
 }
+/* Grow to a generous target while a collection is being dragged. */
+.collection-list-end--active {
+  min-height: 72px;
+}
 .collection-list-end--over {
   border-top: 2px solid var(--accent);
+  background: var(--accent-soft);
 }
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
@@ -1374,12 +1385,38 @@ button {
   flex: 0 0 auto;
   align-self: stretch;
   display: inline-flex;
-  margin-block: -3px;
+  /* Bleed into the row's vertical padding so each level's line meets the one in
+     the row above/below and reads as a continuous rule. Rows set --guide-bleed
+     to their own vertical padding (default matches the compact picker rows). */
+  margin-block: calc(-1 * var(--guide-bleed, 3px));
 }
+/* Each rail is one indent step wide; its line is centred so it lands under the
+   parent row's icon. `--line` draws a continuing ancestor rule; `--elbow` is the
+   connector into this row (├), and `--last` makes it stop at the row centre (└). */
 .pick-guide {
-  width: 14px;
+  width: 16px;
   align-self: stretch;
+  position: relative;
+}
+.pick-guide--line::before,
+.pick-guide--elbow::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
   border-left: 1px solid var(--border);
+}
+.pick-guide--last::before {
+  bottom: 50%;
+}
+.pick-guide--elbow::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  right: -1px;
+  top: 50%;
+  border-top: 1px solid var(--border);
 }
 /* Checkbox-style indicator (replaces the old folder glyph + bare check). */
 .pick-row__box {

@@ -94,7 +94,8 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
   const row = page.locator('.file-row', { hasText: 'feature.mp4' })
   await expect(row).toBeVisible()
   await expect(row.getByText('unbundled')).toBeVisible()
-  await expect(row.getByText('openable')).toBeVisible()
+  // The "openable" badge was removed; only attention badges remain.
+  await expect(row.getByText('openable')).toHaveCount(0)
 
   // Selecting a file shows FILE metadata (Status), not bundle metadata.
   await row.click()

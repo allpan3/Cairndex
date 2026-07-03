@@ -430,10 +430,7 @@ function FileList({
         ) : (
           <>
             <div className="file-view__wrapper" ref={wrapperRef}>
-              {/* Full-width list rows read as a selection on their own, so the
-                  rubber-band rectangle is only drawn in grid layout (where it
-                  frames free-floating cards). */}
-              {marqueeRect && prefs.layout === 'grid' && (
+              {marqueeRect && (
                 <div
                   className="marquee"
                   style={{
@@ -545,7 +542,6 @@ function FileRow({
       <span className="file-row__name">
         <span className="file-row__icon">{entryIcon(entry)}</span>
         <span className="file-row__text">{entry.name}</span>
-        {!isDir && entry.supported && <span className="badge badge--ok">openable</span>}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
             a confirmed bundle shows no status badge. */}

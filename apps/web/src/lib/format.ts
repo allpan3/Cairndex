@@ -31,3 +31,18 @@ export function formatDate(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString()
 }
+
+/** Date *and* time (down to the minute) — used where a precise timestamp matters
+ * (e.g. the File inspector's Date Added / Date Modified rows). */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+}

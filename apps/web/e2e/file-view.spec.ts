@@ -88,7 +88,10 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   // The shared library selector (in the sidebar) + entries with badges.
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
   await expect(page.locator('.file-row__name', { hasText: 'Show' })).toBeVisible()
-  await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('openable')
+  // The "openable" badge was removed; only attention badges remain.
+  await expect(
+    page.locator('.file-row', { hasText: 'poster.jpg' }).getByText('openable'),
+  ).toHaveCount(0)
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('unbundled')
   await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unsupported')
   await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unlinked')

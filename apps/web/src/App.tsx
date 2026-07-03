@@ -1344,13 +1344,10 @@ function Workspace({
         <div className="drag-hint" role="status" aria-live="polite">
           {dragItem.kind === 'bundles' ? (
             <>
-              <strong>Move</strong> · hold <kbd>⌥ Option</kbd> to <strong>copy</strong> (add without
-              removing)
+              Drag to <strong>move</strong> · hold <kbd>⌥</kbd> to <strong>copy</strong>
             </>
           ) : (
-            <>
-              <strong>Move</strong> — drop onto a collection to nest, or between rows to reorder
-            </>
+            <>Drag and drop to reorder or nest</>
           )}
         </div>
       )}

@@ -140,6 +140,29 @@ Synthetic Library. The reorder-past-edge and list drag-select (real files) rest
 on the gates + code review (native DnD / on-disk files aren't exercisable in the
 Synthetic Library).
 
+**Fifth follow-up round (review feedback):**
+
+- **Sidebar collection tree redesign:** compact rows (`.collection-row` gap 3 /
+  4px inset), and hierarchy guide rails via a rebuilt shared `PickGuides`
+  (ancestor `trail: boolean[]` + `isLast` → per-level vertical rule + elbow that
+  bends into the last child). Threaded `trail`/`isLast` through `CollectionBranch`.
+  `.pick-guide` CSS now centres the line and draws the elbow; `--guide-bleed`
+  joins rails across rows. Same guides shared by the tag/collection pickers.
+- Distinct icons (`icons.tsx`): `IconFolderQuestion` (Uncategorized),
+  `IconTagQuestion` (Untagged); All Tags keeps the plain tag.
+- File inspector: **Date Added** + **Date Modified** (renamed) with time
+  (`formatDateTime`). Removed the **"openable"** list badge (updated two e2e
+  specs to assert its absence). Restored the list-view marquee box (the prior
+  removal was wrong). Terser drag hint.
+- **Edge-drop:** the sidebar end-of-list drop zone expands to 72px min-height
+  while a collection drag is live.
+
+Verified: frontend `lint`/`format`/`typecheck`/`vitest`/`build` clean,
+**Playwright 39 passed**. Browser-verified the compact tree + guide rails
+(elbow/last-bend via classes; line aligns to the parent caret, matching Eagle),
+the distinct Uncategorized/Untagged/All-Tags icons, and the drag hint text
+against the Synthetic Library. No backend changes this round.
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**
