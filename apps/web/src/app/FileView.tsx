@@ -14,7 +14,7 @@ import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarquee
 // File View mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
 // grid/list layouts (justified needs image aspect ratios files don't carry).
-type FileSort = 'name' | 'type' | 'size' | 'modified'
+type FileSort = 'name' | 'type' | 'size' | 'added' | 'modified'
 type FileLayout = 'list' | 'grid'
 
 interface FilePrefs {
@@ -30,6 +30,7 @@ const FILE_SORTS: { value: FileSort; label: string }[] = [
   { value: 'name', label: 'Name' },
   { value: 'type', label: 'Type' },
   { value: 'size', label: 'Size' },
+  { value: 'added', label: 'Date Added' },
   { value: 'modified', label: 'Modified' },
 ]
 
@@ -81,6 +82,8 @@ function compareEntries(a: FileViewEntry, b: FileViewEntry, sort: FileSort): num
       return (a.extension ?? '').localeCompare(b.extension ?? '') || a.name.localeCompare(b.name)
     case 'size':
       return (a.size_bytes ?? 0) - (b.size_bytes ?? 0) || a.name.localeCompare(b.name)
+    case 'added':
+      return (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.name.localeCompare(b.name)
     case 'modified':
       return (
         (a.modified_at ?? '').localeCompare(b.modified_at ?? '') || a.name.localeCompare(b.name)
@@ -427,7 +430,10 @@ function FileList({
         ) : (
           <>
             <div className="file-view__wrapper" ref={wrapperRef}>
-              {marqueeRect && (
+              {/* Full-width list rows read as a selection on their own, so the
+                  rubber-band rectangle is only drawn in grid layout (where it
+                  frames free-floating cards). */}
+              {marqueeRect && prefs.layout === 'grid' && (
                 <div
                   className="marquee"
                   style={{
@@ -452,6 +458,7 @@ function FileList({
                     <span className="file-table__num" role="columnheader">
                       Size
                     </span>
+                    <span role="columnheader">Date Added</span>
                     <span role="columnheader">Modified</span>
                   </div>
                   {visible.map((entry) => (
@@ -547,6 +554,9 @@ function FileRow({
       </span>
       <span className="file-row__type">{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
       <span className="file-table__num">{isDir ? '' : formatBytes(entry.size_bytes)}</span>
+      <span className="file-row__added">
+        {entry.created_at ? formatDate(entry.created_at) : ''}
+      </span>
       <span className="file-row__modified">
         {entry.modified_at ? formatDate(entry.modified_at) : ''}
       </span>

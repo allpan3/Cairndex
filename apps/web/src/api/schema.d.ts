@@ -792,6 +792,13 @@ export interface paths {
          * Generate Plan
          * @description Suggest a grouping for the current library and store it as the active
          *     plan (superseding any earlier open plan).
+         *
+         *     This is the manual "Suggest grouping" entrypoint, so it uses the
+         *     ``uncategorized`` scope: every bundle not yet filed into a collection —
+         *     including a previously confirmed one whose collections were later removed —
+         *     is re-proposed for grouping, alongside still-unbundled files. Routine
+         *     scan/Update generation stays on the ``new`` scope (confirmed groupings are
+         *     left untouched).
          */
         post: operations["generate_plan_api_v1_libraries__library_id__grouping_plans_post"];
         delete?: never;
@@ -1761,6 +1768,8 @@ export interface components {
         FileViewEntryRead: {
             /** Bundle Id */
             bundle_id: string | null;
+            /** Created At */
+            created_at: string | null;
             /** Extension */
             extension: string | null;
             /** Kind */

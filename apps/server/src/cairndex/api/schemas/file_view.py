@@ -12,6 +12,9 @@ class FileViewEntryRead(BaseModel):
     kind: str
     size_bytes: int | None
     modified_at: datetime | None
+    # When the file was created / added on disk (distinct from modified_at); null
+    # for rows sourced from the DB where only mtime is known.
+    created_at: datetime | None
     extension: str | None
     mime_type: str | None
     # The app's media classification (video/image/subtitle/audio) or null.

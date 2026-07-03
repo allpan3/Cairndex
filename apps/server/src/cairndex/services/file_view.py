@@ -55,6 +55,10 @@ class FileViewEntry:
     kind: str
     size_bytes: int | None
     modified_at: datetime | None
+    # When the file was created / added to disk (birth time where the OS reports
+    # it, else the inode change time). Distinct from modified_at. None for rows
+    # built from the DB (unbundled list) where only mtime is stored.
+    created_at: datetime | None
     extension: str | None
     mime_type: str | None
     # The app's media classification (video/image/subtitle/audio) or None.
@@ -178,6 +182,7 @@ def _unbundled_entry(
         kind="file",
         size_bytes=size_bytes,
         modified_at=mtime,
+        created_at=None,
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,
@@ -237,6 +242,9 @@ def _build_entry(
     name = dirent.name
     child_rel = f"{parent_rel}/{name}" if parent_rel else name
     modified = datetime.fromtimestamp(stat.st_mtime, UTC)
+    # st_birthtime is the true creation time on macOS/BSD; on platforms without
+    # it, fall back to the inode change time (the closest available "added").
+    created = datetime.fromtimestamp(getattr(stat, "st_birthtime", stat.st_ctime), UTC)
 
     if is_dir:
         return FileViewEntry(
@@ -245,6 +253,7 @@ def _build_entry(
             kind="directory",
             size_bytes=None,
             modified_at=modified,
+            created_at=created,
             extension=None,
             mime_type=None,
             media_kind=None,
@@ -264,6 +273,7 @@ def _build_entry(
         kind="file",
         size_bytes=stat.st_size,
         modified_at=modified,
+        created_at=created,
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,

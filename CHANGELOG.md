@@ -10,6 +10,13 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **File Browser "Date Added" column + sort.** Entries now carry a creation time
+  (`created_at`, from `st_birthtime` where available, else the inode change time),
+  distinct from the modified time, shown as its own list column and offered as a
+  sort field.
+- **Drag hint.** While an item is being dragged, a hint pinned to the lower-left
+  reminds you that a plain drop **moves** and holding **⌥ Option copies** (for a
+  bundle, adds it to the collection without removing it from the current one).
 - **Manual ordering for collections and bundles (drag-reorder + "Clean up by…").**
   Collections carry a manual order shared by the sidebar tree and the
   main-browser folder cards — drag a folder in either surface and both update
@@ -58,6 +65,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **The All tab no longer behaves like a collection.** It always shows every
+  top-level collection plus every bundle (flattened) — the "Show subcollection
+  contents" toggle is gone from the All view (it remains inside a specific
+  collection). Bundle reorder / "Clean Up Order…" are disabled in the All view
+  (reordering "everything" is meaningless).
+- **Sidebar order:** the system section is now All, Recently Added,
+  Uncategorized, Untagged, **Unbundled**, Missing Files, with **All Tags moved to
+  the bottom** of the section.
+- **The fold caret is much narrower** (a slim disclosure triangle, width < height)
+  so it barely widens a row — edit `IconChevron` in `apps/web/src/app/icons.tsx`
+  and the `.chevron` / `.chevron--lg` sizes in `apps/web/src/index.css`.
 - **"Review grouping" is now "Suggest grouping" and is categorization-driven**
   (ADR-0011). The manual action re-proposes grouping for **every bundle that
   isn't filed into a collection** — including a previously confirmed one whose
@@ -412,6 +430,14 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- **Dropping a reorder past the content edge now works.** A drop that lands in
+  the empty margin around the cards (below the last / above the first) is caught
+  by the container and routed to the end / beginning, so you no longer have to
+  pinpoint a card edge inside the "invisible boundary" of the content box (bundle
+  grid and folder grid).
+- **File Browser list drag-select no longer draws a stray rubber-band box.** Full
+  width rows read as a selection on their own, so list layouts highlight rows
+  directly (Finder-style) and only the grid layout frames the marquee rectangle.
 - **Collection drag-reorder could silently misfire (~1 in 8) or drop a move.**
   The drop zone is now recomputed from the cursor at drop time (a stale hover
   slot no longer turns an intended reorder into a reparent). Dropping a

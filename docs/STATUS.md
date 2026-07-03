@@ -108,6 +108,38 @@ File Browser weren't exercisable there (synthetic files aren't on disk), and the
 manual suggest pass is too heavy to run live over 33k uncategorized bundles —
 covered by unit/service tests instead.
 
+**Fourth follow-up round (review feedback):**
+
+- Fold caret made **much narrower** (`.chevron` 9×13, `--lg` 11×15;
+  `.collection-row__toggle` 12px) so it barely widens a row.
+- **All tab reverted** to "every top-level collection + every bundle flattened";
+  the "Show subcollection contents" toggle is gone from the All view (kept inside
+  a collection), and bundle reorder / Clean Up are disabled there (`isAllView`
+  gating in `App.tsx`; `browseView` no longer special-cases `uncategorized`).
+- **Reorder past the content edge** now lands at the beginning/end via
+  container-level drop handlers (`Browser` root, `CollectionHeader` `.collhead`),
+  plus the existing sidebar `CollectionListEnd`.
+- **Drag hint** pinned lower-left (`.drag-hint`, driven by App `dragItem`): plain
+  = move, ⌥ Option = copy (bundles).
+- **File Browser list drag-select** no longer draws a rubber-band box (row
+  highlight only in list; box kept in grid) — `Browser`/`FileView` gate the
+  `.marquee` on non-list / grid layout.
+- **File Browser "Date Added"** column + sort: `created_at` added to
+  `services/file_view.FileViewEntry` (+ schema, OpenAPI/client regenerated) from
+  `st_birthtime`/`st_ctime`; FileView shows a column and a sort option. New
+  `test_file_view` assertion.
+- **Sidebar order:** Unbundled moved above Missing Files (`SYSTEM_VIEWS`); All
+  Tags moved to the bottom of the system section.
+
+Verified: backend `ruff`/`format`/`mypy` clean, **pytest 292 passed**; frontend
+gates clean, **Playwright 39 passed** (updated the empty-space Clean Up spec to
+enter a collection first). Browser-verified the narrow caret, the All-tab counts
+(313 top-level collections + 100k bundles, no toggle), the sidebar order, the
+lower-left drag hint, and the File Browser "Date Added" sort option against the
+Synthetic Library. The reorder-past-edge and list drag-select (real files) rest
+on the gates + code review (native DnD / on-disk files aren't exercisable in the
+Synthetic Library).
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**

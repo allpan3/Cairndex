@@ -149,7 +149,7 @@ button {
   cursor: pointer;
 }
 .collection-row__toggle {
-  width: 16px;
+  width: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2517,7 +2517,7 @@ code {
 .file-table__head,
 .file-table .file-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px 96px 160px;
+  grid-template-columns: minmax(0, 1fr) 96px 90px 150px 150px;
   align-items: center;
   gap: 12px;
   padding: 6px 12px;
@@ -2573,15 +2573,18 @@ code {
 }
 /* Fold chevron (foldable-section arrows). Small by default (branch toggles /
    collsec carets); the --lg variant is used for the sidebar section headings. */
+/* Narrow on purpose (width < height): a right-pointing disclosure triangle
+   should barely widen a row. Bump the heights, not the widths, to make it read
+   larger without eating horizontal space. */
 .chevron {
-  width: 14px;
-  height: 14px;
+  width: 9px;
+  height: 13px;
   flex: 0 0 auto;
   display: block;
 }
 .chevron--lg {
-  width: 17px;
-  height: 17px;
+  width: 11px;
+  height: 15px;
 }
 /* The filename ellipsizes but keeps a readable floor; when the row is too
    narrow for everything, the status badges (after it) clip instead of the
@@ -2896,6 +2899,37 @@ code {
   font-size: 13px;
   color: var(--text-strong);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* Drag hint pinned to the lower-left while an item is being dragged. Never
+   intercepts the drop (pointer-events: none). */
+.drag-hint {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 250;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.drag-hint strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.drag-hint kbd {
+  font: inherit;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 /* --- Sort control (toolbar popover) -------------------------------------- */

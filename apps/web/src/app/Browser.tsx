@@ -222,6 +222,29 @@ export function Browser(props: BrowserProps) {
     props.onEmptyContextMenu(e)
   }
 
+  // Catch a reorder drop that lands in the empty margin around the cards (past
+  // the "invisible boundary" of the content box), so dropping anywhere below the
+  // last card lands at the end and above the first lands at the beginning —
+  // without having to pinpoint a card edge. Cards handle their own drops (this
+  // bails when the target is a card, and again once the card cleared dragId).
+  const onContainerDragOver = (e: React.DragEvent) => {
+    if (!onReorder || dragId === null) return
+    if ((e.target as HTMLElement).closest('[data-bundle-id]')) return
+    e.preventDefault()
+  }
+  const onContainerDrop = (e: React.DragEvent) => {
+    if (!onReorder || dragId === null) return
+    if ((e.target as HTMLElement).closest('[data-bundle-id]')) return
+    e.preventDefault()
+    const ids = items.map((i) => i.id)
+    if (ids.length === 0) return clearDrag()
+    const wr = wrapperRef.current?.getBoundingClientRect()
+    const before = wr ? e.clientY < wr.top + wr.height / 2 : false
+    const edgeId = before ? ids[0] : ids[ids.length - 1]
+    if (edgeId !== undefined) onReorder(moveTo(ids, dragId, edgeId, before))
+    clearDrag()
+  }
+
   return (
     <div
       className={`browser${marqueeRect ? ' browser--dragging' : ''}`}
@@ -230,6 +253,8 @@ export function Browser(props: BrowserProps) {
       aria-label="Bundles"
       onMouseDown={onBackgroundMouseDown}
       onContextMenu={onRootContextMenu}
+      onDragOver={onContainerDragOver}
+      onDrop={onContainerDrop}
     >
       {props.isError && (
         <div className="state state--error">
@@ -268,7 +293,7 @@ export function Browser(props: BrowserProps) {
             margin: `0 ${H_PADDING}px`,
           }}
         >
-          {marqueeRect && (
+          {marqueeRect && layout !== 'list' && (
             <div
               className="marquee"
               style={{

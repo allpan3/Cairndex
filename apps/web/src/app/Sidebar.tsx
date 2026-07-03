@@ -426,22 +426,20 @@ export function Sidebar({
                   </span>
                 )}
               </button>
-              {/* All Tags (a management surface, not a browse view) sits right
-                  below Untagged since it's about the tag vocabulary. */}
-              {v.view === 'untagged' && (
-                <button
-                  className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
-                  onClick={() => onOpenAllTags?.()}
-                >
-                  <span className="nav-item__icon">
-                    <IconTag />
-                  </span>
-                  <span className="nav-item__label">All Tags</span>
-                </button>
-              )}
             </Fragment>
           )
         })}
+        {/* All Tags (a management surface, not a browse view) sits at the bottom
+            of the system section, below the Unbundled/Missing queues. */}
+        <button
+          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
+          onClick={() => onOpenAllTags?.()}
+        >
+          <span className="nav-item__icon">
+            <IconTag />
+          </span>
+          <span className="nav-item__label">All Tags</span>
+        </button>
       </div>
 
       <div className="sidebar__section">
