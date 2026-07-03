@@ -213,7 +213,7 @@ export function GroupingReview({
         setChosenId(p.id)
         setResult(null)
         setDeselectedIds(new Set())
-        setNotice('Suggestions regenerated from the current library state.')
+        setNotice('Suggestions generated from the current library state.')
       },
     })
 
@@ -245,7 +245,7 @@ export function GroupingReview({
         aria-modal="true"
       >
         <div className="modal__head">
-          <h2>Review grouping</h2>
+          <h2>Suggest grouping</h2>
           <button className="modal__close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -253,9 +253,10 @@ export function GroupingReview({
 
         <div className="modal__body grp-body">
           <p className="grp-intro">
-            Review the suggested bundles and collections, then accept only the checked items.
-            Regenerate suggestions reruns the same heuristic against the current library state, so
-            unchanged files usually produce the same result. Nothing on disk changes.
+            Suggestions cover every bundle that isn’t filed into a collection yet — including one
+            whose collections you later removed — plus any still-unbundled files. Review the
+            proposed bundles and collections, then accept only the checked items. Bundles already
+            filed into a collection are left untouched. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
@@ -293,15 +294,15 @@ export function GroupingReview({
           {!result && (!plan.data || tree.length === 0) && !plan.isLoading && (
             <div className="grp-empty">
               {planId
-                ? 'This plan has no suggestions. Scan the library, then regenerate suggestions.'
-                : 'No suggestions yet. Click “Regenerate suggestions” to analyze the library.'}
+                ? 'Nothing to group — every bundle is already filed into a collection.'
+                : 'No suggestions yet. Click “Suggest grouping” to analyze the library.'}
             </div>
           )}
         </div>
 
         <div className="modal__foot grp-foot">
           <button className="btn" onClick={onGenerate} disabled={busy}>
-            {generate.isPending ? 'Regenerating…' : 'Regenerate suggestions'}
+            {generate.isPending ? 'Suggesting…' : 'Suggest grouping'}
           </button>
           <div className="grp-foot__spacer" />
           {applied ? (

@@ -150,7 +150,7 @@ test('renders the shell with the brand and the system views', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'More library maintenance actions' }))
   expect(screen.getByRole('button', { name: /Scan new files/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Collect metadata/i })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /Review grouping/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Suggest grouping/i })).toBeInTheDocument()
 })
 
 test('shows the empty state when there are no bundles', async () => {
@@ -171,7 +171,7 @@ test('opens grouping review after a successful library update with suggestions',
   mockApi()
   renderApp()
   fireEvent.click(await screen.findByRole('button', { name: /Update/i }))
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Review grouping' })), {
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Suggest grouping' })), {
     timeout: 2500,
   })
 })

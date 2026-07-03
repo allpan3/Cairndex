@@ -356,8 +356,9 @@ export function Sidebar({
                   setJobsMenuOpen(false)
                   onReviewGrouping()
                 }}
+                title="Suggest grouping for every uncategorized bundle and unbundled file"
               >
-                Review grouping
+                Suggest grouping
               </button>
             </div>
           )}
