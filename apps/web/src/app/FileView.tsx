@@ -220,26 +220,23 @@ function FileList({
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
-  // Single click selects (for the inspector); Cmd/Ctrl toggles a file, Shift
-  // selects the inclusive range of files from the anchor. Navigation/opening is
-  // double-click only.
+  // Single click selects (for the inspector); Cmd/Ctrl toggles the entry, Shift
+  // selects the inclusive range from the anchor. Both directories and files take
+  // part (bundling later filters to files). Navigation/opening is double-click.
   const clickEntry = (entry: FileViewEntry, e: React.MouseEvent) => {
-    if (entry.kind === 'file' && e.shiftKey && anchor) {
+    if (e.shiftKey && anchor) {
       const ids = visible.map((v) => v.relative_path)
       const a = ids.indexOf(anchor)
       const b = ids.indexOf(entry.relative_path)
       if (a !== -1 && b !== -1) {
         const [lo, hi] = a < b ? [a, b] : [b, a]
-        const range = visible
-          .slice(lo, hi + 1)
-          .filter((v) => v.kind === 'file')
-          .map((v) => v.relative_path)
+        const range = visible.slice(lo, hi + 1).map((v) => v.relative_path)
         setSelected(new Set(range))
         onSelectEntry(entry)
         return
       }
     }
-    if (entry.kind === 'file' && (e.metaKey || e.ctrlKey)) {
+    if (e.metaKey || e.ctrlKey) {
       setSelected((prev) => {
         const next = new Set(prev)
         if (next.has(entry.relative_path)) next.delete(entry.relative_path)
@@ -249,7 +246,7 @@ function FileList({
     } else {
       setSelected(new Set([entry.relative_path]))
     }
-    if (entry.kind === 'file') setAnchor(entry.relative_path)
+    setAnchor(entry.relative_path)
     onSelectEntry(entry)
   }
 
@@ -267,7 +264,12 @@ function FileList({
   const contextRow = (entry: FileViewEntry, e: React.MouseEvent) => {
     if (entry.kind === 'directory') return // bundling acts on files only
     const inSelection = selected.has(entry.relative_path)
-    const targets = inSelection && selected.size > 1 ? [...selected] : [entry.relative_path]
+    // The selection can now include directories (drag/shift-select), so restrict
+    // the bundling targets to files.
+    const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
+    const targets = (
+      inSelection && selected.size > 1 ? [...selected] : [entry.relative_path]
+    ).filter((p) => filePaths.has(p))
     if (!inSelection) {
       setSelected(new Set([entry.relative_path]))
       onSelectEntry(entry)
@@ -531,7 +533,7 @@ function FileRow({
       onContextMenu={onContextMenu}
       role="row"
       aria-selected={selected}
-      data-relpath={isDir ? undefined : entry.relative_path}
+      data-relpath={entry.relative_path}
     >
       <span className="file-row__name">
         <span className="file-row__icon">{entryIcon(entry)}</span>
@@ -576,7 +578,7 @@ function FileCard({
       onContextMenu={onContextMenu}
       role="gridcell"
       aria-selected={selected}
-      data-relpath={isDir ? undefined : entry.relative_path}
+      data-relpath={entry.relative_path}
     >
       <div className="card__thumb">
         <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>

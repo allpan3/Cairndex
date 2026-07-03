@@ -796,6 +796,22 @@ function Workspace({
     [updateCollection],
   )
 
+  // Drop a collection onto the gap before/after a row in a *different* parent
+  // group (including the top level, newParentId=null): reparent it into that
+  // group, then write the new sibling order. Reorder runs after the reparent
+  // commits so the backend's same-parent validation passes. This is what makes
+  // "move a subcollection out to the top level" work.
+  const moveCollection = useCallback(
+    (id: string, newParentId: string | null, orderedIds: string[]) => {
+      if (id === newParentId) return
+      updateCollection.mutate(
+        { id, patch: { parent_id: newParentId } },
+        { onSuccess: () => reorderCollections.mutate({ parentId: newParentId, orderedIds }) },
+      )
+    },
+    [updateCollection, reorderCollections],
+  )
+
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
   // "add") remove them from the collection currently in view. Reads the dragged
   // bundle ids from the active dragItem.
@@ -982,6 +998,7 @@ function Workspace({
         onReorderCollections={(parentId, orderedIds) =>
           reorderCollections.mutate({ parentId, orderedIds })
         }
+        onMoveCollection={moveCollection}
         onCleanupCollections={() => setCleaningCollections(true)}
         dragItem={dragItem}
         onDragItem={setDragItem}
@@ -1068,6 +1085,8 @@ function Workspace({
                     dragItem={dragItem}
                     onDragItem={setDragItem}
                     onReparentCollection={reparentCollection}
+                    onMoveCollection={moveCollection}
+                    parentId={selection.collectionId ?? null}
                     onMoveBundlesInto={moveBundlesToCollection}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the

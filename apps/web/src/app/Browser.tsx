@@ -83,7 +83,10 @@ export function Browser(props: BrowserProps) {
     return {
       draggable: true,
       onDragStart: (e: React.DragEvent) => {
-        e.dataTransfer.effectAllowed = 'move'
+        // copyMove (not plain move) so holding Option/Alt — which the OS reads as
+        // a "copy" gesture — still yields a valid drop (Alt = add to collection
+        // without removing from the current one) instead of a rejected drag.
+        e.dataTransfer.effectAllowed = 'copyMove'
         setDragId(id)
         // Carry the whole selection when dragging a selected card, else just this.
         onBundleDragStart?.(selectedIds.has(id) ? [...selectedIds] : [id])
