@@ -1,10 +1,11 @@
 import { useState } from 'react'
 
-import type { BundleSort } from '../api/client'
+import type { BundleSort, SortOrder } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
 import { IconFilter } from './icons'
 import { ZOOM_MAX, ZOOM_MIN } from './layout'
 import { RatingFilterControl } from './RatingFilterControl'
+import { SortControl } from './SortControl'
 import { TagFilterControl } from './TagFilterControl'
 import type { BrowsePrefs, LayoutMode } from './types'
 
@@ -13,24 +14,20 @@ interface ToolbarProps {
   total: number
   search: string
   onSearch: (value: string) => void
+  // prefs drives layout + zoom; the sort is passed separately (App resolves it
+  // from the global-or-per-collection scope).
   prefs: BrowsePrefs
   onPrefs: (prefs: BrowsePrefs) => void
+  sort: BundleSort
+  order: SortOrder
+  onSort: (sort: BundleSort, order: SortOrder) => void
+  perCollectionSort: boolean
+  onPerCollectionSort: (value: boolean) => void
   // Ad-hoc toolbar filters (local UI state; see app/adHocFilters.ts).
   adHocFilters: AdHocFilters
   onAdHocFilters: (f: AdHocFilters) => void
   facetContext: FacetContext
-  // Open the "Clean up by…" dialog to rewrite the bundle manual order.
-  onCleanupOrder: () => void
 }
-
-const SORTS: { value: BundleSort; label: string }[] = [
-  { value: 'date_added', label: 'Date Added' },
-  { value: 'title', label: 'Title' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'size', label: 'Size' },
-  { value: 'file_count', label: 'File Count' },
-  { value: 'manual', label: 'Manual' },
-]
 
 const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
   { value: 'grid', icon: '▦', label: 'Grid' },
@@ -45,10 +42,14 @@ export function Toolbar({
   onSearch,
   prefs,
   onPrefs,
+  sort,
+  order,
+  onSort,
+  perCollectionSort,
+  onPerCollectionSort,
   adHocFilters,
   onAdHocFilters,
   facetContext,
-  onCleanupOrder,
 }: ToolbarProps) {
   const filtersActive = anyAdHocActive(adHocFilters)
   // The second filter row starts open when a filter is already active, so a
@@ -82,40 +83,13 @@ export function Toolbar({
           title="Search titles, filenames, tags, and collections across the whole library"
         />
 
-        <select
-          value={prefs.sort}
-          onChange={(e) => {
-            const sort = e.target.value as BundleSort
-            // Manual order reads low→high, so default it to ascending when picked.
-            onPrefs({ ...prefs, sort, order: sort === 'manual' ? 'asc' : prefs.order })
-          }}
-          aria-label="Sort by"
-        >
-          {SORTS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <button
-          className="seg"
-          style={{ padding: '5px 8px', cursor: 'pointer' }}
-          onClick={() => onPrefs({ ...prefs, order: prefs.order === 'desc' ? 'asc' : 'desc' })}
-          aria-label="Toggle sort order"
-          title="Toggle sort order"
-        >
-          {prefs.order === 'desc' ? '↓' : '↑'}
-        </button>
-        {prefs.sort === 'manual' && (
-          <button
-            className="seg"
-            style={{ padding: '5px 8px', cursor: 'pointer' }}
-            onClick={onCleanupOrder}
-            title="Clean up the manual order by a chosen sort"
-          >
-            Clean up…
-          </button>
-        )}
+        <SortControl
+          sort={sort}
+          order={order}
+          onChange={onSort}
+          perCollection={perCollectionSort}
+          onPerCollection={onPerCollectionSort}
+        />
 
         <div className="seg" role="group" aria-label="Layout">
           {LAYOUTS.map((l) => (

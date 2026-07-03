@@ -13,23 +13,31 @@ grouped under `Unreleased` until the first tagged release.
 - **Manual ordering for collections and bundles (drag-reorder + "Clean up by…").**
   Collections carry a manual order shared by the sidebar tree and the
   main-browser folder cards — drag a folder in either surface and both update
-  (`PUT /libraries/{id}/collections/reorder`). Bundles gain a **Manual** toolbar
-  sort with drag-reorder (`PUT …/bundles/reorder`); inside a single collection
-  the order is per-collection (membership `sort_order`), while All/system/
-  descendant views use a global per-bundle `manual_order`. A **"Clean up by…"**
-  action rewrites the whole scope's manual order to a chosen sort — collections
-  offer Title A–Z / Z–A (`POST …/collections/cleanup-order`), bundles reuse the
-  five toolbar sorts × asc/desc (`POST …/bundles/cleanup-order`). Bundle
-  drag-reorder is best-effort over the loaded window; "Clean up by…" is the
-  deterministic full-scope rewrite.
+  (`PUT /libraries/{id}/collections/reorder`). Bundles gain a **Manual** sort
+  (the new default) with drag-reorder (`PUT …/bundles/reorder`); inside a single
+  collection the order is per-collection (membership `sort_order`), while
+  All/system/descendant views use a global per-bundle `manual_order`. Drag-reorder
+  uses **gap insertion** — an accent line shows where the item will slot in
+  before/after its neighbour (iOS-home-screen style), never a drop-onto-target.
+  A **"Clean up by…"** action (in the folder-section and empty-grid right-click
+  menus, and on the sidebar Collections heading) rewrites the whole scope's manual
+  order to a chosen sort — collections offer Title A–Z / Z–A
+  (`POST …/collections/cleanup-order`), bundles reuse the five toolbar sorts ×
+  asc/desc (`POST …/bundles/cleanup-order`).
+- **Sort control popover with per-collection memory.** The toolbar sort is now a
+  popover holding the sort field, an ascending/descending toggle, and a **Remember
+  sort per collection** checkbox; when enabled, each collection/view keeps its own
+  last-used sort (persisted).
+- **Foldable sidebar sections.** The **Collections** and **Smart Collections**
+  headings fold/unfold; the label is a highlighted "text box" with a hover caret.
 - **Folder-card context menu + multi-delete.** Right-clicking a collection card
   in the main browser opens a menu with **Delete Collection** (or **Delete N
   Collections** for a Shift/Ctrl multi-selection), mirroring the sidebar; the
   confirm dialog asks about cascading subcollections once for the whole set.
 - **Flatten subcollections on "Show subcollection contents".** Turning the toggle
-  on inside a collection now also flattens every descendant collection into the
-  Subcollections section (depth-first, manual order), matching the grid that
-  already shows the whole subtree's bundles.
+  on (inside a collection *or* in the All view) flattens every descendant
+  collection into the Subcollections section (depth-first, manual order), matching
+  the grid that shows the whole subtree's bundles.
 - **Shift-range selection** for both bundle cards and folder cards: Shift+click
   selects the inclusive range from the last plain click to the clicked card.
 
@@ -38,8 +46,10 @@ grouped under `Unreleased` until the first tagged release.
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
 - **Folder and bundle card sizes are decoupled** on the shared zoom slider:
-  folder cards follow a smaller curve (topping out ~180px by the slider midpoint),
-  and the slider floor dropped to 80px so both card kinds can shrink further.
+  folder cards follow a smaller curve (topping out ~240px around two-thirds of the
+  slider), and the slider floor dropped to 80px so both card kinds can shrink
+  further.
+- **Card text no longer highlights** (native text selection) during multi-select.
 
 - **Eagle-style ad-hoc toolbar filters (Tags + Rating).** A funnel button in the
   bundle toolbar reveals a filter row. **Tags** opens a popover with search, tag

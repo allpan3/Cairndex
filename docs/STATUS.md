@@ -43,6 +43,23 @@ Out of scope / known limitation: bundle drag-reorder only rewrites the loaded
 window (use "Clean up by…" for a full deterministic order); reparenting collections
 by drag is not a gesture here (drag reorders within a sibling group only).
 
+**Follow-up refinements (same branch, review feedback):** bigger folder
+thumbnails (cap ~2/3 of the slider — see `collectionCardWidth` in
+`apps/web/src/app/layout.ts`); "Clean up…" moved out of an inline button into the
+folder-section / empty-grid right-click menus and the sidebar Collections heading;
+foldable **Collections**/**Smart Collections** sidebar sections (hover caret +
+highlighted label); the **Show subcollection contents** toggle now also appears in
+the All view; drag-reorder reworked to **gap insertion** with an accent
+insertion-line (replacing the edge highlight) across the bundle grid, folder
+cards, and sidebar; **Manual** is now the first/default sort (persisted prefs
+remember any later choice); a new **sort-control popover** (`SortControl.tsx`) with
+sort field, asc/desc, and a **per-collection** scope checkbox (each
+collection/view remembers its own sort); card text no longer highlights during
+multi-select; double-click-to-open / single-click-metadata confirmed. New
+`cairndex.sidebar.*` + expanded `cairndex.prefs` (sortScope/collectionSorts)
+persisted keys; `e2e/ordering.spec.ts` updated (6 specs). All gates green;
+Playwright 39 passed.
+
 ## Latest merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**

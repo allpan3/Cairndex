@@ -703,38 +703,54 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
-.collsec__controls {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
+/* Gap-insertion drop indicator (Manual reorder): a thin accent line sits in the
+   gap before/after the hovered card or row, showing exactly where the dragged
+   item will slot in — never a highlight *on* the target itself. */
+.browser__cardslot[data-drop]::after,
+.collcard[data-drop]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  z-index: 3;
+  pointer-events: none;
 }
-.collsec__cleanup {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  cursor: pointer;
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
+.browser__cardslot[data-drop='before']::after,
+.collcard[data-drop='before']::after {
+  left: -6px;
 }
-.collsec__cleanup:hover {
-  color: var(--text-strong);
+.browser__cardslot[data-drop='after']::after,
+.collcard[data-drop='after']::after {
+  right: -6px;
 }
-/* Drop indicator while dragging a folder card / sidebar row onto a reorder
-   target — a leading accent edge marks where the dragged item will land. */
-.collcard--drop {
-  border-color: var(--accent);
+/* Vertical lists (bundle list view + sidebar rows): a horizontal line at the
+   top/bottom edge. */
+.list-row,
+.collection-row {
+  position: relative;
 }
-.collection-row--drop {
-  box-shadow: inset 2px 0 0 0 var(--accent);
+.list-row[data-drop]::after,
+.collection-row[data-drop]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  z-index: 3;
+  pointer-events: none;
 }
-/* Bundle card / list-row reorder drop target (Manual sort) — a leading accent
-   edge marks where the dragged item will land. */
-.browser__cardslot[data-drop] .card {
-  box-shadow: inset 3px 0 0 0 var(--accent);
+.list-row[data-drop='before']::after,
+.collection-row[data-drop='before']::after {
+  top: -1px;
 }
-.list-row[data-drop] {
-  box-shadow: inset 3px 0 0 0 var(--accent);
+.list-row[data-drop='after']::after,
+.collection-row[data-drop='after']::after {
+  bottom: -1px;
 }
 /* Subcollection folder cards — same visual language as bundle cards, with a
    cover image (or a folder-glyph fallback). Column width follows the zoom
@@ -745,6 +761,7 @@ button {
   padding-bottom: 6px;
 }
 .collcard {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -818,6 +835,14 @@ button {
 }
 
 /* --- Cards (grid / justified) -------------------------------------------- */
+/* Cards/rows are click/drag targets, never text to select — suppress the native
+   text-selection highlight that Shift-click range select would otherwise paint
+   over the titles/meta. */
+.card,
+.collcard,
+.list-row {
+  user-select: none;
+}
 .card {
   width: 100%;
   height: 100%;
@@ -1488,6 +1513,35 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+/* Foldable section heading: the label+caret is a button (the highlighted "text
+   box" that folds the section); it highlights on hover like a nav row and its
+   caret only appears on hover, to the right of the label (matching Eagle). */
+.sidebar__heading-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 6px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+.sidebar__heading-toggle:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.sidebar__heading-caret {
+  font-size: 9px;
+  opacity: 0;
+}
+.sidebar__heading-toggle:hover .sidebar__heading-caret {
+  opacity: 0.8;
 }
 .sidebar__add {
   border: 0;
@@ -2800,4 +2854,64 @@ code {
   font-size: 13px;
   color: var(--text-strong);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* --- Sort control (toolbar popover) -------------------------------------- */
+.sortctl__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sortctl__dir {
+  color: var(--text-muted);
+}
+.sortctl__panel {
+  width: 220px;
+  padding: 6px;
+}
+.sortctl__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sortctl__opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.sortctl__opt:hover {
+  background: var(--bg-2);
+}
+.sortctl__opt--on {
+  color: var(--text-strong);
+}
+.sortctl__check {
+  width: 12px;
+  color: var(--accent);
+}
+.sortctl__sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.sortctl__scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
 }

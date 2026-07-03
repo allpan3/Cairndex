@@ -29,16 +29,20 @@ export function listRowHeight(zoom: number): number {
 }
 
 /** Folder (collection) cards scale off the *same* zoom slider as bundle cards
- * but on their own curve: smaller, and topping out around the slider's midpoint
- * (~half the bundle range) so folders never grow as large as bundle tiles. Below
- * ZOOM_MIN..midpoint they ramp from MIN to MAX, then hold at MAX. */
+ * but on their own curve: smaller, and topping out partway along the slider so
+ * folders never grow as large as the biggest bundle tiles. Below
+ * ZOOM_MIN..capAt they ramp from MIN to MAX, then hold at MAX.
+ *
+ * Knobs to experiment with: MIN/MAX are the folder card's px width range, and
+ * COLLECTION_CAP_FRACTION is where along the slider it reaches MAX (2/3 here). */
+export const COLLECTION_CARD_MIN = 72
+export const COLLECTION_CARD_MAX = 240
+const COLLECTION_CAP_FRACTION = 2 / 3
 export function collectionCardWidth(zoom: number): number {
-  const MIN = 72
-  const MAX = 180
   const start = ZOOM_MIN
-  const midpoint = (ZOOM_MIN + ZOOM_MAX) / 2 // reach MAX around the slider middle
-  const t = Math.max(0, Math.min(1, (zoom - start) / (midpoint - start)))
-  return Math.round(MIN + t * (MAX - MIN))
+  const capAt = ZOOM_MIN + (ZOOM_MAX - ZOOM_MIN) * COLLECTION_CAP_FRACTION
+  const t = Math.max(0, Math.min(1, (zoom - start) / (capAt - start)))
+  return Math.round(COLLECTION_CARD_MIN + t * (COLLECTION_CARD_MAX - COLLECTION_CARD_MIN))
 }
 
 function aspect(item: BundleSummary): number {
