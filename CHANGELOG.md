@@ -444,6 +444,13 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- **The marquee selection box no longer sticks after a drag.** In a
+  non-reorderable list view a row is still draggable (to move bundles into a
+  collection); starting a native drag swallowed the `mouseup` that ends the
+  marquee, leaving its box on screen. The marquee is now cancelled when a native
+  drag takes over.
+- The File Browser sort option and column now read **"Date Modified"** (was
+  "Modified"), matching the inspector.
 - The sidebar **end-of-list drop zone grows while a collection is dragged**, so
   dropping "past the last collection" is a large, forgiving target.
 - **Dropping a reorder past the content edge now works.** A drop that lands in

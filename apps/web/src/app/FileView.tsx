@@ -31,7 +31,7 @@ const FILE_SORTS: { value: FileSort; label: string }[] = [
   { value: 'type', label: 'Type' },
   { value: 'size', label: 'Size' },
   { value: 'added', label: 'Date Added' },
-  { value: 'modified', label: 'Modified' },
+  { value: 'modified', label: 'Date Modified' },
 ]
 
 interface FileViewProps {
@@ -456,7 +456,7 @@ function FileList({
                       Size
                     </span>
                     <span role="columnheader">Date Added</span>
-                    <span role="columnheader">Modified</span>
+                    <span role="columnheader">Date Modified</span>
                   </div>
                   {visible.map((entry) => (
                     <FileRow

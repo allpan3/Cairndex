@@ -145,16 +145,24 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
       applySelection()
     }
 
-    const onUp = () => {
+    // Tear everything down. `fromDrag` = a native HTML5 drag took over (dragging
+    // a card/row to move it): it swallows the mouseup that would normally end the
+    // marquee, so without this the selection box would stick on screen. In that
+    // case we just abandon the marquee (no empty-click deselect).
+    const finish = (fromDrag: boolean) => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('dragstart', onNativeDrag)
       if (state.raf) cancelAnimationFrame(state.raf)
-      if (!state.dragging && !additive) opts.onChange([])
+      if (!fromDrag && !state.dragging && !additive) opts.onChange([])
       setMarqueeRect(null)
     }
+    const onUp = () => finish(false)
+    const onNativeDrag = () => finish(true)
 
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+    window.addEventListener('dragstart', onNativeDrag)
   }
 
   return { marqueeRect, onMouseDown }
