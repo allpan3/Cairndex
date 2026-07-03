@@ -18,18 +18,33 @@ export interface FileLocation {
   path: string // '' = the storage root itself
 }
 
+export interface SortPref {
+  sort: BundleSort
+  order: SortOrder
+}
+
 export interface BrowsePrefs {
   layout: LayoutMode
   zoom: number // target card width in px (grid/justified)
+  // The global sort (used when sortScope==='global', and as the fallback for a
+  // collection with no remembered sort yet).
   sort: BundleSort
   order: SortOrder
+  // When 'collection', each collection/view remembers its own last-used sort in
+  // collectionSorts (keyed by collectionSortKey); when 'global', one sort applies
+  // everywhere.
+  sortScope: 'global' | 'collection'
+  collectionSorts: Record<string, SortPref>
 }
 
 export const DEFAULT_PREFS: BrowsePrefs = {
   layout: 'grid',
   zoom: 200,
-  sort: 'date_added',
-  order: 'desc',
+  // Manual is the default order; the persisted pref remembers any later choice.
+  sort: 'manual',
+  order: 'asc',
+  sortScope: 'global',
+  collectionSorts: {},
 }
 
 export interface SystemViewDef {

@@ -20,8 +20,9 @@ import {
   IconLooseStack,
   IconTag,
 } from './icons'
-import { moveBefore } from './reorder'
+import { moveTo } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
+import { usePersistentState } from '../state/usePersistentState'
 
 import type { SystemView } from '../api/client'
 import type { ReactNode } from 'react'
@@ -85,6 +86,8 @@ interface SidebarProps {
   ) => void
   // Persist a manual drag-reorder of one sibling group (parentId null = top level).
   onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
+  // Right-click the Collections heading → clean up the collection manual order.
+  onCleanupCollections?: () => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -142,6 +145,7 @@ export function Sidebar({
   onCreateCollection,
   onRenameCollection,
   onReorderCollections,
+  onCleanupCollections,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -149,9 +153,19 @@ export function Sidebar({
 }: SidebarProps) {
   const [jobsMenuOpen, setJobsMenuOpen] = useState(false)
   const menu = useContextMenu()
-  // Id of the collection row currently being dragged for manual reorder (null
-  // when no drag is in progress).
+  // Manual-reorder drag: the dragged collection id + the current gap (which row,
+  // before/after it) so the drop slots between rows rather than onto one.
   const [dragCollId, setDragCollId] = useState<string | null>(null)
+  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  // Fold state for the two sidebar sections (persisted).
+  const [smartCollapsed, setSmartCollapsed] = usePersistentState(
+    'cairndex.sidebar.smartCollapsed',
+    false,
+  )
+  const [collectionsCollapsed, setCollectionsCollapsed] = usePersistentState(
+    'cairndex.sidebar.collectionsCollapsed',
+    false,
+  )
 
   // Id of the collection currently showing an inline rename box — set right
   // after "+ Collection" creates one, so the user can type its name in place.
@@ -411,99 +425,142 @@ export function Sidebar({
       </div>
 
       <div className="sidebar__section">
-        <div className="sidebar__heading sidebar__heading--row">
-          Smart Collections
-          <button
-            className="sidebar__add"
-            onClick={onNewSmartCollection}
-            aria-label="New smart collection"
-          >
-            +
-          </button>
-        </div>
-        {smartCollections.map((sc) => {
-          const active = selection.smartCollectionId === sc.id
-          return (
-            <div
-              key={sc.id}
-              className={`nav-item${active ? ' nav-item--active' : ''}`}
-              onClick={() =>
-                onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
-              }
-              onContextMenu={(e) => smartMenu(sc, e)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ')
+        <SectionHeading
+          label="Smart Collections"
+          collapsed={smartCollapsed}
+          onToggle={() => setSmartCollapsed(!smartCollapsed)}
+          onAdd={onNewSmartCollection}
+          addLabel="New smart collection"
+        />
+        {!smartCollapsed &&
+          smartCollections.map((sc) => {
+            const active = selection.smartCollectionId === sc.id
+            return (
+              <div
+                key={sc.id}
+                className={`nav-item${active ? ' nav-item--active' : ''}`}
+                onClick={() =>
                   onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
-              }}
-            >
-              <span className="nav-item__icon">
-                <IconFilter />
-              </span>
-              <span className="nav-item__label">{sc.name}</span>
-              <button
-                className="nav-item__edit"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEditSmartCollection(sc)
+                }
+                onContextMenu={(e) => smartMenu(sc, e)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ')
+                    onSelect({ view: 'all', collectionId: null, smartCollectionId: sc.id })
                 }}
-                aria-label={`Edit ${sc.name}`}
               >
-                ✎
-              </button>
-            </div>
-          )
-        })}
+                <span className="nav-item__icon">
+                  <IconFilter />
+                </span>
+                <span className="nav-item__label">{sc.name}</span>
+                <button
+                  className="nav-item__edit"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEditSmartCollection(sc)
+                  }}
+                  aria-label={`Edit ${sc.name}`}
+                >
+                  ✎
+                </button>
+              </div>
+            )
+          })}
       </div>
 
       <div className="sidebar__section">
-        <div className="sidebar__heading sidebar__heading--row">
-          Collections
-          <button
-            className="sidebar__add"
-            onClick={handleNewCollection}
-            aria-label="New collection"
-            title={
-              selection.collectionId
-                ? 'New collection inside the current one'
-                : 'New top-level collection'
-            }
-          >
-            +
-          </button>
-        </div>
-        {createError && (
-          <div className="sidebar__heading" role="alert">
-            {createError}
-          </div>
+        <SectionHeading
+          label="Collections"
+          collapsed={collectionsCollapsed}
+          onToggle={() => setCollectionsCollapsed(!collectionsCollapsed)}
+          onAdd={handleNewCollection}
+          addLabel="New collection"
+          addTitle={
+            selection.collectionId
+              ? 'New collection inside the current one'
+              : 'New top-level collection'
+          }
+          onContextMenu={
+            onCleanupCollections
+              ? (e) => menu.open(e, [{ label: 'Clean Up Order…', onClick: onCleanupCollections }])
+              : undefined
+          }
+        />
+        {!collectionsCollapsed && (
+          <>
+            {createError && (
+              <div className="sidebar__heading" role="alert">
+                {createError}
+              </div>
+            )}
+            {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
+            {tree.map((node) => (
+              <CollectionBranch
+                key={node.collection.id}
+                node={node}
+                depth={0}
+                parentId={null}
+                siblingIds={tree.map((n) => n.collection.id)}
+                selection={selection}
+                onSelect={onSelect}
+                onContextMenu={collectionMenu}
+                collectionCounts={collectionCounts}
+                isExpanded={isExpanded}
+                onToggle={toggleExpanded}
+                editingId={editingId}
+                onRenameCollection={onRenameCollection}
+                onDoneEditing={() => setEditingId(null)}
+                dragCollId={dragCollId}
+                onDragCollId={setDragCollId}
+                dropSlot={dropSlot}
+                onDropSlot={setDropSlot}
+                onReorderCollections={onReorderCollections}
+              />
+            ))}
+          </>
         )}
-        {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
-        {tree.map((node) => (
-          <CollectionBranch
-            key={node.collection.id}
-            node={node}
-            depth={0}
-            parentId={null}
-            siblingIds={tree.map((n) => n.collection.id)}
-            selection={selection}
-            onSelect={onSelect}
-            onContextMenu={collectionMenu}
-            collectionCounts={collectionCounts}
-            isExpanded={isExpanded}
-            onToggle={toggleExpanded}
-            editingId={editingId}
-            onRenameCollection={onRenameCollection}
-            onDoneEditing={() => setEditingId(null)}
-            dragCollId={dragCollId}
-            onDragCollId={setDragCollId}
-            onReorderCollections={onReorderCollections}
-          />
-        ))}
       </div>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
+  )
+}
+
+/** A foldable sidebar section heading (Collections / Smart Collections). The
+ * whole row toggles the fold and highlights on hover (like a collection row); a
+ * caret appears on hover to the right of the label. The "+" add button and an
+ * optional right-click menu sit alongside. */
+function SectionHeading({
+  label,
+  collapsed,
+  onToggle,
+  onAdd,
+  addLabel,
+  addTitle,
+  onContextMenu,
+}: {
+  label: string
+  collapsed: boolean
+  onToggle: () => void
+  onAdd: () => void
+  addLabel: string
+  addTitle?: string
+  onContextMenu?: (e: React.MouseEvent) => void
+}) {
+  return (
+    <div className="sidebar__heading sidebar__heading--row" onContextMenu={onContextMenu}>
+      {/* The label+caret is its own button (the highlighted "text box" that folds
+          the section); the "+" add button stays separate so each has a distinct
+          accessible name. */}
+      <button className="sidebar__heading-toggle" onClick={onToggle} aria-expanded={!collapsed}>
+        {label}
+        <span className="sidebar__heading-caret">{collapsed ? '▸' : '▾'}</span>
+      </button>
+      <button className="sidebar__add" onClick={onAdd} aria-label={addLabel} title={addTitle}>
+        +
+      </button>
+    </div>
   )
 }
 
@@ -523,6 +580,8 @@ function CollectionBranch({
   onDoneEditing,
   dragCollId,
   onDragCollId,
+  dropSlot,
+  onDropSlot,
   onReorderCollections,
 }: {
   node: TreeNode
@@ -540,42 +599,52 @@ function CollectionBranch({
   onDoneEditing: () => void
   dragCollId: string | null
   onDragCollId: (id: string | null) => void
+  dropSlot: { id: string; before: boolean } | null
+  onDropSlot: (v: { id: string; before: boolean } | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
 }) {
   const active = selection.collectionId === node.collection.id
   const hasChildren = node.children.length > 0
   const expanded = isExpanded(node.collection.id, depth)
   const editing = editingId === node.collection.id
+  const id = node.collection.id
   // A drop only reorders within the same sibling group; a drag from another
   // parent is ignored (reparenting collections isn't a drag gesture here).
-  const isDropTarget =
-    dragCollId !== null && dragCollId !== node.collection.id && siblingIds.includes(dragCollId)
+  const canDrop = dragCollId !== null && dragCollId !== id && siblingIds.includes(dragCollId)
+  const endDrag = () => {
+    onDragCollId(null)
+    onDropSlot(null)
+  }
 
   return (
     <>
       <div
-        className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
-          isDropTarget ? ' collection-row--drop' : ''
-        }`}
+        className={`nav-item collection-row${active ? ' nav-item--active' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
-        onClick={() => !editing && onSelect({ view: 'all', collectionId: node.collection.id })}
+        data-drop={dropSlot?.id === id ? (dropSlot.before ? 'before' : 'after') : undefined}
+        onClick={() => !editing && onSelect({ view: 'all', collectionId: id })}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
         draggable={!editing}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
-          onDragCollId(node.collection.id)
+          onDragCollId(id)
         }}
-        onDragEnd={() => onDragCollId(null)}
+        onDragEnd={endDrag}
         onDragOver={(e) => {
-          if (isDropTarget) e.preventDefault()
+          if (!canDrop) return
+          e.preventDefault()
+          const r = e.currentTarget.getBoundingClientRect()
+          const before = e.clientY < r.top + r.height / 2
+          if (dropSlot?.id !== id || dropSlot.before !== before) onDropSlot({ id, before })
         }}
         onDrop={(e) => {
-          if (!isDropTarget) return
+          if (!canDrop || dragCollId === null) return
           e.preventDefault()
-          onReorderCollections(parentId, moveBefore(siblingIds, dragCollId, node.collection.id))
-          onDragCollId(null)
+          const before = dropSlot?.id === id ? dropSlot.before : true
+          onReorderCollections(parentId, moveTo(siblingIds, dragCollId, id, before))
+          endDrag()
         }}
       >
         <button
@@ -623,6 +692,8 @@ function CollectionBranch({
             onDoneEditing={onDoneEditing}
             dragCollId={dragCollId}
             onDragCollId={onDragCollId}
+            dropSlot={dropSlot}
+            onDropSlot={onDropSlot}
             onReorderCollections={onReorderCollections}
           />
         ))}

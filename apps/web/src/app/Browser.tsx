@@ -6,7 +6,7 @@ import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
 import { computeRows, type PlacedCard, type Row } from './layout'
-import { moveBefore } from './reorder'
+import { moveTo } from './reorder'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -58,8 +58,15 @@ export function Browser(props: BrowserProps) {
   // State-backed ref: the virtualizer re-initializes (and measures the
   // viewport) once the scroll element is actually attached.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
-  // Id of the card/row being dragged for manual reorder (null when idle).
+  // Manual-reorder drag: the id being dragged, and the current drop slot (which
+  // card, and whether the insertion point is before or after it). The slot drives
+  // a gap indicator so the drop lands *between* items, not onto one.
   const [dragId, setDragId] = useState<string | null>(null)
+  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  const clearDrag = () => {
+    setDragId(null)
+    setDropSlot(null)
+  }
   // Drag handlers for a card/row, active only when reordering is enabled.
   const dragProps = (id: string) => {
     if (!onReorder) return {}
@@ -69,23 +76,31 @@ export function Browser(props: BrowserProps) {
         e.dataTransfer.effectAllowed = 'move'
         setDragId(id)
       },
-      onDragEnd: () => setDragId(null),
+      onDragEnd: clearDrag,
       onDragOver: (e: React.DragEvent) => {
-        if (dragId !== null && dragId !== id) e.preventDefault()
+        if (dragId === null || dragId === id) return
+        e.preventDefault()
+        // Insert before/after based on which half of the target the cursor is in
+        // — horizontally for grid/justified tiles, vertically for list rows.
+        const r = e.currentTarget.getBoundingClientRect()
+        const before =
+          layout === 'list' ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2
+        setDropSlot((prev) => (prev?.id === id && prev.before === before ? prev : { id, before }))
       },
       onDrop: (e: React.DragEvent) => {
         if (dragId === null || dragId === id) return
         e.preventDefault()
         onReorder(
-          moveBefore(
+          moveTo(
             items.map((i) => i.id),
             dragId,
             id,
+            dropSlot?.id === id ? dropSlot.before : true,
           ),
         )
-        setDragId(null)
+        clearDrag()
       },
-      'data-drop': dragId !== null && dragId !== id ? '' : undefined,
+      'data-drop': dropSlot?.id === id ? (dropSlot.before ? 'before' : 'after') : undefined,
     }
   }
   const [width, setWidth] = useState(0)

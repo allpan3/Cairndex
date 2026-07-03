@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type {
+  BundleSort,
   CollectionRead,
   FileSelection,
   FileViewEntry,
   JobRead,
   LibraryRead,
   SmartCollectionRead,
+  SortOrder,
 } from './api/client'
 import { setActiveLibraryId } from './api/client'
 import {
@@ -73,6 +75,7 @@ import {
   type AppMode,
   type BrowsePrefs,
   type Selection,
+  type SortPref,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
 
@@ -274,7 +277,10 @@ function Workspace({
   canLock,
   onLock,
 }: WorkspaceProps) {
-  const [prefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
+  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
+  // Merge in defaults so prefs persisted before newer fields existed
+  // (sortScope/collectionSorts) don't read back as undefined.
+  const prefs = useMemo(() => ({ ...DEFAULT_PREFS, ...storedPrefs }), [storedPrefs])
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
@@ -403,6 +409,10 @@ function Workspace({
   // match the grid, which then shows the whole subtree's bundles.
   const isAllView =
     selection.view === 'all' && !selection.collectionId && !selection.smartCollectionId
+  // The section flattens to every descendant collection (depth-first, manual
+  // order) when "Show subcollection contents" is on — both inside a collection
+  // and in the All view (where it walks from every root).
+  const headerFlattened = showSubContents && (selection.collectionId !== null || isAllView)
   const headerCollections = useMemo(() => {
     const all = collections.data ?? []
     const parentId = selection.collectionId ?? null
@@ -410,7 +420,7 @@ function Workspace({
     // Manual order (shared with the sidebar), name as the stable tie-break.
     const bySortOrder = (a: CollectionRead, b: CollectionRead) =>
       a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-    if (selection.collectionId && showSubContents) {
+    if (headerFlattened) {
       const childrenOf = new Map<string, CollectionRead[]>()
       for (const c of all)
         if (c.parent_id) childrenOf.set(c.parent_id, [...(childrenOf.get(c.parent_id) ?? []), c])
@@ -421,11 +431,19 @@ function Workspace({
           walk(child.id)
         }
       }
-      walk(selection.collectionId)
+      if (selection.collectionId) {
+        walk(selection.collectionId)
+      } else {
+        // All view: start from every root, then their subtrees.
+        for (const root of all.filter((c) => (c.parent_id ?? null) === null).sort(bySortOrder)) {
+          flat.push(root)
+          walk(root.id)
+        }
+      }
       return flat
     }
     return all.filter((c) => (c.parent_id ?? null) === parentId).sort(bySortOrder)
-  }, [collections.data, selection.collectionId, isAllView, showSubContents])
+  }, [collections.data, selection.collectionId, isAllView, headerFlattened])
 
   // Direct subcollection count per collection id (for the card footers).
   const subCounts = useMemo(() => {
@@ -449,12 +467,39 @@ function Workspace({
   // (mirrors browse's MANUAL sort). Drives drag-reorder and "Clean up by…".
   const manualScopeCollectionId =
     selection.collectionId && !includeSubContents ? selection.collectionId : null
+
+  // #8: the sort can be one global setting or remembered per collection/view.
+  // This key buckets a smart collection / a collection / a system view (incl.
+  // All) separately so each can keep its own last-used sort.
+  const sortKey = selection.smartCollectionId
+    ? `smart:${selection.smartCollectionId}`
+    : selection.collectionId
+      ? `coll:${selection.collectionId}`
+      : `view:${selection.view}`
+  const effectiveSort: SortPref =
+    prefs.sortScope === 'collection'
+      ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
+      : { sort: prefs.sort, order: prefs.order }
+  const setEffectiveSort = useCallback(
+    (sort: BundleSort, order: SortOrder) => {
+      if (prefs.sortScope === 'collection') {
+        setPrefs({
+          ...prefs,
+          collectionSorts: { ...prefs.collectionSorts, [sortKey]: { sort, order } },
+        })
+      } else {
+        setPrefs({ ...prefs, sort, order })
+      }
+    },
+    [prefs, setPrefs, sortKey],
+  )
+
   const browse = useBrowse({
     view: selection.view,
     collectionId: selection.collectionId,
     includeDescendants: includeSubContents,
-    sort: prefs.sort,
-    order: prefs.order,
+    sort: effectiveSort.sort,
+    order: effectiveSort.order,
     limit: 100,
     filter: combinedFilter,
     search: debouncedSearch.trim() || null,
@@ -650,10 +695,15 @@ function Workspace({
     [],
   )
 
-  // Right-click empty browser space → create a new (empty) confirmed bundle.
+  // Right-click empty browser space → create a bundle, or clean up the bundle
+  // manual order for the current scope.
   const emptyContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      menu.open(e, [{ label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) }])
+      menu.open(e, [
+        { label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) },
+        null,
+        { label: 'Clean Up Order…', onClick: () => setCleaningBundles(true) },
+      ])
     },
     [menu],
   )
@@ -719,6 +769,14 @@ function Workspace({
       ])
     },
     [selectedCollectionIds, collections.data, menu],
+  )
+
+  // Right-click empty space in the subcollection section → clean up folder order.
+  const collectionSectionContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      menu.open(e, [{ label: 'Clean Up Order…', onClick: () => setCleaningCollections(true) }])
+    },
+    [menu],
   )
 
   const confirmRemoveCollection = useCallback(
@@ -877,6 +935,7 @@ function Workspace({
         onReorderCollections={(parentId, orderedIds) =>
           reorderCollections.mutate({ parentId, orderedIds })
         }
+        onCleanupCollections={() => setCleaningCollections(true)}
         smartCollections={smartCollections.data ?? []}
         onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
         onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -910,10 +969,16 @@ function Workspace({
               onSearch={setSearch}
               prefs={prefs}
               onPrefs={setPrefs}
+              sort={effectiveSort.sort}
+              order={effectiveSort.order}
+              onSort={setEffectiveSort}
+              perCollectionSort={prefs.sortScope === 'collection'}
+              onPerCollectionSort={(v) =>
+                setPrefs({ ...prefs, sortScope: v ? 'collection' : 'global' })
+              }
               adHocFilters={adHocFilters}
               onAdHocFilters={setAdHocFilters}
               facetContext={facetContext}
-              onCleanupOrder={() => setCleaningBundles(true)}
             />
             {openBundleId ? (
               <BundleAlbum bundleId={openBundleId} onBack={() => setOpenBundleId(null)} />
@@ -925,16 +990,16 @@ function Workspace({
                     sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
                     counts={collectionCounts.data}
                     subcounts={subCounts}
-                    showContents={selection.collectionId ? showSubContents : undefined}
-                    onToggleShowContents={selection.collectionId ? setShowSubContents : undefined}
+                    showContents={showSubContents}
+                    onToggleShowContents={setShowSubContents}
                     onSelectSubcollection={selectCollection}
                     onMarqueeSelect={selectCollectionsMany}
                     onContextMenuSubcollection={collectionContextMenu}
-                    onCleanup={() => setCleaningCollections(true)}
+                    onSectionContextMenu={collectionSectionContextMenu}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the
-                      // flattened view where cards span multiple parents (Slice 3).
-                      selection.collectionId && showSubContents
+                      // flattened view where cards span multiple parents.
+                      headerFlattened
                         ? undefined
                         : (orderedIds) =>
                             reorderCollections.mutate({
@@ -986,7 +1051,7 @@ function Workspace({
                     onContextMenu={bundleContextMenu}
                     onEmptyContextMenu={emptyContextMenu}
                     onReorder={
-                      prefs.sort === 'manual'
+                      effectiveSort.sort === 'manual'
                         ? (orderedIds) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,

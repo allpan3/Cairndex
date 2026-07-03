@@ -4,7 +4,7 @@ import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import { IconFolder } from './icons'
 import { collectionCardWidth } from './layout'
-import { moveBefore } from './reorder'
+import { moveTo } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
@@ -31,9 +31,8 @@ interface CollectionHeaderProps {
   // Persist a manual drag-reorder of the folder cards (these all share one
   // parent). Omitted when reordering doesn't apply (e.g. the flattened view).
   onReorderCollections?: (orderedIds: string[]) => void
-  // Open the "Clean up by…" dialog for collections. Omitted when there's nothing
-  // to tidy.
-  onCleanup?: () => void
+  // Right-click on empty section space → the folder-order context menu (Clean up…).
+  onSectionContextMenu?: (e: React.MouseEvent) => void
   selectedIds: Set<string>
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
   // bundle grid.
@@ -65,7 +64,7 @@ function CollectionCard({
   onOpen,
   onContextMenu,
   draggable,
-  isDropTarget,
+  drop,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -79,7 +78,7 @@ function CollectionCard({
   onOpen: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   draggable?: boolean
-  isDropTarget?: boolean
+  drop?: 'before' | 'after'
   onDragStart?: (e: React.DragEvent) => void
   onDragEnd?: () => void
   onDragOver?: (e: React.DragEvent) => void
@@ -88,14 +87,13 @@ function CollectionCard({
   const [hasCover, setHasCover] = useState(true)
   return (
     <button
-      className={`collcard${selected ? ' collcard--selected' : ''}${
-        isDropTarget ? ' collcard--drop' : ''
-      }`}
+      className={`collcard${selected ? ' collcard--selected' : ''}`}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
       title={collection.name}
       data-collection-id={collection.id}
+      data-drop={drop}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -153,7 +151,7 @@ export function CollectionHeader({
   onOpenSubcollection,
   onContextMenuSubcollection,
   onReorderCollections,
-  onCleanup,
+  onSectionContextMenu,
   selectedIds,
   zoom,
   subcollapsed,
@@ -167,8 +165,14 @@ export function CollectionHeader({
   // testing and the marquee rect stay relative to the grid.
   const scrollElRef = useRef<HTMLDivElement | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
-  // Id of the folder card being dragged for manual reorder (null when idle).
+  // Manual-reorder drag: the id being dragged + the current gap (which card, and
+  // before/after it) so the drop slots between cards rather than onto one.
   const [dragId, setDragId] = useState<string | null>(null)
+  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  const clearDrag = () => {
+    setDragId(null)
+    setDropSlot(null)
+  }
   const siblingIds = subcollections.map((c) => c.id)
 
   const hitTest = (rect: MarqueeRect): string[] => {
@@ -204,6 +208,12 @@ export function CollectionHeader({
       className={`collhead${marqueeRect ? ' browser--dragging' : ''}`}
       ref={scrollElRef}
       onMouseDown={onMouseDown}
+      // Right-click empty section space (not a card — those handle their own
+      // menu) → the folder "Clean up…" menu.
+      onContextMenu={(e) => {
+        if ((e.target as HTMLElement).closest('[data-collection-id]')) return
+        onSectionContextMenu?.(e)
+      }}
     >
       <div className="collsec__row">
         <button
@@ -214,23 +224,16 @@ export function CollectionHeader({
           <Caret open={!subcollapsed} />
           {sectionLabel} ({subcollections.length})
         </button>
-        <div className="collsec__controls">
-          {onToggleShowContents && (
-            <label className="collsec__check">
-              <input
-                type="checkbox"
-                checked={showContents ?? false}
-                onChange={(e) => onToggleShowContents(e.target.checked)}
-              />
-              Show subcollection contents
-            </label>
-          )}
-          {onCleanup && (
-            <button className="collsec__cleanup" onClick={onCleanup} title="Clean up folder order">
-              Clean up…
-            </button>
-          )}
-        </div>
+        {onToggleShowContents && (
+          <label className="collsec__check">
+            <input
+              type="checkbox"
+              checked={showContents ?? false}
+              onChange={(e) => onToggleShowContents(e.target.checked)}
+            />
+            Show subcollection contents
+          </label>
+        )}
       </div>
       {!subcollapsed && (
         <div
@@ -270,20 +273,27 @@ export function CollectionHeader({
                 onContextMenuSubcollection ? (e) => onContextMenuSubcollection(c.id, e) : undefined
               }
               draggable={onReorderCollections !== undefined}
-              isDropTarget={dragId !== null && dragId !== c.id}
+              drop={dropSlot?.id === c.id ? (dropSlot.before ? 'before' : 'after') : undefined}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move'
                 setDragId(c.id)
               }}
-              onDragEnd={() => setDragId(null)}
+              onDragEnd={clearDrag}
               onDragOver={(e) => {
-                if (dragId !== null && dragId !== c.id) e.preventDefault()
+                if (dragId === null || dragId === c.id) return
+                e.preventDefault()
+                const r = e.currentTarget.getBoundingClientRect()
+                const before = e.clientX < r.left + r.width / 2
+                setDropSlot((prev) =>
+                  prev?.id === c.id && prev.before === before ? prev : { id: c.id, before },
+                )
               }}
               onDrop={(e) => {
                 if (dragId === null || dragId === c.id || !onReorderCollections) return
                 e.preventDefault()
-                onReorderCollections(moveBefore(siblingIds, dragId, c.id))
-                setDragId(null)
+                const before = dropSlot?.id === c.id ? dropSlot.before : true
+                onReorderCollections(moveTo(siblingIds, dragId, c.id, before))
+                clearDrag()
               }}
             />
           ))}
