@@ -211,6 +211,38 @@ export function CollectionHeader({
   const activeSlot = dragItem ? dropSlot : null
   const siblingIds = subcollections.map((c) => c.id)
 
+  // Catch a collection reorder that lands in the empty space around the folder
+  // cards (past the content box), routing it to the beginning or end of the
+  // group so you needn't pinpoint a card edge. Cards handle their own drops; this
+  // only fires for drops on the surrounding surface, and only when reordering is
+  // enabled (not in the flattened view).
+  const onSurfaceDragOver = (e: React.DragEvent) => {
+    if (!onReorderCollections || dragItem?.kind !== 'collection') return
+    if ((e.target as HTMLElement).closest('[data-collection-id]')) return
+    e.preventDefault()
+  }
+  const onSurfaceDrop = (e: React.DragEvent) => {
+    if (!onReorderCollections || dragItem?.kind !== 'collection') return
+    if ((e.target as HTMLElement).closest('[data-collection-id]')) return
+    e.preventDefault()
+    if (siblingIds.length === 0) return clearDrag()
+    const gr = gridRef.current?.getBoundingClientRect()
+    const before = gr ? e.clientY < gr.top + gr.height / 2 : false
+    const edgeId = before ? siblingIds[0] : siblingIds[siblingIds.length - 1]
+    if (edgeId !== undefined && dragItem.id !== edgeId) {
+      if (siblingIds.includes(dragItem.id)) {
+        onReorderCollections(moveTo(siblingIds, dragItem.id, edgeId, before))
+      } else {
+        onMoveCollection(
+          dragItem.id,
+          parentId,
+          moveTo([...siblingIds, dragItem.id], dragItem.id, edgeId, before),
+        )
+      }
+    }
+    clearDrag()
+  }
+
   const hitTest = (rect: MarqueeRect): string[] => {
     const gridEl = gridRef.current
     if (!gridEl) return []
@@ -244,6 +276,8 @@ export function CollectionHeader({
       className={`collhead${marqueeRect ? ' browser--dragging' : ''}`}
       ref={scrollElRef}
       onMouseDown={onMouseDown}
+      onDragOver={onSurfaceDragOver}
+      onDrop={onSurfaceDrop}
       // Right-click empty section space (not a card — those handle their own
       // menu) → the folder "Clean up…" menu.
       onContextMenu={(e) => {

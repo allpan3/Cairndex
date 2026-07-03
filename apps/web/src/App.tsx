@@ -416,10 +416,11 @@ function Workspace({
   // match the grid, which then shows the whole subtree's bundles.
   const isAllView =
     selection.view === 'all' && !selection.collectionId && !selection.smartCollectionId
-  // The section flattens to every descendant collection (depth-first, manual
-  // order) when "Show subcollection contents" is on — both inside a collection
-  // and in the All view (where it walks from every root).
-  const headerFlattened = showSubContents && (selection.collectionId !== null || isAllView)
+  // Inside a collection, "Show subcollection contents" flattens every descendant
+  // collection (depth-first, manual order) into the Subcollections section. The
+  // All view has no such toggle — it always shows every top-level collection and,
+  // in the grid, every bundle.
+  const headerFlattened = showSubContents && selection.collectionId !== null
   const headerCollections = useMemo(() => {
     const all = collections.data ?? []
     const parentId = selection.collectionId ?? null
@@ -427,7 +428,7 @@ function Workspace({
     // Manual order (shared with the sidebar), name as the stable tie-break.
     const bySortOrder = (a: CollectionRead, b: CollectionRead) =>
       a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-    if (headerFlattened) {
+    if (headerFlattened && selection.collectionId) {
       const childrenOf = new Map<string, CollectionRead[]>()
       for (const c of all)
         if (c.parent_id) childrenOf.set(c.parent_id, [...(childrenOf.get(c.parent_id) ?? []), c])
@@ -438,15 +439,7 @@ function Workspace({
           walk(child.id)
         }
       }
-      if (selection.collectionId) {
-        walk(selection.collectionId)
-      } else {
-        // All view: start from every root, then their subtrees.
-        for (const root of all.filter((c) => (c.parent_id ?? null) === null).sort(bySortOrder)) {
-          flat.push(root)
-          walk(root.id)
-        }
-      }
+      walk(selection.collectionId)
       return flat
     }
     return all.filter((c) => (c.parent_id ?? null) === parentId).sort(bySortOrder)
@@ -501,10 +494,9 @@ function Workspace({
     [prefs, setPrefs, sortKey],
   )
 
-  // In the All tab the grid is scoped like a file-browser root: with the toggle
-  // OFF it shows only *uncategorized* bundles (top-level "loose" items) alongside
-  // the root collection folders; with the toggle ON it flattens to every bundle.
-  const browseView = isAllView && !showSubContents ? 'uncategorized' : selection.view
+  // The All tab shows every bundle flattened (its own system 'all' view) with the
+  // top-level collection folders above — no per-view scoping.
+  const browseView = selection.view
   const browse = useBrowse({
     view: browseView,
     collectionId: selection.collectionId,
@@ -716,12 +708,12 @@ function Workspace({
         {
           label: 'Clean Up Order…',
           onClick: () => setCleaningBundles(true),
-          // Reordering a flattened list is meaningless — no manual order to tidy.
-          disabled: headerFlattened,
+          // No manual order to tidy on a flattened list or in the All view.
+          disabled: headerFlattened || isAllView,
         },
       ])
     },
-    [menu, headerFlattened],
+    [menu, headerFlattened, isAllView],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -1076,8 +1068,10 @@ function Workspace({
                     sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
                     counts={collectionCounts.data}
                     subcounts={subCounts}
-                    showContents={showSubContents}
-                    onToggleShowContents={setShowSubContents}
+                    // The "Show subcollection contents" toggle only applies inside
+                    // a collection; the All view has no such toggle.
+                    showContents={selection.collectionId ? showSubContents : undefined}
+                    onToggleShowContents={selection.collectionId ? setShowSubContents : undefined}
                     onSelectSubcollection={selectCollection}
                     onMarqueeSelect={selectCollectionsMany}
                     onContextMenuSubcollection={collectionContextMenu}
@@ -1143,10 +1137,11 @@ function Workspace({
                     onContextMenu={bundleContextMenu}
                     onEmptyContextMenu={emptyContextMenu}
                     onReorder={
-                      // Reordering only makes sense on a non-flattened list (a
-                      // single collection's own bundles, or the All tab's
-                      // uncategorized bundles) — disabled when contents are flattened.
-                      effectiveSort.sort === 'manual' && !headerFlattened
+                      // Reordering only makes sense on a scoped, non-flattened
+                      // list — a single collection's own bundles or a system-view
+                      // queue. It's disabled when contents are flattened and in the
+                      // All view (reordering "everything" is meaningless).
+                      effectiveSort.sort === 'manual' && !headerFlattened && !isAllView
                         ? (orderedIds) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,
@@ -1338,6 +1333,25 @@ function Workspace({
       {flash && (
         <div className="mb-toast" role="status">
           {flash}
+        </div>
+      )}
+
+      {/* While an item is being dragged, remind the owner of the drop semantics
+          in the lower-left corner: plain drop = move, Option/Alt = copy (for
+          bundles, "add to the collection without removing it from the current
+          one"). Collections only move/reorder, so no copy hint there. */}
+      {dragItem && (
+        <div className="drag-hint" role="status" aria-live="polite">
+          {dragItem.kind === 'bundles' ? (
+            <>
+              <strong>Move</strong> · hold <kbd>⌥ Option</kbd> to <strong>copy</strong> (add without
+              removing)
+            </>
+          ) : (
+            <>
+              <strong>Move</strong> — drop onto a collection to nest, or between rows to reorder
+            </>
+          )}
         </div>
       )}
     </div>

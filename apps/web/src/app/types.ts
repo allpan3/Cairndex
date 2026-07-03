@@ -58,7 +58,8 @@ export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'recent', label: 'Recently Added', icon: '🕗' },
   { view: 'uncategorized', label: 'Uncategorized', icon: '◌' },
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
-  { view: 'missing', label: 'Missing Files', icon: '⚠' },
-  // Kept last: the file-first "to-bundle queue" (its count is highlighted).
+  // The file-first "to-bundle queue" (its count is highlighted) sits with the
+  // other attention queues, just above Missing Files.
   { view: 'unbundled', label: 'Unbundled', icon: '⚟' },
+  { view: 'missing', label: 'Missing Files', icon: '⚠' },
 ]

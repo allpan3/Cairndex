@@ -147,6 +147,9 @@ test('bundle "Clean up…" lives in the empty-space context menu', async ({ page
   const captured = await mockApi(page)
   await page.goto('/')
 
+  // Enter a collection first — bundle "Clean Up Order" applies to a scoped list
+  // (a collection's own bundles), not the flattened All view where it's disabled.
+  await page.locator('.collcard__grid [data-collection-id]').first().dblclick()
   await expect(page.locator('[data-bundle-id]').first()).toBeVisible()
   // Right-click empty grid space (the .browser root, not a card) → Clean Up Order.
   await page.evaluate(() => {

@@ -65,6 +65,16 @@ def test_root_listing_dirs_first_and_hides_hidden(session: Session, library_root
     assert listing.entries[1].kind == "file"
 
 
+def test_entries_carry_created_and_modified_times(session: Session, library_root: Path) -> None:
+    _make_media(library_root)
+    by_name = {e.name: e for e in service.list_entries(session).entries}
+    top = by_name["top.mp4"]
+    # A real on-disk file reports both a creation ("date added") and a modified
+    # time; the field exists and is distinct from modified_at's type/None-ness.
+    assert top.created_at is not None
+    assert top.modified_at is not None
+
+
 def test_nested_listing_excludes_hidden_and_marks_support(
     session: Session, library_root: Path
 ) -> None:
