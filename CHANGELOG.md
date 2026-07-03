@@ -65,6 +65,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Sidebar collection tree redesigned** (Eagle-style): compact rows with a slim
+  caret close to the edge, and **hierarchy guide rails** — a vertical rule per
+  ancestor level plus an elbow connector that bends into the last child of a
+  group. The same guides (`PickGuides`) are shared by the tag / collection
+  pickers.
+- **Distinct system-view icons:** Uncategorized is a folder-with-“?”, Untagged a
+  tag-with-“?”, and All Tags a plain tag (previously Untagged and All Tags shared
+  one icon).
+- **File inspector** now shows **Date Added** and **Date Modified** (renamed from
+  “Modified”), both down to the minute (`formatDateTime`).
+- The drag hint is terser — bundles: “Drag to move · hold ⌥ to copy”;
+  collections: “Drag and drop to reorder or nest”.
+- Removed the **“openable”** file badge (attention badges — unsupported /
+  unlinked / unbundled — remain).
 - **The All tab no longer behaves like a collection.** It always shows every
   top-level collection plus every bundle (flattened) — the "Show subcollection
   contents" toggle is gone from the All view (it remains inside a specific
@@ -430,6 +444,8 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- The sidebar **end-of-list drop zone grows while a collection is dragged**, so
+  dropping "past the last collection" is a large, forgiving target.
 - **Dropping a reorder past the content edge now works.** A drop that lands in
   the empty margin around the cards (below the last / above the first) is caught
   by the container and routed to the end / beginning, so you no longer have to

@@ -1,5 +1,5 @@
 import type { FileViewEntry } from '../api/client'
-import { formatBytes, formatDate } from '../lib/format'
+import { formatBytes, formatDateTime } from '../lib/format'
 
 /** Tri-state bundle membership shown in the File inspector / Files surface. */
 function bundleStatus(entry: FileViewEntry): string {
@@ -27,7 +27,8 @@ export function FileInspector({ entry }: { entry: FileViewEntry | null }) {
     ['Path', entry.relative_path],
     ['Type', entry.kind === 'directory' ? 'Folder' : (entry.extension ?? 'file')],
     ['Size', entry.kind === 'directory' ? '—' : formatBytes(entry.size_bytes)],
-    ['Modified', entry.modified_at ? formatDate(entry.modified_at) : '—'],
+    ['Date Added', entry.created_at ? formatDateTime(entry.created_at) : '—'],
+    ['Date Modified', entry.modified_at ? formatDateTime(entry.modified_at) : '—'],
     ['MIME', entry.mime_type ?? '—'],
     ['Media kind', entry.media_kind ?? '—'],
     ['Openable', entry.kind === 'directory' ? '—' : entry.supported ? 'Yes' : 'No'],

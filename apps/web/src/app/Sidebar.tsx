@@ -13,16 +13,18 @@ import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
   IconAlert,
   IconChevron,
-  IconCircleDashed,
   IconClock,
   IconFilter,
   IconFolder,
+  IconFolderQuestion,
   IconGrid,
   IconLooseStack,
   IconTag,
+  IconTagQuestion,
 } from './icons'
 import type { DragItem } from './dnd'
 import { dropZone } from './dnd'
+import { PickGuides } from './PickGuides'
 import { moveTo } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
@@ -38,9 +40,9 @@ function viewIcon(view: SystemView): ReactNode {
     case 'recent':
       return <IconClock />
     case 'uncategorized':
-      return <IconCircleDashed />
+      return <IconFolderQuestion />
     case 'untagged':
-      return <IconTag />
+      return <IconTagQuestion />
     case 'missing':
       return <IconAlert />
     case 'unbundled':
@@ -513,11 +515,13 @@ export function Sidebar({
               </div>
             )}
             {tree.length === 0 && <div className="sidebar__heading">No collections yet</div>}
-            {tree.map((node) => (
+            {tree.map((node, i) => (
               <CollectionBranch
                 key={node.collection.id}
                 node={node}
                 depth={0}
+                trail={[]}
+                isLast={i === tree.length - 1}
                 parentId={null}
                 siblingIds={tree.map((n) => n.collection.id)}
                 selection={selection}
@@ -605,6 +609,8 @@ function SectionHeading({
 function CollectionBranch({
   node,
   depth,
+  trail,
+  isLast,
   parentId,
   siblingIds,
   selection,
@@ -627,6 +633,10 @@ function CollectionBranch({
 }: {
   node: TreeNode
   depth: number
+  // Ancestor continuation flags (one per column, length = depth - 1) + whether
+  // this row is the last of its siblings — drive the hierarchy guide rails.
+  trail: boolean[]
+  isLast: boolean
   parentId: string | null
   siblingIds: string[]
   selection: Selection
@@ -667,7 +677,6 @@ function CollectionBranch({
         className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
           slotZone === 'into' ? ' collection-row--drop-into' : ''
         }`}
-        style={{ paddingLeft: 8 + depth * 14 }}
         data-drop={slotZone && slotZone !== 'into' ? slotZone : undefined}
         onClick={() => !editing && onSelect({ view: 'all', collectionId: id })}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
@@ -723,6 +732,7 @@ function CollectionBranch({
           endDrag()
         }}
       >
+        <PickGuides depth={depth} trail={trail} isLast={isLast} />
         <button
           className="collection-row__toggle"
           onClick={(e) => {
@@ -750,11 +760,15 @@ function CollectionBranch({
         )}
       </div>
       {expanded &&
-        node.children.map((child) => (
+        node.children.map((child, i) => (
           <CollectionBranch
             key={child.collection.id}
             node={child}
             depth={depth + 1}
+            // Top-level rows have no rail, so their children start a fresh trail;
+            // deeper rows extend the trail with this node's own continuation.
+            trail={depth === 0 ? [] : [...trail, !isLast]}
+            isLast={i === node.children.length - 1}
             parentId={node.collection.id}
             siblingIds={node.children.map((c) => c.collection.id)}
             selection={selection}
@@ -798,9 +812,15 @@ function CollectionListEnd({
   onEndDrag: () => void
 }) {
   const [over, setOver] = useState(false)
+  // Only a collection drag can land here; while one is in flight the zone grows
+  // to fill the empty space below the tree so "drop past the last collection" is
+  // a big, forgiving target rather than a thin strip.
+  const active = dragItem?.kind === 'collection'
   return (
     <div
-      className={`collection-list-end${over ? ' collection-list-end--over' : ''}`}
+      className={`collection-list-end${active ? ' collection-list-end--active' : ''}${
+        over ? ' collection-list-end--over' : ''
+      }`}
       onDragOver={(e) => {
         if (dragItem?.kind !== 'collection') return
         e.preventDefault()

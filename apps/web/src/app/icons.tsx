@@ -87,6 +87,44 @@ export const IconFolder = () => (
   </Svg>
 )
 
+// Folder marked with a "?" — the "Uncategorized" (no collection) view.
+export const IconFolderQuestion = () => (
+  <Svg>
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+    <text
+      x="12"
+      y="15"
+      fontSize="9"
+      fontWeight="700"
+      fill="currentColor"
+      stroke="none"
+      textAnchor="middle"
+      dominantBaseline="central"
+    >
+      ?
+    </text>
+  </Svg>
+)
+
+// Tag marked with a "?" — the "Untagged" (no tags) view, distinct from All Tags.
+export const IconTagQuestion = () => (
+  <Svg>
+    <path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z" />
+    <text
+      x="8"
+      y="8"
+      fontSize="7.5"
+      fontWeight="700"
+      fill="currentColor"
+      stroke="none"
+      textAnchor="middle"
+      dominantBaseline="central"
+    >
+      ?
+    </text>
+  </Svg>
+)
+
 // Loose stack — three scattered, slightly-tilted tiles standing for loose,
 // ungrouped files awaiting bundling (the Unbundled view).
 export const IconLooseStack = () => (
