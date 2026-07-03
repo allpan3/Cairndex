@@ -195,6 +195,8 @@ function FileList({
 }: FileListProps) {
   const menu = useContextMenu()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Anchor for Shift-range selection (the last plainly-clicked file).
+  const [anchor, setAnchor] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
   const [search, setSearch] = useState('')
 
@@ -218,10 +220,26 @@ function FileList({
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
-  // Single click selects (for the inspector); modifier-click toggles a file in
-  // the multi-selection. Navigation/opening is double-click only.
+  // Single click selects (for the inspector); Cmd/Ctrl toggles a file, Shift
+  // selects the inclusive range of files from the anchor. Navigation/opening is
+  // double-click only.
   const clickEntry = (entry: FileViewEntry, e: React.MouseEvent) => {
-    if (entry.kind === 'file' && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+    if (entry.kind === 'file' && e.shiftKey && anchor) {
+      const ids = visible.map((v) => v.relative_path)
+      const a = ids.indexOf(anchor)
+      const b = ids.indexOf(entry.relative_path)
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        const range = visible
+          .slice(lo, hi + 1)
+          .filter((v) => v.kind === 'file')
+          .map((v) => v.relative_path)
+        setSelected(new Set(range))
+        onSelectEntry(entry)
+        return
+      }
+    }
+    if (entry.kind === 'file' && (e.metaKey || e.ctrlKey)) {
       setSelected((prev) => {
         const next = new Set(prev)
         if (next.has(entry.relative_path)) next.delete(entry.relative_path)
@@ -231,6 +249,7 @@ function FileList({
     } else {
       setSelected(new Set([entry.relative_path]))
     }
+    if (entry.kind === 'file') setAnchor(entry.relative_path)
     onSelectEntry(entry)
   }
 
@@ -291,8 +310,14 @@ function FileList({
   const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollEl,
     getWrapperEl: () => wrapperRef.current,
-    isBackgroundTarget: (target) =>
-      !target.closest('[data-relpath]') && !target.closest('.file-table__head'),
+    // Rubber-band from empty space always, and from a file row in list layout
+    // (rows fill the width, so there's otherwise nothing to grab); a plain click
+    // still selects via the drag threshold. File rows aren't reorder-draggable.
+    isBackgroundTarget: (target) => {
+      if (target.closest('.file-table__head')) return false
+      if (!target.closest('[data-relpath]')) return true
+      return prefs.layout === 'list'
+    },
     hitTest,
     getBaseSelection: () => selected,
     onChange: (ids) => {

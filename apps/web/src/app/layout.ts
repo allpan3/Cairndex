@@ -35,9 +35,9 @@ export function listRowHeight(zoom: number): number {
  *
  * Knobs to experiment with: MIN/MAX are the folder card's px width range, and
  * COLLECTION_CAP_FRACTION is where along the slider it reaches MAX (2/3 here). */
-export const COLLECTION_CARD_MIN = 72
-export const COLLECTION_CARD_MAX = 240
-const COLLECTION_CAP_FRACTION = 2 / 3
+export const COLLECTION_CARD_MIN = 96
+export const COLLECTION_CARD_MAX = 300
+const COLLECTION_CAP_FRACTION = 3 / 3
 export function collectionCardWidth(zoom: number): number {
   const start = ZOOM_MIN
   const capAt = ZOOM_MIN + (ZOOM_MAX - ZOOM_MIN) * COLLECTION_CAP_FRACTION

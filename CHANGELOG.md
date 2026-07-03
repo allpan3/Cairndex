@@ -35,13 +35,36 @@ grouped under `Unreleased` until the first tagged release.
   Collections** for a Shift/Ctrl multi-selection), mirroring the sidebar; the
   confirm dialog asks about cascading subcollections once for the whole set.
 - **Flatten subcollections on "Show subcollection contents".** Turning the toggle
-  on (inside a collection *or* in the All view) flattens every descendant
+  on (inside a collection _or_ in the All view) flattens every descendant
   collection into the Subcollections section (depth-first, manual order), matching
   the grid that shows the whole subtree's bundles.
 - **Shift-range selection** for both bundle cards and folder cards: Shift+click
   selects the inclusive range from the last plain click to the clicked card.
+- **Drag collections and bundles between parents.** Dragging a collection onto
+  another reparents it (drop on the center) or reorders (drop on an edge), in both
+  the sidebar and the main browser. Dragging bundles onto a collection (folder card
+  or sidebar row) moves them there — removing them from the collection in view,
+  unless **Alt/Option** is held (add without removing). A highlight marks the
+  "move into" target; the accent line marks a reorder gap.
+- **File selection in the bundle album.** Files inside an opened bundle can be
+  single-click selected, drag-selected, and Shift-range selected; double-click
+  opens the fullscreen viewer. The right inspector keeps showing the bundle.
+- **"Locate in File Browser"** on a right-clicked file in the bundle album jumps
+  to the File Browser at that file's folder.
+- **Drag-select in list layout.** In list views (bundle + file), pressing and
+  dragging over rows now rubber-band-selects them live (previously you could only
+  drag-select from empty space, which list rows leave none of).
+- **Shift-range selection for files** in the File Browser.
 
 ### Changed
+
+- **The All tab is now a browser root:** with "Show subcollection contents" off it
+  shows the top-level collections plus _uncategorized_ bundles (and their manual
+  order); turning it on flattens to every collection and bundle. There is no
+  global manual order spanning all bundles — reordering and "Clean up…" are
+  disabled (and the menu item greyed) whenever contents are flattened.
+- Fold arrows now use a **chevron icon** (larger on the Collections / Smart
+  Collections section headings).
 
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
@@ -56,7 +79,7 @@ grouped under `Unreleased` until the first tagged release.
   groups (display-only scoping), and a tag tree: left-click includes a tag,
   right-click excludes it (visually distinct blue check vs. red struck minus),
   with a per-category **Any / All / Equal** rule and a **subtags** (descendant)
-  toggle. Equal is exact *direct* membership only (a directly-applied parent tag
+  toggle. Equal is exact _direct_ membership only (a directly-applied parent tag
   still matches; no descendant expansion). **Rating** offers a star row with a
   `=` / `≥` / `≤` operator and an **Unrated** row (clicking the selected star or
   Unrated again clears it). Filters stack under AND with the active Smart
@@ -138,9 +161,9 @@ grouped under `Unreleased` until the first tagged release.
   `CollectionUpdate`/`CollectionRead`.
 
 - **Unbundled staging + manual bundling assistant (follow-up to ADR-0009).** A
-  scan stages every newly discovered file as a *provisional* one-file bundle; the
+  scan stages every newly discovered file as a _provisional_ one-file bundle; the
   library browser now treats those as **unbundled** files (`grouping_state =
-  provisional` + `grouping_source = scan_suggestion`) and confines them to a
+provisional` + `grouping_source = scan_suggestion`) and confines them to a
   dedicated **Unbundled** system view. They are hidden from All, Recently Added,
   Uncategorized, Untagged, Missing, and every collection until the owner confirms
   them — so unaccepted scan suggestions no longer masquerade as real bundles.
@@ -148,7 +171,7 @@ grouped under `Unreleased` until the first tagged release.
   A new `cairndex.manual_bundling` service turns unbundled files into confirmed
   bundles by hand, all **metadata-only** (files are re-parented and emptied
   provisional bundles reaped; nothing on disk is moved/copied/renamed/deleted):
-  - **Add to Bundle** — fold selected unbundled files into an existing *confirmed*
+  - **Add to Bundle** — fold selected unbundled files into an existing _confirmed_
     bundle (roles assigned, sequences appended, external subtitles auto-linked).
   - **Create Bundle** — confirm a new bundle from one or more selected unbundled
     files (heuristic title/roles, cover/primary chosen), optionally pulling in
@@ -157,20 +180,20 @@ grouped under `Unreleased` until the first tagged release.
     files.
   - **Add Files** (from a bundle's inspector) — pull suggested unbundled files
     into that bundle.
-  Suggestions (target bundles for selected files; unbundled files for a bundle; a
-  bundle draft from a seed) are generated automatically when a dialog opens, ranked
-  with a confidence + human reason, and come only from the library DB and FTS index
-  — never a filesystem scan. **Applying is always explicit.** The suggester's
-  name-parsing/role heuristics and the file-membership + source-reaping logic are
-  reused from grouping (extracted to `grouping/membership.py`). New library-scoped
-  routes under `/libraries/{id}/manual-bundling/*`; OpenAPI + frontend types
-  regenerated. Web UI adds the Unbundled view (now a file-first Files surface —
-  see *Changed*), an empty-space/toolbar "Create Bundle…", the inspector "Add
-  Files…" action, and four suggestion dialogs with empty/loading/error states and a
-  success toast. Covered by `test_browse.py` (view/counts/hiding),
-  `test_manual_bundling.py` + `test_manual_bundling_api.py` (suggestions, all
-  mutations, subtitle auto-link, confirmed bundles undisturbed, metadata-only), and
-  `e2e/manual-bundling.spec.ts` (Unbundled view, create-from-files, add-to-bundle).
+    Suggestions (target bundles for selected files; unbundled files for a bundle; a
+    bundle draft from a seed) are generated automatically when a dialog opens, ranked
+    with a confidence + human reason, and come only from the library DB and FTS index
+    — never a filesystem scan. **Applying is always explicit.** The suggester's
+    name-parsing/role heuristics and the file-membership + source-reaping logic are
+    reused from grouping (extracted to `grouping/membership.py`). New library-scoped
+    routes under `/libraries/{id}/manual-bundling/*`; OpenAPI + frontend types
+    regenerated. Web UI adds the Unbundled view (now a file-first Files surface —
+    see _Changed_), an empty-space/toolbar "Create Bundle…", the inspector "Add
+    Files…" action, and four suggestion dialogs with empty/loading/error states and a
+    success toast. Covered by `test_browse.py` (view/counts/hiding),
+    `test_manual_bundling.py` + `test_manual_bundling_api.py` (suggestions, all
+    mutations, subtitle auto-link, confirmed bundles undisturbed, metadata-only), and
+    `e2e/manual-bundling.spec.ts` (Unbundled view, create-from-files, add-to-bundle).
 
 - **Optional per-library owner passphrase lock (ADR-0010).** Each library can
   independently require an owner passphrase — a lightweight private-LAN/Tailscale
@@ -289,10 +312,10 @@ grouped under `Unreleased` until the first tagged release.
   the suffix") holds for the scan/grouping and manual-grouping flows alike.
 
 - **Re-scan additions into confirmed bundles (ADR-0009, phase 5).** When a file
-  is discovered in a directory already owned by a *confirmed* bundle, the
+  is discovered in a directory already owned by a _confirmed_ bundle, the
   suggester now proposes folding it into that bundle (an **addition** proposal,
   `target_bundle_id` set) rather than spawning a fresh one — so a re-scan that
-  drops `cosmos.fr.srt` next to a confirmed *Cosmos* bundle suggests "add to
+  drops `cosmos.fr.srt` next to a confirmed _Cosmos_ bundle suggests "add to
   Cosmos", never disturbing the confirmed grouping. Applying an addition moves
   the file in, assigns a role, links subtitles, removes the emptied provisional
   bundle, and is idempotent + conflict-aware (a file the user moved into a
@@ -338,7 +361,7 @@ grouped under `Unreleased` until the first tagged release.
   never a filesystem move); nested folders recurse. Roles are derived as ADR-0003
   prescribes (primary video, cover = `cover`/`poster`/`thumb…` image else first
   image, external subtitles, sequence by natural order). Files already in a
-  *confirmed* bundle are excluded, so confirmed decisions win over heuristics.
+  _confirmed_ bundle are excluded, so confirmed decisions win over heuristics.
   This phase is read-only: a thin DB adapter (`grouping.service`) snapshots the
   current library and returns a plan; persisting and applying it is phase 3.
 
@@ -451,13 +474,13 @@ grouped under `Unreleased` until the first tagged release.
 ### Changed
 
 - **Unbundled is now a file-first Files-surface view; the two top-left tabs are
-  Bundles + Files.** Scan-staged files were previously shown as *bundle cards* in
+  Bundles + Files.** Scan-staged files were previously shown as _bundle cards_ in
   a browse view; they are now presented as **files**. The "Collections" tab is
   renamed **Bundles** (the bundle-first surface: system views, Smart Collections,
   the Collections tree, Tags); **Files** is the filesystem browser. Clicking
   **Unbundled** switches to the Files surface showing a flat, cross-library list
   of the not-yet-bundled files (a new `GET /manual-bundling/unbundled-files`),
-  with the *file* inspector rather than bundle metadata. File View entries carry a
+  with the _file_ inspector rather than bundle metadata. File View entries carry a
   new `unbundled` flag and show **`unlinked`** / **`unbundled`** / `openable`
   badges (the old `linked` badge is gone; a file in a confirmed bundle shows no
   status badge). Any File-View file can be right-clicked to **Add to Bundle… /
