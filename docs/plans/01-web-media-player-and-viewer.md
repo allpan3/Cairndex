@@ -1,0 +1,418 @@
+# Plan 1 — First-class web video player & image viewer
+
+> Status: planning document (2026-07-04). See [README.md](README.md) for how
+> this fits the overall client strategy and build order.
+
+## 1. Where we are
+
+Playback today (`apps/server/src/cairndex/media/`, `api/v1/playback.py`,
+`apps/web/src/app/Player.tsx`, `FileViewer.tsx`):
+
+- **Direct play only.** `assess_playability()` allows containers
+  `mp4/m4v/webm` and codecs `h264/vp8/vp9/av1/theora`; everything else (MKV,
+  HEVC, AVI, WMV, MOV…) shows a fallback card. Streaming is Starlette
+  `FileResponse` with HTTP Range — correct and sufficient for direct play.
+- **`Player.tsx` is a modal with a bare `<video controls>`** — browser-default
+  controls, no keyboard shortcuts, no track menu, no seek preview, no resume,
+  no speed, no PiP, no fullscreen management, and a crude playlist strip.
+- **Subtitles:** external SRT/VTT converted to cached WebVTT and attached as
+  `<track>` elements. Embedded streams are *detected* (`SubtitleTrack` rows
+  with `stream_index`) but not extractable/servable. ASS/SSA not convertible.
+- **`FileViewer.tsx` (lightbox):** full-res `<img>` or bare `<video>`,
+  arrow-key stepping, Escape. No zoom/pan, no fit modes, no slideshow, no
+  EXIF panel, no non-native format support (HEIC/TIFF fall to an info card).
+- **Probe** stores only the *first* audio stream and no chapters.
+- No watch positions, no storyboard thumbnails, no image preview derivatives.
+
+## 2. Target experience
+
+Reference points: YouTube (controls/shortcuts/seek preview), Jellyfin/Plex
+(server-decided direct/remux/transcode, per-track menus, resume), mpv/IINA
+(frame stepping, speed ramp), Eagle (image zoom/pan feel, filmstrip).
+
+A single **unified media viewer** replaces today's two modals (`Player` and
+`FileViewer`): one full-screen surface that hosts an **image stage** or a
+**video stage** per file, with a filmstrip of the bundle's files, shared
+navigation, and a shared info panel. "Play bundle" opens it on the primary
+video; "view file" opens it on that file.
+
+### Video stage — feature list (acceptance criteria for the UI milestones)
+
+- Custom control bar (auto-hiding): play/pause, seek bar with buffered ranges
+  + chapter ticks, time/duration, volume slider + mute, settings menu
+  (speed 0.25–3×, quality when transcoding, loop), subtitle menu, audio-track
+  menu, PiP, theater/fullscreen.
+- Seek bar: click/drag scrubbing, hover time tooltip with **storyboard
+  thumbnail**, chapter markers from container metadata.
+- Keyboard: `Space`/`K` play-pause, `←/→` ±5 s, `J/L` ±10 s, `↑/↓` volume,
+  `M` mute, `F` fullscreen, `I` info panel, `C` cycle subtitles, `Shift+,/.`
+  speed down/up, `,`/`.` frame step while paused, `0–9` seek to N×10 %,
+  `Esc` close. Same map reused by the desktop shell.
+- Subtitle experience: external + embedded text tracks, on/off + track pick,
+  size and vertical-offset settings (persisted), timing offset nudge (±).
+- Resume: reopening a partially-watched file offers/starts at the saved
+  position; progress saved throttled + on pause/close.
+- Playlist behavior inside a bundle: auto-advance toggle, next/previous.
+- Unsupported-format fallback: replaced by remux/transcode (§6); the explicit
+  "can't play" card remains only for genuinely unplayable sources.
+- MediaSession API integration (OS media keys, artwork, title).
+
+### Image stage — feature list
+
+- Zoom/pan: wheel-zoom to cursor, pinch, drag pan, double-click cycles
+  fit → 100 % → fill; `+/-/0/1` bindings; zoom % indicator.
+- Fit modes and window resize handling; optional checkerboard/dark/light
+  background toggle for transparency.
+- Progressive load: cached thumbnail → sized preview → full resolution.
+- Non-native formats (HEIC, TIFF, BMP; PSD best-effort) displayed via
+  server-side preview derivatives (§5).
+- Slideshow (interval, shuffle), rotation (view-only, non-destructive),
+  EXIF/tech panel from `tech_metadata`, neighbor preloading.
+- GIF/animated formats play natively; video files in the filmstrip open the
+  video stage.
+
+## 3. Server foundation A — probe enrichment
+
+`media/ffprobe.py` `summarize()` currently keeps one video + one audio stream.
+Extend the stored `tech_metadata` (additive keys, no schema change):
+
+```jsonc
+{
+  "audio_streams": [
+    {"index": 1, "codec": "aac", "channels": 6, "language": "eng",
+     "title": "Surround", "default": true}
+  ],
+  "subtitle_streams": [...existing...],
+  "chapters": [{"start": 0.0, "end": 512.3, "title": "Intro"}],
+  "hdr": "hdr10" | "hlg" | "dv" | null,        // from color_transfer/side data
+  "bit_depth": 8
+}
+```
+
+Add `-show_chapters` to the ffprobe invocation. Re-probe is the normal
+"Collect metadata" job; old rows lacking the new keys degrade gracefully
+(empty lists). HDR/bit-depth matter for the TV client's direct-play decision.
+
+Tests: extend `test_probe`/ffprobe fixtures with a multi-audio + chaptered
+synthetic file (generated by ffmpeg in the test, as existing media tests do).
+
+## 4. Server foundation B — subtitles and storyboards
+
+### 4.1 Embedded text-subtitle extraction
+
+Extend `media/playback.build_vtt_for_track()`: when `track.source_file_id is
+None` and `track.stream_index` is set, extract with
+
+```bash
+ffmpeg -i <video> -map 0:s:<rel_index> -f webvtt <cache>/subtitles/<id[:2]>/<id>.vtt
+```
+
+for text codecs (`subrip`, `ass`, `ssa`, `webvtt`, `mov_text`). Same cache
+layout and endpoint as external tracks — `_track_read()` in
+`api/v1/playback.py` simply stops special-casing embedded tracks for these
+codecs. Bitmap subs (`hdmv_pgs_subtitle`, `dvd_subtitle`) stay unservable with
+a reason string; they become a **burn-in option** on transcode sessions (§6)
+and are handled natively by ExoPlayer on TV.
+
+ASS/SSA note: `ffmpeg -f webvtt` drops styling/positioning; acceptable MVP.
+Full fidelity later via JASSUB (libass-wasm) rendering raw ASS client-side —
+keep the raw-subtitle endpoint (`.../subtitles/{id}/raw`) in mind but do not
+build it yet.
+
+Extraction can take seconds on big NAS files → run it in the existing lazy
+per-request style but with a per-track file lock (same pattern as thumbnail
+generation), never on the manifest request path.
+
+### 4.2 Storyboard (trickplay) job
+
+New job type `storyboard` beside scan/probe/thumbnail:
+
+- For each video file (duration known from probe), pick an interval so the
+  board has ~100–400 frames: `interval = clamp(duration/300, 2, 30)` seconds.
+- One ffmpeg pass per file:
+  `ffmpeg -i in -vf "fps=1/{interval},scale=320:-2,tile=5x5" -q:v 5 sb_%03d.jpg`
+- Write a **WebVTT index** mapping time ranges to
+  `sb_001.jpg#xywh=x,y,w,h` fragments (the de-facto standard consumed by every
+  hover-preview implementation, and directly usable by the TV client).
+- Cache: `.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/{index.vtt,sb_*.jpg}`
+  — reproducible, scan-ignored, invalidated by fingerprint change like
+  thumbnails.
+- Endpoints: `GET /libraries/{lib}/files/{id}/storyboard.vtt` and
+  `/storyboard/{n}.jpg` (path-safe, 404 when absent — clients treat trickplay
+  as optional).
+- Scheduling: enqueued by **Update** after probe (only for files with duration
+  ≥ a threshold, e.g. 60 s), deduplicated like thumbnail jobs, cancellable,
+  progress-reporting. Storyboards are the most expensive derived artifact —
+  bounded to the single worker and skippable via config.
+
+## 5. Server foundation C — image previews & watch progress
+
+### 5.1 Preview derivatives
+
+New module `media/previews.py` + endpoint
+`GET /libraries/{lib}/files/{id}/preview?size=640|1600|2560`:
+
+- Allowlisted size ladder (not arbitrary integers) → deterministic cache path
+  `.cairndex/cache/previews/{id[:2]}/{id}_{size}.webp`.
+- Generated lazily on first request (thumbnail-endpoint pattern, file lock),
+  from the original for native formats and for **HEIC/TIFF/BMP/PSD** via
+  Pillow (+`pillow-heif`). New dependency, justified: unlocks non-browser
+  formats for *all* clients and TV-sized grid images; pure wheels, low
+  maintenance. (pyvips is faster for gigapixel sources — revisit only if
+  profiling demands it.)
+- `file-view`/playability metadata: image files with a preview-capable format
+  count as **openable**, fixing the current "HEIC can't be previewed" hole.
+- The viewer's progressive chain becomes thumbnail → `preview?size=1600` →
+  original (`/content`), requesting the next tier only while zooming/idle.
+
+### 5.2 Watch progress
+
+New table in `library.db` (additive, via `ensure_content_indexes`-style
+bootstrap like `manual_order`):
+
+```sql
+playback_progress(
+  file_id      TEXT PRIMARY KEY REFERENCES asset_files(id) ON DELETE CASCADE,
+  bundle_id    TEXT NOT NULL,          -- denormalized for continue-watching
+  position_s   REAL NOT NULL,
+  duration_s   REAL,
+  completed    INTEGER NOT NULL DEFAULT 0,   -- position/duration > 0.95
+  updated_at   TEXT NOT NULL,
+  user_id      TEXT                    -- NULL = owner; future multi-user
+)
+```
+
+- `PUT /libraries/{lib}/files/{id}/progress {position_s, duration_s}` —
+  idempotent upsert; client throttles (every 10 s + pause/close via
+  `navigator.sendBeacon`).
+- Progress is embedded in the playback manifest (per video) and drives resume.
+- `GET /libraries/{lib}/continue-watching?limit=20` — bundles with an
+  in-progress (not completed) file, newest first; powers the TV home row and
+  an optional web system view later.
+- Survives moved-file repair for free (keyed by stable `file_id`).
+
+## 6. Server foundation D — playback decisions & HLS sessions
+
+The heart of "plays everything". Split into a cheap decision step and a
+session machine used only when direct play is impossible.
+
+### 6.1 Capability profiles + decision endpoint
+
+Clients describe themselves; the server decides. Profile (client-computed at
+startup via `canPlayType`/`MediaSource.isTypeSupported`, hardcoded per
+platform on TV/desktop):
+
+```jsonc
+{
+  "protocols": ["progressive", "hls"],
+  "containers": ["mp4", "webm"],
+  "video_codecs": ["h264", "vp9", "av1"],
+  "audio_codecs": ["aac", "mp3", "opus", "vorbis", "flac"],
+  "max_height": 2160,
+  "native_hls": false          // true in Safari/WKWebView
+}
+```
+
+`POST /libraries/{lib}/files/{id}/playback-decision {caps, audio_stream_index?,
+burn_subtitle_track_id?, max_height?}` →
+
+```jsonc
+{
+  "method": "direct" | "remux" | "transcode",
+  "reason": "HEVC not in client caps",
+  "stream_url": ".../files/{id}/stream",        // direct only
+  "session": {"id": "...", "playlist_url": ".../index.m3u8"},  // else
+  "duration": 5423.1,
+  "audio_streams": [...], "subtitles": [...], "chapters": [...],
+  "storyboard_url": "... or null",
+  "progress": {"position_s": 1200.5} | null
+}
+```
+
+Decision matrix (pure function in `media/playback.py`, unit-tested against a
+caps × source matrix): container+codecs in caps → `direct`; codecs in caps but
+container not (the huge MKV-with-H.264 class) → `remux`; else → `transcode`
+(also when `audio_stream_index` ≠ default or a burn-in sub is requested, since
+progressive streams can't switch tracks). `GET /bundles/{id}/playback` stays
+as the playlist-level manifest (now including per-file progress); the decision
+call happens when a specific file starts.
+
+### 6.2 HLS session manager
+
+New module `media/hls.py` + `api/v1/playback_sessions.py`. Model follows the
+Jellyfin-proven shape: one ffmpeg per session writing segments sequentially,
+serve segments on demand, restart on far seeks.
+
+- `POST .../files/{id}/playback-sessions {caps, start_s?, audio_stream_index?,
+  burn_subtitle_track_id?, max_height?}` → `{session_id, playlist_url, kind}`.
+- **Output location:** `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` —
+  server-local ephemeral runtime state, *not* inside the library package
+  (resolves the STATUS.md open question for transcode cache: portable caches
+  hold only reproducible per-file artifacts; sessions are throwaway).
+- **Playlist:** VOD playlist computed up front from the known duration with a
+  fixed 6 s target (`#EXT-X-PLAYLIST-TYPE:VOD`, N = ceil(duration/6) entries)
+  so players get instant duration + free native seeking.
+  - *Transcode:* `-force_key_frames "expr:gte(t,n_forced*6)"` makes segment
+    durations exact.
+  - *Remux (`-c:v copy`):* segments split on source keyframes, so real
+    durations drift from the nominal 6 s. Accepted MVP trade-off (hls.js and
+    Safari tolerate it); refinement if drift proves annoying: probe keyframe
+    timestamps once per file and emit an exact playlist.
+- **Segment serving:** `GET .../playback-sessions/{sid}/{n}.m4s` (fMP4/CMAF,
+  `-hls_segment_type fmp4`). If segment `n` exists → serve; if it's within a
+  small window ahead of the encoder → wait (async poll, bounded); else kill
+  ffmpeg and restart at `t = n*6` with `-ss` (input-side, fast seek) and
+  segment numbering offset `-start_number n`.
+- **ffmpeg templates:**
+  - remux: `-ss {t} -i in -map 0:v:0 -map 0:a:{a} -c:v copy -c:a aac -ac 2
+    -f hls -hls_segment_type fmp4 -hls_time 6 ...` (audio transcoded to AAC
+    whenever the source audio isn't in caps — most common remux case).
+  - transcode: `-c:v h264 -preset veryfast -crf 21 -maxrate/-bufsize` from a
+    small quality ladder capped by `max_height`; optional
+    `-vf subtitles=...:si={n}` for burn-in; optional hwaccel prefix from
+    `CAIRNDEX_FFMPEG_HWACCEL = vaapi|qsv|videotoolbox|none` (config, default
+    none; VAAPI/QSV are what NAS boxes have).
+- **Lifecycle & bounds:** max concurrent sessions (config, default 2);
+  starting one beyond the bound returns a structured 409/429. Idle reaper:
+  no segment/playlist fetch for 60 s → kill + delete dir; also killed by
+  `DELETE .../playback-sessions/{sid}` (player close sends it, with beacon
+  fallback) and on server shutdown. Sessions live in an in-process registry
+  (dict + locks), not the job queue — they are interactive, not background
+  jobs (keeps AGENTS.md's "no complex distributed job system" intact).
+- **Security:** same `LibrarySession` gating as streams; session ids are
+  random and scoped to the library; ffmpeg args are built from resolved
+  server-side paths only.
+
+Tests: decision matrix unit tests; session manager with a **fake ffmpeg**
+(a stub script emitting segment files) covering start/serve/wait/far-seek
+restart/idle-reap/bound; one slow integration test with real ffmpeg over a
+tiny generated MKV, marked/skipped when ffmpeg is absent.
+
+### 6.3 Web client engine integration
+
+`PlaybackEngine` abstraction in the player (§7): `direct` → plain
+`video.src`; `remux|transcode` → **hls.js** (lazy `import()` so the chunk
+loads only when needed) or native HLS when `caps.native_hls` (Safari/WKWebView
+— feed the m3u8 straight to `video.src`). New dependency: `hls.js` (~90 kB
+gz, the de-facto standard, no alternatives worth the risk; Shaka is heavier
+and DASH-first; video.js/Vidstack bundle UI we don't want).
+
+Quality/audio switching = new decision + new session at the current position
+(simple, robust); in-stream ABR ladders are explicitly out of scope until a
+remote-bitrate milestone (product brief already defers remote quality
+selection).
+
+## 7. Web player architecture
+
+No player UI framework. Rationale: the app is 100 % hand-built (no component
+library), the Eagle-dark design must stay consistent, and a headless custom
+player is what gets re-skinned for the video wall. `media-chrome` (Mux web
+components) is the fallback accelerator if control-bar work stalls — noted,
+not planned. The only new runtime deps are `hls.js` (§6.3) and nothing else.
+
+```text
+apps/web/src/app/viewer/
+  MediaViewer.tsx        // unified lightbox shell: filmstrip, nav, info panel
+  VideoStage.tsx         // <video> host, gesture layer, subtitle container
+  ImageStage.tsx         // zoom/pan stage (§8)
+  player/
+    engine.ts            // PlaybackEngine: load(decision), on(event), destroy
+                         //   NativeEngine | HlsEngine (lazy hls.js)
+    usePlayer.ts         // headless state: status, time, buffered, tracks,
+                         //   volume, rate, fullscreen, PiP, progress reporting
+    ControlBar.tsx
+    SeekBar.tsx          // buffered ranges, chapter ticks, hover storyboard
+    StoryboardPreview.tsx// parses storyboard VTT, crops via CSS background
+    TrackMenus.tsx       // subtitle / audio / quality / speed popovers
+    useShortcuts.ts      // keymap above; scoped to viewer focus
+    useIdleHide.ts       // controls auto-hide, cursor hide in fullscreen
+```
+
+Implementation notes:
+
+- `usePlayer` is the single source of truth; controls are dumb. This is what
+  the multi-view grid instantiates N times (§9).
+- Subtitles render through native text tracks; size/offset settings apply via
+  `::cue` CSS variables; track choice + settings persist in the existing
+  `cairndex.prefs` localStorage model, per-library.
+- Fullscreen via the Fullscreen API on the viewer root (so controls overlay
+  works); PiP via `requestPictureInPicture`; MediaSession metadata from the
+  bundle title + cover thumbnail URL.
+- Progress: `usePlayer` posts throttled `PUT .../progress`, flushes on
+  pause/unmount, `sendBeacon` on `pagehide`; resume dialog-free (start at
+  saved position, show a transient "Resumed at 20:01 — restart" toast).
+- The old `Player.tsx`/`FileViewer.tsx` are deleted once `MediaViewer` covers
+  both entry points (bundle double-click, album file open, File View preview
+  — `FileEntryViewer` migrates to the same stages fed by path-based URLs).
+
+## 8. Image viewer implementation
+
+`ImageStage.tsx` — custom pointer-event zoom/pan (no dependency; the math is
+a 2-D affine transform):
+
+- State: `{scale, tx, ty}` + fit mode; wheel zoom multiplies scale around the
+  cursor point; pointer capture for pan; pinch via two active pointers;
+  double-click cycles fit → 1:1 → fill. Clamp scale to [fit×0.5, 8×native].
+- Rendering: single `<img>` with `transform: translate(tx,ty) scale(s)` and
+  `will-change: transform` (GPU-composited; smooth for the ≤ 100 MP images we
+  target — deep-zoom tiling is explicitly out of scope).
+- Progressive source swap: keep the current tier visible until the next tier's
+  `Image` decodes (`img.decode()`), then swap — no flash.
+- Slideshow: timer in `MediaViewer` (advances filmstrip; pauses on interaction;
+  works across mixed bundles by skipping videos or playing them, setting-
+  controlled). Rotation is CSS-only, per-session.
+- EXIF/info panel reads `tech_metadata` (already probed for images) + file
+  fields; reuses inspector styling.
+
+## 9. Web/desktop multi-video wall (parity slice)
+
+Spec ownership lives in plan 2 §7 (TV is the priority); the web/desktop
+counterpart:
+
+- `VideoWall.tsx`: 1×2 / 2×2 grid of independent `usePlayer` instances, each
+  cell fed by its own playback decision. Focused cell (click / arrow keys)
+  is the only unmuted one and owns the keyboard; global bar has play/pause-all
+  and layout switch; per-cell hover bar: change source (opens a bundle/file
+  picker overlay), mute solo, swap-to-fullscreen, remove.
+- Entry points: toolbar action on a multi-selection ("Play 2/4 side by side"),
+  and from inside the viewer.
+- Constraints surfaced honestly: 4 simultaneous decodes are cheap on desktop
+  GPUs at ≤1080p; when sources exceed caps the normal decision engine already
+  falls back to capped transcode (`max_height: 1080` for wall cells — client
+  sends a tighter profile per cell). Session bound (§6.2) may need raising for
+  wall use; keep it config.
+- Wall presets (save a named layout+sources set) are a later nice-to-have and
+  would be a small server-side JSON preference object usable by TV too.
+
+## 10. Milestones (each = one reviewable branch/PR)
+
+| # | Slice | Contents |
+|---|-------|----------|
+| M1 | Probe enrichment | §3; regenerate OpenAPI/types; reprobe path |
+| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession — direct-play files only |
+| M3 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, size/offset/timing settings |
+| M4 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
+| M5 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |
+| M6 | Image viewer v2 | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
+| M7 | Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
+| M8 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
+| M9 | Video wall (web) | §9 |
+
+Every slice: focused backend/frontend tests + Playwright for user flows
+(controls, shortcuts, track menu, resume, viewer zoom), OpenAPI + `schema.d.ts`
+regen when contracts change, CHANGELOG/STATUS/architecture-doc updates, and
+tiny ffmpeg-generated fixtures (never user media). M2/M6 give the owner daily
+value before the heavy M7 lands.
+
+## 11. Risks & open decisions
+
+- **Remux playlist duration drift** (§6.2) — accepted; keyframe-exact playlist
+  is the known refinement.
+- **NAS transcode horsepower** — default `veryfast`+capped ladder, hwaccel
+  config; TV client direct-plays most content so transcode pressure is mainly
+  web.
+- **ASS styling fidelity** — MVP converts to VTT; JASSUB later if styled subs
+  matter to the owner's library.
+- **Pillow dependency** — accepted trade-off (§5.1); RAW formats deferred.
+- Needs ADR at implementation time: HLS session model + transcode-cache
+  location (this doc is the draft rationale), covered in ADR-0012's list.

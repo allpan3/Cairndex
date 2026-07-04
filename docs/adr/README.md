@@ -29,3 +29,5 @@ design, subtitle modeling, and similar structural choices called out in
 | [0008](0008-per-library-metadata-and-registry.md) | Per-library metadata and a server-side registry | accepted |
 | [0009](0009-bundle-grouping-and-suggestions.md) | Suggestion-based bundle grouping (Option A+) | accepted |
 | [0010](0010-per-library-passphrase-lock.md) | Per-library optional owner passphrase lock | accepted |
+| [0011](0011-suggestion-scope-and-review-state.md) | Categorization-driven grouping suggestions; retire the user-facing "review" state | accepted |
+| [0012](0012-client-platform-strategy.md) | Client platform strategy (web player, Android TV, macOS desktop) | proposed |

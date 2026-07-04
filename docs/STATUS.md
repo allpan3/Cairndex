@@ -1,5 +1,37 @@
 # Project status
 
+## Latest session: client platform & media experience plans (docs only)
+
+Branch `docs/client-platform-plans` (repo renamed VaultLeaf → Cairndex; this is
+the first work in the new repo). Owner-requested detailed technical plans for
+three post-first-release initiatives, plus the cross-cutting server foundations
+they share:
+
+- `docs/plans/README.md` — strategy overview, reuse map, repo strategy
+  (desktop shell in this monorepo at a future `apps/desktop`; Android TV in a
+  future separate `cairndex-android` repo), shared server foundations, and the
+  recommended phase order (server foundations → web player/viewer → HLS →
+  desktop shell → TV → multi-video wall).
+- `docs/plans/01-web-media-player-and-viewer.md` — unified media viewer,
+  custom headless player (probe enrichment, embedded-subtitle extraction,
+  storyboards/trickplay, watch progress, image preview derivatives, playback
+  decision endpoint, bounded HLS remux/transcode sessions, hls.js
+  integration, zoom/pan image stage), 9 milestone slices.
+- `docs/plans/02-android-tv-client.md` — technology study (native
+  Kotlin/Compose for TV + Media3 chosen over web/RN/Flutter), repo/module
+  layout, device pairing/bearer tokens, 10-foot browse UX, player, and the
+  priority **video wall** (1×2/2×2) with decoder-budget policy, 8 milestones.
+- `docs/plans/03-macos-desktop-app.md` — Tauri 2 shell hosting `apps/web`,
+  platform abstraction seam, manifest-UUID-validated library path mappings,
+  reveal/open-with (ADR-0007), drag-out/drag-in, native menus, 5 milestones.
+- `docs/adr/0012-client-platform-strategy.md` (**proposed** — owner must
+  ratify before implementation). Also fixed the stale ADR index (0011 was
+  missing).
+
+No code changes; no gates run (docs-only). Next recommended task for this
+track: owner review of ADR-0012, then plan 1 M1 (probe enrichment). The
+pre-existing next tasks below still stand for the core web app.
+
 ## Latest merged: collection & bundle ordering UX (#47)
 
 Merged as **#47** (`feat/collection-bundle-ordering`). Six reviewable slices plus
