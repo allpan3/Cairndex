@@ -10,6 +10,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Client platform & media experience plans (docs only).** New planning suite
+  under `docs/plans/` — a first-class web video player & image viewer
+  (storyboard scrubbing, embedded-subtitle extraction, watch progress, image
+  previews, HLS remux/transcode sessions), a native Android TV client
+  (Kotlin/Compose + Media3, multi-video wall) in a future `cairndex-android`
+  repo, and a macOS desktop app as a Tauri 2 shell at a future `apps/desktop`.
+  Consequential decisions gathered in
+  [ADR-0012](docs/adr/0012-client-platform-strategy.md) (status: proposed).
+  Also indexed the previously missing ADR-0011 in the ADR README. No code
+  changes.
 - **File Browser "Date Added" column + sort.** Entries now carry a creation time
   (`created_at`, from `st_birthtime` where available, else the inode change time),
   distinct from the modified time, shown as its own list column and offered as a
