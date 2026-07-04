@@ -403,7 +403,60 @@ counterpart:
 - Wall presets (save a named layout+sources set) are a later nice-to-have and
   would be a small server-side JSON preference object usable by TV too.
 
-## 10. Milestones (each = one reviewable branch/PR)
+## 10. Media exports — GIF snippets & contact sheets (later, desktop-first)
+
+Owner request (2026-07-04, explicitly not a priority): user-initiated
+exports — (1) an animated **GIF from a video snippet**, (2) a **contact
+sheet** image (metadata header + grid of timestamped frames, per the owner's
+reference: filename, size, resolution/aspect, fps, video codec, audio codec,
+duration above an evenly-sampled 4×4 grid). Desktop-first; web comes along
+for free since generation is server-side and delivery is a download; TV
+excluded.
+
+### Server: interactive export tasks
+
+New `media/exports.py` + `api/v1/exports.py`, following the HLS-session
+pattern (interactive, in-process, bounded) rather than registry jobs — a
+running scan must not queue-block a ten-second export:
+
+- `POST /libraries/{lib}/files/{id}/exports` with
+  `{kind: "gif", start_s, end_s, width?, fps?}` (caps: duration ≤ 30 s,
+  width ≤ 720, fps ≤ 15; defaults 480 px / 12 fps) or
+  `{kind: "contact_sheet", grid?, width?}` (default 4×4, 1600 px sheet)
+  → `{export_id}`. Video files only; range validated against duration.
+- `GET .../exports/{id}` → `{status, progress}`;
+  `GET .../exports/{id}/download` → artifact with a Content-Disposition
+  filename from the display title. Output under
+  `{CAIRNDEX_DATA_DIR}/exports/{export_id}/`, TTL-reaped (~1 h) and removed
+  after successful download; concurrency bound shared with transcode
+  sessions (config).
+- **GIF pipeline** (two-pass palette for quality):
+  `ffmpeg -ss A -to B -i in -vf "fps=12,scale=480:-2:flags=lanczos,palettegen"`
+  then a second pass with `paletteuse`. `kind: "webp" | "mp4"` are trivial
+  later additions on the same API (GIFs are ~10× the bytes) — offered in the
+  dialog once present, GIF stays the default per the owner's ask.
+- **Contact sheet pipeline:** ffmpeg samples N frames evenly across the
+  duration with burned-in timestamps
+  (`fps=(rows*cols)/duration`, `drawtext=text='%{pts\:hms}'`, `scale`,
+  `tile=CxR`), then Pillow (§5.1 dependency) composes the metadata banner
+  above the grid and encodes the final JPEG.
+- M11 ships **download-only**. Saving an export *into the library* (and
+  linking it to a bundle / setting it as the cover) is the write-mode
+  `save_new` op — specced in [plan 4 §5](04-library-write-mode.md) (slice
+  W2, ADR-0013) — and the Export dialog gains "Save into library…" once
+  that lands.
+
+### Client integration
+
+- Web: an **Export…** dialog in the player settings menu — range pre-filled
+  from the A-B loop points (M9) or typed, format/size, progress, browser
+  download. **Generate contact sheet…** on video files' context menus and in
+  the viewer.
+- Desktop (plan 3 D5): same UI plus a native save dialog and a completion
+  notification through the platform seam; finished artifacts are drag-out-able.
+- TV: not exposed.
+
+## 11. Milestones (each = one reviewable branch/PR)
 
 | # | Slice | Contents |
 |---|-------|----------|
@@ -417,6 +470,7 @@ counterpart:
 | M8 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
 | M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements |
 | M10 | Video wall (web) | §9 |
+| M11 | Media exports | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5) |
 
 Every slice: focused backend/frontend tests + Playwright for user flows
 (controls, shortcuts, track menu, resume, viewer zoom), OpenAPI + `schema.d.ts`
@@ -424,7 +478,7 @@ regen when contracts change, CHANGELOG/STATUS/architecture-doc updates, and
 tiny ffmpeg-generated fixtures (never user media). M2/M6 give the owner daily
 value before the heavy M7 lands.
 
-## 11. Risks & open decisions
+## 12. Risks & open decisions
 
 - **Remux playlist duration drift** (§6.2) — accepted; keyframe-exact playlist
   is the known refinement.

@@ -5,14 +5,17 @@
 > are gathered in [ADR-0012](../adr/0012-client-platform-strategy.md),
 > **accepted (owner-ratified) 2026-07-04** after review.
 
-Three major initiatives, planned together because they share most of their
-server-side foundations:
+Four major initiatives. The first three were planned together because they
+share most of their server-side media foundations; the fourth (write mode)
+is its own server-side track, **owner-prioritized directly after the core
+video player** and ahead of the desktop/TV clients.
 
 | # | Plan | Doc |
 |---|------|-----|
 | 1 | First-class web video player & image viewer | [01-web-media-player-and-viewer.md](01-web-media-player-and-viewer.md) |
 | 2 | Android TV client (native Kotlin/Compose, multi-video grid) | [02-android-tv-client.md](02-android-tv-client.md) |
 | 3 | macOS desktop app (Tauri 2 shell) | [03-macos-desktop-app.md](03-macos-desktop-app.md) |
+| 4 | Library write mode (guarded file operations) | [04-library-write-mode.md](04-library-write-mode.md) — ADR-0013 (accepted 2026-07-04) |
 
 ## How the three initiatives relate
 
@@ -109,14 +112,16 @@ older/newer clients degrade gracefully instead of version-matching.
 |-------|------|----------------|
 | A | Server foundations 1–6 (everything except HLS + pairing) | Unblocks all clients; each item is a small reviewable slice |
 | B | Web player v2 + image viewer v2 (plan 1) | Validates the new APIs with the cheapest client; immediate daily-use value |
-| C | HLS sessions + web integration (plan 1 §6) | Biggest server risk; web is the client that needs it most (browsers play the least) |
-| D | Desktop Tauri shell (plan 3) | Small increment over B; delivers open-with/reveal/drag-out (ADR-0007) |
-| E | Android TV client (plan 2), pairing first | Largest new surface; by now every server API it needs exists and is proven |
-| F | Multi-video wall: TV first, then web/desktop parity | Depends on stable single-player foundations on each platform |
+| C | Library write mode (plan 4) | **Owner priority #2**, right after the core player; independent server track (gate → journal → exports-to-library → move → trash) |
+| D | HLS sessions + web integration (plan 1 §6) | Biggest server risk; web is the client that needs it most. Independent of C — swap ahead if unplayable-format pain (MKV) bites before write mode does |
+| E | Desktop Tauri shell (plan 3) | Small increment over B; delivers open-with/reveal/drag-out (ADR-0007); drag-in copy lights up once plan 4 W5 exists |
+| F | Android TV client (plan 2), pairing first | Largest new surface; by now every server API it needs exists and is proven |
+| G | Multi-video wall: TV first, then web/desktop parity | Depends on stable single-player foundations on each platform |
 
-Phases are sequenced by dependency, not by strict calendar; B/C and D can
-interleave. Each phase decomposes into the milestone slices listed in its plan
-and lands via normal branch/PR discipline.
+Phases are sequenced by dependency, not by strict calendar; C and D are
+independent server tracks and can interleave with each other and with E. Each
+phase decomposes into the milestone slices listed in its plan and lands via
+normal branch/PR discipline.
 
 ## Out of scope for all three plans
 

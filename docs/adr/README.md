@@ -31,3 +31,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0010](0010-per-library-passphrase-lock.md) | Per-library optional owner passphrase lock | accepted |
 | [0011](0011-suggestion-scope-and-review-state.md) | Categorization-driven grouping suggestions; retire the user-facing "review" state | accepted |
 | [0012](0012-client-platform-strategy.md) | Client platform strategy (web player, Android TV, macOS desktop) | accepted |
+| [0013](0013-library-write-mode.md) | Library write mode — gate, trash-first deletion, operation journal | accepted |

@@ -20,7 +20,7 @@ what is just web-UI polish:
 | **Drag a file/bundle out to Finder or another app** | **Yes** | §6 |
 | Native menus, dock, window mgmt, ⌘-shortcuts w/o browser conflicts | Yes | §7 |
 | Feels like an app (own icon/window, offline-ish resilience) | Yes | shell itself |
-| Future: File View write mode with native confirmation UX | Yes (later) | §9 |
+| Future: File View write mode with native confirmation UX | Server-side (plan 4); shell adds native dialogs | [plan 4](04-library-write-mode.md) |
 
 So the desktop app = the existing SPA + a native capability layer, not a
 rewrite. That is exactly the Tauri-shell path the product brief and ADR-0007
@@ -137,8 +137,10 @@ handoff:
   library root → reverse-map to relative paths → offer the existing
   fast-add/manual-bundling flows. Files outside every mapped root → explain
   ("Cairndex links files in place; move it into a library first") — no
-  copy/import in this milestone (managed imports stay a future optional mode
-  per the product brief).
+  copy/import in this milestone. Once plan 4 W5 (import-external upload)
+  lands, this upgrades into an optional **"Copy into library…"** flow: the
+  shell streams the local file to the server, which writes it through the
+  journaled write-mode path.
 
 ## 7. Native shell niceties
 
@@ -166,8 +168,10 @@ handoff:
   PyInstaller is a plausible later milestone for laptop-only use — noted, not
   planned.)
 - No mpv/custom video pipeline in the shell (§2 rationale).
-- No File View write mode — but §5's mapping/validation layer is deliberately
-  the substrate that a future guarded write mode / "open with" ADR expects.
+- No write-mode logic in the shell itself — write mode is a server
+  capability ([plan 4](04-library-write-mode.md), ADR-0013); the shell's
+  mapping/validation layer (§5) complements it for host handoffs and feeds
+  the drag-in copy flow (§6).
 
 ## 9. Milestones
 
@@ -177,7 +181,7 @@ handoff:
 | D2 | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
 | D3 | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 | Drag-out / drag-in | §6 |
-| D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, updater + signing pipeline |
+| D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |
 
 D1–D2 already deliver a real "app" with every plan-1 player gain; D3–D4 are
 the features a browser can never have.
