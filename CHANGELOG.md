@@ -41,10 +41,10 @@ grouped under `Unreleased` until the first tagged release.
   in the main browser opens a menu with **Delete Collection** (or **Delete N
   Collections** for a Shift/Ctrl multi-selection), mirroring the sidebar; the
   confirm dialog asks about cascading subcollections once for the whole set.
-- **Flatten subcollections on "Show subcollection contents".** Turning the toggle
-  on (inside a collection _or_ in the All view) flattens every descendant
-  collection into the Subcollections section (depth-first, manual order), matching
-  the grid that shows the whole subtree's bundles.
+- **Flatten subcollections on "Show subcollection contents".** Inside a
+  collection, turning the toggle on flattens every descendant collection into the
+  Subcollections section (depth-first, manual order), matching the grid that
+  shows the whole subtree's bundles.
 - **Shift-range selection** for both bundle cards and folder cards: Shift+click
   selects the inclusive range from the last plain click to the clicked card.
 - **Drag collections and bundles between parents.** Dragging a collection onto
@@ -87,9 +87,9 @@ grouped under `Unreleased` until the first tagged release.
 - **Sidebar order:** the system section is now All, Recently Added,
   Uncategorized, Untagged, **Unbundled**, Missing Files, with **All Tags moved to
   the bottom** of the section.
-- **The fold caret is much narrower** (a slim disclosure triangle, width < height)
-  so it barely widens a row — edit `IconChevron` in `apps/web/src/app/icons.tsx`
-  and the `.chevron` / `.chevron--lg` sizes in `apps/web/src/index.css`.
+- **Fold arrows are a slim disclosure triangle** (`IconChevron`) — narrow on
+  purpose (width < height) so the caret barely widens a row, sized larger on the
+  Collections / Smart Collections section headings.
 - **"Review grouping" is now "Suggest grouping" and is categorization-driven**
   (ADR-0011). The manual action re-proposes grouping for **every bundle that
   isn't filed into a collection** — including a previously confirmed one whose
@@ -99,16 +99,6 @@ grouped under `Unreleased` until the first tagged release.
   provisional/confirmed state is unchanged (it still protects confirmed bundles
   at apply time and drives re-scan additions) but the user-facing **"Needs
   review" badge is removed** — there's no "review" state to track.
-- Fold arrows are back to a **solid disclosure triangle** (slightly larger, kept
-  narrow), replacing the chevron.
-- **The All tab is now a browser root:** with "Show subcollection contents" off it
-  shows the top-level collections plus _uncategorized_ bundles (and their manual
-  order); turning it on flattens to every collection and bundle. There is no
-  global manual order spanning all bundles — reordering and "Clean up…" are
-  disabled (and the menu item greyed) whenever contents are flattened.
-- Fold arrows are a **solid disclosure triangle** (larger on the Collections /
-  Smart Collections section headings).
-
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
 - **Folder and bundle card sizes are decoupled** on the shared zoom slider:
@@ -458,9 +448,6 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
   by the container and routed to the end / beginning, so you no longer have to
   pinpoint a card edge inside the "invisible boundary" of the content box (bundle
   grid and folder grid).
-- **File Browser list drag-select no longer draws a stray rubber-band box.** Full
-  width rows read as a selection on their own, so list layouts highlight rows
-  directly (Finder-style) and only the grid layout frames the marquee rectangle.
 - **Collection drag-reorder could silently misfire (~1 in 8) or drop a move.**
   The drop zone is now recomputed from the cursor at drop time (a stale hover
   slot no longer turns an intended reorder into a reparent). Dropping a
