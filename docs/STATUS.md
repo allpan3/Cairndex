@@ -1,8 +1,9 @@
 # Project status
 
-## In progress: collection & bundle ordering UX (`feat/collection-bundle-ordering`)
+## Latest merged: collection & bundle ordering UX (#47)
 
-Branch off `main` (latest `main`: `6ecf850`). Six reviewable slices, not yet a PR:
+Merged as **#47** (`feat/collection-bundle-ordering`). Six reviewable slices plus
+five rounds of review-feedback follow-ups (summarized below):
 
 - **Slice 0 — data model.** New `asset_bundle_collections.sort_order`
   (per-collection bundle order) and `asset_bundles.manual_order` (global bundle
@@ -163,7 +164,7 @@ Verified: frontend `lint`/`format`/`typecheck`/`vitest`/`build` clean,
 the distinct Uncategorized/Untagged/All-Tags icons, and the drag hint text
 against the Synthetic Library. No backend changes this round.
 
-## Latest merged: ad-hoc filters + tag management (#46)
+## Previously merged: ad-hoc filters + tag management (#46)
 
 Eagle-like ad-hoc filtering + tag management, merged as **#46**
 (`feat/adhoc-filters-tag-mgmt`), in three reviewable slices on top of `main`
