@@ -17,7 +17,9 @@ grouped under `Unreleased` until the first tagged release.
   (Kotlin/Compose + Media3, multi-video wall) in a future `cairndex-android`
   repo, and a macOS desktop app as a Tauri 2 shell at a future `apps/desktop`.
   Consequential decisions gathered in
-  [ADR-0012](docs/adr/0012-client-platform-strategy.md) (status: proposed).
+  [ADR-0012](docs/adr/0012-client-platform-strategy.md), **accepted
+  (owner-ratified) 2026-07-04** after review; the player's UX bar is
+  desktop-native players (Movist/Elmedia/IINA), not Eagle's built-in player.
   Also indexed the previously missing ADR-0011 in the ADR README. No code
   changes.
 - **File Browser "Date Added" column + sort.** Entries now carry a creation time
