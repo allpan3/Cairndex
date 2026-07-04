@@ -26,9 +26,19 @@ Playback today (`apps/server/src/cairndex/media/`, `api/v1/playback.py`,
 
 ## 2. Target experience
 
-Reference points: YouTube (controls/shortcuts/seek preview), Jellyfin/Plex
-(server-decided direct/remux/transcode, per-track menus, resume), mpv/IINA
-(frame stepping, speed ramp), Eagle (image zoom/pan feel, filmstrip).
+Reference points — the owner's stated bar for the player is desktop-native
+macOS players, **Movist and Elmedia** (Eagle's own built-in player — no
+subtitles, no PiP — is explicitly *not* the playback reference; Eagle stays
+the reference for browsing and the image viewer only):
+
+- Movist: dual simultaneous subtitles, deep subtitle styling, A-B repeat,
+  snapshots, video adjustments, configurable seek steps;
+- Elmedia/IINA: playback polish, on-screen-controller aesthetic, floating/PiP
+  behaviors, speed control;
+- YouTube: control bar, keyboard map, storyboard seek preview;
+- Jellyfin/Plex: server-decided direct/remux/transcode, per-track menus,
+  resume;
+- mpv: frame stepping, speed ramp.
 
 A single **unified media viewer** replaces today's two modals (`Player` and
 `FileViewer`): one full-screen surface that hosts an **image stage** or a
@@ -40,16 +50,25 @@ video; "view file" opens it on that file.
 
 - Custom control bar (auto-hiding): play/pause, seek bar with buffered ranges
   + chapter ticks, time/duration, volume slider + mute, settings menu
-  (speed 0.25–3×, quality when transcoding, loop), subtitle menu, audio-track
+  (speed 0.25–3× with pitch-preserve toggle, quality when transcoding, loop,
+  A-B loop, video adjustments, seek-step size), subtitle menu, audio-track
   menu, PiP, theater/fullscreen.
 - Seek bar: click/drag scrubbing, hover time tooltip with **storyboard
   thumbnail**, chapter markers from container metadata.
-- Keyboard: `Space`/`K` play-pause, `←/→` ±5 s, `J/L` ±10 s, `↑/↓` volume,
-  `M` mute, `F` fullscreen, `I` info panel, `C` cycle subtitles, `Shift+,/.`
-  speed down/up, `,`/`.` frame step while paused, `0–9` seek to N×10 %,
-  `Esc` close. Same map reused by the desktop shell.
-- Subtitle experience: external + embedded text tracks, on/off + track pick,
-  size and vertical-offset settings (persisted), timing offset nudge (±).
+- Keyboard: `Space`/`K` play-pause, `←/→` ± seek step (default 5 s,
+  configurable), `J/L` ±10 s, `↑/↓` volume, `M` mute, `F` fullscreen, `I`
+  info panel, `C` cycle subtitles, `Shift+,/.` speed down/up, `,`/`.` frame
+  step while paused, `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set A-B
+  loop points, `Esc` close. Same map reused by the desktop shell.
+- Subtitle experience (Movist-inspired): external + embedded text tracks,
+  on/off + track pick, **dual simultaneous subtitles** (primary + secondary
+  track, e.g. two languages, rendered stacked), styling settings (size,
+  color, background/edge, vertical offset — persisted), timing offset
+  nudge (±).
+- Snapshot capture: save/copy the current frame via a canvas grab (streams
+  are same-origin, so the canvas stays untainted).
+- A-B loop between two marked points; video adjustments
+  (brightness/contrast/saturation as CSS filters, view-only, with reset).
 - Resume: reopening a partially-watched file offers/starts at the saved
   position; progress saved throttled + on pause/close.
 - Playlist behavior inside a bundle: auto-advance toggle, next/previous.
@@ -389,14 +408,15 @@ counterpart:
 | # | Slice | Contents |
 |---|-------|----------|
 | M1 | Probe enrichment | §3; regenerate OpenAPI/types; reprobe path |
-| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession — direct-play files only |
-| M3 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, size/offset/timing settings |
+| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture — direct-play files only |
+| M3 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, dual subtitles, styling (size/color/background/offset) + timing settings |
 | M4 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
 | M5 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |
 | M6 | Image viewer v2 | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
 | M7 | Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
 | M8 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
-| M9 | Video wall (web) | §9 |
+| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements |
+| M10 | Video wall (web) | §9 |
 
 Every slice: focused backend/frontend tests + Playwright for user flows
 (controls, shortcuts, track menu, resume, viewer zoom), OpenAPI + `schema.d.ts`

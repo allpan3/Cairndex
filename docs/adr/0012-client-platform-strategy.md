@@ -1,6 +1,6 @@
 # ADR-0012: Client platform strategy (web player, Android TV, macOS desktop)
 
-- Status: proposed
+- Status: accepted (owner-ratified 2026-07-04)
 - Date: 2026-07-04
 - Branch/PR: `docs/client-platform-plans`
 
@@ -33,7 +33,12 @@ ADR-0010 (passphrase lock is browser-session-shaped).
    (native `<video>` + lazily-loaded `hls.js` where MSE is needed; native HLS
    on Safari/WKWebView). No player UI framework. `hls.js` and
    Pillow/`pillow-heif` (image previews) are the only new runtime
-   dependencies.
+   dependencies. The player's UX bar is desktop-native macOS players —
+   **Movist, Elmedia, IINA** (owner-stated): dual simultaneous subtitles,
+   rich subtitle styling, A-B loop, snapshots, video adjustments. Eagle's
+   comparatively bare built-in player (no subtitles, no PiP) is explicitly
+   *not* the playback reference; Eagle remains the reference for the image
+   viewer and browsing feel only.
 3. **Android TV is a native Kotlin app** (Jetpack Compose for TV +
    Media3/ExoPlayer) in a **new repo `cairndex-android`**, consuming the
    server's OpenAPI contract via a generated client. No UI code sharing with

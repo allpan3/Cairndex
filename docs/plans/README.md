@@ -2,8 +2,8 @@
 
 > Status: **planning documents** (owner-requested, 2026-07-04). Nothing here is
 > implemented. Each plan proposes its own milestones; consequential decisions
-> are gathered in [ADR-0012](../adr/0012-client-platform-strategy.md)
-> (status: proposed) and must be ratified before implementation starts.
+> are gathered in [ADR-0012](../adr/0012-client-platform-strategy.md),
+> **accepted (owner-ratified) 2026-07-04** after review.
 
 Three major initiatives, planned together because they share most of their
 server-side foundations:

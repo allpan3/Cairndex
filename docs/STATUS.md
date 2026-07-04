@@ -24,13 +24,20 @@ they share:
 - `docs/plans/03-macos-desktop-app.md` — Tauri 2 shell hosting `apps/web`,
   platform abstraction seam, manifest-UUID-validated library path mappings,
   reveal/open-with (ADR-0007), drag-out/drag-in, native menus, 5 milestones.
-- `docs/adr/0012-client-platform-strategy.md` (**proposed** — owner must
-  ratify before implementation). Also fixed the stale ADR index (0011 was
-  missing).
+- `docs/adr/0012-client-platform-strategy.md` — **accepted (owner-ratified
+  2026-07-04)** after a decision-by-decision review: Tauri 2/WKWebView
+  confirmed for macOS (Electron is the recorded fallback), custom headless
+  player confirmed with the UX bar set to desktop-native players
+  (**Movist/Elmedia/IINA** — Eagle's own player is explicitly *not* the
+  playback reference), and a separate `cairndex-android` repo confirmed for
+  the TV client. Plan 1 gained the Movist/Elmedia-inspired features (dual
+  simultaneous subtitles, subtitle styling, A-B loop, snapshot capture,
+  video adjustments, configurable seek step) and a new M9 polish slice.
+  Also fixed the stale ADR index (0011 was missing).
 
 No code changes; no gates run (docs-only). Next recommended task for this
-track: owner review of ADR-0012, then plan 1 M1 (probe enrichment). The
-pre-existing next tasks below still stand for the core web app.
+track: plan 1 M1 (probe enrichment). The pre-existing next tasks below still
+stand for the core web app.
 
 ## Latest merged: collection & bundle ordering UX (#47)
 
