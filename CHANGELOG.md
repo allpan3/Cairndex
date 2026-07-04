@@ -20,8 +20,15 @@ grouped under `Unreleased` until the first tagged release.
   [ADR-0012](docs/adr/0012-client-platform-strategy.md), **accepted
   (owner-ratified) 2026-07-04** after review; the player's UX bar is
   desktop-native players (Movist/Elmedia/IINA), not Eagle's built-in player.
-  Also indexed the previously missing ADR-0011 in the ADR README. No code
-  changes.
+  Post-ratification owner additions: GIF-from-snippet and contact-sheet
+  exports (plan 1 §10/M11 — server-side export tasks, download-only,
+  desktop-first, TV excluded), and a fourth plan — **library write mode**
+  (`docs/plans/04-library-write-mode.md`, owner-prioritized after the core
+  player): opt-in per-library gate, trash-first deletion, `file_operations`
+  journal, repair-free in-app move/rename, exports-into-library, external
+  import; decisions in [ADR-0013](docs/adr/0013-library-write-mode.md),
+  **accepted (owner-ratified) 2026-07-04**. Also indexed the previously missing ADR-0011 in the
+  ADR README. No code changes.
 - **File Browser "Date Added" column + sort.** Entries now carry a creation time
   (`created_at`, from `st_birthtime` where available, else the inode change time),
   distinct from the modified time, shown as its own list column and offered as a

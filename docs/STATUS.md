@@ -35,6 +35,33 @@ they share:
   video adjustments, configurable seek step) and a new M9 polish slice.
   Also fixed the stale ADR index (0011 was missing).
 
+Post-ratification owner additions (same day): confirmed seek-bar hover
+trickplay is covered (plan 1 §4.2/M4), and requested two non-priority export
+features now specced as plan 1 §10 + milestone M11 — **GIF-from-snippet** and
+**contact-sheet generation** (metadata header + timestamped frame grid),
+server-generated via bounded interactive export tasks, download-only (never
+written into the library root), desktop-first with native save/notification
+hooks in plan 3 D5, web included, TV excluded.
+
+Owner then prioritized **library write mode** as the next major initiative
+after the core player (ahead of desktop/TV), so it is now planned in full:
+`docs/plans/04-library-write-mode.md` + **ADR-0013 (accepted — owner-ratified
+2026-07-04)**. Design pillars: per-library opt-in gate stored in the
+registry (never the portable manifest) + deployment master switch;
+trash-first deletion into `.cairndex/trash/` with a `trashed` availability
+state so restores are lossless; a `file_operations` journal in `library.db`
+(intent-before-action, reconciler on open, Undo); in-app move/rename updates
+`relative_path` preserving `AssetFile.id` (no repair needed by construction);
+no in-place overwrites — path collisions surface an Eagle/Finder-style
+**Replace / Skip / Keep both** prompt (owner requirement) where Replace is
+journaled trash-then-write, recoverable until Empty Trash; bulk ops as jobs
+on the existing single-worker queue.
+Slices W0–W6; W2 closes the exports-into-library open item (save contact
+sheet/GIF, link to bundle, set as cover); W5 enables the desktop drag-in
+copy. Note: W0 must amend the AGENTS.md/CLAUDE.md "never rename/move/delete"
+safety wording to carve out journaled write-mode operations (recorded in
+ADR-0013 consequences).
+
 No code changes; no gates run (docs-only). Next recommended task for this
 track: plan 1 M1 (probe enrichment). The pre-existing next tasks below still
 stand for the core web app.
@@ -590,7 +617,8 @@ dialogs).
 1. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 2. Continue File View planning toward guarded write mode and safe desktop-native
-   handoff.
+   handoff. *(Planning now done: `docs/plans/04-library-write-mode.md` +
+   proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)*
 3. Consider relevance ranking for text search (results currently keep the active
    sort).
 4. Consider hardening the passphrase lock for wider exposure (rate limiting,
