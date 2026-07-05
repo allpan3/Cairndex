@@ -42,9 +42,11 @@ the reference for browsing and the image viewer only):
 
 A single **unified media viewer** replaces today's two modals (`Player` and
 `FileViewer`): one full-screen surface that hosts an **image stage** or a
-**video stage** per file, with a filmstrip of the bundle's files, shared
-navigation, and a shared info panel. "Play bundle" opens it on the primary
-video; "view file" opens it on that file.
+**video stage** per file, with shared previous/next navigation plus expandable
+side panels for the bundle's file list and selected-file/bundle metadata. The
+file list must not live as an inline bottom filmstrip because it competes with
+the video control bar. "Play bundle" opens it on the primary video; "view file"
+opens it on that file.
 
 ### Video stage — feature list (acceptance criteria for the UI milestones)
 
@@ -331,7 +333,7 @@ not planned. The only new runtime deps are `hls.js` (§6.3) and nothing else.
 
 ```text
 apps/web/src/app/viewer/
-  MediaViewer.tsx        // unified lightbox shell: filmstrip, nav, info panel
+  MediaViewer.tsx        // unified lightbox shell: nav, side-panel toggles
   VideoStage.tsx         // <video> host, gesture layer, subtitle container
   ImageStage.tsx         // zoom/pan stage (§8)
   player/
@@ -351,6 +353,9 @@ Implementation notes:
 
 - `usePlayer` is the single source of truth; controls are dumb. This is what
   the multi-view grid instantiates N times (§9).
+- Bundle files and metadata belong in expandable side panels, not a persistent
+  bottom strip. M2 ships previous/next navigation and the basic info toggle;
+  the file-list drawer and richer right metadata panel are follow-up UI work.
 - Subtitles render through native text tracks; size/offset settings apply via
   `::cue` CSS variables; track choice + settings persist in the existing
   `cairndex.prefs` localStorage model, per-library.
@@ -461,7 +466,7 @@ running scan must not queue-block a ten-second export:
 | # | Slice | Contents |
 |---|-------|----------|
 | M1 | Probe enrichment | §3; regenerate OpenAPI/types; reprobe path |
-| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture — direct-play files only |
+| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only |
 | M3 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, dual subtitles, styling (size/color/background/offset) + timing settings |
 | M4 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
 | M5 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |

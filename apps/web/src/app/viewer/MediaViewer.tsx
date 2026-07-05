@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { type FileRead, type PlayableVideo, fileThumbnailUrl, thumbnailUrl } from '../../api/client'
+import { type FileRead, type PlayableVideo, thumbnailUrl } from '../../api/client'
 import { useBundle, useBundleFiles, usePlaybackManifest } from '../../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
@@ -66,7 +66,7 @@ export function MediaViewer({
     prefs: playerPrefs,
     onPrefs: onPlayerPrefs,
   })
-  const chromeIdle = useIdleHide(player.status === 'playing')
+  const chromeIdle = useIdleHide(rootRef)
   const title = bundle?.title ?? current?.display_title ?? 'Media'
   const artworkUrl = thumbnailUrl(bundleId, bundle?.cover_file_id ?? null)
 
@@ -188,8 +188,6 @@ export function MediaViewer({
         <ControlBar player={player} subtitles={playable.subtitles} onSnapshot={snapshot} />
       )}
 
-      <Filmstrip files={files} currentId={current?.id ?? null} onPick={setPickedId} />
-
       {infoOpen && current && <InfoPanel file={current} playable={playable} />}
     </div>
   )
@@ -287,49 +285,6 @@ const Topbar = memo(function Topbar({
           ×
         </button>
       </div>
-    </div>
-  )
-})
-
-/** Scrollable filmstrip for selecting files inside the bundle. */
-const Filmstrip = memo(function Filmstrip({
-  files,
-  currentId,
-  onPick,
-}: {
-  files: FileRead[]
-  currentId: string | null
-  onPick: (id: string) => void
-}) {
-  if (files.length <= 1) return null
-  return (
-    <div className="mv-filmstrip" aria-label="Files in bundle">
-      {files.map((file) => {
-        const thumbnailable = file.media_kind === 'image' || file.media_kind === 'video'
-        return (
-          <button
-            key={file.id}
-            className={`mv-film${file.id === currentId ? ' is-active' : ''}`}
-            onClick={() => onPick(file.id)}
-            title={file.display_title}
-          >
-            <span className="mv-film__thumb">
-              {thumbnailable ? (
-                <img
-                  src={fileThumbnailUrl(file.bundle_id, file.id)}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                />
-              ) : (
-                '▦'
-              )}
-              {file.media_kind === 'video' && <span className="mv-film__type">▶</span>}
-            </span>
-            <span className="mv-film__name">{file.display_title}</span>
-          </button>
-        )
-      })}
     </div>
   )
 })

@@ -12,7 +12,7 @@ grouped under `Unreleased` until the first tagged release.
 
 - **Unified media viewer + custom direct-play video controls (Plan 1 M2).**
   Bundle double-clicks, the inspector play affordance, and bundle-album file
-  opens now use a fullscreen `MediaViewer` with bundle filmstrip navigation,
+  opens now use a fullscreen `MediaViewer` with previous/next navigation,
   previous/next controls, info panel toggle, simple image stage, unsupported /
   missing-file fallback cards, and a hand-built video player. Direct-play video
   now has auto-hiding controls, buffered seek/scrub UI with hover time hook for
@@ -480,7 +480,8 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
   select native text tracks by `<track>` element identity, and honor default
   tracks. Shortcuts are scoped to the focused viewer root, `Esc` exits
   fullscreen before closing, arrow keys navigate files when no playable video is
-  active, seek/frame-step read live media time, filmstrip thumbnails lazy-load,
+  active, seek/frame-step read live media time, the inline file filmstrip was
+  removed to avoid control-bar overlap, the center play overlay was removed,
   shared fallback cards remove duplicated viewer/File View states, and SVG icons
   replaced emoji control glyphs.
 - **The marquee selection box no longer sticks after a drag.** In a
