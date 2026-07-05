@@ -8,8 +8,6 @@ paths are deterministic from the file id, so generation is reproducible and
 de-duplicated (an existing thumbnail is reused).
 """
 
-import shutil
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +18,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
@@ -44,29 +43,20 @@ def thumbnail_cache_path(library_root: Path, file_id: str) -> Path:
     return library_package.cache_dir(library_root) / "thumbnails" / file_id[:2] / f"{file_id}.jpg"
 
 
-def _ffmpeg() -> str:
-    exe = shutil.which("ffmpeg")
-    if exe is None:
-        raise ThumbnailError("ffmpeg not found on PATH")
-    return exe
-
-
-def _run(args: list[str]) -> None:
-    try:
-        proc = subprocess.run(args, capture_output=True, timeout=60, check=False)
-    except subprocess.TimeoutExpired as exc:
-        raise ThumbnailError("ffmpeg timed out") from exc
-    if proc.returncode != 0:
-        raise ThumbnailError(proc.stderr.decode(errors="replace")[:200])
-
-
 def _generate(source: Path, dest: Path, kind: MediaKind) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
     # The "thumbnail" filter picks a representative video frame without needing
     # the duration (no -ss seek, so very short clips still work).
     vf = f"thumbnail,{scale}" if kind is MediaKind.VIDEO else scale
-    _run([_ffmpeg(), "-y", "-i", str(source), "-vf", vf, "-frames:v", "1", str(dest)])
+    try:
+        run_ffmpeg(
+            [ffmpeg_exe(), "-y", "-i", str(source), "-vf", vf, "-frames:v", "1", str(dest)],
+            timeout=60,
+            stderr_limit=200,
+        )
+    except FfmpegError as exc:
+        raise ThumbnailError(str(exc)) from exc
     if not dest.exists() or dest.stat().st_size == 0:
         raise ThumbnailError(f"ffmpeg produced no thumbnail for {source}")
 
