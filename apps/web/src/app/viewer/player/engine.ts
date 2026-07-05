@@ -3,8 +3,23 @@ export interface PlaybackSource {
   mimeType: string
 }
 
+export type PlaybackEvent =
+  | 'loadedmetadata'
+  | 'durationchange'
+  | 'progress'
+  | 'timeupdate'
+  | 'play'
+  | 'playing'
+  | 'pause'
+  | 'ended'
+  | 'waiting'
+  | 'error'
+  | 'enterpictureinpicture'
+  | 'leavepictureinpicture'
+
 export interface PlaybackEngine {
   load(source: PlaybackSource): void
+  on(event: PlaybackEvent, callback: () => void): () => void
   play(): Promise<void>
   pause(): void
   seek(time: number): void
@@ -26,6 +41,11 @@ export class NativeEngine implements PlaybackEngine {
     this.video.src = source.src
     this.video.crossOrigin = 'anonymous'
     this.video.load()
+  }
+
+  on(event: PlaybackEvent, callback: () => void): () => void {
+    this.video.addEventListener(event, callback)
+    return () => this.video.removeEventListener(event, callback)
   }
 
   play(): Promise<void> {

@@ -1,12 +1,13 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import type { PlayableVideo } from '../../api/client'
+import { IconPlay } from '../icons'
 import type { PlayerController } from './player/usePlayer'
 
 interface VideoStageProps {
-  videoRef: React.RefObject<HTMLVideoElement | null>
   video: PlayableVideo
   player: PlayerController
+  videoRef: (element: HTMLVideoElement | null) => void
   title: string
   artworkUrl: string
   onError: () => void
@@ -14,25 +15,46 @@ interface VideoStageProps {
 
 /** Direct-play video stage with native text tracks driven by custom controls. */
 export function VideoStage({
-  videoRef,
   video,
   player,
+  videoRef,
   title,
   artworkUrl,
   onError,
 }: VideoStageProps) {
+  const trackRefs = useRef<Array<HTMLTrackElement | null>>([])
+  const commandsRef = useRef<{
+    play: () => void
+    pause: () => void
+    seek: (time: number) => void
+    seekBy: (delta: number) => void
+  }>({
+    play: () => {},
+    pause: () => {},
+    seek: () => {},
+    seekBy: () => {},
+  })
+  const withSrc = useMemo(() => video.subtitles.filter((track) => track.src), [video.subtitles])
+
   useEffect(() => {
-    const el = videoRef.current
-    if (!el) return
-    const tracks = Array.from(el.textTracks)
-    const firstEnabled =
-      tracks.findIndex((track) => track.mode === 'showing') >= 0
-        ? tracks.findIndex((track) => track.mode === 'showing')
-        : tracks.findIndex((_, index) => video.subtitles[index]?.src)
-    tracks.forEach((track, index) => {
-      track.mode = player.subtitlesOn && index === firstEnabled ? 'showing' : 'disabled'
+    commandsRef.current = {
+      play: player.play,
+      pause: player.pause,
+      seek: player.seek,
+      seekBy: player.seekBy,
+    }
+  }, [player.pause, player.play, player.seek, player.seekBy])
+
+  useEffect(() => {
+    const defaultIndex = Math.max(
+      0,
+      withSrc.findIndex((track) => track.is_default),
+    )
+    trackRefs.current.forEach((trackEl, index) => {
+      if (!trackEl?.track) return
+      trackEl.track.mode = player.subtitlesOn && index === defaultIndex ? 'showing' : 'disabled'
     })
-  }, [player.subtitlesOn, video.subtitles, videoRef])
+  }, [player.subtitlesOn, withSrc])
 
   useEffect(() => {
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
@@ -40,12 +62,12 @@ export function VideoStage({
       title,
       artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/jpeg' }],
     })
-    navigator.mediaSession.setActionHandler('play', player.play)
-    navigator.mediaSession.setActionHandler('pause', player.pause)
-    navigator.mediaSession.setActionHandler('seekbackward', () => player.seekBy(-10))
-    navigator.mediaSession.setActionHandler('seekforward', () => player.seekBy(10))
+    navigator.mediaSession.setActionHandler('play', () => commandsRef.current.play())
+    navigator.mediaSession.setActionHandler('pause', () => commandsRef.current.pause())
+    navigator.mediaSession.setActionHandler('seekbackward', () => commandsRef.current.seekBy(-10))
+    navigator.mediaSession.setActionHandler('seekforward', () => commandsRef.current.seekBy(10))
     navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (typeof details.seekTime === 'number') player.seek(details.seekTime)
+      if (typeof details.seekTime === 'number') commandsRef.current.seek(details.seekTime)
     })
     return () => {
       navigator.mediaSession.metadata = null
@@ -55,7 +77,7 @@ export function VideoStage({
       navigator.mediaSession.setActionHandler('seekforward', null)
       navigator.mediaSession.setActionHandler('seekto', null)
     }
-  }, [artworkUrl, player, title])
+  }, [artworkUrl, title])
 
   return (
     <div className="mv-video-stage">
@@ -67,22 +89,23 @@ export function VideoStage({
         onError={onError}
         data-testid="media-video"
       >
-        {video.subtitles
-          .filter((track) => track.src)
-          .map((track) => (
-            <track
-              key={track.id}
-              kind="subtitles"
-              src={track.src ?? undefined}
-              srcLang={track.language ?? undefined}
-              label={track.label}
-              default={track.is_default}
-            />
-          ))}
+        {withSrc.map((track, index) => (
+          <track
+            key={track.id}
+            ref={(element) => {
+              trackRefs.current[index] = element
+            }}
+            kind="subtitles"
+            src={track.src ?? undefined}
+            srcLang={track.language ?? undefined}
+            label={track.label}
+            default={track.is_default}
+          />
+        ))}
       </video>
       {player.status !== 'playing' && (
         <button className="mv-center-play" onClick={player.playPause} aria-label="Play">
-          ▶
+          <IconPlay />
         </button>
       )}
     </div>
