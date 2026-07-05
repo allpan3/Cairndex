@@ -34,36 +34,42 @@ const png = Buffer.from(
 )
 
 /** Build a tiny browser-decodable MP4 fixture from generated color/audio. */
-function mediaBytes() {
-  const out = join(tmpdir(), 'cairndex-m2-viewer-fixture.mp4')
+function mediaBytes(): Buffer | null {
+  const out = join(tmpdir(), 'cairndex-m2-viewer-fixture-v2.mp4')
   if (!existsSync(out)) {
-    execFileSync('ffmpeg', [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-f',
-      'lavfi',
-      '-i',
-      'color=c=black:s=320x180:d=1',
-      '-f',
-      'lavfi',
-      '-i',
-      'anullsrc=channel_layout=stereo:sample_rate=48000',
-      '-shortest',
-      '-movflags',
-      '+faststart',
-      '-pix_fmt',
-      'yuv420p',
-      '-c:v',
-      'libx264',
-      '-c:a',
-      'aac',
-      '-y',
-      out,
-    ])
+    try {
+      execFileSync('ffmpeg', [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=black:s=320x180:d=3',
+        '-f',
+        'lavfi',
+        '-i',
+        'anullsrc=channel_layout=stereo:sample_rate=48000',
+        '-shortest',
+        '-movflags',
+        '+faststart',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:v',
+        'libx264',
+        '-c:a',
+        'aac',
+        '-y',
+        out,
+      ])
+    } catch {
+      return null
+    }
   }
   return readFileSync(out)
 }
+
+const generatedMp4 = mediaBytes()
 
 /** Patch browser media APIs so controls can be tested without a real backend. */
 async function mockMedia(page: Page) {
@@ -144,7 +150,7 @@ async function mockMedia(page: Page) {
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
 async function mockApi(page: Page) {
-  const mp4 = mediaBytes()
+  const mp4 = generatedMp4 ?? Buffer.from([])
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
       json: [
@@ -340,6 +346,12 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
 
   const video = page.getByTestId('media-video')
   await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
+  await expect(page.locator('[data-testid="media-video"] track')).toHaveAttribute(
+    'src',
+    /subtitles\/s0\/vtt/,
+  )
+  await expect.poll(() => video.evaluate((el) => el.textTracks[0]?.mode)).toBe('showing')
+  await expect(page.locator('.mv-time')).toContainText('/ 2:00')
   await page.keyboard.press('Space')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
 
@@ -348,6 +360,9 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
 
   await page.keyboard.press('F')
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true)
+  await expect(page.locator('.media-viewer')).toBeVisible()
 
   const cc = page.getByRole('button', { name: /hide subtitles/i })
   await expect(cc).toHaveAttribute('aria-pressed', 'true')
@@ -371,6 +386,37 @@ test('navigates the filmstrip and shows the unplayable fallback card', async ({ 
   await page.locator('.mv-film', { hasText: 'poster.png' }).click()
   await expect(page.locator('.mv-image')).toHaveAttribute('src', /files\/img1\/content/)
 
-  await page.locator('.mv-film', { hasText: 'movie.mkv' }).click()
-  await expect(page.locator('.mv-fallback')).toContainText("isn't playable")
+  await page.keyboard.press('ArrowRight')
+  await expect(page.locator('.media-fallback')).toContainText("isn't playable")
+})
+
+test('plays a real generated MP4 without media-element mocks', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real MP4 playback smoke')
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'cairndex.prefs',
+      JSON.stringify({
+        layout: 'grid',
+        zoom: 200,
+        sort: 'manual',
+        order: 'asc',
+        sortScope: 'global',
+        collectionSorts: {},
+        player: { volume: 0.5, muted: true, rate: 1, subtitlesOn: true },
+      }),
+    )
+  })
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  const video = page.getByTestId('media-video')
+  await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).duration))
+    .toBeGreaterThan(0)
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(1.1)
+  await expect(page.locator('.mv-time')).not.toHaveText(/^0:00 /)
 })
