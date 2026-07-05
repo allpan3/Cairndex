@@ -4,8 +4,7 @@ import { type FileViewEntry, fileViewContentUrl } from '../api/client'
 import { formatBytes } from '../lib/format'
 
 /**
- * Fullscreen lightbox for the read-only File View. Unlike `FileViewer` (which
- * works on bundle `FileRead`s served by file id), this previews a physical
+ * Fullscreen lightbox for the read-only File View. This previews a physical
  * filesystem entry by its library-relative path — files here need not be linked
  * into any bundle. Images and video render inline; anything the browser can't
  * show falls back to an info card. Arrow keys / chevrons step through the
