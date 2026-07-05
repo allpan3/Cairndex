@@ -29,7 +29,7 @@ export interface PlaybackEngine {
   destroy(): void
 }
 
-/** Native HTML video engine; HLS can implement this same seam in M8. */
+/** Native HTML video engine; HLS can implement this same seam in M7. */
 export class NativeEngine implements PlaybackEngine {
   private readonly video: HTMLVideoElement
 

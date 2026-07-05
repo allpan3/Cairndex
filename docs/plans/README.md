@@ -81,7 +81,9 @@ These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
 
 1. **Probe enrichment** — store *all* audio/subtitle streams and chapters in
    `tech_metadata`, not just the first audio stream.
-2. **Embedded text-subtitle extraction** to cached WebVTT (ffmpeg `-map 0:s:n`).
+2. **Embedded text-subtitle extraction** to cached WebVTT (ffmpeg `-map 0:s:n`)
+   — owner-deprioritized: lands with plan 1 M8 (after HLS), not as an early
+   foundation.
 3. **Storyboard/trickplay job** — sprite sheets + WebVTT index per video,
    cached under `.cairndex/cache/storyboards/`.
 4. **Image preview derivatives** — sized web-format previews under

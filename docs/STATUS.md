@@ -64,8 +64,9 @@ slice without new runtime dependencies and without backend/API changes:
 
 No Pydantic/OpenAPI surface changed, so OpenAPI and
 `apps/web/src/api/schema.d.ts` were not regenerated. Next recommended task for
-the media-player track: plan 1 M3 (embedded text-subtitle extraction, subtitle
-track menu/dual subtitles, and subtitle styling/timing controls).
+the media-player track: plan 1 M3 — **storyboards/trickplay** (the owner
+re-sequenced plan 1 after M2: subtitle depth moved to M8 behind HLS, and dual
+subtitles are far-deferred to M9 at the earliest).
 
 Verification: frontend `npm run lint`, `npm run format:check`,
 `npm run typecheck`, `npm run test` (18 tests), `npm run build`, and
@@ -115,8 +116,8 @@ a throwaway generated library and showed the new keys on a
 multi-audio/chaptered/subtitled MKV.
 
 Known issues: none for M1. M2 has since merged; next recommended media-player
-task remains plan 1 M3 (embedded text-subtitle extraction, subtitle track menu,
-dual subtitles, and subtitle styling/timing controls).
+task is plan 1 M3 — storyboards/trickplay (subtitle depth was owner-deferred
+to M8 behind HLS; dual subtitles to M9+).
 
 ## Latest session: client platform & media experience plans (docs only)
 

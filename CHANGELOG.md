@@ -8,6 +8,15 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Internal
+
+- **Plan 1 milestone re-sequencing (docs).** After M2 shipped, the owner
+  deprioritized subtitle depth: the subtitle-upgrade slice (embedded
+  extraction, track menu, styling/timing) moved from third to M8 (after HLS),
+  and dual simultaneous subtitles became a far-deferred M9+ item. New order:
+  M3 storyboards, M4 watch progress, M5 image viewer v2, M6 HLS sessions,
+  M7 web HLS, M8 subtitles. Milestone references in code comments updated.
+
 ### Added
 
 - **Probe enrichment for the media-player M1 foundation.** `ffprobe` now stores
