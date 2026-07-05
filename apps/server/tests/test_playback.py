@@ -113,6 +113,23 @@ def test_file_content_serves_image_with_guessed_mime(
     assert missing.status_code == 404
 
 
+# Keep old probed rows valid when M1 metadata keys are absent
+def test_playback_manifest_accepts_legacy_tech_metadata(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    video.tech_metadata = {"width": 640, "height": 360, "duration": 5.0, "video_codec": "h264"}
+    session.commit()
+    base = f"/api/v1/libraries/{library_id}"
+
+    body = client.get(f"{base}/bundles/{bundle.id}/playback").json()
+    video_item = body["videos"][0]
+    assert video_item["width"] == 640
+    assert video_item["height"] == 360
+    assert video_item["duration"] == 5.0
+    assert len(video_item["subtitles"]) == 1
+
+
 def test_playback_manifest_lists_videos_and_subtitles(
     client: TestClient, library_id: str, session: Session, library_root: Path
 ) -> None:

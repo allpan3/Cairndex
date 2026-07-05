@@ -10,6 +10,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Probe enrichment for the media-player M1 foundation.** `ffprobe` now stores
+  additive `tech_metadata` keys for all audio streams, subtitle streams,
+  chapters, HDR classification, and video bit depth while preserving the
+  existing width/height/duration/video-codec and embedded-subtitle keys. Probe
+  output is version-stamped, so the existing **Collect metadata** job refreshes
+  legacy rows once and then returns to incremental skips for current metadata.
 - **Unified media viewer + custom direct-play video controls (Plan 1 M2).**
   Bundle double-clicks, the inspector play affordance, and bundle-album file
   opens now use a fullscreen `MediaViewer` with previous/next navigation,
