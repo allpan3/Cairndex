@@ -20,14 +20,32 @@ slice without new runtime dependencies and without backend/API changes:
   the open viewer.
 - Player preferences (`volume`, `muted`, `rate`, `subtitlesOn`) persist inside
   the existing `cairndex.prefs` localStorage object with legacy-default
-  merging.
+  merging. Review fix pass: Workspace/App remains the single prefs writer,
+  player updates are functional so same-tick writes compose, localStorage writes
+  are debounced and flushed on pointer-up/page unload, and raising volume
+  un-mutes consistently from keyboard or slider paths.
 - The viewer handles loading, empty bundles, query errors, missing files,
   unsupported/unplayable videos, and image preview errors with structured
   fallback states. Filmstrip navigation is horizontally scrollable for larger
   bundles.
+- Review fix pass hardened the native player mount path: `usePlayer` now keys
+  engine creation, listener attachment, and persisted volume/mute/rate
+  application on the actual `<video>` element identity; controller commands read
+  live media time where needed; `PlaybackEngine` exposes an `on(event, cb)`
+  listener seam for the future M8 HLS engine; MediaSession commands use refs
+  while metadata depends only on title/artwork.
+- Review fix pass also scoped shortcuts to the focused viewer root, made `Esc`
+  exit fullscreen before closing, lets left/right step files when no playable
+  video is active, shares one filtered subtitle source list with native
+  `<track>` identity/default-track selection, lazy-loads filmstrip thumbnails,
+  uses shared fallback cards for Media Viewer and File View, and replaced emoji
+  control glyphs with SVG icons.
 - File View still uses `FileEntryViewer` with path-based URLs and native
-  browser controls. Follow-up: migrate File View onto the same viewer/stage
-  primitives when plan 1 reaches the path-based File View completion work.
+  browser controls, but now shares the fallback card component. Follow-up:
+  migrate File View onto the same viewer/stage primitives when plan 1 reaches
+  the path-based File View completion work.
+- Dev tooling: `apps/web/vite.config.ts` honors a `PORT` environment override,
+  and `.claude/launch.json` uses automatic port assignment.
 
 No Pydantic/OpenAPI surface changed, so OpenAPI and
 `apps/web/src/api/schema.d.ts` were not regenerated. Next recommended task for
@@ -36,7 +54,14 @@ track menu/dual subtitles, and subtitle styling/timing controls).
 
 Verification: frontend `npm run lint`, `npm run format:check`,
 `npm run typecheck`, `npm run test` (18 tests), `npm run build`, and
-`npm run test:e2e` (40 Playwright tests) passed. Backend gates were not run
+`npm run test:e2e` (41 Playwright tests) passed. Player e2e now includes an
+unmocked tiny ffmpeg-generated MP4 smoke test that verifies real media time and
+the visible clock advance; it skips with a clear message when ffmpeg is
+unavailable. Manual verification against the local Demo library
+(`/Users/owner/DemoLibrary`) used a cold browser page on `trailer_neon` and
+confirmed the real stream advanced to `0:01 / 0:04` with persisted
+`volume=0.5`, `muted=true`, and `rate=1.25`; screenshot captured at
+`/private/tmp/cairndex-media-viewer-demo.png`. Backend gates were not run
 because this slice did not touch backend code.
 
 ## Latest session: client platform & media experience plans (docs only)

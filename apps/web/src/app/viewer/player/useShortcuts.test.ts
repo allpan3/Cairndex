@@ -25,7 +25,6 @@ function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController
     setMuted: vi.fn(),
     setRate: vi.fn(),
     toggleSubtitles: vi.fn(),
-    setSubtitlesOn: vi.fn(),
     toggleFullscreen: vi.fn(),
     togglePiP: vi.fn(),
     frameStep: vi.fn(),
@@ -39,6 +38,8 @@ function mockActions() {
     close: vi.fn(),
     toggleInfo: vi.fn(),
     snapshot: vi.fn(),
+    previous: vi.fn(),
+    next: vi.fn(),
   }
 }
 
@@ -94,4 +95,7 @@ test('maps shell shortcuts without a video player', () => {
     true,
   )
   expect(actions.close).toHaveBeenCalled()
+
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'ArrowRight' }), null, actions)
+  expect(actions.next).toHaveBeenCalled()
 })
