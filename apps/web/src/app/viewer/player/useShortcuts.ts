@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import type { PlayerController } from './usePlayer'
 
@@ -6,6 +6,8 @@ export interface ShortcutActions {
   close: () => void
   toggleInfo: () => void
   snapshot: () => void
+  previous: () => void
+  next: () => void
 }
 
 /** True when a keyboard event is meant for editable text, not the viewer. */
@@ -28,14 +30,20 @@ export function handleViewerShortcut(
   if (isEditingTarget(event.target)) return false
   const key = event.key
   if (key === 'Escape') {
-    actions.close()
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else actions.close()
     return true
   }
   if (key.toLowerCase() === 'i') {
     actions.toggleInfo()
     return true
   }
-  if (!player) return false
+  if (!player) {
+    if (key === 'ArrowLeft') actions.previous()
+    else if (key === 'ArrowRight') actions.next()
+    else return false
+    return true
+  }
 
   if (key === ' ' || key.toLowerCase() === 'k') player.playPause()
   else if (key === 'ArrowLeft') player.seekBy(-5)
@@ -58,15 +66,29 @@ export function handleViewerShortcut(
   return true
 }
 
-/** Attach the M2 keyboard map while the viewer is open. */
-export function useShortcuts(player: PlayerController | null, actions: ShortcutActions) {
+/** Attach the M2 keyboard map to the focused viewer root while it is open. */
+export function useShortcuts(
+  rootRef: React.RefObject<HTMLElement | null>,
+  player: PlayerController | null,
+  actions: ShortcutActions,
+) {
+  const playerRef = useRef(player)
+  const actionsRef = useRef(actions)
+
   useEffect(() => {
+    playerRef.current = player
+    actionsRef.current = actions
+  }, [actions, player])
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!handleViewerShortcut(event, player, actions)) return
+      if (!handleViewerShortcut(event, playerRef.current, actionsRef.current)) return
       event.preventDefault()
       event.stopPropagation()
     }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [actions, player])
+    root.addEventListener('keydown', onKeyDown)
+    return () => root.removeEventListener('keydown', onKeyDown)
+  }, [rootRef])
 }

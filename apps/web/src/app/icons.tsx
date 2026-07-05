@@ -185,3 +185,52 @@ export const IconCheckSquare = () => (
     <path d="M8 12l2.5 2.5L16 9" />
   </Svg>
 )
+
+export const IconPlay = () => (
+  <Svg>
+    <polygon points="8 5 19 12 8 19 8 5" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+export const IconPause = () => (
+  <Svg>
+    <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+    <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+export const IconVolume = () => (
+  <Svg>
+    <polygon points="4 9 8 9 13 4 13 20 8 15 4 15 4 9" />
+    <path d="M16 9.5a4 4 0 0 1 0 5" />
+    <path d="M18.5 7a8 8 0 0 1 0 10" />
+  </Svg>
+)
+
+export const IconVolumeOff = () => (
+  <Svg>
+    <polygon points="4 9 8 9 13 4 13 20 8 15 4 15 4 9" />
+    <path d="M16 9l5 5" />
+    <path d="M21 9l-5 5" />
+  </Svg>
+)
+
+export const IconCamera = () => (
+  <Svg>
+    <path d="M14.5 4 16 7h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l1.5-3Z" />
+    <circle cx="12" cy="13" r="3" />
+  </Svg>
+)
+
+export const IconPictureInPicture = () => (
+  <Svg>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <rect x="12" y="11" width="6" height="4" rx="1" />
+  </Svg>
+)
+
+export const IconFullscreen = () => (
+  <Svg>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+  </Svg>
+)

@@ -1,6 +1,16 @@
 import type { SubtitleTrackRead } from '../../../api/client'
+import {
+  IconCamera,
+  IconCaptions,
+  IconFullscreen,
+  IconPause,
+  IconPictureInPicture,
+  IconPlay,
+  IconVolume,
+  IconVolumeOff,
+} from '../../icons'
+import { formatClock } from '../../../lib/format'
 import { SeekBar } from './SeekBar'
-import { formatTime } from './time'
 import type { PlayerController } from './usePlayer'
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
@@ -13,7 +23,7 @@ interface ControlBarProps {
 
 /** Desktop-style custom video controls for direct playback. */
 export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
-  const time = `${formatTime(player.currentTime)} / ${formatTime(player.duration)}`
+  const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
     <div className="mv-controls" data-testid="media-controls">
@@ -25,7 +35,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           aria-label={player.status === 'playing' ? 'Pause' : 'Play'}
           title={player.status === 'playing' ? 'Pause' : 'Play'}
         >
-          {player.status === 'playing' ? '❚❚' : '▶'}
+          {player.status === 'playing' ? <IconPause /> : <IconPlay />}
         </button>
         <span className="mv-time">{time}</span>
         <button
@@ -34,7 +44,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           aria-label={player.muted ? 'Unmute' : 'Mute'}
           title={player.muted ? 'Unmute' : 'Mute'}
         >
-          {player.muted ? '🔇' : '🔊'}
+          {player.muted ? <IconVolumeOff /> : <IconVolume />}
         </button>
         <input
           className="mv-volume"
@@ -44,11 +54,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           max={1}
           step={0.01}
           value={player.muted ? 0 : player.volume}
-          onChange={(event) => {
-            const next = Number(event.currentTarget.value)
-            player.setVolume(next)
-            if (next > 0 && player.muted) player.setMuted(false)
-          }}
+          onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
         />
         <label className="mv-speed">
           <span className="sr-only">Speed</span>
@@ -73,10 +79,10 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           title={hasSubtitles ? 'Subtitles' : 'No subtitles'}
           disabled={!hasSubtitles}
         >
-          CC
+          <IconCaptions />
         </button>
         <button className="mv-btn" onClick={onSnapshot} aria-label="Snapshot" title="Snapshot">
-          ⧉
+          <IconCamera />
         </button>
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
@@ -84,7 +90,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           aria-label="Picture in Picture"
           title="Picture in Picture"
         >
-          PiP
+          <IconPictureInPicture />
         </button>
         <button
           className={`mv-btn${player.fullscreen ? ' is-active' : ''}`}
@@ -92,7 +98,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           aria-label={player.fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           title={player.fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
         >
-          ⛶
+          <IconFullscreen />
         </button>
       </div>
     </div>

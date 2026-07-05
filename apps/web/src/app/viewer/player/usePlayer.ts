@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 
 import type { PlayerPrefs } from '../../types'
 import { NativeEngine, type PlaybackSource } from './engine'
@@ -30,35 +38,47 @@ export interface PlayerController {
   setMuted: (muted: boolean) => void
   setRate: (rate: number) => void
   toggleSubtitles: () => void
-  setSubtitlesOn: (enabled: boolean) => void
   toggleFullscreen: () => void
   togglePiP: () => void
   frameStep: (delta: number) => void
 }
 
+export interface PlayerBindings {
+  player: PlayerController
+  videoRef: (element: HTMLVideoElement | null) => void
+  videoElement: HTMLVideoElement | null
+}
+
 interface UsePlayerOptions {
-  videoRef: React.RefObject<HTMLVideoElement | null>
   source: PlaybackSource | null
   rootRef: React.RefObject<HTMLElement | null>
   prefs: PlayerPrefs
-  onPrefs: (prefs: PlayerPrefs) => void
+  onPrefs: Dispatch<SetStateAction<PlayerPrefs>>
 }
 
 /** Headless native-video state and commands for the M2 custom controls. */
-export function usePlayer({
-  videoRef,
-  source,
-  rootRef,
-  prefs,
-  onPrefs,
-}: UsePlayerOptions): PlayerController {
+export function usePlayer({ source, rootRef, prefs, onPrefs }: UsePlayerOptions): PlayerBindings {
   const engineRef = useRef<NativeEngine | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const prefsRef = useRef(prefs)
+  const onPrefsRef = useRef(onPrefs)
+  const [videoElement, setVideoElementState] = useState<HTMLVideoElement | null>(null)
   const [status, setStatus] = useState<PlayerStatus>('idle')
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [buffered, setBuffered] = useState<BufferedRange[]>([])
   const [fullscreen, setFullscreen] = useState(false)
   const [pip, setPip] = useState(false)
+
+  useEffect(() => {
+    prefsRef.current = prefs
+    onPrefsRef.current = onPrefs
+  }, [onPrefs, prefs])
+
+  const videoRefCallback = useCallback((element: HTMLVideoElement | null) => {
+    videoRef.current = element
+    setVideoElementState(element)
+  }, [])
 
   const syncBuffered = useCallback(() => {
     const video = videoRef.current
@@ -68,36 +88,39 @@ export function usePlayer({
       ranges.push({ start: video.buffered.start(i), end: video.buffered.end(i) })
     }
     setBuffered(ranges)
-  }, [videoRef])
+  }, [])
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video || !source) return
-    const engine = new NativeEngine(video)
+    if (!videoElement || !source) {
+      engineRef.current = null
+      return
+    }
+    const engine = new NativeEngine(videoElement)
+    const initialPrefs = prefsRef.current
     engineRef.current = engine
-    setStatus('loading')
-    setCurrentTime(0)
-    setDuration(0)
+    engine.setVolume(initialPrefs.volume)
+    engine.setMuted(initialPrefs.muted)
+    engine.setRate(initialPrefs.rate)
     engine.load(source)
     void engine.play().catch(() => setStatus('paused'))
     return () => {
       engine.destroy()
       if (engineRef.current === engine) engineRef.current = null
     }
-  }, [videoRef, source])
+  }, [source, videoElement])
 
   useEffect(() => {
     const engine = engineRef.current
-    const video = videoRef.current
-    if (!engine || !video) return
+    if (!engine || !videoElement) return
     engine.setVolume(prefs.volume)
     engine.setMuted(prefs.muted)
     engine.setRate(prefs.rate)
-  }, [prefs.muted, prefs.rate, prefs.volume, videoRef])
+  }, [prefs.muted, prefs.rate, prefs.volume, videoElement])
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
+    const engine = engineRef.current
+    const video = videoElement
+    if (!engine || !video) return
     const onLoaded = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0)
       syncBuffered()
@@ -108,42 +131,34 @@ export function usePlayer({
     const onEnded = () => setStatus('ended')
     const onWaiting = () => setStatus((s) => (s === 'playing' ? 'loading' : s))
     const onError = () => setStatus('error')
-    const onEnterPiP = () => setPip(true)
-    const onLeavePiP = () => setPip(false)
-    video.addEventListener('loadedmetadata', onLoaded)
-    video.addEventListener('durationchange', onLoaded)
-    video.addEventListener('progress', syncBuffered)
-    video.addEventListener('timeupdate', onTime)
-    video.addEventListener('play', onPlay)
-    video.addEventListener('playing', onPlay)
-    video.addEventListener('pause', onPause)
-    video.addEventListener('ended', onEnded)
-    video.addEventListener('waiting', onWaiting)
-    video.addEventListener('error', onError)
-    video.addEventListener('enterpictureinpicture', onEnterPiP)
-    video.addEventListener('leavepictureinpicture', onLeavePiP)
+    const off = [
+      engine.on('loadedmetadata', onLoaded),
+      engine.on('durationchange', onLoaded),
+      engine.on('progress', syncBuffered),
+      engine.on('timeupdate', onTime),
+      engine.on('play', onPlay),
+      engine.on('playing', onPlay),
+      engine.on('pause', onPause),
+      engine.on('ended', onEnded),
+      engine.on('waiting', onWaiting),
+      engine.on('error', onError),
+      engine.on('enterpictureinpicture', () => setPip(true)),
+      engine.on('leavepictureinpicture', () => setPip(false)),
+    ]
     onLoaded()
-    return () => {
-      video.removeEventListener('loadedmetadata', onLoaded)
-      video.removeEventListener('durationchange', onLoaded)
-      video.removeEventListener('progress', syncBuffered)
-      video.removeEventListener('timeupdate', onTime)
-      video.removeEventListener('play', onPlay)
-      video.removeEventListener('playing', onPlay)
-      video.removeEventListener('pause', onPause)
-      video.removeEventListener('ended', onEnded)
-      video.removeEventListener('waiting', onWaiting)
-      video.removeEventListener('error', onError)
-      video.removeEventListener('enterpictureinpicture', onEnterPiP)
-      video.removeEventListener('leavepictureinpicture', onLeavePiP)
-    }
-  }, [syncBuffered, videoRef])
+    onTime()
+    return () => off.forEach((unsubscribe) => unsubscribe())
+  }, [syncBuffered, videoElement])
 
   useEffect(() => {
     const onFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current)
     document.addEventListener('fullscreenchange', onFullscreen)
     return () => document.removeEventListener('fullscreenchange', onFullscreen)
   }, [rootRef])
+
+  const updatePrefs = useCallback((updater: (previous: PlayerPrefs) => PlayerPrefs) => {
+    onPrefsRef.current((previous) => updater(previous))
+  }, [])
 
   const play = useCallback(() => {
     void engineRef.current?.play().catch(() => setStatus('paused'))
@@ -158,53 +173,53 @@ export function usePlayer({
     if (!video) return
     if (video.paused || video.ended) play()
     else pause()
-  }, [pause, play, videoRef])
+  }, [pause, play])
 
-  const seek = useCallback(
-    (time: number) => {
-      engineRef.current?.seek(time)
-      setCurrentTime(Math.max(0, Math.min(time, duration || time)))
+  const seek = useCallback((time: number) => {
+    engineRef.current?.seek(time)
+    const live = videoRef.current
+    const limit = live?.duration ?? 0
+    setCurrentTime(Math.max(0, Math.min(time, limit || time)))
+  }, [])
+
+  const seekBy = useCallback(
+    (delta: number) => {
+      seek((videoRef.current?.currentTime ?? 0) + delta)
     },
-    [duration],
+    [seek],
   )
-
-  const seekBy = useCallback((delta: number) => seek(currentTime + delta), [currentTime, seek])
 
   const setVolume = useCallback(
     (volume: number) => {
       const next = Math.max(0, Math.min(1, volume))
+      const muted = next === 0
       engineRef.current?.setVolume(next)
-      onPrefs({ ...prefs, volume: next, muted: next === 0 ? true : prefs.muted })
+      engineRef.current?.setMuted(muted)
+      updatePrefs((previous) => ({ ...previous, volume: next, muted }))
     },
-    [onPrefs, prefs],
+    [updatePrefs],
   )
 
   const setMuted = useCallback(
     (muted: boolean) => {
       engineRef.current?.setMuted(muted)
-      onPrefs({ ...prefs, muted })
+      updatePrefs((previous) => ({ ...previous, muted }))
     },
-    [onPrefs, prefs],
+    [updatePrefs],
   )
 
   const setRate = useCallback(
     (rate: number) => {
       const next = Math.max(0.25, Math.min(3, rate))
       engineRef.current?.setRate(next)
-      onPrefs({ ...prefs, rate: next })
+      updatePrefs((previous) => ({ ...previous, rate: next }))
     },
-    [onPrefs, prefs],
+    [updatePrefs],
   )
 
-  const setSubtitlesOn = useCallback(
-    (enabled: boolean) => onPrefs({ ...prefs, subtitlesOn: enabled }),
-    [onPrefs, prefs],
-  )
-
-  const toggleSubtitles = useCallback(
-    () => setSubtitlesOn(!prefs.subtitlesOn),
-    [prefs.subtitlesOn, setSubtitlesOn],
-  )
+  const toggleSubtitles = useCallback(() => {
+    updatePrefs((previous) => ({ ...previous, subtitlesOn: !previous.subtitlesOn }))
+  }, [updatePrefs])
 
   const toggleFullscreen = useCallback(() => {
     const root = rootRef.current
@@ -218,22 +233,23 @@ export function usePlayer({
     if (!video || !document.pictureInPictureEnabled) return
     if (document.pictureInPictureElement === video) void document.exitPictureInPicture?.()
     else void video.requestPictureInPicture?.()
-  }, [videoRef])
+  }, [])
 
   const frameStep = useCallback(
     (delta: number) => {
       pause()
-      seek(currentTime + delta / 30)
+      seek((videoRef.current?.currentTime ?? 0) + delta / 30)
     },
-    [currentTime, pause, seek],
+    [pause, seek],
   )
 
-  return useMemo(
-    () => ({
-      status,
-      currentTime,
-      duration,
-      buffered,
+  const player = useMemo<PlayerController>(() => {
+    const active = Boolean(source && videoElement)
+    return {
+      status: active ? (status === 'idle' ? 'loading' : status) : 'idle',
+      currentTime: active ? currentTime : 0,
+      duration: active ? duration : 0,
+      buffered: active ? buffered : [],
       volume: prefs.volume,
       muted: prefs.muted,
       rate: prefs.rate,
@@ -249,32 +265,38 @@ export function usePlayer({
       setMuted,
       setRate,
       toggleSubtitles,
-      setSubtitlesOn,
       toggleFullscreen,
       togglePiP,
       frameStep,
-    }),
-    [
-      status,
-      currentTime,
-      duration,
-      buffered,
-      prefs,
-      fullscreen,
-      pip,
-      playPause,
-      play,
-      pause,
-      seek,
-      seekBy,
-      setVolume,
-      setMuted,
-      setRate,
-      toggleSubtitles,
-      setSubtitlesOn,
-      toggleFullscreen,
-      togglePiP,
-      frameStep,
-    ],
+    }
+  }, [
+    status,
+    currentTime,
+    duration,
+    buffered,
+    source,
+    prefs.volume,
+    prefs.muted,
+    prefs.rate,
+    prefs.subtitlesOn,
+    fullscreen,
+    pip,
+    videoElement,
+    playPause,
+    play,
+    pause,
+    seek,
+    seekBy,
+    setVolume,
+    setMuted,
+    setRate,
+    toggleSubtitles,
+    toggleFullscreen,
+    togglePiP,
+    frameStep,
+  ])
+  return useMemo(
+    () => ({ player, videoRef: videoRefCallback, videoElement }),
+    [player, videoElement, videoRefCallback],
   )
 }

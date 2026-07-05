@@ -7,6 +7,7 @@ import { ContextMenu } from './ContextMenu'
 import { useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
+import type { PlayerPrefs } from './types'
 
 /**
  * Inline "album" view: replaces the bundle grid in the center pane with the
@@ -18,10 +19,14 @@ import { MediaViewer } from './viewer/MediaViewer'
  */
 export function BundleAlbum({
   bundleId,
+  playerPrefs,
+  onPlayerPrefs,
   onBack,
   onLocateFile,
 }: {
   bundleId: string
+  playerPrefs: PlayerPrefs
+  onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onBack: () => void
   // Jump to the File Browser at this file's directory, selecting it.
   onLocateFile?: (relativePath: string) => void
@@ -164,6 +169,8 @@ export function BundleAlbum({
         <MediaViewer
           bundleId={bundleId}
           initialFileId={files[viewing]?.id}
+          playerPrefs={playerPrefs}
+          onPlayerPrefs={onPlayerPrefs}
           onClose={() => setViewing(null)}
         />
       )}

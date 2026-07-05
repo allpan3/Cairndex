@@ -76,6 +76,7 @@ import {
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
+  type PlayerPrefs,
   type Selection,
   type SortPref,
 } from './app/types'
@@ -279,7 +280,9 @@ function Workspace({
   canLock,
   onLock,
 }: WorkspaceProps) {
-  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
+  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS, {
+    debounceMs: 300,
+  })
   // Merge in defaults so prefs persisted before newer fields existed
   // (sortScope/collectionSorts) don't read back as undefined.
   const prefs = useMemo(
@@ -289,6 +292,16 @@ function Workspace({
       player: { ...DEFAULT_PREFS.player, ...storedPrefs.player },
     }),
     [storedPrefs],
+  )
+  const setPlayerPrefs = useCallback(
+    (updater: React.SetStateAction<PlayerPrefs>) => {
+      setPrefs((previous) => {
+        const previousPlayer = { ...DEFAULT_PREFS.player, ...previous.player }
+        const player = typeof updater === 'function' ? updater(previousPlayer) : updater
+        return { ...DEFAULT_PREFS, ...previous, player }
+      })
+    },
+    [setPrefs],
   )
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
@@ -1067,6 +1080,8 @@ function Workspace({
             {openBundleId ? (
               <BundleAlbum
                 bundleId={openBundleId}
+                playerPrefs={prefs.player}
+                onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
@@ -1214,7 +1229,12 @@ function Workspace({
       <ContextMenu state={menu.state} onClose={menu.close} />
 
       {viewerBundleId && (
-        <MediaViewer bundleId={viewerBundleId} onClose={() => setViewerBundleId(null)} />
+        <MediaViewer
+          bundleId={viewerBundleId}
+          playerPrefs={prefs.player}
+          onPlayerPrefs={setPlayerPrefs}
+          onClose={() => setViewerBundleId(null)}
+        />
       )}
 
       {deletingBundles && (

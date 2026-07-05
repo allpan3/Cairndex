@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { type FileRead, type PlayableVideo, fileThumbnailUrl, thumbnailUrl } from '../../api/client'
 import { useBundle, useBundleFiles, usePlaybackManifest } from '../../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../../lib/format'
-import { usePersistentState } from '../../state/usePersistentState'
-import { DEFAULT_PREFS, type BrowsePrefs, type PlayerPrefs } from '../types'
+import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
+import { MediaFallback } from './MediaFallback'
 import { VideoStage } from './VideoStage'
 import { ControlBar } from './player/ControlBar'
 import { useIdleHide } from './player/useIdleHide'
@@ -15,13 +15,20 @@ import { useShortcuts } from './player/useShortcuts'
 interface MediaViewerProps {
   bundleId: string
   initialFileId?: string | null
+  playerPrefs: PlayerPrefs
+  onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onClose: () => void
 }
 
 /** Unified bundle media lightbox for direct-play M2 video and simple images. */
-export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerProps) {
+export function MediaViewer({
+  bundleId,
+  initialFileId,
+  playerPrefs,
+  onPlayerPrefs,
+  onClose,
+}: MediaViewerProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
   const { data: bundle, isLoading: bundleLoading, error: bundleError } = useBundle(bundleId)
   const { data: files = [], isLoading: filesLoading, error: filesError } = useBundleFiles(bundleId)
   const {
@@ -29,25 +36,9 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
     isLoading: playbackLoading,
     error: playbackError,
   } = usePlaybackManifest(bundleId)
-  const [storedPrefs, setStoredPrefs] = usePersistentState<BrowsePrefs>(
-    'cairndex.prefs',
-    DEFAULT_PREFS,
-  )
-  const prefs = useMemo(
-    () => ({
-      ...DEFAULT_PREFS,
-      ...storedPrefs,
-      player: { ...DEFAULT_PREFS.player, ...storedPrefs.player },
-    }),
-    [storedPrefs],
-  )
-  const setPlayerPrefs = useCallback(
-    (player: PlayerPrefs) => setStoredPrefs({ ...prefs, player }),
-    [prefs, setStoredPrefs],
-  )
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
-  const [stageError, setStageError] = useState<{ fileId: string; failed: boolean } | null>(null)
+  const [failedFileId, setFailedFileId] = useState<string | null>(null)
 
   const preferredId =
     (initialFileId && files.some((file) => file.id === initialFileId) ? initialFileId : null) ??
@@ -60,7 +51,7 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
   const selectedId = pickedId && files.some((file) => file.id === pickedId) ? pickedId : preferredId
   const currentIndex = selectedId ? files.findIndex((file) => file.id === selectedId) : -1
   const current = currentIndex >= 0 ? files[currentIndex] : null
-  const failed = current ? stageError?.fileId === current.id && stageError.failed : false
+  const failed = current ? failedFileId === current.id : false
   const playable = useMemo(
     () => manifest?.videos.find((video) => video.file_id === current?.id) ?? null,
     [current?.id, manifest?.videos],
@@ -69,18 +60,19 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
     () => (playable?.playable ? { src: playable.stream_url, mimeType: playable.mime_type } : null),
     [playable],
   )
-  const player = usePlayer({
-    videoRef,
+  const { player, videoRef, videoElement } = usePlayer({
     source,
     rootRef,
-    prefs: prefs.player,
-    onPrefs: setPlayerPrefs,
+    prefs: playerPrefs,
+    onPrefs: onPlayerPrefs,
   })
   const chromeIdle = useIdleHide(player.status === 'playing')
   const title = bundle?.title ?? current?.display_title ?? 'Media'
   const artworkUrl = thumbnailUrl(bundleId, bundle?.cover_file_id ?? null)
 
   useEffect(() => rootRef.current?.focus(), [])
+
+  const toggleInfo = useCallback(() => setInfoOpen((v) => !v), [])
 
   const step = useCallback(
     (delta: number) => {
@@ -92,7 +84,7 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
   )
 
   const snapshot = useCallback(() => {
-    const video = videoRef.current
+    const video = videoElement
     if (!video) return
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, video.videoWidth || 1280)
@@ -114,12 +106,14 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
       a.click()
       URL.revokeObjectURL(url)
     }, 'image/png')
-  }, [current?.display_title, title])
+  }, [current?.display_title, title, videoElement])
 
-  useShortcuts(playable?.playable ? player : null, {
+  useShortcuts(rootRef, playable?.playable ? player : null, {
     close: onClose,
-    toggleInfo: () => setInfoOpen((v) => !v),
+    toggleInfo,
     snapshot,
+    previous: () => step(-1),
+    next: () => step(1),
   })
 
   const loading =
@@ -136,27 +130,15 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
       aria-label={title}
       tabIndex={-1}
     >
-      <div className="mv-topbar">
-        <div>
-          <div className="mv-title">{title}</div>
-          <div className="mv-subtitle">
-            {current ? `${current.display_title} · ${currentIndex + 1} / ${files.length}` : 'Media'}
-          </div>
-        </div>
-        <div className="mv-topbar__actions">
-          <button
-            className={`mv-icon${infoOpen ? ' is-active' : ''}`}
-            onClick={() => setInfoOpen((v) => !v)}
-            aria-label="Info"
-            title="Info"
-          >
-            i
-          </button>
-          <button className="mv-icon" onClick={onClose} aria-label="Close" title="Close">
-            ×
-          </button>
-        </div>
-      </div>
+      <Topbar
+        title={title}
+        subtitle={
+          current ? `${current.display_title} · ${currentIndex + 1} / ${files.length}` : 'Media'
+        }
+        infoOpen={infoOpen}
+        onToggleInfo={toggleInfo}
+        onClose={onClose}
+      />
 
       <button
         className="mv-nav mv-nav--prev"
@@ -196,7 +178,7 @@ export function MediaViewer({ bundleId, initialFileId, onClose }: MediaViewerPro
             artworkUrl={artworkUrl}
             failed={failed}
             onError={() => {
-              if (current) setStageError({ fileId: current.id, failed: true })
+              if (current) setFailedFileId(current.id)
             }}
           />
         )}
@@ -226,8 +208,8 @@ function Stage({
 }: {
   file: FileRead
   playable: PlayableVideo | null
-  player: ReturnType<typeof usePlayer>
-  videoRef: React.RefObject<HTMLVideoElement | null>
+  player: ReturnType<typeof usePlayer>['player']
+  videoRef: (element: HTMLVideoElement | null) => void
   title: string
   artworkUrl: string
   failed: boolean
@@ -242,9 +224,9 @@ function Stage({
   if (file.media_kind === 'video' && playable?.playable && !failed) {
     return (
       <VideoStage
-        videoRef={videoRef}
         video={playable}
         player={player}
+        videoRef={videoRef}
         title={title}
         artworkUrl={artworkUrl}
         onError={onError}
@@ -273,8 +255,44 @@ function Stage({
   )
 }
 
+const Topbar = memo(function Topbar({
+  title,
+  subtitle,
+  infoOpen,
+  onToggleInfo,
+  onClose,
+}: {
+  title: string
+  subtitle: string
+  infoOpen: boolean
+  onToggleInfo: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="mv-topbar">
+      <div>
+        <div className="mv-title">{title}</div>
+        <div className="mv-subtitle">{subtitle}</div>
+      </div>
+      <div className="mv-topbar__actions">
+        <button
+          className={`mv-icon${infoOpen ? ' is-active' : ''}`}
+          onClick={onToggleInfo}
+          aria-label="Info"
+          title="Info"
+        >
+          i
+        </button>
+        <button className="mv-icon" onClick={onClose} aria-label="Close" title="Close">
+          ×
+        </button>
+      </div>
+    </div>
+  )
+})
+
 /** Scrollable filmstrip for selecting files inside the bundle. */
-function Filmstrip({
+const Filmstrip = memo(function Filmstrip({
   files,
   currentId,
   onPick,
@@ -295,15 +313,17 @@ function Filmstrip({
             onClick={() => onPick(file.id)}
             title={file.display_title}
           >
-            <span
-              className="mv-film__thumb"
-              style={
-                thumbnailable
-                  ? { backgroundImage: `url(${fileThumbnailUrl(file.bundle_id, file.id)})` }
-                  : undefined
-              }
-            >
-              {!thumbnailable && '▦'}
+            <span className="mv-film__thumb">
+              {thumbnailable ? (
+                <img
+                  src={fileThumbnailUrl(file.bundle_id, file.id)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                '▦'
+              )}
               {file.media_kind === 'video' && <span className="mv-film__type">▶</span>}
             </span>
             <span className="mv-film__name">{file.display_title}</span>
@@ -312,7 +332,7 @@ function Filmstrip({
       })}
     </div>
   )
-}
+})
 
 /** Metadata side panel for the selected file. */
 function InfoPanel({ file, playable }: { file: FileRead; playable: PlayableVideo | null }) {
@@ -366,16 +386,8 @@ function FallbackCard({
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
   const dur = formatDuration(meta.duration as number)
-  return (
-    <div className="mv-fallback" role="alert">
-      <div className="mv-fallback__icon">▦</div>
-      <strong>{heading}</strong>
-      <p>{message}</p>
-      <p className="mv-fallback__meta">
-        {file.role} · {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
-      </p>
-    </div>
-  )
+  const metaText = `${file.role} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
+  return <MediaFallback heading={heading} message={message} meta={metaText} />
 }
 
 /** Filesystem-safe-ish basename for downloaded PNG snapshots. */

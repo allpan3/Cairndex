@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 
+import { formatClock } from '../../../lib/format'
 import type { PlayerController } from './usePlayer'
-import { formatTime } from './time'
 
 /** Seek bar with buffered ranges, drag scrubbing, and an M4 preview hook. */
 export function SeekBar({ player }: { player: PlayerController }) {
@@ -71,7 +71,7 @@ export function SeekBar({ player }: { player: PlayerController }) {
       </div>
       {hover && (
         <div className="mv-seek__tip" style={{ left: hover.x }}>
-          {formatTime(hover.time)}
+          {formatClock(hover.time)}
           <span className="mv-seek__preview" data-storyboard-hook="true" />
         </div>
       )}
