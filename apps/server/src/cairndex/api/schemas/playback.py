@@ -15,6 +15,13 @@ class SubtitleTrackRead(BaseModel):
     src: str | None
 
 
+# Chapter metadata shown as seek-bar ticks
+class PlaybackChapter(BaseModel):
+    start: float
+    end: float
+    title: str | None
+
+
 class PlayableVideo(BaseModel):
     file_id: str
     display_title: str
@@ -25,6 +32,8 @@ class PlayableVideo(BaseModel):
     width: int | None
     height: int | None
     duration: float | None
+    storyboard_url: str | None
+    chapters: list[PlaybackChapter]
     subtitles: list[SubtitleTrackRead]
 
 

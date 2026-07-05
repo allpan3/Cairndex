@@ -52,6 +52,7 @@ class JobType(StrEnum):
     SCAN = "scan"
     PROBE = "probe"
     THUMBNAIL = "thumbnail"
+    STORYBOARD = "storyboard"
 
 
 class JobStatus(StrEnum):
@@ -69,7 +70,7 @@ class JobPhase(StrEnum):
 
     Phases are advisory labels surfaced in the UI, not a strict state machine:
     a scan moves through ``discovering`` → ``reconciling`` → ``grouping`` →
-    ``finalizing``; probe/thumbnail jobs report ``probing``/``thumbnailing``.
+    ``finalizing``; probe/thumbnail/storyboard jobs report their media phase.
     Stored as a plain string column so new phases never require a migration.
     """
 
@@ -78,6 +79,7 @@ class JobPhase(StrEnum):
     GROUPING = "grouping"
     PROBING = "probing"
     THUMBNAILING = "thumbnailing"
+    STORYBOARDING = "storyboarding"
     FINALIZING = "finalizing"
 
 

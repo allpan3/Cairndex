@@ -36,6 +36,32 @@ def create_job(
     return job
 
 
+# Reuse a queued job instead of queueing duplicate pending work
+def get_or_create_queued_job(
+    session: Session,
+    *,
+    library_id: str,
+    job_type: JobType,
+    payload: dict[str, Any] | None = None,
+) -> JobQueueEntry:
+    normalized_payload = payload or {}
+    stmt = select(JobQueueEntry).where(
+        JobQueueEntry.library_id == library_id,
+        JobQueueEntry.job_type == job_type,
+        JobQueueEntry.status == JobStatus.QUEUED,
+    )
+    for job in session.scalars(stmt):
+        if dict(job.payload or {}) == normalized_payload:
+            return job
+    # Select-then-insert can race; acceptable single-owner, unique guard is future work
+    return create_job(
+        session,
+        library_id=library_id,
+        job_type=job_type,
+        payload=normalized_payload,
+    )
+
+
 def get_job(session: Session, job_id: str) -> JobQueueEntry:
     job = session.get(JobQueueEntry, job_id)
     if job is None:

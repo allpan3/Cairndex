@@ -1,10 +1,10 @@
 """Library-scoped filesystem + job routes (ADR-0008).
 
 The read-only File View, raw-file serving, manual fast-add, and scan/probe/
-thumbnail job enqueueing — all scoped to one library by ``{library_id}``. File
-operations use the library content session (which resolves the library root);
-job enqueueing writes to the registry queue with the ``library_id`` so the
-worker can open the right library DB to execute.
+thumbnail/storyboard job enqueueing — all scoped to one library by
+``{library_id}``. File operations use the library content session (which
+resolves the library root); job enqueueing writes to the registry queue with the
+``library_id`` so the worker can open the right library DB to execute.
 """
 
 import mimetypes
@@ -26,7 +26,6 @@ from cairndex.services import file_view as file_view_service
 router = APIRouter(prefix="/libraries/{library_id}", tags=["library-files"])
 
 
-# --- Read-only File View -----------------------------------------------------
 @router.get("/file-view/entries", response_model=FileViewListingRead)
 def list_file_view_entries(
     db: LibrarySession,
@@ -56,7 +55,6 @@ def serve_file(db: LibrarySession, path: Annotated[str, Query()]) -> FileRespons
     return FileResponse(str(target), media_type=media_type, filename=target.name)
 
 
-# --- Manual fast-add ---------------------------------------------------------
 @router.post("/fast-add", response_model=FastAddResponse)
 def fast_add_files(payload: FastAddRequest, db: LibrarySession) -> FastAddResponse:
     result = fast_add(
@@ -73,13 +71,22 @@ def fast_add_files(payload: FastAddRequest, db: LibrarySession) -> FastAddRespon
     )
 
 
-# --- Background jobs (enqueued onto the registry queue) -----------------------
+# Enqueue a registry job, optionally reusing an equivalent queued job
 def _enqueue(
-    registry: RegistryDbSession, library_id: str, job_type: JobType, payload: dict[str, object]
+    registry: RegistryDbSession,
+    library_id: str,
+    job_type: JobType,
+    payload: dict[str, object],
+    *,
+    dedupe: bool = False,
 ) -> JobRead:
     registry_service.get_library(registry, library_id)  # 404 if unknown
-    job = job_service.create_job(
-        registry, library_id=library_id, job_type=job_type, payload=payload
+    create = job_service.get_or_create_queued_job if dedupe else job_service.create_job
+    job = create(
+        registry,
+        library_id=library_id,
+        job_type=job_type,
+        payload=payload,
     )
     return JobRead.model_validate(job)
 
@@ -91,9 +98,14 @@ def enqueue_scan(library_id: str, registry: RegistryDbSession) -> JobRead:
 
 @router.post("/jobs/probe", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def enqueue_probe(library_id: str, registry: RegistryDbSession) -> JobRead:
-    return _enqueue(registry, library_id, JobType.PROBE, {})
+    return _enqueue(registry, library_id, JobType.PROBE, {}, dedupe=True)
 
 
 @router.post("/jobs/thumbnails", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
 def enqueue_thumbnails(library_id: str, registry: RegistryDbSession) -> JobRead:
-    return _enqueue(registry, library_id, JobType.THUMBNAIL, {})
+    return _enqueue(registry, library_id, JobType.THUMBNAIL, {}, dedupe=True)
+
+
+@router.post("/jobs/storyboards", response_model=JobRead, status_code=status.HTTP_202_ACCEPTED)
+def enqueue_storyboards(library_id: str, registry: RegistryDbSession) -> JobRead:
+    return _enqueue(registry, library_id, JobType.STORYBOARD, {}, dedupe=True)
