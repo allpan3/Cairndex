@@ -80,6 +80,8 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_DATA_DIR` | `/data` | Server-local app-data dir (`registry.db`, backups, runtime state). |
 | `CAIRNDEX_STATIC_DIR` | `/app/web` | Built SPA dir the backend serves. Unset -> backend serves API only (dev). |
 | `CAIRNDEX_WORKER_ENABLED` | `true` | Run the in-process scan/probe/thumbnail worker. |
+| `CAIRNDEX_STORYBOARDS` | `true` | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards. |
+| `CAIRNDEX_STORYBOARD_MIN_DURATION` | `60` | Minimum probed video duration, in seconds, before storyboard generation is attempted. |
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
 `CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
