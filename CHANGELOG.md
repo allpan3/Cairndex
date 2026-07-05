@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Unified media viewer + custom direct-play video controls (Plan 1 M2).**
+  Bundle double-clicks, the inspector play affordance, and bundle-album file
+  opens now use a fullscreen `MediaViewer` with bundle filmstrip navigation,
+  previous/next controls, info panel toggle, simple image stage, unsupported /
+  missing-file fallback cards, and a hand-built video player. Direct-play video
+  now has auto-hiding controls, buffered seek/scrub UI with hover time hook for
+  future storyboards, play/pause, volume/mute, 0.25–3× speed, external-subtitle
+  on/off toggle, PiP, viewer-root fullscreen, snapshot PNG download,
+  MediaSession metadata/actions, and the M2 keyboard map. Volume, mute, speed,
+  and subtitle-on state persist in the existing `cairndex.prefs` localStorage
+  object. No backend API or OpenAPI surface changed.
 - **Client platform & media experience plans (docs only).** New planning suite
   under `docs/plans/` — a first-class web video player & image viewer
   (storyboard scrubbing, embedded-subtitle extraction, watch progress, image

@@ -1,5 +1,44 @@
 # Project status
 
+## Latest session: web media viewer M2
+
+Branch `feat/media-viewer`. Implemented plan 1 M2's direct-play web viewer
+slice without new runtime dependencies and without backend/API changes:
+
+- Added `apps/web/src/app/viewer/MediaViewer.tsx` plus `VideoStage`,
+  `ImageStage`, and `viewer/player/*` (`PlaybackEngine`/`NativeEngine`,
+  `usePlayer`, `ControlBar`, `SeekBar`, shortcuts, idle-hide). The `HlsEngine`
+  slot remains a later M8 extension.
+- Replaced the old bundle playback modal and bundle-file lightbox entry points:
+  bundle double-click, the inspector play affordance, and bundle-album file
+  double-click now open the unified viewer. `Player.tsx` and `FileViewer.tsx`
+  were removed.
+- Direct-play videos now use custom auto-hiding controls, root fullscreen,
+  PiP, MediaSession metadata/actions, snapshot PNG download, speed 0.25–3x
+  with pitch preservation, volume/mute, buffered seek/scrub UI, subtitle
+  on/off over existing external VTT tracks, and the M2 keyboard map scoped to
+  the open viewer.
+- Player preferences (`volume`, `muted`, `rate`, `subtitlesOn`) persist inside
+  the existing `cairndex.prefs` localStorage object with legacy-default
+  merging.
+- The viewer handles loading, empty bundles, query errors, missing files,
+  unsupported/unplayable videos, and image preview errors with structured
+  fallback states. Filmstrip navigation is horizontally scrollable for larger
+  bundles.
+- File View still uses `FileEntryViewer` with path-based URLs and native
+  browser controls. Follow-up: migrate File View onto the same viewer/stage
+  primitives when plan 1 reaches the path-based File View completion work.
+
+No Pydantic/OpenAPI surface changed, so OpenAPI and
+`apps/web/src/api/schema.d.ts` were not regenerated. Next recommended task for
+the media-player track: plan 1 M3 (embedded text-subtitle extraction, subtitle
+track menu/dual subtitles, and subtitle styling/timing controls).
+
+Verification: frontend `npm run lint`, `npm run format:check`,
+`npm run typecheck`, `npm run test` (18 tests), `npm run build`, and
+`npm run test:e2e` (40 Playwright tests) passed. Backend gates were not run
+because this slice did not touch backend code.
+
 ## Latest session: client platform & media experience plans (docs only)
 
 Branch `docs/client-platform-plans` (repo renamed VaultLeaf → Cairndex; this is
@@ -614,16 +653,18 @@ dialogs).
 
 ## Next recommended tasks
 
-1. Add richer grouping review editing: merge/split/reclassify/rename before
+1. Plan 1 M3: embedded text-subtitle extraction plus subtitle track menu, dual
+   subtitles, and subtitle styling/timing controls.
+2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Continue File View planning toward guarded write mode and safe desktop-native
+3. Continue File View planning toward guarded write mode and safe desktop-native
    handoff. *(Planning now done: `docs/plans/04-library-write-mode.md` +
    proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)*
-3. Consider relevance ranking for text search (results currently keep the active
+4. Consider relevance ranking for text search (results currently keep the active
    sort).
-4. Consider hardening the passphrase lock for wider exposure (rate limiting,
+5. Consider hardening the passphrase lock for wider exposure (rate limiting,
    lockout, persistent sessions) if it ever needs to face more than a trusted LAN.
-5. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
+6. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
    browser — breadcrumb + count + search + sort + layout + zoom; single-click
    selects and drives the inspector, double-click navigates/opens):
    - File search is currently a **client-side name filter of the loaded
