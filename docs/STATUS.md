@@ -79,6 +79,45 @@ confirmed the real stream advanced to `0:01 / 0:04` with persisted
 `/private/tmp/cairndex-media-viewer-demo.png`. Backend gates were not run
 because this slice did not touch backend code.
 
+## Merged: media-player M1 probe enrichment (#1)
+
+Branch `feat/probe-enrichment`; latest commit subject:
+`feat: enrich media probe metadata`. Implemented plan 1 M1 server probe
+enrichment for the first-class media-player foundation:
+
+- `ffprobe` now runs with `-show_chapters` and stores additive
+  `AssetFile.tech_metadata` keys: `audio_streams` (all audio streams with
+  index/codec/channels/language/title/default), `subtitle_streams`
+  (index/codec/language/title/default/forced), `chapters` (float-second
+  start/end/title), `hdr` (`hdr10`/`hlg`/`dv`/`null`), `bit_depth`, and
+  `probe_version`.
+- Existing metadata keys used by current playback and browse flows remain
+  present and compatible: `width`, `height`, `duration`, `video_codec`,
+  `audio_codec`, `embedded_subtitles`, etc. `embedded_subtitles` remains in the
+  legacy shape consumed by embedded subtitle-track sync.
+- The existing **Collect metadata** probe job still uses the `probe` job type but
+  keeps its normal empty payload. Routine probes skip only rows whose
+  `tech_metadata.probe_version` matches the current probe version, so rows
+  probed before M1 refresh once and future Updates stay incremental. Internal
+  callers can still use `probe_library(..., reprobe=True)` for explicit full
+  re-probes.
+- No database schema, migration, OpenAPI, or frontend API type changes were
+  needed because `tech_metadata` remains an opaque JSON dictionary on the
+  existing API surface.
+
+Tests/verification: backend `uv run ruff check`, `uv run ruff format --check`,
+`uv run mypy src`, and `uv run pytest` are clean (`301 passed`, one existing
+Starlette/httpx deprecation warning). Focused tests cover canned HDR
+classification, generated multi-audio/subtitled/chaptered media, the existing
+Collect metadata version-refresh path, current-version incremental skips, and
+legacy `tech_metadata` playback-manifest degradation. Manual verification probed
+a throwaway generated library and showed the new keys on a
+multi-audio/chaptered/subtitled MKV.
+
+Known issues: none for M1. M2 has since merged; next recommended media-player
+task remains plan 1 M3 (embedded text-subtitle extraction, subtitle track menu,
+dual subtitles, and subtitle styling/timing controls).
+
 ## Latest session: client platform & media experience plans (docs only)
 
 Branch `docs/client-platform-plans` (repo renamed VaultLeaf → Cairndex; this is
