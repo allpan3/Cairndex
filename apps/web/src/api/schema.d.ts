@@ -719,6 +719,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/files/{file_id}/storyboard.vtt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storyboard Vtt
+         * @description Serve a cached storyboard WebVTT index, never generating on request.
+         */
+        get: operations["storyboard_vtt_api_v1_libraries__library_id__files__file_id__storyboard_vtt_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/storyboard/{sheet_name}.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storyboard Sheet
+         * @description Serve a cached storyboard sheet, never generating on request.
+         */
+        get: operations["storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/files/{file_id}/stream": {
         parameters: {
             query?: never;
@@ -869,6 +909,23 @@ export interface paths {
         put?: never;
         /** Enqueue Scan */
         post: operations["enqueue_scan_api_v1_libraries__library_id__jobs_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/jobs/storyboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue Storyboards */
+        post: operations["enqueue_storyboards_api_v1_libraries__library_id__jobs_storyboards_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1937,7 +1994,7 @@ export interface components {
          * @description Kind of background job (AGENTS.md §4.10/§5.2).
          * @enum {string}
          */
-        JobType: "scan" | "probe" | "thumbnail";
+        JobType: "scan" | "probe" | "thumbnail" | "storyboard";
         /**
          * LibraryCreate
          * @description Create a brand-new library package under ``root_path``.
@@ -2137,6 +2194,8 @@ export interface components {
         };
         /** PlayableVideo */
         PlayableVideo: {
+            /** Chapters */
+            chapters: components["schemas"]["PlaybackChapter"][];
             /** Display Title */
             display_title: string;
             /** Duration */
@@ -2151,12 +2210,23 @@ export interface components {
             playable: boolean;
             /** Reason */
             reason: string;
+            /** Storyboard Url */
+            storyboard_url: string | null;
             /** Stream Url */
             stream_url: string;
             /** Subtitles */
             subtitles: components["schemas"]["SubtitleTrackRead"][];
             /** Width */
             width: number | null;
+        };
+        /** PlaybackChapter */
+        PlaybackChapter: {
+            /** End */
+            end: number;
+            /** Start */
+            start: number;
+            /** Title */
+            title: string | null;
         };
         /** PlaybackManifest */
         PlaybackManifest: {
@@ -4178,6 +4248,75 @@ export interface operations {
             };
         };
     };
+    storyboard_vtt_api_v1_libraries__library_id__files__file_id__storyboard_vtt_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                sheet_name: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     stream_file_api_v1_libraries__library_id__files__file_id__stream_get: {
         parameters: {
             query?: never;
@@ -4456,6 +4595,37 @@ export interface operations {
         };
     };
     enqueue_scan_api_v1_libraries__library_id__jobs_scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_storyboards_api_v1_libraries__library_id__jobs_storyboards_post: {
         parameters: {
             query?: never;
             header?: never;

@@ -338,6 +338,8 @@ export const enqueueProbe = () => send<JobRead>(`${lib()}/jobs/probe`, 'POST')
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
+export const enqueueStoryboards = () => send<JobRead>(`${lib()}/jobs/storyboards`, 'POST')
+
 /** Fetch the current status/result for a background job. */
 export const fetchJob = (id: string, signal?: AbortSignal) =>
   getJson<JobRead>(`/api/v1/jobs/${id}`, signal)

@@ -46,6 +46,7 @@ import {
   applyGroupingPlan,
   enqueueProbe,
   enqueueScan,
+  enqueueStoryboards,
   enqueueThumbnails,
   fetchAuthStatus,
   fetchJob,
@@ -117,6 +118,16 @@ async function waitForJob(job: JobRead, onProgress?: JobProgressFn): Promise<Job
   return current
 }
 
+// Watch a non-blocking job while keeping terminal failures visible in progress UI
+async function watchOptionalJob(job: Promise<JobRead>, onProgress?: JobProgressFn): Promise<void> {
+  try {
+    await waitForJob(await job, onProgress)
+    onProgress?.(null)
+  } catch {
+    // waitForJob already emitted the terminal failed/cancelled snapshot
+  }
+}
+
 // Invalidate all library surfaces whose content changes after a maintenance job
 function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
@@ -130,6 +141,7 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     'grouping-plan',
     'bundle',
     'bundle-files',
+    'playback',
   ])
     qc.invalidateQueries({ queryKey: [key] })
 }
@@ -302,7 +314,7 @@ export function useScan(options: MaintenanceOptions = {}) {
   })
 }
 
-/** Enqueue the primary library update flow: scan, grouping suggestions, then metadata probe */
+/** Enqueue the primary library update flow: scan, grouping suggestions, then probe */
 export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
@@ -314,8 +326,11 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
     onSuccess: (job) => {
       invalidateLibraryContent(qc)
       notifyGroupingPlan(job, options.onGroupingPlan)
+      void watchOptionalJob(enqueueStoryboards(), options.onProgress)
     },
-    onSettled: () => options.onProgress?.(null),
+    onSettled: (_data, error) => {
+      if (error) options.onProgress?.(null)
+    },
   })
 }
 
