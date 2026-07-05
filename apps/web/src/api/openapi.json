@@ -2143,7 +2143,8 @@
         "enum": [
           "scan",
           "probe",
-          "thumbnail"
+          "thumbnail",
+          "storyboard"
         ],
         "title": "JobType",
         "type": "string"
@@ -2705,6 +2706,13 @@
       },
       "PlayableVideo": {
         "properties": {
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybackChapter"
+            },
+            "title": "Chapters",
+            "type": "array"
+          },
           "display_title": {
             "title": "Display Title",
             "type": "string"
@@ -2747,6 +2755,17 @@
             "title": "Reason",
             "type": "string"
           },
+          "storyboard_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storyboard Url"
+          },
           "stream_url": {
             "title": "Stream Url",
             "type": "string"
@@ -2780,9 +2799,41 @@
           "width",
           "height",
           "duration",
+          "storyboard_url",
+          "chapters",
           "subtitles"
         ],
         "title": "PlayableVideo",
+        "type": "object"
+      },
+      "PlaybackChapter": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "title"
+        ],
+        "title": "PlaybackChapter",
         "type": "object"
       },
       "PlaybackManifest": {
@@ -6984,6 +7035,147 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/files/{file_id}/storyboard.vtt": {
+      "get": {
+        "description": "Serve a cached storyboard WebVTT index, never generating on request.",
+        "operationId": "storyboard_vtt_api_v1_libraries__library_id__files__file_id__storyboard_vtt_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Storyboard Vtt",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/storyboard/{sheet_name}.jpg": {
+      "get": {
+        "description": "Serve a cached storyboard sheet, never generating on request.",
+        "operationId": "storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sheet_name",
+            "required": true,
+            "schema": {
+              "title": "Sheet Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Storyboard Sheet",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/files/{file_id}/stream": {
       "get": {
         "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).",
@@ -7536,6 +7728,48 @@
           }
         },
         "summary": "Enqueue Scan",
+        "tags": [
+          "library-files"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/jobs/storyboards": {
+      "post": {
+        "operationId": "enqueue_storyboards_api_v1_libraries__library_id__jobs_storyboards_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enqueue Storyboards",
         "tags": [
           "library-files"
         ]

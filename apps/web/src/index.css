@@ -2464,8 +2464,20 @@ code {
   left: 0;
   background: var(--accent);
 }
+.mv-seek__chapter-tick {
+  position: absolute;
+  z-index: 1;
+  top: 2px;
+  width: 2px;
+  height: 9px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.72);
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.32);
+}
 .mv-seek__thumb {
   position: absolute;
+  z-index: 2;
   top: 1px;
   width: 11px;
   height: 11px;
@@ -2478,16 +2490,39 @@ code {
   position: fixed;
   bottom: 74px;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   border-radius: 6px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
-.mv-seek__preview {
-  display: none;
+.mv-seek__tip-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.mv-seek__chapter-title {
+  max-width: 220px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.74);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mv-storyboard-preview {
+  overflow: hidden;
+  max-width: min(320px, calc(100vw - 36px));
+  max-height: min(240px, calc(100vh - 180px));
+  border-radius: 4px;
+  background-repeat: no-repeat;
+  background-color: #050609;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
 .mv-info {
   position: absolute;
@@ -2721,6 +2756,16 @@ code {
 .job-progress__track--indeterminate .job-progress__bar {
   width: 40%;
   animation: job-progress-indeterminate 1.1s ease-in-out infinite;
+}
+.job-progress__track--error .job-progress__bar {
+  background: var(--error);
+  animation: none;
+}
+.job-progress__error {
+  color: var(--error);
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 @keyframes job-progress-indeterminate {
   0% {
