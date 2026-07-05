@@ -9,6 +9,7 @@ counted and skipped, never fatal.
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,13 +18,18 @@ from cairndex.core.errors import NotFoundError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, MediaKind
-from cairndex.media.ffprobe import ProbeError, normalize_metadata, run_ffprobe
+from cairndex.media.ffprobe import PROBE_VERSION, ProbeError, normalize_metadata, run_ffprobe
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.services.subtitles import sync_embedded_tracks
 
 ProgressFn = Callable[[int, int | None], None]
 _PROBEABLE = (MediaKind.VIDEO, MediaKind.IMAGE, MediaKind.AUDIO)
+
+
+# Current-version metadata can be skipped during routine incremental probes
+def _is_current_probe_metadata(metadata: dict[str, Any] | None) -> bool:
+    return metadata is not None and metadata.get("probe_version") == PROBE_VERSION
 
 
 @dataclass(frozen=True)
@@ -65,7 +71,7 @@ def probe_library(
     probed = skipped = failed = 0
 
     for index, asset_file in enumerate(files, start=1):
-        if asset_file.tech_metadata is not None and not reprobe:
+        if not reprobe and _is_current_probe_metadata(asset_file.tech_metadata):
             skipped += 1
         else:
             try:
