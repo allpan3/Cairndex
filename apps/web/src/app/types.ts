@@ -23,6 +23,13 @@ export interface SortPref {
   order: SortOrder
 }
 
+export interface PlayerPrefs {
+  volume: number
+  muted: boolean
+  rate: number
+  subtitlesOn: boolean
+}
+
 export interface BrowsePrefs {
   layout: LayoutMode
   zoom: number // target card width in px (grid/justified)
@@ -35,6 +42,14 @@ export interface BrowsePrefs {
   // everywhere.
   sortScope: 'global' | 'collection'
   collectionSorts: Record<string, SortPref>
+  player: PlayerPrefs
+}
+
+export const DEFAULT_PLAYER_PREFS: PlayerPrefs = {
+  volume: 0.85,
+  muted: false,
+  rate: 1,
+  subtitlesOn: true,
 }
 
 export const DEFAULT_PREFS: BrowsePrefs = {
@@ -45,6 +60,7 @@ export const DEFAULT_PREFS: BrowsePrefs = {
   order: 'asc',
   sortScope: 'global',
   collectionSorts: {},
+  player: DEFAULT_PLAYER_PREFS,
 }
 
 export interface SystemViewDef {

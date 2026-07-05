@@ -4,7 +4,6 @@ import { ConflictError, type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
 import { CollectionPicker } from './CollectionPicker'
-import { Player } from './Player'
 import { TagEditor } from './TagEditor'
 
 /** Shown when an edit was rejected because the bundle changed elsewhere
@@ -40,10 +39,13 @@ export function StarRating({ value, onChange }: { value: number; onChange: (v: n
 export function Inspector({
   bundleId,
   onAddFiles,
+  onPlayBundle,
 }: {
   bundleId: string | null
   /** Open the "Add files" manual bundling dialog for this bundle. */
   onAddFiles?: (bundleId: string) => void
+  /** Open the unified media viewer for this bundle. */
+  onPlayBundle?: (bundleId: string) => void
 }) {
   const { data: bundle } = useBundle(bundleId)
 
@@ -63,15 +65,24 @@ export function Inspector({
   }
   // Keyed by id so draft fields re-initialize when the selection changes
   // (no setState-in-effect needed).
-  return <BundleEditor key={bundle.id} bundle={bundle} onAddFiles={onAddFiles} />
+  return (
+    <BundleEditor
+      key={bundle.id}
+      bundle={bundle}
+      onAddFiles={onAddFiles}
+      onPlayBundle={onPlayBundle}
+    />
+  )
 }
 
 function BundleEditor({
   bundle,
   onAddFiles,
+  onPlayBundle,
 }: {
   bundle: BundleRead
   onAddFiles?: (bundleId: string) => void
+  onPlayBundle?: (bundleId: string) => void
 }) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
@@ -79,7 +90,6 @@ function BundleEditor({
 
   const [title, setTitle] = useState(bundle.title ?? '')
   const [note, setNote] = useState(bundle.note ?? '')
-  const [playing, setPlaying] = useState(false)
 
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
@@ -97,7 +107,7 @@ function BundleEditor({
         {hasVideo && (
           <button
             className="inspector__play"
-            onClick={() => setPlaying(true)}
+            onClick={() => onPlayBundle?.(bundleId)}
             aria-label="Play"
             title="Play"
           >
@@ -105,7 +115,6 @@ function BundleEditor({
           </button>
         )}
       </div>
-      {playing && <Player bundleId={bundleId} onClose={() => setPlaying(false)} />}
 
       <ConflictNotice error={update.error} />
 

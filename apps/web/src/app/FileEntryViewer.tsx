@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { type FileViewEntry, fileViewContentUrl } from '../api/client'
 import { formatBytes } from '../lib/format'
+import { MediaFallback } from './viewer/MediaFallback'
 
 /**
- * Fullscreen lightbox for the read-only File View. Unlike `FileViewer` (which
- * works on bundle `FileRead`s served by file id), this previews a physical
+ * Fullscreen lightbox for the read-only File View. This previews a physical
  * filesystem entry by its library-relative path — files here need not be linked
  * into any bundle. Images and video render inline; anything the browser can't
  * show falls back to an info card. Arrow keys / chevrons step through the
@@ -118,17 +118,14 @@ function ViewerBody({ file }: { file: FileViewEntry }) {
     )
   }
   return (
-    <div className="viewer__info" role="alert">
-      <div className="viewer__info-icon">▦</div>
-      <strong>{file.name}</strong>
-      <p>
-        {failed
+    <MediaFallback
+      heading={file.name}
+      message={
+        failed
           ? "This file can't be shown in the browser."
-          : `${file.media_kind ?? 'This'} files can't be previewed here.`}
-      </p>
-      <p className="viewer__info-meta">
-        {(file.extension ?? 'file').toUpperCase()} · {formatBytes(file.size_bytes)}
-      </p>
-    </div>
+          : `${file.media_kind ?? 'This'} files can't be previewed here.`
+      }
+      meta={`${(file.extension ?? 'file').toUpperCase()} · ${formatBytes(file.size_bytes)}`}
+    />
   )
 }

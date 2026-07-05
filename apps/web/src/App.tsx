@@ -70,11 +70,13 @@ import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
+import { MediaViewer } from './app/viewer/MediaViewer'
 import {
   DEFAULT_PREFS,
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
+  type PlayerPrefs,
   type Selection,
   type SortPref,
 } from './app/types'
@@ -278,10 +280,29 @@ function Workspace({
   canLock,
   onLock,
 }: WorkspaceProps) {
-  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS)
+  const [storedPrefs, setPrefs] = usePersistentState<BrowsePrefs>('cairndex.prefs', DEFAULT_PREFS, {
+    debounceMs: 300,
+  })
   // Merge in defaults so prefs persisted before newer fields existed
   // (sortScope/collectionSorts) don't read back as undefined.
-  const prefs = useMemo(() => ({ ...DEFAULT_PREFS, ...storedPrefs }), [storedPrefs])
+  const prefs = useMemo(
+    () => ({
+      ...DEFAULT_PREFS,
+      ...storedPrefs,
+      player: { ...DEFAULT_PREFS.player, ...storedPrefs.player },
+    }),
+    [storedPrefs],
+  )
+  const setPlayerPrefs = useCallback(
+    (updater: React.SetStateAction<PlayerPrefs>) => {
+      setPrefs((previous) => {
+        const previousPlayer = { ...DEFAULT_PREFS.player, ...previous.player }
+        const player = typeof updater === 'function' ? updater(previousPlayer) : updater
+        return { ...DEFAULT_PREFS, ...previous, player }
+      })
+    },
+    [setPrefs],
+  )
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
 
@@ -300,6 +321,7 @@ function Workspace({
   // sidebar rows can accept cross-surface drops (reparent / move into collection).
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
+  const [viewerBundleId, setViewerBundleId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
@@ -586,7 +608,7 @@ function Workspace({
     setSelectedIds(new Set([id]))
     setActiveId(id)
     setSelectedCollectionIds(new Set())
-    setOpenBundleId(id)
+    setViewerBundleId(id)
   }, [])
 
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
@@ -662,7 +684,17 @@ function Workspace({
         setSelectedIds(new Set([id]))
         setActiveId(id)
       }
-      const items: MenuEntry[] = [{ label: 'Open', onClick: () => open(id), disabled: n > 1 }]
+      const items: MenuEntry[] = [
+        { label: 'Play / View', onClick: () => open(id), disabled: n > 1 },
+        {
+          label: 'Open Bundle',
+          onClick: () => {
+            setOpenBundleId(id)
+            setViewerBundleId(null)
+          },
+          disabled: n > 1,
+        },
+      ]
       if (selection.collectionId) {
         const collectionId = selection.collectionId
         items.push({
@@ -739,10 +771,11 @@ function Workspace({
           setDeletingBundles(null)
           clearSelection()
           if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
+          if (viewerBundleId && targets.includes(viewerBundleId)) setViewerBundleId(null)
         },
       })
     },
-    [deletingBundles, deleteBundles, clearSelection, openBundleId],
+    [deletingBundles, deleteBundles, clearSelection, openBundleId, viewerBundleId],
   )
 
   // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
@@ -1047,6 +1080,8 @@ function Workspace({
             {openBundleId ? (
               <BundleAlbum
                 bundleId={openBundleId}
+                playerPrefs={prefs.player}
+                onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
@@ -1181,13 +1216,26 @@ function Workspace({
           onClear={clearSelection}
         />
       ) : (
-        <Inspector bundleId={activeId} onAddFiles={(id) => setAddFilesBundleId(id)} />
+        <Inspector
+          bundleId={activeId}
+          onAddFiles={(id) => setAddFilesBundleId(id)}
+          onPlayBundle={(id) => setViewerBundleId(id)}
+        />
       )}
 
       <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
       <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
 
       <ContextMenu state={menu.state} onClose={menu.close} />
+
+      {viewerBundleId && (
+        <MediaViewer
+          bundleId={viewerBundleId}
+          playerPrefs={prefs.player}
+          onPlayerPrefs={setPlayerPrefs}
+          onClose={() => setViewerBundleId(null)}
+        />
+      )}
 
       {deletingBundles && (
         <DeleteBundlesDialog
