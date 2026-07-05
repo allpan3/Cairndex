@@ -10,6 +10,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Unified media viewer + custom direct-play video controls (Plan 1 M2).**
+  Bundle double-clicks, the inspector play affordance, and bundle-album file
+  opens now use a fullscreen `MediaViewer` with previous/next navigation,
+  previous/next controls, info panel toggle, simple image stage, unsupported /
+  missing-file fallback cards, and a hand-built video player. Direct-play video
+  now has auto-hiding controls, buffered seek/scrub UI with hover time hook for
+  future storyboards, play/pause, volume/mute, 0.25–3× speed, external-subtitle
+  on/off toggle, PiP, viewer-root fullscreen, snapshot PNG download,
+  MediaSession metadata/actions, and the M2 keyboard map. Volume, mute, speed,
+  and subtitle-on state persist in the existing `cairndex.prefs` localStorage
+  object. No backend API or OpenAPI surface changed.
+- **Media viewer playback regression coverage.** The M2 Playwright coverage now
+  includes an unmocked tiny ffmpeg-generated MP4 smoke test that verifies real
+  `currentTime` advancement and a visible clock update, with a clear skip when
+  ffmpeg is unavailable.
 - **Client platform & media experience plans (docs only).** New planning suite
   under `docs/plans/` — a first-class web video player & image viewer
   (storyboard scrubbing, embedded-subtitle extraction, watch progress, image
@@ -84,6 +99,11 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Media viewer preferences and dev-server tooling.** Player preference updates
+  now flow through the single app-level `cairndex.prefs` writer with functional
+  updates, debounced localStorage persistence, and unload/pointer-up flushes.
+  The Vite dev server honors `PORT` when provided, and the Claude launch config
+  uses automatic port assignment.
 - **Sidebar collection tree redesigned** (Eagle-style): compact rows with a slim
   caret close to the edge, and **hierarchy guide rails** — a vertical rule per
   ancestor level plus an elbow connector that bends into the last child of a
@@ -453,6 +473,17 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- **Media viewer M2 review fixes.** Cold opens now bind the native video engine
+  through a callback-ref/state mount path, so listener attachment, duration/time
+  updates, play state, and persisted volume/mute/rate are applied when the video
+  element mounts or remounts. Subtitle tracks share one filtered source list,
+  select native text tracks by `<track>` element identity, and honor default
+  tracks. Shortcuts are scoped to the focused viewer root, `Esc` exits
+  fullscreen before closing, arrow keys navigate files when no playable video is
+  active, seek/frame-step read live media time, the inline file filmstrip was
+  removed to avoid control-bar overlap, the center play overlay was removed,
+  shared fallback cards remove duplicated viewer/File View states, and SVG icons
+  replaced emoji control glyphs.
 - **The marquee selection box no longer sticks after a drag.** In a
   non-reorderable list view a row is still draggable (to move bundles into a
   collection); starting a native drag swallowed the `mouseup` that ends the

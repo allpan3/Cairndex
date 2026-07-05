@@ -1,5 +1,84 @@
 # Project status
 
+## Latest session: web media viewer M2
+
+Branch `feat/media-viewer`. Implemented plan 1 M2's direct-play web viewer
+slice without new runtime dependencies and without backend/API changes:
+
+- Added `apps/web/src/app/viewer/MediaViewer.tsx` plus `VideoStage`,
+  `ImageStage`, and `viewer/player/*` (`PlaybackEngine`/`NativeEngine`,
+  `usePlayer`, `ControlBar`, `SeekBar`, shortcuts, idle-hide). The `HlsEngine`
+  slot remains a later M8 extension.
+- Replaced the old bundle playback modal and bundle-file lightbox entry points:
+  bundle double-click, the inspector play affordance, and bundle-album file
+  double-click now open the unified viewer. `Player.tsx` and `FileViewer.tsx`
+  were removed.
+- Direct-play videos now use custom auto-hiding controls, root fullscreen,
+  PiP, MediaSession metadata/actions, snapshot PNG download, speed 0.25–3x
+  with pitch preservation, volume/mute, buffered seek/scrub UI, subtitle
+  on/off over existing external VTT tracks, and the M2 keyboard map scoped to
+  the open viewer.
+- Player preferences (`volume`, `muted`, `rate`, `subtitlesOn`) persist inside
+  the existing `cairndex.prefs` localStorage object with legacy-default
+  merging. Review fix pass: Workspace/App remains the single prefs writer,
+  player updates are functional so same-tick writes compose, localStorage writes
+  are debounced and flushed on pointer-up/page unload, and raising volume
+  un-mutes consistently from keyboard or slider paths.
+- The viewer handles loading, empty bundles, query errors, missing files,
+  unsupported/unplayable videos, and image preview errors with structured
+  fallback states. The inline bottom file filmstrip was removed after owner
+  review because it overlapped the video control bar; current M2 navigation is
+  previous/next only.
+- Review fix pass hardened the native player mount path: `usePlayer` now keys
+  engine creation, listener attachment, and persisted volume/mute/rate
+  application on the actual `<video>` element identity; controller commands read
+  live media time where needed; `PlaybackEngine` exposes an `on(event, cb)`
+  listener seam for the future M8 HLS engine; MediaSession commands use refs
+  while metadata depends only on title/artwork.
+- Review fix pass also scoped shortcuts to the focused viewer root, made `Esc`
+  exit fullscreen before closing, lets left/right step files when no playable
+  video is active, shares one filtered subtitle source list with native
+  `<track>` identity/default-track selection, uses shared fallback cards for
+  Media Viewer and File View, and replaced emoji control glyphs with SVG icons.
+- Reviewer verification pass (live, against the local Demo library): cold-cache
+  open shows a live clock/seek bar/play state (the original mount-race is
+  fixed); player prefs survive subsequent browse-pref writes; muted slider
+  drags land exactly and unmute; image files arrow-step between bundle files;
+  Esc closes the viewer when not fullscreen (entering fullscreen can't be
+  exercised in the headless preview — that branch is code- and unit-test
+  verified; worth one manual spot check). One residual bug found and fixed in
+  the same pass: Chromium's automatic text-track selection could flip a
+  second language to `showing` after its cues loaded, stacking two subtitle
+  lines on initial open — `VideoStage` now re-asserts track modes on each
+  `<track>` load event (verified live on the two-subtitle DeepOcean bundle:
+  only the selected track shows, and disabled tracks skip their cue fetch).
+- File View still uses `FileEntryViewer` with path-based URLs and native
+  browser controls, but now shares the fallback card component. Follow-up:
+  migrate File View onto the same viewer/stage primitives when plan 1 reaches
+  the path-based File View completion work.
+- Follow-up recorded in plan 1: replace the removed inline file list with an
+  expandable bundle-files side panel, and expand the right-side metadata panel
+  into a first-class file/bundle metadata drawer.
+- Dev tooling: `apps/web/vite.config.ts` honors a `PORT` environment override,
+  and `.claude/launch.json` uses automatic port assignment.
+
+No Pydantic/OpenAPI surface changed, so OpenAPI and
+`apps/web/src/api/schema.d.ts` were not regenerated. Next recommended task for
+the media-player track: plan 1 M3 (embedded text-subtitle extraction, subtitle
+track menu/dual subtitles, and subtitle styling/timing controls).
+
+Verification: frontend `npm run lint`, `npm run format:check`,
+`npm run typecheck`, `npm run test` (18 tests), `npm run build`, and
+`npm run test:e2e` (41 Playwright tests) passed. Player e2e now includes an
+unmocked tiny ffmpeg-generated MP4 smoke test that verifies real media time and
+the visible clock advance; it skips with a clear message when ffmpeg is
+unavailable. Manual verification against the local Demo library
+(`/Users/owner/DemoLibrary`) used a cold browser page on `trailer_neon` and
+confirmed the real stream advanced to `0:01 / 0:04` with persisted
+`volume=0.5`, `muted=true`, and `rate=1.25`; screenshot captured at
+`/private/tmp/cairndex-media-viewer-demo.png`. Backend gates were not run
+because this slice did not touch backend code.
+
 ## Latest session: client platform & media experience plans (docs only)
 
 Branch `docs/client-platform-plans` (repo renamed VaultLeaf → Cairndex; this is
@@ -614,16 +693,18 @@ dialogs).
 
 ## Next recommended tasks
 
-1. Add richer grouping review editing: merge/split/reclassify/rename before
+1. Plan 1 M3: embedded text-subtitle extraction plus subtitle track menu, dual
+   subtitles, and subtitle styling/timing controls.
+2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-2. Continue File View planning toward guarded write mode and safe desktop-native
+3. Continue File View planning toward guarded write mode and safe desktop-native
    handoff. *(Planning now done: `docs/plans/04-library-write-mode.md` +
    proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)*
-3. Consider relevance ranking for text search (results currently keep the active
+4. Consider relevance ranking for text search (results currently keep the active
    sort).
-4. Consider hardening the passphrase lock for wider exposure (rate limiting,
+5. Consider hardening the passphrase lock for wider exposure (rate limiting,
    lockout, persistent sessions) if it ever needs to face more than a trusted LAN.
-5. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
+6. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
    browser — breadcrumb + count + search + sort + layout + zoom; single-click
    selects and drives the inspector, double-click navigates/opens):
    - File search is currently a **client-side name filter of the loaded

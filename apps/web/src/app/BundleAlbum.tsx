@@ -4,24 +4,29 @@ import { type FileRead, fileThumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles } from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import { ContextMenu } from './ContextMenu'
-import { FileViewer } from './FileViewer'
 import { useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
+import { MediaViewer } from './viewer/MediaViewer'
+import type { PlayerPrefs } from './types'
 
 /**
  * Inline "album" view: replaces the bundle grid in the center pane with the
  * files inside one opened bundle. Single-click selects a file (drag-select and
- * Shift-range work too); double-click opens the fullscreen FileViewer. The right
+ * Shift-range work too); double-click opens the fullscreen MediaViewer. The right
  * inspector keeps showing the *bundle* info — file selection here is local. A
  * back breadcrumb returns to the library. Right-clicking a file can locate it in
  * the File Browser.
  */
 export function BundleAlbum({
   bundleId,
+  playerPrefs,
+  onPlayerPrefs,
   onBack,
   onLocateFile,
 }: {
   bundleId: string
+  playerPrefs: PlayerPrefs
+  onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onBack: () => void
   // Jump to the File Browser at this file's directory, selecting it.
   onLocateFile?: (relativePath: string) => void
@@ -161,10 +166,11 @@ export function BundleAlbum({
       <ContextMenu state={menu.state} onClose={menu.close} />
 
       {viewing !== null && (
-        <FileViewer
-          files={files}
-          index={viewing}
-          onIndex={setViewing}
+        <MediaViewer
+          bundleId={bundleId}
+          initialFileId={files[viewing]?.id}
+          playerPrefs={playerPrefs}
+          onPlayerPrefs={onPlayerPrefs}
           onClose={() => setViewing(null)}
         />
       )}
