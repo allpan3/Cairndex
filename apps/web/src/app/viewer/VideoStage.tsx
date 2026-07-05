@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 
 import type { PlayableVideo } from '../../api/client'
-import { IconPlay } from '../icons'
 import type { PlayerController } from './player/usePlayer'
 
 interface VideoStageProps {
@@ -103,11 +102,6 @@ export function VideoStage({
           />
         ))}
       </video>
-      {player.status !== 'playing' && (
-        <button className="mv-center-play" onClick={player.playPause} aria-label="Play">
-          <IconPlay />
-        </button>
-      )}
     </div>
   )
 }

@@ -27,7 +27,6 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
     <div className="mv-controls" data-testid="media-controls">
-      <SeekBar player={player} />
       <div className="mv-controls__row">
         <button
           className="mv-btn mv-btn--primary"
@@ -38,6 +37,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           {player.status === 'playing' ? <IconPause /> : <IconPlay />}
         </button>
         <span className="mv-time">{time}</span>
+        <div className="mv-controls__spacer" />
         <button
           className="mv-btn"
           onClick={() => player.setMuted(!player.muted)}
@@ -70,7 +70,6 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
             ))}
           </select>
         </label>
-        <div className="mv-controls__spacer" />
         <button
           className={`mv-btn${player.subtitlesOn ? ' is-active' : ''}`}
           onClick={player.toggleSubtitles}
@@ -101,6 +100,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           <IconFullscreen />
         </button>
       </div>
+      <SeekBar player={player} />
     </div>
   )
 }

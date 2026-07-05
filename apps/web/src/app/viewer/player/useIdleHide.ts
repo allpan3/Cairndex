@@ -1,27 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 
 /** Auto-hide viewer chrome after pointer idle; moving the pointer shows it. */
-export function useIdleHide(active: boolean, delayMs = 1800) {
+export function useIdleHide(rootRef: RefObject<HTMLElement | null>, delayMs = 2600) {
   const [idle, setIdle] = useState(false)
 
   useEffect(() => {
-    if (!active) return
+    const root = rootRef.current
+    if (!root) return
     let timer = window.setTimeout(() => setIdle(true), delayMs)
     const wake = () => {
       setIdle(false)
       window.clearTimeout(timer)
       timer = window.setTimeout(() => setIdle(true), delayMs)
     }
-    window.addEventListener('mousemove', wake)
-    window.addEventListener('mousedown', wake)
-    window.addEventListener('keydown', wake)
+    root.addEventListener('pointermove', wake)
+    root.addEventListener('pointerdown', wake)
     return () => {
       window.clearTimeout(timer)
-      window.removeEventListener('mousemove', wake)
-      window.removeEventListener('mousedown', wake)
-      window.removeEventListener('keydown', wake)
+      root.removeEventListener('pointermove', wake)
+      root.removeEventListener('pointerdown', wake)
     }
-  }, [active, delayMs])
+  }, [delayMs, rootRef])
 
-  return active && idle
+  return idle
 }

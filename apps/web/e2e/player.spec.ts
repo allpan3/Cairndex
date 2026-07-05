@@ -343,6 +343,8 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await page.locator('[data-bundle-id="b0"]').dblclick()
   await expect(page.locator('.media-viewer')).toBeVisible()
   await expect(page.locator('.mv-title')).toContainText('Movie 0')
+  await expect(page.locator('.mv-center-play')).toHaveCount(0)
+  await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
 
   const video = page.getByTestId('media-video')
   await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
@@ -375,15 +377,23 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   const download = page.waitForEvent('download')
   await page.keyboard.press('S')
   expect((await download).suggestedFilename()).toMatch(/movie_mp4\.png|movie\.mp4\.png/)
+
+  await page.waitForTimeout(2800)
+  await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
+  await page.mouse.move(420, 420)
+  await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
 })
 
-test('navigates the filmstrip and shows the unplayable fallback card', async ({ page }) => {
+test('navigates files without the inline filmstrip and shows the fallback card', async ({
+  page,
+}) => {
   await mockMedia(page)
   await mockApi(page)
   await page.goto('/')
 
   await page.locator('[data-bundle-id="b0"]').dblclick()
-  await page.locator('.mv-film', { hasText: 'poster.png' }).click()
+  await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
+  await page.getByRole('button', { name: /next file/i }).click()
   await expect(page.locator('.mv-image')).toHaveAttribute('src', /files\/img1\/content/)
 
   await page.keyboard.press('ArrowRight')

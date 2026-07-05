@@ -26,8 +26,9 @@ slice without new runtime dependencies and without backend/API changes:
   un-mutes consistently from keyboard or slider paths.
 - The viewer handles loading, empty bundles, query errors, missing files,
   unsupported/unplayable videos, and image preview errors with structured
-  fallback states. Filmstrip navigation is horizontally scrollable for larger
-  bundles.
+  fallback states. The inline bottom file filmstrip was removed after owner
+  review because it overlapped the video control bar; current M2 navigation is
+  previous/next only.
 - Review fix pass hardened the native player mount path: `usePlayer` now keys
   engine creation, listener attachment, and persisted volume/mute/rate
   application on the actual `<video>` element identity; controller commands read
@@ -44,6 +45,9 @@ slice without new runtime dependencies and without backend/API changes:
   browser controls, but now shares the fallback card component. Follow-up:
   migrate File View onto the same viewer/stage primitives when plan 1 reaches
   the path-based File View completion work.
+- Follow-up recorded in plan 1: replace the removed inline file list with an
+  expandable bundle-files side panel, and expand the right-side metadata panel
+  into a first-class file/bundle metadata drawer.
 - Dev tooling: `apps/web/vite.config.ts` honors a `PORT` environment override,
   and `.claude/launch.json` uses automatic port assignment.
 
