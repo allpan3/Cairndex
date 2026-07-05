@@ -19,6 +19,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Storyboard trickplay + chapter ticks (Plan 1 M3).** Added a deduplicated
+  library-wide `storyboard` background job that generates WebVTT indexes and
+  5×5 JPEG tile sheets under `.cairndex/cache/storyboards/`, skipped by default
+  for videos under 60 seconds and disable-able with `CAIRNDEX_STORYBOARDS=off`.
+  Playback manifests now expose `storyboard_url` and probed chapters; cached-only
+  storyboard endpoints return 404 until artifacts exist. The web Update flow now
+  runs scan → probe, then starts storyboards as non-blocking background work, and
+  the seek bar lazily shows trickplay previews plus visual chapter ticks/title
+  text in the hover tooltip. Storyboard URLs and VTT sheet payloads are versioned
+  by quick fingerprint and served with immutable cache headers.
 - **Probe enrichment for the media-player M1 foundation.** `ffprobe` now stores
   additive `tech_metadata` keys for all audio streams, subtitle streams,
   chapters, HDR classification, and video bit depth while preserving the
