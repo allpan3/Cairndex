@@ -63,10 +63,11 @@ opens it on that file.
   step while paused, `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set A-B
   loop points, `Esc` close. Same map reused by the desktop shell.
 - Subtitle experience (Movist-inspired): external + embedded text tracks,
-  on/off + track pick, **dual simultaneous subtitles** (primary + secondary
-  track, e.g. two languages, rendered stacked), styling settings (size,
-  color, background/edge, vertical offset — persisted), timing offset
-  nudge (±).
+  on/off + track pick, styling settings (size, color, background/edge,
+  vertical offset — persisted), timing offset nudge (±). Owner-deprioritized:
+  the depth lands at M8, after HLS. **Dual simultaneous subtitles** (primary +
+  secondary track, e.g. two languages, rendered stacked) are far-deferred
+  (M9 at the earliest).
 - Snapshot capture: save/copy the current frame via a canvas grab (streams
   are same-origin, so the canvas stays untainted).
 - A-B loop between two marked points; video adjustments
@@ -465,23 +466,27 @@ running scan must not queue-block a ten-second export:
 
 | # | Slice | Contents |
 |---|-------|----------|
-| M1 | Probe enrichment | §3; regenerate OpenAPI/types; reprobe path |
-| M2 | Viewer shell + video controls v1 | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only |
-| M3 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, dual subtitles, styling (size/color/background/offset) + timing settings |
-| M4 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
-| M5 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |
-| M6 | Image viewer v2 | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
-| M7 | Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
-| M8 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
-| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements |
+| M1 | ✅ Probe enrichment (merged, #1) | §3; regenerate OpenAPI/types; reprobe path |
+| M2 | ✅ Viewer shell + video controls v1 (merged, #2) | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only. Shipped subtitle on/off over external VTT (default track) |
+| M3 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
+| M4 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |
+| M5 | Image viewer v2 | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
+| M6 | Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
+| M7 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
+| M8 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings. Owner-deprioritized behind HLS — embedded-sub extraction is most valuable once MKVs play at all. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
+| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. **Dual simultaneous subtitles** land here at the earliest (owner: far-deferred; fine to slip past M11) |
 | M10 | Video wall (web) | §9 |
 | M11 | Media exports | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5) |
+
+Re-sequenced after M2 shipped (owner decision): the subtitle-depth slice moved
+from third to M8 (after HLS) and dual subtitles became a far-deferred M9+ item;
+basic default-track on/off already shipped in M2.
 
 Every slice: focused backend/frontend tests + Playwright for user flows
 (controls, shortcuts, track menu, resume, viewer zoom), OpenAPI + `schema.d.ts`
 regen when contracts change, CHANGELOG/STATUS/architecture-doc updates, and
-tiny ffmpeg-generated fixtures (never user media). M2/M6 give the owner daily
-value before the heavy M7 lands.
+tiny ffmpeg-generated fixtures (never user media). M2/M5 give the owner daily
+value before the heavy M6 lands.
 
 ## 12. Risks & open decisions
 

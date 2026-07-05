@@ -3,7 +3,7 @@ import { useMemo, useRef, useState } from 'react'
 import { formatClock } from '../../../lib/format'
 import type { PlayerController } from './usePlayer'
 
-/** Seek bar with buffered ranges, drag scrubbing, and an M4 preview hook. */
+/** Seek bar with buffered ranges, drag scrubbing, and an M3 preview hook. */
 export function SeekBar({ player }: { player: PlayerController }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
