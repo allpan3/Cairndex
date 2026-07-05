@@ -49,10 +49,19 @@ export function VideoStage({
       0,
       withSrc.findIndex((track) => track.is_default),
     )
-    trackRefs.current.forEach((trackEl, index) => {
-      if (!trackEl?.track) return
-      trackEl.track.mode = player.subtitlesOn && index === defaultIndex ? 'showing' : 'disabled'
-    })
+    const applyModes = () => {
+      trackRefs.current.forEach((trackEl, index) => {
+        if (!trackEl?.track) return
+        trackEl.track.mode = player.subtitlesOn && index === defaultIndex ? 'showing' : 'disabled'
+      })
+    }
+    applyModes()
+    // Chromium's automatic track selection can flip a language-matched track
+    // to 'showing' when its cues finish loading (after this effect already
+    // ran), which stacks two subtitle languages — re-assert on each load.
+    const els = trackRefs.current.filter((el): el is HTMLTrackElement => el !== null)
+    els.forEach((el) => el.addEventListener('load', applyModes))
+    return () => els.forEach((el) => el.removeEventListener('load', applyModes))
   }, [player.subtitlesOn, withSrc])
 
   useEffect(() => {

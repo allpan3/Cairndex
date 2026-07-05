@@ -38,9 +38,20 @@ slice without new runtime dependencies and without backend/API changes:
 - Review fix pass also scoped shortcuts to the focused viewer root, made `Esc`
   exit fullscreen before closing, lets left/right step files when no playable
   video is active, shares one filtered subtitle source list with native
-  `<track>` identity/default-track selection, lazy-loads filmstrip thumbnails,
-  uses shared fallback cards for Media Viewer and File View, and replaced emoji
-  control glyphs with SVG icons.
+  `<track>` identity/default-track selection, uses shared fallback cards for
+  Media Viewer and File View, and replaced emoji control glyphs with SVG icons.
+- Reviewer verification pass (live, against the local Demo library): cold-cache
+  open shows a live clock/seek bar/play state (the original mount-race is
+  fixed); player prefs survive subsequent browse-pref writes; muted slider
+  drags land exactly and unmute; image files arrow-step between bundle files;
+  Esc closes the viewer when not fullscreen (entering fullscreen can't be
+  exercised in the headless preview — that branch is code- and unit-test
+  verified; worth one manual spot check). One residual bug found and fixed in
+  the same pass: Chromium's automatic text-track selection could flip a
+  second language to `showing` after its cues loaded, stacking two subtitle
+  lines on initial open — `VideoStage` now re-asserts track modes on each
+  `<track>` load event (verified live on the two-subtitle DeepOcean bundle:
+  only the selected track shows, and disabled tracks skip their cue fetch).
 - File View still uses `FileEntryViewer` with path-based URLs and native
   browser controls, but now shares the fallback card component. Follow-up:
   migrate File View onto the same viewer/stage primitives when plan 1 reaches
