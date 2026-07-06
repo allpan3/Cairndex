@@ -253,10 +253,21 @@ async function mockMedia(page: Page) {
         return 180
       },
     })
+    window.addEventListener(
+      'error',
+      (event) => {
+        if (event.target instanceof HTMLMediaElement) event.stopImmediatePropagation()
+      },
+      true,
+    )
     HTMLMediaElement.prototype.load = function () {
+      this.dataset.duration ||= '120'
       this.dispatchEvent(new Event('loadedmetadata'))
+      this.dispatchEvent(new Event('durationchange'))
+      this.dispatchEvent(new Event('progress'))
     }
     HTMLMediaElement.prototype.play = function () {
+      this.dataset.duration ||= '120'
       this.dataset.paused = 'false'
       this.dispatchEvent(new Event('play'))
       this.dispatchEvent(new Event('playing'))
@@ -301,7 +312,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     { start: 0, end: 60, title: 'Intro' },
     { start: 60, end: 120, title: 'Middle' },
   ]
-  await page.route('**/api/v1/libraries', (r) =>
+  await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
         {
@@ -318,10 +329,10 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       ],
     }),
   )
-  await page.route('**/auth/status', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/bundles/counts', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) =>
     r.fulfill({
       json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0, unbundled: 0 },
     }),
@@ -329,32 +340,42 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [summary('b0', 'Movie 0')], total: 1, offset: 0, limit: 100 } }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/bundles/b0/thumbnail**', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/collections\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/collections\/counts$/, (r) =>
+    r.fulfill({ json: { counts: {} } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/smart-collections$/, (r) => r.fulfill({ json: [] }))
+  await page.route(/\/api\/v1\/libraries\/lib1\/tags\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/tag-groups\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/tags\/counts$/, (r) =>
+    r.fulfill({ json: { counts: {} } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/bundles/b0/files/*/thumbnail', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail$/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/files/f0/stream', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
-  await page.route('**/files/img1/content', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/subtitles/s0/vtt', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/subtitles\/s0\/vtt$/, (r) =>
     r.fulfill({
       status: 200,
       contentType: 'text/vtt',
       body: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello',
     }),
   )
-  await page.route('**/files/f0/storyboard.vtt**', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\.vtt/, (r) =>
     r.fulfill({
       status: storyboardStatus,
       contentType: 'text/vtt',
@@ -364,11 +385,11 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           : '',
     }),
   )
-  await page.route('**/files/f0/storyboard/sb_001.jpg**', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\/sb_001\.jpg/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
 
-  await page.route('**/bundles/b0/files', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
     r.fulfill({
       json: [
         {
@@ -425,13 +446,13 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       ],
     }),
   )
-  await page.route('**/bundles/b0/collections', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/collections$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
-  await page.route('**/bundles/b0/tags', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/tags$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', tag_ids: [] } }),
   )
-  await page.route('**/bundles/b0', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0$/, (r) =>
     r.fulfill({
       json: {
         id: 'b0',
@@ -452,7 +473,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       },
     }),
   )
-  await page.route('**/bundles/b0/playback', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) =>
     r.fulfill({
       json: {
         bundle_id: 'b0',
@@ -504,10 +525,26 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
 
 /** Hover the custom seek bar at a fraction of its width. */
 async function hoverSeekBar(page: Page, fraction: number) {
+  const video = page.getByTestId('media-video')
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).duration || 0))
+    .toBeGreaterThan(0)
   const track = page.locator('.mv-seek__track')
   const box = await track.boundingBox()
   expect(box).not.toBeNull()
   await page.mouse.move(box!.x + box!.width * fraction, box!.y + box!.height / 2)
+}
+
+/** Open the mocked movie and wait for the video player to be ready. */
+async function openMovie(page: Page) {
+  const card = page.locator('[data-bundle-id="b0"]')
+  await expect(card).toBeVisible()
+  await card.dblclick()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+  const video = page.getByTestId('media-video')
+  await expect(video).toHaveAttribute('src', /files\/f0\/stream/, { timeout: 10_000 })
+  await expect(page.locator('.mv-time')).toContainText('/ 2:00')
+  return video
 }
 
 test('opens the unified viewer and drives custom video controls', async ({ page }) => {
@@ -515,20 +552,16 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await mockApi(page)
   await page.goto('/')
 
-  await page.locator('[data-bundle-id="b0"]').dblclick()
-  await expect(page.locator('.media-viewer')).toBeVisible()
+  const video = await openMovie(page)
   await expect(page.locator('.mv-title')).toContainText('Movie 0')
   await expect(page.locator('.mv-center-play')).toHaveCount(0)
   await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
 
-  const video = page.getByTestId('media-video')
-  await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
   await expect(page.locator('[data-testid="media-video"] track')).toHaveAttribute(
     'src',
     /subtitles\/s0\/vtt/,
   )
   await expect.poll(() => video.evaluate((el) => el.textTracks[0]?.mode)).toBe('showing')
-  await expect(page.locator('.mv-time')).toContainText('/ 2:00')
   await page.keyboard.press('Space')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
 
@@ -564,7 +597,7 @@ test('shows storyboard preview and chapter title on seek hover', async ({ page }
   await mockApi(page)
   await page.goto('/')
 
-  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await openMovie(page)
   const ticks = page.locator('.mv-seek__chapter-tick')
   await expect(ticks).toHaveCount(2)
 
@@ -581,7 +614,7 @@ test('keeps the time-only tooltip when storyboard VTT is absent', async ({ page 
   await mockApi(page, { storyboardStatus: 404 })
   await page.goto('/')
 
-  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await openMovie(page)
   await hoverSeekBar(page, 0.2)
 
   await expect(page.locator('.mv-seek__tip')).toBeVisible()
@@ -599,7 +632,7 @@ test('omits chapter titles before the first chapter and in chapter gaps', async 
   })
   await page.goto('/')
 
-  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await openMovie(page)
   await hoverSeekBar(page, 0.1)
   await expect(page.locator('.mv-seek__chapter-title')).toHaveCount(0)
 
