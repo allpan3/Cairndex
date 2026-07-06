@@ -1,5 +1,75 @@
 # Project status
 
+## Latest session: web media viewer M4 watch progress/resume fix pass
+
+Branch `feat/watch-progress`. Implemented plan 1 M4's watch progress and resume
+slice, then applied the review fix pass:
+
+- Added `playback_progress` to each library DB via the existing additive
+  bootstrap path, with `file_id` as the primary key/FK to `asset_files` and
+  indexes for bundle lookup and continue-watching ordering. SQLite foreign keys
+  are enabled by the shared engine pragma, so deleting an `AssetFile` cascades
+  progress cleanup.
+- Added `PUT /api/v1/libraries/{library_id}/files/{file_id}/progress` for
+  idempotent video progress upserts, plus a POST alias for
+  `navigator.sendBeacon`'s POST-only pagehide transport. The API schema
+  validates finite non-negative seconds; the service clamps position to known
+  duration, marks completion at `position_s / duration_s >= 0.95` only when
+  duration is known and positive, and stamps `updated_at` via
+  `core.time.utcnow()`. The web reporter sends the media element duration
+  whenever it is finite and only sends `duration_s = null` when duration is truly
+  unknown.
+- Playback manifests now embed `progress` per `PlayableVideo`, batch-loading all
+  listed videos' progress rows in one query. OpenAPI and
+  `apps/web/src/api/schema.d.ts` were regenerated.
+- Added
+  `GET /api/v1/libraries/{library_id}/continue-watching?limit=20&offset=0`,
+  returning the existing browse-summary row shape plus
+  `progress: {file_id, position_s, duration_s}` for bundles with unfinished,
+  non-zero video progress, newest progress first with a deterministic file-id
+  tie-breaker.
+- Moved-file repair continues to preserve progress for free because progress is
+  keyed by stable `AssetFile.id`. The denormalized progress `bundle_id` is now
+  aligned from a single `AssetFile.bundle_id` re-parent hook rather than
+  per-call-site updates, and bundle/file deletion cascades progress cleanup
+  through the active SQLite foreign keys.
+- The web media viewer resumes unfinished videos once after `loadedmetadata`,
+  shows a transient "Resumed at mm:ss — Click to restart" affordance, and reports
+  progress every ~10 seconds of playback plus pause, close/unmount, and pagehide
+  beacon. Changing files resets player time/duration/loading state before the
+  next reporting window, restart explicitly writes position zero, and successful
+  progress writes invalidate continue-watching only when completion state changes
+  or when the viewer closes/unmounts. Bundle/file deletion invalidates
+  continue-watching too.
+
+Known issues / deferred: no dedicated Continue Watching web view was added in
+this slice. The optional bundle-card progress strip was deferred because normal
+browse payloads do not yet carry progress; only the required continue-watching
+endpoint and viewer resume/reporting are wired. No HLS, image preview, or
+multi-user behavior changed; `user_id = NULL` remains the owner convention.
+
+Verification:
+
+- Backend: focused review-fix check `uv run pytest tests/test_playback.py
+  tests/test_scan_repair.py` passed (`19 passed`, one existing Starlette/httpx
+  deprecation warning). Full backend gate also passed: `uv run ruff check`,
+  `uv run ruff format --check`, `uv run mypy src`, and `uv run pytest`
+  (`317 passed`, same existing warning).
+- Frontend: focused review-fix check `npm run test -- usePlayer
+  usePlaybackProgressReporter` passed (`11 passed`). Full frontend gate also
+  passed: `npm run lint`, `npm run format:check`, `npm run typecheck`,
+  `npm run test` (`36 passed`), `npm run build`, and `npm run test:e2e`
+  (`48 passed`).
+- Manual Demo-library verification: ran the local app against
+  `/Users/owner/DemoLibrary`, seeded Cosmos resume progress through the API,
+  opened the viewer, verified the resume seek/affordance, captured
+  `/private/tmp/cairndex-m4-resume-affordance.png`, clicked restart, and verified
+  the manifest reported `position_s = 0` and Cosmos no longer appeared in
+  continue-watching. The Demo library has no bundle with multiple video files, so
+  live file-switch verification used Cosmos video → poster image and confirmed no
+  progress write targeted the image file; the multi-video stale-position case is
+  covered by the Playwright regression.
+
 ## Latest session: web media viewer M3 storyboards/trickplay
 
 Branch `feat/storyboards`. Implemented plan 1 M3's storyboard/trickplay and

@@ -19,6 +19,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Watch progress + resume (Plan 1 M4).** Added per-library
+  `playback_progress` storage with additive bootstrap, idempotent video progress
+  upserts, manifest-embedded progress, a paginated `continue-watching` endpoint,
+  and web viewer resume/reporting. The viewer resumes unfinished videos once
+  after metadata loads, shows a transient "Resumed at …" restart affordance, and
+  reports progress on a throttled cadence, pause/close, and `pagehide` beacon.
+  Continue-watching rows now include the in-progress `{file_id, position_s,
+  duration_s}`, restart explicitly writes position zero, completion requires a
+  known duration, and progress `bundle_id` syncs from the central `AssetFile`
+  reparent hook.
 - **Storyboard trickplay + chapter ticks (Plan 1 M3).** Added a deduplicated
   library-wide `storyboard` background job that generates WebVTT indexes and
   5×5 JPEG tile sheets under `.cairndex/cache/storyboards/`, skipped by default
