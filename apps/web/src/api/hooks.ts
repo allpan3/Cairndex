@@ -66,6 +66,7 @@ import {
   fetchFileViewEntries,
   fetchLibraries,
   fetchPlaybackManifest,
+  fetchContinueWatching,
   fetchSmartCollections,
   fetchTagCounts,
   fetchTagGroupTags,
@@ -142,6 +143,7 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     'bundle',
     'bundle-files',
     'playback',
+    'continue-watching',
   ])
     qc.invalidateQueries({ queryKey: [key] })
 }
@@ -191,6 +193,14 @@ export function usePlaybackManifest(bundleId: string | null) {
     queryKey: ['playback', bundleId],
     queryFn: ({ signal }) => fetchPlaybackManifest(bundleId!, signal),
     enabled: bundleId !== null,
+  })
+}
+
+export function useContinueWatching(limit = 20, offset = 0, enabled = true) {
+  return useQuery({
+    queryKey: ['continue-watching', { limit, offset }],
+    queryFn: ({ signal }) => fetchContinueWatching(limit, offset, signal),
+    enabled,
   })
 }
 
@@ -720,6 +730,7 @@ export function useFileMutations(bundleId: string) {
         invalidate()
         for (const key of ['unbundled-files', 'file-view', 'view-counts'])
           qc.invalidateQueries({ queryKey: [key] })
+        qc.invalidateQueries({ queryKey: ['continue-watching'] })
       },
     }),
   }
@@ -746,6 +757,7 @@ export function useDeleteBundles() {
         'file-view',
         'bundle',
         'bundle-files',
+        'continue-watching',
       ])
         qc.invalidateQueries({ queryKey: [key] })
     },

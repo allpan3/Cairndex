@@ -1,14 +1,22 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { type FileRead, type PlayableVideo, thumbnailUrl } from '../../api/client'
+import {
+  type FileRead,
+  type PlayableVideo,
+  type PlaybackManifest,
+  thumbnailUrl,
+  updatePlaybackProgress,
+} from '../../api/client'
 import { useBundle, useBundleFiles, usePlaybackManifest } from '../../api/hooks'
-import { formatBytes, formatDimensions, formatDuration } from '../../lib/format'
+import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
 import { MediaFallback } from './MediaFallback'
 import { VideoStage } from './VideoStage'
 import { ControlBar } from './player/ControlBar'
 import { useIdleHide } from './player/useIdleHide'
+import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
 import { usePlayer } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
 
@@ -28,6 +36,7 @@ export function MediaViewer({
   onPlayerPrefs,
   onClose,
 }: MediaViewerProps) {
+  const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const { data: bundle, isLoading: bundleLoading, error: bundleError } = useBundle(bundleId)
   const { data: files = [], isLoading: filesLoading, error: filesError } = useBundleFiles(bundleId)
@@ -39,6 +48,9 @@ export function MediaViewer({
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [failedFileId, setFailedFileId] = useState<string | null>(null)
+  const [resumeNotice, setResumeNotice] = useState<{ fileId: string; position: number } | null>(
+    null,
+  )
 
   const preferredId =
     (initialFileId && files.some((file) => file.id === initialFileId) ? initialFileId : null) ??
@@ -56,15 +68,37 @@ export function MediaViewer({
     () => manifest?.videos.find((video) => video.file_id === current?.id) ?? null,
     [current?.id, manifest?.videos],
   )
+  const playableReady = playable?.playable ?? false
+  const streamUrl = playable?.stream_url ?? null
+  const streamMime = playable?.mime_type ?? null
   const source = useMemo(
-    () => (playable?.playable ? { src: playable.stream_url, mimeType: playable.mime_type } : null),
-    [playable],
+    () =>
+      playableReady && streamUrl && streamMime ? { src: streamUrl, mimeType: streamMime } : null,
+    [playableReady, streamMime, streamUrl],
   )
+  const resumePosition =
+    playable?.progress && playable.progress.position_s > 0 && !playable.progress.completed
+      ? playable.progress.position_s
+      : null
   const { player, videoRef, videoElement } = usePlayer({
     source,
     rootRef,
     prefs: playerPrefs,
     onPrefs: onPlayerPrefs,
+    resumePosition,
+    resumeCompleted: playable?.progress?.completed ?? false,
+    onResumed: (position) => {
+      if (playable) setResumeNotice({ fileId: playable.file_id, position })
+    },
+  })
+  usePlaybackProgressReporter({
+    bundleId,
+    fileId: playable?.file_id ?? null,
+    enabled: Boolean(playable?.playable),
+    status: player.status,
+    currentTime: player.currentTime,
+    duration: player.duration || playable?.duration || 0,
+    completed: playable?.progress?.completed,
   })
   const chromeIdle = useIdleHide(rootRef)
   const title = bundle?.title ?? current?.display_title ?? 'Media'
@@ -72,7 +106,40 @@ export function MediaViewer({
 
   useEffect(() => rootRef.current?.focus(), [])
 
+  useEffect(() => {
+    if (resumeNotice === null) return
+    const timer = window.setTimeout(() => setResumeNotice(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [resumeNotice])
+
   const toggleInfo = useCallback(() => setInfoOpen((v) => !v), [])
+  const playableFileId = playable?.file_id ?? null
+  const playableDuration = playable?.duration ?? null
+  const restartFromBeginning = useCallback(() => {
+    player.seek(0)
+    setResumeNotice(null)
+    if (!playableFileId) return
+    const duration =
+      Number.isFinite(player.duration) && player.duration > 0 ? player.duration : playableDuration
+    void updatePlaybackProgress(playableFileId, {
+      position_s: 0,
+      duration_s: duration ?? null,
+    }).then((progress) => {
+      qc.setQueryData<PlaybackManifest>(['playback', bundleId], (previous) =>
+        previous
+          ? {
+              ...previous,
+              videos: previous.videos.map((video) =>
+                video.file_id === playableFileId ? { ...video, progress } : video,
+              ),
+            }
+          : previous,
+      )
+      qc.invalidateQueries({ queryKey: ['continue-watching'] })
+    })
+  }, [bundleId, playableDuration, playableFileId, player, qc])
+  const visibleResume =
+    resumeNotice && resumeNotice.fileId === playable?.file_id ? resumeNotice.position : null
 
   const step = useCallback(
     (delta: number) => {
@@ -183,6 +250,12 @@ export function MediaViewer({
           />
         )}
       </div>
+
+      {visibleResume !== null && (
+        <button className="mv-resume" type="button" onClick={restartFromBeginning}>
+          Resumed at {formatClock(visibleResume)} <span>Click to restart</span>
+        </button>
+      )}
 
       {playable?.playable && (
         <ControlBar
