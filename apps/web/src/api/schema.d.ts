@@ -633,6 +633,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/continue-watching": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Continue Watching */
+        get: operations["continue_watching_api_v1_libraries__library_id__continue_watching_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/fast-add": {
         parameters: {
             query?: never;
@@ -713,6 +730,24 @@ export interface paths {
         get: operations["file_content_api_v1_libraries__library_id__files__file_id__content_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Progress */
+        put: operations["update_progress_api_v1_libraries__library_id__files__file_id__progress_put"];
+        /** Beacon Progress */
+        post: operations["beacon_progress_api_v1_libraries__library_id__files__file_id__progress_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1627,6 +1662,62 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /** ContinueWatchingItem */
+        ContinueWatchingItem: {
+            /** Cover Key */
+            cover_key: string | null;
+            /**
+             * Date Added
+             * Format: date-time
+             */
+            date_added: string;
+            /** Duration */
+            duration: number | null;
+            /** Extension */
+            extension: string | null;
+            /** File Count */
+            file_count: number;
+            grouping_state: components["schemas"]["GroupingState"];
+            /** Has Cover */
+            has_cover: boolean;
+            /** Has Missing */
+            has_missing: boolean;
+            /** Height */
+            height: number | null;
+            /** Id */
+            id: string;
+            /** Media Kind */
+            media_kind: string | null;
+            progress: components["schemas"]["ContinueWatchingProgressRead"];
+            /** Rating */
+            rating: number | null;
+            /** Title */
+            title: string | null;
+            /** Total Size */
+            total_size: number;
+            /** Width */
+            width: number | null;
+        };
+        /** ContinueWatchingPage */
+        ContinueWatchingPage: {
+            /** Items */
+            items: components["schemas"]["ContinueWatchingItem"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** ContinueWatchingProgressRead */
+        ContinueWatchingProgressRead: {
+            /** Duration S */
+            duration_s: number | null;
+            /** File Id */
+            file_id: string;
+            /** Position S */
+            position_s: number;
+        };
         /**
          * CountsResponse
          * @description Generic id → bundle-count map (collections, tags).
@@ -2208,6 +2299,7 @@ export interface components {
             mime_type: string;
             /** Playable */
             playable: boolean;
+            progress: components["schemas"]["PlaybackProgressRead"] | null;
             /** Reason */
             reason: string;
             /** Storyboard Url */
@@ -2234,6 +2326,22 @@ export interface components {
             bundle_id: string;
             /** Videos */
             videos: components["schemas"]["PlayableVideo"][];
+        };
+        /** PlaybackProgressRead */
+        PlaybackProgressRead: {
+            /** Completed */
+            completed: boolean;
+            /** Duration S */
+            duration_s: number | null;
+            /** Position S */
+            position_s: number;
+        };
+        /** PlaybackProgressUpdate */
+        PlaybackProgressUpdate: {
+            /** Duration S */
+            duration_s?: number | null;
+            /** Position S */
+            position_s: number;
         };
         /** PredicateNode */
         PredicateNode: {
@@ -4107,6 +4215,42 @@ export interface operations {
             };
         };
     };
+    continue_watching_api_v1_libraries__library_id__continue_watching_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContinueWatchingPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     fast_add_files_api_v1_libraries__library_id__fast_add_post: {
         parameters: {
             query?: never;
@@ -4235,6 +4379,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_progress_api_v1_libraries__library_id__files__file_id__progress_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackProgressUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackProgressRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    beacon_progress_api_v1_libraries__library_id__files__file_id__progress_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackProgressUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackProgressRead"];
                 };
             };
             /** @description Validation Error */

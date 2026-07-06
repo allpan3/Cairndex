@@ -58,6 +58,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+_ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress",)
+
 
 def ensure_content_indexes(engine: Engine) -> None:
     """Bring a library DB up to the current model shape without migrations.
@@ -76,6 +78,10 @@ def ensure_content_indexes(engine: Engine) -> None:
     inspector = inspect(engine)
     existing = set(inspector.get_table_names())
     with engine.begin() as conn:
+        for table_name in _ADDITIVE_CONTENT_TABLES:
+            table = Base.metadata.tables[table_name]
+            table.create(bind=conn, checkfirst=True)
+            existing.add(table_name)
         for table in Base.metadata.sorted_tables:
             if table.name not in existing:
                 continue

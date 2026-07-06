@@ -8,24 +8,32 @@ which honors HTTP Range (206 + Content-Range). Subtitles are served as WebVTT.
 """
 
 import mimetypes
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibrarySession
 from cairndex.api.schemas.playback import (
+    ContinueWatchingItem,
+    ContinueWatchingPage,
+    ContinueWatchingProgressRead,
     PlayableVideo,
     PlaybackChapter,
     PlaybackManifest,
+    PlaybackProgressRead,
+    PlaybackProgressUpdate,
     SubtitleTrackRead,
 )
 from cairndex.domain.enums import MediaKind
 from cairndex.media import playback, storyboards
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile, SubtitleTrack
+from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
 from cairndex.services.bundles import get_bundle, list_files
+from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
 
@@ -79,12 +87,14 @@ def _track_read(session: Session, library_id: str, track: SubtitleTrack) -> Subt
 def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> PlaybackManifest:
     get_bundle(db, bundle_id)  # 404 if the bundle doesn't exist
     videos: list[PlayableVideo] = []
-    for f in list_files(db, bundle_id):
-        if f.media_kind != MediaKind.VIDEO:
-            continue
+    files = list_files(db, bundle_id)
+    video_files = [f for f in files if f.media_kind == MediaKind.VIDEO]
+    progress_by_file = progress_service.progress_for_files(db, [f.id for f in video_files])
+    for f in video_files:
         cap = playback.assess_playability(f)
         meta = f.tech_metadata or {}
         tracks = sub_service.list_tracks_for_video(db, f.id)
+        progress = progress_by_file.get(f.id)
         videos.append(
             PlayableVideo(
                 file_id=f.id,
@@ -98,10 +108,79 @@ def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> Pl
                 duration=meta.get("duration"),
                 storyboard_url=storyboards.storyboard_url_for_file(db, library_id, f),
                 chapters=_chapters(meta),
+                progress=(
+                    PlaybackProgressRead(
+                        position_s=progress.position_s,
+                        duration_s=progress.duration_s,
+                        completed=progress.completed,
+                    )
+                    if progress is not None
+                    else None
+                ),
                 subtitles=[_track_read(db, library_id, t) for t in tracks],
             )
         )
     return PlaybackManifest(bundle_id=bundle_id, videos=videos)
+
+
+# Store a video file's latest resume position
+@router.put(
+    "/files/{file_id}/progress",
+    response_model=PlaybackProgressRead,
+    status_code=status.HTTP_200_OK,
+)
+def update_progress(
+    file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
+) -> PlaybackProgressRead:
+    value = progress_service.upsert_progress(
+        db,
+        file_id,
+        position_s=payload.position_s,
+        duration_s=payload.duration_s,
+    )
+    return PlaybackProgressRead(
+        position_s=value.position_s,
+        duration_s=value.duration_s,
+        completed=value.completed,
+    )
+
+
+# Store progress from navigator.sendBeacon's POST-only transport
+@router.post(
+    "/files/{file_id}/progress",
+    response_model=PlaybackProgressRead,
+    status_code=status.HTTP_200_OK,
+)
+def beacon_progress(
+    file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
+) -> PlaybackProgressRead:
+    return update_progress(file_id, payload, db)
+
+
+# List bundles with unfinished playback progress
+@router.get("/continue-watching", response_model=ContinueWatchingPage)
+def continue_watching(
+    db: LibrarySession,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ContinueWatchingPage:
+    page = progress_service.continue_watching(db, offset=offset, limit=limit)
+    return ContinueWatchingPage(
+        items=[
+            ContinueWatchingItem(
+                **vars(item.bundle),
+                progress=ContinueWatchingProgressRead(
+                    file_id=item.progress.file_id,
+                    position_s=item.progress.position_s,
+                    duration_s=item.progress.duration_s,
+                ),
+            )
+            for item in page.items
+        ],
+        total=page.total,
+        offset=page.offset,
+        limit=page.limit,
+    )
 
 
 @router.get("/files/{file_id}/stream")
