@@ -302,6 +302,9 @@ async function mockMedia(page: Page) {
 interface MockApiOptions {
   storyboardStatus?: 200 | 404
   chapters?: Array<{ start: number; end: number; title: string }>
+  progress?: { position_s: number; duration_s: number | null; completed: boolean } | null
+  secondPlayable?: boolean
+  onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -312,6 +315,13 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     { start: 0, end: 60, title: 'Intro' },
     { start: 60, end: 120, title: 'Middle' },
   ]
+  const progressByFile: Record<
+    string,
+    { position_s: number; duration_s: number | null; completed: boolean } | null
+  > = {
+    f0: options.progress ?? null,
+    f1: null,
+  }
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
@@ -362,7 +372,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail$/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/stream$/, (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) =>
@@ -388,6 +398,24 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\/sb_001\.jpg/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/progress$/, async (r) => {
+    const match = r
+      .request()
+      .url()
+      .match(/\/files\/([^/]+)\/progress$/)
+    const fileId = match?.[1] ?? 'f0'
+    const body = JSON.parse(r.request().postData() ?? '{}') as {
+      position_s: number
+      duration_s: number | null
+    }
+    options.onProgress?.(fileId, body)
+    progressByFile[fileId] = {
+      position_s: body.position_s,
+      duration_s: body.duration_s,
+      completed: Boolean(body.duration_s && body.position_s / body.duration_s >= 0.95),
+    }
+    await r.fulfill({ status: 200, contentType: 'application/json', json: progressByFile[fileId] })
+  })
 
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
     r.fulfill({
@@ -429,16 +457,16 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         {
           id: 'f1',
           bundle_id: 'b0',
-          relative_path: 'movie.mkv',
-          original_filename: 'movie.mkv',
-          display_title: 'movie.mkv',
-          role: 'alternate_version',
+          relative_path: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
+          original_filename: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
+          display_title: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
+          role: options.secondPlayable ? 'video_part' : 'alternate_version',
           media_kind: 'video',
-          mime_type: 'video/x-matroska',
+          mime_type: options.secondPlayable ? 'video/mp4' : 'video/x-matroska',
           sequence: 2,
           size_bytes: 0,
           availability: 'available',
-          tech_metadata: {},
+          tech_metadata: options.secondPlayable ? { width: 1280, height: 720, duration: 90 } : {},
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
           version: 1,
@@ -490,6 +518,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             duration: 120,
             storyboard_url: '/api/v1/libraries/lib1/files/f0/storyboard.vtt?v=mock',
             chapters,
+            progress: progressByFile.f0,
             subtitles: [
               {
                 id: 's0',
@@ -505,16 +534,17 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           },
           {
             file_id: 'f1',
-            display_title: 'movie.mkv',
-            playable: false,
-            reason: "MKV container isn't playable in browsers",
-            mime_type: 'video/x-matroska',
+            display_title: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
+            playable: options.secondPlayable ?? false,
+            reason: options.secondPlayable ? '' : "MKV container isn't playable in browsers",
+            mime_type: options.secondPlayable ? 'video/mp4' : 'video/x-matroska',
             stream_url: '/api/v1/libraries/lib1/files/f1/stream',
-            width: null,
-            height: null,
-            duration: null,
+            width: options.secondPlayable ? 1280 : null,
+            height: options.secondPlayable ? 720 : null,
+            duration: options.secondPlayable ? 90 : null,
             storyboard_url: null,
             chapters: [],
+            progress: progressByFile.f1,
             subtitles: [],
           },
         ],
@@ -688,6 +718,91 @@ test('plays a real generated MP4 without media-element mocks', async ({ page }) 
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
     .toBeGreaterThan(1.1)
   await expect(page.locator('.mv-time')).not.toHaveText(/^0:00 /)
+})
+
+test('reports real MP4 progress and resumes on reopen', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real progress e2e')
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'cairndex.prefs',
+      JSON.stringify({
+        layout: 'grid',
+        zoom: 200,
+        sort: 'manual',
+        order: 'asc',
+        sortScope: 'global',
+        collectionSorts: {},
+        player: { volume: 0.5, muted: true, rate: 1, subtitlesOn: true },
+      }),
+    )
+  })
+  const writes: Array<{ fileId: string; position_s: number; duration_s: number | null }> = []
+  await mockApi(page, { onProgress: (fileId, body) => writes.push({ fileId, ...body }) })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  const video = page.getByTestId('media-video')
+  await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(1.1)
+  await page.keyboard.press('Space')
+  await expect.poll(() => writes.length).toBeGreaterThan(0)
+  const saved = writes.filter((write) => write.fileId === 'f0').at(-1)!
+  expect(saved.position_s).toBeGreaterThan(0)
+
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+
+  await expect(page.locator('.mv-resume')).toContainText('Resumed at')
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(saved.position_s - 0.25)
+})
+
+test('restart affordance persists a zero resume point', async ({ page }) => {
+  await mockMedia(page)
+  const writes: Array<{ fileId: string; position_s: number; duration_s: number | null }> = []
+  await mockApi(page, {
+    progress: { position_s: 45, duration_s: 120, completed: false },
+    onProgress: (fileId, body) => writes.push({ fileId, ...body }),
+  })
+  await page.goto('/')
+
+  await openMovie(page)
+  await expect(page.locator('.mv-resume')).toContainText('Resumed at')
+  await page.locator('.mv-resume').click()
+
+  await expect
+    .poll(() => writes.some((write) => write.fileId === 'f0' && write.position_s === 0))
+    .toBe(true)
+})
+
+test('does not carry a previous video position into progress for the next video', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  const writes: Array<{ fileId: string; position_s: number; duration_s: number | null }> = []
+  await mockApi(page, {
+    secondPlayable: true,
+    onProgress: (fileId, body) => writes.push({ fileId, ...body }),
+  })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await video.evaluate((el) => {
+    const media = el as HTMLVideoElement
+    media.currentTime = 44
+  })
+  await page.getByRole('button', { name: /next file/i }).click()
+  await expect(page.locator('.mv-image')).toHaveAttribute('src', /files\/img1\/content/)
+  await page.getByRole('button', { name: /next file/i }).click()
+  await expect(page.getByTestId('media-video')).toHaveAttribute('src', /files\/f1\/stream/)
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+
+  expect(writes.filter((write) => write.fileId === 'f1' && write.position_s > 1)).toEqual([])
 })
 
 test('shows a storyboard generated by the real backend job', async ({ page }) => {
