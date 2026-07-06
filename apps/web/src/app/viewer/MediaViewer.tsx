@@ -185,7 +185,12 @@ export function MediaViewer({
       </div>
 
       {playable?.playable && (
-        <ControlBar player={player} subtitles={playable.subtitles} onSnapshot={snapshot} />
+        <ControlBar
+          player={player}
+          video={playable}
+          subtitles={playable.subtitles}
+          onSnapshot={snapshot}
+        />
       )}
 
       {infoOpen && current && <InfoPanel file={current} playable={playable} />}

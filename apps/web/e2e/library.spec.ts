@@ -126,6 +126,16 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
       json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
     }),
   )
+  await page.route('**/jobs/storyboards', (r) =>
+    r.fulfill({
+      json: jobRead({
+        id: 'job-storyboard',
+        job_type: 'storyboard',
+        status: 'succeeded',
+        result: {},
+      }),
+    }),
+  )
   await page.route('**/api/v1/jobs/job-scan', (r) => {
     scanPolls += 1
     const done = scanPolls >= 2
@@ -144,6 +154,16 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await page.route('**/api/v1/jobs/job-probe', (r) =>
     r.fulfill({
       json: jobRead({ id: 'job-probe', job_type: 'probe', status: 'succeeded', result: {} }),
+    }),
+  )
+  await page.route('**/api/v1/jobs/job-storyboard', (r) =>
+    r.fulfill({
+      json: jobRead({
+        id: 'job-storyboard',
+        job_type: 'storyboard',
+        status: 'succeeded',
+        result: {},
+      }),
     }),
   )
 

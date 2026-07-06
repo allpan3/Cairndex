@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import Grouping
+from cairndex.domain.enums import Grouping, JobStatus
 from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.registry.models import JobQueueEntry
 from cairndex.scanning.fast_add import fast_add
 
 
@@ -32,11 +33,33 @@ def test_scan_trigger_enqueues_job(client: TestClient, library_id: str, library_
     assert client.get(f"/api/v1/jobs/{body['id']}").status_code == 200
 
 
-def test_probe_and_thumbnail_triggers(client: TestClient, library_id: str) -> None:
+def test_probe_thumbnail_and_storyboard_triggers(client: TestClient, library_id: str) -> None:
     probe = client.post(f"/api/v1/libraries/{library_id}/jobs/probe")
     assert probe.json()["job_type"] == "probe"
     thumb = client.post(f"/api/v1/libraries/{library_id}/jobs/thumbnails")
     assert thumb.json()["job_type"] == "thumbnail"
+    storyboard = client.post(f"/api/v1/libraries/{library_id}/jobs/storyboards")
+    assert storyboard.json()["job_type"] == "storyboard"
+
+
+def test_storyboard_trigger_dedupes_queued_job(client: TestClient, library_id: str) -> None:
+    first = client.post(f"/api/v1/libraries/{library_id}/jobs/storyboards").json()
+    second = client.post(f"/api/v1/libraries/{library_id}/jobs/storyboards").json()
+    assert second["id"] == first["id"]
+
+
+def test_storyboard_trigger_does_not_dedupe_running_job(
+    client: TestClient, registry_session: Session, library_id: str
+) -> None:
+    first = client.post(f"/api/v1/libraries/{library_id}/jobs/storyboards").json()
+    job = registry_session.get(JobQueueEntry, first["id"])
+    assert job is not None
+    job.status = JobStatus.RUNNING
+    registry_session.commit()
+
+    second = client.post(f"/api/v1/libraries/{library_id}/jobs/storyboards").json()
+    assert second["id"] != first["id"]
+    assert second["status"] == "queued"
 
 
 def test_scan_trigger_unknown_library_404(client: TestClient) -> None:

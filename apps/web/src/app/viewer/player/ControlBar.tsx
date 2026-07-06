@@ -1,4 +1,4 @@
-import type { SubtitleTrackRead } from '../../../api/client'
+import type { PlayableVideo, SubtitleTrackRead } from '../../../api/client'
 import {
   IconCamera,
   IconCaptions,
@@ -17,12 +17,13 @@ const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
 
 interface ControlBarProps {
   player: PlayerController
+  video: PlayableVideo
   subtitles: SubtitleTrackRead[]
   onSnapshot: () => void
 }
 
 /** Desktop-style custom video controls for direct playback. */
-export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
+export function ControlBar({ player, video, subtitles, onSnapshot }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
@@ -100,7 +101,7 @@ export function ControlBar({ player, subtitles, onSnapshot }: ControlBarProps) {
           <IconFullscreen />
         </button>
       </div>
-      <SeekBar player={player} />
+      <SeekBar player={player} video={video} />
     </div>
   )
 }

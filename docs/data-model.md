@@ -218,9 +218,9 @@ runtime state. It is not portable library metadata and has its own
 `cancel_requested`, timestamps, `started_at`, `finished_at`.
 
 The in-process worker consumes this registry queue. Each job names a library;
-the worker opens that library's `library.db`, runs scan/probe/thumbnail handlers
-against the library root, commits durable content results into the library DB,
-and writes progress/terminal state back to the registry row.
+the worker opens that library's `library.db`, runs scan/probe/thumbnail/storyboard
+handlers against the library root, commits durable content results into the
+library DB, and writes progress/terminal state back to the registry row.
 
 ## Non-table model surfaces
 
@@ -237,9 +237,15 @@ schema yet.
 
 ### Derived media cache
 
-Thumbnails and converted WebVTT subtitles are generated under the library's
-portable `.cairndex/cache/{thumbnails,subtitles}/`. These are reproducible cache
-artifacts, not `AssetFile` rows, and scanners intentionally ignore them.
+Thumbnails, converted WebVTT subtitles, and storyboard trickplay artifacts are
+generated under the library's portable `.cairndex/cache/` package:
+
+- `thumbnails/{file_id[:2]}/{file_id}.jpg`
+- `subtitles/{track_id[:2]}/{track_id}.vtt`
+- `storyboards/{file_id[:2]}/{file_id}/{index.vtt,fingerprint.txt,sb_*.jpg}`
+
+These are reproducible cache artifacts, not `AssetFile` rows, and scanners
+intentionally ignore them.
 
 ## Deferred to later phases
 

@@ -14,9 +14,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibrarySession
-from cairndex.api.schemas.playback import PlayableVideo, PlaybackManifest, SubtitleTrackRead
+from cairndex.api.schemas.playback import (
+    PlayableVideo,
+    PlaybackChapter,
+    PlaybackManifest,
+    SubtitleTrackRead,
+)
 from cairndex.domain.enums import MediaKind
-from cairndex.media import playback
+from cairndex.media import playback, storyboards
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile, SubtitleTrack
 from cairndex.services import subtitles as sub_service
@@ -25,6 +30,30 @@ from cairndex.services.bundles import get_bundle, list_files
 router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
 
 _VTT_SERVABLE = ("srt", "vtt")
+
+
+# Convert stored chapter metadata to the public manifest shape
+def _chapters(meta: dict[str, object]) -> list[PlaybackChapter]:
+    raw = meta.get("chapters")
+    if not isinstance(raw, list):
+        return []
+    chapters: list[PlaybackChapter] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        start = item.get("start")
+        end = item.get("end")
+        if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+            continue
+        title = item.get("title")
+        chapters.append(
+            PlaybackChapter(
+                start=float(start),
+                end=float(end),
+                title=title if isinstance(title, str) else None,
+            )
+        )
+    return chapters
 
 
 def _track_read(session: Session, library_id: str, track: SubtitleTrack) -> SubtitleTrackRead:
@@ -67,6 +96,8 @@ def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> Pl
                 width=meta.get("width"),
                 height=meta.get("height"),
                 duration=meta.get("duration"),
+                storyboard_url=storyboards.storyboard_url_for_file(db, library_id, f),
+                chapters=_chapters(meta),
                 subtitles=[_track_read(db, library_id, t) for t in tracks],
             )
         )
@@ -91,6 +122,32 @@ def file_content(file_id: str, db: LibrarySession) -> FileResponse:
     path, asset_file = playback.resolve_file_path(db, file_id)
     media_type = mimetypes.guess_type(asset_file.original_filename)[0] or "application/octet-stream"
     return FileResponse(str(path), media_type=media_type, filename=asset_file.original_filename)
+
+
+# Serve a cached storyboard index without request-path generation
+@router.get("/files/{file_id}/storyboard.vtt")
+def storyboard_vtt(file_id: str, db: LibrarySession) -> FileResponse:
+    """Serve a cached storyboard WebVTT index, never generating on request."""
+    path = storyboards.cached_index_for_file(db, file_id)
+    return FileResponse(
+        str(path),
+        media_type="text/vtt",
+        filename="storyboard.vtt",
+        headers={"Cache-Control": storyboards.STORYBOARD_CACHE_CONTROL},
+    )
+
+
+# Serve a cached storyboard sheet without request-path generation
+@router.get("/files/{file_id}/storyboard/{sheet_name}.jpg")
+def storyboard_sheet(file_id: str, sheet_name: str, db: LibrarySession) -> FileResponse:
+    """Serve a cached storyboard sheet, never generating on request."""
+    path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
+    return FileResponse(
+        str(path),
+        media_type="image/jpeg",
+        filename=f"{sheet_name}.jpg",
+        headers={"Cache-Control": storyboards.STORYBOARD_CACHE_CONTROL},
+    )
 
 
 @router.get("/subtitles/{track_id}/vtt")

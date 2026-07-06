@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
-import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Hermetic mock for the M2 media viewer. The app still runs as a Vite-only
 // frontend in Playwright, so API calls and media element behavior are patched.
@@ -71,6 +73,143 @@ function mediaBytes(): Buffer | null {
 
 const generatedMp4 = mediaBytes()
 
+// Find a free local TCP port for the throwaway FastAPI server
+async function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (address === null || typeof address === 'string') {
+        server.close()
+        reject(new Error('could not allocate a port'))
+        return
+      }
+      server.close(() => resolve(address.port))
+    })
+  })
+}
+
+// Start a real backend for the one Playwright test that exercises API jobs
+async function startBackend(dataDir: string) {
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
+  const child = spawn(
+    'uv',
+    ['run', 'uvicorn', 'cairndex.main:app', '--host', '127.0.0.1', '--port', String(port)],
+    {
+      cwd: serverDir,
+      env: {
+        ...process.env,
+        CAIRNDEX_DATA_DIR: dataDir,
+        CAIRNDEX_WORKER_ENABLED: 'true',
+      },
+      stdio: 'pipe',
+    },
+  )
+  const started = Date.now()
+  while (Date.now() - started < 30_000) {
+    if (child.exitCode !== null) throw new Error('backend exited before startup')
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/health`)
+      if (response.ok) return { baseUrl, child }
+    } catch {
+      /* wait for uvicorn */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  child.kill()
+  throw new Error('backend did not start')
+}
+
+// Stop the throwaway backend without leaving a child process behind
+async function stopBackend(child: ChildProcessWithoutNullStreams) {
+  if (child.exitCode !== null) return
+  child.kill('SIGTERM')
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      resolve()
+    }, 5_000)
+    child.once('exit', () => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
+}
+
+// Proxy page-relative /api/v1 requests to the random backend port
+async function proxyApi(page: Page, apiBaseUrl: string) {
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const source = new URL(request.url())
+    const target = `${apiBaseUrl}${source.pathname}${source.search}`
+    const response = await fetch(target, {
+      method: request.method(),
+      headers: request.headers(),
+      body: ['GET', 'HEAD'].includes(request.method())
+        ? undefined
+        : (request.postDataBuffer() ?? undefined),
+    })
+    const headers: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      if (!['content-encoding', 'transfer-encoding'].includes(key)) headers[key] = value
+    })
+    route.fulfill({
+      status: response.status,
+      headers,
+      body: Buffer.from(await response.arrayBuffer()),
+    })
+  })
+}
+
+// Post JSON to the throwaway backend and return its JSON response
+async function apiPost<T>(apiBaseUrl: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!response.ok) throw new Error(`POST ${path} failed with ${response.status}`)
+  return (await response.json()) as T
+}
+
+// Wait for a backend job to reach a terminal status
+async function waitApiJob(apiBaseUrl: string, jobId: string) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const response = await fetch(`${apiBaseUrl}/api/v1/jobs/${jobId}`)
+    const job = (await response.json()) as { status: string; error?: string | null }
+    if (job.status === 'succeeded') return
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error(job.error ?? `job ${jobId} ended as ${job.status}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`job ${jobId} did not finish`)
+}
+
+// Generate a long, low-rate video that stays small enough for e2e
+function makeLongVideo(path: string) {
+  execFileSync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc=duration=65:size=160x90:rate=1',
+    '-movflags',
+    '+faststart',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:v',
+    'libx264',
+    '-y',
+    path,
+  ])
+}
+
 /** Patch browser media APIs so controls can be tested without a real backend. */
 async function mockMedia(page: Page) {
   await page.addInitScript(() => {
@@ -114,10 +253,21 @@ async function mockMedia(page: Page) {
         return 180
       },
     })
+    window.addEventListener(
+      'error',
+      (event) => {
+        if (event.target instanceof HTMLMediaElement) event.stopImmediatePropagation()
+      },
+      true,
+    )
     HTMLMediaElement.prototype.load = function () {
+      this.dataset.duration ||= '120'
       this.dispatchEvent(new Event('loadedmetadata'))
+      this.dispatchEvent(new Event('durationchange'))
+      this.dispatchEvent(new Event('progress'))
     }
     HTMLMediaElement.prototype.play = function () {
+      this.dataset.duration ||= '120'
       this.dataset.paused = 'false'
       this.dispatchEvent(new Event('play'))
       this.dispatchEvent(new Event('playing'))
@@ -148,10 +298,21 @@ async function mockMedia(page: Page) {
   })
 }
 
+// Options for the player API mock variants
+interface MockApiOptions {
+  storyboardStatus?: 200 | 404
+  chapters?: Array<{ start: number; end: number; title: string }>
+}
+
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
-async function mockApi(page: Page) {
+async function mockApi(page: Page, options: MockApiOptions = {}) {
   const mp4 = generatedMp4 ?? Buffer.from([])
-  await page.route('**/api/v1/libraries', (r) =>
+  const storyboardStatus = options.storyboardStatus ?? 200
+  const chapters = options.chapters ?? [
+    { start: 0, end: 60, title: 'Intro' },
+    { start: 60, end: 120, title: 'Middle' },
+  ]
+  await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
         {
@@ -168,10 +329,10 @@ async function mockApi(page: Page) {
       ],
     }),
   )
-  await page.route('**/auth/status', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
-  await page.route('**/bundles/counts', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) =>
     r.fulfill({
       json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0, unbundled: 0 },
     }),
@@ -179,33 +340,56 @@ async function mockApi(page: Page) {
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [summary('b0', 'Movie 0')], total: 1, offset: 0, limit: 100 } }),
   )
-  await page.route('**/collections?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/smart-collections', (r) => r.fulfill({ json: [] }))
-  await page.route('**/tags?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tag-groups?*', (r) => r.fulfill({ json: { items: [], next_cursor: null } }))
-  await page.route('**/tags/counts', (r) => r.fulfill({ json: { counts: {} } }))
-  await page.route('**/bundles/b0/thumbnail**', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/collections\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/collections\/counts$/, (r) =>
+    r.fulfill({ json: { counts: {} } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/smart-collections$/, (r) => r.fulfill({ json: [] }))
+  await page.route(/\/api\/v1\/libraries\/lib1\/tags\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/tag-groups\?/, (r) =>
+    r.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/tags\/counts$/, (r) =>
+    r.fulfill({ json: { counts: {} } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/bundles/b0/files/*/thumbnail', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail$/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/files/f0/stream', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
-  await page.route('**/files/img1/content', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route('**/subtitles/s0/vtt', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/subtitles\/s0\/vtt$/, (r) =>
     r.fulfill({
       status: 200,
       contentType: 'text/vtt',
       body: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello',
     }),
   )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\.vtt/, (r) =>
+    r.fulfill({
+      status: storyboardStatus,
+      contentType: 'text/vtt',
+      body:
+        storyboardStatus === 200
+          ? 'WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nstoryboard/sb_001.jpg?v=mock#xywh=0,0,320,180\n\n00:00:02.000 --> 00:02:00.000\nstoryboard/sb_001.jpg?v=mock#xywh=320,0,320,180\n'
+          : '',
+    }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\/sb_001\.jpg/, (r) =>
+    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+  )
 
-  await page.route('**/bundles/b0/files', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
     r.fulfill({
       json: [
         {
@@ -262,13 +446,13 @@ async function mockApi(page: Page) {
       ],
     }),
   )
-  await page.route('**/bundles/b0/collections', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/collections$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
-  await page.route('**/bundles/b0/tags', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/tags$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', tag_ids: [] } }),
   )
-  await page.route('**/bundles/b0', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0$/, (r) =>
     r.fulfill({
       json: {
         id: 'b0',
@@ -289,7 +473,7 @@ async function mockApi(page: Page) {
       },
     }),
   )
-  await page.route('**/bundles/b0/playback', (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) =>
     r.fulfill({
       json: {
         bundle_id: 'b0',
@@ -304,6 +488,8 @@ async function mockApi(page: Page) {
             width: 1920,
             height: 1080,
             duration: 120,
+            storyboard_url: '/api/v1/libraries/lib1/files/f0/storyboard.vtt?v=mock',
+            chapters,
             subtitles: [
               {
                 id: 's0',
@@ -327,6 +513,8 @@ async function mockApi(page: Page) {
             width: null,
             height: null,
             duration: null,
+            storyboard_url: null,
+            chapters: [],
             subtitles: [],
           },
         ],
@@ -335,25 +523,45 @@ async function mockApi(page: Page) {
   )
 }
 
+/** Hover the custom seek bar at a fraction of its width. */
+async function hoverSeekBar(page: Page, fraction: number) {
+  const video = page.getByTestId('media-video')
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).duration || 0))
+    .toBeGreaterThan(0)
+  const track = page.locator('.mv-seek__track')
+  const box = await track.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width * fraction, box!.y + box!.height / 2)
+}
+
+/** Open the mocked movie and wait for the video player to be ready. */
+async function openMovie(page: Page) {
+  const card = page.locator('[data-bundle-id="b0"]')
+  await expect(card).toBeVisible()
+  await card.dblclick()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+  const video = page.getByTestId('media-video')
+  await expect(video).toHaveAttribute('src', /files\/f0\/stream/, { timeout: 10_000 })
+  await expect(page.locator('.mv-time')).toContainText('/ 2:00')
+  return video
+}
+
 test('opens the unified viewer and drives custom video controls', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
   await page.goto('/')
 
-  await page.locator('[data-bundle-id="b0"]').dblclick()
-  await expect(page.locator('.media-viewer')).toBeVisible()
+  const video = await openMovie(page)
   await expect(page.locator('.mv-title')).toContainText('Movie 0')
   await expect(page.locator('.mv-center-play')).toHaveCount(0)
   await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
 
-  const video = page.getByTestId('media-video')
-  await expect(video).toHaveAttribute('src', /files\/f0\/stream/)
   await expect(page.locator('[data-testid="media-video"] track')).toHaveAttribute(
     'src',
     /subtitles\/s0\/vtt/,
   )
   await expect.poll(() => video.evaluate((el) => el.textTracks[0]?.mode)).toBe('showing')
-  await expect(page.locator('.mv-time')).toContainText('/ 2:00')
   await page.keyboard.press('Space')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
 
@@ -382,6 +590,57 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
   await page.mouse.move(420, 420)
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
+})
+
+test('shows storyboard preview and chapter title on seek hover', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  await openMovie(page)
+  const ticks = page.locator('.mv-seek__chapter-tick')
+  await expect(ticks).toHaveCount(2)
+
+  await hoverSeekBar(page, 0.55)
+
+  const preview = page.getByTestId('storyboard-preview')
+  await expect(preview).toBeVisible()
+  await expect(preview).toHaveCSS('background-image', /sb_001\.jpg/)
+  await expect(page.locator('.mv-seek__tip')).toContainText('Middle')
+})
+
+test('keeps the time-only tooltip when storyboard VTT is absent', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page, { storyboardStatus: 404 })
+  await page.goto('/')
+
+  await openMovie(page)
+  await hoverSeekBar(page, 0.2)
+
+  await expect(page.locator('.mv-seek__tip')).toBeVisible()
+  await expect(page.getByTestId('storyboard-preview')).toHaveCount(0)
+})
+
+test('omits chapter titles before the first chapter and in chapter gaps', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page, {
+    storyboardStatus: 404,
+    chapters: [
+      { start: 20, end: 40, title: 'First' },
+      { start: 80, end: 120, title: 'Last' },
+    ],
+  })
+  await page.goto('/')
+
+  await openMovie(page)
+  await hoverSeekBar(page, 0.1)
+  await expect(page.locator('.mv-seek__chapter-title')).toHaveCount(0)
+
+  await hoverSeekBar(page, 0.5)
+  await expect(page.locator('.mv-seek__chapter-title')).toHaveCount(0)
+
+  await hoverSeekBar(page, 0.75)
+  await expect(page.locator('.mv-seek__tip')).toContainText('Last')
 })
 
 test('navigates files without the inline filmstrip and shows the fallback card', async ({
@@ -429,4 +688,57 @@ test('plays a real generated MP4 without media-element mocks', async ({ page }) 
     .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime))
     .toBeGreaterThan(1.1)
   await expect(page.locator('.mv-time')).not.toHaveText(/^0:00 /)
+})
+
+test('shows a storyboard generated by the real backend job', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real storyboard e2e')
+
+  const libraryRoot = mkdtempSync(join(tmpdir(), 'cairndex-storyboard-lib-'))
+  const dataDir = mkdtempSync(join(tmpdir(), 'cairndex-storyboard-data-'))
+  let backend: { baseUrl: string; child: ChildProcessWithoutNullStreams } | null = null
+  try {
+    makeLongVideo(join(libraryRoot, 'story.mp4'))
+    backend = await startBackend(dataDir)
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/create', {
+      root_path: libraryRoot,
+      display_name: 'Storyboard Test',
+      create_if_missing: false,
+    })
+    const bundle = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/bundles`,
+      { title: 'Storyboard Movie' },
+    )
+    await apiPost(backend.baseUrl, `/api/v1/libraries/${library.id}/bundles/${bundle.id}/files`, {
+      relative_path: 'story.mp4',
+      role: 'primary_video',
+      media_kind: 'video',
+      mime_type: 'video/mp4',
+    })
+    const probe = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/jobs/probe`,
+    )
+    await waitApiJob(backend.baseUrl, probe.id)
+    const storyboard = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/jobs/storyboards`,
+    )
+    await waitApiJob(backend.baseUrl, storyboard.id)
+
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.locator(`[data-bundle-id="${bundle.id}"]`).dblclick()
+    await expect(page.getByTestId('media-video')).toHaveAttribute('src', /story\.mp4|stream/)
+    await expect(page.locator('.mv-time')).toContainText('/ 1:05')
+
+    await hoverSeekBar(page, 0.4)
+    const preview = page.getByTestId('storyboard-preview')
+    await expect(preview).toBeVisible()
+    await expect(preview).toHaveCSS('background-image', /storyboard\/sb_001\.jpg/)
+  } finally {
+    if (backend) await stopBackend(backend.child)
+    rmSync(libraryRoot, { recursive: true, force: true })
+    rmSync(dataDir, { recursive: true, force: true })
+  }
 })

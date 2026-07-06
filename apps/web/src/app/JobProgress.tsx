@@ -8,6 +8,7 @@ const PHASE_LABELS: Record<string, string> = {
   grouping: 'Preparing grouping suggestions',
   probing: 'Reading media metadata',
   thumbnailing: 'Generating thumbnails',
+  storyboarding: 'Generating storyboards',
   finalizing: 'Finalizing',
 }
 
@@ -15,9 +16,12 @@ const JOB_LABELS: Record<string, string> = {
   scan: 'Scan',
   probe: 'Collect metadata',
   thumbnail: 'Thumbnails',
+  storyboard: 'Storyboards',
 }
 
 function headline(job: JobRead): string {
+  if (job.status === 'failed') return `${JOB_LABELS[job.job_type] ?? 'Job'} failed`
+  if (job.status === 'cancelled') return `${JOB_LABELS[job.job_type] ?? 'Job'} cancelled`
   const phaseLabel = job.phase ? PHASE_LABELS[job.phase] : undefined
   if (phaseLabel) return phaseLabel
   if (job.message) return job.message
@@ -27,8 +31,8 @@ function headline(job: JobRead): string {
 /**
  * Live progress for the active maintenance job. Determinate bar when ``total``
  * is known, indeterminate otherwise; shows the current phase/message and a
- * count. Errors are surfaced by the caller (mutation error) — this renders the
- * running/queued snapshot streamed from ``waitForJob``.
+ * count. Terminal job failures can stay visible when a caller runs a job in the
+ * background instead of failing its own mutation.
  */
 export function JobProgress({ job }: { job: JobRead | null }) {
   if (job === null) return null
@@ -47,7 +51,9 @@ export function JobProgress({ job }: { job: JobRead | null }) {
         )}
       </div>
       <div
-        className={`job-progress__track${pct === null ? ' job-progress__track--indeterminate' : ''}`}
+        className={`job-progress__track${pct === null ? ' job-progress__track--indeterminate' : ''}${
+          job.status === 'failed' || job.status === 'cancelled' ? ' job-progress__track--error' : ''
+        }`}
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -58,6 +64,7 @@ export function JobProgress({ job }: { job: JobRead | null }) {
           style={pct === null ? undefined : { width: `${pct}%` }}
         />
       </div>
+      {job.error && <div className="job-progress__error">{job.error}</div>}
     </div>
   )
 }
