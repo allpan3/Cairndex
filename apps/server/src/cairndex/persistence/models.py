@@ -28,8 +28,14 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    event,
+    update,
+)
+from sqlalchemy import (
+    inspect as sa_inspect,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Session as OrmSession
 
 from cairndex.domain.enums import (
     FileAvailability,
@@ -244,6 +250,48 @@ class AssetFile(Base):
         # (AGENTS.md §4.3; ADR-0008 — the library DB is the storage scope).
         UniqueConstraint("relative_path", name="relative_path"),
     )
+
+
+# Resume state for one playable video file
+class PlaybackProgress(Base):
+    __tablename__ = "playback_progress"
+
+    file_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("asset_files.id", ondelete="CASCADE"), primary_key=True
+    )
+    bundle_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    position_s: Mapped[float] = mapped_column(Float, nullable=False)
+    duration_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completed: Mapped[bool] = mapped_column(
+        Integer, nullable=False, default=False, server_default="0"
+    )
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    file: Mapped[AssetFile] = relationship()
+
+    __table_args__ = (
+        Index("ix_playback_progress_bundle_id", "bundle_id"),
+        Index("ix_playback_progress_completed_updated_at", "completed", "updated_at"),
+    )
+
+
+# Sync denormalized progress bundle ids from the single AssetFile reparent hook
+@event.listens_for(OrmSession, "before_flush")
+def _sync_playback_progress_bundle_id(
+    session: OrmSession, _flush_context: object, _instances: object
+) -> None:
+    for obj in session.dirty:
+        if not isinstance(obj, AssetFile) or obj.id is None:
+            continue
+        state = sa_inspect(obj)
+        if not state.attrs.bundle_id.history.has_changes():
+            continue
+        session.execute(
+            update(PlaybackProgress)
+            .where(PlaybackProgress.file_id == obj.id)
+            .values(bundle_id=obj.bundle_id)
+        )
 
 
 class Tag(Base):
