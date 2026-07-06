@@ -1,5 +1,64 @@
 # Project status
 
+## Latest session: web media viewer M3 storyboards/trickplay
+
+Branch `feat/storyboards`. Implemented plan 1 M3's storyboard/trickplay and
+chapter-tick slice:
+
+- Added a registry-backed `storyboard` job type and worker handler. It scans
+  available video files with probed duration, skips videos below
+  `CAIRNDEX_STORYBOARD_MIN_DURATION` (default 60 seconds), can be disabled with
+  `CAIRNDEX_STORYBOARDS=off`, dedupes queued storyboard jobs per library, reports
+  `storyboarding` progress, and cooperatively honors cancellation before each
+  file. Running storyboard jobs do not dedupe; a follow-up queued job can sweep
+  files the in-flight pass missed.
+- Storyboards are generated into deterministic portable cache paths:
+  `.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/index.vtt` plus
+  `fingerprint.txt` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
+  quick fingerprint for cheap request-path validation; the VTT keeps the same
+  fingerprint in a `NOTE` for artifact self-description.
+- Added cached-only storyboard endpoints:
+  `/api/v1/libraries/{library_id}/files/{file_id}/storyboard.vtt` and
+  `/storyboard/{sheet}.jpg`. They never generate on request and return 404 when
+  absent/stale/disabled. Served artifacts use immutable cache headers.
+- Extended playback manifests with `storyboard_url` (null until a current cache
+  exists, versioned with `?v={quick_fingerprint}`) and `chapters` from M1
+  `tech_metadata`; regenerated OpenAPI and `apps/web/src/api/schema.d.ts`.
+- Updated the web Update flow to run scan → probe as the blocking mutation, then
+  enqueue storyboards fire-and-forget while reusing the existing sidebar job
+  progress UI. Storyboard failures surface as their own job error state instead
+  of failing Update. No new sidebar button was added.
+- Added `StoryboardPreview` and a constrained WebVTT parser for seek-hover
+  trickplay. The tooltip lazy-fetches once with `retry: false`, treats 404 as
+  optional/no-preview, resolves VTT payloads like
+  `storyboard/sb_001.jpg?v=...#xywh=...` by standard relative-URL rules, crops
+  and scales tiles via CSS background positioning/sizing, and preloads
+  neighboring sheets while scrubbing.
+- Seek bar chapter starts now render visual ticks, and the hover tooltip shows
+  the current chapter title beside the timestamp only inside chapter ranges or
+  at/after the last chapter start. No chapter-skip keys were added.
+
+Verification:
+
+- Backend: `uv run ruff check`, `uv run ruff format --check`,
+  `uv run mypy src`, and `uv run pytest` passed (`311 passed`, one existing
+  Starlette/httpx deprecation warning).
+- Frontend: `npm run lint`, `npm run format:check`, `npm run typecheck`,
+  `npm run test` (`26 passed`), `npm run build`, and `npm run test:e2e`
+  (`45 passed`) passed.
+- Playwright includes mocked hover coverage, 404 fallback coverage, and a real
+  FastAPI/Vite integration test that generates a >60s fixture, runs the probe and
+  storyboard jobs through the API, opens the viewer, and verifies the preview.
+- Manual Demo-library verification: ran the local app against
+  `/Users/owner/DemoLibrary`, clicked **Update**, opened `trailer_neon`, hovered
+  the seek bar, verified the storyboard preview loaded from a versioned URL, and
+  captured `/private/tmp/cairndex-storyboards-demo.png`. Demo videos are 4–6 seconds, so this manual run used
+  `CAIRNDEX_STORYBOARD_MIN_DURATION=1`; production default remains 60 seconds.
+
+Known issues / out of scope: no HLS/remux/transcode work, no subtitle upgrade, no
+image zoom/pan, and no chapter-skip keys. Next recommended media-player task:
+plan 1 M4 — watch progress/resume.
+
 ## Latest session: web media viewer M2
 
 Branch `feat/media-viewer`. Implemented plan 1 M2's direct-play web viewer

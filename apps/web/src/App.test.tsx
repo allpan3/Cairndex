@@ -20,7 +20,11 @@ const LIBRARY = {
   last_opened_at: null,
 }
 
-function mockApi(libraries: unknown[] = [LIBRARY]) {
+function mockApi(
+  libraries: unknown[] = [LIBRARY],
+  options: { storyboardStatus?: 'succeeded' | 'failed' } = {},
+) {
+  const storyboardStatus = options.storyboardStatus ?? 'succeeded'
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
@@ -86,6 +90,22 @@ function mockApi(libraries: unknown[] = [LIBRARY]) {
           started_at: '2026-01-01T00:00:01Z',
           finished_at: '2026-01-01T00:00:02Z',
         }
+      else if (url.endsWith('/api/v1/jobs/job3'))
+        body = {
+          id: 'job3',
+          library_id: 'lib1',
+          job_type: 'storyboard',
+          status: storyboardStatus,
+          payload: {},
+          processed: 2,
+          total: 2,
+          result: storyboardStatus === 'succeeded' ? { generated: 0, skipped: 0, failed: 0 } : null,
+          error: storyboardStatus === 'failed' ? 'Storyboard failed' : null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:02Z',
+          started_at: '2026-01-01T00:00:02Z',
+          finished_at: '2026-01-01T00:00:03Z',
+        }
       else if (url.endsWith('/jobs/scan') && init?.method === 'POST')
         body = {
           id: 'job1',
@@ -115,6 +135,22 @@ function mockApi(libraries: unknown[] = [LIBRARY]) {
           error: null,
           cancel_requested: false,
           created_at: '2026-01-01T00:00:01Z',
+          started_at: null,
+          finished_at: null,
+        }
+      else if (url.endsWith('/jobs/storyboards') && init?.method === 'POST')
+        body = {
+          id: 'job3',
+          library_id: 'lib1',
+          job_type: 'storyboard',
+          status: 'queued',
+          payload: {},
+          processed: 0,
+          total: null,
+          result: null,
+          error: null,
+          cancel_requested: false,
+          created_at: '2026-01-01T00:00:02Z',
           started_at: null,
           finished_at: null,
         }
@@ -174,4 +210,18 @@ test('opens grouping review after a successful library update with suggestions',
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Suggest grouping' })), {
     timeout: 2500,
   })
+})
+
+test('does not fail update when the background storyboard job fails', async () => {
+  mockApi([LIBRARY], { storyboardStatus: 'failed' })
+  renderApp()
+  fireEvent.click(await screen.findByRole('button', { name: /Update/i }))
+
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Suggest grouping' })), {
+    timeout: 2500,
+  })
+  await waitFor(() => expect(screen.getByText('Storyboards failed')).toBeInTheDocument(), {
+    timeout: 2500,
+  })
+  expect(screen.queryByText(/Background job failed/i)).not.toBeInTheDocument()
 })

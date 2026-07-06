@@ -87,6 +87,7 @@ A `Library` is the content and storage boundary. It is a server-visible root dir
     cache/
       thumbnails/
       subtitles/
+      storyboards/
 ```
 
 Required concepts:

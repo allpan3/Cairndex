@@ -105,9 +105,9 @@ Current browsing surfaces:
 
 The current sidebar maintenance flow exposes one primary **Update** button plus a
 small overflow menu for **Scan new files**, **Collect metadata**, and **Review
-grouping**. Update waits for scan/grouping-plan generation and metadata probe to
-finish before invalidating affected queries and opening grouping review when the
-scan produced suggestions.
+grouping**. Update waits for scan/grouping-plan generation, metadata probe, and
+storyboard generation to finish before invalidating affected queries and opening
+grouping review when the scan produced suggestions.
 
 ## 4. Library package and registry
 
@@ -122,6 +122,7 @@ A Cairndex library is a directory with this package:
     cache/
       thumbnails/
       subtitles/
+      storyboards/
 ```
 
 The manifest stores the portable library identity and display name. `library.db`
@@ -228,8 +229,34 @@ Derived cache:
 
 - thumbnails live under `.cairndex/cache/thumbnails/`;
 - converted external WebVTT subtitles live under `.cairndex/cache/subtitles/`;
+- storyboard WebVTT indexes and tile sheets live under
+  `.cairndex/cache/storyboards/`;
 - cache paths are deterministic and reproducible;
 - cache files are not content assets and are ignored by scan/grouping.
+
+Storyboard artifacts use this cache layout:
+
+```text
+.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/
+  index.vtt
+  fingerprint.txt
+  sb_001.jpg
+  sb_002.jpg
+```
+
+`fingerprint.txt` stores the source file's quick fingerprint for cheap
+request-path validation; `index.vtt` also includes
+`NOTE cairndex-quick-fingerprint: {quick_fingerprint}` so the artifact is
+self-describing. Manifest `storyboard_url` values and VTT sheet payloads include
+`?v={quick_fingerprint}` and storyboard endpoints serve them with immutable cache
+headers. A cue payload is always a relative URL plus tile fragment:
+
+```text
+storyboard/sb_001.jpg?v={quick_fingerprint}#xywh={x},{y},{w},{h}
+```
+
+Clients should resolve that relative to the VTT URL using normal URL rules. The
+VTT is an application index for trickplay loaders, not a browser `<track>`.
 
 Thumbnail cover fallback is:
 
@@ -244,8 +271,10 @@ job endpoint and lazy bundle/file thumbnail endpoints remain.
 
 Direct playback is implemented around bundle/file routes that serve source bytes
 with safe path resolution and HTTP range behavior. External SRT/VTT subtitles are
-served as browser-native WebVTT through the cache. Embedded subtitle streams are
-detected and represented, but extraction/remux/transcode fallback is deferred.
+served as browser-native WebVTT through the cache. Storyboard endpoints serve
+cached artifacts only and return 404 until the background job has generated a
+current index. Embedded subtitle streams are detected and represented, but
+extraction/remux/transcode fallback is deferred.
 
 ## 9. Filtering and Smart Collections
 

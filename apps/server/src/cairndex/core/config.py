@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.
     static_dir: Path | None = None
 
+    # Storyboards are expensive ffmpeg-derived trickplay sheets generated only
+    # by the background job. Set CAIRNDEX_STORYBOARDS=off to skip generation and
+    # hide cached artifacts from manifests/endpoints
+    storyboards: bool = True
+
+    # Minimum probed duration before a video is eligible for storyboards
+    storyboard_min_duration: float = 60.0
+
     def resolved_database_url(self) -> str:
         if self.database_url is not None:
             return self.database_url

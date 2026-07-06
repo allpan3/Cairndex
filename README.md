@@ -21,8 +21,9 @@ Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
 hierarchical **Collections**, a read-only physical **File View**, hierarchical
 tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail jobs
-with high-confidence moved-file repair, direct playback with subtitle tracks,
-and a hardened single-container production deployment.
+with high-confidence moved-file repair, direct playback with subtitle tracks and
+storyboard trickplay cache generation, and a hardened single-container
+production deployment.
 
 Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
 each library is a directory carrying its own `.cairndex/` metadata
