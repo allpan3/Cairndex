@@ -1,6 +1,6 @@
 # Project status
 
-## Latest session: web media viewer M4 watch progress/resume fix pass
+## Merged: media-player M4 watch progress/resume (#4)
 
 Branch `feat/watch-progress`. Implemented plan 1 M4's watch progress and resume
 slice, then applied the review fix pass:
@@ -70,7 +70,7 @@ Verification:
   progress write targeted the image file; the multi-video stale-position case is
   covered by the Playwright regression.
 
-## Latest session: web media viewer M3 storyboards/trickplay
+## Merged: media-player M3 storyboards/trickplay (#3)
 
 Branch `feat/storyboards`. Implemented plan 1 M3's storyboard/trickplay and
 chapter-tick slice:
@@ -129,7 +129,7 @@ Known issues / out of scope: no HLS/remux/transcode work, no subtitle upgrade, n
 image zoom/pan, and no chapter-skip keys. Next recommended media-player task:
 plan 1 M4 — watch progress/resume.
 
-## Latest session: web media viewer M2
+## Merged: media-player M2 unified media viewer (#2)
 
 Branch `feat/media-viewer`. Implemented plan 1 M2's direct-play web viewer
 slice without new runtime dependencies and without backend/API changes:
@@ -248,7 +248,7 @@ Known issues: none for M1. M2 has since merged; next recommended media-player
 task is plan 1 M3 — storyboards/trickplay (subtitle depth was owner-deferred
 to M8 behind HLS; dual subtitles to M9+).
 
-## Latest session: client platform & media experience plans (docs only)
+## Earlier: client platform & media experience plans (docs only)
 
 Branch `docs/client-platform-plans` (repo renamed VaultLeaf → Cairndex; this is
 the first work in the new repo). Owner-requested detailed technical plans for
@@ -675,7 +675,11 @@ menu. Update waits for scan/grouping plan generation and ffprobe metadata
 collection, invalidates affected queries, and opens grouping review when a scan
 produced suggestions.
 
-## Current milestone
+## Earlier milestone: unbundled staging + manual bundling assistant
+
+> Historical note (long merged). The current work is the media-player
+> foundation — see the M1–M4 sections at the top of this file and
+> `docs/plans/` for the roadmap.
 
 **Unbundled staging + manual bundling assistant (branch
 `feat/manual-bundling`).** Scan-staged provisional bundles are now surfaced only
@@ -857,13 +861,21 @@ dialogs).
 - Same-volume high-confidence moved-file repair is implemented; cross-filesystem
   repair candidates, duplicate/copy handling, and manual repair are future work.
 - File View is read-only. Write mode, reveal/open-with-default-app, and desktop
-  helper/Tauri integration are deferred.
-- Remux/transcode fallback and embedded subtitle extraction are deferred.
+  helper/Tauri integration are not yet implemented but are now **planned and
+  design-ratified**: library write mode in `docs/plans/04-library-write-mode.md`
+  (ADR-0013, accepted), and the macOS desktop/host-handoff path in
+  `docs/plans/03-macos-desktop-app.md` (ADR-0012, accepted).
+- Remux/transcode fallback and embedded subtitle extraction are deferred —
+  scheduled as plan 1 M6/M7 (HLS sessions) and M8 (subtitle upgrade); see
+  `docs/plans/01-web-media-player-and-viewer.md`.
 
 ## Next recommended tasks
 
-1. Plan 1 M3: embedded text-subtitle extraction plus subtitle track menu, dual
-   subtitles, and subtitle styling/timing controls.
+1. **Plan 1 M5 — image viewer v2** (the next media-player slice): the zoom/pan
+   image stage plus the server-side preview-derivative pipeline (§5.1), which
+   also unlocks HEIC/TIFF openability. (M1–M4 are merged; subtitle depth was
+   owner-deferred to M8 behind HLS, and dual subtitles to M9 — see
+   `docs/plans/01-web-media-player-and-viewer.md`.)
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 3. Continue File View planning toward guarded write mode and safe desktop-native
