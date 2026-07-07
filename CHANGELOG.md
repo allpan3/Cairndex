@@ -10,6 +10,14 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
+- **Docs reconciliation through media-player M4 (docs).** Marked plan 1 M3/M4
+  merged (M5 next) and folded in the M9 storyboard padding-tile follow-up;
+  refreshed the `docs/architecture.md` status header (was "PR 36"); updated the
+  README feature summary to cover the custom media viewer, storyboard
+  trickplay, and watch progress/resume; and cleaned up `docs/STATUS.md`
+  (stacked "Latest session" headers → "Merged"/"Earlier", the "Next recommended
+  tasks" list now points at M5, and the stale "Current milestone" section is
+  marked historical).
 - **Plan 1 milestone re-sequencing (docs).** After M2 shipped, the owner
   deprioritized subtitle depth: the subtitle-upgrade slice (embedded
   extraction, track menu, styling/timing) moved from third to M8 (after HLS),

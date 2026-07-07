@@ -166,6 +166,15 @@ New job type `storyboard` beside scan/probe/thumbnail:
   ≥ a threshold, e.g. 60 s), deduplicated like thumbnail jobs, cancellable,
   progress-reporting. Storyboards are the most expensive derived artifact —
   bounded to the single worker and skippable via config.
+- **Known follow-up (deferred to M9 polish):** as shipped in M3, the VTT cue
+  count is derived from probed duration and capped to the sheets ffmpeg
+  actually emitted (so no cue ever references a missing sheet / 404s). When a
+  video *stream* is shorter than its *container* duration and the shortfall
+  lands mid-sheet, the final cues can point at ffmpeg `tile` filter **padding
+  tiles** (a dark thumbnail at the very end rather than a broken one). Fix
+  requires counting the frames ffmpeg actually emitted (parse ffmpeg output or
+  probe the frame count) and trimming cues to real frames — cosmetic, low
+  priority, folded into M9.
 
 ## 5. Server foundation C — image previews & watch progress
 
@@ -468,13 +477,13 @@ running scan must not queue-block a ten-second export:
 |---|-------|----------|
 | M1 | ✅ Probe enrichment (merged, #1) | §3; regenerate OpenAPI/types; reprobe path |
 | M2 | ✅ Viewer shell + video controls v1 (merged, #2) | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only. Shipped subtitle on/off over external VTT (default track) |
-| M3 | Storyboards | §4.2 job + endpoints + hover preview + chapter ticks |
-| M4 | Watch progress | §5.2 table/API + resume + continue-watching endpoint |
-| M5 | Image viewer v2 | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
+| M3 | ✅ Storyboards (merged, #3) | §4.2 job + endpoints + hover preview + chapter ticks |
+| M4 | ✅ Watch progress (merged, #4) | §5.2 table/API + resume + continue-watching endpoint |
+| M5 | Image viewer v2 ← **next** | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
 | M6 | Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
 | M7 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
 | M8 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings. Owner-deprioritized behind HLS — embedded-sub extraction is most valuable once MKVs play at all. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
-| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. **Dual simultaneous subtitles** land here at the earliest (owner: far-deferred; fine to slip past M11) |
+| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. **Dual simultaneous subtitles** land here at the earliest (owner: far-deferred; fine to slip past M11). Also: trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
 | M10 | Video wall (web) | §9 |
 | M11 | Media exports | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5) |
 

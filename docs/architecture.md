@@ -1,8 +1,10 @@
 # Architecture
 
-> Status: current through PR 36 (`feat/scan-grouping-review`). See
-> `AGENTS.md` for the product brief and `docs/STATUS.md` for current gaps,
-> validation state, and recommended next tasks.
+> Status: current through the media-player foundation M1–M4 (probe enrichment,
+> the unified custom media viewer, storyboard trickplay, and watch
+> progress/resume; PRs #1–#4 in this repo). See `AGENTS.md` for the product
+> brief, `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md`
+> for current gaps, validation state, and recommended next tasks.
 
 ## 1. System overview
 
