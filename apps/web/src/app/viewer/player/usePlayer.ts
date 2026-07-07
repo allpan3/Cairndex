@@ -54,14 +54,27 @@ interface UsePlayerOptions {
   rootRef: React.RefObject<HTMLElement | null>
   prefs: PlayerPrefs
   onPrefs: Dispatch<SetStateAction<PlayerPrefs>>
+  resumePosition?: number | null
+  resumeCompleted?: boolean
+  onResumed?: (position: number) => void
 }
 
 /** Headless native-video state and commands for the M2 custom controls. */
-export function usePlayer({ source, rootRef, prefs, onPrefs }: UsePlayerOptions): PlayerBindings {
+export function usePlayer({
+  source,
+  rootRef,
+  prefs,
+  onPrefs,
+  resumePosition = null,
+  resumeCompleted = false,
+  onResumed,
+}: UsePlayerOptions): PlayerBindings {
   const engineRef = useRef<NativeEngine | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const prefsRef = useRef(prefs)
   const onPrefsRef = useRef(onPrefs)
+  const resumeRef = useRef({ position: resumePosition, completed: resumeCompleted, onResumed })
+  const resumedSourceRef = useRef<string | null>(null)
   const [videoElement, setVideoElementState] = useState<HTMLVideoElement | null>(null)
   const [status, setStatus] = useState<PlayerStatus>('idle')
   const [currentTime, setCurrentTime] = useState(0)
@@ -74,6 +87,21 @@ export function usePlayer({ source, rootRef, prefs, onPrefs }: UsePlayerOptions)
     prefsRef.current = prefs
     onPrefsRef.current = onPrefs
   }, [onPrefs, prefs])
+
+  useEffect(() => {
+    resumeRef.current = { position: resumePosition, completed: resumeCompleted, onResumed }
+  }, [onResumed, resumeCompleted, resumePosition])
+
+  useEffect(() => {
+    resumedSourceRef.current = null
+    if (videoRef.current) videoRef.current.currentTime = 0
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCurrentTime(0)
+    setDuration(0)
+    setBuffered([])
+    setStatus(source ? 'loading' : 'idle')
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [source])
 
   const videoRefCallback = useCallback((element: HTMLVideoElement | null) => {
     videoRef.current = element
@@ -124,6 +152,14 @@ export function usePlayer({ source, rootRef, prefs, onPrefs }: UsePlayerOptions)
     const onLoaded = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0)
       syncBuffered()
+      const resume = resumeRef.current
+      const position = resume.position ?? 0
+      if (source && !resume.completed && position > 0 && resumedSourceRef.current !== source.src) {
+        engine.seek(position)
+        setCurrentTime(position)
+        resumedSourceRef.current = source.src
+        resume.onResumed?.(position)
+      }
     }
     const onTime = () => setCurrentTime(video.currentTime)
     const onPlay = () => setStatus('playing')
@@ -148,7 +184,7 @@ export function usePlayer({ source, rootRef, prefs, onPrefs }: UsePlayerOptions)
     onLoaded()
     onTime()
     return () => off.forEach((unsubscribe) => unsubscribe())
-  }, [syncBuffered, videoElement])
+  }, [source, syncBuffered, videoElement])
 
   useEffect(() => {
     const onFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current)

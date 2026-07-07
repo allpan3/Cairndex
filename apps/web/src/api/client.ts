@@ -40,6 +40,11 @@ export type SmartCollectionUpdate = components['schemas']['SmartCollectionUpdate
 
 export type PlaybackManifest = components['schemas']['PlaybackManifest']
 export type PlayableVideo = components['schemas']['PlayableVideo']
+export type PlaybackProgressRead = components['schemas']['PlaybackProgressRead']
+export type PlaybackProgressUpdate = components['schemas']['PlaybackProgressUpdate']
+export type ContinueWatchingProgressRead = components['schemas']['ContinueWatchingProgressRead']
+export type ContinueWatchingItem = components['schemas']['ContinueWatchingItem']
+export type ContinueWatchingPage = components['schemas']['ContinueWatchingPage']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
@@ -250,6 +255,21 @@ export const deleteSmartCollection = (id: string) =>
 
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   getJson<PlaybackManifest>(`${lib()}/bundles/${bundleId}/playback`, signal)
+
+export const fetchContinueWatching = (limit = 20, offset = 0, signal?: AbortSignal) =>
+  getJson<ContinueWatchingPage>(
+    `${lib()}/continue-watching?limit=${limit}&offset=${offset}`,
+    signal,
+  )
+
+export const updatePlaybackProgress = (fileId: string, payload: PlaybackProgressUpdate) =>
+  send<PlaybackProgressRead>(`${lib()}/files/${fileId}/progress`, 'PUT', payload)
+
+export function beaconPlaybackProgress(fileId: string, payload: PlaybackProgressUpdate): boolean {
+  if (!navigator.sendBeacon) return false
+  const body = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  return navigator.sendBeacon(`${lib()}/files/${fileId}/progress`, body)
+}
 
 export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {
   return getJson<ViewCounts>(`${lib()}/bundles/counts`, signal)

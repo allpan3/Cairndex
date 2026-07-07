@@ -1,14 +1,16 @@
 """Direct playback: capability detection, range streaming, and VTT subtitles."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
 from cairndex.media import playback
 from cairndex.media.playback import _srt_to_vtt, assess_playability
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
 from cairndex.registry import library_package as pkg
 from cairndex.services import bundles as bundle_service
 from cairndex.services import subtitles as sub_service
@@ -147,6 +149,234 @@ def test_playback_manifest_lists_videos_and_subtitles(
     assert track["kind"] == "external"
     assert track["language"] == "en"
     assert track["src"] == f"{base}/subtitles/{track['id']}/vtt"
+
+
+def test_progress_put_upserts_clamps_and_marks_completion(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="poster.png",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+    base = f"/api/v1/libraries/{library_id}"
+
+    first = client.put(
+        f"{base}/files/{video.id}/progress", json={"position_s": 94, "duration_s": 100}
+    )
+    assert first.status_code == 200
+    assert first.json() == {"position_s": 94.0, "duration_s": 100.0, "completed": False}
+
+    second = client.put(
+        f"{base}/files/{video.id}/progress", json={"position_s": 150, "duration_s": 100}
+    )
+    assert second.status_code == 200
+    assert second.json() == {"position_s": 100.0, "duration_s": 100.0, "completed": True}
+    assert len(session.scalars(select(PlaybackProgress)).all()) == 1
+
+    boundary = client.put(
+        f"{base}/files/{video.id}/progress", json={"position_s": 95, "duration_s": 100}
+    )
+    assert boundary.json()["completed"] is True
+    assert session.get(PlaybackProgress, video.id).bundle_id == bundle.id
+
+    beacon = client.post(
+        f"{base}/files/{video.id}/progress", json={"position_s": 10, "duration_s": 100}
+    )
+    assert beacon.status_code == 200
+    assert beacon.json()["completed"] is False
+
+    unknown_duration = client.put(
+        f"{base}/files/{video.id}/progress", json={"position_s": 999, "duration_s": None}
+    )
+    assert unknown_duration.status_code == 200
+    assert unknown_duration.json() == {
+        "position_s": 999.0,
+        "duration_s": None,
+        "completed": False,
+    }
+
+    image_progress = client.put(
+        f"{base}/files/{image.id}/progress", json={"position_s": 1, "duration_s": 10}
+    )
+    assert image_progress.status_code == 422
+
+
+def test_playback_manifest_embeds_progress_with_one_progress_query(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    part = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="part2.mp4",
+        role=FileRole.VIDEO_PART,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.add(
+        PlaybackProgress(
+            file_id=video.id,
+            bundle_id=bundle.id,
+            position_s=12,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 6, tzinfo=UTC),
+        )
+    )
+    session.commit()
+    statements: list[str] = []
+
+    def capture(_conn: object, _cursor: object, statement: str, *_args: object) -> None:
+        if "playback_progress" in statement.lower():
+            statements.append(statement)
+
+    event.listen(session.get_bind(), "before_cursor_execute", capture)
+    try:
+        body = client.get(f"/api/v1/libraries/{library_id}/bundles/{bundle.id}/playback").json()
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", capture)
+
+    by_id = {item["file_id"]: item for item in body["videos"]}
+    assert by_id[video.id]["progress"] == {
+        "position_s": 12.0,
+        "duration_s": 100.0,
+        "completed": False,
+    }
+    assert by_id[part.id]["progress"] is None
+    assert len(statements) == 1
+    assert " IN " in statements[0].upper()
+
+
+def test_continue_watching_orders_paginates_and_excludes_completed(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    now = datetime(2026, 7, 6, 12, tzinfo=UTC)
+
+    def video_bundle(title: str, file_name: str, *, position: float, completed: bool, age: int):
+        bundle = bundle_service.create_bundle(session, title=title)
+        video = bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=file_name,
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+        )
+        session.add(
+            PlaybackProgress(
+                file_id=video.id,
+                bundle_id=bundle.id,
+                position_s=position,
+                duration_s=100,
+                completed=completed,
+                updated_at=now - timedelta(minutes=age),
+            )
+        )
+        return bundle, video
+
+    old, _old_file = video_bundle("Old", "old.mp4", position=10, completed=False, age=20)
+    newest_a, a_file = video_bundle("Newest A", "a.mp4", position=10, completed=False, age=0)
+    newest_b, b_file = video_bundle("Newest B", "b.mp4", position=10, completed=False, age=0)
+    video_bundle("Done", "done.mp4", position=99, completed=True, age=0)
+    video_bundle("Zero", "zero.mp4", position=0, completed=False, age=0)
+    session.commit()
+    expected = [newest_a.id, newest_b.id] if a_file.id < b_file.id else [newest_b.id, newest_a.id]
+
+    page = client.get(f"/api/v1/libraries/{library_id}/continue-watching?limit=2").json()
+    assert page["total"] == 3
+    assert [item["id"] for item in page["items"]] == expected
+    assert page["items"][0]["title"].startswith("Newest")
+    assert page["items"][0]["progress"]["file_id"] in {a_file.id, b_file.id}
+    assert page["items"][0]["progress"]["position_s"] == 10.0
+    assert page["items"][0]["progress"]["duration_s"] == 100.0
+
+    second = client.get(f"/api/v1/libraries/{library_id}/continue-watching?limit=2&offset=2").json()
+    assert [item["id"] for item in second["items"]] == [old.id]
+
+
+def test_progress_cascades_when_file_is_deleted(session: Session, library_root: Path) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    session.add(
+        PlaybackProgress(
+            file_id=video.id,
+            bundle_id=bundle.id,
+            position_s=10,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 6, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    session.delete(video)
+    session.commit()
+
+    assert session.get(PlaybackProgress, video.id) is None
+
+
+def test_progress_bundle_id_tracks_asset_file_reparent(
+    session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    target = bundle_service.create_bundle(session, title="Target")
+    session.add(
+        PlaybackProgress(
+            file_id=video.id,
+            bundle_id=bundle.id,
+            position_s=10,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 6, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    video.bundle_id = target.id
+    session.commit()
+
+    row = session.get(PlaybackProgress, video.id)
+    assert row is not None
+    assert row.bundle_id == target.id
+
+
+def test_progress_cascades_when_provisional_bundle_is_deleted_through_api(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    bundle = AssetBundle(
+        title="Loose",
+        grouping_state=GroupingState.PROVISIONAL,
+        grouping_source=GroupingSource.SCAN_SUGGESTION,
+    )
+    session.add(bundle)
+    session.flush()
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="loose.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.add(
+        PlaybackProgress(
+            file_id=video.id,
+            bundle_id=bundle.id,
+            position_s=10,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 6, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    resp = client.delete(f"/api/v1/libraries/{library_id}/bundles/{bundle.id}")
+    assert resp.status_code == 204
+
+    session.expire_all()
+    assert session.get(AssetFile, video.id) is None
+    assert session.get(PlaybackProgress, video.id) is None
 
 
 def test_subtitle_vtt_endpoint_converts_srt(

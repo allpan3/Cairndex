@@ -177,6 +177,9 @@ The implemented schema is documented in `docs/data-model.md`. Core objects:
   (legacy table name `smart_folders`).
 - `SubtitleTrack` — external subtitle file or embedded ffprobe stream linked to a
   video file.
+- `PlaybackProgress` — owner resume state keyed by stable `AssetFile.id`, with a
+  denormalized `bundle_id` synced from file re-parenting for continue-watching
+  queries. Completion is only computed when a known duration is reported.
 - `GroupingPlan` / `GroupingProposal` / `GroupingProposalFile` — durable,
   reviewable grouping suggestions.
 
@@ -197,7 +200,8 @@ Scanner behavior:
 - appeared paths are matched against disappeared rows for high-confidence
   same-file repair before creating new rows;
 - repair preserves `AssetFile.id`, bundle membership, tags, collections, rating,
-  notes, cover/primary references, subtitles, and generated cache identity;
+  notes, cover/primary references, subtitles, playback progress, and generated
+  cache identity;
 - the scan path reads cheap filesystem identity and quick fingerprint only — no
   full hashing of large files.
 

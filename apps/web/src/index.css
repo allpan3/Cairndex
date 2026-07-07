@@ -2223,6 +2223,7 @@ code {
 }
 .media-viewer--idle .mv-topbar,
 .media-viewer--idle .mv-controls,
+.media-viewer--idle .mv-resume,
 .media-viewer--idle .mv-nav {
   opacity: 0;
   pointer-events: none;
@@ -2367,6 +2368,35 @@ code {
     rgba(0, 0, 0, 0)
   );
   transition: opacity 0.18s;
+}
+.mv-resume {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: 82px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 40px));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  background: rgba(18, 20, 27, 0.9);
+  color: #fff;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    opacity 0.18s,
+    border-color 0.12s;
+}
+.mv-resume:hover {
+  border-color: var(--accent);
+}
+.mv-resume span {
+  color: rgba(255, 255, 255, 0.62);
+  font-weight: 500;
 }
 .mv-controls__row {
   display: flex;
