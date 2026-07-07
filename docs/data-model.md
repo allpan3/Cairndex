@@ -174,6 +174,35 @@ External subtitles auto-link to a same-directory video by basename, with
 language/forced parsed from the suffix. Auto-link runs on every path that forms a
 bundle: grouping-plan apply and fast-add single-bundle grouping.
 
+### `playback_progress`
+
+Owner watch/resume state for playable videos. Columns:
+
+`file_id` (PK, FK to `asset_files`, CASCADE), `bundle_id` (denormalized current
+bundle id for continue-watching queries), `position_s`, `duration_s` (nullable),
+`completed` (integer boolean, default 0), `updated_at`, and `user_id`.
+
+`user_id = NULL` means the single owner. The nullable column is reserved for a
+future multi-user model without changing the current single-owner auth surface.
+
+Progress is keyed by stable `AssetFile.id`, so high-confidence moved-file repair
+keeps resume state without a special repair step. The ORM syncs the denormalized
+`bundle_id` from the single `AssetFile.bundle_id` re-parent hook whenever a file
+moves between bundles. Deleting an `AssetFile` cascades progress cleanup because
+library DB connections run with `PRAGMA foreign_keys=ON`.
+
+`completed` is computed only when `duration_s` is known and positive
+(`position_s / duration_s >= 0.95`). Clients send the media element duration
+whenever it is finite; a `NULL` duration means the completion threshold cannot be
+computed yet, so the row remains in-progress until a later report includes a
+known duration or the user restarts it.
+
+Indexes:
+
+- `ix_playback_progress_bundle_id` for bundle-scoped lookup;
+- `ix_playback_progress_completed_updated_at` for continue-watching
+  (`completed = 0`, newest `updated_at` first).
+
 ### `grouping_plans` / `grouping_proposals` / `grouping_proposal_files`
 
 Durable, reviewable snapshots of the grouping suggester output.

@@ -4,13 +4,14 @@ Covers AGENTS.md §5.3: high-confidence moves update the existing row in place;
 ambiguous matches, copies, and same-path edits do not spawn or merge bundles.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
@@ -35,6 +36,16 @@ def test_same_volume_move_repairs_in_place(session: Session, library_root: Path)
     bundle_service.set_bundle_collections(session, bundle_id, [collection.id])
     bundle_service.update_bundle(session, bundle_id, {"rating": 5, "note": "keep me"})
     bundle_service.update_bundle(session, bundle_id, {"cover_file_id": original_id})
+    session.add(
+        PlaybackProgress(
+            file_id=original_id,
+            bundle_id=bundle_id,
+            position_s=42,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 6, tzinfo=UTC),
+        )
+    )
     session.commit()
 
     # Move it (same volume → same inode).
@@ -59,6 +70,10 @@ def test_same_volume_move_repairs_in_place(session: Session, library_root: Path)
     assert bundle.rating == 5 and bundle.note == "keep me"
     assert bundle.cover_file_id == original_id
     assert {c.name for c in bundle.collections} == {"Films"}
+    progress = session.get(PlaybackProgress, original_id)
+    assert progress is not None
+    assert progress.file_id == original_id and progress.bundle_id == bundle_id
+    assert progress.position_s == 42
 
 
 def test_same_path_edit_is_update_not_move(session: Session, library_root: Path) -> None:

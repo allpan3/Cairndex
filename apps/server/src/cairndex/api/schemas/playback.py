@@ -1,6 +1,10 @@
-"""Schemas for the playback manifest (videos + subtitle tracks)."""
+"""Schemas for playback manifests, resume progress, and watch rows."""
 
-from pydantic import BaseModel
+import math
+
+from pydantic import BaseModel, field_validator
+
+from cairndex.api.schemas.browse import BundleSummary
 
 
 class SubtitleTrackRead(BaseModel):
@@ -22,6 +26,29 @@ class PlaybackChapter(BaseModel):
     title: str | None
 
 
+# Resume state for a playable video file
+class PlaybackProgressRead(BaseModel):
+    position_s: float
+    duration_s: float | None
+    completed: bool
+
+
+# Client-reported playhead position
+class PlaybackProgressUpdate(BaseModel):
+    position_s: float
+    duration_s: float | None = None
+
+    # Validate numeric payloads before service-level clamping
+    @field_validator("position_s", "duration_s")
+    @classmethod
+    def finite_non_negative(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("must be a finite non-negative number")
+        return value
+
+
 class PlayableVideo(BaseModel):
     file_id: str
     display_title: str
@@ -34,9 +61,30 @@ class PlayableVideo(BaseModel):
     duration: float | None
     storyboard_url: str | None
     chapters: list[PlaybackChapter]
+    progress: PlaybackProgressRead | None
     subtitles: list[SubtitleTrackRead]
 
 
 class PlaybackManifest(BaseModel):
     bundle_id: str
     videos: list[PlayableVideo]
+
+
+# Ranked in-progress file for a continue-watching bundle row
+class ContinueWatchingProgressRead(BaseModel):
+    file_id: str
+    position_s: float
+    duration_s: float | None
+
+
+# Continue-watching card row: browse summary plus direct resume position
+class ContinueWatchingItem(BundleSummary):
+    progress: ContinueWatchingProgressRead
+
+
+# Paginated continue-watching rows
+class ContinueWatchingPage(BaseModel):
+    items: list[ContinueWatchingItem]
+    total: int
+    offset: int
+    limit: int

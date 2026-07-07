@@ -1112,6 +1112,210 @@
         "title": "CollectionUpdate",
         "type": "object"
       },
+      "ContinueWatchingItem": {
+        "properties": {
+          "cover_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Key"
+          },
+          "date_added": {
+            "format": "date-time",
+            "title": "Date Added",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "grouping_state": {
+            "$ref": "#/components/schemas/GroupingState"
+          },
+          "has_cover": {
+            "title": "Has Cover",
+            "type": "boolean"
+          },
+          "has_missing": {
+            "title": "Has Missing",
+            "type": "boolean"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ContinueWatchingProgressRead"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "total_size": {
+            "title": "Total Size",
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "rating",
+          "file_count",
+          "total_size",
+          "has_missing",
+          "has_cover",
+          "cover_key",
+          "media_kind",
+          "width",
+          "height",
+          "duration",
+          "extension",
+          "date_added",
+          "grouping_state",
+          "progress"
+        ],
+        "title": "ContinueWatchingItem",
+        "type": "object"
+      },
+      "ContinueWatchingPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContinueWatchingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "ContinueWatchingPage",
+        "type": "object"
+      },
+      "ContinueWatchingProgressRead": {
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          },
+          "position_s": {
+            "title": "Position S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_id",
+          "position_s",
+          "duration_s"
+        ],
+        "title": "ContinueWatchingProgressRead",
+        "type": "object"
+      },
       "CountsResponse": {
         "description": "Generic id \u2192 bundle-count map (collections, tags).",
         "properties": {
@@ -2751,6 +2955,16 @@
             "title": "Playable",
             "type": "boolean"
           },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackProgressRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
@@ -2801,6 +3015,7 @@
           "duration",
           "storyboard_url",
           "chapters",
+          "progress",
           "subtitles"
         ],
         "title": "PlayableVideo",
@@ -2855,6 +3070,60 @@
           "videos"
         ],
         "title": "PlaybackManifest",
+        "type": "object"
+      },
+      "PlaybackProgressRead": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "position_s": {
+            "title": "Position S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "position_s",
+          "duration_s",
+          "completed"
+        ],
+        "title": "PlaybackProgressRead",
+        "type": "object"
+      },
+      "PlaybackProgressUpdate": {
+        "properties": {
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "position_s": {
+            "title": "Position S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "position_s"
+        ],
+        "title": "PlaybackProgressUpdate",
         "type": "object"
       },
       "PredicateNode": {
@@ -6760,6 +7029,87 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/continue-watching": {
+      "get": {
+        "operationId": "continue_watching_api_v1_libraries__library_id__continue_watching_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueWatchingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Continue Watching",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/fast-add": {
       "post": {
         "operationId": "fast_add_files_api_v1_libraries__library_id__fast_add_post",
@@ -7030,6 +7380,158 @@
           }
         },
         "summary": "File Content",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/progress": {
+      "post": {
+        "operationId": "beacon_progress_api_v1_libraries__library_id__files__file_id__progress_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackProgressUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackProgressRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Beacon Progress",
+        "tags": [
+          "playback"
+        ]
+      },
+      "put": {
+        "operationId": "update_progress_api_v1_libraries__library_id__files__file_id__progress_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackProgressUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackProgressRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Progress",
         "tags": [
           "playback"
         ]
