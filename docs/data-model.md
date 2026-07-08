@@ -259,22 +259,29 @@ Read-only File View entries are produced by `services/file_view.py` from the liv
 filesystem under the active library root. They are response models rather than
 persistent rows. Each entry is derived from a library-relative path, path-safety
 checks, filesystem metadata, media classification, and an optional linked
-`AssetFile` lookup. Hidden entries are excluded.
+`AssetFile` lookup. Hidden entries are excluded. `supported`/openable is derived
+from media kind plus format support: video/audio are playable, browser-native
+images remain openable, and preview-capable images such as HEIC, TIFF, and BMP
+are openable through the server preview pipeline.
 
 Future native file handoff and write mode are documented in ADR-0007 and have no
 schema yet.
 
 ### Derived media cache
 
-Thumbnails, converted WebVTT subtitles, and storyboard trickplay artifacts are
-generated under the library's portable `.cairndex/cache/` package:
+Thumbnails, image previews, converted WebVTT subtitles, and storyboard trickplay
+artifacts are generated under the library's portable `.cairndex/cache/` package:
 
 - `thumbnails/{file_id[:2]}/{file_id}.jpg`
+- `previews/{file_id[:2]}/{file_id}_{size}.webp`
+- `previews/{file_id[:2]}/{file_id}_{size}.fingerprint`
 - `subtitles/{track_id[:2]}/{track_id}.vtt`
 - `storyboards/{file_id[:2]}/{file_id}/{index.vtt,fingerprint.txt,sb_*.jpg}`
 
-These are reproducible cache artifacts, not `AssetFile` rows, and scanners
-intentionally ignore them.
+Preview `size` is restricted to `640`, `1600`, or `2560`, and the fingerprint
+sidecar stores the source file's quick fingerprint so stale derivatives can be
+ignored and regenerated. These are reproducible cache artifacts, not `AssetFile`
+rows, and scanners intentionally ignore them.
 
 ## Deferred to later phases
 

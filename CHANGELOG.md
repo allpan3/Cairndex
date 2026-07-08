@@ -27,6 +27,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Image viewer v2 + preview derivatives (Plan 1 M5).** Added a lazy
+  `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
+  endpoint that writes deterministic WebP derivatives under
+  `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, validates
+  them by quick fingerprint, and serves them with versioned immutable-cache
+  URLs. Browser-native images use the same preview ladder before original
+  content; HEIC/TIFF/BMP and best-effort PSD decode through Pillow +
+  pillow-heif, making preview-capable images openable in bundle/file metadata
+  and File View. The web image stage now supports fit/fill/100% cycling,
+  wheel/pinch zoom to cursor, drag pan, keyboard zoom shortcuts, zoom clamping,
+  progressive source swaps, 2560px zoom-in requests, background toggles, and
+  source-change transform reset.
 - **Watch progress + resume (Plan 1 M4).** Added per-library
   `playback_progress` storage with additive bootstrap, idempotent video progress
   upserts, manifest-embedded progress, a paginated `continue-watching` endpoint,
