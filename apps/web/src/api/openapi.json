@@ -748,6 +748,10 @@
             ],
             "title": "Media Kind"
           },
+          "openable": {
+            "title": "Openable",
+            "type": "boolean"
+          },
           "rating": {
             "anyOf": [
               {
@@ -794,6 +798,7 @@
           "total_size",
           "has_missing",
           "has_cover",
+          "openable",
           "cover_key",
           "media_kind",
           "width",
@@ -1193,6 +1198,10 @@
             ],
             "title": "Media Kind"
           },
+          "openable": {
+            "title": "Openable",
+            "type": "boolean"
+          },
           "progress": {
             "$ref": "#/components/schemas/ContinueWatchingProgressRead"
           },
@@ -1242,6 +1251,7 @@
           "total_size",
           "has_missing",
           "has_cover",
+          "openable",
           "cover_key",
           "media_kind",
           "width",
@@ -1672,6 +1682,17 @@
             "title": "Original Filename",
             "type": "string"
           },
+          "quick_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quick Fingerprint"
+          },
           "relative_path": {
             "title": "Relative Path",
             "type": "string"
@@ -1693,6 +1714,11 @@
               }
             ],
             "title": "Size Bytes"
+          },
+          "supported": {
+            "default": false,
+            "title": "Supported",
+            "type": "boolean"
           },
           "tech_metadata": {
             "anyOf": [
@@ -1728,6 +1754,7 @@
           "sequence",
           "size_bytes",
           "availability",
+          "quick_fingerprint",
           "tech_metadata",
           "created_at",
           "updated_at",
@@ -7380,6 +7407,82 @@
           }
         },
         "summary": "File Content",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
+      "get": {
+        "description": "Serve a lazily generated, fingerprint-invalidated WebP preview.",
+        "operationId": "file_preview_api_v1_libraries__library_id__files__file_id__preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 1600,
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "File Preview",
         "tags": [
           "playback"
         ]

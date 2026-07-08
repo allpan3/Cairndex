@@ -68,6 +68,7 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.width == 1920 and s.height == 1080 and s.duration == 90.0
     assert s.extension == "mp4" and s.media_kind == "video"
     assert s.has_cover is True
+    assert s.openable is True
     assert s.grouping_state == bundle.grouping_state
     # The lone video is the derived cover, so it drives the cache-busting key.
     assert s.cover_key == f.id

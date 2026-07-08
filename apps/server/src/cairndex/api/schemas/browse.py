@@ -13,6 +13,7 @@ class BundleSummary(BaseModel):
     total_size: int
     has_missing: bool
     has_cover: bool
+    openable: bool
     # Cache-busting key for the thumbnail URL: the id of the file the cover is
     # derived from. Changes when the cover changes so the client re-fetches.
     cover_key: str | None

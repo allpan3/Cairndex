@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
 from cairndex.domain.enums import GroupingSource, GroupingState
+from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
@@ -186,7 +187,7 @@ def _unbundled_entry(
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,
-        supported=classification is not None,
+        supported=is_openable_media(classification[0], relative_path) if classification else False,
         linked=True,
         bundle_id=bundle_id,
         unbundled=True,
@@ -277,7 +278,7 @@ def _build_entry(
         extension=extension,
         mime_type=mimetypes.guess_type(name)[0],
         media_kind=str(classification[0]) if classification else None,
-        supported=classification is not None,
+        supported=is_openable_media(classification[0], child_rel) if classification else False,
         linked=link is not None,
         bundle_id=link.bundle_id if link is not None else None,
         unbundled=link.unbundled if link is not None else False,
