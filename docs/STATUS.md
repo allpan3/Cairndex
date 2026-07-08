@@ -18,8 +18,8 @@ derivative slice:
 - Extracted shared derived-cache helpers for immutable cache headers,
   version-param escaping, `.fingerprint` sidecars, and current-cache checks.
   Image previews and storyboards now use that shared sidecar convention;
-  previews use atomic replacement plus a bounded decode semaphore instead of
-  per-file `fcntl` locks.
+  previews use per-artifact `fcntl` locks, atomic replacement, and a bounded
+  decode semaphore.
 - Added Pillow + pillow-heif as lazy preview-generation dependencies. They are
   pure-wheel runtime dependencies used only when a derivative must be generated,
   and they unlock HEIC/HEIF, TIFF, BMP, and sized WebP previews for browser and
@@ -38,9 +38,10 @@ derivative slice:
   viewport-clamped pan bounds, zoom-percent display, dark/light/checkerboard
   backgrounds, resize-aware fit capped at 100% for initial fit, progressive
   source swaps after `Image.decode()`, and keyed transform/source reset when the
-  selected file changes. Native images load thumbnail → original; non-native
-  images load thumbnail → 1600px preview and request 2560px only when zoomed
-  past 100%.
+  selected file changes. The loader keys its effect on the discrete wanted tier,
+  preserving an in-flight decode across viewport scale-only rerenders. Native
+  images load thumbnail → original; non-native images load thumbnail → 1600px
+  preview and request 2560px only when zoomed past 100%.
 - Regenerated OpenAPI and `apps/web/src/api/schema.d.ts` for the preview route
   and new file/browse support hints. `schema.d.ts` was patched manually for this
   pass because `npm run gen:api` could not reach the npm registry in the
@@ -54,26 +55,29 @@ Verification:
   `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run pytest` passed
   (`333 passed`, one existing Starlette/httpx deprecation warning).
 - Frontend: `npm run lint`, `npm run format:check`, `npm run typecheck`,
-  `npm run test` (`46 passed`, existing jsdom media-method warnings), and
+  `npm run test` (`47 passed`, existing jsdom media-method warnings), and
   `npm run build` passed.
 - Focused review-fix checks also passed:
   `uv run pytest tests/test_previews.py tests/test_thumbnails.py
   tests/test_storyboards.py tests/test_file_view.py` (`44 passed`) and
-  `npm run test -- ImageStage imageTransform` (`10 passed`).
+  `npm run test -- ImageStage` (`6 passed`).
 - OpenAPI was regenerated with
   `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run python -m
   cairndex.devtools.openapi > ../web/src/api/openapi.json`. `npm run gen:api`
-  could not complete in this sandbox because `npx` attempted to fetch
-  `openapi-typescript` from `registry.npmjs.org` and network DNS failed
-  (`ENOTFOUND`), so `apps/web/src/api/schema.d.ts` was patched manually to match
-  the small OpenAPI delta.
-- Playwright/browser manual verification remains outstanding in this sandbox:
-  `npm run test:e2e` still fails before tests run because Vite cannot bind
-  `::1:5173` (`listen EPERM`), and an explicit
-  `npm run dev -- --host 127.0.0.1 --port 5173` also fails with
-  `listen EPERM 127.0.0.1:5173`. The live Demo-library checks and HEIC/TIFF
-  fixture addition were not performed because the local browser server cannot be
-  started here.
+  could not complete in this sandbox because `npx` waited on the registry path,
+  so `apps/web/src/api/schema.d.ts` was patched manually to match the small
+  OpenAPI delta.
+- Playwright: non-escalated `npm run test:e2e` still fails before tests run
+  because Vite cannot bind `::1:5173` (`listen EPERM`), but the escalated
+  `npm run test:e2e` gate passed (`49 passed`). Native and non-native image e2e
+  coverage now asserts the displayed `.mv-image` tier and source rather than
+  only observing a request.
+- Live Demo-library verification used `Photos/Vacation2025/Paris/eiffel.jpg`
+  (600×800) at an 800×600 browser viewport. The actual image stage measured
+  672×456 and opened at fit scale 0.57. With no interaction after open, a 10 ms
+  sampler observed the displayed image advance from the bundle-file thumbnail
+  to `data-tier="original"` with the `/files/{file_id}/content` source in about
+  31 ms.
 
 ## Merged: media-player M4 watch progress/resume (#4)
 
