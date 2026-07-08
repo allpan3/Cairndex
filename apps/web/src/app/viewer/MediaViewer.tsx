@@ -294,7 +294,7 @@ function Stage({
   if (file.availability !== 'available') {
     return <FallbackCard file={file} message="This file is missing on disk." />
   }
-  if (file.media_kind === 'image' && !failed) {
+  if (file.media_kind === 'image' && file.supported && !failed) {
     return <ImageStage file={file} onError={onError} />
   }
   if (file.media_kind === 'video' && playable?.playable && !failed) {
