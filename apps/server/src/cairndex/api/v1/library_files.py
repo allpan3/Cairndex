@@ -18,6 +18,7 @@ from cairndex.api.schemas.file_view import FileViewEntryRead, FileViewListingRea
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
 from cairndex.domain.enums import JobType
+from cairndex.media import previews
 from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.scanning.fast_add import fast_add
@@ -40,6 +41,27 @@ def list_file_view_entries(
     return FileViewListingRead(
         path=listing.path,
         entries=[FileViewEntryRead(**vars(e)) for e in listing.entries],
+    )
+
+
+@router.get("/file/preview")
+def serve_file_preview(
+    db: LibrarySession,
+    path: Annotated[str, Query()],
+    size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
+) -> FileResponse:
+    """Serve a path-scoped WebP preview for a File View image.
+
+    Read-only and path-safe. Files here need not be linked into a bundle, so the
+    cache key is derived from the normalized library-relative path plus source
+    quick fingerprint.
+    """
+    target = previews.preview_for_path(db, path, size)
+    return FileResponse(
+        str(target),
+        media_type="image/webp",
+        filename=target.name,
+        headers={"Cache-Control": previews.PREVIEW_CACHE_CONTROL},
     )
 
 

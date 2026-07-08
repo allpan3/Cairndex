@@ -246,12 +246,12 @@ Storyboard artifacts use this cache layout:
 ```text
 .cairndex/cache/storyboards/{file_id[:2]}/{file_id}/
   index.vtt
-  fingerprint.txt
+  index.fingerprint
   sb_001.jpg
   sb_002.jpg
 ```
 
-`fingerprint.txt` stores the source file's quick fingerprint for cheap
+`index.fingerprint` stores the source file's quick fingerprint for cheap
 request-path validation; `index.vtt` also includes
 `NOTE cairndex-quick-fingerprint: {quick_fingerprint}` so the artifact is
 self-describing. Manifest `storyboard_url` values and VTT sheet payloads include
@@ -282,17 +282,22 @@ layout:
 ```text
 .cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp
 .cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.fingerprint
+.cairndex/cache/previews/pa/path_{sha256(relative_path)[:32]}_{size}.webp
+.cairndex/cache/previews/pa/path_{sha256(relative_path)[:32]}_{size}.fingerprint
 ```
 
-`size` is allowlisted to `640`, `1600`, or `2560`. The first request takes a
-per-derivative filesystem lock, re-resolves the source path under the library
-root, rejects missing or unsupported sources, writes a WebP derivative, and
-records the source quick fingerprint in the sidecar. Preview URLs include
-`?v={quick_fingerprint}` and the endpoint serves current derivatives with
-`Cache-Control: public, max-age=31536000, immutable`. Browser-native raster
-images can downscale from the original; HEIC/HEIF, TIFF, BMP, and best-effort
-PSD use Pillow plus pillow-heif. These dependencies are kept out of normal
-request paths until a preview must be generated and were added to unlock
+`size` is allowlisted to `640`, `1600`, or `2560`. The first request re-resolves
+the source under the library root, rejects missing or unsupported sources,
+decodes behind a bounded in-process semaphore, writes the WebP derivative by
+atomic replacement, and records the source quick fingerprint in the shared
+`.fingerprint` sidecar. Linked-file preview URLs include `?v={quick_fingerprint}`;
+File View path previews use a path-hash cache key plus a stat-derived quick
+fingerprint because the file need not be linked into a bundle. The endpoint
+serves current derivatives with `Cache-Control: public, max-age=31536000,
+immutable`. Browser-native raster images can downscale from the original;
+HEIC/HEIF, TIFF, and BMP use Pillow plus pillow-heif. PSD is not advertised as
+openable until a tested decoder path exists. These dependencies are kept out of
+normal request paths until a preview must be generated and were added to unlock
 non-browser image formats and sized preview delivery for all clients, including
 future TV clients. There is intentionally no preview precompute job in this
 slice.

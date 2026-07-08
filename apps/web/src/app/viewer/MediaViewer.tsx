@@ -64,6 +64,7 @@ export function MediaViewer({
   const currentIndex = selectedId ? files.findIndex((file) => file.id === selectedId) : -1
   const current = currentIndex >= 0 ? files[currentIndex] : null
   const failed = current ? failedFileId === current.id : false
+  const currentId = current?.id ?? null
   const playable = useMemo(
     () => manifest?.videos.find((video) => video.file_id === current?.id) ?? null,
     [current?.id, manifest?.videos],
@@ -140,6 +141,9 @@ export function MediaViewer({
   }, [bundleId, playableDuration, playableFileId, player, qc])
   const visibleResume =
     resumeNotice && resumeNotice.fileId === playable?.file_id ? resumeNotice.position : null
+  const handleStageError = useCallback(() => {
+    if (currentId) setFailedFileId(currentId)
+  }, [currentId])
 
   const step = useCallback(
     (delta: number) => {
@@ -244,9 +248,7 @@ export function MediaViewer({
             title={title}
             artworkUrl={artworkUrl}
             failed={failed}
-            onError={() => {
-              if (current) setFailedFileId(current.id)
-            }}
+            onError={handleStageError}
           />
         )}
       </div>
@@ -295,7 +297,7 @@ function Stage({
     return <FallbackCard file={file} message="This file is missing on disk." />
   }
   if (file.media_kind === 'image' && file.supported && !failed) {
-    return <ImageStage file={file} onError={onError} />
+    return <ImageStage key={file.id} file={file} onError={onError} />
   }
   if (file.media_kind === 'video' && playable?.playable && !failed) {
     return (

@@ -509,6 +509,12 @@ export function filePreviewUrl(file: FileRead, size: PreviewSize): string {
   return `${lib()}/files/${file.id}/preview?${q.toString()}`
 }
 
+/** WebP preview of a File View entry addressed by library-relative path */
+export function fileViewPreviewUrl(path: string, size: PreviewSize = 1600): string {
+  const q = new URLSearchParams({ path, size: String(size) })
+  return `${lib()}/file/preview?${q.toString()}`
+}
+
 /** Raw bytes of a File View entry (library-relative path, read-only). */
 export function fileViewContentUrl(path: string): string {
   return `${lib()}/file?path=${encodeURIComponent(path)}`

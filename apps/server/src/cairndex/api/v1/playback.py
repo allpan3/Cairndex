@@ -209,7 +209,7 @@ def file_content(file_id: str, db: LibrarySession) -> FileResponse:
 def file_preview(
     file_id: str,
     db: LibrarySession,
-    size: Annotated[int, Query()] = 1600,
+    size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
     """Serve a lazily generated, fingerprint-invalidated WebP preview."""
     try:

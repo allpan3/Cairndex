@@ -7346,6 +7346,87 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/file/preview": {
+      "get": {
+        "description": "Serve a path-scoped WebP preview for a File View image.\n\nRead-only and path-safe. Files here need not be linked into a bundle, so the\ncache key is derived from the normalized library-relative path plus source\nquick fingerprint.",
+        "operationId": "serve_file_preview_api_v1_libraries__library_id__file_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": 1600,
+              "enum": [
+                640,
+                1600,
+                2560
+              ],
+              "title": "Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Serve File Preview",
+        "tags": [
+          "library-files"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/files/{file_id}/content": {
       "get": {
         "description": "Serve a file's original bytes (e.g. full-resolution images for the viewer).\n\nPath-safe and read-only; FileResponse honors HTTP Range so large images and\nmedia stream incrementally. The mime type is guessed from the filename.",
@@ -7441,6 +7522,11 @@
             "required": false,
             "schema": {
               "default": 1600,
+              "enum": [
+                640,
+                1600,
+                2560
+              ],
               "title": "Size",
               "type": "integer"
             }

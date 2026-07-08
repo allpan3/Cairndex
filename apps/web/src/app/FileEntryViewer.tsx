@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { type FileViewEntry, fileViewContentUrl } from '../api/client'
+import { type FileViewEntry, fileViewContentUrl, fileViewPreviewUrl } from '../api/client'
 import { formatBytes } from '../lib/format'
+import { isBrowserNativeImage } from './viewer/imageSupport'
 import { MediaFallback } from './viewer/MediaFallback'
 
 /**
@@ -75,7 +76,7 @@ export function FileEntryViewer({
       )}
 
       <div className="viewer__stage" onMouseDown={(e) => e.stopPropagation()}>
-        <ViewerBody file={file} />
+        <ViewerBody key={file.relative_path} file={file} />
       </div>
 
       <div className="viewer__caption" onMouseDown={(e) => e.stopPropagation()}>
@@ -90,7 +91,10 @@ export function FileEntryViewer({
 
 function ViewerBody({ file }: { file: FileViewEntry }) {
   const [failed, setFailed] = useState(false)
-  const src = fileViewContentUrl(file.relative_path)
+  const src =
+    file.media_kind === 'image' && !isBrowserNativeImage(file.relative_path)
+      ? fileViewPreviewUrl(file.relative_path)
+      : fileViewContentUrl(file.relative_path)
 
   if (file.media_kind === 'image' && !failed) {
     return <img className="viewer__img" src={src} alt={file.name} onError={() => setFailed(true)} />

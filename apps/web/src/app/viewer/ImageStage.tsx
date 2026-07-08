@@ -8,15 +8,16 @@ import {
   type SourceTier,
   type Transform,
   SOURCE_TIER_RANK,
+  clampPan,
   clampScale,
   desiredTier,
   fillScale,
   fitScale,
-  isBrowserNativeImage,
   nextFitMode,
   scaleForMode,
   zoomToPoint,
 } from './imageTransform'
+import { isBrowserNativeImage } from './imageSupport'
 
 type BackgroundMode = 'dark' | 'light' | 'checker'
 
@@ -34,6 +35,11 @@ interface PinchState {
   center: PointerPoint
   distance: number
   transform: Transform
+}
+
+interface InFlightTier {
+  tier: SourceTier
+  lifetime: symbol
 }
 
 const DEFAULT_SIZE: Size = { width: 1, height: 1 }
@@ -59,10 +65,7 @@ function metadataSize(file: FileRead): Size {
 }
 
 // Convert a pointer event into viewport-centered coordinates
-function eventPoint(
-  event: React.PointerEvent | React.WheelEvent,
-  element: HTMLElement,
-): PointerPoint {
+function eventPoint(event: React.PointerEvent | WheelEvent, element: HTMLElement): PointerPoint {
   const rect = element.getBoundingClientRect()
   return {
     x: event.clientX - rect.left - rect.width / 2,
@@ -87,12 +90,17 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
   const activePointers = useRef(new Map<number, PointerPoint>())
   const lastPanPoint = useRef<PointerPoint | null>(null)
   const pinch = useRef<PinchState | null>(null)
-  const inFlightTiers = useRef(new Set<SourceTier>())
-  const previousFileId = useRef(file.id)
+  const lifetime = useRef(Symbol('image-stage'))
+  const inFlightTier = useRef<InFlightTier | null>(null)
+  const onErrorRef = useRef(onError)
+  const hasLoadedAnyTier = useRef(false)
   const nativeImage = isBrowserNativeImage(file.relative_path)
+  const metadataNaturalSize = metadataSize(file)
+  const hasMetadataSize = metadataNaturalSize !== DEFAULT_SIZE
+  const hasMetadataSizeRef = useRef(hasMetadataSize)
   const [background, setBackground] = useState<BackgroundMode>('dark')
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 })
-  const [naturalSize, setNaturalSize] = useState<Size>(() => metadataSize(file))
+  const [naturalSize, setNaturalSize] = useState<Size>(() => metadataNaturalSize)
   const [fitMode, setFitMode] = useState<ImageFitMode>('fit')
   const [transform, setTransform] = useState<Transform>({ scale: 1, tx: 0, ty: 0 })
   const [displaySrc, setDisplaySrc] = useState(() => fileThumbnailUrl(file.bundle_id, file.id))
@@ -106,13 +114,18 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
     tx: 0,
     ty: 0,
   }
-  const renderedTransform = fitMode === 'custom' ? transform : modeTransform
+  const renderedTransform =
+    fitMode === 'custom' ? clampPan(transform, viewport, naturalSize) : modeTransform
+  const wantedTier = useMemo(
+    () => desiredTier(renderedTransform.scale, nativeImage),
+    [renderedTransform.scale, nativeImage],
+  )
 
   const sources = useMemo<TierSource[]>(() => {
     const out: TierSource[] = [
       { tier: 'thumbnail', src: fileThumbnailUrl(file.bundle_id, file.id) },
-      { tier: 'preview1600', src: filePreviewUrl(file, 1600) },
     ]
+    if (!nativeImage) out.push({ tier: 'preview1600', src: filePreviewUrl(file, 1600) })
     if (!nativeImage) out.push({ tier: 'preview2560', src: filePreviewUrl(file, 2560) })
     if (nativeImage) out.push({ tier: 'original', src: fileContentUrl(file.id) })
     return out
@@ -128,19 +141,17 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
   )
 
   useEffect(() => {
-    if (previousFileId.current === file.id) return
-    previousFileId.current = file.id
-    setNaturalSize(metadataSize(file))
-    setFitMode('fit')
-    setTransform({ scale: 1, tx: 0, ty: 0 })
-    setDisplaySrc(fileThumbnailUrl(file.bundle_id, file.id))
-    setLoadedTier('thumbnail')
-    setFailedTiers(new Set())
-    inFlightTiers.current.clear()
-    activePointers.current.clear()
-    lastPanPoint.current = null
-    pinch.current = null
-  }, [file])
+    onErrorRef.current = onError
+  }, [onError])
+
+  useEffect(() => {
+    const activeLifetime = Symbol('image-stage')
+    lifetime.current = activeLifetime
+    return () => {
+      if (lifetime.current === activeLifetime) lifetime.current = Symbol('unmounted-image-stage')
+      inFlightTier.current = null
+    }
+  }, [])
 
   useEffect(() => {
     const element = stageRef.current
@@ -156,66 +167,66 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
   }, [])
 
   useEffect(() => {
-    const wanted = desiredTier(renderedTransform.scale, nativeImage)
     const currentRank = SOURCE_TIER_RANK[loadedTier]
-    const wantedRank = SOURCE_TIER_RANK[wanted]
+    const wantedRank = SOURCE_TIER_RANK[wantedTier]
     const next = sources.find(
       (source) =>
         SOURCE_TIER_RANK[source.tier] > currentRank &&
         SOURCE_TIER_RANK[source.tier] <= wantedRank &&
-        !failedTiers.has(source.tier) &&
-        !inFlightTiers.current.has(source.tier),
+        !failedTiers.has(source.tier),
     )
-    if (!next) return
-    let cancelled = false
-    inFlightTiers.current.add(next.tier)
+    if (!next || inFlightTier.current) return
+    const activeLifetime = lifetime.current
+    inFlightTier.current = { tier: next.tier, lifetime: activeLifetime }
     decodeImage(next.src)
       .then((image) => {
-        if (cancelled) return
-        if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        if (lifetime.current !== activeLifetime) return
+        inFlightTier.current = null
+        hasLoadedAnyTier.current = true
+        if (!hasMetadataSizeRef.current && image.naturalWidth > 0 && image.naturalHeight > 0) {
           setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight })
         }
         setDisplaySrc(next.src)
         setLoadedTier(next.tier)
       })
       .catch(() => {
-        if (cancelled) return
+        if (lifetime.current !== activeLifetime) return
+        inFlightTier.current = null
         setFailedTiers((previous) => new Set(previous).add(next.tier))
-        if (nativeImage && next.tier !== 'original') {
-          setLoadedTier(next.tier)
-          return
-        }
-        onError()
       })
       .finally(() => {
-        inFlightTiers.current.delete(next.tier)
+        if (inFlightTier.current?.lifetime === activeLifetime) inFlightTier.current = null
       })
-    return () => {
-      cancelled = true
-    }
-  }, [failedTiers, loadedTier, nativeImage, onError, renderedTransform.scale, sources])
+  }, [failedTiers, loadedTier, sources, wantedTier])
 
   const clamp = useCallback(
     (scale: number) => clampScale(scale, containScale, coverScale),
     [containScale, coverScale],
   )
 
+  const boundTransform = useCallback(
+    (next: Transform) => clampPan(next, viewport, naturalSize),
+    [naturalSize, viewport],
+  )
+
   const zoomAround = useCallback(
     (point: PointerPoint, scale: number) => {
       setFitMode('custom')
-      setTransform(zoomToPoint(renderedTransform, clamp(scale), point))
+      setTransform(boundTransform(zoomToPoint(renderedTransform, clamp(scale), point)))
     },
-    [clamp, renderedTransform],
+    [boundTransform, clamp, renderedTransform],
   )
 
   const zoomFromCenter = useCallback(
     (factor: number) => {
       setFitMode('custom')
       setTransform(
-        zoomToPoint(renderedTransform, clamp(renderedTransform.scale * factor), { x: 0, y: 0 }),
+        boundTransform(
+          zoomToPoint(renderedTransform, clamp(renderedTransform.scale * factor), { x: 0, y: 0 }),
+        ),
       )
     },
-    [clamp, renderedTransform],
+    [boundTransform, clamp, renderedTransform],
   )
 
   useEffect(() => {
@@ -235,16 +246,17 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
     return () => root.removeEventListener('keydown', onKeyDown, { capture: true })
   }, [applyMode, zoomFromCenter])
 
-  const onWheel = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
-      const element = stageRef.current
-      if (!element) return
+  useEffect(() => {
+    const element = stageRef.current
+    if (!element) return
+    const onWheel = (event: WheelEvent) => {
       event.preventDefault()
       const factor = Math.exp(-event.deltaY * 0.0015)
       zoomAround(eventPoint(event, element), renderedTransform.scale * factor)
-    },
-    [renderedTransform.scale, zoomAround],
-  )
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [renderedTransform.scale, zoomAround])
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -279,11 +291,13 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
         )
         const centered = zoomToPoint(pinch.current.transform, scale, pinch.current.center)
         setFitMode('custom')
-        setTransform({
-          ...centered,
-          tx: centered.tx + geometry.center.x - pinch.current.center.x,
-          ty: centered.ty + geometry.center.y - pinch.current.center.y,
-        })
+        setTransform(
+          boundTransform({
+            ...centered,
+            tx: centered.tx + geometry.center.x - pinch.current.center.x,
+            ty: centered.ty + geometry.center.y - pinch.current.center.y,
+          }),
+        )
         return
       }
       const previous = lastPanPoint.current
@@ -291,15 +305,15 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
       setFitMode('custom')
       setTransform((current) => {
         const base = fitMode === 'custom' ? current : renderedTransform
-        return {
+        return boundTransform({
           ...base,
           tx: base.tx + point.x - previous.x,
           ty: base.ty + point.y - previous.y,
-        }
+        })
       })
       lastPanPoint.current = point
     },
-    [clamp, fitMode, renderedTransform],
+    [boundTransform, clamp, fitMode, renderedTransform],
   )
 
   const finishPointer = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -315,12 +329,16 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
     applyMode(nextFitMode(fitMode))
   }, [applyMode, fitMode])
 
-  const onImageLoad = useCallback((event: React.SyntheticEvent<HTMLImageElement>) => {
-    const image = event.currentTarget
-    if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-      setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight })
-    }
-  }, [])
+  const onImageLoad = useCallback(
+    (event: React.SyntheticEvent<HTMLImageElement>) => {
+      hasLoadedAnyTier.current = true
+      const image = event.currentTarget
+      if (!hasMetadataSize && image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setNaturalSize({ width: image.naturalWidth, height: image.naturalHeight })
+      }
+    },
+    [hasMetadataSize],
+  )
 
   const cycleBackground = () => {
     setBackground((value) => (value === 'dark' ? 'light' : value === 'light' ? 'checker' : 'dark'))
@@ -332,7 +350,6 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
       ref={stageRef}
       className={`mv-image-stage mv-image-stage--${background}`}
       tabIndex={-1}
-      onWheel={onWheel}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finishPointer}
@@ -343,11 +360,12 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
       <img
         className="mv-image"
         src={displaySrc}
+        data-tier={loadedTier}
         alt={file.display_title}
         draggable={false}
         onLoad={onImageLoad}
         onError={() => {
-          if (loadedTier !== 'thumbnail') onError()
+          if (!hasLoadedAnyTier.current) onErrorRef.current()
         }}
         style={{
           width: `${naturalSize.width}px`,
