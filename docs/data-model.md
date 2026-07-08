@@ -275,8 +275,10 @@ artifacts are generated under the library's portable `.cairndex/cache/` package:
 - `thumbnails/{file_id[:2]}/{file_id}.jpg`
 - `previews/{file_id[:2]}/{file_id}_{size}.webp`
 - `previews/{file_id[:2]}/{file_id}_{size}.fingerprint`
+- `previews/pa/path_{sha256(relative_path)[:32]}_{size}.webp` for File View path previews
+- `previews/pa/path_{sha256(relative_path)[:32]}_{size}.fingerprint`
 - `subtitles/{track_id[:2]}/{track_id}.vtt`
-- `storyboards/{file_id[:2]}/{file_id}/{index.vtt,fingerprint.txt,sb_*.jpg}`
+- `storyboards/{file_id[:2]}/{file_id}/{index.vtt,index.fingerprint,sb_*.jpg}`
 
 Preview `size` is restricted to `640`, `1600`, or `2560`, and the fingerprint
 sidecar stores the source file's quick fingerprint so stale derivatives can be

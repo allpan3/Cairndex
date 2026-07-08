@@ -2,28 +2,31 @@
 
 from __future__ import annotations
 
-import fcntl
+import hashlib
 import os
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
+import warnings
 from pathlib import Path
+from threading import BoundedSemaphore
 from typing import Any, Literal, cast
-from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ValidationError
+from cairndex.core.errors import NotFoundError, ValidationError
+from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
 from cairndex.domain.enums import MediaKind
-from cairndex.media import image_support
+from cairndex.media import derived_cache, image_support
 from cairndex.media.playback import resolve_file_path
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
+from cairndex.scanning.fingerprint import quick_fingerprint
 
-PREVIEW_CACHE_CONTROL = "public, max-age=31536000, immutable"
+PREVIEW_CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
 PREVIEW_SIZES = (640, 1600, 2560)
 PreviewSize = Literal[640, 1600, 2560]
+PREVIEW_MAX_DIMENSION = 24_000
+_DECODE_SEMAPHORE = BoundedSemaphore(2)
 
 
 # Preview generation failures that callers can treat as unsupported media
@@ -31,9 +34,7 @@ class PreviewError(ValidationError):
     """Pillow was unavailable or failed to produce an image preview."""
 
 
-# Return a URL-safe version token from the quick fingerprint
-def version_param(quick_fingerprint: str | None) -> str:
-    return quote(quick_fingerprint or "no-fingerprint", safe="")
+version_param = derived_cache.version_param
 
 
 # Return the deterministic preview cache location for one size
@@ -46,34 +47,11 @@ def preview_cache_path(library_root: Path, file_id: str, size: int) -> Path:
     )
 
 
-# Return the sibling sidecar that records the source quick fingerprint
-def _fingerprint_path(preview_path: Path) -> Path:
-    return preview_path.with_suffix(".fingerprint")
-
-
-# Return the filesystem lock used to serialize generation for one derivative
-def _lock_path(preview_path: Path) -> Path:
-    return preview_path.with_suffix(".lock")
-
-
-# Hold an exclusive OS file lock while a preview is generated
-@contextmanager
-def _locked(lock_path: Path) -> Iterator[None]:
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("w", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
-# Read the generation fingerprint without opening the WebP
-def _cached_fingerprint(preview_path: Path) -> str | None:
-    try:
-        return _fingerprint_path(preview_path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
+# Return a deterministic cache location for an unlinked File View image
+def file_view_preview_cache_path(library_root: Path, relative_path: str, size: int) -> Path:
+    digest = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
+    key = f"path_{digest[:32]}"
+    return library_package.cache_dir(library_root) / "previews" / key[:2] / f"{key}_{size}.webp"
 
 
 # True when the cached preview matches the current source quick fingerprint
@@ -81,37 +59,55 @@ def is_current_preview(
     library_root: Path, file_id: str, size: int, quick_fingerprint: str | None
 ) -> bool:
     path = preview_cache_path(library_root, file_id, size)
-    return path.exists() and _cached_fingerprint(path) == (quick_fingerprint or "")
+    return derived_cache.is_current(path, quick_fingerprint)
 
 
 # Import and configure Pillow only when a preview actually needs generation
-def _image_module() -> tuple[Any, Any, type[Exception]]:
+def _image_module() -> tuple[Any, Any, type[Exception], type[Exception], type[Warning]]:
     try:
         from PIL import Image, ImageOps, UnidentifiedImageError
         from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
     except ImportError as exc:
         raise PreviewError("Pillow and pillow-heif are required for image previews") from exc
     register_heif_opener()
-    return Image, ImageOps, UnidentifiedImageError
+    return (
+        Image,
+        ImageOps,
+        UnidentifiedImageError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    )
 
 
 # Write a WebP derivative without mutating or moving the source image
 def _generate(source: Path, dest: Path, size: PreviewSize) -> None:
-    Image, ImageOps, UnidentifiedImageError = _image_module()
+    Image, ImageOps, UnidentifiedImageError, DecompressionBombError, DecompressionBombWarning = (
+        _image_module()
+    )
     dest.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f"{dest.stem}.tmp-", suffix=".webp", dir=dest.parent)
     os.close(fd)
     tmp_path = Path(tmp_name)
     try:
-        try:
-            with Image.open(source) as image:
-                frame = ImageOps.exif_transpose(image)
-                frame.thumbnail((size, size), Image.Resampling.LANCZOS)
-                if frame.mode not in ("RGB", "RGBA"):
-                    frame = frame.convert("RGBA" if "A" in frame.getbands() else "RGB")
-                frame.save(tmp_path, format="WEBP", method=6, quality=88)
-        except (UnidentifiedImageError, OSError) as exc:
-            raise PreviewError(f"could not decode image {source.name}") from exc
+        with _DECODE_SEMAPHORE:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", DecompressionBombWarning)
+                    with Image.open(source) as image:
+                        width, height = image.size
+                        if width > PREVIEW_MAX_DIMENSION or height > PREVIEW_MAX_DIMENSION:
+                            raise PreviewError("image dimensions exceed preview limits")
+                        if image.format == "JPEG":
+                            image.draft("RGB", (size, size))
+                        frame = ImageOps.exif_transpose(image)
+                        frame.thumbnail((size, size), Image.Resampling.LANCZOS)
+                        if frame.mode not in ("RGB", "RGBA"):
+                            frame = frame.convert("RGBA" if "A" in frame.getbands() else "RGB")
+                        frame.save(tmp_path, format="WEBP", method=6, quality=88)
+            except DecompressionBombError as exc:
+                raise PreviewError("image dimensions exceed preview limits") from exc
+            except (DecompressionBombWarning, UnidentifiedImageError, OSError) as exc:
+                raise PreviewError(f"could not decode image {source.name}") from exc
         if not tmp_path.exists() or tmp_path.stat().st_size == 0:
             raise PreviewError(f"Pillow produced no preview for {source.name}")
         tmp_path.replace(dest)
@@ -130,30 +126,55 @@ def _preview_source(session: Session, file_id: str) -> tuple[Path, AssetFile]:
     return source, asset_file
 
 
-# Generate or reuse a WebP preview for a linked image file
-def preview_for_file(session: Session, file_id: str, size: int) -> Path:
+# Validate the public preview size ladder
+def _preview_size(size: int) -> PreviewSize:
     if size not in PREVIEW_SIZES:
         raise ValidationError("unsupported preview size")
-    preview_size = cast(PreviewSize, size)
+    return cast(PreviewSize, size)
+
+
+# Generate or reuse one WebP derivative with atomic replacement
+def _preview_for_source(
+    source: Path, dest: Path, size: PreviewSize, quick_fingerprint_value: str | None
+) -> Path:
+    if derived_cache.is_current(dest, quick_fingerprint_value):
+        return dest
+    with derived_cache.locked(dest):
+        if derived_cache.is_current(dest, quick_fingerprint_value):
+            return dest
+        _generate(source, dest, size)
+        derived_cache.write_fingerprint(dest, quick_fingerprint_value)
+        return dest
+
+
+# Generate or reuse a WebP preview for a linked image file
+def preview_for_file(session: Session, file_id: str, size: int) -> Path:
+    preview_size = _preview_size(size)
     source, asset_file = _preview_source(session, file_id)
     library_root = library_root_for_session(session)
     dest = preview_cache_path(library_root, file_id, preview_size)
-    if is_current_preview(library_root, file_id, preview_size, asset_file.quick_fingerprint):
-        return dest
-    with _locked(_lock_path(dest)):
-        source, asset_file = _preview_source(session, file_id)  # re-check after waiting
-        if is_current_preview(library_root, file_id, preview_size, asset_file.quick_fingerprint):
-            return dest
-        _generate(source, dest, preview_size)
-        _fingerprint_path(dest).write_text(asset_file.quick_fingerprint or "", encoding="utf-8")
-        return dest
+    return _preview_for_source(source, dest, preview_size, asset_file.quick_fingerprint)
 
 
-# Build the canonical versioned preview URL for clients
-def preview_url_for_file(library_id: str, asset_file: AssetFile, size: int) -> str | None:
-    if asset_file.media_kind is not MediaKind.IMAGE:
-        return None
-    if not image_support.is_preview_capable_image(asset_file.relative_path):
-        return None
-    version = version_param(asset_file.quick_fingerprint)
-    return f"/api/v1/libraries/{library_id}/files/{asset_file.id}/preview?size={size}&v={version}"
+# Generate or reuse a path-scoped WebP preview for an unlinked File View image
+def preview_for_path(session: Session, relative_path: str, size: int) -> Path:
+    preview_size = _preview_size(size)
+    library_root = library_root_for_session(session)
+    try:
+        rel_norm = normalize_relative_path(relative_path)
+    except PathSafetyError as exc:
+        raise ValidationError(str(exc)) from exc
+    if not image_support.is_preview_capable_image(rel_norm):
+        raise ValidationError("this image format is not preview-capable")
+    try:
+        source = resolve_within_root(library_root, rel_norm)
+    except PathSafetyError as exc:
+        raise ValidationError(str(exc)) from exc
+    if not source.exists():
+        raise NotFoundError(f"path {rel_norm!r} does not exist in this library")
+    if not source.is_file():
+        raise ValidationError(f"path {rel_norm!r} is not a file")
+    stat = source.stat()
+    fingerprint = quick_fingerprint(stat.st_size, stat.st_mtime_ns)
+    dest = file_view_preview_cache_path(library_root, rel_norm, preview_size)
+    return _preview_for_source(Path(source), dest, preview_size, fingerprint)

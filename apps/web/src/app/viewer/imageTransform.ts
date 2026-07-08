@@ -13,8 +13,6 @@ export interface Transform {
 
 export type SourceTier = 'thumbnail' | 'preview1600' | 'preview2560' | 'original'
 
-const BROWSER_NATIVE_IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
-
 export const SOURCE_TIER_RANK: Record<SourceTier, number> = {
   thumbnail: 0,
   preview1600: 1,
@@ -22,23 +20,12 @@ export const SOURCE_TIER_RANK: Record<SourceTier, number> = {
   original: 3,
 }
 
-// Return the file extension used for native-image decisions
-export function imageExtension(path: string): string {
-  const dot = path.lastIndexOf('.')
-  return dot === -1 ? '' : path.slice(dot + 1).toLowerCase()
-}
-
-// True when the browser can display the source bytes directly
-export function isBrowserNativeImage(path: string): boolean {
-  return BROWSER_NATIVE_IMAGE_EXTS.has(imageExtension(path))
-}
-
 // Compute the contain-fit scale for an image inside a viewport
 export function fitScale(viewport: Size, image: Size): number {
   if (viewport.width <= 0 || viewport.height <= 0 || image.width <= 0 || image.height <= 0) {
     return 1
   }
-  return Math.min(viewport.width / image.width, viewport.height / image.height)
+  return Math.min(1, viewport.width / image.width, viewport.height / image.height)
 }
 
 // Compute the cover-fill scale for an image inside a viewport
@@ -83,6 +70,22 @@ export function zoomToPoint(
     scale: nextScale,
     tx: point.x - (point.x - transform.tx) * ratio,
     ty: point.y - (point.y - transform.ty) * ratio,
+  }
+}
+
+// Keep a custom transform from moving the image completely out of view
+export function clampPan(transform: Transform, viewport: Size, image: Size): Transform {
+  if (viewport.width <= 0 || viewport.height <= 0 || image.width <= 0 || image.height <= 0) {
+    return transform
+  }
+  const renderedWidth = image.width * transform.scale
+  const renderedHeight = image.height * transform.scale
+  const maxX = Math.max(0, (renderedWidth - viewport.width) / 2)
+  const maxY = Math.max(0, (renderedHeight - viewport.height) / 2)
+  return {
+    ...transform,
+    tx: Math.min(maxX, Math.max(-maxX, transform.tx)),
+    ty: Math.min(maxY, Math.max(-maxY, transform.ty)),
   }
 }
 

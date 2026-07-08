@@ -6,8 +6,9 @@ from cairndex.domain.enums import MediaKind
 
 BROWSER_NATIVE_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 PREVIEW_IMAGE_EXTENSIONS = frozenset(
-    {*BROWSER_NATIVE_IMAGE_EXTENSIONS, "bmp", "tif", "tiff", "heic", "heif", "psd"}
+    {*BROWSER_NATIVE_IMAGE_EXTENSIONS, "bmp", "tif", "tiff", "heic", "heif"}
 )
+PREVIEW_ONLY_IMAGE_EXTENSIONS = PREVIEW_IMAGE_EXTENSIONS - BROWSER_NATIVE_IMAGE_EXTENSIONS
 
 
 # Return the lowercase suffix without a leading dot

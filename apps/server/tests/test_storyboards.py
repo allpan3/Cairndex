@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from cairndex.core.config import get_settings
 from cairndex.domain.enums import FileRole, JobStatus, JobType, MediaKind
 from cairndex.jobs.worker import execute_job
-from cairndex.media import storyboards
+from cairndex.media import derived_cache, storyboards
 from cairndex.media.ffmpeg_exec import FfmpegError, run_ffmpeg
 from cairndex.media.storyboard_handler import storyboard_job_handler
 from cairndex.persistence.models import AssetFile
@@ -131,6 +131,7 @@ def test_generates_vtt_with_exact_interval_tiles_and_coords(
     assert payloads[32] == f"storyboard/sb_002.jpg?v={version}#xywh=640,180,320,180"
     assert (index_path.parent / "sb_001.jpg").exists()
     assert (index_path.parent / "sb_002.jpg").exists()
+    assert derived_cache.read_fingerprint(index_path) == asset_file.quick_fingerprint
 
 
 def test_job_idempotence_and_fingerprint_invalidation(
@@ -216,7 +217,7 @@ def test_cached_endpoints_404_until_artifacts_exist_and_validate_sheet_names(
         storyboards.render_vtt([cue], asset_file.quick_fingerprint),
         encoding="utf-8",
     )
-    (cache_dir / "fingerprint.txt").write_text(asset_file.quick_fingerprint, encoding="utf-8")
+    derived_cache.write_fingerprint(cache_dir / "index.vtt", asset_file.quick_fingerprint)
     (cache_dir / "sb_001.jpg").write_bytes(b"jpg")
 
     vtt = client.get(f"{base}/storyboard.vtt")
@@ -244,7 +245,7 @@ def test_playback_manifest_includes_current_storyboard_and_chapters(
         storyboards.render_vtt([cue], asset_file.quick_fingerprint),
         encoding="utf-8",
     )
-    (cache_dir / "fingerprint.txt").write_text(asset_file.quick_fingerprint, encoding="utf-8")
+    derived_cache.write_fingerprint(cache_dir / "index.vtt", asset_file.quick_fingerprint)
     (cache_dir / "sb_001.jpg").write_bytes(b"jpg")
 
     body = client.get(

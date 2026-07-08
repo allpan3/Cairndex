@@ -11,6 +11,8 @@ interface DecodeRequest {
   reject: () => void
 }
 
+let resizeObserverCallback: ResizeObserverCallback | null = null
+
 // Build the FileRead shape used by viewer tests
 function file(overrides: Partial<FileRead> = {}): FileRead {
   return {
@@ -39,7 +41,7 @@ function file(overrides: Partial<FileRead> = {}): FileRead {
 function renderStage(imageFile: FileRead, onError = vi.fn()) {
   return render(
     <div className="media-viewer">
-      <ImageStage file={imageFile} onError={onError} />
+      <ImageStage key={imageFile.id} file={imageFile} onError={onError} />
     </div>,
   )
 }
@@ -49,6 +51,9 @@ function installBrowserMocks(autoResolve = true): DecodeRequest[] {
   setActiveLibraryId('lib1')
   const decodes: DecodeRequest[] = []
   class MockResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      resizeObserverCallback = callback
+    }
     observe() {}
     disconnect() {}
   }
@@ -82,6 +87,7 @@ function installBrowserMocks(autoResolve = true): DecodeRequest[] {
 }
 
 afterEach(() => {
+  resizeObserverCallback = null
   vi.restoreAllMocks()
   setActiveLibraryId(null)
 })
@@ -98,11 +104,15 @@ describe('ImageStage', () => {
 
     rerender(
       <div className="media-viewer">
-        <ImageStage file={file({ id: 'f2', relative_path: 'other.png' })} onError={vi.fn()} />
+        <ImageStage
+          key="f2"
+          file={file({ id: 'f2', relative_path: 'other.png' })}
+          onError={vi.fn()}
+        />
       </div>,
     )
 
-    await waitFor(() => expect(img.style.transform).toContain('scale(1)'))
+    await waitFor(() => expect(screen.getByRole('img').style.transform).toContain('scale(1)'))
   })
 
   test('keeps the current tier visible until decode resolves', async () => {
@@ -117,6 +127,65 @@ describe('ImageStage', () => {
     await act(async () => decodes[0]!.resolve())
     await waitFor(() => expect(img.src).toContain('/api/v1/libraries/lib1/files/f1/preview'))
     expect(img.src).toContain('size=1600')
+  })
+
+  test('keeps the last good tier when a higher tier fails', async () => {
+    const decodes = installBrowserMocks(false)
+    const onError = vi.fn()
+    renderStage(file({ relative_path: 'still.heic', mime_type: 'image/heic' }), onError)
+    const img = screen.getByRole('img') as HTMLImageElement
+
+    await waitFor(() => expect(decodes[0]?.src).toContain('size=1600'))
+    await act(async () => decodes[0]!.reject())
+
+    expect(img.src).toContain('/api/v1/libraries/lib1/bundles/b1/files/f1/thumbnail')
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  test('native images upgrade directly from thumbnail to original content', async () => {
+    const decodes = installBrowserMocks(false)
+    renderStage(file({ relative_path: 'photo.png', mime_type: 'image/png' }))
+    const img = screen.getByRole('img') as HTMLImageElement
+
+    await waitFor(() =>
+      expect(decodes[0]?.src).toContain('/api/v1/libraries/lib1/files/f1/content'),
+    )
+    expect(decodes[0]!.src).not.toContain('/preview')
+    await act(async () => decodes[0]!.resolve())
+
+    await waitFor(() => expect(img.src).toContain('/api/v1/libraries/lib1/files/f1/content'))
+  })
+
+  test('keeps the wanted decode alive when viewport measurement changes fit scale', async () => {
+    const decodes = installBrowserMocks(false)
+    let viewport = { width: 0, height: 0 }
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () =>
+        ({
+          x: 0,
+          y: 0,
+          top: 0,
+          right: viewport.width,
+          bottom: viewport.height,
+          left: 0,
+          width: viewport.width,
+          height: viewport.height,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    )
+    renderStage(file({ relative_path: 'large.png', mime_type: 'image/png' }))
+    const img = screen.getByRole('img') as HTMLImageElement
+
+    await waitFor(() => expect(decodes).toHaveLength(1))
+    viewport = { width: 800, height: 600 }
+    act(() => resizeObserverCallback?.([], {} as ResizeObserver))
+
+    await waitFor(() => expect(screen.getByTestId('image-zoom')).toHaveTextContent('50%'))
+    expect(decodes).toHaveLength(1)
+    await act(async () => decodes[0]!.resolve())
+
+    await waitFor(() => expect(img).toHaveAttribute('data-tier', 'original'))
+    expect(img.src).toContain('/api/v1/libraries/lib1/files/f1/content')
   })
 
   test('requests the 2560 preview only after zooming past native scale', async () => {

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/libraries/{library_id}/bundles", tags=["bundles"])
 
 
 def _thumbnail_response(path: object) -> FileResponse:
-    return FileResponse(str(path), media_type="image/jpeg")
+    return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(Path(str(path))))
 
 
 # --- Browse (declared before /{bundle_id} so the static paths win) -----------

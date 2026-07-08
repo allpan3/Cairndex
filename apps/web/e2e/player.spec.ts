@@ -306,6 +306,7 @@ interface MockApiOptions {
   progress?: { position_s: number; duration_s: number | null; completed: boolean } | null
   secondPlayable?: boolean
   nonNativeImage?: boolean
+  onContent?: (url: string) => void
   onPreview?: (url: string) => void
   onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
 }
@@ -380,9 +381,10 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
-  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
+    options.onContent?.(r.request().url())
+    return r.fulfill({ status: 200, contentType: 'image/png', body: png })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/preview/, (r) => {
     options.onPreview?.(r.request().url())
     return r.fulfill({ status: 200, contentType: 'image/webp', body: png })
@@ -692,13 +694,20 @@ test('navigates files without the inline filmstrip and shows the fallback card',
   page,
 }) => {
   await mockMedia(page)
-  await mockApi(page)
+  const contentRequests: string[] = []
+  await mockApi(page, { onContent: (url) => contentRequests.push(url) })
   await page.goto('/')
 
   await page.locator('[data-bundle-id="b0"]').dblclick()
   await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
   await page.getByRole('button', { name: /next file/i }).click()
   await expect(page.getByTestId('image-stage')).toBeVisible()
+  const image = page.locator('.mv-image')
+  await expect
+    .poll(() => contentRequests.some((url) => url.includes('/files/img1/content')))
+    .toBe(true)
+  await expect(image).toHaveAttribute('data-tier', 'original')
+  await expect(image).toHaveAttribute('src', /\/files\/img1\/content$/)
 
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.media-fallback')).toContainText("isn't playable")
@@ -720,6 +729,8 @@ test('zooms and pans a non-native image through preview derivatives', async ({ p
   await expect.poll(() => previewRequests.some((url) => url.includes('size=1600'))).toBe(true)
 
   const image = page.locator('.mv-image')
+  await expect(image).toHaveAttribute('data-tier', 'preview1600')
+  await expect(image).toHaveAttribute('src', /\/files\/img1\/preview\?.*size=1600/)
   const zoom = page.getByTestId('image-zoom')
   await expect(zoom).toContainText('100%')
   const box = await stage.boundingBox()

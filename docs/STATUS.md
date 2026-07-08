@@ -7,42 +7,73 @@ derivative slice:
 
 - Added lazy WebP preview derivatives at
   `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
-  with an allowlisted size ladder, per-derivative filesystem locks, safe source
-  re-resolution, deterministic cache paths under
+  with an allowlisted size ladder, safe source re-resolution, deterministic
+  linked-file cache paths under
   `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, quick
   fingerprint sidecars, versioned `?v={quick_fingerprint}` URLs, and immutable
-  cache headers.
+  cache headers. File View can also request
+  `/api/v1/libraries/{library_id}/file/preview?path=...&size=...`; those
+  unlinked path previews use a deterministic path-hash cache key and a
+  stat-derived quick fingerprint.
+- Extracted shared derived-cache helpers for immutable cache headers,
+  version-param escaping, `.fingerprint` sidecars, and current-cache checks.
+  Image previews and storyboards now use that shared sidecar convention;
+  previews use atomic replacement plus a bounded decode semaphore instead of
+  per-file `fcntl` locks.
 - Added Pillow + pillow-heif as lazy preview-generation dependencies. They are
   pure-wheel runtime dependencies used only when a derivative must be generated,
-  and they unlock HEIC/HEIF, TIFF, BMP, best-effort PSD, and sized WebP previews
-  for browser and future TV clients. Preview generation remains lazy-only in
-  this slice; no Update/precompute job was added.
+  and they unlock HEIC/HEIF, TIFF, BMP, and sized WebP previews for browser and
+  future TV clients. PSD is not advertised openable until a tested decoder path
+  exists. Preview generation remains lazy-only in this slice; no
+  Update/precompute job was added.
 - Preview-capable images now count as supported/openable in bundle/file payloads
   and File View entries. HEIC/TIFF/BMP can therefore open in the media viewer
   through preview derivatives even when the browser cannot display the original
-  source bytes.
+  source bytes. Preview-only cover thumbnails route through the Pillow preview
+  pipeline instead of ffmpeg, so selected HEIC/TIFF/BMP covers do not fail the
+  card thumbnail path.
 - Replaced the bare image stage with a transform stage: fit/fill/100% mode
   cycling, wheel zoom to cursor, pointer-drag panning, two-pointer pinch zoom,
   keyboard `+`/`-`/`0`/`1` shortcuts scoped to the viewer, zoom clamping,
-  zoom-percent display, dark/light/checkerboard backgrounds, resize-aware fit,
-  progressive thumbnail → 1600px preview → original/2560px preview swaps after
-  `Image.decode()`, and transform/source reset when the filmstrip file changes.
+  viewport-clamped pan bounds, zoom-percent display, dark/light/checkerboard
+  backgrounds, resize-aware fit capped at 100% for initial fit, progressive
+  source swaps after `Image.decode()`, and keyed transform/source reset when the
+  selected file changes. Native images load thumbnail → original; non-native
+  images load thumbnail → 1600px preview and request 2560px only when zoomed
+  past 100%.
 - Regenerated OpenAPI and `apps/web/src/api/schema.d.ts` for the preview route
-  and new file/browse support hints.
+  and new file/browse support hints. `schema.d.ts` was patched manually for this
+  pass because `npm run gen:api` could not reach the npm registry in the
+  sandbox after OpenAPI regeneration.
 
 Verification:
 
 - Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check`,
-  `uv run ruff format --check`, `uv run mypy src`, and `uv run pytest` passed
-  (`327 passed`, one existing Starlette/httpx deprecation warning).
-- Frontend: `npm run typecheck`, `npm run lint`, `npm run format:check`,
-  `npm run test` (`42 passed`, existing jsdom media-method warnings), and
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff format --check`,
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run mypy src`, and
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run pytest` passed
+  (`333 passed`, one existing Starlette/httpx deprecation warning).
+- Frontend: `npm run lint`, `npm run format:check`, `npm run typecheck`,
+  `npm run test` (`46 passed`, existing jsdom media-method warnings), and
   `npm run build` passed.
-- Playwright/browser manual verification is still outstanding in this sandbox:
-  `npm run test:e2e -- player.spec.ts` could not bind the local Vite server on
-  `::1:5173` without escalation, and the escalated retry was blocked by the
-  approval usage limit. A zoom/pan screenshot was therefore not captured in this
-  run.
+- Focused review-fix checks also passed:
+  `uv run pytest tests/test_previews.py tests/test_thumbnails.py
+  tests/test_storyboards.py tests/test_file_view.py` (`44 passed`) and
+  `npm run test -- ImageStage imageTransform` (`10 passed`).
+- OpenAPI was regenerated with
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run python -m
+  cairndex.devtools.openapi > ../web/src/api/openapi.json`. `npm run gen:api`
+  could not complete in this sandbox because `npx` attempted to fetch
+  `openapi-typescript` from `registry.npmjs.org` and network DNS failed
+  (`ENOTFOUND`), so `apps/web/src/api/schema.d.ts` was patched manually to match
+  the small OpenAPI delta.
+- Playwright/browser manual verification remains outstanding in this sandbox:
+  `npm run test:e2e` still fails before tests run because Vite cannot bind
+  `::1:5173` (`listen EPERM`), and an explicit
+  `npm run dev -- --host 127.0.0.1 --port 5173` also fails with
+  `listen EPERM 127.0.0.1:5173`. The live Demo-library checks and HEIC/TIFF
+  fixture addition were not performed because the local browser server cannot be
+  started here.
 
 ## Merged: media-player M4 watch progress/resume (#4)
 
@@ -128,7 +159,7 @@ chapter-tick slice:
   files the in-flight pass missed.
 - Storyboards are generated into deterministic portable cache paths:
   `.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/index.vtt` plus
-  `fingerprint.txt` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
+  `index.fingerprint` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
   quick fingerprint for cheap request-path validation; the VTT keeps the same
   fingerprint in a `NOTE` for artifact self-description.
 - Added cached-only storyboard endpoints:

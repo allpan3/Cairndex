@@ -112,6 +112,71 @@ def test_preview_endpoint_serves_versioned_immutable_webp(
     assert resp.content.startswith(b"RIFF") and b"WEBP" in resp.content[:16]
 
 
+def test_decompression_bomb_maps_to_422(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+) -> None:
+    asset_file = _image_file(session, library_root)
+
+    class BombError(Exception):
+        pass
+
+    class BombWarning(Warning):
+        pass
+
+    class FakeImage:
+        DecompressionBombError = BombError
+        DecompressionBombWarning = BombWarning
+
+        @staticmethod
+        def open(_source: Path) -> object:
+            raise BombError("too large")
+
+    monkeypatch.setattr(
+        previews,
+        "_image_module",
+        lambda: (FakeImage, object(), Exception, BombError, BombWarning),
+    )
+
+    resp = client.get(f"/api/v1/libraries/{library_id}/files/{asset_file.id}/preview?size=640")
+
+    assert resp.status_code == 422
+
+
+def test_oversize_dimensions_are_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+) -> None:
+    asset_file = _image_file(session, library_root)
+    monkeypatch.setattr(previews, "PREVIEW_MAX_DIMENSION", 16)
+
+    resp = client.get(f"/api/v1/libraries/{library_id}/files/{asset_file.id}/preview?size=640")
+
+    assert resp.status_code == 422
+
+
+def test_file_view_path_preview_serves_unlinked_non_native_image(
+    client: TestClient, library_id: str, library_root: Path
+) -> None:
+    _make_image(library_root / "loose.tiff", "TIFF")
+
+    resp = client.get(
+        f"/api/v1/libraries/{library_id}/file/preview",
+        params={"path": "loose.tiff", "size": 640},
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    assert resp.headers["cache-control"] == previews.PREVIEW_CACHE_CONTROL
+    assert resp.content.startswith(b"RIFF") and b"WEBP" in resp.content[:16]
+
+
 def test_preview_missing_source_marks_file_missing(
     client: TestClient, library_id: str, session: Session, library_root: Path
 ) -> None:
@@ -176,3 +241,22 @@ def test_file_read_openability_hint_includes_heic_and_tiff(
     assert body[0]["supported"] is True
     assert body[0]["quick_fingerprint"] == heic.quick_fingerprint
     assert second[0]["supported"] is True
+
+
+def test_psd_is_not_advertised_openable_until_decoder_path_is_tested(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    (library_root / "layered.psd").write_bytes(b"not a real psd")
+    bundle = bundle_service.create_bundle(session, title="psd")
+    asset_file = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="layered.psd",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    session.commit()
+
+    body = client.get(f"/api/v1/libraries/{library_id}/bundles/{asset_file.bundle_id}/files").json()
+
+    assert body[0]["supported"] is False
