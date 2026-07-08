@@ -1,5 +1,49 @@
 # Project status
 
+## Current branch: media-player M5 image viewer v2 + preview derivatives
+
+Branch `feat/image-viewer`. Implemented plan 1 M5's image viewer v2 and preview
+derivative slice:
+
+- Added lazy WebP preview derivatives at
+  `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
+  with an allowlisted size ladder, per-derivative filesystem locks, safe source
+  re-resolution, deterministic cache paths under
+  `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, quick
+  fingerprint sidecars, versioned `?v={quick_fingerprint}` URLs, and immutable
+  cache headers.
+- Added Pillow + pillow-heif as lazy preview-generation dependencies. They are
+  pure-wheel runtime dependencies used only when a derivative must be generated,
+  and they unlock HEIC/HEIF, TIFF, BMP, best-effort PSD, and sized WebP previews
+  for browser and future TV clients. Preview generation remains lazy-only in
+  this slice; no Update/precompute job was added.
+- Preview-capable images now count as supported/openable in bundle/file payloads
+  and File View entries. HEIC/TIFF/BMP can therefore open in the media viewer
+  through preview derivatives even when the browser cannot display the original
+  source bytes.
+- Replaced the bare image stage with a transform stage: fit/fill/100% mode
+  cycling, wheel zoom to cursor, pointer-drag panning, two-pointer pinch zoom,
+  keyboard `+`/`-`/`0`/`1` shortcuts scoped to the viewer, zoom clamping,
+  zoom-percent display, dark/light/checkerboard backgrounds, resize-aware fit,
+  progressive thumbnail → 1600px preview → original/2560px preview swaps after
+  `Image.decode()`, and transform/source reset when the filmstrip file changes.
+- Regenerated OpenAPI and `apps/web/src/api/schema.d.ts` for the preview route
+  and new file/browse support hints.
+
+Verification:
+
+- Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check`,
+  `uv run ruff format --check`, `uv run mypy src`, and `uv run pytest` passed
+  (`327 passed`, one existing Starlette/httpx deprecation warning).
+- Frontend: `npm run typecheck`, `npm run lint`, `npm run format:check`,
+  `npm run test` (`42 passed`, existing jsdom media-method warnings), and
+  `npm run build` passed.
+- Playwright/browser manual verification is still outstanding in this sandbox:
+  `npm run test:e2e -- player.spec.ts` could not bind the local Vite server on
+  `::1:5173` without escalation, and the escalated retry was blocked by the
+  approval usage limit. A zoom/pan screenshot was therefore not captured in this
+  run.
+
 ## Merged: media-player M4 watch progress/resume (#4)
 
 Branch `feat/watch-progress`. Implemented plan 1 M4's watch progress and resume
@@ -871,11 +915,10 @@ dialogs).
 
 ## Next recommended tasks
 
-1. **Plan 1 M5 — image viewer v2** (the next media-player slice): the zoom/pan
-   image stage plus the server-side preview-derivative pipeline (§5.1), which
-   also unlocks HEIC/TIFF openability. (M1–M4 are merged; subtitle depth was
-   owner-deferred to M8 behind HLS, and dual subtitles to M9 — see
-   `docs/plans/01-web-media-player-and-viewer.md`.)
+1. **Plan 1 M6 — HLS/remux/transcode session foundation** after the M5 image
+   viewer branch lands. Subtitle depth remains owner-deferred to M8 behind HLS,
+   and dual subtitles to M9 — see
+   `docs/plans/01-web-media-player-and-viewer.md`.
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 3. Continue File View planning toward guarded write mode and safe desktop-native
