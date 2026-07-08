@@ -736,6 +736,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * File Preview
+         * @description Serve a lazily generated, fingerprint-invalidated WebP preview.
+         */
+        get: operations["file_preview_api_v1_libraries__library_id__files__file_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/files/{file_id}/progress": {
         parameters: {
             query?: never;
@@ -1554,6 +1574,8 @@ export interface components {
             id: string;
             /** Media Kind */
             media_kind: string | null;
+            /** Openable */
+            openable: boolean;
             /** Rating */
             rating: number | null;
             /** Title */
@@ -1688,6 +1710,8 @@ export interface components {
             id: string;
             /** Media Kind */
             media_kind: string | null;
+            /** Openable */
+            openable: boolean;
             progress: components["schemas"]["ContinueWatchingProgressRead"];
             /** Rating */
             rating: number | null;
@@ -1853,6 +1877,8 @@ export interface components {
             mime_type: string | null;
             /** Original Filename */
             original_filename: string;
+            /** Quick Fingerprint */
+            quick_fingerprint: string | null;
             /** Relative Path */
             relative_path: string;
             role: components["schemas"]["FileRole"];
@@ -1860,6 +1886,11 @@ export interface components {
             sequence: number;
             /** Size Bytes */
             size_bytes: number | null;
+            /**
+             * Supported
+             * @default false
+             */
+            supported: boolean;
             /** Tech Metadata */
             tech_metadata: {
                 [key: string]: unknown;
@@ -4361,6 +4392,42 @@ export interface operations {
     file_content_api_v1_libraries__library_id__files__file_id__content_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_preview_api_v1_libraries__library_id__files__file_id__preview_get: {
+        parameters: {
+            query?: {
+                size?: number;
+            };
             header?: never;
             path: {
                 file_id: string;

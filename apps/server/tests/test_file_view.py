@@ -92,6 +92,17 @@ def test_nested_listing_excludes_hidden_and_marks_support(
     assert listing.entries[0].name == "S01"
 
 
+def test_preview_capable_images_are_openable(session: Session, library_root: Path) -> None:
+    (library_root / "Show").mkdir()
+    (library_root / "Show" / "still.heic").write_text("synthetic")
+    (library_root / "Show" / "scan.tiff").write_text("synthetic")
+    listing = service.list_entries(session, path="Show")
+
+    by_name = {e.name: e for e in listing.entries}
+    assert by_name["still.heic"].supported is True
+    assert by_name["scan.tiff"].supported is True
+
+
 def test_linked_file_is_flagged(session: Session, library_root: Path) -> None:
     _make_media(library_root)
     bundle = bundle_service.create_bundle(session, title="b")

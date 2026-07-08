@@ -26,8 +26,9 @@ from cairndex.api.schemas.playback import (
     PlaybackProgressUpdate,
     SubtitleTrackRead,
 )
+from cairndex.core.errors import NotFoundError
 from cairndex.domain.enums import MediaKind
-from cairndex.media import playback, storyboards
+from cairndex.media import playback, previews, storyboards
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetFile, SubtitleTrack
 from cairndex.services import playback_progress as progress_service
@@ -201,6 +202,27 @@ def file_content(file_id: str, db: LibrarySession) -> FileResponse:
     path, asset_file = playback.resolve_file_path(db, file_id)
     media_type = mimetypes.guess_type(asset_file.original_filename)[0] or "application/octet-stream"
     return FileResponse(str(path), media_type=media_type, filename=asset_file.original_filename)
+
+
+# Serve a lazily generated WebP image preview derivative
+@router.get("/files/{file_id}/preview")
+def file_preview(
+    file_id: str,
+    db: LibrarySession,
+    size: Annotated[int, Query()] = 1600,
+) -> FileResponse:
+    """Serve a lazily generated, fingerprint-invalidated WebP preview."""
+    try:
+        path = previews.preview_for_file(db, file_id, size)
+    except NotFoundError:
+        db.commit()  # persist access-time missing marks before the 404 response
+        raise
+    return FileResponse(
+        str(path),
+        media_type="image/webp",
+        filename=path.name,
+        headers={"Cache-Control": previews.PREVIEW_CACHE_CONTROL},
+    )
 
 
 # Serve a cached storyboard index without request-path generation
