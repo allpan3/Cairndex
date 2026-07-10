@@ -20,8 +20,11 @@ ambiguous or duplicate files.
 ### 1. Capture cheap filesystem identity during scans
 
 `AssetFile` gains `filesystem_device`, `filesystem_inode`, and
-`identity_available`. They come straight from the `stat()` the scanner already
-does (`st_dev`/`st_ino`). `identity_available` is false when either is zero
+`identity_available`. They come from the `stat()` the scanner already does
+(`st_dev`/`st_ino`). Because network filesystems may expose unsigned 64-bit
+identifiers while SQLite `INTEGER` is signed 64-bit, the scanner stores the same
+bits in signed two's-complement form. Equality remains exact without changing
+the schema. `identity_available` is false when either source value is zero
 (some network filesystems report unstable/zero inodes), so untrusted identity
 never drives a repair on its own. No extra I/O, no hashing.
 

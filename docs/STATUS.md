@@ -126,6 +126,75 @@ has no browser probe so it is advertised null (the ladder is user-driven); in-
 stream ABR is deliberately not implemented (switches re-create the session). Next
 recommended media-player task: **plan 1 M8 — subtitle upgrade**.
 
+## Fixed: library switch refreshes the browser shell
+
+Branch `codex/library-switch-refresh` (off local `main` after the three approved
+enhancements were fast-forwarded directly). The workspace already remounted on a
+library-id change, but its TanStack query keys were not library-scoped, so the
+shared query client reused the previous library's still-fresh 30-second content
+cache. The switch handler now points requests at the next library, removes only
+active-library content queries, then changes the selected id. Registry and
+library-keyed auth queries are preserved.
+
+Verification: the focused Playwright regression fails before the fix and passes
+after it, with two libraries returning different bundle titles. Live browser
+verification against the real local app switched `lex` (4 items) → `Demo` (21
+items and its own collection tree) → `lex` (4 items) without a page reload; the
+original selected library was restored afterward. Full frontend `lint`,
+`format:check`, `typecheck`, `test` (**51 passed**), `build`, and Playwright
+(**53 passed**) are green.
+
+## In progress: pinyin-aware picker search
+
+Branch `codex/pinyin-picker-search` (stacked on the two preceding Update fixes).
+Chinese tag and collection names now match full pinyin, initials, partial
+pinyin, mixed Latin/pinyin, and polyphonic readings in the single- and
+multi-bundle add pickers. The same shared local matcher also covers tag filters,
+All Tags, File Browser entry names, and local file-selection filters. Normal
+case-insensitive substring search and literal exact-name/create behavior are
+unchanged.
+
+`pinyin-pro` 3.28.1 is frontend-only and offline. It is split into a ~142 kB
+gzip lazy chunk loaded when a search-bearing surface mounts; the initial app JS
+remains ~131 kB gzip. Whole-library Bundle Browser search is still server-backed
+SQLite FTS and intentionally does not gain pinyin aliases in this low-cost
+slice, since that would require new indexed data and a per-library FTS rebuild.
+
+Verification: frontend `lint`, `format:check`, `typecheck`, `test` (**51
+passed**), `build`, and Playwright (**52 passed**) are green. Unit coverage
+checks literal, full/initial/partial, mixed, and polyphonic matching. The new
+browser case searches `摄影` with `sheying` and `电影` with `dianying` in the
+actual single-bundle tag and collection pickers.
+
+## In progress: standalone Update stages
+
+Branch `codex/standalone-update-actions` (stacked on the network-library scan
+overflow fix). **Update** runs scan/move repair + new-scope grouping suggestions,
+metadata collection, then non-blocking storyboard generation. Its maintenance
+overflow now exposes each capability independently as **Scan new files**,
+**Suggest grouping**, **Collect metadata**, and **Generate storyboards**.
+Standalone and Update-triggered storyboard completion invalidate cached playback
+manifests so trickplay availability refreshes without a page reload.
+
+Verification: frontend `lint`, `format:check`, `typecheck`, `test` (**48
+passed**), `build`, and Playwright (**51 passed**) are green. The new browser
+case opens the maintenance overflow, verifies all four standalone labels, and
+confirms **Generate storyboards** sends its own storyboard-job request.
+
+## Fixed: network-library scan overflow
+
+Branch `codex/fix-unsigned-filesystem-identity` (off `main`). **Update** no
+longer fails when a mounted/network filesystem reports an unsigned 64-bit inode
+or device identifier above SQLite's signed `INTEGER` maximum. The scanner stores
+the same 64 bits in signed two's-complement form, preserving exact equality for
+moved-file repair without a schema migration. Regression coverage exercises an
+initial scan and same-volume move with an inode above `2^63 - 1`.
+
+Verification: backend `ruff check`, `ruff format --check`, `mypy src`, and
+`pytest` (**387 passed**) are green. A read-only scan of the mounted `lex`
+library into an in-memory database discovered and persisted all 4 supported
+media files without touching its real library database.
+
 ## In review: multiple notes per bundle
 
 Branch `feat/bundle-multiple-notes` (off `main`, i.e. after the M6 playback

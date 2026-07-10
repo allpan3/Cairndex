@@ -11,6 +11,7 @@ import {
 import { usePersistentState } from '../state/usePersistentState'
 import { IconCheckSquare } from './icons'
 import { PickGuides } from './PickGuides'
+import { usePinyinSearch } from './pinyin'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 interface CollectionRow {
@@ -68,6 +69,7 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
   }
 
   const trimmedSearch = search.trim()
+  const matchSearch = usePinyinSearch(search)
   // "Create <search>" offers a *new* collection with this exact name — shown
   // whenever the search doesn't already name an existing collection exactly,
   // even if it's a substring of one (e.g. searching "Movie" while "Movies"
@@ -104,7 +106,7 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
   let rows: CollectionRow[]
   if (search) {
     rows = flattenHierarchy(collections)
-      .filter(({ item }) => item.name.toLowerCase().includes(search.toLowerCase()))
+      .filter(({ item }) => matchSearch(item.name))
       .map(({ item }) => ({ item, depth: 0, hasChildren: false }))
   } else if (onlySelected) {
     rows = flattenHierarchy(collections)

@@ -171,6 +171,46 @@ test('assigning a tag adds a chip', async ({ page }) => {
   await expect(page.locator('.inspector .chip')).toContainText('Action')
 })
 
+test('tag and collection pickers match Chinese names by pinyin', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/tags?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 't1', parent_id: null, name: '摄影', color: null, sort_order: 0 },
+          { id: 't2', parent_id: null, name: '音乐', color: null, sort_order: 1 },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.route('**/collections?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: '电影', parent_id: null },
+          { id: 'c2', name: '文档', parent_id: null },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  await page.getByRole('button', { name: '+ Tag' }).click()
+  await page.getByRole('textbox', { name: 'Search tags' }).fill('sheying')
+  await expect(page.locator('.picker__panel .pick-row', { hasText: '摄影' })).toBeVisible()
+  await expect(page.locator('.picker__panel .pick-row', { hasText: '音乐' })).toHaveCount(0)
+
+  await page.locator('.inspector .field-label', { hasText: 'Collections' }).click()
+  await page.getByRole('button', { name: '+ Collection' }).click()
+  await page.getByRole('textbox', { name: 'Search collections' }).fill('dianying')
+  await expect(page.locator('.picker__panel .pick-row', { hasText: '电影' })).toBeVisible()
+  await expect(page.locator('.picker__panel .pick-row', { hasText: '文档' })).toHaveCount(0)
+})
+
 test('the collection picker assigns, surfaces recent, and filters to selected', async ({
   page,
 }) => {

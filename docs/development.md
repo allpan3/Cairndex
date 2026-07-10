@@ -66,9 +66,12 @@ Cairndex now uses the ADR-0008 per-library model:
   `asset_files.storage_root_id`.
 
 For local manual testing, start the backend and frontend, open the app, use the
-sidebar `+` to create or register a library directory, then run **Update**. Update
-scans files, persists a grouping plan, collects ffprobe metadata, refreshes the
-UI, and opens grouping review when suggestions exist.
+sidebar `+` to create or register a library directory, then run **Update**.
+Update scans files, persists a grouping plan, collects ffprobe metadata,
+refreshes the UI, opens grouping review when suggestions exist, and starts
+missing/stale storyboard generation in the background. The maintenance overflow
+menu exposes standalone **Scan new files**, **Suggest grouping**, **Collect
+metadata**, and **Generate storyboards** actions.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the

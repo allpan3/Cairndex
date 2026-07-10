@@ -95,10 +95,13 @@ src/
 ```
 
 The app picks one active library per browser tab and routes all content requests
-under `/api/v1/libraries/{id}/…`. Switching libraries remounts the workspace to
-avoid cross-library cache bleed. Server state lives in TanStack Query; UI state
-such as active surface, selection, toolbar search, layout, zoom, and pane widths
-lives in React/localStorage.
+under `/api/v1/libraries/{id}/…`. Before switching, the app points the API client
+at the next library and removes every active-library content query from TanStack
+Query; the global library registry and library-id-keyed auth queries remain.
+The library-keyed workspace then remounts to reset local UI state. This prevents
+the shared 30-second fresh cache from rendering the previous library under the
+new selection. UI state such as active surface, selection, toolbar search,
+layout, zoom, and pane widths lives in React/localStorage.
 
 Current browsing surfaces:
 
@@ -108,11 +111,28 @@ Current browsing surfaces:
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 
+Local list/picker search uses the shared `app/pinyin.ts` matcher. It preserves
+case-insensitive literal substring matching and adds contiguous full-pinyin,
+initial-letter, partial, mixed, and polyphonic matching for Chinese names. This
+covers tag/collection pickers (single- and multi-bundle), tag filters, All Tags,
+File Browser names, and local file-selection filters. Exact-name checks for
+inline **Create** actions remain literal, so a pinyin alias never suppresses
+creating a distinct Latin name. `pinyin-pro` is lockfile-pinned and runs fully
+offline; its dictionary is a separate ~142 kB gzip lazy chunk loaded when a
+search-bearing surface mounts, keeping it out of the initial app bundle. The
+maintenance cost is one frontend-only dependency and its lockfile update; there
+is no schema, API, server runtime, or external-service dependency.
+
+Server-backed whole-library Bundle Browser search remains the SQLite FTS path
+described in §9 and does not yet index pinyin aliases. Extending pinyin there
+would require persisted aliases plus an FTS rebuild, so it is intentionally
+outside this low-cost picker enhancement.
+
 The current sidebar maintenance flow exposes one primary **Update** button plus a
-small overflow menu for **Scan new files**, **Collect metadata**, and **Review
-grouping**. Update waits for scan/grouping-plan generation, metadata probe, and
-storyboard generation to finish before invalidating affected queries and opening
-grouping review when the scan produced suggestions.
+small overflow menu for **Scan new files**, **Collect metadata**, **Suggest
+grouping**, and **Generate storyboards**. Update waits for scan/grouping-plan
+generation and metadata probe, then starts storyboard generation in the
+background.
 
 ## 4. Library package and registry
 

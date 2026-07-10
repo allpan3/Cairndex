@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type {
   BundleSort,
@@ -27,9 +28,11 @@ import {
   useLibraryAuth,
   useLibraryLock,
   useProbe,
+  resetLibraryContentQueries,
   useRenameCollection,
   useUpdateCollection,
   useScan,
+  useStoryboards,
   useSmartCollectionMutations,
   useSmartCollections,
   useUpdateLibrary,
@@ -149,11 +152,12 @@ function Resizer({
 /**
  * App shell: resolve the active library (one per tab, ADR-0008) before any
  * content query runs. While there are no libraries the manager is shown so the
- * owner can create or register one. The workspace is keyed by library id, so
- * switching libraries remounts it with fresh query state — no cross-library
- * cache bleed.
+ * owner can create or register one. Switching libraries drops the previous
+ * library's content queries before the library-keyed workspace remounts, so
+ * neither server state nor local UI state can bleed across libraries.
  */
 export default function App() {
+  const queryClient = useQueryClient()
   const librariesQuery = useLibraries()
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
@@ -163,6 +167,18 @@ export default function App() {
     if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
     return libraries[0]?.id ?? null
   }, [libraries, chosenId])
+
+  const changeLibrary = useCallback(
+    (nextId: string) => {
+      if (nextId === libraryId) return
+      // Set the request scope before active observers are removed so no old
+      // query can restart against the library being left behind
+      setActiveLibraryId(nextId)
+      resetLibraryContentQueries(queryClient)
+      setChosenId(nextId)
+    },
+    [libraryId, queryClient, setChosenId],
+  )
 
   // Set the module-global active library during render so content queries (which
   // run after commit) target the right library.
@@ -197,7 +213,7 @@ export default function App() {
         key={libraryId}
         libraries={libraries}
         libraryId={libraryId}
-        onChangeLibrary={setChosenId}
+        onChangeLibrary={changeLibrary}
         onUnlock={(passphrase) => lock.unlock.mutate(passphrase)}
         unlocking={lock.unlock.isPending}
         error={lock.unlock.error?.message ?? null}
@@ -211,7 +227,7 @@ export default function App() {
         key={libraryId}
         libraries={libraries}
         libraryId={libraryId}
-        onChangeLibrary={setChosenId}
+        onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         canLock={auth.data?.protected === true}
         onLock={() => lock.lock.mutate()}
@@ -240,6 +256,7 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         onUpdateLibrary={noop}
         onScanFiles={noop}
         onProbe={noop}
+        onGenerateStoryboards={noop}
         onReviewGrouping={noop}
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
@@ -357,7 +374,7 @@ function Workspace({
   // A file to highlight after "Locate in File Browser" (until the user navigates
   // or picks another entry), independent of the loaded fileEntry object.
   const [locatedPath, setLocatedPath] = useState<string | null>(null)
-  // Live snapshot of the running maintenance job (scan/probe/thumbnail) so the
+  // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
 
@@ -380,6 +397,7 @@ function Workspace({
     },
   })
   const probe = useProbe({ onProgress: setActiveJob })
+  const storyboards = useStoryboards({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
   const deleteCollection = useDeleteCollection()
   const createCollection = useCreateCollection()
@@ -996,9 +1014,15 @@ function Workspace({
         scanningFiles={scanFiles.isPending}
         onProbe={() => probe.mutate()}
         probing={probe.isPending}
+        onGenerateStoryboards={() => storyboards.mutate()}
+        generatingStoryboards={storyboards.isPending}
         activeJob={activeJob}
         maintenanceError={
-          updateLibrary.error?.message ?? scanFiles.error?.message ?? probe.error?.message ?? null
+          updateLibrary.error?.message ??
+          scanFiles.error?.message ??
+          probe.error?.message ??
+          storyboards.error?.message ??
+          null
         }
         onReviewGrouping={() => {
           setReviewPlanId(null)

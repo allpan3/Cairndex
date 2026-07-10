@@ -14,6 +14,7 @@ import {
 } from '../api/hooks'
 import { formatBytes } from '../lib/format'
 import { StarRating } from './Inspector'
+import { usePinyinSearch } from './pinyin'
 import { flattenHierarchy, usePopover } from './usePopover'
 
 /** A flat checkbox-style multi-pick list, shared by the bulk tag and
@@ -40,10 +41,9 @@ function BulkPicker({
 }) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
+  const matchSearch = usePinyinSearch(search)
   const trimmedSearch = search.trim()
-  const visible = rows.filter(
-    ({ item }) => !search || item.name.toLowerCase().includes(search.toLowerCase()),
-  )
+  const visible = rows.filter(({ item }) => matchSearch(item.name))
   // "Create <search>" offers a *new* item with this exact name — shown
   // whenever the search doesn't already name an existing row exactly, even if
   // it's a substring of one.
