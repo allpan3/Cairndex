@@ -46,6 +46,10 @@ export type ContinueWatchingProgressRead = components['schemas']['ContinueWatchi
 export type ContinueWatchingItem = components['schemas']['ContinueWatchingItem']
 export type ContinueWatchingPage = components['schemas']['ContinueWatchingPage']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
+export type AudioStreamRead = components['schemas']['AudioStreamRead']
+export type ClientCapabilities = components['schemas']['ClientCapabilities']
+export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionRequest']
+export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count' | 'manual'
@@ -150,9 +154,19 @@ async function sendSignal<T>(
     signal,
   })
   if (!response.ok) {
-    throw new Error(`Request failed (HTTP ${response.status}) for ${url}`)
+    throw new HttpError(response.status, `Request failed (HTTP ${response.status}) for ${url}`)
   }
   return (await response.json()) as T
+}
+
+/** Carries the HTTP status so callers can branch (e.g. retry a 429). */
+export class HttpError extends Error {
+  readonly status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'HttpError'
+    this.status = status
+  }
 }
 
 export interface BrowseParams {
@@ -256,6 +270,43 @@ export const deleteSmartCollection = (id: string) =>
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   getJson<PlaybackManifest>(`${lib()}/bundles/${bundleId}/playback`, signal)
 
+// --- Playback decisions + HLS sessions (plan 1 §6.3, M7) ---------------------
+// Ask the server how to play one file for this client's capabilities. A direct
+// decision returns a progressive `stream_url`; remux/transcode returns a started
+// HLS `session` whose playlist the player feeds to hls.js or native HLS.
+export const requestPlaybackDecision = (
+  fileId: string,
+  payload: PlaybackDecisionRequest,
+  signal?: AbortSignal,
+) =>
+  sendSignal<PlaybackDecisionResponse>(
+    `${lib()}/files/${fileId}/playback-decision`,
+    'POST',
+    signal,
+    payload,
+  )
+
+/** Tear down an HLS session (player close, file switch, quality/audio switch). */
+export const deletePlaybackSession = (fileId: string, sessionId: string) =>
+  send<void>(`${lib()}/files/${fileId}/playback-sessions/${sessionId}`, 'DELETE')
+
+/**
+ * Fire a best-effort `pagehide` POST via `navigator.sendBeacon`. A JSON `body`
+ * is sent when given; with no body the beacon is a bare POST (CORS-safelisted).
+ */
+function beacon(url: string, body?: unknown): boolean {
+  if (!navigator.sendBeacon) return false
+  if (body === undefined) return navigator.sendBeacon(url)
+  const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
+  return navigator.sendBeacon(url, blob)
+}
+
+/** Best-effort session teardown on pagehide via sendBeacon's POST-only transport. */
+export function beaconTeardownSession(fileId: string, sessionId: string): boolean {
+  // The teardown alias takes no body — a bodyless beacon keeps it CORS-safelisted.
+  return beacon(`${lib()}/files/${fileId}/playback-sessions/${sessionId}/teardown`)
+}
+
 export const fetchContinueWatching = (limit = 20, offset = 0, signal?: AbortSignal) =>
   getJson<ContinueWatchingPage>(
     `${lib()}/continue-watching?limit=${limit}&offset=${offset}`,
@@ -266,9 +317,7 @@ export const updatePlaybackProgress = (fileId: string, payload: PlaybackProgress
   send<PlaybackProgressRead>(`${lib()}/files/${fileId}/progress`, 'PUT', payload)
 
 export function beaconPlaybackProgress(fileId: string, payload: PlaybackProgressUpdate): boolean {
-  if (!navigator.sendBeacon) return false
-  const body = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-  return navigator.sendBeacon(`${lib()}/files/${fileId}/progress`, body)
+  return beacon(`${lib()}/files/${fileId}/progress`, payload)
 }
 
 export function fetchViewCounts(signal?: AbortSignal): Promise<ViewCounts> {

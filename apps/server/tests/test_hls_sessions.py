@@ -630,6 +630,30 @@ def test_decision_non_direct_starts_session_and_serves_it(
     assert client.get(playlist_url).status_code == 404
 
 
+def test_beacon_teardown_alias_tears_down_session(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    # navigator.sendBeacon can only POST, so a POST `/teardown` alias must reap
+    # the session exactly like the DELETE route (mirrors the M4 progress beacon).
+    manager = make_manager(delay=0.0)
+    _use_stub_manager(client, manager)
+    file_id = _video_row(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/files/{file_id}"
+    caps = {"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}}
+
+    created = client.post(f"{base}/playback-sessions", json=caps).json()
+    session_id = created["session_id"]
+    seg_base = f"{base}/playback-sessions/{session_id}"
+    assert client.get(f"{seg_base}/index.m3u8").status_code == 200
+
+    assert client.post(f"{seg_base}/teardown").status_code == 204
+    assert client.get(f"{seg_base}/index.m3u8").status_code == 404
+
+
 def test_session_post_and_capacity_error(
     client: TestClient,
     library_id: str,

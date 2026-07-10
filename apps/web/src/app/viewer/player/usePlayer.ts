@@ -9,7 +9,7 @@ import {
 } from 'react'
 
 import type { PlayerPrefs } from '../../types'
-import { NativeEngine, type PlaybackSource } from './engine'
+import { createEngine, type PlaybackEngine, type PlaybackSource } from './engine'
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'
 
@@ -69,7 +69,7 @@ export function usePlayer({
   resumeCompleted = false,
   onResumed,
 }: UsePlayerOptions): PlayerBindings {
-  const engineRef = useRef<NativeEngine | null>(null)
+  const engineRef = useRef<PlaybackEngine | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const prefsRef = useRef(prefs)
   const onPrefsRef = useRef(onPrefs)
@@ -123,7 +123,7 @@ export function usePlayer({
       engineRef.current = null
       return
     }
-    const engine = new NativeEngine(videoElement)
+    const engine = createEngine(videoElement, source)
     const initialPrefs = prefsRef.current
     engineRef.current = engine
     engine.setVolume(initialPrefs.volume)
@@ -152,9 +152,19 @@ export function usePlayer({
     const onLoaded = () => {
       setDuration(Number.isFinite(video.duration) ? video.duration : 0)
       syncBuffered()
+      if (!source || resumedSourceRef.current === source.src) return
+      // An explicit startAt (quality/audio switch or transparent re-attach) wins
+      // over resume progress — the new stream must pick up at the live playhead.
+      const startAt = source.startAt
+      if (typeof startAt === 'number' && Number.isFinite(startAt) && startAt > 0) {
+        engine.seek(startAt)
+        setCurrentTime(startAt)
+        resumedSourceRef.current = source.src
+        return
+      }
       const resume = resumeRef.current
       const position = resume.position ?? 0
-      if (source && !resume.completed && position > 0 && resumedSourceRef.current !== source.src) {
+      if (!resume.completed && position > 0) {
         engine.seek(position)
         setCurrentTime(position)
         resumedSourceRef.current = source.src
