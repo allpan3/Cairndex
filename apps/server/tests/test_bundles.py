@@ -206,7 +206,7 @@ def test_note_filter_matches_any_note(client: TestClient, library_id: str) -> No
     ).json()["id"]
     client.post(f"{base}/bundles", json={"notes": ["nothing to see here"]})
 
-    flt = {"version": 1, "root": {"field": "note", "operator": "contains", "value": "secret"}}
+    flt = {"version": 1, "root": {"field": "notes", "operator": "contains", "value": "secret"}}
     r = client.post(f"{base}/bundles/browse", json={"filter": flt})
     assert r.status_code == 200, r.text
     body = r.json()
@@ -217,7 +217,7 @@ def test_note_filter_matches_any_note(client: TestClient, library_id: str) -> No
     # "does not contain" the term).
     flt_not = {
         "version": 1,
-        "root": {"field": "note", "operator": "not_contains", "value": "secret"},
+        "root": {"field": "notes", "operator": "not_contains", "value": "secret"},
     }
     r2 = client.post(f"{base}/bundles/browse", json={"filter": flt_not})
     ids = {item["id"] for item in r2.json()["items"]}

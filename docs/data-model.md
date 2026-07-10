@@ -49,7 +49,7 @@ are no predefined roles — each entry is just a separate text block. It is the
 single source of truth (there is no scalar `note` column on the bundle;
 libraries created before the `notes` column keep an unused `note` column that is
 ignored). Blank/whitespace-only blocks are dropped on write, and a row whose
-`notes` column is NULL reads back as an empty list. The `note` filter and the
+`notes` column is NULL reads back as an empty list. The `notes` filter and the
 `q` full-text search both index the notes: the filter
 (`docs/filter-language.md`) compiles to a per-note `EXISTS` over
 `json_each(notes)`, and the `bundle_search` FTS view concatenates

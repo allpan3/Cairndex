@@ -13,10 +13,11 @@ note, used as clean separators (no predefined roles under the hood).
   `note` column/field and its compatibility shim were removed (early-dev cleanup
   per owner); libraries created earlier keep a harmless unused `note` column. A
   `notes IS NULL` row reads back as `[]`. Both note-aware read paths were
-  re-pointed at the array: the `note` **filter** compiles to a per-note `EXISTS`
-  over `json_each(notes)`, and the **`bundle_search` FTS view** concatenates
-  `json_each(notes)` into its `note` column (the view is now dropped+recreated in
-  `ensure_search_schema` so an existing library adopts the new definition).
+  re-pointed at the array: the `notes` **filter** (field key renamed `note` →
+  `notes`) compiles to a per-note `EXISTS` over `json_each(notes)`, and the
+  **`bundle_search` FTS view** concatenates `json_each(notes)` into its `note`
+  column (the view is now dropped+recreated in `ensure_search_schema` so an
+  existing library adopts the new definition).
 - **Service/API.** `create_bundle`/`update_bundle` accept `notes` only (blank/
   whitespace-only blocks dropped, order preserved, ≤50). `BundleRead.notes` is
   always a list; the `note` field is gone from `BundleCreate`/`Update`/`Read`.
@@ -40,7 +41,7 @@ Verification:
 - Backend: `ruff check` / `ruff format --check` / `mypy src` clean; `pytest`
   **385 passed** (`test_bundles.py`: multi-note roundtrip incl.
   reorder/blank-strip/clear, create-with-notes, `notes IS NULL` reads `[]`,
-  `note` filter matching a non-first note + `not_contains`, non-string
+  `notes` filter matching a non-first note + `not_contains`, non-string
   rejection; `test_search.py`/`test_scan_repair.py` updated to `notes`). Same
   pre-existing Starlette/httpx deprecation warning.
 - Frontend: `lint` / `format:check` / `typecheck` / `test` (**47**) / `build` /
