@@ -153,6 +153,13 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     qc.invalidateQueries({ queryKey: [key] })
 }
 
+// Drop active-library data while preserving registry and library-keyed auth state
+export function resetLibraryContentQueries(qc: ReturnType<typeof useQueryClient>) {
+  qc.removeQueries({
+    predicate: ({ queryKey }) => queryKey[0] !== 'libraries' && queryKey[0] !== 'auth-status',
+  })
+}
+
 /**
  * Infinite browse query: pages are fetched by offset as the virtualized grid
  * nears the end, so several thousand bundles stay responsive.

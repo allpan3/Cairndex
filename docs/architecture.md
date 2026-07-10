@@ -94,10 +94,13 @@ src/
 ```
 
 The app picks one active library per browser tab and routes all content requests
-under `/api/v1/libraries/{id}/…`. Switching libraries remounts the workspace to
-avoid cross-library cache bleed. Server state lives in TanStack Query; UI state
-such as active surface, selection, toolbar search, layout, zoom, and pane widths
-lives in React/localStorage.
+under `/api/v1/libraries/{id}/…`. Before switching, the app points the API client
+at the next library and removes every active-library content query from TanStack
+Query; the global library registry and library-id-keyed auth queries remain.
+The library-keyed workspace then remounts to reset local UI state. This prevents
+the shared 30-second fresh cache from rendering the previous library under the
+new selection. UI state such as active surface, selection, toolbar search,
+layout, zoom, and pane widths lives in React/localStorage.
 
 Current browsing surfaces:
 
