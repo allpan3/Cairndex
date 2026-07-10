@@ -20,7 +20,7 @@ what is just web-UI polish:
 | **Drag a file/bundle out to Finder or another app** | **Yes** | §6 |
 | Native menus, dock, window mgmt, ⌘-shortcuts w/o browser conflicts | Yes | §7 |
 | Feels like an app (own icon/window, offline-ish resilience) | Yes | shell itself |
-| Future: File View write mode with native confirmation UX | Server-side (plan 4); shell adds native dialogs | [plan 4](04-library-write-mode.md) |
+| Future: File Browser write mode with native confirmation UX | Server-side (plan 4); shell adds native dialogs | [plan 4](04-library-write-mode.md) |
 
 So the desktop app = the existing SPA + a native capability layer, not a
 rewrite. That is exactly the Tauri-shell path the product brief and ADR-0007
@@ -92,7 +92,7 @@ export interface HostPlatform {
 - `web.ts` implements it as all-false no-ops; `desktop.ts` calls Tauri
   `invoke()`; detection via `window.__TAURI_INTERNALS__`. UI reads the flags
   to show/hide "Reveal in Finder" / "Open in Default App" in the existing
-  context menus and `FileInspector`/File View surfaces.
+  context menus and `FileInspector`/File Browser surfaces.
 - Auth: the shell talks to the same remote server; reuse the plan-2 device
   token (Settings → pair this device) stored via the Tauri store plugin, sent
   as `Authorization: Bearer`. Web client behavior unchanged.

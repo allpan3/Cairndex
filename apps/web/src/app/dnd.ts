@@ -1,4 +1,4 @@
-// Shared drag-and-drop model for the Collection View. A drag can carry either a
+// Shared drag-and-drop model for the Bundle Browser. A drag can carry either a
 // set of bundles or a single collection; drop targets (folder cards, sidebar
 // rows) react based on the payload. Kept in App-level state (same-document drag),
 // so components don't need to (de)serialize dataTransfer during dragover.

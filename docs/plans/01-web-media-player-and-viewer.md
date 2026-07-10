@@ -191,7 +191,7 @@ New module `media/previews.py` + endpoint
   formats for *all* clients and TV-sized grid images; pure wheels, low
   maintenance. (pyvips is faster for gigapixel sources — revisit only if
   profiling demands it.)
-- `file-view`/playability metadata: image files with a preview-capable format
+- `file-browser`/playability metadata: image files with a preview-capable format
   count as **openable**, fixing the current "HEIC can't be previewed" hole.
 - The viewer's progressive chain becomes thumbnail → `preview?size=1600` →
   original (`/content`), requesting the next tier only while zooming/idle.
@@ -376,7 +376,7 @@ Implementation notes:
   pause/unmount, `sendBeacon` on `pagehide`; resume dialog-free (start at
   saved position, show a transient "Resumed at 20:01 — restart" toast).
 - The old `Player.tsx`/`FileViewer.tsx` are deleted once `MediaViewer` covers
-  both entry points (bundle double-click, album file open, File View preview
+  both entry points (bundle double-click, album file open, File Browser preview
   — `FileEntryViewer` migrates to the same stages fed by path-based URLs).
 
 ## 8. Image viewer implementation

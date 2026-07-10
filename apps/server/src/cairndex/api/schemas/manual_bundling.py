@@ -13,7 +13,7 @@ from cairndex.domain.enums import FileRole, MediaKind
 
 class _FileSelection(BaseModel):
     """Selected unbundled files, as ``file_ids`` (Unbundled list) and/or
-    ``relative_paths`` (File View — unlinked paths are staged at apply time).
+    ``relative_paths`` (File Browser — unlinked paths are staged at apply time).
     At least one file must be supplied across the two."""
 
     file_ids: list[str] = Field(default_factory=list)

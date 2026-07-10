@@ -12,7 +12,7 @@ Cairndex is not primarily a Plex/Jellyfin replacement and must not drift into a 
 - custom covers and generated thumbnails;
 - hierarchical tags plus tag groups;
 - hierarchical collections with multi-collection membership;
-- a separate File View for browsing the active library root;
+- a separate File Browser for browsing the active library root;
 - notes, source/origin hyperlinks, ratings, titles, and technical metadata;
 - fast filtering, saved Smart Collections, and multiple browsing layouts;
 - metadata-only linking to existing files without copying them;
@@ -23,18 +23,18 @@ The first product target is the computer-side web application. Android TV suppor
 
 ## Product principles
 
-1. **Collection View is bundle-first.** In Collection View, the visible item is an Asset Bundle, not a file.
-2. **File View is filesystem-first.** In File View, the visible items are physical directories and files under the active library root. File View is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
+1. **Bundle Browser is bundle-first.** In Bundle Browser, the visible item is an Asset Bundle, not a file.
+2. **File Browser is filesystem-first.** In File Browser, the visible items are physical directories and files under the active library root. File Browser is not bundle-first; it is an in-app filesystem browser and linking/diagnostic surface.
 3. **Libraries are the storage scope.** A Cairndex library is a directory with `.cairndex/{manifest.json,library.db,cache/}`. The server-local registry tracks known libraries and jobs.
 4. **Collections are logical; directories are physical.** Collection membership never implies a filesystem move. A bundle may belong to many collections without duplicating or moving source files.
 5. **Preserve the user's disk organization.** Link existing files in place by default. Do not require an Eagle-style managed hash directory.
-6. **Metadata-only and non-destructive first.** The current File View milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
+6. **Metadata-only and non-destructive first.** The current File Browser milestone is read-only. In-app physical rename/move/delete comes later under explicit write mode with strong safeguards.
 7. **Logical organization must survive filesystem moves.** If a linked path changes externally, preserve bundle, collection, tag, note, rating, cover, primary-file, and subtitle metadata by repairing the existing file row when confidence is high.
-8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File View, and the web.
+8. **Eagle-inspired, not an exact clone.** Reuse proven interaction patterns while adapting them to bundles, subtitles, NAS use, File Browser, and the web.
 9. **Local-first and self-hosted.** The normal deployment is Docker on a Linux NAS/server, accessed over a LAN or private overlay network.
 10. **Scale by design.** Assume multi-terabyte libraries, multi-gigabyte files, and enough items that naive full scans, full hashing, or non-virtualized rendering are unacceptable.
 11. **One source of truth.** Each library's `library.db` is authoritative for app metadata. The registry DB is server-local runtime state for known libraries and jobs, not portable content metadata.
-12. **Progressive capability.** Direct playback comes first; remux/transcoding, File View write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
+12. **Progressive capability.** Direct playback comes first; remux/transcoding, File Browser write mode, open-with-default-app integration, native wrappers, and multi-user behavior come later.
 
 ## Fixed product decisions
 
@@ -50,16 +50,16 @@ Unless the product owner explicitly changes them, treat these as settled:
 - Individual files do not need ratings.
 - Tags are hierarchical.
 - Tag groups also exist and are independent of the hierarchy. A tag may belong to multiple groups.
-- Product/API/model terminology is `collection`, not user-facing `folder`, except when referring to ordinary filesystem directories in File View or historical/external references.
+- Product/API/model terminology is `collection`, not user-facing `folder`, except when referring to ordinary filesystem directories in File Browser or historical/external references.
 - Collections are hierarchical logical groupings. A bundle may belong to zero, one, or many collections.
 - Collections contain bundles only, not loose files.
 - Selecting a tag or collection parent can include descendants; the UI exposes a toggle.
 - Smart Folders should be renamed to Smart Collections / saved collection filters. The legacy table name `smart_folders` may remain until a migration is worth it.
-- File View browses only the active library root.
-- File View should show all non-hidden files/directories, not only supported media.
-- File View should visually distinguish files Cairndex can open natively from unsupported files.
-- The first File View milestone is read-only, but the long-term File View milestone is a true filesystem browser over library roots.
-- Future File View should support `open with default app` and `reveal in file manager` where deployment mode permits safe local/native host integration.
+- File Browser browses only the active library root.
+- File Browser should show all non-hidden files/directories, not only supported media.
+- File Browser should visually distinguish files Cairndex can open natively from unsupported files.
+- The first File Browser milestone is read-only, but the long-term File Browser milestone is a true filesystem browser over library roots.
+- Future File Browser should support `open with default app` and `reveal in file manager` where deployment mode permits safe local/native host integration.
 - Open-with-default-app must not be implemented as arbitrary command execution from a remote browser. It needs an explicit local desktop/native helper, Tauri shell, or similarly safe host-integration design.
 - Start with metadata-only removal. File rename/move/delete capabilities come later under an explicit write mode.
 - Move repair is automatic during scan/rescan/reconciliation when confidence is high. Do not require a separate normal user workflow for repair.
@@ -100,13 +100,13 @@ Required concepts:
 - portable content DB at `.cairndex/library.db`;
 - reproducible derived cache under `.cairndex/cache/`.
 
-Store file locations as library-relative paths. Do not reintroduce a content `storage_roots` table or `asset_files.storage_root_id` unless a new ADR explicitly changes the per-library model. Never expose arbitrary unrestricted server paths through content APIs. File View must browse through the active library abstraction, not through unrestricted absolute server paths.
+Store file locations as library-relative paths. Do not reintroduce a content `storage_roots` table or `asset_files.storage_root_id` unless a new ADR explicitly changes the per-library model. Never expose arbitrary unrestricted server paths through content APIs. File Browser must browse through the active library abstraction, not through unrestricted absolute server paths.
 
 The server-local registry DB at `{CAIRNDEX_DATA_DIR}/registry.db` tracks registered libraries and owns `job_queue`. It is runtime state, not portable library metadata.
 
 ### Asset bundle
 
-An `AssetBundle` is the primary user-facing object shown in Collection View grids, lists, search results, collections, tags, and Smart Collections.
+An `AssetBundle` is the primary user-facing object shown in Bundle Browser grids, lists, search results, collections, tags, and Smart Collections.
 
 Bundle-level metadata includes:
 
@@ -190,13 +190,13 @@ Required behavior:
 - drag-and-drop assignment in a later UI milestone;
 - no file movement when collection membership changes.
 
-The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle, to ordinary filesystem directories in File View, or to legacy table names being intentionally retained.
+The product term is `collection`. Do not introduce new user-facing, API, ORM, schema, migration, or documentation concepts named `folder` except when explicitly referring to external products such as Eagle, to ordinary filesystem directories in File Browser, or to legacy table names being intentionally retained.
 
 ### Smart Collections
 
 A Smart Collection is a named, saved filter expression plus optional view preferences. It replaces the old Smart Folder terminology.
 
-Store a versioned structured expression, not raw SQL and not an opaque UI string. The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model must permit nested `and`, `or`, and `not` groups later. Collection conditions must target collection IDs and support descendant inclusion in the same way direct Collection View browsing does.
+Store a versioned structured expression, not raw SQL and not an opaque UI string. The initial editor may support one condition group like Eagle's `any/all of the following are true/false`. The data model must permit nested `and`, `or`, and `not` groups later. Collection conditions must target collection IDs and support descendant inclusion in the same way direct Bundle Browser browsing does.
 
 ### Subtitle tracks
 
@@ -214,11 +214,11 @@ Support:
 
 The implemented model uses `SubtitleTrack` with either an external file reference or an embedded stream index. Embedded stream extraction/serving is deferred to the remux/transcode fallback milestone.
 
-### File View
+### File Browser
 
-File View is an in-app browser over the active library root. It is separate from Collection View and displays physical directories and files rather than bundle cards.
+File Browser is an in-app browser over the active library root. It is separate from Bundle Browser and displays physical directories and files rather than bundle cards.
 
-Current File View milestone:
+Current File Browser milestone:
 
 - browse only the active library root;
 - display directories and all non-hidden files, not just media files;
@@ -229,7 +229,7 @@ Current File View milestone:
 - allow later actions such as fast-add/link-to-bundle/create-bundle from selected files;
 - do not move, rename, delete, or rewrite source files.
 
-Long-term File View milestone:
+Long-term File Browser milestone:
 
 - behave like a true filesystem browser scoped to library roots;
 - support safe write-mode operations such as rename, move, delete, and directory creation;
@@ -383,23 +383,23 @@ Use the supplied Eagle screenshots as interaction references and store copies un
 
 Recommended layout:
 
-- left sidebar: library selector, primary Update action, system views, Smart Collections, hierarchical collection tree, File View entry points, tag entry points;
+- left sidebar: library selector, primary Update action, system views, Smart Collections, hierarchical collection tree, File Browser entry points, tag entry points;
 - top toolbar: breadcrumbs/title, filter categories, search, sort, view controls, zoom/density control;
-- center: virtualized bundle browser in Collection View; library-root directory browser in File View;
-- right inspector: selected bundle metadata and files, or selected file/directory details in File View;
+- center: virtualized bundle browser in Bundle Browser; library-root directory browser in File Browser;
+- right inspector: selected bundle metadata and files, or selected file/directory details in File Browser;
 - modal/detail viewer: media preview, playback, and grouping review.
 
 System views should include All, Uncategorized, Untagged, Recently Added / Recently Used, Unbundled (scan-staged files awaiting bundling/confirmation), Random, All Tags, Missing Files, and Trash later where useful.
 
-### Collection View layouts
+### Bundle Browser layouts
 
 Plan for justified layout similar to Eagle/Google Photos, fixed grid, list/table layout, masonry/waterfall layout, and persistent layout/zoom/sort/filter preferences per view where practical.
 
 All large collections must be virtualized or paginated. Never render an entire large library into the DOM.
 
-### File View layouts
+### File Browser layouts
 
-Plan for directory list/tree navigation scoped to the active library root, file table/list layout with name/type/size/modified time/support state/linked state, hidden-file exclusion, and no write actions in the first milestone. Later File View should grow into a true filesystem browser with guarded write actions and default-app handoff.
+Plan for directory list/tree navigation scoped to the active library root, file table/list layout with name/type/size/modified time/support state/linked state, hidden-file exclusion, and no write actions in the first milestone. Later File Browser should grow into a true filesystem browser with guarded write actions and default-app handoff.
 
 ### Bundle cards and inspector
 
@@ -411,15 +411,15 @@ The inspector should expose bundle-level fields first: cover, title, note, tags,
 
 The tag selector should combine the useful Eagle group picker with the new hierarchy: search, group/category list with counts, tag tree/list with hierarchy indentation, tags appearing under multiple groups, include/exclude states, any/all rule, descendant toggle, keyboard/mouse support, and accessible alternatives to right-click exclusion.
 
-### Collection View
+### Bundle Browser
 
 Inside a collection, show breadcrumb/title, direct subcollection selector/count, `Show subcollection contents` toggle, normal filters and views, and collection counts in the sidebar.
 
-### File View
+### File Browser
 
-Inside File View, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists.
+Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists.
 
-File View is not a replacement for Collection View. It is a filesystem browser and linking/diagnostic surface. Collection View remains the primary organization and browsing surface.
+File Browser is not a replacement for Bundle Browser. It is a filesystem browser and linking/diagnostic surface. Bundle Browser remains the primary organization and browsing surface.
 
 ### Smart Collection editor
 
@@ -434,7 +434,7 @@ The simple filter toolbar and Smart Collection editor must compile to the same c
 Avoid schema choices that block these later features:
 
 - multiple users with per-user watch history, favorites, and view preferences;
-- File View write mode with audit logs and recovery;
+- File Browser write mode with audit logs and recovery;
 - open-with-default-app and reveal-in-file-manager via safe local/native host integration;
 - remote quality selection and hardware-accelerated transcoding;
 - Android TV native client;

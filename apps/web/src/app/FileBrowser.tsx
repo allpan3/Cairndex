@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 
-import type { FileViewEntry, SortOrder } from '../api/client'
-import { useFileView, useUnbundledFiles } from '../api/hooks'
+import type { FileBrowserEntry, SortOrder } from '../api/client'
+import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
@@ -11,7 +11,7 @@ import { listRowHeight } from './layout'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
-// File View mirrors the bundle browser's toolbar, but with file-appropriate
+// File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
 // grid/list layouts (justified needs image aspect ratios files don't carry).
 type FileSort = 'name' | 'type' | 'size' | 'added' | 'modified'
@@ -34,14 +34,14 @@ const FILE_SORTS: { value: FileSort; label: string }[] = [
   { value: 'modified', label: 'Date Modified' },
 ]
 
-interface FileViewProps {
+interface FileBrowserProps {
   libraryName: string
   // 'browse' = the directory tree; 'unbundled' = the flat "to-bundle queue".
   scope: 'browse' | 'unbundled'
   path: string
   selectedPath: string | null
   onNavigate: (path: string) => void
-  onSelectEntry: (entry: FileViewEntry | null) => void
+  onSelectEntry: (entry: FileBrowserEntry | null) => void
   // Manual bundling actions on selected file paths (unlinked ones auto-linked).
   onAddToBundle: (relativePaths: string[]) => void
   onCreateBundle: (relativePaths: string[]) => void
@@ -56,7 +56,7 @@ function crumbs(path: string): { label: string; path: string }[] {
 
 // Inline SVG icons (no font dependency, monochrome via currentColor) chosen by
 // directory/media kind.
-function entryIcon(entry: FileViewEntry) {
+function entryIcon(entry: FileBrowserEntry) {
   if (entry.kind === 'directory') return <IconFolder />
   switch (entry.media_kind) {
     case 'video':
@@ -74,7 +74,7 @@ function entryIcon(entry: FileViewEntry) {
 
 /** Compare two entries by the active sort field (nulls sort last-ish via
  * empty-string / zero fallbacks); direction is applied by the caller. */
-function compareEntries(a: FileViewEntry, b: FileViewEntry, sort: FileSort): number {
+function compareEntries(a: FileBrowserEntry, b: FileBrowserEntry, sort: FileSort): number {
   switch (sort) {
     case 'name':
       return a.name.localeCompare(b.name)
@@ -98,17 +98,17 @@ function compareEntries(a: FileViewEntry, b: FileViewEntry, sort: FileSort): num
  * cross-library list of files awaiting bundling. Files can be right-clicked to
  * add them to / create a bundle (metadata-only; no move/rename/delete on disk).
  */
-export function FileView(props: FileViewProps) {
+export function FileBrowser(props: FileBrowserProps) {
   return props.scope === 'unbundled' ? <UnbundledScope {...props} /> : <BrowseScope {...props} />
 }
 
-function BrowseScope(props: FileViewProps) {
+function BrowseScope(props: FileBrowserProps) {
   const { libraryName, path, onNavigate } = props
-  const query = useFileView(path)
+  const query = useFileBrowser(path)
   const entries = query.data?.entries ?? []
 
   const header = (
-    <nav className="file-view__crumbs" aria-label="Breadcrumb">
+    <nav className="file-browser__crumbs" aria-label="Breadcrumb">
       <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
         {libraryName}
       </button>
@@ -124,7 +124,7 @@ function BrowseScope(props: FileViewProps) {
   )
 
   return (
-    <div className="file-view">
+    <div className="file-browser">
       <FileList
         key={`browse:${path}`}
         header={header}
@@ -139,12 +139,12 @@ function BrowseScope(props: FileViewProps) {
   )
 }
 
-function UnbundledScope(props: FileViewProps) {
+function UnbundledScope(props: FileBrowserProps) {
   const query = useUnbundledFiles()
   const entries = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
 
   return (
-    <div className="file-view">
+    <div className="file-browser">
       <FileList
         key="unbundled"
         header={<span className="toolbar__title">Unbundled</span>}
@@ -162,9 +162,9 @@ function UnbundledScope(props: FileViewProps) {
   )
 }
 
-interface FileListProps extends FileViewProps {
+interface FileListProps extends FileBrowserProps {
   header: ReactNode
-  entries: FileViewEntry[]
+  entries: FileBrowserEntry[]
   isLoading: boolean
   isError: boolean
   errorText?: string
@@ -214,7 +214,7 @@ function FileList({
     const q = search.trim().toLowerCase()
     const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
     const dir = prefs.order === 'asc' ? 1 : -1
-    const cmp = (a: FileViewEntry, b: FileViewEntry) => compareEntries(a, b, prefs.sort) * dir
+    const cmp = (a: FileBrowserEntry, b: FileBrowserEntry) => compareEntries(a, b, prefs.sort) * dir
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
@@ -226,7 +226,7 @@ function FileList({
   // Single click selects (for the inspector); Cmd/Ctrl toggles the entry, Shift
   // selects the inclusive range from the anchor. Both directories and files take
   // part (bundling later filters to files). Navigation/opening is double-click.
-  const clickEntry = (entry: FileViewEntry, e: React.MouseEvent) => {
+  const clickEntry = (entry: FileBrowserEntry, e: React.MouseEvent) => {
     if (e.shiftKey && anchor) {
       const ids = visible.map((v) => v.relative_path)
       const a = ids.indexOf(anchor)
@@ -253,7 +253,7 @@ function FileList({
     onSelectEntry(entry)
   }
 
-  const openEntry = (entry: FileViewEntry) => {
+  const openEntry = (entry: FileBrowserEntry) => {
     if (entry.kind === 'directory') {
       onNavigate(entry.relative_path)
       return
@@ -264,7 +264,7 @@ function FileList({
     }
   }
 
-  const contextRow = (entry: FileViewEntry, e: React.MouseEvent) => {
+  const contextRow = (entry: FileBrowserEntry, e: React.MouseEvent) => {
     if (entry.kind === 'directory') return // bundling acts on files only
     const inSelection = selected.has(entry.relative_path)
     // The selection can now include directories (drag/shift-select), so restrict
@@ -415,7 +415,7 @@ function FileList({
       </div>
 
       <div
-        className={`file-view__body${marqueeRect ? ' file-view__body--dragging' : ''}`}
+        className={`file-browser__body${marqueeRect ? ' file-browser__body--dragging' : ''}`}
         ref={setScrollEl}
         onMouseDown={onBackgroundMouseDown}
       >
@@ -429,7 +429,7 @@ function FileList({
           <div className="empty">No files match “{search}”.</div>
         ) : (
           <>
-            <div className="file-view__wrapper" ref={wrapperRef}>
+            <div className="file-browser__wrapper" ref={wrapperRef}>
               {marqueeRect && (
                 <div
                   className="marquee"
@@ -490,7 +490,7 @@ function FileList({
             </div>
             {hasMore && (
               <button
-                className="btn file-view__more"
+                className="btn file-browser__more"
                 onClick={onLoadMore}
                 disabled={isFetchingMore}
               >
@@ -522,7 +522,7 @@ function FileRow({
   onDoubleClick,
   onContextMenu,
 }: {
-  entry: FileViewEntry
+  entry: FileBrowserEntry
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
@@ -569,7 +569,7 @@ function FileCard({
   onDoubleClick,
   onContextMenu,
 }: {
-  entry: FileViewEntry
+  entry: FileBrowserEntry
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void

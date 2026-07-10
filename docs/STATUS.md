@@ -1,5 +1,39 @@
 # Project status
 
+## In review: browsing-surface terminology rename (Bundle Browser / File Browser)
+
+Branch `refactor/browser-terminology` (off `main` after M5). Renamed the two
+browsing surfaces product-wide: "Collection/Bundles View" → **Bundle Browser**,
+"File View" → **File Browser**. Owner-requested full rename including the public
+API.
+
+- **Breaking API rename:** `GET .../file-view/entries` → `.../file-browser/entries`;
+  OpenAPI schemas `FileViewEntryRead`/`FileViewListingRead` →
+  `FileBrowserEntryRead`/`FileBrowserListingRead`. OpenAPI + `schema.d.ts`
+  regenerated. The old route now 404s (verified).
+- **Backend:** `services/file_view.py` → `file_browser.py` (+ `FileViewEntry`/
+  `FileViewListing` → `FileBrowser*`), `api/schemas/file_view.py` →
+  `file_browser.py`, `previews.file_view_preview_cache_path` →
+  `file_browser_preview_cache_path`, endpoint `list_file_view_entries` →
+  `list_file_browser_entries`, `tests/test_file_view.py` → `test_file_browser.py`.
+- **Frontend:** `app/FileView.tsx` → `FileBrowser.tsx` (component `FileView` →
+  `FileBrowser`, `useFileView` → `useFileBrowser`, `fileViewPreviewUrl`/
+  `fileViewContentUrl` → `fileBrowser*`, `FileViewEntry`/`FileViewListing`
+  types), `.file-view` CSS classes → `.file-browser`, `file-view` query keys →
+  `file-browser`, `e2e/file-view.spec.ts` → `file-browser.spec.ts`.
+- **Docs:** prose updated across product-brief, architecture, data-model,
+  plans, ADR bodies, README, AGENTS. Preserved historical branch names
+  (`feat/collection-view`, `feat/collections-and-file-view`) and the stable
+  ADR-0007 filename slug (title/body now read "File Browser").
+
+Verification: backend `ruff`/`ruff format --check`/`mypy`/`pytest` (`333
+passed`); frontend `lint`/`format:check`/`typecheck`/`test` (`47`)/`build`;
+Playwright (`49 passed`). Live: started the real backend against the Demo
+library, confirmed `GET .../file-browser/entries` returns 200 and the old
+`.../file-view/entries` 404s, and drove the web File Browser tab — directory
+entries render via the new route with `.file-browser__*` styling and no console
+errors. No behavior change; the surfaces work identically under the new names.
+
 ## Merged: media-player M5 image viewer v2 + preview derivatives (#5)
 
 Branch `feat/image-viewer`, merged as **#5**. Implemented plan 1 M5's image
@@ -12,7 +46,7 @@ fixed a progressive-upgrade stall the first pass missed — see Verification):
   linked-file cache paths under
   `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, quick
   fingerprint sidecars, versioned `?v={quick_fingerprint}` URLs, and immutable
-  cache headers. File View can also request
+  cache headers. File Browser can also request
   `/api/v1/libraries/{library_id}/file/preview?path=...&size=...`; those
   unlinked path previews use a deterministic path-hash cache key and a
   stat-derived quick fingerprint.
@@ -28,7 +62,7 @@ fixed a progressive-upgrade stall the first pass missed — see Verification):
   exists. Preview generation remains lazy-only in this slice; no
   Update/precompute job was added.
 - Preview-capable images now count as supported/openable in bundle/file payloads
-  and File View entries. HEIC/TIFF/BMP can therefore open in the media viewer
+  and File Browser entries. HEIC/TIFF/BMP can therefore open in the media viewer
   through preview derivatives even when the browser cannot display the original
   source bytes. Preview-only cover thumbnails route through the Pillow preview
   pipeline instead of ffmpeg, so selected HEIC/TIFF/BMP covers do not fail the
@@ -260,7 +294,7 @@ slice without new runtime dependencies and without backend/API changes:
   exit fullscreen before closing, lets left/right step files when no playable
   video is active, shares one filtered subtitle source list with native
   `<track>` identity/default-track selection, uses shared fallback cards for
-  Media Viewer and File View, and replaced emoji control glyphs with SVG icons.
+  Media Viewer and File Browser, and replaced emoji control glyphs with SVG icons.
 - Reviewer verification pass (live, against the local Demo library): cold-cache
   open shows a live clock/seek bar/play state (the original mount-race is
   fixed); player prefs survive subsequent browse-pref writes; muted slider
@@ -273,10 +307,10 @@ slice without new runtime dependencies and without backend/API changes:
   lines on initial open — `VideoStage` now re-asserts track modes on each
   `<track>` load event (verified live on the two-subtitle DeepOcean bundle:
   only the selected track shows, and disabled tracks skip their cue fetch).
-- File View still uses `FileEntryViewer` with path-based URLs and native
+- File Browser still uses `FileEntryViewer` with path-based URLs and native
   browser controls, but now shares the fallback card component. Follow-up:
-  migrate File View onto the same viewer/stage primitives when plan 1 reaches
-  the path-based File View completion work.
+  migrate File Browser onto the same viewer/stage primitives when plan 1 reaches
+  the path-based File Browser completion work.
 - Follow-up recorded in plan 1: replace the removed inline file list with an
   expandable bundle-files side panel, and expand the right-side metadata panel
   into a first-class file/bundle metadata drawer.
@@ -790,7 +824,7 @@ Playwright 17 specs pass (incl. `e2e/manual-bundling.spec.ts`). Not yet merged.
 **Maintenance-readiness sequence complete (#38–#41).** Job progress, large-library
 browse indexing + benchmark tooling, whole-library FTS5 search, and an optional
 per-library passphrase lock all landed. The next candidates are richer
-edit-before-apply grouping review, File View write-mode planning, and search
+edit-before-apply grouping review, File Browser write-mode planning, and search
 relevance ranking (see *Next recommended tasks*).
 
 The grouping/maintenance flow it builds on is unchanged — the normal maintenance
@@ -830,7 +864,7 @@ original files.
   logic). The two top-left tabs are **Bundles** (renamed from Collections) and
   **Files**; the sidebar **Unbundled** view opens the **Files** surface as a flat,
   cross-library list of not-yet-bundled files (`GET /manual-bundling/unbundled-files`)
-  with the file inspector. File View entries carry a derived `unbundled` flag and
+  with the file inspector. File Browser entries carry a derived `unbundled` flag and
   badge each path `unlinked` / `unbundled` / (openable).
 - **Manual bundling assistant:** `cairndex.manual_bundling` confirms unbundled
   files by hand — add to an existing confirmed bundle, create a bundle from
@@ -952,7 +986,7 @@ dialogs).
   `docs/performance.md`). Branch `perf/large-library-baselines`.
 - Same-volume high-confidence moved-file repair is implemented; cross-filesystem
   repair candidates, duplicate/copy handling, and manual repair are future work.
-- File View is read-only. Write mode, reveal/open-with-default-app, and desktop
+- File Browser is read-only. Write mode, reveal/open-with-default-app, and desktop
   helper/Tauri integration are not yet implemented but are now **planned and
   design-ratified**: library write mode in `docs/plans/04-library-write-mode.md`
   (ADR-0013, accepted), and the macOS desktop/host-handoff path in
@@ -971,14 +1005,14 @@ dialogs).
    (flagged in plan 1 §12 and ADR-0012).
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
-3. Continue File View planning toward guarded write mode and safe desktop-native
+3. Continue File Browser planning toward guarded write mode and safe desktop-native
    handoff. *(Planning now done: `docs/plans/04-library-write-mode.md` +
    proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)*
 4. Consider relevance ranking for text search (results currently keep the active
    sort).
 5. Consider hardening the passphrase lock for wider exposure (rate limiting,
    lockout, persistent sessions) if it ever needs to face more than a trusted LAN.
-6. File View toolbar/search follow-ups (the toolbar now mirrors the bundle
+6. File Browser toolbar/search follow-ups (the toolbar now mirrors the bundle
    browser — breadcrumb + count + search + sort + layout + zoom; single-click
    selects and drives the inspector, double-click navigates/opens):
    - File search is currently a **client-side name filter of the loaded
@@ -994,6 +1028,6 @@ dialogs).
 
 - Authentication mechanism: shared owner secret vs. per-user accounts.
 - Native/desktop host integration design for `open with default app`, reveal in
-  file manager, and future File View write mode.
+  file manager, and future File Browser write mode.
 - Cache policy for future large transcodes: portable inside-library cache vs.
   server-local cache.

@@ -161,7 +161,7 @@ def test_oversize_dimensions_are_rejected(
     assert resp.status_code == 422
 
 
-def test_file_view_path_preview_serves_unlinked_non_native_image(
+def test_file_browser_path_preview_serves_unlinked_non_native_image(
     client: TestClient, library_id: str, library_root: Path
 ) -> None:
     _make_image(library_root / "loose.tiff", "TIFF")

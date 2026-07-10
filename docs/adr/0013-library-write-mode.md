@@ -92,7 +92,7 @@ product anti-goal "destructive file management enabled **by default**"
   operations"; the metadata-only invariant remains the default posture for
   everything else (scans, grouping, playback, exports).
 - `library.db` gains `file_operations` and a `trashed` availability state;
-  File View gains write affordances and a Trash system view; deployment docs
+  File Browser gains write affordances and a Trash system view; deployment docs
   gain trash/backup guidance.
 - The desktop drag-in (plan 3) and export-to-cover flows get real endings
   instead of dead ends.
@@ -106,6 +106,6 @@ product anti-goal "destructive file management enabled **by default**"
 - ADR-0006 (scanner identity/repair), ADR-0007 (host integration limits),
   ADR-0008 (library package), ADR-0010 (passphrase lock), ADR-0012 (client
   platform strategy)
-- `docs/product-brief.md` — File View long-term milestone; anti-goal is
+- `docs/product-brief.md` — File Browser long-term milestone; anti-goal is
   destructive file management *enabled by default*, which the opt-in gate
   respects

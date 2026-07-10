@@ -1,11 +1,11 @@
-"""Schemas for the read-only File View (storage-root filesystem browsing)."""
+"""Schemas for the read-only File Browser (storage-root filesystem browsing)."""
 
 from datetime import datetime
 
 from pydantic import BaseModel
 
 
-class FileViewEntryRead(BaseModel):
+class FileBrowserEntryRead(BaseModel):
     name: str
     relative_path: str
     # "directory" or "file".
@@ -28,17 +28,17 @@ class FileViewEntryRead(BaseModel):
     unbundled: bool
 
 
-class FileViewListingRead(BaseModel):
+class FileBrowserListingRead(BaseModel):
     # The relative directory listed ("" = the library root itself).
     path: str
-    entries: list[FileViewEntryRead]
+    entries: list[FileBrowserEntryRead]
 
 
 class UnbundledFilesPage(BaseModel):
     """A flat, cross-library page of not-yet-bundled files (the provisional
-    scan rows), shaped like File View entries so one file row renders both."""
+    scan rows), shaped like File Browser entries so one file row renders both."""
 
-    items: list[FileViewEntryRead]
+    items: list[FileBrowserEntryRead]
     total: int
     offset: int
     limit: int

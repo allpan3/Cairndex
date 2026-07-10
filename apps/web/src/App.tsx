@@ -4,7 +4,7 @@ import type {
   BundleSort,
   CollectionRead,
   FileSelection,
-  FileViewEntry,
+  FileBrowserEntry,
   JobRead,
   LibraryRead,
   SmartCollectionRead,
@@ -42,7 +42,7 @@ import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
-import { FileView } from './app/FileView'
+import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
@@ -353,7 +353,7 @@ function Workspace({
   // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
   const [fileScope, setFileScope] = useState<'browse' | 'unbundled'>('browse')
   const [filePath, setFilePath] = useState('')
-  const [fileEntry, setFileEntry] = useState<FileViewEntry | null>(null)
+  const [fileEntry, setFileEntry] = useState<FileBrowserEntry | null>(null)
   // A file to highlight after "Locate in File Browser" (until the user navigates
   // or picks another entry), independent of the loaded fileEntry object.
   const [locatedPath, setLocatedPath] = useState<string | null>(null)
@@ -1039,7 +1039,7 @@ function Workspace({
         {mode === 'tags' ? (
           <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
         ) : mode === 'file' ? (
-          <FileView
+          <FileBrowser
             libraryName={libraryName}
             scope={fileScope}
             path={filePath}

@@ -1,4 +1,4 @@
-# ADR-0007: File View host integration and default-app handoff
+# ADR-0007: File Browser host integration and default-app handoff
 
 - Status: accepted for future implementation
 - Date: 2026-06-27
@@ -6,7 +6,7 @@
 
 ## Context
 
-The Collections + File View refactor adds a read-only File View over configured
+The Collections + File Browser refactor adds a read-only File Browser over configured
 storage roots. The first milestone is intentionally web/server friendly: the
 backend lists physical files and directories under configured roots, while the
 browser presents them without moving, renaming, deleting, or launching anything.
@@ -30,7 +30,7 @@ root to a local filesystem path.
 ## Decision
 
 Do not implement `open with default app` or `reveal in file manager` in the first
-read-only File View milestone.
+read-only File Browser milestone.
 
 Do not treat these features as ordinary remote web-server capabilities. A web
 browser talking to the NAS/server should not be assumed to have permission or
@@ -67,10 +67,10 @@ Any future host handoff must:
 
 ## Consequences
 
-- The first File View milestone remains read-only.
+- The first File Browser milestone remains read-only.
 - The current web UI may show a future placeholder or unsupported state for
   default-app handoff, but should not pretend the feature is available.
-- File View code should preserve storage-root-relative path semantics so a future
+- File Browser code should preserve storage-root-relative path semantics so a future
   desktop client can map server roots to local mount paths.
 - A future macOS/native client can offer better desktop affordances, including
   native default-app launching and reveal-in-file-manager, without weakening the

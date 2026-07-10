@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { type FileViewEntry, fileViewContentUrl, fileViewPreviewUrl } from '../api/client'
+import { type FileBrowserEntry, fileBrowserContentUrl, fileBrowserPreviewUrl } from '../api/client'
 import { formatBytes } from '../lib/format'
 import { isBrowserNativeImage } from './viewer/imageSupport'
 import { MediaFallback } from './viewer/MediaFallback'
 
 /**
- * Fullscreen lightbox for the read-only File View. This previews a physical
+ * Fullscreen lightbox for the read-only File Browser. This previews a physical
  * filesystem entry by its library-relative path — files here need not be linked
  * into any bundle. Images and video render inline; anything the browser can't
  * show falls back to an info card. Arrow keys / chevrons step through the
@@ -18,7 +18,7 @@ export function FileEntryViewer({
   onIndex,
   onClose,
 }: {
-  files: FileViewEntry[]
+  files: FileBrowserEntry[]
   index: number
   onIndex: (i: number) => void
   onClose: () => void
@@ -89,12 +89,12 @@ export function FileEntryViewer({
   )
 }
 
-function ViewerBody({ file }: { file: FileViewEntry }) {
+function ViewerBody({ file }: { file: FileBrowserEntry }) {
   const [failed, setFailed] = useState(false)
   const src =
     file.media_kind === 'image' && !isBrowserNativeImage(file.relative_path)
-      ? fileViewPreviewUrl(file.relative_path)
-      : fileViewContentUrl(file.relative_path)
+      ? fileBrowserPreviewUrl(file.relative_path)
+      : fileBrowserContentUrl(file.relative_path)
 
   if (file.media_kind === 'image' && !failed) {
     return <img className="viewer__img" src={src} alt={file.name} onError={() => setFailed(true)} />

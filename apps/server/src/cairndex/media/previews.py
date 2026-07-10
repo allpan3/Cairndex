@@ -47,8 +47,8 @@ def preview_cache_path(library_root: Path, file_id: str, size: int) -> Path:
     )
 
 
-# Return a deterministic cache location for an unlinked File View image
-def file_view_preview_cache_path(library_root: Path, relative_path: str, size: int) -> Path:
+# Return a deterministic cache location for an unlinked File Browser image
+def file_browser_preview_cache_path(library_root: Path, relative_path: str, size: int) -> Path:
     digest = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
     key = f"path_{digest[:32]}"
     return library_package.cache_dir(library_root) / "previews" / key[:2] / f"{key}_{size}.webp"
@@ -156,7 +156,7 @@ def preview_for_file(session: Session, file_id: str, size: int) -> Path:
     return _preview_for_source(source, dest, preview_size, asset_file.quick_fingerprint)
 
 
-# Generate or reuse a path-scoped WebP preview for an unlinked File View image
+# Generate or reuse a path-scoped WebP preview for an unlinked File Browser image
 def preview_for_path(session: Session, relative_path: str, size: int) -> Path:
     preview_size = _preview_size(size)
     library_root = library_root_for_session(session)
@@ -176,5 +176,5 @@ def preview_for_path(session: Session, relative_path: str, size: int) -> Path:
         raise ValidationError(f"path {rel_norm!r} is not a file")
     stat = source.stat()
     fingerprint = quick_fingerprint(stat.st_size, stat.st_mtime_ns)
-    dest = file_view_preview_cache_path(library_root, rel_norm, preview_size)
+    dest = file_browser_preview_cache_path(library_root, rel_norm, preview_size)
     return _preview_for_source(Path(source), dest, preview_size, fingerprint)

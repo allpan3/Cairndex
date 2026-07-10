@@ -68,7 +68,7 @@ one-file bundles (they fall back to Unbundled), while deleting a provisional
 bundle removes its rows — so `delete_bundle` never orphans a file the user still
 has on disk.
 
-The **Files** surface reflects the same derived state per path: a File View entry
+The **Files** surface reflects the same derived state per path: a File Browser entry
 carries `linked` plus a derived `unbundled` flag (its owning bundle is
 `provisional` + `scan_suggestion`), so the UI can badge a path `unlinked` /
 `unbundled` / (in a confirmed bundle). Bundling a File-View selection accepts
@@ -253,9 +253,9 @@ library DB, and writes progress/terminal state back to the registry row.
 
 ## Non-table model surfaces
 
-### File View entries
+### File Browser entries
 
-Read-only File View entries are produced by `services/file_view.py` from the live
+Read-only File Browser entries are produced by `services/file_view.py` from the live
 filesystem under the active library root. They are response models rather than
 persistent rows. Each entry is derived from a library-relative path, path-safety
 checks, filesystem metadata, media classification, and an optional linked
@@ -275,7 +275,7 @@ artifacts are generated under the library's portable `.cairndex/cache/` package:
 - `thumbnails/{file_id[:2]}/{file_id}.jpg`
 - `previews/{file_id[:2]}/{file_id}_{size}.webp`
 - `previews/{file_id[:2]}/{file_id}_{size}.fingerprint`
-- `previews/pa/path_{sha256(relative_path)[:32]}_{size}.webp` for File View path previews
+- `previews/pa/path_{sha256(relative_path)[:32]}_{size}.webp` for File Browser path previews
 - `previews/pa/path_{sha256(relative_path)[:32]}_{size}.fingerprint`
 - `subtitles/{track_id[:2]}/{track_id}.vtt`
 - `storyboards/{file_id[:2]}/{file_id}/{index.vtt,index.fingerprint,sb_*.jpg}`
@@ -292,7 +292,7 @@ rows, and scanners intentionally ignore them.
 - Bundle-level links/sources if needed beyond current file-level `source`.
 - Cross-filesystem moved-file repair, ambiguous repair candidates, duplicate/copy
   resolution, and optional full-hash verification.
-- File View write/native integration.
+- File Browser write/native integration.
 - Index plan beyond current PK/unique constraints, especially for server-side
   text search/SQLite FTS5, browse-summary aggregation, tag/collection membership
   queries, and larger-library benchmarks.
