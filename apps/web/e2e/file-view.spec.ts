@@ -24,6 +24,7 @@ function entry(name: string, over: Record<string, unknown> = {}) {
 }
 
 async function mockApi(page: Page) {
+  const previewRequests: string[] = []
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
       json: [{ id: 'lib1', name: 'NAS Media', root_path: '/mnt/media', status: 'available' }],
@@ -70,16 +71,33 @@ async function mockApi(page: Page) {
               bundle_id: 'b1',
               unbundled: true,
             }),
+            entry('scan.tiff', {
+              media_kind: 'image',
+              supported: true,
+              mime_type: 'image/tiff',
+            }),
             entry('notes.txt', { supported: false }),
           ],
         },
       })
     }
   })
+  await page.route('**/file/preview?*', (r) => {
+    previewRequests.push(r.request().url())
+    return r.fulfill({
+      status: 200,
+      contentType: 'image/webp',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    })
+  })
+  return previewRequests
 }
 
 test('browses a library read-only with badges and breadcrumbs', async ({ page }) => {
-  await mockApi(page)
+  const previewRequests = await mockApi(page)
   await page.goto('/')
 
   // Switch to the File View surface.
@@ -93,6 +111,7 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
     page.locator('.file-row', { hasText: 'poster.jpg' }).getByText('openable'),
   ).toHaveCount(0)
   await expect(page.locator('.file-row', { hasText: 'poster.jpg' })).toContainText('unbundled')
+  await expect(page.locator('.file-row__name', { hasText: 'scan.tiff' })).toBeVisible()
   await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unsupported')
   await expect(page.locator('.file-row', { hasText: 'notes.txt' })).toContainText('unlinked')
 
@@ -108,4 +127,9 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   // Selecting the file shows its details in the inspector (not the bundle one).
   await page.locator('.file-row__name', { hasText: 'clip.mp4' }).click()
   await expect(page.locator('.inspector')).toContainText('Openable')
+
+  await page.getByRole('button', { name: 'NAS Media' }).click()
+  await page.locator('.file-row__name', { hasText: 'scan.tiff' }).dblclick()
+  await expect(page.locator('.viewer__img')).toBeVisible()
+  await expect.poll(() => previewRequests.some((url) => url.includes('path=scan.tiff'))).toBe(true)
 })

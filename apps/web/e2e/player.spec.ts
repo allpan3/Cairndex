@@ -19,6 +19,7 @@ function summary(id: string, title: string) {
     total_size: 0,
     has_missing: false,
     has_cover: true,
+    openable: true,
     cover_key: null,
     media_kind: 'video',
     width: 1920,
@@ -304,6 +305,9 @@ interface MockApiOptions {
   chapters?: Array<{ start: number; end: number; title: string }>
   progress?: { position_s: number; duration_s: number | null; completed: boolean } | null
   secondPlayable?: boolean
+  nonNativeImage?: boolean
+  onContent?: (url: string) => void
+  onPreview?: (url: string) => void
   onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
 }
 
@@ -311,6 +315,8 @@ interface MockApiOptions {
 async function mockApi(page: Page, options: MockApiOptions = {}) {
   const mp4 = generatedMp4 ?? Buffer.from([])
   const storyboardStatus = options.storyboardStatus ?? 200
+  const imageName = options.nonNativeImage ? 'poster.heic' : 'poster.png'
+  const imageMime = options.nonNativeImage ? 'image/heic' : 'image/png'
   const chapters = options.chapters ?? [
     { start: 0, end: 60, title: 'Intro' },
     { start: 60, end: 120, title: 'Middle' },
@@ -375,9 +381,14 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
-  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
+    options.onContent?.(r.request().url())
+    return r.fulfill({ status: 200, contentType: 'image/png', body: png })
+  })
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/preview/, (r) => {
+    options.onPreview?.(r.request().url())
+    return r.fulfill({ status: 200, contentType: 'image/webp', body: png })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/subtitles\/s0\/vtt$/, (r) =>
     r.fulfill({
       status: 200,
@@ -432,6 +443,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           sequence: 0,
           size_bytes: 0,
           availability: 'available',
+          quick_fingerprint: 'video-fingerprint',
+          supported: true,
           tech_metadata: { width: 1920, height: 1080, duration: 120 },
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
@@ -440,15 +453,17 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         {
           id: 'img1',
           bundle_id: 'b0',
-          relative_path: 'poster.png',
-          original_filename: 'poster.png',
-          display_title: 'poster.png',
+          relative_path: imageName,
+          original_filename: imageName,
+          display_title: imageName,
           role: 'image',
           media_kind: 'image',
-          mime_type: 'image/png',
+          mime_type: imageMime,
           sequence: 1,
           size_bytes: 0,
           availability: 'available',
+          quick_fingerprint: 'image-fingerprint',
+          supported: true,
           tech_metadata: { width: 640, height: 360 },
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
@@ -466,6 +481,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           sequence: 2,
           size_bytes: 0,
           availability: 'available',
+          quick_fingerprint: 'second-fingerprint',
+          supported: true,
           tech_metadata: options.secondPlayable ? { width: 1280, height: 720, duration: 90 } : {},
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
@@ -677,16 +694,58 @@ test('navigates files without the inline filmstrip and shows the fallback card',
   page,
 }) => {
   await mockMedia(page)
-  await mockApi(page)
+  const contentRequests: string[] = []
+  await mockApi(page, { onContent: (url) => contentRequests.push(url) })
   await page.goto('/')
 
   await page.locator('[data-bundle-id="b0"]').dblclick()
   await expect(page.locator('.mv-filmstrip')).toHaveCount(0)
   await page.getByRole('button', { name: /next file/i }).click()
-  await expect(page.locator('.mv-image')).toHaveAttribute('src', /files\/img1\/content/)
+  await expect(page.getByTestId('image-stage')).toBeVisible()
+  const image = page.locator('.mv-image')
+  await expect
+    .poll(() => contentRequests.some((url) => url.includes('/files/img1/content')))
+    .toBe(true)
+  await expect(image).toHaveAttribute('data-tier', 'original')
+  await expect(image).toHaveAttribute('src', /\/files\/img1\/content$/)
 
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.media-fallback')).toContainText("isn't playable")
+})
+
+test('zooms and pans a non-native image through preview derivatives', async ({ page }) => {
+  await mockMedia(page)
+  const previewRequests: string[] = []
+  await mockApi(page, {
+    nonNativeImage: true,
+    onPreview: (url) => previewRequests.push(url),
+  })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await page.getByRole('button', { name: /next file/i }).click()
+  const stage = page.getByTestId('image-stage')
+  await expect(stage).toBeVisible()
+  await expect.poll(() => previewRequests.some((url) => url.includes('size=1600'))).toBe(true)
+
+  const image = page.locator('.mv-image')
+  await expect(image).toHaveAttribute('data-tier', 'preview1600')
+  await expect(image).toHaveAttribute('src', /\/files\/img1\/preview\?.*size=1600/)
+  const zoom = page.getByTestId('image-zoom')
+  await expect(zoom).toContainText('100%')
+  const box = await stage.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.wheel(0, -500)
+  await expect.poll(() => zoom.textContent()).not.toBe('100%')
+  await expect.poll(() => previewRequests.some((url) => url.includes('size=2560'))).toBe(true)
+
+  const before = await image.evaluate((el) => (el as HTMLElement).style.transform)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + box!.height / 2 + 30)
+  await page.mouse.up()
+  const after = await image.evaluate((el) => (el as HTMLElement).style.transform)
+  expect(after).not.toBe(before)
 })
 
 test('plays a real generated MP4 without media-element mocks', async ({ page }) => {
@@ -796,7 +855,7 @@ test('does not carry a previous video position into progress for the next video'
     media.currentTime = 44
   })
   await page.getByRole('button', { name: /next file/i }).click()
-  await expect(page.locator('.mv-image')).toHaveAttribute('src', /files\/img1\/content/)
+  await expect(page.getByTestId('image-stage')).toBeVisible()
   await page.getByRole('button', { name: /next file/i }).click()
   await expect(page.getByTestId('media-video')).toHaveAttribute('src', /files\/f1\/stream/)
   await page.getByRole('button', { name: 'Close' }).click()

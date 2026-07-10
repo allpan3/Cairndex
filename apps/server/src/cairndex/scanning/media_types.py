@@ -1,10 +1,11 @@
 """Classify a filename into a media kind + default in-bundle role by extension."""
 
 from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.media.image_support import PREVIEW_IMAGE_EXTENSIONS
 from cairndex.media.subtitles import SUBTITLE_EXTENSIONS
 
 _VIDEO = {"mp4", "mkv", "avi", "mov", "wmv", "m4v", "ts", "webm", "flv", "mpg", "mpeg", "m2ts"}
-_IMAGE = {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic"}
+_IMAGE = PREVIEW_IMAGE_EXTENSIONS
 _SUBTITLE = SUBTITLE_EXTENSIONS  # canonical set lives in media.subtitles
 _AUDIO = {"mp3", "flac", "aac", "wav", "ogg", "m4a", "opus"}
 _HIDDEN_NAMES = frozenset({"__pycache__", "node_modules", "Thumbs.db", ".DS_Store"})

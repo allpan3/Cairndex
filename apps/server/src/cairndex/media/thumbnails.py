@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.media import image_support, previews
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
@@ -43,6 +44,20 @@ def thumbnail_cache_path(library_root: Path, file_id: str) -> Path:
     return library_package.cache_dir(library_root) / "thumbnails" / file_id[:2] / f"{file_id}.jpg"
 
 
+# Return True when this file has a safe thumbnail derivation path
+def _can_thumbnail(asset_file: AssetFile) -> bool:
+    if asset_file.media_kind is MediaKind.VIDEO:
+        return True
+    if asset_file.media_kind is MediaKind.IMAGE:
+        return image_support.is_preview_capable_image(asset_file.relative_path)
+    return False
+
+
+# Return the media type for a generated thumbnail/preview path
+def thumbnail_media_type(path: Path) -> str:
+    return "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
+
+
 def _generate(source: Path, dest: Path, kind: MediaKind) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
@@ -65,8 +80,15 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
-    if asset_file.media_kind not in _THUMBNAILABLE:
+    if not _can_thumbnail(asset_file):
         raise ValidationError(f"{asset_file.media_kind} files are not thumbnailable")
+    if asset_file.media_kind is MediaKind.IMAGE and not image_support.is_browser_native_image(
+        asset_file.relative_path
+    ):
+        try:
+            return previews.preview_for_file(session, file_id, 640)
+        except previews.PreviewError as exc:
+            raise ThumbnailError(str(exc)) from exc
 
     library_root = library_root_for_session(session)
     dest = thumbnail_cache_path(library_root, file_id)
@@ -86,10 +108,10 @@ def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
     bundle = get_bundle(session, bundle_id)
     if bundle.cover_file_id is not None:
         cover = session.get(AssetFile, bundle.cover_file_id)
-        if cover is not None and cover.media_kind in _THUMBNAILABLE:
+        if cover is not None and _can_thumbnail(cover):
             return cover
     files = list_files(session, bundle_id)
-    image = next((f for f in files if f.media_kind is MediaKind.IMAGE), None)
+    image = next((f for f in files if f.media_kind is MediaKind.IMAGE and _can_thumbnail(f)), None)
     if image is not None:
         return image
     if bundle.primary_file_id is not None:
@@ -137,7 +159,7 @@ def generate_for_library(
         try:
             generate_for_file(session, asset_file.id, force=force)
             generated += 1
-        except (ThumbnailError, PathSafetyError, OSError):
+        except (ThumbnailError, PathSafetyError, ValidationError, OSError):
             failed += 1
         if on_progress is not None and index % batch_size == 0:
             on_progress(index, total)

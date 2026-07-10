@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cairndex.domain.enums import (
     FileAvailability,
@@ -10,6 +10,7 @@ from cairndex.domain.enums import (
     GroupingState,
     MediaKind,
 )
+from cairndex.media.image_support import is_openable_media
 
 
 # --- Bundles -----------------------------------------------------------------
@@ -117,6 +118,9 @@ class FileRead(BaseModel):
     sequence: int
     size_bytes: int | None
     availability: FileAvailability
+    quick_fingerprint: str | None
+    # True when the app can preview/play this linked file in the web viewer
+    supported: bool = False
     # Normalized ffprobe output (dimensions/duration/codecs/streams), or null
     # until the file has been probed (Phase 2 scanner/probe jobs).
     tech_metadata: dict[str, Any] | None
@@ -124,6 +128,12 @@ class FileRead(BaseModel):
     updated_at: datetime
     # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
     version: int
+
+    # Derive support from the media kind and extension, not from classifier presence
+    @model_validator(mode="after")
+    def derive_supported(self) -> "FileRead":
+        self.supported = is_openable_media(self.media_kind, self.relative_path)
+        return self
 
 
 # --- Associations ------------------------------------------------------------
