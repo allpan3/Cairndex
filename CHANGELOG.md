@@ -17,6 +17,14 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Pinyin-aware local search.** Tag and collection pickers now match Chinese
+  names from full pinyin, initials, partial pinyin, mixed Latin/pinyin, and
+  polyphonic readings while preserving ordinary case-insensitive substring
+  search and literal create-name semantics. The same shared matcher covers the
+  All Tags page, tag filters, multi-bundle tag/collection pickers, File Browser
+  names, and local file-selection filters. `pinyin-pro` is bundled offline as a
+  lazy chunk; the server-backed whole-library FTS toolbar remains unchanged.
+
 - **Multiple notes per bundle.** A bundle now carries an ordered list of
   freeform note/description blocks instead of a single note. The inspector
   renames the section to **NOTES** with a small `+` icon that appends another

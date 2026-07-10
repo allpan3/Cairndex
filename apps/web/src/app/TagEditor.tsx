@@ -12,6 +12,7 @@ import {
   useTags,
 } from '../api/hooks'
 import { PickGuides } from './PickGuides'
+import { usePinyinSearch } from './pinyin'
 import { flattenHierarchy, usePopover, visibleHierarchy } from './usePopover'
 
 interface TagRow {
@@ -90,7 +91,8 @@ export function TagEditor({ bundleId }: { bundleId: string }) {
     )
   }
 
-  const match = (t: TagRead) => !search || t.name.toLowerCase().includes(search.toLowerCase())
+  const matchSearch = usePinyinSearch(search)
+  const match = (t: TagRead) => matchSearch(t.name)
   const trimmedSearch = search.trim()
   const hasExactMatch = tags.some((t) => t.name.toLowerCase() === trimmedSearch.toLowerCase())
   const groupedIds = new Set(Object.values(memberships).flat())

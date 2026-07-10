@@ -9,7 +9,7 @@ import {
   useTags,
 } from '../api/hooks'
 import { ContextMenu } from './ContextMenu'
-import { alphaBucket, bucketOrder } from './pinyin'
+import { alphaBucket, bucketOrder, usePinyinSearch } from './pinyin'
 import { useContextMenu } from './useContextMenu'
 
 // Chinese-aware ordering: prefer pinyin collation for zh, fall back to a general
@@ -112,8 +112,9 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     return [...map.entries()].sort((a, b) => bucketOrder(a[0]) - bucketOrder(b[0]))
   }, [roots])
 
-  const q = search.trim().toLowerCase()
-  const matches = q ? scopeTags.filter((t) => t.name.toLowerCase().includes(q)).sort(byName) : null
+  const q = search.trim()
+  const matchSearch = usePinyinSearch(q)
+  const matches = q ? scopeTags.filter((t) => matchSearch(t.name)).sort(byName) : null
   const visibleCount = matches ? matches.length : scopeTags.length
 
   const toggleExpand = (id: string) =>

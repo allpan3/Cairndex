@@ -14,6 +14,7 @@ import {
 } from './adHocFilters'
 import { IconTag } from './icons'
 import { PickGuides } from './PickGuides'
+import { usePinyinSearch } from './pinyin'
 import { usePopover, visibleHierarchy } from './usePopover'
 
 const RULES: { value: TagRule; label: string; title: string }[] = [
@@ -157,7 +158,8 @@ function TagFilterPanel({
     childOf.set(k, [...(childOf.get(k) ?? []), tg])
   }
   const groupMember = groupFilter !== null ? new Set(memberships[groupFilter] ?? []) : null
-  const match = (tag: TagRead) => !search || tag.name.toLowerCase().includes(search.toLowerCase())
+  const matchSearch = usePinyinSearch(search)
+  const match = (tag: TagRead) => matchSearch(tag.name)
   const countsLoaded = facets.data !== undefined
   const seen = (id: string) => !countsLoaded || (counts[id] ?? 0) > 0 || inc.has(id) || exc.has(id)
   const shown = (id: string): boolean => {

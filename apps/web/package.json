@@ -19,6 +19,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.101.1",
     "@tanstack/react-virtual": "^3.14.3",
+    "pinyin-pro": "^3.28.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

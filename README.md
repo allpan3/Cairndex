@@ -47,8 +47,9 @@ The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, richer
 edit-before-apply grouping review, File Browser write-mode and desktop-client
 integration, cross-filesystem repair candidates, and media
-fallback/remux/transcoding. Job progress bars, large-library browse indexing, and
-whole-library indexed text search (SQLite FTS5) are now implemented. See
+fallback/remux/transcoding. Job progress bars, large-library browse indexing,
+whole-library indexed text search (SQLite FTS5), and pinyin matching in local
+tag/collection and file pickers are now implemented. See
 [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
 recommended next tasks.
 
