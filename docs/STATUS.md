@@ -31,8 +31,9 @@ note, used as clean separators (no predefined roles under the hood).
   remains). A synchronously-updated `notesRef` mirrors the list so a blur landing
   in the same tick as the last keystroke still commits the latest text. Each note
   box (`NoteBox`) **auto-grows** to fit its content by default (no scrollbar);
-  dragging a custom bottom grip switches it to a fixed height with `overflow-y:
-  auto` — `resize: none` on the textarea means there is **no native
+  only an explicit **drag** (>3 px) of a small centered bottom grip switches it
+  to a fixed height with `overflow-y: auto` — a stray click on the grip stays in
+  auto-expand, and `resize: none` on the textarea means there is **no native
   resizer/scroll-corner box** — and each note remembers **its own** height across
   sessions (`cairndex.noteHeights`, per bundle, aligned with the notes list by
   index; add/remove keep the arrays in step; double-click the grip to return that

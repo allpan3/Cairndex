@@ -15,11 +15,12 @@ grouped under `Unreleased` until the first tagged release.
   renames the section to **NOTES** with a small `+` icon that appends another
   note box below the current ones; each box commits on blur and can be removed
   (hover ×). No predefined roles — the blocks are just clean separators. Note
-  boxes auto-grow to fit their text by default; dragging the bottom grip sets a
-  fixed height (with a scrollbar when the text overflows, and no native
-  resizer/scroll-corner box), and each note remembers its own height across
-  sessions (`cairndex.noteHeights`, per bundle, aligned with the notes list).
-  Double-clicking the grip returns that box to auto-fit.
+  boxes auto-grow to fit their text by default (no scrollbar); only an explicit
+  drag of the small bottom grip sets a fixed height (with a scrollbar when the
+  text overflows, and no native resizer/scroll-corner box) — a stray click on
+  the grip no longer locks the box out of auto-expand. Each note remembers its
+  own height across sessions (`cairndex.noteHeights`, per bundle, aligned with
+  the notes list). Double-clicking the grip returns that box to auto-fit.
   New `asset_bundles.notes` JSON column (added additively via
   `ensure_content_indexes`) is the single source of truth, exposed as
   `notes: string[]` on `BundleRead` and accepted on `BundleCreate`/`BundleUpdate`
