@@ -176,6 +176,33 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await expect(page.getByText('42/100')).toBeVisible()
 })
 
+test('each Update stage has a standalone maintenance action', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/jobs/storyboards', (route) =>
+    route.fulfill({
+      json: jobRead({
+        id: 'job-storyboard',
+        job_type: 'storyboard',
+        status: 'succeeded',
+        result: {},
+      }),
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await expect(page.getByRole('button', { name: 'Scan new files' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Collect metadata' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Suggest grouping' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Generate storyboards' })).toBeVisible()
+
+  const storyboardRequest = page.waitForRequest((request) =>
+    request.url().endsWith('/jobs/storyboards'),
+  )
+  await page.getByRole('button', { name: 'Generate storyboards' }).click()
+  await storyboardRequest
+})
+
 test('selecting a bundle opens the inspector', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

@@ -30,6 +30,7 @@ import {
   useRenameCollection,
   useUpdateCollection,
   useScan,
+  useStoryboards,
   useSmartCollectionMutations,
   useSmartCollections,
   useUpdateLibrary,
@@ -240,6 +241,7 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         onUpdateLibrary={noop}
         onScanFiles={noop}
         onProbe={noop}
+        onGenerateStoryboards={noop}
         onReviewGrouping={noop}
         selection={{ view: 'all', collectionId: null }}
         onSelect={noop}
@@ -357,7 +359,7 @@ function Workspace({
   // A file to highlight after "Locate in File Browser" (until the user navigates
   // or picks another entry), independent of the loaded fileEntry object.
   const [locatedPath, setLocatedPath] = useState<string | null>(null)
-  // Live snapshot of the running maintenance job (scan/probe/thumbnail) so the
+  // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
 
@@ -380,6 +382,7 @@ function Workspace({
     },
   })
   const probe = useProbe({ onProgress: setActiveJob })
+  const storyboards = useStoryboards({ onProgress: setActiveJob })
   const deleteBundles = useDeleteBundles()
   const deleteCollection = useDeleteCollection()
   const createCollection = useCreateCollection()
@@ -996,9 +999,15 @@ function Workspace({
         scanningFiles={scanFiles.isPending}
         onProbe={() => probe.mutate()}
         probing={probe.isPending}
+        onGenerateStoryboards={() => storyboards.mutate()}
+        generatingStoryboards={storyboards.isPending}
         activeJob={activeJob}
         maintenanceError={
-          updateLibrary.error?.message ?? scanFiles.error?.message ?? probe.error?.message ?? null
+          updateLibrary.error?.message ??
+          scanFiles.error?.message ??
+          probe.error?.message ??
+          storyboards.error?.message ??
+          null
         }
         onReviewGrouping={() => {
           setReviewPlanId(null)

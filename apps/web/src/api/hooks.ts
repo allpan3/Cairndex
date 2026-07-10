@@ -120,9 +120,14 @@ async function waitForJob(job: JobRead, onProgress?: JobProgressFn): Promise<Job
 }
 
 // Watch a non-blocking job while keeping terminal failures visible in progress UI
-async function watchOptionalJob(job: Promise<JobRead>, onProgress?: JobProgressFn): Promise<void> {
+async function watchOptionalJob(
+  job: Promise<JobRead>,
+  onProgress?: JobProgressFn,
+  onSuccess?: () => void,
+): Promise<void> {
   try {
     await waitForJob(await job, onProgress)
+    onSuccess?.()
     onProgress?.(null)
   } catch {
     // waitForJob already emitted the terminal failed/cancelled snapshot
@@ -336,7 +341,9 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
     onSuccess: (job) => {
       invalidateLibraryContent(qc)
       notifyGroupingPlan(job, options.onGroupingPlan)
-      void watchOptionalJob(enqueueStoryboards(), options.onProgress)
+      void watchOptionalJob(enqueueStoryboards(), options.onProgress, () =>
+        qc.invalidateQueries({ queryKey: ['playback'] }),
+      )
     },
     onSettled: (_data, error) => {
       if (error) options.onProgress?.(null)
@@ -365,6 +372,16 @@ export function useThumbnails(options: { onProgress?: JobProgressFn } = {}) {
   return useMutation({
     mutationFn: async () => waitForJob(await enqueueThumbnails(), options.onProgress),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['browse'] }),
+    onSettled: () => options.onProgress?.(null),
+  })
+}
+
+/** Generate missing/stale storyboard indexes and sheets for eligible videos */
+export function useStoryboards(options: { onProgress?: JobProgressFn } = {}) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => waitForJob(await enqueueStoryboards(), options.onProgress),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['playback'] }),
     onSettled: () => options.onProgress?.(null),
   })
 }

@@ -65,6 +65,8 @@ interface SidebarProps {
   scanningFiles?: boolean
   onProbe: () => void
   probing?: boolean
+  onGenerateStoryboards: () => void
+  generatingStoryboards?: boolean
   onReviewGrouping: () => void
   activeJob?: JobRead | null
   maintenanceError?: string | null
@@ -144,6 +146,8 @@ export function Sidebar({
   scanningFiles,
   onProbe,
   probing,
+  onGenerateStoryboards,
+  generatingStoryboards,
   onReviewGrouping,
   activeJob,
   maintenanceError,
@@ -317,7 +321,7 @@ export function Sidebar({
         <button
           className="sidebar__job"
           onClick={onUpdateLibrary}
-          title="Scan files, prepare grouping suggestions, and update media metadata"
+          title="Scan files, prepare grouping suggestions, collect media metadata, and generate storyboards"
           disabled={updating || libraryId === null}
         >
           {updating ? '⟳ Updating…' : '⟳ Update'}
@@ -361,6 +365,15 @@ export function Sidebar({
                 title="Suggest grouping for every uncategorized bundle and unbundled file"
               >
                 Suggest grouping
+              </button>
+              <button
+                onClick={() => {
+                  setJobsMenuOpen(false)
+                  onGenerateStoryboards()
+                }}
+                disabled={generatingStoryboards}
+              >
+                {generatingStoryboards ? 'Generating…' : 'Generate storyboards'}
               </button>
             </div>
           )}
