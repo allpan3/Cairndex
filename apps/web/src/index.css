@@ -1242,7 +1242,8 @@ button {
 .note-remove {
   position: absolute;
   top: 4px;
-  right: 4px;
+  /* Sit left of the (thin) scrollbar so the two never overlap. */
+  right: 10px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -1251,6 +1252,20 @@ button {
   line-height: 1;
   padding: 2px 4px;
   opacity: 0;
+}
+/* Thin scrollbar for a fixed-height (manually resized) note box. */
+.note-row .edit--note::-webkit-scrollbar {
+  width: 5px;
+}
+.note-row .edit--note::-webkit-scrollbar-track {
+  background: transparent;
+}
+.note-row .edit--note::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+.note-row .edit--note::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 .note-row:hover .note-remove,
 .note-remove:focus {
