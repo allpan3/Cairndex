@@ -8,7 +8,6 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import quote
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -17,12 +16,13 @@ from cairndex.core.config import Settings, get_settings
 from cairndex.core.errors import NotFoundError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.media import derived_cache
 from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
 
-STORYBOARD_CACHE_CONTROL = "public, max-age=31536000, immutable"
+STORYBOARD_CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
 STORYBOARD_TILE_WIDTH = 320
 STORYBOARD_GRID_COLUMNS = 5
 STORYBOARD_GRID_ROWS = 5
@@ -32,7 +32,6 @@ ProgressFn = Callable[[int, int | None], None]
 
 _SHEET_STEM = re.compile(r"^sb_\d{3}$")
 _FINGERPRINT_NOTE = "NOTE cairndex-quick-fingerprint:"
-_FINGERPRINT_FILE = "fingerprint.txt"
 _JPEG_SOF_MARKERS = {
     0xC0,
     0xC1,
@@ -101,11 +100,6 @@ def storyboard_index_path(library_root: Path, file_id: str) -> Path:
     return storyboard_cache_dir(library_root, file_id) / "index.vtt"
 
 
-# Return the tiny sidecar that records the generation fingerprint
-def _fingerprint_path(cache_dir: Path) -> Path:
-    return cache_dir / _FINGERPRINT_FILE
-
-
 # Format a WebVTT timestamp with millisecond precision
 def _timestamp(seconds: float) -> str:
     millis = int(round(seconds * 1000))
@@ -115,14 +109,9 @@ def _timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}.{ms:03d}"
 
 
-# Return a URL-safe version token from the quick fingerprint
-def _version_param(quick_fingerprint: str | None) -> str:
-    return quote(quick_fingerprint or "no-fingerprint", safe="")
-
-
 # Render the constrained storyboard WebVTT format consumed by web and TV clients
 def render_vtt(cues: Iterable[StoryboardCue], quick_fingerprint: str | None) -> str:
-    version = _version_param(quick_fingerprint)
+    version = derived_cache.version_param(quick_fingerprint)
     lines = ["WEBVTT", "", f"{_FINGERPRINT_NOTE} {quick_fingerprint or ''}", ""]
     for cue in cues:
         lines.append(f"{_timestamp(cue.start)} --> {_timestamp(cue.end)}")
@@ -134,25 +123,9 @@ def render_vtt(cues: Iterable[StoryboardCue], quick_fingerprint: str | None) -> 
     return "\n".join(lines)
 
 
-# Persist the generation fingerprint as a cheap request-path validation sidecar
-def _write_fingerprint(cache_dir: Path, quick_fingerprint: str | None) -> None:
-    _fingerprint_path(cache_dir).write_text(quick_fingerprint or "", encoding="utf-8")
-
-
-# Read the generation fingerprint without opening the WebVTT index
-def _cached_fingerprint(cache_dir: Path) -> str | None:
-    try:
-        return _fingerprint_path(cache_dir).read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-
-
 # Return True when the cached index was generated for the current quick fingerprint
 def is_current_index(library_root: Path, file_id: str, quick_fingerprint: str | None) -> bool:
-    cache_dir = storyboard_cache_dir(library_root, file_id)
-    return storyboard_index_path(library_root, file_id).exists() and (
-        _cached_fingerprint(cache_dir) == (quick_fingerprint or "")
-    )
+    return derived_cache.is_current(storyboard_index_path(library_root, file_id), quick_fingerprint)
 
 
 # Extract a float duration from probed tech metadata
@@ -207,7 +180,7 @@ def _cached_context(
 def cached_index_for_file(session: Session, file_id: str) -> Path:
     asset_file, _library_root, cache_dir = _cached_context(session, file_id)
     index = cache_dir / "index.vtt"
-    if not index.exists() or _cached_fingerprint(cache_dir) != (asset_file.quick_fingerprint or ""):
+    if not derived_cache.is_current(index, asset_file.quick_fingerprint):
         raise NotFoundError("storyboard index not found")
     return index
 
@@ -230,7 +203,7 @@ def storyboard_url_for_file(session: Session, library_id: str, asset_file: Asset
     library_root = library_root_for_session(session)
     if not is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint):
         return None
-    version = _version_param(asset_file.quick_fingerprint)
+    version = derived_cache.version_param(asset_file.quick_fingerprint)
     return f"/api/v1/libraries/{library_id}/files/{asset_file.id}/storyboard.vtt?v={version}"
 
 
@@ -389,7 +362,7 @@ def generate_for_file(
             render_vtt(cues, asset_file.quick_fingerprint),
             encoding="utf-8",
         )
-        _write_fingerprint(temp_dir, asset_file.quick_fingerprint)
+        derived_cache.write_fingerprint(temp_dir / "index.vtt", asset_file.quick_fingerprint)
         _replace_cache_dir(cache_dir, temp_dir)
         temp_dir = None
     except (StoryboardError, FfmpegError, OSError, PathSafetyError) as exc:

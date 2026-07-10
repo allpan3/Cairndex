@@ -86,7 +86,7 @@ opens it on that file.
 - Fit modes and window resize handling; optional checkerboard/dark/light
   background toggle for transparency.
 - Progressive load: cached thumbnail → sized preview → full resolution.
-- Non-native formats (HEIC, TIFF, BMP; PSD best-effort) displayed via
+- Non-native formats (HEIC, TIFF, BMP) displayed via
   server-side preview derivatives (§5).
 - Slideshow (interval, shuffle), rotation (view-only, non-destructive),
   EXIF/tech panel from `tech_metadata`, neighbor preloading.
@@ -185,8 +185,8 @@ New module `media/previews.py` + endpoint
 
 - Allowlisted size ladder (not arbitrary integers) → deterministic cache path
   `.cairndex/cache/previews/{id[:2]}/{id}_{size}.webp`.
-- Generated lazily on first request (thumbnail-endpoint pattern, file lock),
-  from the original for native formats and for **HEIC/TIFF/BMP/PSD** via
+- Generated lazily on first request (thumbnail-endpoint pattern),
+  from the original for native formats and for **HEIC/TIFF/BMP** via
   Pillow (+`pillow-heif`). New dependency, justified: unlocks non-browser
   formats for *all* clients and TV-sized grid images; pure wheels, low
   maintenance. (pyvips is faster for gigapixel sources — revisit only if

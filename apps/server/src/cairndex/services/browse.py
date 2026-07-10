@@ -28,6 +28,7 @@ from cairndex.domain.enums import (
 )
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
+from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
@@ -71,6 +72,7 @@ class BundleSummary:
     total_size: int
     has_missing: bool
     has_cover: bool
+    openable: bool
     # Id of the file the cover thumbnail is derived from (or None). Changes when
     # the cover selection changes, so the client uses it to bust the browser's
     # image cache on the (otherwise-stable) thumbnail URL.
@@ -417,6 +419,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         total_size=total_size,
         has_missing=has_missing,
         has_cover=has_cover,
+        openable=any(is_openable_media(f.media_kind, f.relative_path) for f in files),
         cover_key=cover_key,
         media_kind=str(primary.media_kind) if primary else None,
         width=meta.get("width"),

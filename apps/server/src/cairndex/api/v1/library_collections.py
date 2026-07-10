@@ -113,7 +113,7 @@ def get_collection_thumbnail(collection_id: str, db: LibrarySession) -> FileResp
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"collection {collection_id!r} has no cover")
-    return FileResponse(str(path), media_type="image/jpeg")
+    return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(path))
 
 
 @router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)

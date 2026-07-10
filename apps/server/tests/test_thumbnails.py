@@ -58,6 +58,12 @@ def _make_image(path: Path) -> None:
     )
 
 
+# Create a small Pillow image for preview-only cover formats
+def _make_pillow_image(path: Path, fmt: str) -> None:
+    Image = pytest.importorskip("PIL.Image", reason="Pillow not installed")
+    Image.new("RGB", (24, 24), (20, 60, 100)).save(path, format=fmt)
+
+
 def test_cache_path_is_inside_library_package(library_root: Path) -> None:
     path = thumbnails.thumbnail_cache_path(library_root, "01ABCDEF01ABCDEF01ABCDEF01")
     # Lives under the library's portable .cairndex/cache/thumbnails (phase 8).
@@ -143,6 +149,57 @@ def test_cover_fallback_uses_primary_video_when_no_image(session: Session) -> No
     session.commit()
 
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
+
+
+def test_preview_only_cover_uses_pillow_preview_not_ffmpeg(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    library_id: str,
+    library_root: Path,
+) -> None:
+    _make_pillow_image(library_root / "cover.tiff", "TIFF")
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={"title": "b"}).json()["id"]
+    file_id = client.post(
+        f"{base}/bundles/{bundle_id}/files",
+        json={"relative_path": "cover.tiff", "role": "cover", "media_kind": "image"},
+    ).json()["id"]
+    client.patch(f"{base}/bundles/{bundle_id}", json={"cover_file_id": file_id})
+
+    def fail_ffmpeg(_source: Path, _dest: Path, _kind: MediaKind) -> None:
+        raise AssertionError("preview-only image cover should not use ffmpeg")
+
+    monkeypatch.setattr(thumbnails, "_generate", fail_ffmpeg)
+
+    resp = client.get(f"{base}/bundles/{bundle_id}/thumbnail")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    assert resp.content.startswith(b"RIFF") and b"WEBP" in resp.content[:16]
+
+
+def test_psd_cover_falls_back_to_decodable_image(session: Session, library_root: Path) -> None:
+    _make_pillow_image(library_root / "scan.tiff", "TIFF")
+    (library_root / "layered.psd").write_bytes(b"psd")
+    bundle = bundle_service.create_bundle(session, title="b")
+    psd = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="layered.psd",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    tiff = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="scan.tiff",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": psd.id})
+    session.commit()
+
+    assert thumbnails.effective_cover_file(session, bundle.id).id == tiff.id
 
 
 @requires_ffmpeg

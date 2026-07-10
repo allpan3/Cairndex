@@ -1,5 +1,84 @@
 # Project status
 
+## Current branch: media-player M5 image viewer v2 + preview derivatives
+
+Branch `feat/image-viewer`. Implemented plan 1 M5's image viewer v2 and preview
+derivative slice:
+
+- Added lazy WebP preview derivatives at
+  `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
+  with an allowlisted size ladder, safe source re-resolution, deterministic
+  linked-file cache paths under
+  `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, quick
+  fingerprint sidecars, versioned `?v={quick_fingerprint}` URLs, and immutable
+  cache headers. File View can also request
+  `/api/v1/libraries/{library_id}/file/preview?path=...&size=...`; those
+  unlinked path previews use a deterministic path-hash cache key and a
+  stat-derived quick fingerprint.
+- Extracted shared derived-cache helpers for immutable cache headers,
+  version-param escaping, `.fingerprint` sidecars, and current-cache checks.
+  Image previews and storyboards now use that shared sidecar convention;
+  previews use per-artifact `fcntl` locks, atomic replacement, and a bounded
+  decode semaphore.
+- Added Pillow + pillow-heif as lazy preview-generation dependencies. They are
+  pure-wheel runtime dependencies used only when a derivative must be generated,
+  and they unlock HEIC/HEIF, TIFF, BMP, and sized WebP previews for browser and
+  future TV clients. PSD is not advertised openable until a tested decoder path
+  exists. Preview generation remains lazy-only in this slice; no
+  Update/precompute job was added.
+- Preview-capable images now count as supported/openable in bundle/file payloads
+  and File View entries. HEIC/TIFF/BMP can therefore open in the media viewer
+  through preview derivatives even when the browser cannot display the original
+  source bytes. Preview-only cover thumbnails route through the Pillow preview
+  pipeline instead of ffmpeg, so selected HEIC/TIFF/BMP covers do not fail the
+  card thumbnail path.
+- Replaced the bare image stage with a transform stage: fit/fill/100% mode
+  cycling, wheel zoom to cursor, pointer-drag panning, two-pointer pinch zoom,
+  keyboard `+`/`-`/`0`/`1` shortcuts scoped to the viewer, zoom clamping,
+  viewport-clamped pan bounds, zoom-percent display, dark/light/checkerboard
+  backgrounds, resize-aware fit capped at 100% for initial fit, progressive
+  source swaps after `Image.decode()`, and keyed transform/source reset when the
+  selected file changes. The loader keys its effect on the discrete wanted tier,
+  preserving an in-flight decode across viewport scale-only rerenders. Native
+  images load thumbnail → original; non-native images load thumbnail → 1600px
+  preview and request 2560px only when zoomed past 100%.
+- Regenerated OpenAPI and `apps/web/src/api/schema.d.ts` for the preview route
+  and new file/browse support hints. `schema.d.ts` was patched manually for this
+  pass because `npm run gen:api` could not reach the npm registry in the
+  sandbox after OpenAPI regeneration.
+
+Verification:
+
+- Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check`,
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff format --check`,
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run mypy src`, and
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run pytest` passed
+  (`333 passed`, one existing Starlette/httpx deprecation warning).
+- Frontend: `npm run lint`, `npm run format:check`, `npm run typecheck`,
+  `npm run test` (`47 passed`, existing jsdom media-method warnings), and
+  `npm run build` passed.
+- Focused review-fix checks also passed:
+  `uv run pytest tests/test_previews.py tests/test_thumbnails.py
+  tests/test_storyboards.py tests/test_file_view.py` (`44 passed`) and
+  `npm run test -- ImageStage` (`6 passed`).
+- OpenAPI was regenerated with
+  `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run python -m
+  cairndex.devtools.openapi > ../web/src/api/openapi.json`. `npm run gen:api`
+  could not complete in this sandbox because `npx` waited on the registry path,
+  so `apps/web/src/api/schema.d.ts` was patched manually to match the small
+  OpenAPI delta.
+- Playwright: non-escalated `npm run test:e2e` still fails before tests run
+  because Vite cannot bind `::1:5173` (`listen EPERM`), but the escalated
+  `npm run test:e2e` gate passed (`49 passed`). Native and non-native image e2e
+  coverage now asserts the displayed `.mv-image` tier and source rather than
+  only observing a request.
+- Live Demo-library verification used `Photos/Vacation2025/Paris/eiffel.jpg`
+  (600×800) at an 800×600 browser viewport. The actual image stage measured
+  672×456 and opened at fit scale 0.57. With no interaction after open, a 10 ms
+  sampler observed the displayed image advance from the bundle-file thumbnail
+  to `data-tier="original"` with the `/files/{file_id}/content` source in about
+  31 ms.
+
 ## Merged: media-player M4 watch progress/resume (#4)
 
 Branch `feat/watch-progress`. Implemented plan 1 M4's watch progress and resume
@@ -84,7 +163,7 @@ chapter-tick slice:
   files the in-flight pass missed.
 - Storyboards are generated into deterministic portable cache paths:
   `.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/index.vtt` plus
-  `fingerprint.txt` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
+  `index.fingerprint` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
   quick fingerprint for cheap request-path validation; the VTT keeps the same
   fingerprint in a `NOTE` for artifact self-description.
 - Added cached-only storyboard endpoints:
@@ -871,11 +950,10 @@ dialogs).
 
 ## Next recommended tasks
 
-1. **Plan 1 M5 — image viewer v2** (the next media-player slice): the zoom/pan
-   image stage plus the server-side preview-derivative pipeline (§5.1), which
-   also unlocks HEIC/TIFF openability. (M1–M4 are merged; subtitle depth was
-   owner-deferred to M8 behind HLS, and dual subtitles to M9 — see
-   `docs/plans/01-web-media-player-and-viewer.md`.)
+1. **Plan 1 M6 — HLS/remux/transcode session foundation** after the M5 image
+   viewer branch lands. Subtitle depth remains owner-deferred to M8 behind HLS,
+   and dual subtitles to M9 — see
+   `docs/plans/01-web-media-player-and-viewer.md`.
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 3. Continue File View planning toward guarded write mode and safe desktop-native

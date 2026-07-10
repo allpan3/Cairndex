@@ -27,6 +27,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Image viewer v2 + preview derivatives (Plan 1 M5).** Added a lazy
+  `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
+  endpoint that writes deterministic WebP derivatives under
+  `.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp`, validates
+  them by quick fingerprint, and serves them with versioned immutable-cache
+  URLs. File View also has a path-scoped preview endpoint for unlinked
+  non-native images. Browser-native images advance from thumbnail to original
+  content; HEIC/TIFF/BMP decode through Pillow + pillow-heif, making
+  preview-capable images openable in bundle/file metadata and File View. PSD is
+  not advertised as openable until a tested decoder path exists. The web image
+  stage now supports fit/fill/100% cycling,
+  wheel/pinch zoom to cursor, drag pan, keyboard zoom shortcuts, zoom clamping,
+  progressive source swaps, 2560px zoom-in requests, background toggles, and
+  source-change transform reset.
 - **Watch progress + resume (Plan 1 M4).** Added per-library
   `playback_progress` storage with additive bootstrap, idempotent video progress
   upserts, manifest-embedded progress, a paginated `continue-watching` endpoint,
@@ -516,6 +530,16 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
 
 ### Fixed
 
+- **Image viewer M5 review fixes.** Fit mode no longer upscales small images
+  past 100%, progressive tier failures keep the last loaded image visible, and
+  probed `tech_metadata` dimensions remain the natural-size basis when preview
+  tiers decode smaller. Progressive loading keys effects on discrete source
+  tiers, so viewport fit measurement cannot cancel the only in-flight decode.
+  Wheel zoom now uses a non-passive native listener,
+  custom pan is clamped to the viewport, File View non-native images open through
+  `/file/preview`, and preview generation catches Pillow decompression bombs,
+  rejects oversize dimensions, uses `Image.draft` for large JPEGs, and decodes
+  behind a bounded semaphore.
 - **Media viewer M2 review fixes.** Cold opens now bind the native video engine
   through a callback-ref/state mount path, so listener attachment, duration/time
   updates, play state, and persisted volume/mute/rate are applied when the video

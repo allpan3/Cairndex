@@ -713,6 +713,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Serve File Preview
+         * @description Serve a path-scoped WebP preview for a File View image.
+         *
+         *     Read-only and path-safe. Files here need not be linked into a bundle, so the
+         *     cache key is derived from the normalized library-relative path plus source
+         *     quick fingerprint.
+         */
+        get: operations["serve_file_preview_api_v1_libraries__library_id__file_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/files/{file_id}/content": {
         parameters: {
             query?: never;
@@ -728,6 +752,26 @@ export interface paths {
          *     media stream incrementally. The mime type is guessed from the filename.
          */
         get: operations["file_content_api_v1_libraries__library_id__files__file_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * File Preview
+         * @description Serve a lazily generated, fingerprint-invalidated WebP preview.
+         */
+        get: operations["file_preview_api_v1_libraries__library_id__files__file_id__preview_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1554,6 +1598,8 @@ export interface components {
             id: string;
             /** Media Kind */
             media_kind: string | null;
+            /** Openable */
+            openable: boolean;
             /** Rating */
             rating: number | null;
             /** Title */
@@ -1688,6 +1734,8 @@ export interface components {
             id: string;
             /** Media Kind */
             media_kind: string | null;
+            /** Openable */
+            openable: boolean;
             progress: components["schemas"]["ContinueWatchingProgressRead"];
             /** Rating */
             rating: number | null;
@@ -1853,6 +1901,8 @@ export interface components {
             mime_type: string | null;
             /** Original Filename */
             original_filename: string;
+            /** Quick Fingerprint */
+            quick_fingerprint: string | null;
             /** Relative Path */
             relative_path: string;
             role: components["schemas"]["FileRole"];
@@ -1860,6 +1910,11 @@ export interface components {
             sequence: number;
             /** Size Bytes */
             size_bytes: number | null;
+            /**
+             * Supported
+             * @default false
+             */
+            supported: boolean;
             /** Tech Metadata */
             tech_metadata: {
                 [key: string]: unknown;
@@ -4358,9 +4413,83 @@ export interface operations {
             };
         };
     };
+    serve_file_preview_api_v1_libraries__library_id__file_preview_get: {
+        parameters: {
+            query: {
+                path: string;
+                /** @default 1600 */
+                size?: 640 | 1600 | 2560;
+            };
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     file_content_api_v1_libraries__library_id__files__file_id__content_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_preview_api_v1_libraries__library_id__files__file_id__preview_get: {
+        parameters: {
+            query?: {
+                /** @default 1600 */
+                size?: 640 | 1600 | 2560;
+            };
             header?: never;
             path: {
                 file_id: string;

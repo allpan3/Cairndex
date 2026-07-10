@@ -1,8 +1,8 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M4 (probe enrichment,
-> the unified custom media viewer, storyboard trickplay, and watch
-> progress/resume; PRs #1–#4 in this repo). See `AGENTS.md` for the product
+> Status: current through the media-player foundation M1–M5 (probe enrichment,
+> the unified custom media viewer, storyboard trickplay, watch progress/resume,
+> and image viewer v2 with preview derivatives; PRs #1–#5 in this repo). See `AGENTS.md` for the product
 > brief, `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md`
 > for current gaps, validation state, and recommended next tasks.
 
@@ -234,6 +234,7 @@ creates thumbnails and subtitle derivatives.
 Derived cache:
 
 - thumbnails live under `.cairndex/cache/thumbnails/`;
+- image previews live under `.cairndex/cache/previews/`;
 - converted external WebVTT subtitles live under `.cairndex/cache/subtitles/`;
 - storyboard WebVTT indexes and tile sheets live under
   `.cairndex/cache/storyboards/`;
@@ -245,12 +246,12 @@ Storyboard artifacts use this cache layout:
 ```text
 .cairndex/cache/storyboards/{file_id[:2]}/{file_id}/
   index.vtt
-  fingerprint.txt
+  index.fingerprint
   sb_001.jpg
   sb_002.jpg
 ```
 
-`fingerprint.txt` stores the source file's quick fingerprint for cheap
+`index.fingerprint` stores the source file's quick fingerprint for cheap
 request-path validation; `index.vtt` also includes
 `NOTE cairndex-quick-fingerprint: {quick_fingerprint}` so the artifact is
 self-describing. Manifest `storyboard_url` values and VTT sheet payloads include
@@ -274,6 +275,32 @@ Thumbnail cover fallback is:
 
 The global sidebar thumbnail button has been removed, but the backend thumbnail
 job endpoint and lazy bundle/file thumbnail endpoints remain.
+
+Image preview derivatives are lazy-only in M5 and use this deterministic cache
+layout:
+
+```text
+.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.webp
+.cairndex/cache/previews/{file_id[:2]}/{file_id}_{size}.fingerprint
+.cairndex/cache/previews/pa/path_{sha256(relative_path)[:32]}_{size}.webp
+.cairndex/cache/previews/pa/path_{sha256(relative_path)[:32]}_{size}.fingerprint
+```
+
+`size` is allowlisted to `640`, `1600`, or `2560`. The first request re-resolves
+the source under the library root, rejects missing or unsupported sources,
+decodes behind a bounded in-process semaphore, writes the WebP derivative by
+atomic replacement, and records the source quick fingerprint in the shared
+`.fingerprint` sidecar. Linked-file preview URLs include `?v={quick_fingerprint}`;
+File View path previews use a path-hash cache key plus a stat-derived quick
+fingerprint because the file need not be linked into a bundle. The endpoint
+serves current derivatives with `Cache-Control: public, max-age=31536000,
+immutable`. Browser-native raster images can downscale from the original;
+HEIC/HEIF, TIFF, and BMP use Pillow plus pillow-heif. PSD is not advertised as
+openable until a tested decoder path exists. These dependencies are kept out of
+normal request paths until a preview must be generated and were added to unlock
+non-browser image formats and sized preview delivery for all clients, including
+future TV clients. There is intentionally no preview precompute job in this
+slice.
 
 Direct playback is implemented around bundle/file routes that serve source bytes
 with safe path resolution and HTTP range behavior. External SRT/VTT subtitles are
@@ -314,7 +341,10 @@ File View is a read-only, filesystem-first browser over the active library root:
 It returns directories first, then files, sorted case-insensitively. Each entry
 includes name, library-relative path, kind, size, modified time, extension, MIME
 guess, media classification, native support/openable state, and a cheap
-linked-to-bundle hint. Raw preview bytes for File View entries are served by
+linked-to-bundle hint. Image files are openable when they are browser-native or
+preview-capable through the preview pipeline, so HEIC/TIFF/BMP can now appear as
+supported even though the browser never receives the original bytes directly.
+Raw preview bytes for File View entries are served by
 `GET /api/v1/libraries/{library_id}/file?path=...` with the same path-safety
 constraints.
 
