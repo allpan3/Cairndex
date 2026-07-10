@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { ConflictError, type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
@@ -89,13 +89,43 @@ function BundleEditor({
   const update = useUpdateBundle(bundleId, bundle.version)
 
   const [title, setTitle] = useState(bundle.title ?? '')
-  const [note, setNote] = useState(bundle.note ?? '')
+  // Multiple freeform notes; always keep at least one (empty) box so there is
+  // something to type into and to append below with the "+" affordance.
+  const [notes, setNotes] = useState<string[]>(
+    bundle.notes && bundle.notes.length > 0 ? bundle.notes : [''],
+  )
+  // Mirror of ``notes`` kept synchronously current in the event handlers, so a
+  // blur that lands in the same tick as the last keystroke still commits the
+  // latest text (a plain render-closure could be one edit stale).
+  const notesRef = useRef(notes)
+  const applyNotes = (next: string[]) => {
+    notesRef.current = next
+    setNotes(next)
+  }
 
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
-  const commit = (field: 'title' | 'note', value: string) => {
-    if (value === (bundle[field] ?? '')) return
-    update.mutate({ [field]: value === '' ? null : value })
+  const commitTitle = (value: string) => {
+    if (value === (bundle.title ?? '')) return
+    update.mutate({ title: value === '' ? null : value })
+  }
+
+  // Notes edit as a whole-list replace. Blank/whitespace-only blocks (an
+  // untouched draft box) are dropped, and compared out here so blurring an empty
+  // box never fires a redundant PATCH.
+  const commitNotes = () => {
+    const cleaned = notesRef.current.filter((n) => n.trim() !== '')
+    const prev = (bundle.notes ?? []).filter((n) => n.trim() !== '')
+    if (cleaned.length === prev.length && cleaned.every((n, i) => n === prev[i])) return
+    update.mutate({ notes: cleaned })
+  }
+  const changeNote = (i: number, value: string) =>
+    applyNotes(notesRef.current.map((n, j) => (j === i ? value : n)))
+  const addNote = () => applyNotes([...notesRef.current, ''])
+  const removeNote = (i: number) => {
+    const next = notesRef.current.filter((_, j) => j !== i)
+    applyNotes(next.length > 0 ? next : [''])
+    commitNotes()
   }
 
   return (
@@ -123,7 +153,7 @@ function BundleEditor({
         value={title}
         placeholder="Untitled"
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => commit('title', title)}
+        onBlur={() => commitTitle(title)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur()
         }}
@@ -152,16 +182,40 @@ function BundleEditor({
         <span className="prop__v">{formatDate(bundle.created_at)}</span>
       </div>
 
-      <label className="field-label">Note</label>
-      <textarea
-        className="edit edit--note"
-        value={note}
-        placeholder="Add a note…"
-        onChange={(e) => setNote(e.target.value)}
-        onBlur={() => commit('note', note)}
-        aria-label="Note"
-        rows={3}
-      />
+      <div className="notes-head">
+        <label className="field-label">Notes</label>
+        <button
+          className="notes-add"
+          onClick={addNote}
+          aria-label="Add note"
+          title="Add another note"
+        >
+          +
+        </button>
+      </div>
+      {notes.map((n, i) => (
+        <div className="note-row" key={i}>
+          <textarea
+            className="edit edit--note"
+            value={n}
+            placeholder="Add a note…"
+            onChange={(e) => changeNote(i, e.target.value)}
+            onBlur={commitNotes}
+            aria-label={notes.length > 1 ? `Note ${i + 1}` : 'Note'}
+            rows={3}
+          />
+          {(notes.length > 1 || n.trim() !== '') && (
+            <button
+              className="note-remove"
+              onClick={() => removeNote(i)}
+              aria-label={`Remove note ${i + 1}`}
+              title="Remove note"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      ))}
 
       <TagEditor bundleId={bundleId} />
       <CollectionPicker bundleId={bundleId} />

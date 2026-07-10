@@ -26,6 +26,7 @@ function bundleDetail(id: string, title: string) {
     id,
     title,
     note: null as string | null,
+    notes: [] as string[],
     source_url: null as string | null,
     rating: 0 as number | null,
     cover_file_id: null,
@@ -132,6 +133,30 @@ test('editing the rating persists', async ({ page }) => {
   // After the PATCH + refetch the 4th star is filled.
   await expect(page.getByRole('button', { name: '4 stars' })).toHaveText('★')
   await expect(page.getByRole('button', { name: '5 stars' })).toHaveText('☆')
+})
+
+test('the plus affordance adds a second note box and both persist', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  // Starts with a single note box under the "NOTES" heading.
+  await expect(page.locator('.note-row')).toHaveCount(1)
+  await page.locator('.note-row textarea').first().fill('First block')
+
+  // "+" appends a second note box below the first.
+  await page.getByRole('button', { name: 'Add note' }).click()
+  await expect(page.locator('.note-row')).toHaveCount(2)
+
+  // Fill the second box and blur to commit the whole list.
+  const patched = page.waitForResponse(
+    (r) => r.url().includes('/bundles/b0') && r.request().method() === 'PATCH',
+  )
+  const second = page.locator('.note-row textarea').nth(1)
+  await second.fill('Second block')
+  await second.blur()
+  const body = (await patched).request().postDataJSON() as { notes: string[] }
+  expect(body.notes).toEqual(['First block', 'Second block'])
 })
 
 test('assigning a tag adds a chip', async ({ page }) => {

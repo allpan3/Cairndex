@@ -1,5 +1,56 @@
 # Project status
 
+## In review: multiple notes per bundle
+
+Branch `feat/bundle-multiple-notes` (off `main`, i.e. after the M6 playback
+sessions merge #7). Owner-requested feature ahead of the next milestone: a
+bundle can hold several freeform note/description blocks instead of a single
+note, used as clean separators (no predefined roles under the hood).
+
+- **Data model.** New `asset_bundles.notes` JSON column (ordered `list[str]`),
+  added additively via `ensure_content_indexes` so existing libraries gain it on
+  open (verified live: the Demo library's `library.db` picked up the column and
+  served `notes: []`). The legacy scalar `note` column is kept as a **derived
+  shadow** — every write sets `note = "\n\n".join(notes)` — so the `note` filter
+  (Smart Collections / ad-hoc) transparently matches across *every* note and any
+  legacy reader still works. No data backfill: rows with `notes IS NULL` fall
+  back to `[note]` at read time (`services.bundles.bundle_notes` /
+  `BundleRead._legacy_note_fallback`).
+- **Service/API.** `create_bundle`/`update_bundle` accept `notes` (blank/
+  whitespace-only blocks dropped, order preserved, ≤50). `BundleRead.notes` is
+  always a list; `BundleCreate`/`BundleUpdate` accept `notes` (list) or the
+  legacy single `note`, with `notes` winning when both are sent. OpenAPI +
+  `apps/web/src/api/schema.d.ts` regenerated (`gen:api` reached the registry).
+- **Frontend.** The inspector "Note" section became **NOTES** with a small `+`
+  affordance that appends a note box below the current ones; each box commits on
+  blur, and a hover `×` removes one (at least one empty box always remains). A
+  synchronously-updated `notesRef` mirrors the list so a blur landing in the same
+  tick as the last keystroke still commits the latest text.
+
+Verification:
+
+- Backend: `ruff check` / `ruff format --check` / `mypy src` clean; `pytest`
+  **386 passed** (+6 new in `test_bundles.py`: multi-note roundtrip incl.
+  reorder/blank-strip/clear, create-with-notes, legacy single-note update,
+  legacy `notes IS NULL` read fallback via a directly-inserted row, `note`
+  filter matching a non-first note, non-string rejection). Same pre-existing
+  Starlette/httpx deprecation warning.
+- Frontend: `lint` / `format:check` / `typecheck` / `test` (**47**) / `build` /
+  `test:e2e` (**50**, +1 new `edit.spec.ts` case: `+` adds a second note box and
+  both persist in the PATCH body) all green.
+- Live (real uvicorn + web dev server against the Demo library): the NOTES
+  section renders (uppercase label + `+`); typing note 1, clicking `+`, typing
+  note 2, and blurring persisted `notes = ["Synopsis…","Cast…"]` with the joined
+  `note` shadow (confirmed via the API and a page reload); no console errors.
+  All Demo edits were reverted to `notes: []` afterward, so the Demo library is
+  unchanged for review. (Note: synthetic browser `input`/`blur` events don't
+  drive React's controlled inputs / focusout `onBlur`; the real path is covered
+  by `preview_fill`/`preview_click` and the Playwright case.)
+
+Known issues / out of scope: `MultiBundleInspector` still has no notes field
+(bulk-overwriting prose is intentionally omitted); collections keep their single
+`note`. Next: the pre-M7 owner may proceed to plan 1 M7 (web HLS integration).
+
 ## In review: media-player M6 — playback decisions + HLS session foundation
 
 Branch `feat/playback-sessions` (off `main` after the browser-terminology
