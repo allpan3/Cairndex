@@ -8,7 +8,29 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Immediate library switching.** Changing the active library now removes the
+  previous library's TanStack content queries before remounting the workspace,
+  while preserving the global library registry and library-keyed auth caches.
+  The Bundle Browser, counts, collections, tags, and other shell data refresh
+  immediately instead of showing the old library until a page reload or cache
+  expiry.
+
+- **Network-library scan overflow.** Scanner filesystem identities now preserve
+  unsigned 64-bit `st_dev`/`st_ino` values in SQLite's signed 64-bit integer
+  range, preventing `Python int too large to convert to SQLite INTEGER` during
+  **Update** while retaining exact same-filesystem moved-file repair.
+
 ### Added
+
+- **Pinyin-aware local search.** Tag and collection pickers now match Chinese
+  names from full pinyin, initials, partial pinyin, mixed Latin/pinyin, and
+  polyphonic readings while preserving ordinary case-insensitive substring
+  search and literal create-name semantics. The same shared matcher covers the
+  All Tags page, tag filters, multi-bundle tag/collection pickers, File Browser
+  names, and local file-selection filters. `pinyin-pro` is bundled offline as a
+  lazy chunk; the server-backed whole-library FTS toolbar remains unchanged.
 
 - **Multiple notes per bundle.** A bundle now carries an ordered list of
   freeform note/description blocks instead of a single note. The inspector
@@ -32,6 +54,12 @@ grouped under `Unreleased` until the first tagged release.
   created earlier keep a harmless unused `note` column.)
 
 ### Changed
+
+- **Standalone Update stages.** The library maintenance overflow now exposes
+  **Generate storyboards** alongside **Scan new files**, **Suggest grouping**,
+  and **Collect metadata**, so every stage performed by **Update** has an
+  independent trigger. Storyboard completion also refreshes cached playback
+  manifests so newly generated trickplay becomes visible immediately.
 
 - **Terminology: "Collection/Bundles View" → "Bundle Browser", "File View" →
   "File Browser" (breaking API rename).** Renamed the two browsing surfaces

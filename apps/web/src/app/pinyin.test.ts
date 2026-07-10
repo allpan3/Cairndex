@@ -1,6 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
-import { alphaBucket, bucketOrder } from './pinyin'
+import { alphaBucket, bucketOrder, matchesSearch, preparePinyinSearch } from './pinyin'
+
+describe('matchesSearch', () => {
+  beforeAll(() => preparePinyinSearch())
+
+  it('preserves case-insensitive literal substring matching', () => {
+    expect(matchesSearch('Favorite Movies', 'MOVIE')).toBe(true)
+    expect(matchesSearch('Favorite Movies', 'music')).toBe(false)
+    expect(matchesSearch('Favorite Movies', '  ')).toBe(true)
+  })
+
+  it('matches Chinese text by full pinyin, initials, and partial pinyin', () => {
+    expect(matchesSearch('摄影', 'sheying')).toBe(true)
+    expect(matchesSearch('摄影', 'sy')).toBe(true)
+    expect(matchesSearch('摄影', 'ying')).toBe(true)
+    expect(matchesSearch('摄影', 'yinyue')).toBe(false)
+  })
+
+  it('matches mixed and polyphonic pinyin', () => {
+    expect(matchesSearch('TODO/剪辑', 'todo/jianji')).toBe(true)
+    expect(matchesSearch('会计', 'kuaiji')).toBe(true)
+  })
+})
 
 describe('alphaBucket', () => {
   it('buckets Latin by uppercase first letter', () => {

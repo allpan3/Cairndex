@@ -10,6 +10,7 @@ import {
   useTargetSuggestions,
   useUnbundledFileSuggestions,
 } from '../api/hooks'
+import { usePinyinSearch } from './pinyin'
 
 /**
  * Manual bundling assistant dialogs (Unbundled staging follow-up to ADR-0009).
@@ -377,6 +378,7 @@ export function AddFilesToBundleDialog({
   const suggestions = useUnbundledFileSuggestions(bundleId)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
+  const matchSearch = usePinyinSearch(filter)
   const { addFiles } = useManualBundling()
 
   const toggle = (id: string) =>
@@ -389,9 +391,9 @@ export function AddFilesToBundleDialog({
 
   const visible = useMemo(() => {
     const list = suggestions.data ?? []
-    const q = filter.trim().toLowerCase()
-    return q ? list.filter((s) => s.relative_path.toLowerCase().includes(q)) : list
-  }, [suggestions.data, filter])
+    const q = filter.trim()
+    return q ? list.filter((s) => matchSearch(s.relative_path)) : list
+  }, [suggestions.data, filter, matchSearch])
 
   const apply = () => {
     addFiles.mutate(

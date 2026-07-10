@@ -238,6 +238,7 @@ class AssetFile(Base):
     # moved-file repair signal on a single volume — survives content edits that
     # change size/mtime/hash. ``identity_available`` flags whether the values are
     # trustworthy (some network filesystems report unstable/zero inodes).
+    # Unsigned 64-bit values use their signed two's-complement representation.
     filesystem_device: Mapped[int | None] = mapped_column(Integer, nullable=True)
     filesystem_inode: Mapped[int | None] = mapped_column(Integer, nullable=True)
     identity_available: Mapped[bool] = mapped_column(default=False)

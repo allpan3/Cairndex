@@ -65,3 +65,52 @@ test('creates a library via the path-autocomplete form', async ({ page }) => {
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
   await expect(page.locator('.sidebar__library-select')).toContainText('NAS Media')
 })
+
+test('switching libraries replaces the browser shell without a reload', async ({ page }) => {
+  const libraries = [
+    { id: 'lib1', name: 'Library One', root_path: '/srv/one', status: 'available' },
+    { id: 'lib2', name: 'Library Two', root_path: '/srv/two', status: 'available' },
+  ]
+  const item = (libraryId: string) => ({
+    id: `${libraryId}-bundle`,
+    title: libraryId === 'lib1' ? 'First Library Movie' : 'Second Library Movie',
+    rating: null,
+    file_count: 1,
+    total_size: 100,
+    has_missing: false,
+    has_cover: false,
+    media_kind: 'video',
+    width: 1920,
+    height: 1080,
+    duration: 60,
+    extension: 'mp4',
+    date_added: '2026-07-10T00:00:00Z',
+  })
+  const libraryFrom = (url: string) => (url.includes('/lib2/') ? 'lib2' : 'lib1')
+
+  await page.route('**/api/v1/libraries', (route) => route.fulfill({ json: libraries }))
+  await page.route('**/auth/status', (route) =>
+    route.fulfill({ json: { protected: false, unlocked: true } }),
+  )
+  await page.route('**/bundles/counts**', (route) =>
+    route.fulfill({ json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 } }),
+  )
+  await page.route('**/collections/counts**', (route) => route.fulfill({ json: { counts: {} } }))
+  await page.route('**/collections?*', (route) =>
+    route.fulfill({ json: { items: [], next_cursor: null } }),
+  )
+  await page.route('**/smart-collections', (route) => route.fulfill({ json: [] }))
+  await page.route('**/bundles/browse**', (route) => {
+    const libraryId = libraryFrom(route.request().url())
+    route.fulfill({ json: { items: [item(libraryId)], total: 1, offset: 0, limit: 100 } })
+  })
+
+  await page.addInitScript(() => localStorage.removeItem('cairndex.libraryId'))
+  await page.goto('/')
+  await expect(page.getByText('First Library Movie')).toBeVisible()
+
+  await page.getByRole('combobox', { name: 'Library' }).selectOption('lib2')
+  await expect(page.getByRole('combobox', { name: 'Library' })).toHaveValue('lib2')
+  await expect(page.getByText('Second Library Movie')).toBeVisible()
+  await expect(page.getByText('First Library Movie')).toHaveCount(0)
+})
