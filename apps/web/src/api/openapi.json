@@ -1569,6 +1569,151 @@
         "title": "FileAvailability",
         "type": "string"
       },
+      "FileBrowserEntryRead": {
+        "properties": {
+          "bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bundle Id"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Kind"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "supported": {
+            "title": "Supported",
+            "type": "boolean"
+          },
+          "unbundled": {
+            "title": "Unbundled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "relative_path",
+          "kind",
+          "size_bytes",
+          "modified_at",
+          "created_at",
+          "extension",
+          "mime_type",
+          "media_kind",
+          "supported",
+          "linked",
+          "bundle_id",
+          "unbundled"
+        ],
+        "title": "FileBrowserEntryRead",
+        "type": "object"
+      },
+      "FileBrowserListingRead": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FileBrowserEntryRead"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "entries"
+        ],
+        "title": "FileBrowserListingRead",
+        "type": "object"
+      },
       "FileLink": {
         "properties": {
           "display_title": {
@@ -1905,151 +2050,6 @@
           }
         },
         "title": "FileUpdate",
-        "type": "object"
-      },
-      "FileViewEntryRead": {
-        "properties": {
-          "bundle_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bundle Id"
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
-          },
-          "extension": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Extension"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "linked": {
-            "title": "Linked",
-            "type": "boolean"
-          },
-          "media_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Media Kind"
-          },
-          "mime_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mime Type"
-          },
-          "modified_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified At"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "relative_path": {
-            "title": "Relative Path",
-            "type": "string"
-          },
-          "size_bytes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Size Bytes"
-          },
-          "supported": {
-            "title": "Supported",
-            "type": "boolean"
-          },
-          "unbundled": {
-            "title": "Unbundled",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "relative_path",
-          "kind",
-          "size_bytes",
-          "modified_at",
-          "created_at",
-          "extension",
-          "mime_type",
-          "media_kind",
-          "supported",
-          "linked",
-          "bundle_id",
-          "unbundled"
-        ],
-        "title": "FileViewEntryRead",
-        "type": "object"
-      },
-      "FileViewListingRead": {
-        "properties": {
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/FileViewEntryRead"
-            },
-            "title": "Entries",
-            "type": "array"
-          },
-          "path": {
-            "title": "Path",
-            "type": "string"
-          }
-        },
-        "required": [
-          "path",
-          "entries"
-        ],
-        "title": "FileViewListingRead",
         "type": "object"
       },
       "FilterExpression-Input": {
@@ -3946,11 +3946,11 @@
         "type": "object"
       },
       "UnbundledFilesPage": {
-        "description": "A flat, cross-library page of not-yet-bundled files (the provisional\nscan rows), shaped like File View entries so one file row renders both.",
+        "description": "A flat, cross-library page of not-yet-bundled files (the provisional\nscan rows), shaped like File Browser entries so one file row renders both.",
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/FileViewEntryRead"
+              "$ref": "#/components/schemas/FileBrowserEntryRead"
             },
             "title": "Items",
             "type": "array"
@@ -7207,7 +7207,7 @@
     },
     "/api/v1/libraries/{library_id}/file": {
       "get": {
-        "description": "Serve the raw bytes of a file under the library root (File View preview).\n\nRead-only and path-safe (same scoping as ``/file-view/entries``). Files here\nneed not be linked into a bundle. ``FileResponse`` honors HTTP Range.",
+        "description": "Serve the raw bytes of a file under the library root (File Browser preview).\n\nRead-only and path-safe (same scoping as ``/file-browser/entries``). Files here\nneed not be linked into a bundle. ``FileResponse`` honors HTTP Range.",
         "operationId": "serve_file_api_v1_libraries__library_id__file_get",
         "parameters": [
           {
@@ -7271,10 +7271,10 @@
         ]
       }
     },
-    "/api/v1/libraries/{library_id}/file-view/entries": {
+    "/api/v1/libraries/{library_id}/file-browser/entries": {
       "get": {
         "description": "List non-hidden directories/files under ``path`` in the library root.\n\nRead-only. ``path`` is library-relative (omitted = the root); absolute\npaths, traversal, NUL bytes, and symlink escapes are rejected.",
-        "operationId": "list_file_view_entries_api_v1_libraries__library_id__file_view_entries_get",
+        "operationId": "list_file_browser_entries_api_v1_libraries__library_id__file_browser_entries_get",
         "parameters": [
           {
             "in": "path",
@@ -7323,7 +7323,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FileViewListingRead"
+                  "$ref": "#/components/schemas/FileBrowserListingRead"
                 }
               }
             },
@@ -7340,7 +7340,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List File View Entries",
+        "summary": "List File Browser Entries",
         "tags": [
           "library-files"
         ]
@@ -7348,7 +7348,7 @@
     },
     "/api/v1/libraries/{library_id}/file/preview": {
       "get": {
-        "description": "Serve a path-scoped WebP preview for a File View image.\n\nRead-only and path-safe. Files here need not be linked into a bundle, so the\ncache key is derived from the normalized library-relative path plus source\nquick fingerprint.",
+        "description": "Serve a path-scoped WebP preview for a File Browser image.\n\nRead-only and path-safe. Files here need not be linked into a bundle, so the\ncache key is derived from the normalized library-relative path plus source\nquick fingerprint.",
         "operationId": "serve_file_preview_api_v1_libraries__library_id__file_preview_get",
         "parameters": [
           {
@@ -8933,7 +8933,7 @@
     },
     "/api/v1/libraries/{library_id}/manual-bundling/unbundled-files": {
       "get": {
-        "description": "A flat, cross-library page of files awaiting bundling (provisional scan\nrows), shaped like File View entries so the Files surface renders them.",
+        "description": "A flat, cross-library page of files awaiting bundling (provisional scan\nrows), shaped like File Browser entries so the Files surface renders them.",
         "operationId": "list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get",
         "parameters": [
           {

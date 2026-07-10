@@ -1,19 +1,19 @@
-import type { FileViewEntry } from '../api/client'
+import type { FileBrowserEntry } from '../api/client'
 import { formatBytes, formatDateTime } from '../lib/format'
 
 /** Tri-state bundle membership shown in the File inspector / Files surface. */
-function bundleStatus(entry: FileViewEntry): string {
+function bundleStatus(entry: FileBrowserEntry): string {
   if (entry.kind === 'directory') return '—'
   if (!entry.linked) return 'Unlinked'
   return entry.unbundled ? 'Unbundled (awaiting bundling)' : 'In a bundle'
 }
 
 /**
- * Right-pane details for a File View selection. Deliberately *not* the bundle
+ * Right-pane details for a File Browser selection. Deliberately *not* the bundle
  * inspector: a filesystem entry is a path, not a bundle, so this shows only
  * file/path facts plus its bundle status.
  */
-export function FileInspector({ entry }: { entry: FileViewEntry | null }) {
+export function FileInspector({ entry }: { entry: FileBrowserEntry | null }) {
   if (entry === null) {
     return (
       <aside className="inspector">

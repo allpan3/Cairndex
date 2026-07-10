@@ -12,7 +12,7 @@ export interface Selection {
   smartCollectionId?: string | null
 }
 
-// File View navigation: which storage root + relative directory is open.
+// File Browser navigation: which storage root + relative directory is open.
 export interface FileLocation {
   rootId: string | null
   path: string // '' = the storage root itself

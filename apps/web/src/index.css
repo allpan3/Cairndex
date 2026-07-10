@@ -2689,7 +2689,7 @@ code {
   font-size: 12px;
 }
 
-/* --- Mode switch (Collection View / File View) ---------------------------- */
+/* --- Mode switch (Bundle Browser / File Browser) ---------------------------- */
 .sidebar__library {
   display: flex;
   align-items: center;
@@ -2891,21 +2891,21 @@ code {
   border-color: var(--border-strong);
 }
 
-/* --- File View (read-only filesystem browser) ---------------------------- */
-.file-view {
+/* --- File Browser (read-only filesystem browser) ---------------------------- */
+.file-browser {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
 }
-.file-view__more {
+.file-browser__more {
   margin: 10px auto;
   display: block;
 }
 /* Breadcrumb sits in the toolbar's title slot; when the toolbar is narrow it
    shrinks on one line and clips the *oldest* (leftmost) ancestors — the current
    folder on the right stays visible (justify-content: flex-end). */
-.file-view__crumbs {
+.file-browser__crumbs {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -2917,7 +2917,7 @@ code {
   color: var(--text-muted);
   font-weight: 600;
 }
-.file-view__crumbs > span {
+.file-browser__crumbs > span {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -2939,19 +2939,19 @@ code {
 .crumb__sep {
   color: var(--text-muted);
 }
-.file-view__body {
+.file-browser__body {
   flex: 1;
   overflow: auto;
   min-height: 0;
   position: relative;
 }
-.file-view__body--dragging {
+.file-browser__body--dragging {
   user-select: none;
 }
-.file-view__wrapper {
+.file-browser__wrapper {
   position: relative;
 }
-/* Grid columns/rows are driven inline by the zoom slider (see FileView.tsx). */
+/* Grid columns/rows are driven inline by the zoom slider (see FileBrowser.tsx). */
 .file-grid {
   display: grid;
   gap: 12px;
@@ -2969,7 +2969,7 @@ code {
 .empty--error {
   color: #ff8a8a;
 }
-/* The File View list is a CSS grid: the header and every row use this one
+/* The File Browser list is a CSS grid: the header and every row use this one
    column template, so columns line up exactly regardless of cell content.
    All rules are scoped under `.file-table` because `.file-row`/`.file-row__name`
    are also used (with a different layout) by the bundle inspector. */

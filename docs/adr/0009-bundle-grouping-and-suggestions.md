@@ -29,7 +29,7 @@ The owner's intent (the discussion that produced this ADR):
 Current model (ADR-0002, ADR-0008): `AssetFile.bundle_id` ties each file to
 exactly one `AssetBundle`; `AssetBundle` carries `title`, `rating`, `note`,
 `cover_file_id`, `primary_file_id`; `Collection` is a hierarchical grouping of
-**bundles** (M:N), independent of the physical File View. Bundles are already
+**bundles** (M:N), independent of the physical File Browser. Bundles are already
 hidden leaves — they never appear in the collection tree. So insight (3) partly
 describes today's behavior; what is new is unifying the *mental model* without
 unifying the schema yet.
@@ -55,7 +55,7 @@ Adopt **Option A+**:
 This means `AssetFile.bundle_id` remains non-null. Under Option A+, "scan stays
 discovery-only" means scan does not create **confirmed** grouping decisions; it
 may still create/update `AssetFile` rows and provisional `AssetBundle` rows as
-metadata carriers for playback, probing, File View linkage, and moved-file
+metadata carriers for playback, probing, File Browser linkage, and moved-file
 repair.
 
 Concretely:
@@ -110,7 +110,7 @@ Exact column names may change during implementation, but the invariant is fixed:
 - scan-created bundles are provisional unless the user explicitly confirms them;
 - manually created / fast-add bundles may be confirmed immediately because the
   user already made the grouping decision;
-- Collection View may hide provisional bundles by default or show them under a
+- Bundle Browser may hide provisional bundles by default or show them under a
   clear **Needs Review** system view, but it must not silently present a
   provisional grouping as a final confirmed asset.
 
@@ -187,8 +187,8 @@ collection stay synchronized.
 
 This distinction is required by the product model:
 
-- File View is the filesystem browser.
-- Collection View is logical and bundle-first.
+- File Browser is the filesystem browser.
+- Bundle Browser is logical and bundle-first.
 - Collection membership never implies a filesystem move.
 - Moving files externally must not break collections or bundles.
 

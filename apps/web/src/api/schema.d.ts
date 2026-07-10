@@ -676,9 +676,9 @@ export interface paths {
         };
         /**
          * Serve File
-         * @description Serve the raw bytes of a file under the library root (File View preview).
+         * @description Serve the raw bytes of a file under the library root (File Browser preview).
          *
-         *     Read-only and path-safe (same scoping as ``/file-view/entries``). Files here
+         *     Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
          *     need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
          */
         get: operations["serve_file_api_v1_libraries__library_id__file_get"];
@@ -690,7 +690,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/libraries/{library_id}/file-view/entries": {
+    "/api/v1/libraries/{library_id}/file-browser/entries": {
         parameters: {
             query?: never;
             header?: never;
@@ -698,13 +698,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List File View Entries
+         * List File Browser Entries
          * @description List non-hidden directories/files under ``path`` in the library root.
          *
          *     Read-only. ``path`` is library-relative (omitted = the root); absolute
          *     paths, traversal, NUL bytes, and symlink escapes are rejected.
          */
-        get: operations["list_file_view_entries_api_v1_libraries__library_id__file_view_entries_get"];
+        get: operations["list_file_browser_entries_api_v1_libraries__library_id__file_browser_entries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -722,7 +722,7 @@ export interface paths {
         };
         /**
          * Serve File Preview
-         * @description Serve a path-scoped WebP preview for a File View image.
+         * @description Serve a path-scoped WebP preview for a File Browser image.
          *
          *     Read-only and path-safe. Files here need not be linked into a bundle, so the
          *     cache key is derived from the normalized library-relative path plus source
@@ -1158,7 +1158,7 @@ export interface paths {
         /**
          * List Unbundled Files
          * @description A flat, cross-library page of files awaiting bundling (provisional scan
-         *     rows), shaped like File View entries so the Files surface renders them.
+         *     rows), shaped like File Browser entries so the Files surface renders them.
          */
         get: operations["list_unbundled_files_api_v1_libraries__library_id__manual_bundling_unbundled_files_get"];
         put?: never;
@@ -1862,6 +1862,42 @@ export interface components {
          * @enum {string}
          */
         FileAvailability: "available" | "missing";
+        /** FileBrowserEntryRead */
+        FileBrowserEntryRead: {
+            /** Bundle Id */
+            bundle_id: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Extension */
+            extension: string | null;
+            /** Kind */
+            kind: string;
+            /** Linked */
+            linked: boolean;
+            /** Media Kind */
+            media_kind: string | null;
+            /** Mime Type */
+            mime_type: string | null;
+            /** Modified At */
+            modified_at: string | null;
+            /** Name */
+            name: string;
+            /** Relative Path */
+            relative_path: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Supported */
+            supported: boolean;
+            /** Unbundled */
+            unbundled: boolean;
+        };
+        /** FileBrowserListingRead */
+        FileBrowserListingRead: {
+            /** Entries */
+            entries: components["schemas"]["FileBrowserEntryRead"][];
+            /** Path */
+            path: string;
+        };
         /** FileLink */
         FileLink: {
             /** Display Title */
@@ -1966,42 +2002,6 @@ export interface components {
             sequence?: number | null;
             /** Source */
             source?: string | null;
-        };
-        /** FileViewEntryRead */
-        FileViewEntryRead: {
-            /** Bundle Id */
-            bundle_id: string | null;
-            /** Created At */
-            created_at: string | null;
-            /** Extension */
-            extension: string | null;
-            /** Kind */
-            kind: string;
-            /** Linked */
-            linked: boolean;
-            /** Media Kind */
-            media_kind: string | null;
-            /** Mime Type */
-            mime_type: string | null;
-            /** Modified At */
-            modified_at: string | null;
-            /** Name */
-            name: string;
-            /** Relative Path */
-            relative_path: string;
-            /** Size Bytes */
-            size_bytes: number | null;
-            /** Supported */
-            supported: boolean;
-            /** Unbundled */
-            unbundled: boolean;
-        };
-        /** FileViewListingRead */
-        FileViewListingRead: {
-            /** Entries */
-            entries: components["schemas"]["FileViewEntryRead"][];
-            /** Path */
-            path: string;
         };
         /**
          * FilterExpression
@@ -2665,11 +2665,11 @@ export interface components {
         /**
          * UnbundledFilesPage
          * @description A flat, cross-library page of not-yet-bundled files (the provisional
-         *     scan rows), shaped like File View entries so one file row renders both.
+         *     scan rows), shaped like File Browser entries so one file row renders both.
          */
         UnbundledFilesPage: {
             /** Items */
-            items: components["schemas"]["FileViewEntryRead"][];
+            items: components["schemas"]["FileBrowserEntryRead"][];
             /** Limit */
             limit: number;
             /** Offset */
@@ -4378,7 +4378,7 @@ export interface operations {
             };
         };
     };
-    list_file_view_entries_api_v1_libraries__library_id__file_view_entries_get: {
+    list_file_browser_entries_api_v1_libraries__library_id__file_browser_entries_get: {
         parameters: {
             query?: {
                 path?: string | null;
@@ -4399,7 +4399,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FileViewListingRead"];
+                    "application/json": components["schemas"]["FileBrowserListingRead"];
                 };
             };
             /** @description Validation Error */
@@ -4417,7 +4417,6 @@ export interface operations {
         parameters: {
             query: {
                 path: string;
-                /** @default 1600 */
                 size?: 640 | 1600 | 2560;
             };
             header?: never;
@@ -4487,7 +4486,6 @@ export interface operations {
     file_preview_api_v1_libraries__library_id__files__file_id__preview_get: {
         parameters: {
             query?: {
-                /** @default 1600 */
                 size?: 640 | 1600 | 2560;
             };
             header?: never;

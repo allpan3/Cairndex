@@ -1,7 +1,7 @@
-"""Read-only File View: library-scoped filesystem browsing.
+"""Read-only File Browser: library-scoped filesystem browsing.
 
-The File View is the *physical* browsing surface (distinct from the logical,
-bundle-first Collection View). It lists real directories and files under a
+The File Browser is the *physical* browsing surface (distinct from the logical,
+bundle-first Bundle Browser). It lists real directories and files under a
 library's root directory, identified by a root-relative path — it never accepts
 or exposes an absolute server path, and never moves, renames, deletes, or
 rewrites anything on disk (ADR-0008: the library root comes from the registry).
@@ -49,7 +49,7 @@ def _is_hidden(name: str) -> bool:
 
 
 @dataclass(frozen=True)
-class FileViewEntry:
+class FileBrowserEntry:
     name: str
     relative_path: str
     # "directory" or "file" — the filesystem entry kind, not a media kind.
@@ -77,20 +77,20 @@ class FileViewEntry:
 
 @dataclass(frozen=True)
 class _Link:
-    """A path's bundle membership, for the File View linked/unbundled badges."""
+    """A path's bundle membership, for the File Browser linked/unbundled badges."""
 
     bundle_id: str
     unbundled: bool  # in a provisional/scan_suggestion bundle (not yet confirmed)
 
 
 @dataclass(frozen=True)
-class FileViewListing:
+class FileBrowserListing:
     # The relative directory being listed ("" = the library root itself).
     path: str
-    entries: list[FileViewEntry]
+    entries: list[FileBrowserEntry]
 
 
-def list_entries(session: Session, *, path: str | None = None) -> FileViewListing:
+def list_entries(session: Session, *, path: str | None = None) -> FileBrowserListing:
     """List non-hidden directories and files directly under ``path`` in the library.
 
     ``path`` is a library-root-relative POSIX path (``None``/empty = the root).
@@ -119,8 +119,8 @@ def list_entries(session: Session, *, path: str | None = None) -> FileViewListin
         raise ValidationError(f"path {rel_norm!r} is not a directory")
 
     root_real = root_path.resolve(strict=False)
-    dirs: list[FileViewEntry] = []
-    files: list[FileViewEntry] = []
+    dirs: list[FileBrowserEntry] = []
+    files: list[FileBrowserEntry] = []
     linked = _linked_paths(session, rel_norm)
 
     with os.scandir(target) as it:
@@ -134,12 +134,12 @@ def list_entries(session: Session, *, path: str | None = None) -> FileViewListin
 
     dirs.sort(key=lambda e: e.name.lower())
     files.sort(key=lambda e: e.name.lower())
-    return FileViewListing(path=rel_norm, entries=[*dirs, *files])
+    return FileBrowserListing(path=rel_norm, entries=[*dirs, *files])
 
 
 @dataclass(frozen=True)
 class UnbundledFilesPage:
-    items: list[FileViewEntry]
+    items: list[FileBrowserEntry]
     total: int
     offset: int
     limit: int
@@ -152,7 +152,7 @@ def list_unbundled_files(
     scan-staged provisional bundle and not yet confirmed (the "to-bundle queue").
 
     A cheap DB query (no filesystem walk): entries are built from the stored
-    ``AssetFile`` rows, shaped like File View entries so one file row renders both
+    ``AssetFile`` rows, shaped like File Browser entries so one file row renders both
     the tree and this list. Ordered by path for stable pagination.
     """
     unbundled = (AssetBundle.grouping_state == GroupingState.PROVISIONAL) & (
@@ -172,12 +172,12 @@ def list_unbundled_files(
 
 def _unbundled_entry(
     relative_path: str, bundle_id: str, size_bytes: int | None, mtime: datetime | None
-) -> FileViewEntry:
+) -> FileBrowserEntry:
     name = relative_path.rsplit("/", 1)[-1]
     _, _, ext = name.rpartition(".")
     extension = ext.lower() if ext and ext != name else None
     classification = classify(name)
-    return FileViewEntry(
+    return FileBrowserEntry(
         name=name,
         relative_path=relative_path,
         kind="file",
@@ -199,7 +199,7 @@ def resolve_entry_path(session: Session, path: str) -> Path:
 
     Mirrors ``list_entries`` safety: rejects absolute paths, traversal, and
     symlink escapes, and confirms the target is an existing regular file (not a
-    directory). Used by the read-only content endpoint so the File View can
+    directory). Used by the read-only content endpoint so the File Browser can
     preview/play a file that is not linked into any bundle. Raises
     ``ValidationError`` for unsafe/non-file paths and ``NotFoundError`` when the
     library root is unavailable or the file does not exist.
@@ -229,7 +229,7 @@ def _build_entry(
     parent_rel: str,
     root_real: Path,
     linked: dict[str, _Link],
-) -> FileViewEntry | None:
+) -> FileBrowserEntry | None:
     # Reject symlinks (and any entry) whose real location escapes the root.
     try:
         real = Path(dirent.path).resolve(strict=False)
@@ -248,7 +248,7 @@ def _build_entry(
     created = datetime.fromtimestamp(getattr(stat, "st_birthtime", stat.st_ctime), UTC)
 
     if is_dir:
-        return FileViewEntry(
+        return FileBrowserEntry(
             name=name,
             relative_path=child_rel,
             kind="directory",
@@ -268,7 +268,7 @@ def _build_entry(
     extension = ext.lower() if ext and ext != name else None
     classification = classify(name)
     link = linked.get(child_rel)
-    return FileViewEntry(
+    return FileBrowserEntry(
         name=name,
         relative_path=child_rel,
         kind="file",
