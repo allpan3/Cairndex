@@ -1196,6 +1196,113 @@ button {
   font-size: 13px;
   border-radius: 4px;
 }
+/* --- Inspector notes (multiple freeform note blocks) --------------------- */
+.notes-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 12px 0 4px;
+}
+.notes-head .field-label {
+  margin: 0;
+}
+.notes-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+.notes-add:hover {
+  color: var(--text-strong);
+  background: var(--surface);
+}
+.notes-add .icon {
+  width: 14px;
+  height: 14px;
+}
+.note-row {
+  position: relative;
+}
+.note-row + .note-row {
+  margin-top: 6px;
+}
+/* Leave room for the remove affordance (right) and the resize grip (bottom) so
+   neither overlaps the text. The JS auto-grow / fixed-height controls the box
+   height, so no native resizer/scroll-corner box is drawn. */
+.note-row .edit--note {
+  padding-right: 26px;
+  padding-bottom: 10px;
+  min-height: 44px;
+}
+.note-remove {
+  position: absolute;
+  top: 4px;
+  /* Sit left of the (thin) scrollbar so the two never overlap. */
+  right: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  opacity: 0;
+}
+/* Thin scrollbar for a fixed-height (manually resized) note box. */
+.note-row .edit--note::-webkit-scrollbar {
+  width: 5px;
+}
+.note-row .edit--note::-webkit-scrollbar-track {
+  background: transparent;
+}
+.note-row .edit--note::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+.note-row .edit--note::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+.note-row:hover .note-remove,
+.note-remove:focus {
+  opacity: 1;
+}
+.note-remove:hover {
+  color: var(--text-strong);
+}
+/* Custom resize grip (a thin bottom strip). Replaces the native corner resizer
+   so no box is drawn over the scrollbar; a subtle centered bar hints on hover. */
+/* A small centered grab handle (not full-width) so clicking near the bottom of
+   the text can't start a resize. */
+.note-resize {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 52px;
+  height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.note-resize::after {
+  content: '';
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.note-row:hover .note-resize::after {
+  opacity: 0.7;
+}
 .collection-row__rename {
   position: relative;
   flex: 1;

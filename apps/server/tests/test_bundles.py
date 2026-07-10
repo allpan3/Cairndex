@@ -9,6 +9,9 @@ all work.
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from cairndex.persistence.models import AssetBundle
 
 
 def _make_media_tree(library_root: Path) -> None:
@@ -50,13 +53,14 @@ def test_full_bundle_acceptance_flow(
         f"{base}/bundles/{bundle_id}",
         json={
             "title": "My Movie",
-            "note": "great",
+            "notes": ["great"],
             "rating": 4,
             "cover_file_id": cover["id"],
             "primary_file_id": primary["id"],
         },
     ).json()
     assert patched["title"] == "My Movie"
+    assert patched["notes"] == ["great"]
     assert patched["rating"] == 4
     assert patched["cover_file_id"] == cover["id"]
     assert patched["primary_file_id"] == primary["id"]
@@ -141,3 +145,87 @@ def test_set_tags_rejects_unknown_id(client: TestClient, library_id: str) -> Non
     bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
     resp = client.put(f"{base}/bundles/{bundle_id}/tags", json={"ids": ["nope"]})
     assert resp.status_code == 422
+
+
+# --- Multiple notes (freeform, ordered) --------------------------------------
+def test_bundle_multiple_notes_roundtrip(client: TestClient, library_id: str) -> None:
+    """A bundle carries an ordered list of freeform notes (add/edit/reorder/
+    clear are whole-list replaces; blank blocks are dropped)."""
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
+
+    # Add three notes.
+    r = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": ["synopsis", "cast", "trivia"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["notes"] == ["synopsis", "cast", "trivia"]
+
+    # Edit one, remove one, reorder — a whole-list replace each time.
+    edited = client.patch(
+        f"{base}/bundles/{bundle_id}", json={"notes": ["trivia", "synopsis v2"]}
+    ).json()
+    assert edited["notes"] == ["trivia", "synopsis v2"]
+
+    # Blank/whitespace-only blocks (an untouched draft box) are dropped.
+    stripped = client.patch(
+        f"{base}/bundles/{bundle_id}", json={"notes": ["keep", "", "   ", "also"]}
+    ).json()
+    assert stripped["notes"] == ["keep", "also"]
+
+    # Clearing all notes empties the list.
+    cleared = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": []}).json()
+    assert cleared["notes"] == []
+
+
+def test_create_bundle_with_notes(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    created = client.post(f"{base}/bundles", json={"notes": ["one", "two"]})
+    assert created.status_code == 201, created.text
+    assert created.json()["notes"] == ["one", "two"]
+
+
+def test_unset_notes_reads_empty_list(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    """A row whose ``notes`` column is NULL (e.g. a scan-staged bundle) reads
+    back as an empty list."""
+    bundle = AssetBundle()
+    session.add(bundle)
+    session.commit()
+
+    base = f"/api/v1/libraries/{library_id}"
+    body = client.get(f"{base}/bundles/{bundle.id}").json()
+    assert body["notes"] == []
+
+
+def test_note_filter_matches_any_note(client: TestClient, library_id: str) -> None:
+    """The ``note`` filter matches text in *any* of a bundle's notes (it runs a
+    per-note EXISTS over the notes JSON array)."""
+    base = f"/api/v1/libraries/{library_id}"
+    match_id = client.post(
+        f"{base}/bundles", json={"notes": ["a plain first block", "the SECRET second block"]}
+    ).json()["id"]
+    client.post(f"{base}/bundles", json={"notes": ["nothing to see here"]})
+
+    flt = {"version": 1, "root": {"field": "notes", "operator": "contains", "value": "secret"}}
+    r = client.post(f"{base}/bundles/browse", json={"filter": flt})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == match_id
+
+    # not_contains excludes it and matches the other (a note-less bundle also
+    # "does not contain" the term).
+    flt_not = {
+        "version": 1,
+        "root": {"field": "notes", "operator": "not_contains", "value": "secret"},
+    }
+    r2 = client.post(f"{base}/bundles/browse", json={"filter": flt_not})
+    ids = {item["id"] for item in r2.json()["items"]}
+    assert match_id not in ids
+
+
+def test_notes_reject_non_string(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
+    r = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": ["ok", 5]})
+    assert r.status_code == 422

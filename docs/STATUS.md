@@ -1,5 +1,79 @@
 # Project status
 
+## In review: multiple notes per bundle
+
+Branch `feat/bundle-multiple-notes` (off `main`, i.e. after the M6 playback
+sessions merge #7). Owner-requested feature ahead of the next milestone: a
+bundle can hold several freeform note/description blocks instead of a single
+note, used as clean separators (no predefined roles under the hood).
+
+- **Data model.** New `asset_bundles.notes` JSON column (ordered `list[str]`),
+  added additively via `ensure_content_indexes` so existing libraries gain it on
+  open (verified live). It is the **single source of truth** — the old scalar
+  `note` column/field and its compatibility shim were removed (early-dev cleanup
+  per owner); libraries created earlier keep a harmless unused `note` column. A
+  `notes IS NULL` row reads back as `[]`. Both note-aware read paths were
+  re-pointed at the array: the `notes` **filter** (field key renamed `note` →
+  `notes`) compiles to a per-note `EXISTS` over `json_each(notes)`, and the
+  **`bundle_search` FTS index** concatenates `json_each(notes)` into its `notes`
+  column. `ensure_search_schema` rebuilds the FTS table + triggers (and always
+  recreates the source view) when the column set no longer matches, so an
+  existing library migrates its search index on open — verified live on the Demo
+  library (existing titles stayed searchable, a new note indexed).
+- **Service/API.** `create_bundle`/`update_bundle` accept `notes` only (blank/
+  whitespace-only blocks dropped, order preserved, ≤50). `BundleRead.notes` is
+  always a list; the `note` field is gone from `BundleCreate`/`Update`/`Read`.
+  OpenAPI + `apps/web/src/api/schema.d.ts` regenerated (`gen:api` reached the
+  registry).
+- **Frontend.** The inspector "Note" section became **NOTES** with a small `+`
+  **icon** (`IconPlus`) that appends a note box below the current ones; each box
+  commits on blur, and a hover `×` removes one (at least one empty box always
+  remains). A synchronously-updated `notesRef` mirrors the list so a blur landing
+  in the same tick as the last keystroke still commits the latest text. Each note
+  box (`NoteBox`) **auto-grows** to fit its content by default (no scrollbar);
+  only an explicit **drag** (>3 px) of a small centered bottom grip switches it
+  to a fixed height with `overflow-y: auto` — a stray click on the grip stays in
+  auto-expand, and `resize: none` on the textarea means there is **no native
+  resizer/scroll-corner box** — and each note remembers **its own** height across
+  sessions (`cairndex.noteHeights`, per bundle, aligned with the notes list by
+  index; add/remove keep the arrays in step; double-click the grip to return that
+  box to auto-fit).
+
+Verification:
+
+- Backend: `ruff check` / `ruff format --check` / `mypy src` clean; `pytest`
+  **386 passed** (`test_bundles.py`: multi-note roundtrip incl.
+  reorder/blank-strip/clear, create-with-notes, `notes IS NULL` reads `[]`,
+  `notes` filter matching a non-first note + `not_contains`, non-string
+  rejection; `test_search.py` gained a stale-FTS-schema rebuild test;
+  `test_search.py`/`test_scan_repair.py` updated to `notes`). Same pre-existing
+  Starlette/httpx deprecation warning.
+- Frontend: `lint` / `format:check` / `typecheck` / `test` (**47**) / `build` /
+  `test:e2e` (**50**, +1 new `edit.spec.ts` case: `+` adds a second note box and
+  both persist in the PATCH body) all green.
+- Live (real uvicorn + web dev server against the Demo library): the NOTES
+  section renders (uppercase label + `+`); typing note 1, clicking `+`, typing
+  note 2, and blurring persisted `notes = ["Synopsis…","Cast…"]` (confirmed via
+  the API and a page reload); no console errors. After the single-source-of-truth
+  cleanup, a fresh backend against the (existing) Demo library recreated the FTS
+  view and both indexed notes: `q=xylophone` and a `note contains "penguins"`
+  filter each returned only the bundle whose *notes* held those terms; the
+  throwaway bundle was then deleted (Demo back to 21).
+  The box refinements were also verified live: the `+` renders as a centered
+  14×14 SVG icon; an auto-mode box grew to fit multi-line text (117 px, no
+  clip); dragging each of two boxes to different heights stored
+  `cairndex.noteHeights = {<bundle>: [121, 71]}` and both survived a same-origin
+  reload, and removing the first box left the second keeping its own 71 px height
+  (the stored array spliced to `[71]`). All Demo edits were reverted afterward, so
+  the Demo library is unchanged for review. (Note: synthetic browser
+  `input`/`blur` events don't drive React's controlled inputs / focusout
+  `onBlur`; the real path is covered by `preview_fill`/`preview_click` and the
+  Playwright case.)
+
+Known issues / out of scope: `MultiBundleInspector` still has no notes field
+(bulk-overwriting prose is intentionally omitted); collections keep their single
+`note`. Next: the pre-M7 owner may proceed to plan 1 M7 (web HLS integration).
+
 ## In review: media-player M6 — playback decisions + HLS session foundation
 
 Branch `feat/playback-sessions` (off `main` after the browser-terminology
