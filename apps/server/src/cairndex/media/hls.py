@@ -168,17 +168,26 @@ def _keyframe_segment_starts(keyframes: list[float], duration: float) -> list[fl
 
 
 def _render_playlist(segment_starts: list[float], duration: float) -> str:
+    extinfs = [
+        max(
+            0.0,
+            (segment_starts[index + 1] if index + 1 < len(segment_starts) else duration) - start,
+        )
+        for index, start in enumerate(segment_starts)
+    ]
+    # RFC 8216 §4.3.3.1: TARGETDURATION must be >= every segment duration.
+    # Keyframe-derived remux segments can far exceed the 6 s target, so derive it
+    # from the actual longest segment rather than hardcoding SEGMENT_DURATION.
+    target = int(math.ceil(max(extinfs, default=SEGMENT_DURATION)))
     lines = [
         "#EXTM3U",
         "#EXT-X-VERSION:7",
-        f"#EXT-X-TARGETDURATION:{int(math.ceil(SEGMENT_DURATION))}",
+        f"#EXT-X-TARGETDURATION:{target}",
         "#EXT-X-MEDIA-SEQUENCE:0",
         "#EXT-X-PLAYLIST-TYPE:VOD",
         f'#EXT-X-MAP:URI="{INIT_NAME}"',
     ]
-    for index, start in enumerate(segment_starts):
-        end = segment_starts[index + 1] if index + 1 < len(segment_starts) else duration
-        extinf = max(0.0, end - start)
+    for index, extinf in enumerate(extinfs):
         lines.append(f"#EXTINF:{extinf:.3f},")
         lines.append(_segment_name(index))
     lines.append("#EXT-X-ENDLIST")
