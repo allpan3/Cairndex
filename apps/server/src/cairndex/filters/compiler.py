@@ -223,7 +223,7 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
 
     if field in ("title", "name"):
         return _text(AssetBundle.title, o, v)
-    if field == "note":
+    if field == "notes":
         return _notes_text(o, v)
     if field == "filename":
         return _file_exists_text(o, v)

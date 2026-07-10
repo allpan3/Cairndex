@@ -23,7 +23,7 @@ grouped under `Unreleased` until the first tagged release.
   New `asset_bundles.notes` JSON column (added additively via
   `ensure_content_indexes`) is the single source of truth, exposed as
   `notes: string[]` on `BundleRead` and accepted on `BundleCreate`/`BundleUpdate`
-  (OpenAPI + `schema.d.ts` regenerated). The `note` filter now compiles to a
+  (OpenAPI + `schema.d.ts` regenerated). The `notes` filter now compiles to a
   per-note `EXISTS` over `json_each(notes)` and the `bundle_search` FTS index
   concatenates the notes, so both text search and the Notes filter match across
   every note. (Early-dev cleanup: the previous single `note` column/field and
