@@ -37,9 +37,11 @@ each library is a directory carrying its own `.cairndex/` metadata
 scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
 active library per tab. The normal maintenance flow is **Update**: scan the
 library, persist a reviewable grouping plan, collect technical metadata, refresh
-the UI, and open grouping review when suggestions exist. Individual scan,
-metadata collection, and grouping-review actions remain in the maintenance
-menu. There are no global storage-root content APIs in the current model.
+the UI, open grouping review when suggestions exist, and generate missing or
+stale storyboards in the background. Individual scan, grouping suggestion,
+metadata collection, and storyboard-generation actions remain available in the
+maintenance menu. There are no global storage-root content APIs in the current
+model.
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, richer

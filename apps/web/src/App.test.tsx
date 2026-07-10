@@ -187,6 +187,23 @@ test('renders the shell with the brand and the system views', async () => {
   expect(screen.getByRole('button', { name: /Scan new files/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Collect metadata/i })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Suggest grouping/i })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /Generate storyboards/i })).toBeInTheDocument()
+})
+
+test('can generate storyboards independently from Update', async () => {
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  fireEvent.click(screen.getByRole('button', { name: 'More library maintenance actions' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Generate storyboards' }))
+
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/jobs\/storyboards$/),
+      expect.objectContaining({ method: 'POST' }),
+    ),
+  )
 })
 
 test('shows the empty state when there are no bundles', async () => {

@@ -40,6 +40,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Standalone Update stages.** The library maintenance overflow now exposes
+  **Generate storyboards** alongside **Scan new files**, **Suggest grouping**,
+  and **Collect metadata**, so every stage performed by **Update** has an
+  independent trigger. Storyboard completion also refreshes cached playback
+  manifests so newly generated trickplay becomes visible immediately.
+
 - **Terminology: "Collection/Bundles View" → "Bundle Browser", "File View" →
   "File Browser" (breaking API rename).** Renamed the two browsing surfaces
   across the product. Breaking API change: the read-only filesystem route

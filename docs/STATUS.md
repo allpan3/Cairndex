@@ -1,5 +1,20 @@
 # Project status
 
+## In progress: standalone Update stages
+
+Branch `codex/standalone-update-actions` (stacked on the network-library scan
+overflow fix). **Update** runs scan/move repair + new-scope grouping suggestions,
+metadata collection, then non-blocking storyboard generation. Its maintenance
+overflow now exposes each capability independently as **Scan new files**,
+**Suggest grouping**, **Collect metadata**, and **Generate storyboards**.
+Standalone and Update-triggered storyboard completion invalidate cached playback
+manifests so trickplay availability refreshes without a page reload.
+
+Verification: frontend `lint`, `format:check`, `typecheck`, `test` (**48
+passed**), `build`, and Playwright (**51 passed**) are green. The new browser
+case opens the maintenance overflow, verifies all four standalone labels, and
+confirms **Generate storyboards** sends its own storyboard-job request.
+
 ## Fixed: network-library scan overflow
 
 Branch `codex/fix-unsigned-filesystem-identity` (off `main`). **Update** no
