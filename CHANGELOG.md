@@ -78,6 +78,44 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Web HLS integration — MKV/HEVC/etc. now play in the browser (Plan 1 M7,
+  ADR-0014).** The web player consumes the M6 decision + session foundation, so
+  containers/codecs the browser can't play directly (MKV, HEVC, …) stream via a
+  server remux/transcode HLS session.
+  - **Client capability profile** (`viewer/player/caps.ts`): computed once at
+    startup and memoized, probing `HTMLVideoElement.canPlayType` **and**
+    `MediaSource.isTypeSupported` for containers (mp4/webm), video codecs
+    (h264/hevc/vp9/av1), audio codecs (aac/mp3/opus/vorbis/flac), and
+    `native_hls` (Safari/WKWebView). Only probe-confirmed formats are
+    advertised (AGENTS.md: no untested-format playback claims); `max_height`
+    stays null (no browser API reports a decode ceiling).
+  - **Per-file playback decision:** when a video starts, `MediaViewer` POSTs
+    `.../files/{id}/playback-decision` with the caps profile. `direct` keeps the
+    existing native progressive path unchanged; `remux`/`transcode` play the
+    session playlist. A failed decision degrades gracefully to the manifest's
+    direct stream. `GET /bundles/{id}/playback` stays the playlist manifest.
+  - **`HlsEngine`** behind the existing `PlaybackEngine` seam: `native_hls`
+    feeds the m3u8 straight to `video.src` (native engine); otherwise a lazy
+    `import('hls.js')` (new dependency, shipped as a **separate ~157 kB gz
+    chunk** so the main bundle stays flat) attaches over MediaSource. hls.js
+    fatal errors surface through the existing fallback/re-attach path.
+  - **Session lifecycle:** the session is torn down (DELETE) on player close,
+    file switch, and unmount; a POST `.../playback-sessions/{sid}/teardown`
+    alias lets `navigator.sendBeacon` reap it on `pagehide` (same pattern as the
+    M4 progress beacon). A playlist/segment failure (e.g. a session idled out
+    during a long pause) or an hls.js fatal transparently re-requests a decision
+    and re-attaches at the current playhead (bounded budget, refunded once the
+    playhead advances) instead of showing an error.
+  - **Quality / audio / burn-in menus:** a settings menu offers a `max_height`
+    ladder (Auto/1080/720/480), an audio-track picker (from the decision's
+    `audio_streams`), and a burn-in toggle for non-native subtitle tracks
+    (`burn_subtitle_track_id`). Switching any of these re-decides and starts a
+    new session at the current position (in-stream ABR is out of scope);
+    identical params reuse the live session, changed params tear down the old
+    one. Watch progress/resume works unchanged over the 1:1 VOD timeline.
+  - New POST teardown alias route (OpenAPI + `apps/web/src/api/schema.d.ts`
+    regenerated); `hls.js` added as a lazy-only runtime dependency.
+
 - **Playback decisions + HLS remux/transcode session foundation (Plan 1 M6,
   ADR-0014).** Server-side only; the web hls.js integration is M7.
   - `POST /api/v1/libraries/{library_id}/files/{file_id}/playback-decision`

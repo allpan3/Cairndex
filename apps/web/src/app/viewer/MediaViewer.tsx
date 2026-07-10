@@ -14,7 +14,9 @@ import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
 import { MediaFallback } from './MediaFallback'
 import { VideoStage } from './VideoStage'
+import { getClientCapabilities } from './player/caps'
 import { ControlBar } from './player/ControlBar'
+import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
 import { usePlayer } from './player/usePlayer'
@@ -69,14 +71,23 @@ export function MediaViewer({
     () => manifest?.videos.find((video) => video.file_id === current?.id) ?? null,
     [current?.id, manifest?.videos],
   )
-  const playableReady = playable?.playable ?? false
-  const streamUrl = playable?.stream_url ?? null
-  const streamMime = playable?.mime_type ?? null
-  const source = useMemo(
-    () =>
-      playableReady && streamUrl && streamMime ? { src: streamUrl, mimeType: streamMime } : null,
-    [playableReady, streamMime, streamUrl],
-  )
+  const isVideo = current?.media_kind === 'video'
+  const videoAvailable = current?.availability === 'available'
+  // Capability profile is computed once per tab; memo keeps a stable reference
+  // so it can be a hook dependency without re-running effects.
+  const caps = useMemo(() => getClientCapabilities(), [])
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null)
+  const getCurrentTime = useCallback(() => liveVideoRef.current?.currentTime ?? 0, [])
+  const hls = useHlsSession({
+    fileId: isVideo && videoAvailable ? currentId : null,
+    enabled: Boolean(isVideo && videoAvailable && playable),
+    directPlayable: playable?.playable ?? false,
+    directStreamUrl: playable?.stream_url ?? null,
+    directMimeType: playable?.mime_type ?? null,
+    caps,
+    getCurrentTime,
+  })
+  const source = hls.source
   const resumePosition =
     playable?.progress && playable.progress.position_s > 0 && !playable.progress.completed
       ? playable.progress.position_s
@@ -92,10 +103,26 @@ export function MediaViewer({
       if (playable) setResumeNotice({ fileId: playable.file_id, position })
     },
   })
+  useEffect(() => {
+    liveVideoRef.current = videoElement
+  }, [videoElement])
+  // Refund the HLS re-attach budget once the playhead actually advances — a
+  // small forward delta means real playback, whereas the `play` intent event or
+  // a re-attach seek must not reset it (else a broken stream re-decides forever).
+  const notePlaying = hls.notePlaying
+  const lastTimeRef = useRef(0)
+  useEffect(() => {
+    const delta = player.currentTime - lastTimeRef.current
+    lastTimeRef.current = player.currentTime
+    if (delta > 0 && delta < 1.5) notePlaying()
+  }, [notePlaying, player.currentTime])
+  // A video plays once the decision produced a source (native or HLS); this,
+  // not the manifest's direct-only `playable` flag, gates the video UI in M7.
+  const videoActive = Boolean(isVideo && videoAvailable && source)
   usePlaybackProgressReporter({
     bundleId,
     fileId: playable?.file_id ?? null,
-    enabled: Boolean(playable?.playable),
+    enabled: videoActive,
     status: player.status,
     currentTime: player.currentTime,
     duration: player.duration || playable?.duration || 0,
@@ -141,9 +168,14 @@ export function MediaViewer({
   }, [bundleId, playableDuration, playableFileId, player, qc])
   const visibleResume =
     resumeNotice && resumeNotice.fileId === playable?.file_id ? resumeNotice.position : null
+  const { reattach } = hls
   const handleStageError = useCallback(() => {
+    // An HLS session that idled out (long pause) or hit an hls.js fatal error
+    // re-attaches transparently at the current playhead; only a non-recoverable
+    // source falls through to the "can't play" card.
+    if (reattach()) return
     if (currentId) setFailedFileId(currentId)
-  }, [currentId])
+  }, [currentId, reattach])
 
   const step = useCallback(
     (delta: number) => {
@@ -179,7 +211,7 @@ export function MediaViewer({
     }, 'image/png')
   }, [current?.display_title, title, videoElement])
 
-  useShortcuts(rootRef, playable?.playable ? player : null, {
+  useShortcuts(rootRef, videoActive ? player : null, {
     close: onClose,
     toggleInfo,
     snapshot,
@@ -248,6 +280,8 @@ export function MediaViewer({
             title={title}
             artworkUrl={artworkUrl}
             failed={failed}
+            videoActive={videoActive}
+            hls={hls}
             onError={handleStageError}
           />
         )}
@@ -259,11 +293,12 @@ export function MediaViewer({
         </button>
       )}
 
-      {playable?.playable && (
+      {videoActive && playable && (
         <ControlBar
           player={player}
           video={playable}
           subtitles={playable.subtitles}
+          hls={hls}
           onSnapshot={snapshot}
         />
       )}
@@ -282,6 +317,8 @@ function Stage({
   title,
   artworkUrl,
   failed,
+  videoActive,
+  hls,
   onError,
 }: {
   file: FileRead
@@ -291,6 +328,8 @@ function Stage({
   title: string
   artworkUrl: string
   failed: boolean
+  videoActive: boolean
+  hls: HlsSessionState
   onError: () => void
 }) {
   if (file.availability !== 'available') {
@@ -299,7 +338,10 @@ function Stage({
   if (file.media_kind === 'image' && file.supported && !failed) {
     return <ImageStage key={file.id} file={file} onError={onError} />
   }
-  if (file.media_kind === 'video' && playable?.playable && !failed) {
+  // The playback decision now drives video playability (M7): a source may need a
+  // remux/transcode HLS session, so the manifest's direct-only `playable` flag
+  // no longer gates the stage.
+  if (file.media_kind === 'video' && videoActive && playable && !failed) {
     return (
       <VideoStage
         video={playable}
@@ -311,11 +353,14 @@ function Stage({
       />
     )
   }
-  if (file.media_kind === 'video' && playable && !playable.playable) {
+  if (file.media_kind === 'video' && !failed && hls.status === 'deciding') {
+    return <div className="mv-state">Preparing playback…</div>
+  }
+  if (file.media_kind === 'video' && !failed && hls.status === 'error') {
     return (
       <FallbackCard
         file={file}
-        message={playable.reason}
+        message={hls.reason || playable?.reason || 'This video cannot be played in the browser.'}
         heading="Can’t play this in the browser."
       />
     )
