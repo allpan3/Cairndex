@@ -46,12 +46,8 @@ def get_bundle(session: Session, bundle_id: str) -> AssetBundle:
 
 
 def bundle_notes(bundle: AssetBundle) -> list[str]:
-    """The bundle's ordered notes. Rows created before the ``notes`` column
-    (``notes IS NULL``) fall back to the single legacy ``note`` shadow, so an
-    upgraded library keeps showing its existing note until first edited."""
-    if bundle.notes is not None:
-        return list(bundle.notes)
-    return [bundle.note] if bundle.note else []
+    """The bundle's ordered notes (empty list when unset / a pre-``notes`` row)."""
+    return list(bundle.notes) if bundle.notes is not None else []
 
 
 def _normalize_notes(raw: Any) -> list[str]:
@@ -67,19 +63,10 @@ def _normalize_notes(raw: Any) -> list[str]:
     return cleaned
 
 
-def _apply_notes(bundle: AssetBundle, notes: list[str]) -> None:
-    """Set the canonical ``notes`` list and keep the legacy ``note`` column as a
-    derived shadow (all notes joined) so the note filter and legacy readers keep
-    matching across every note."""
-    bundle.notes = notes
-    bundle.note = "\n\n".join(notes) if notes else None
-
-
 def create_bundle(
     session: Session,
     *,
     title: str | None = None,
-    note: str | None = None,
     notes: list[str] | None = None,
     rating: int | None = None,
 ) -> AssetBundle:
@@ -87,11 +74,8 @@ def create_bundle(
     # A manually created bundle is a direct user grouping decision, so it is
     # confirmed on creation (ADR-0009); model defaults give it confirmed/manual.
     bundle = AssetBundle(title=title, rating=rating, confirmed_at=utcnow())
-    # ``notes`` wins when both are supplied; ``note`` is the legacy single-note path.
     if notes is not None:
-        _apply_notes(bundle, _normalize_notes(notes))
-    elif note:
-        _apply_notes(bundle, _normalize_notes([note]))
+        bundle.notes = _normalize_notes(notes)
     session.add(bundle)
     session.flush()
     return bundle
@@ -123,13 +107,8 @@ def update_bundle(
         if field in changes:
             setattr(bundle, field, changes[field])
 
-    # ``notes`` (the multi-note list) wins; ``note`` remains for legacy single-note
-    # clients (a bare ``note`` maps onto a one-element list, ``None`` clears it).
     if "notes" in changes:
-        _apply_notes(bundle, _normalize_notes(changes["notes"]))
-    elif "note" in changes:
-        raw = changes["note"]
-        _apply_notes(bundle, _normalize_notes([raw] if raw else []))
+        bundle.notes = _normalize_notes(changes["notes"])
 
     if "rating" in changes:
         _validate_rating(changes["rating"])

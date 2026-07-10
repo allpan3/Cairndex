@@ -81,6 +81,32 @@ def _text(column: Any, operator: str, value: Any) -> Bool:
     raise ValidationError(f"operator {operator!r} is not valid for text fields")
 
 
+def _notes_text(operator: str, value: Any) -> Bool:
+    """Match text within any of a bundle's ``notes`` (a JSON array of strings).
+
+    Compiles to an ``EXISTS`` over ``json_each(asset_bundles.notes)`` so the
+    match is per-note and exact (no false hits across the JSON delimiters). A
+    NULL/empty ``notes`` yields no rows, so ``contains`` is false and
+    ``not_contains`` is true for a note-less bundle."""
+    if not isinstance(value, str):
+        raise ValidationError("text filter value must be a string")
+    each = func.json_each(AssetBundle.notes).table_valued("value")
+    col = each.c.value
+
+    def has(condition: Bool) -> Bool:
+        return select(1).select_from(each).where(condition).exists()
+
+    if operator == "contains":
+        return has(col.icontains(value, autoescape=True))
+    if operator == "not_contains":
+        return not_(has(col.icontains(value, autoescape=True)))
+    if operator == "equals":
+        return has(col == value)
+    if operator == "starts_with":
+        return has(col.istartswith(value, autoescape=True))
+    raise ValidationError(f"operator {operator!r} is not valid for text fields")
+
+
 def _numeric(column: Any, operator: str, value: Any) -> Bool:
     if operator == "between":
         if not (isinstance(value, list) and len(value) == 2):
@@ -198,7 +224,7 @@ def _compile_predicate(session: Session, node: PredicateNode) -> Bool:
     if field in ("title", "name"):
         return _text(AssetBundle.title, o, v)
     if field == "note":
-        return _text(AssetBundle.note, o, v)
+        return _notes_text(o, v)
     if field == "filename":
         return _file_exists_text(o, v)
     if field == "source":

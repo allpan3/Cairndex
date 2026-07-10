@@ -53,13 +53,14 @@ def test_full_bundle_acceptance_flow(
         f"{base}/bundles/{bundle_id}",
         json={
             "title": "My Movie",
-            "note": "great",
+            "notes": ["great"],
             "rating": 4,
             "cover_file_id": cover["id"],
             "primary_file_id": primary["id"],
         },
     ).json()
     assert patched["title"] == "My Movie"
+    assert patched["notes"] == ["great"]
     assert patched["rating"] == 4
     assert patched["cover_file_id"] == cover["id"]
     assert patched["primary_file_id"] == primary["id"]
@@ -148,17 +149,15 @@ def test_set_tags_rejects_unknown_id(client: TestClient, library_id: str) -> Non
 
 # --- Multiple notes (freeform, ordered) --------------------------------------
 def test_bundle_multiple_notes_roundtrip(client: TestClient, library_id: str) -> None:
-    """A bundle carries an ordered list of freeform notes; the legacy scalar
-    ``note`` mirrors them (joined) so existing readers/filters keep working."""
+    """A bundle carries an ordered list of freeform notes (add/edit/reorder/
+    clear are whole-list replaces; blank blocks are dropped)."""
     base = f"/api/v1/libraries/{library_id}"
     bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
 
     # Add three notes.
     r = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": ["synopsis", "cast", "trivia"]})
     assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["notes"] == ["synopsis", "cast", "trivia"]
-    assert body["note"] == "synopsis\n\ncast\n\ntrivia"  # derived shadow
+    assert r.json()["notes"] == ["synopsis", "cast", "trivia"]
 
     # Edit one, remove one, reorder — a whole-list replace each time.
     edited = client.patch(
@@ -172,10 +171,9 @@ def test_bundle_multiple_notes_roundtrip(client: TestClient, library_id: str) ->
     ).json()
     assert stripped["notes"] == ["keep", "also"]
 
-    # Clearing all notes empties the list and nulls the shadow.
+    # Clearing all notes empties the list.
     cleared = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": []}).json()
     assert cleared["notes"] == []
-    assert cleared["note"] is None
 
 
 def test_create_bundle_with_notes(client: TestClient, library_id: str) -> None:
@@ -185,33 +183,23 @@ def test_create_bundle_with_notes(client: TestClient, library_id: str) -> None:
     assert created.json()["notes"] == ["one", "two"]
 
 
-def test_legacy_single_note_update_maps_to_list(client: TestClient, library_id: str) -> None:
-    """An old client PATCHing a single ``note`` still works and surfaces as a
-    one-element ``notes`` list."""
-    base = f"/api/v1/libraries/{library_id}"
-    bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
-    r = client.patch(f"{base}/bundles/{bundle_id}", json={"note": "solo"}).json()
-    assert r["notes"] == ["solo"]
-    assert r["note"] == "solo"
-
-
-def test_legacy_row_notes_fallback(client: TestClient, library_id: str, session: Session) -> None:
-    """A row created before the ``notes`` column (``notes IS NULL``) still shows
-    its single legacy note via the read fallback."""
-    bundle = AssetBundle(note="written before the notes column existed")
+def test_unset_notes_reads_empty_list(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    """A row whose ``notes`` column is NULL (e.g. a scan-staged bundle) reads
+    back as an empty list."""
+    bundle = AssetBundle()
     session.add(bundle)
     session.commit()
 
     base = f"/api/v1/libraries/{library_id}"
     body = client.get(f"{base}/bundles/{bundle.id}").json()
-    assert body["notes"] == ["written before the notes column existed"]
+    assert body["notes"] == []
 
 
-def test_note_filter_matches_any_note(
-    client: TestClient, library_id: str, session: Session
-) -> None:
-    """The ``note`` filter matches text in *any* of a bundle's notes (it runs
-    against the joined shadow)."""
+def test_note_filter_matches_any_note(client: TestClient, library_id: str) -> None:
+    """The ``note`` filter matches text in *any* of a bundle's notes (it runs a
+    per-note EXISTS over the notes JSON array)."""
     base = f"/api/v1/libraries/{library_id}"
     match_id = client.post(
         f"{base}/bundles", json={"notes": ["a plain first block", "the SECRET second block"]}
@@ -224,6 +212,16 @@ def test_note_filter_matches_any_note(
     body = r.json()
     assert body["total"] == 1
     assert body["items"][0]["id"] == match_id
+
+    # not_contains excludes it and matches the other (a note-less bundle also
+    # "does not contain" the term).
+    flt_not = {
+        "version": 1,
+        "root": {"field": "note", "operator": "not_contains", "value": "secret"},
+    }
+    r2 = client.post(f"{base}/bundles/browse", json={"filter": flt_not})
+    ids = {item["id"] for item in r2.json()["items"]}
+    assert match_id not in ids
 
 
 def test_notes_reject_non_string(client: TestClient, library_id: str) -> None:

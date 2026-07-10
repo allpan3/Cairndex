@@ -27,7 +27,7 @@ def test_to_match_query_escaping() -> None:
 def test_search_finds_item_beyond_first_page(session: Session) -> None:
     for i in range(150):
         bundle_service.create_bundle(session, title=f"Filler {i:03d}")
-    target = bundle_service.create_bundle(session, title="Cosmos Documentary", note="deep space")
+    target = bundle_service.create_bundle(session, title="Cosmos Documentary", notes=["deep space"])
     bundle_service.add_file(
         session,
         target.id,

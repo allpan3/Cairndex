@@ -122,15 +122,10 @@ class AssetBundle(Base):
 
     id: Mapped[UlidPk]
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    # Legacy single note. Kept as a *derived shadow* of ``notes`` (all note
-    # blocks joined by blank lines): the note filter (filters/compiler) and any
-    # legacy reader keep working unchanged, matching text across every note.
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Ordered list of freeform owner notes/descriptions — the canonical store for
-    # the inspector "NOTES" section (the ``+`` affordance appends a block). There
-    # are no predefined roles; each entry is just a separate text block. NULL on
-    # rows created before this column existed → the read layer falls back to
-    # ``[note]`` (see ``services.bundles.bundle_notes`` / ``BundleRead``).
+    # Ordered list of freeform owner notes/descriptions — the store for the
+    # inspector "NOTES" section (the ``+`` affordance appends a block). There are
+    # no predefined roles; each entry is just a separate text block. NULL on rows
+    # created before this column existed reads back as an empty list.
     notes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)

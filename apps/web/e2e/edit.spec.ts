@@ -25,7 +25,6 @@ function bundleDetail(id: string, title: string) {
   return {
     id,
     title,
-    note: null as string | null,
     notes: [] as string[],
     source_url: null as string | null,
     rating: 0 as number | null,

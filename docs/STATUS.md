@@ -9,18 +9,19 @@ note, used as clean separators (no predefined roles under the hood).
 
 - **Data model.** New `asset_bundles.notes` JSON column (ordered `list[str]`),
   added additively via `ensure_content_indexes` so existing libraries gain it on
-  open (verified live: the Demo library's `library.db` picked up the column and
-  served `notes: []`). The legacy scalar `note` column is kept as a **derived
-  shadow** — every write sets `note = "\n\n".join(notes)` — so the `note` filter
-  (Smart Collections / ad-hoc) transparently matches across *every* note and any
-  legacy reader still works. No data backfill: rows with `notes IS NULL` fall
-  back to `[note]` at read time (`services.bundles.bundle_notes` /
-  `BundleRead._legacy_note_fallback`).
-- **Service/API.** `create_bundle`/`update_bundle` accept `notes` (blank/
+  open (verified live). It is the **single source of truth** — the old scalar
+  `note` column/field and its compatibility shim were removed (early-dev cleanup
+  per owner); libraries created earlier keep a harmless unused `note` column. A
+  `notes IS NULL` row reads back as `[]`. Both note-aware read paths were
+  re-pointed at the array: the `note` **filter** compiles to a per-note `EXISTS`
+  over `json_each(notes)`, and the **`bundle_search` FTS view** concatenates
+  `json_each(notes)` into its `note` column (the view is now dropped+recreated in
+  `ensure_search_schema` so an existing library adopts the new definition).
+- **Service/API.** `create_bundle`/`update_bundle` accept `notes` only (blank/
   whitespace-only blocks dropped, order preserved, ≤50). `BundleRead.notes` is
-  always a list; `BundleCreate`/`BundleUpdate` accept `notes` (list) or the
-  legacy single `note`, with `notes` winning when both are sent. OpenAPI +
-  `apps/web/src/api/schema.d.ts` regenerated (`gen:api` reached the registry).
+  always a list; the `note` field is gone from `BundleCreate`/`Update`/`Read`.
+  OpenAPI + `apps/web/src/api/schema.d.ts` regenerated (`gen:api` reached the
+  registry).
 - **Frontend.** The inspector "Note" section became **NOTES** with a small `+`
   **icon** (`IconPlus`) that appends a note box below the current ones; each box
   commits on blur, and a hover `×` removes one (at least one empty box always
@@ -37,18 +38,22 @@ note, used as clean separators (no predefined roles under the hood).
 Verification:
 
 - Backend: `ruff check` / `ruff format --check` / `mypy src` clean; `pytest`
-  **386 passed** (+6 new in `test_bundles.py`: multi-note roundtrip incl.
-  reorder/blank-strip/clear, create-with-notes, legacy single-note update,
-  legacy `notes IS NULL` read fallback via a directly-inserted row, `note`
-  filter matching a non-first note, non-string rejection). Same pre-existing
-  Starlette/httpx deprecation warning.
+  **385 passed** (`test_bundles.py`: multi-note roundtrip incl.
+  reorder/blank-strip/clear, create-with-notes, `notes IS NULL` reads `[]`,
+  `note` filter matching a non-first note + `not_contains`, non-string
+  rejection; `test_search.py`/`test_scan_repair.py` updated to `notes`). Same
+  pre-existing Starlette/httpx deprecation warning.
 - Frontend: `lint` / `format:check` / `typecheck` / `test` (**47**) / `build` /
   `test:e2e` (**50**, +1 new `edit.spec.ts` case: `+` adds a second note box and
   both persist in the PATCH body) all green.
 - Live (real uvicorn + web dev server against the Demo library): the NOTES
   section renders (uppercase label + `+`); typing note 1, clicking `+`, typing
-  note 2, and blurring persisted `notes = ["Synopsis…","Cast…"]` with the joined
-  `note` shadow (confirmed via the API and a page reload); no console errors.
+  note 2, and blurring persisted `notes = ["Synopsis…","Cast…"]` (confirmed via
+  the API and a page reload); no console errors. After the single-source-of-truth
+  cleanup, a fresh backend against the (existing) Demo library recreated the FTS
+  view and both indexed notes: `q=xylophone` and a `note contains "penguins"`
+  filter each returned only the bundle whose *notes* held those terms; the
+  throwaway bundle was then deleted (Demo back to 21).
   The box refinements were also verified live: the `+` renders as a centered
   14×14 SVG icon; an auto-mode box grew to fit multi-line text (117 px, no
   clip); dragging each of two boxes to different heights stored
