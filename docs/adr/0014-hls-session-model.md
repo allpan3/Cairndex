@@ -57,25 +57,49 @@ have a timeout and be killed on teardown.
    `.cairndex/cache/`; sessions do not.
 
 3. **VOD playlist computed up front; restart on far seek.** The playlist is a
-   full `#EXT-X-PLAYLIST-TYPE:VOD` fMP4/CMAF playlist with `N = ceil(duration/6)`
-   6-second segments, computed by the server from the probed duration (not by
-   ffmpeg). One ffmpeg per session writes `init.mp4` + `{n}.m4s` segments
+   full `#EXT-X-PLAYLIST-TYPE:VOD` fMP4/CMAF playlist computed by the server (not
+   by ffmpeg). One ffmpeg per session writes `init.mp4` + `{n}.m4s` segments
    sequentially. Serving segment `n`: exists → serve; within a small window
    ahead of the encoder frontier → bounded async wait; before the current run
-   or far ahead → kill ffmpeg and restart at `t = n*6` (`-ss` input seek +
-   `-start_number n`). Transcode uses `-force_key_frames` for exact 6 s
-   boundaries; remux copies video and **accepts keyframe drift** as a documented
-   MVP trade-off (hls.js and Safari tolerate it). Audio is copied only when the
-   source is already AAC, else transcoded to stereo AAC (fMP4-safe fallback).
+   or far ahead → kill ffmpeg and restart at `segment_starts[n]` (`-ss` seek +
+   `-start_number n`). Segment boundaries differ by method:
+   - **Transcode** forces `-force_key_frames "expr:gte(t,n_forced*6)"`, so its
+     playlist is a uniform 6-second grid (`N = ceil(duration/6)`).
+   - **Remux** copies video and can only split at existing keyframes. A
+     duration-derived uniform grid was measured to advertise phantom short
+     segments and **thrash** the encoder — a 120 s clip with 36 s GOPs advertised
+     20 segments and triggered 6 ffmpeg restarts fetching them sequentially, with
+     36 s payloads mislabeled as 6 s. Remux therefore derives its playlist from a
+     **one-time keyframe scan** of the source (ffprobe `-skip_frame nokey`),
+     mirroring where copy-mux actually splits, so the advertised boundaries match
+     what ffmpeg emits (same clip: 4 segments, 0 restarts). If the keyframe scan
+     fails/times out we fall back to the uniform grid (accepting drift).
+   Audio is copied only when the source is already AAC, else transcoded to stereo
+   AAC (fMP4-safe fallback).
 
-4. **Bounds, reaper, and teardown.** `CAIRNDEX_TRANSCODE_MAX_SESSIONS`
-   (default 2) caps concurrent sessions; starting one beyond the bound returns a
-   structured **429** (`capacity_exhausted`). An idle reaper kills + deletes any
-   session with no playlist/segment fetch for `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`
-   seconds (default 60). Sessions are also torn down by `DELETE` (player close,
-   beacon-deliverable) and on server shutdown. Every ffmpeg process is spawned
-   with stdio to `DEVNULL` (no pipe-deadlock), terminated then SIGKILLed on
-   teardown/restart.
+   **Burn-in + seek.** A `-vf subtitles` overlay is applied at decode-time source
+   PTS, so an input-side (fast) `-ss` would desync captions by `start_s` after a
+   restart. Burn-in runs therefore use an **output-side** `-ss` (decode from 0,
+   correct captions, slower far seeks); every non-burn-in run keeps the fast
+   input seek.
+
+4. **Bounds, reaper, teardown, reuse, and failure surfacing.**
+   `CAIRNDEX_TRANSCODE_MAX_SESSIONS` (default 2) caps concurrent sessions;
+   starting one beyond the bound returns a structured **429**
+   (`capacity_exhausted`). A decision retry/reload with identical
+   `(library_id, file_id, kind, params)` **reuses** the live session instead of
+   spawning another, so a reload doesn't 429 against the bound (a real
+   quality/audio switch changes `params` → a new session). An idle reaper kills +
+   deletes any session with no playlist/segment fetch for
+   `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` seconds (default 60). Sessions are also torn
+   down by `DELETE` (player close, beacon-deliverable) and on server shutdown.
+   The session lock is held only to read/update state and to (re)start ffmpeg,
+   **never across the bounded stat-poll wait**, so parallel init+segment fetches
+   serve concurrently and teardown kills ffmpeg promptly. Every ffmpeg process is
+   spawned with stdio to `DEVNULL` (no pipe-deadlock), terminated then SIGKILLed
+   on teardown/restart. If a run exits nonzero the session is marked failed and a
+   structured **500** (`media_processing_failed`) is surfaced instead of a
+   misleading restart→404 loop.
 
 5. **Security.** Session routes use the same `LibrarySession` gating as direct
    streams (ADR-0010). Session ids are random (`secrets.token_hex`) and scoped
@@ -99,9 +123,10 @@ have a timeout and be killed on teardown.
 - **Live/event playlist that grows as ffmpeg encodes** — rejected: a VOD
   playlist from the known duration gives instant total duration and free native
   seeking, and pairs naturally with restart-on-far-seek.
-- **Keyframe-exact remux playlist** (probe every keyframe, emit exact EXTINF) —
-  deferred: copy-mux keyframe drift is tolerated by players; revisit only if the
-  drift proves annoying in M7.
+- **Uniform 6 s remux playlist accepting keyframe drift** — rejected after
+  measurement: with sparse keyframes it advertises phantom segments and thrashes
+  the encoder (see decision 3). Remux now derives its playlist from a one-time
+  keyframe scan; the uniform grid remains only as a fallback when the scan fails.
 - **Full hardware encode (VAAPI/QSV/VideoToolbox encoders)** — deferred: fragile
   per-platform filter pipelines; decode-only hwaccel plus `libx264` is the
   portable MVP.
@@ -116,8 +141,14 @@ have a timeout and be killed on teardown.
   and is safe to wipe between runs; deployment docs should mount it on the app
   data volume.
 - New tunables: `CAIRNDEX_TRANSCODE_MAX_SESSIONS`,
-  `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`, `CAIRNDEX_FFMPEG_HWACCEL`.
-- New domain error `capacity_exhausted` → HTTP 429.
+  `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`, `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`,
+  `CAIRNDEX_TRANSCODE_AHEAD_WINDOW`, `CAIRNDEX_TRANSCODE_KEYFRAME_TIMEOUT`,
+  `CAIRNDEX_FFMPEG_HWACCEL`.
+- New domain errors: `capacity_exhausted` → HTTP 429, `media_processing_failed`
+  → HTTP 500.
+- Remux sessions run a one-time ffprobe keyframe scan at creation (bounded by
+  `CAIRNDEX_TRANSCODE_KEYFRAME_TIMEOUT`); on a very large NAS file this adds a
+  few seconds to first-play, with a duration-derived fallback on timeout.
 - M7 wires the web `PlaybackEngine`/hls.js to the decision + session endpoints;
   the video wall (M10) may raise the session bound via config.
 - If the owner rejects any decision here, a superseding ADR is required; until

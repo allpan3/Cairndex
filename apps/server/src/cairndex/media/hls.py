@@ -3,10 +3,16 @@
 When a source can't be played directly (§6.1), we deliver it as HLS: one
 ``ffmpeg`` per session writes fMP4/CMAF segments sequentially into a server-local
 ephemeral directory, and we serve those segments on demand. The playlist is a
-**VOD** playlist computed up front from the known duration (6 s target) so
-players get instant duration and free native seeking; a seek far ahead of the
-encoder kills ffmpeg and restarts it at the requested segment (``-ss`` +
-``-start_number``).
+**VOD** playlist computed up front so players get instant duration and free
+native seeking; a seek far ahead of the encoder kills ffmpeg and restarts it at
+the requested segment (``-ss`` + ``-start_number``).
+
+Segment boundaries: transcode forces exact 6 s keyframes, so its playlist is a
+uniform 6 s grid. Remux copies video and can only split at existing keyframes, so
+its playlist is derived from a one-time keyframe scan of the source; a
+duration-derived uniform grid would advertise phantom short segments and thrash
+the encoder with restarts (measured — see ADR-0014). If the keyframe scan fails
+we fall back to the uniform grid (accepting drift).
 
 Sessions are interactive runtime state, **not** background jobs: they live in an
 in-process registry (a dict guarded by locks), are bounded in number, are reaped
@@ -14,14 +20,14 @@ when idle, and are torn down on close/shutdown. Output goes under
 ``{CAIRNDEX_DATA_DIR}/transcode/{session_id}/`` — never inside a library package
 (ADR-0014); ffmpeg args are built only from server-side-resolved paths.
 
-This module is deliberately ffmpeg-launch-agnostic for testability: the manager
-takes an injectable command builder (a fake stub that emits segment files stands
-in for ffmpeg) and an injectable monotonic clock (for deterministic idle-reap
-tests).
+Testability: the manager takes injectable command builder, keyframe prober, and
+monotonic clock, so unit tests drive it with a fake ffmpeg stub and no real
+media.
 """
 
 from __future__ import annotations
 
+import bisect
 import contextlib
 import math
 import re
@@ -34,24 +40,33 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from cairndex.core.errors import CapacityError, NotFoundError, ValidationError
+from cairndex.core.errors import (
+    CapacityError,
+    MediaProcessingError,
+    NotFoundError,
+    ValidationError,
+)
+from cairndex.media import ffprobe
 from cairndex.media.ffmpeg_exec import ffmpeg_exe
 
 # Segments target 6 s (plan 1 §6.2). fMP4 needs a shared init segment.
 SEGMENT_DURATION = 6.0
 INIT_NAME = "init.mp4"
 _SEGMENT_RE = re.compile(r"^(\d+)\.m4s$")
-# Serving decision bounds. A request within this many segments ahead of the
-# encoder frontier waits for the encoder to reach it; further ahead (or before
-# the current run) restarts ffmpeg at the requested segment.
 DEFAULT_AHEAD_WINDOW = 5
 DEFAULT_SEGMENT_WAIT = 20.0
 DEFAULT_POLL_INTERVAL = 0.1
+DEFAULT_KEYFRAME_TIMEOUT = 60.0
 # ffmpeg gets a short grace period to exit on terminate before we SIGKILL it.
 _TERMINATE_GRACE = 5.0
 
 CommandBuilder = Callable[["HlsSession", int, float], list[str]]
+KeyframeProber = Callable[[Path, float], "list[float] | None"]
 Clock = Callable[[], float]
+
+
+def _default_keyframe_prober(source: Path, timeout: float) -> list[float] | None:
+    return ffprobe.keyframe_times(source, timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -69,7 +84,12 @@ class BurnSubtitle:
 
 @dataclass(frozen=True)
 class SessionParams:
-    """Immutable encode parameters chosen when a session is created."""
+    """Immutable encode parameters chosen when a session is created.
+
+    Equality drives session reuse (ADR-0014): a decision retry with identical
+    params reuses the live session instead of spawning another and hitting the
+    concurrency bound.
+    """
 
     audio_stream_index: int | None = None
     audio_copy: bool = False
@@ -89,7 +109,8 @@ class HlsSession:
     source_path: Path
     output_dir: Path
     duration: float
-    segment_count: int
+    segment_starts: list[float]  # source start time of each segment
+    playlist: str  # VOD playlist, computed once at creation
     params: SessionParams
     # Runtime state, guarded by ``lock``.
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -97,18 +118,77 @@ class HlsSession:
     run_start: int = 0  # start_number of the current ffmpeg run
     last_access: float = 0.0  # monotonic clock; drives idle reaping
     closed: bool = False
+    failed: bool = False
 
     @property
-    def playlist_path(self) -> Path:
-        return self.output_dir / "index.m3u8"
-
-
-def _segment_index(start_s: float) -> int:
-    return max(0, int(start_s // SEGMENT_DURATION))
+    def segment_count(self) -> int:
+        return len(self.segment_starts)
 
 
 def _new_session_id() -> str:
     return secrets.token_hex(16)
+
+
+def _segment_name(index: int) -> str:
+    return f"{index}.m4s"
+
+
+def _parse_segment_name(name: str) -> int | None:
+    match = _SEGMENT_RE.match(name)
+    return int(match.group(1)) if match else None
+
+
+def _exists_nonempty(path: Path) -> bool:
+    try:
+        return path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+# --- segment boundary computation -------------------------------------------
+def _uniform_segment_starts(duration: float) -> list[float]:
+    count = max(1, math.ceil(duration / SEGMENT_DURATION))
+    return [index * SEGMENT_DURATION for index in range(count)]
+
+
+def _keyframe_segment_starts(keyframes: list[float], duration: float) -> list[float] | None:
+    """Segment start times mirroring ``ffmpeg -hls_time 6 -c:v copy`` splits.
+
+    Copy-mux starts a new segment at the first keyframe once the running segment
+    has reached the target duration; we compute the same boundaries so the
+    advertised playlist matches what ffmpeg actually emits (no phantom segments,
+    no restart thrash). Returns ``None`` if the keyframes are unusable.
+    """
+    usable = sorted(kf for kf in keyframes if 0.0 < kf < duration)
+    starts = [0.0]
+    for kf in usable:
+        if kf - starts[-1] >= SEGMENT_DURATION - 1e-3:
+            starts.append(kf)
+    return starts
+
+
+def _render_playlist(segment_starts: list[float], duration: float) -> str:
+    lines = [
+        "#EXTM3U",
+        "#EXT-X-VERSION:7",
+        f"#EXT-X-TARGETDURATION:{int(math.ceil(SEGMENT_DURATION))}",
+        "#EXT-X-MEDIA-SEQUENCE:0",
+        "#EXT-X-PLAYLIST-TYPE:VOD",
+        f'#EXT-X-MAP:URI="{INIT_NAME}"',
+    ]
+    for index, start in enumerate(segment_starts):
+        end = segment_starts[index + 1] if index + 1 < len(segment_starts) else duration
+        extinf = max(0.0, end - start)
+        lines.append(f"#EXTINF:{extinf:.3f},")
+        lines.append(_segment_name(index))
+    lines.append("#EXT-X-ENDLIST")
+    return "\n".join(lines) + "\n"
+
+
+def _segment_index_for(segment_starts: list[float], start_s: float) -> int:
+    """Index of the segment whose source range contains ``start_s``."""
+    index = bisect.bisect_right(segment_starts, start_s) - 1
+    return max(0, min(index, len(segment_starts) - 1))
 
 
 # --- ffmpeg command construction (plan 1 §6.2 templates) --------------------
@@ -163,17 +243,24 @@ def _audio_args(session: HlsSession) -> list[str]:
 def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float) -> list[str]:
     """Build the ffmpeg argv for a session run beginning at ``start_number``.
 
-    ``-ss`` is an input-side (fast) seek; segment numbering is offset with
-    ``-start_number`` so segment *n* always maps to source time ``n*6`` in the
-    VOD playlist. Transcode uses ``force_key_frames`` for exact 6 s boundaries;
-    remux copies video and accepts keyframe drift (documented MVP trade-off).
+    Segment numbering is offset with ``-start_number`` so segment *n* maps to
+    ``segment_starts[n]`` in the VOD playlist. The seek side matters for burn-in:
+    a plain ``-vf subtitles`` overlay is applied at decode-time source PTS, so an
+    input-side (fast) ``-ss`` would desync captions by ``start_s`` after a
+    restart. Burn-in runs therefore use an output-side ``-ss`` (decode from 0,
+    correct captions, slower seek); every other run uses the fast input seek.
+    Transcode uses ``force_key_frames`` for exact 6 s boundaries; remux copies
+    video and splits on source keyframes (its playlist is keyframe-derived).
     """
+    burning = session.params.burn_subtitle is not None
     args = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y"]
     if session.kind == "transcode" and session.params.hwaccel:
         args += ["-hwaccel", session.params.hwaccel]
-    if start_s > 0:
-        args += ["-ss", f"{start_s:g}"]
+    if start_s > 0 and not burning:
+        args += ["-ss", f"{start_s:g}"]  # input-side fast seek
     args += ["-i", str(session.source_path)]
+    if start_s > 0 and burning:
+        args += ["-ss", f"{start_s:g}"]  # output-side seek keeps burn-in in sync
 
     args += ["-map", "0:v:0"]
     if session.params.audio_stream_index is not None:
@@ -245,22 +332,26 @@ class SessionManager:
         max_sessions: int = 2,
         idle_timeout: float = 60.0,
         command_builder: CommandBuilder = build_ffmpeg_command,
+        keyframe_prober: KeyframeProber = _default_keyframe_prober,
         launcher: Callable[[list[str]], subprocess.Popen[bytes]] = _launch_ffmpeg,
         clock: Clock = time.monotonic,
         ahead_window: int = DEFAULT_AHEAD_WINDOW,
         segment_wait: float = DEFAULT_SEGMENT_WAIT,
         poll_interval: float = DEFAULT_POLL_INTERVAL,
+        keyframe_timeout: float = DEFAULT_KEYFRAME_TIMEOUT,
         start_reaper: bool = True,
     ) -> None:
         self.transcode_dir = transcode_dir
         self.max_sessions = max_sessions
         self.idle_timeout = idle_timeout
         self._command_builder = command_builder
+        self._keyframe_prober = keyframe_prober
         self._launcher = launcher
         self._clock = clock
         self._ahead_window = ahead_window
         self._segment_wait = segment_wait
         self._poll_interval = poll_interval
+        self._keyframe_timeout = keyframe_timeout
         self._sessions: dict[str, HlsSession] = {}
         self._lock = threading.Lock()
         self._reaper: threading.Thread | None = None
@@ -280,17 +371,35 @@ class SessionManager:
         kind: str,
         params: SessionParams,
         start_s: float = 0.0,
+        reuse: bool = True,
     ) -> HlsSession:
-        """Create and start a session; raise ``CapacityError`` past the bound."""
+        """Create (or reuse) and start a session; raise ``CapacityError`` past the bound.
+
+        With ``reuse`` (the default) an existing live session with identical
+        ``(library_id, file_id, kind, params)`` is returned instead of spawning
+        another, so decision retries/reloads don't 429 against the bound.
+        """
         if not (duration and duration > 0 and math.isfinite(duration)):
             raise ValidationError("cannot start a session for a file with unknown duration")
-        segment_count = max(1, math.ceil(duration / SEGMENT_DURATION))
+
+        if reuse:
+            existing = self._find_reusable(library_id, file_id, kind, params)
+            if existing is not None:
+                return existing
+
         with self._lock:
-            active = sum(1 for s in self._sessions.values() if not s.closed)
-            if active >= self.max_sessions:
-                raise CapacityError(
-                    f"at most {self.max_sessions} concurrent playback sessions are allowed"
-                )
+            self._require_capacity()
+        # Keyframe scan (remux only) runs outside the lock — it can be slow.
+        segment_starts = self._segment_starts(kind, source_path, duration)
+        playlist = _render_playlist(segment_starts, duration)
+
+        with self._lock:
+            if reuse:
+                existing = self._match_locked(library_id, file_id, kind, params)
+                if existing is not None:
+                    existing.last_access = self._clock()
+                    return existing
+            self._require_capacity()
             session_id = _new_session_id()
             output_dir = self.transcode_dir / session_id
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -302,14 +411,55 @@ class SessionManager:
                 source_path=source_path,
                 output_dir=output_dir,
                 duration=duration,
-                segment_count=segment_count,
+                segment_starts=segment_starts,
+                playlist=playlist,
                 params=params,
                 last_access=self._clock(),
             )
             self._sessions[session_id] = session
         with session.lock:
-            self._start_run(session, _segment_index(start_s))
+            self._start_run(session, _segment_index_for(segment_starts, start_s))
         return session
+
+    def _require_capacity(self) -> None:
+        """Raise ``CapacityError`` if at the session bound (caller holds lock)."""
+        if sum(1 for s in self._sessions.values() if not s.closed) >= self.max_sessions:
+            raise CapacityError(
+                f"at most {self.max_sessions} concurrent playback sessions are allowed"
+            )
+
+    def _match_locked(
+        self, library_id: str, file_id: str, kind: str, params: SessionParams
+    ) -> HlsSession | None:
+        for session in self._sessions.values():
+            if (
+                not session.closed
+                and not session.failed
+                and session.library_id == library_id
+                and session.file_id == file_id
+                and session.kind == kind
+                and session.params == params
+            ):
+                return session
+        return None
+
+    def _find_reusable(
+        self, library_id: str, file_id: str, kind: str, params: SessionParams
+    ) -> HlsSession | None:
+        with self._lock:
+            session = self._match_locked(library_id, file_id, kind, params)
+            if session is not None:
+                session.last_access = self._clock()
+            return session
+
+    def _segment_starts(self, kind: str, source_path: Path, duration: float) -> list[float]:
+        if kind == "remux":
+            keyframes = self._keyframe_prober(source_path, self._keyframe_timeout)
+            if keyframes:
+                starts = _keyframe_segment_starts(keyframes, duration)
+                if starts:
+                    return starts
+        return _uniform_segment_starts(duration)
 
     def get(self, library_id: str, session_id: str) -> HlsSession:
         """Return an open session scoped to ``library_id`` or raise 404."""
@@ -336,78 +486,90 @@ class SessionManager:
             self._teardown(session)
 
     # --- playlist + serving -------------------------------------------------
-    def build_playlist(self, session: HlsSession) -> str:
-        """A VOD fMP4 playlist computed up front from the known duration."""
-        lines = [
-            "#EXTM3U",
-            "#EXT-X-VERSION:7",
-            f"#EXT-X-TARGETDURATION:{int(math.ceil(SEGMENT_DURATION))}",
-            "#EXT-X-MEDIA-SEQUENCE:0",
-            "#EXT-X-PLAYLIST-TYPE:VOD",
-            f'#EXT-X-MAP:URI="{INIT_NAME}"',
-        ]
-        remaining = session.duration
-        for index in range(session.segment_count):
-            extinf = min(SEGMENT_DURATION, remaining) if remaining > 0 else SEGMENT_DURATION
-            lines.append(f"#EXTINF:{extinf:.3f},")
-            lines.append(f"{index}.m4s")
-            remaining -= SEGMENT_DURATION
-        lines.append("#EXT-X-ENDLIST")
-        return "\n".join(lines) + "\n"
-
     def serve_playlist(self, library_id: str, session_id: str) -> str:
         session = self.get(library_id, session_id)
         with session.lock:
+            if session.closed:
+                raise NotFoundError("playback session was torn down")
             session.last_access = self._clock()
-        return self.build_playlist(session)
+        return session.playlist
 
     def serve_artifact(self, library_id: str, session_id: str, artifact: str) -> Path:
         """Resolve one playlist artifact (init segment or media segment).
 
-        Serves an existing segment immediately; for a segment within a small
-        window ahead of the encoder it waits (bounded); anything before the
-        current run or far ahead restarts ffmpeg at that segment.
+        The session lock is held only to read/update state and to (re)start
+        ffmpeg — never across the bounded stat-poll wait — so parallel fetches
+        serve concurrently and teardown can kill ffmpeg promptly.
         """
         session = self.get(library_id, session_id)
         with session.lock:
-            session.last_access = self._clock()
             if session.closed:
                 raise NotFoundError("playback session was torn down")
-            if artifact == INIT_NAME:
-                return self._serve_init(session)
-            index = _parse_segment_name(artifact)
-            if index is None or index < 0 or index >= session.segment_count:
-                raise NotFoundError(f"segment {artifact!r} is out of range")
-            return self._serve_segment(session, index)
+            session.last_access = self._clock()
+        if artifact == INIT_NAME:
+            return self._serve_init(session)
+        index = _parse_segment_name(artifact)
+        if index is None or index < 0 or index >= session.segment_count:
+            raise NotFoundError(f"segment {artifact!r} is out of range")
+        return self._serve_segment(session, index)
 
     def _serve_init(self, session: HlsSession) -> Path:
         path = session.output_dir / INIT_NAME
-        self._ensure_running(session)
+        if _exists_nonempty(path):
+            return path
+        with session.lock:
+            if session.closed:
+                raise NotFoundError("playback session was torn down")
+            self._ensure_running(session)
         if self._wait_for(session, path):
             return path
+        self._raise_if_failed(session)
         raise NotFoundError("init segment is unavailable")
 
     def _serve_segment(self, session: HlsSession, index: int) -> Path:
-        seg = session.output_dir / f"{index}.m4s"
+        seg = session.output_dir / _segment_name(index)
         if _exists_nonempty(seg):
             return seg
-        frontier = self._frontier(session)
-        within_reach = session.run_start <= index <= frontier + self._ahead_window
-        # Within reach of a live encoder: wait for it. Otherwise (before the
-        # current run, far ahead, or a stalled encoder) restart ffmpeg here.
-        if within_reach and self._process_alive(session) and self._wait_for(session, seg):
-            return seg
-        self._start_run(session, index)
+        # First pass waits on the current run (if the segment is within reach);
+        # a second pass forces a fresh restart at the segment. Between passes we
+        # surface a genuine ffmpeg failure instead of a misleading restart loop.
+        self._prepare_run(session, index, force_restart=False)
         if self._wait_for(session, seg):
             return seg
+        self._raise_if_failed(session)
+        self._prepare_run(session, index, force_restart=True)
+        if self._wait_for(session, seg):
+            return seg
+        self._raise_if_failed(session)
         raise NotFoundError(f"segment {index} is unavailable")
+
+    def _prepare_run(self, session: HlsSession, index: int, *, force_restart: bool) -> None:
+        """Ensure a run that will produce ``index`` (brief lock, no blocking wait)."""
+        with session.lock:
+            if session.closed:
+                raise NotFoundError("playback session was torn down")
+            if _exists_nonempty(session.output_dir / _segment_name(index)):
+                return
+            frontier = self._frontier(session)
+            within_reach = session.run_start <= index <= frontier + self._ahead_window
+            if force_restart or not within_reach or not self._process_alive(session):
+                self._start_run(session, index)
+
+    def _raise_if_failed(self, session: HlsSession) -> None:
+        """Raise if the current run exited nonzero (a real encoder failure)."""
+        with session.lock:
+            proc = session.process
+            rc = proc.poll() if proc is not None else None
+            if rc is not None and rc != 0:
+                session.failed = True
+                raise MediaProcessingError(f"playback session encoder exited with status {rc}")
 
     # --- ffmpeg process management ------------------------------------------
     def _start_run(self, session: HlsSession, start_number: int) -> None:
         """(Re)start ffmpeg at ``start_number`` (caller holds ``session.lock``)."""
         self._kill(session)
         session.run_start = start_number
-        start_s = start_number * SEGMENT_DURATION
+        start_s = session.segment_starts[start_number]
         args = self._command_builder(session, start_number, start_s)
         session.process = self._launcher(args)
 
@@ -417,7 +579,8 @@ class SessionManager:
             self._start_run(session, session.run_start)
 
     def _process_alive(self, session: HlsSession) -> bool:
-        return session.process is not None and session.process.poll() is None
+        proc = session.process  # local ref: another thread may null it out
+        return proc is not None and proc.poll() is None
 
     def _kill(self, session: HlsSession) -> None:
         proc = session.process
@@ -442,7 +605,7 @@ class SessionManager:
         return highest
 
     def _wait_for(self, session: HlsSession, path: Path) -> bool:
-        """Poll (bounded) for a complete ``path``; give up early once ffmpeg exits.
+        """Poll (bounded, lock-free) for a complete ``path``; stop early once ffmpeg exits.
 
         Requires a non-empty file: ffmpeg opens the fMP4 init segment and writes
         it in stages, so an existence-only check can serve a truncated init.
@@ -500,18 +663,6 @@ class SessionManager:
                 self.reap_idle()
 
 
-def _parse_segment_name(name: str) -> int | None:
-    match = _SEGMENT_RE.match(name)
-    return int(match.group(1)) if match else None
-
-
-def _exists_nonempty(path: Path) -> bool:
-    try:
-        return path.stat().st_size > 0
-    except OSError:
-        return False
-
-
 # --- process-wide default manager -------------------------------------------
 # The API uses a lazily-created singleton bound to config; tests inject their own
 # manager (fake command builder / clock) via the FastAPI dependency, so the
@@ -531,6 +682,9 @@ def get_session_manager() -> SessionManager:
                 transcode_dir=settings.data_dir / "transcode",
                 max_sessions=settings.transcode_max_sessions,
                 idle_timeout=settings.transcode_idle_timeout,
+                ahead_window=settings.transcode_ahead_window,
+                segment_wait=settings.transcode_segment_wait,
+                keyframe_timeout=settings.transcode_keyframe_timeout,
             )
         return _default_manager
 

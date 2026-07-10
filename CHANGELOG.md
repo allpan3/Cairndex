@@ -77,10 +77,11 @@ grouped under `Unreleased` until the first tagged release.
     One ffmpeg per session writes segments sequentially into
     `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` (server-local ephemeral, never
     inside a library package); a segment ahead of the encoder waits (bounded), a
-    far seek kills + restarts ffmpeg at the requested segment. Remux copies video
-    with an AAC audio fallback (accepting keyframe drift); transcode uses
+    far seek kills + restarts ffmpeg at the requested segment. Transcode uses
     `libx264 veryfast` + `force_key_frames` for exact 6 s segments and a capped
-    ladder honoring `max_height`, with optional burn-in.
+    ladder honoring `max_height`, with optional burn-in. Remux copies video with
+    an AAC audio fallback and derives its playlist from a one-time keyframe scan
+    so advertised segments match where copy-mux actually splits.
   - Bounds/lifecycle: `CAIRNDEX_TRANSCODE_MAX_SESSIONS` (default 2; a structured
     **429** `capacity_exhausted` beyond it), an idle reaper
     (`CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`, default 60 s → kill + delete dir),
@@ -89,6 +90,17 @@ grouped under `Unreleased` until the first tagged release.
     the `LibrarySession` gate; session ids are random and library-scoped; ffmpeg
     args come only from server-side-resolved paths. Regenerated OpenAPI +
     `apps/web/src/api/schema.d.ts`.
+  - Review-fix pass (pre-merge): serve segments without holding the session lock
+    across the stat-poll wait (parallel fetches serve concurrently; teardown
+    kills ffmpeg promptly); burn-in sessions seek output-side so subtitles stay
+    in sync after a far-seek restart; a non-direct decision on an un-probed row
+    returns 200 with `session=null` instead of 422; `audio_stream_index` is
+    validated whenever supplied (422 on unknown, including un-probed rows); a
+    nonzero ffmpeg exit surfaces a structured **500** (`media_processing_failed`)
+    instead of a restart→404 loop; a decision retry/reload with identical params
+    reuses the live session instead of 429-ing against the bound. New knobs
+    `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`, `CAIRNDEX_TRANSCODE_AHEAD_WINDOW`,
+    `CAIRNDEX_TRANSCODE_KEYFRAME_TIMEOUT`.
 
 - **Image viewer v2 + preview derivatives (Plan 1 M5).** Added a lazy
   `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
