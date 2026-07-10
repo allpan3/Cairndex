@@ -760,6 +760,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Playback Decision
+         * @description Decide direct/remux/transcode and, for non-direct, start an HLS session.
+         */
+        post: operations["playback_decision_api_v1_libraries__library_id__files__file_id__playback_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Playback Session
+         * @description Explicitly start an HLS session (e.g. a mid-play quality/audio switch).
+         */
+        post: operations["create_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Playback Session
+         * @description Tear down a session (player close; a beacon may deliver this).
+         */
+        delete: operations["delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/{artifact}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Playback Session Artifact
+         * @description Serve the session playlist, its init segment, or a media segment.
+         *
+         *     ``db`` gates access with the same ``LibrarySession`` dependency as direct
+         *     streaming; the bytes are throwaway session state, so ``no-store``.
+         */
+        get: operations["playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
         parameters: {
             query?: never;
@@ -1403,6 +1486,21 @@ export interface components {
             /** Subtitles Linked */
             subtitles_linked: number;
         };
+        /** AudioStreamRead */
+        AudioStreamRead: {
+            /** Channels */
+            channels: number | null;
+            /** Codec */
+            codec: string | null;
+            /** Default */
+            default: boolean;
+            /** Index */
+            index: number | null;
+            /** Language */
+            language: string | null;
+            /** Title */
+            title: string | null;
+        };
         /**
          * AuthStatus
          * @description Lock state of a library for the current session (ADR-0010).
@@ -1628,6 +1726,24 @@ export interface components {
             rating?: number | null;
             /** Title */
             title?: string | null;
+        };
+        /** ClientCapabilities */
+        ClientCapabilities: {
+            /** Audio Codecs */
+            audio_codecs?: string[];
+            /** Containers */
+            containers?: string[];
+            /** Max Height */
+            max_height?: number | null;
+            /**
+             * Native Hls
+             * @default false
+             */
+            native_hls: boolean;
+            /** Protocols */
+            protocols?: string[];
+            /** Video Codecs */
+            video_codecs?: string[];
         };
         /**
          * CollectionCleanup
@@ -2375,6 +2491,37 @@ export interface components {
             /** Title */
             title: string | null;
         };
+        /** PlaybackDecisionRequest */
+        PlaybackDecisionRequest: {
+            /** Audio Stream Index */
+            audio_stream_index?: number | null;
+            /** Burn Subtitle Track Id */
+            burn_subtitle_track_id?: string | null;
+            caps: components["schemas"]["ClientCapabilities"];
+            /** Max Height */
+            max_height?: number | null;
+        };
+        /** PlaybackDecisionResponse */
+        PlaybackDecisionResponse: {
+            /** Audio Streams */
+            audio_streams: components["schemas"]["AudioStreamRead"][];
+            /** Chapters */
+            chapters: components["schemas"]["PlaybackChapter"][];
+            /** Duration */
+            duration: number | null;
+            /** Method */
+            method: string;
+            progress: components["schemas"]["PlaybackProgressRead"] | null;
+            /** Reason */
+            reason: string;
+            session: components["schemas"]["PlaybackSessionRef"] | null;
+            /** Storyboard Url */
+            storyboard_url: string | null;
+            /** Stream Url */
+            stream_url: string | null;
+            /** Subtitles */
+            subtitles: components["schemas"]["SubtitleTrackRead"][];
+        };
         /** PlaybackManifest */
         PlaybackManifest: {
             /** Bundle Id */
@@ -2397,6 +2544,34 @@ export interface components {
             duration_s?: number | null;
             /** Position S */
             position_s: number;
+        };
+        /** PlaybackSessionCreate */
+        PlaybackSessionCreate: {
+            /** Audio Stream Index */
+            audio_stream_index?: number | null;
+            /** Burn Subtitle Track Id */
+            burn_subtitle_track_id?: string | null;
+            caps: components["schemas"]["ClientCapabilities"];
+            /** Max Height */
+            max_height?: number | null;
+            /** Start S */
+            start_s?: number | null;
+        };
+        /** PlaybackSessionCreated */
+        PlaybackSessionCreated: {
+            /** Kind */
+            kind: string;
+            /** Playlist Url */
+            playlist_url: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /** PlaybackSessionRef */
+        PlaybackSessionRef: {
+            /** Id */
+            id: string;
+            /** Playlist Url */
+            playlist_url: string;
         };
         /** PredicateNode */
         PredicateNode: {
@@ -4456,6 +4631,151 @@ export interface operations {
             path: {
                 file_id: string;
                 library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    playback_decision_api_v1_libraries__library_id__files__file_id__playback_decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                file_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackDecisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                file_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackSessionCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                file_id: string;
+                session_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                file_id: string;
+                session_id: string;
+                artifact: string;
             };
             cookie?: {
                 cairndex_session?: string | null;
