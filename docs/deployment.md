@@ -82,6 +82,25 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_WORKER_ENABLED` | `true` | Run the in-process scan/probe/thumbnail worker. |
 | `CAIRNDEX_STORYBOARDS` | `true` | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards. |
 | `CAIRNDEX_STORYBOARD_MIN_DURATION` | `60` | Minimum probed video duration, in seconds, before storyboard generation is attempted. |
+| `CAIRNDEX_TRANSCODE_MAX_SESSIONS` | `2` | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use. |
+| `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` | `60` | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted. |
+| `CAIRNDEX_FFMPEG_HWACCEL` | _unset_ | Optional ffmpeg hardware-accelerated *decode* for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
+
+Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
+(default `20`, seconds to wait for a segment the encoder is producing before
+restarting ffmpeg), `CAIRNDEX_TRANSCODE_AHEAD_WINDOW` (default `5`, segments a
+request may lead the encoder before a far-seek restart), and
+`CAIRNDEX_TRANSCODE_KEYFRAME_TIMEOUT` (default `60`, ffprobe deadline for the
+one-time remux keyframe scan).
+
+**Transcode scratch directory.** Interactive HLS sessions write fMP4 segments
+under `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` — server-local, ephemeral
+runtime state, **never** inside a library package (ADR-0014). It is created on
+demand, reaped when sessions end/idle/shut down, and safe to wipe between runs;
+no backup is needed. Size it for roughly `MAX_SESSIONS × the video length being
+watched` (a session holds the segments it has produced so far — a whole movie's
+worth in the worst case of a fully-scrubbed transcode); on the `/data` volume a
+few GB of headroom is ample for the default 2-session bound.
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
 `CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library

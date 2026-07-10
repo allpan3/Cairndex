@@ -42,6 +42,29 @@ class ValidationError(DomainError):
     code = "validation_error"
 
 
+class CapacityError(DomainError):
+    """A bounded interactive resource is exhausted (e.g. HLS transcode sessions).
+
+    Distinct from a state conflict: the request is well-formed but the server is
+    momentarily at capacity and the client should retry later. Maps to 429
+    (ADR-0014). Interactive HLS sessions are bounded so a couple of players
+    cannot saturate the box.
+    """
+
+    code = "capacity_exhausted"
+
+
+class MediaProcessingError(DomainError):
+    """A server-side media tool (ffmpeg) failed to produce output.
+
+    Server-side, not client-attributable: the request was valid but the encoder
+    exited with an error, so we surface a structured 500 instead of a misleading
+    404/retry loop (ADR-0014). The message never carries source paths.
+    """
+
+    code = "media_processing_failed"
+
+
 class AuthRequiredError(DomainError):
     """A protected library's content was requested without a valid unlock (ADR-0010).
 
