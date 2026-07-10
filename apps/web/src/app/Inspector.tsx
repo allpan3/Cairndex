@@ -323,15 +323,23 @@ function NoteBox({
     e.preventDefault()
     const startY = e.clientY
     const startHeight = el.offsetHeight
-    el.style.overflowY = 'auto' // reveal overflow immediately while shrinking
+    // Only switch to a fixed height once the pointer has actually dragged, so a
+    // stray click on the grip never locks the box out of auto-expand.
+    let dragged = false
     const onMove = (ev: PointerEvent) => {
-      const next = Math.max(MIN_NOTE_HEIGHT, Math.round(startHeight + ev.clientY - startY))
-      el.style.height = `${next}px`
+      if (!dragged && Math.abs(ev.clientY - startY) < 3) return
+      dragged = true
+      el.style.overflowY = 'auto' // reveal overflow while shrinking
+      el.style.height = `${Math.max(MIN_NOTE_HEIGHT, Math.round(startHeight + ev.clientY - startY))}px`
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      onResize(el.offsetHeight) // persist the chosen height (switches to fixed)
+      if (dragged) {
+        onResize(el.offsetHeight) // persist the chosen height (switches to fixed)
+      } else if (height == null) {
+        grow(el) // a click, not a drag: stay in auto-expand
+      }
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)

@@ -1261,12 +1261,15 @@ button {
 }
 /* Custom resize grip (a thin bottom strip). Replaces the native corner resizer
    so no box is drawn over the scrollbar; a subtle centered bar hints on hover. */
+/* A small centered grab handle (not full-width) so clicking near the bottom of
+   the text can't start a resize. */
 .note-resize {
   position: absolute;
-  left: 0;
-  right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 0;
-  height: 9px;
+  width: 52px;
+  height: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
