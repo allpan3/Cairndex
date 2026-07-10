@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import LibrarySession
-from cairndex.api.schemas.file_view import FileViewEntryRead, UnbundledFilesPage
+from cairndex.api.schemas.file_browser import FileBrowserEntryRead, UnbundledFilesPage
 from cairndex.api.schemas.manual_bundling import (
     AddFilesRequest,
     BundleDraftResponse,
@@ -27,7 +27,7 @@ from cairndex.api.schemas.manual_bundling import (
 )
 from cairndex.manual_bundling import apply as apply_service
 from cairndex.manual_bundling import suggest as suggest_service
-from cairndex.services import file_view as file_view_service
+from cairndex.services import file_browser as file_browser_service
 from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/libraries/{library_id}/manual-bundling", tags=["manual-bundling"])
@@ -41,10 +41,10 @@ def list_unbundled_files(
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
 ) -> UnbundledFilesPage:
     """A flat, cross-library page of files awaiting bundling (provisional scan
-    rows), shaped like File View entries so the Files surface renders them."""
-    page = file_view_service.list_unbundled_files(db, offset=offset, limit=limit)
+    rows), shaped like File Browser entries so the Files surface renders them."""
+    page = file_browser_service.list_unbundled_files(db, offset=offset, limit=limit)
     return UnbundledFilesPage(
-        items=[FileViewEntryRead(**vars(e)) for e in page.items],
+        items=[FileBrowserEntryRead(**vars(e)) for e in page.items],
         total=page.total,
         offset=page.offset,
         limit=page.limit,

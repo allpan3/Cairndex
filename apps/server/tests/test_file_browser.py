@@ -1,4 +1,4 @@
-"""Read-only File View: listing, hidden files, traversal/symlink safety, links."""
+"""Read-only File Browser: listing, hidden files, traversal/symlink safety, links."""
 
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from cairndex.domain.enums import (
 )
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.services import bundles as bundle_service
-from cairndex.services import file_view as service
+from cairndex.services import file_browser as service
 
 
 def _stage_unbundled(session: Session, relative_path: str) -> AssetFile:
@@ -200,14 +200,14 @@ def test_missing_path_and_non_directory(session: Session, library_root: Path) ->
 def test_entries_endpoint(client: TestClient, library_id: str, library_root: Path) -> None:
     _make_media(library_root)
     base = f"/api/v1/libraries/{library_id}"
-    r = client.get(f"{base}/file-view/entries", params={"path": "Show"})
+    r = client.get(f"{base}/file-browser/entries", params={"path": "Show"})
     assert r.status_code == 200
     body = r.json()
     assert body["path"] == "Show"
     names = [e["name"] for e in body["entries"]]
     assert "cover.jpg" in names and ".hidden.mkv" not in names
 
-    bad = client.get(f"{base}/file-view/entries", params={"path": "../x"})
+    bad = client.get(f"{base}/file-browser/entries", params={"path": "../x"})
     assert bad.status_code in (400, 422)
 
 

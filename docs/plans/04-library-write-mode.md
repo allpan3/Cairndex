@@ -11,12 +11,12 @@
 Write mode is the deliberate end of the "metadata-only" era: Cairndex gains
 the ability to **create, rename, move, and trash files inside the active
 library root** — never outside it — behind an explicit opt-in gate. The
-product brief always planned this ("File View grows into a true filesystem
+product brief always planned this ("File Browser grows into a true filesystem
 browser with guarded write actions"); the immediate triggers are:
 
 - saving generated exports (contact sheets, GIFs — plan 1 §10) into the
   library and linking them to bundles / using them as covers;
-- File View rename/move/new-folder/delete, so disk organization can be
+- File Browser rename/move/new-folder/delete, so disk organization can be
   maintained *from* Cairndex instead of around it;
 - the desktop drag-in flow (plan 3 §6) eventually copying external files in.
 
@@ -95,7 +95,7 @@ package's trash**:
 - Same-filesystem rename → instant even for huge files; inside `.cairndex/`
   → already scan/grouping-ignored and portable with the library.
 - `AssetFile` rows are **kept**, with a new availability state `trashed`
-  (filtered from browse/File View like `missing`). Restore = rename back +
+  (filtered from browse/File Browser like `missing`). Restore = rename back +
   flip availability; every id, bundle membership, cover/subtitle link, and
   cache identity survives the round trip.
 - Permanent deletion happens only via explicit **Empty Trash** (or per-item
@@ -218,14 +218,14 @@ prompt (§3.3/§4) — the classic Eagle import dialog. Kept as the last
 slice: creation-only but the widest new surface (upload size limits,
 temp-file staging, partial-upload cleanup).
 
-## 7. File View UI (write affordances)
+## 7. File Browser UI (write affordances)
 
 - Context menu + shortcuts: **Rename** (Enter/F2 inline edit), **Move to…**
   (directory-picker dialog), **New Folder**, **Move to Trash** (Del/⌘⌫,
   confirm dialog listing linked-bundle impact), multi-select supported.
-- **Drag-move inside File View**: dragging entries onto a directory row/card
-  moves them (gap-insertion visuals stay reorder-only in Collection View —
-  in File View a drop *into* a directory is a physical move, clearly cued;
+- **Drag-move inside File Browser**: dragging entries onto a directory row/card
+  moves them (gap-insertion visuals stay reorder-only in Bundle Browser —
+  in File Browser a drop *into* a directory is a physical move, clearly cued;
   Esc cancels).
 - Trash system view in the sidebar (write-mode libraries only) with restore /
   delete-permanently / Empty Trash.
@@ -243,9 +243,9 @@ temp-file staging, partial-upload cleanup).
 | # | Slice | Contents |
 |---|-------|----------|
 | W0 | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013 |
-| W1 | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File View inline rename + New Folder, Undo toast |
+| W1 | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast |
 | W2 | Save exports to library | §5 (`save_new`), Export-dialog "Save into library…", link/role/set-cover — lands after plan 1 M11 |
-| W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File View, collision policy, plan/preview for multi-item |
+| W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File Browser, collision policy, plan/preview for multi-item |
 | W4 | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view, bundle "delete with files" |
 | W5 | Import external | §6 upload op; plan 3 drag-in copy flow lights up |
 | W6 | Hardening | EXDEV/case-only edge cases, retention config, journal history UI, deployment/backup docs, perf pass on bulk ops |

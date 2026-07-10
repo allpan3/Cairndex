@@ -6,7 +6,7 @@ bundle↔collection join tables (Phase 1); the jobs table (Phase 2); and subtitl
 tracks (Phase 6, ADR-0003).
 
 Note: the logical grouping concept is a **Collection** (formerly "folder"). The
-physical filesystem File View is a separate, storage-root-scoped surface and is
+physical filesystem File Browser is a separate, storage-root-scoped surface and is
 not modeled here.
 """
 
@@ -336,7 +336,7 @@ class Collection(Base):
     """A hierarchical virtual grouping of bundles (AGENTS.md §4.7).
 
     Formerly "folder". Membership is many-to-many and never moves files on disk;
-    this is purely logical and independent of the physical File View.
+    this is purely logical and independent of the physical File Browser.
     """
 
     __tablename__ = "collections"

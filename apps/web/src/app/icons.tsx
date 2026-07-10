@@ -1,6 +1,6 @@
 /**
  * Inline SVG icons (monochrome, `currentColor`) used across the sidebar and the
- * File View. Inline SVG has no font/codepoint dependency, so icons render the
+ * File Browser. Inline SVG has no font/codepoint dependency, so icons render the
  * same everywhere regardless of installed fonts. Paths follow the Lucide line
  * style (24×24 viewBox, 2px round strokes). Size/color are controlled by the
  * `.icon` CSS class and the surrounding text color.

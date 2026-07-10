@@ -8,6 +8,27 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Changed
+
+- **Terminology: "Collection/Bundles View" → "Bundle Browser", "File View" →
+  "File Browser" (breaking API rename).** Renamed the two browsing surfaces
+  across the product. Breaking API change: the read-only filesystem route
+  `GET .../file-view/entries` is now `GET .../file-browser/entries`, and the
+  OpenAPI schemas `FileViewEntryRead`/`FileViewListingRead` are now
+  `FileBrowserEntryRead`/`FileBrowserListingRead` (OpenAPI + `schema.d.ts`
+  regenerated). Internal renames: backend `services/file_view.py` →
+  `file_browser.py` (`FileViewEntry`/`FileViewListing` → `FileBrowser*`),
+  `api/schemas/file_view.py` → `file_browser.py`,
+  `previews.file_view_preview_cache_path` → `file_browser_preview_cache_path`;
+  web `app/FileView.tsx` → `FileBrowser.tsx` (component + `useFileView` →
+  `useFileBrowser`, `fileViewPreviewUrl`/`fileViewContentUrl` → `fileBrowser*`,
+  `.file-view` CSS → `.file-browser`), and the `file-view` query keys →
+  `file-browser`. Docs/prose updated (incl. the formal product-brief and
+  architecture concepts). Preserved: historical branch names
+  (`feat/collection-view`, `feat/collections-and-file-view`) and the stable
+  ADR-0007 filename slug (its title/body now read "File Browser"). No
+  behavior change; the surfaces work identically under the new names.
+
 ### Internal
 
 - **Docs reconciliation through media-player M5 (docs).** Marked plan 1 M5

@@ -22,8 +22,8 @@ export type LibraryCreate = components['schemas']['LibraryCreate']
 export type LibraryRegister = components['schemas']['LibraryRegister']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
-export type FileViewEntry = components['schemas']['FileViewEntryRead']
-export type FileViewListing = components['schemas']['FileViewListingRead']
+export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
+export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type TagRead = components['schemas']['TagRead']
@@ -448,18 +448,18 @@ export const createEmptyBundle = (title?: string | null) =>
   send<ManualBundleResult>(`${mb()}/create-empty-bundle`, 'POST', { title: title ?? null })
 
 // The flat "to-bundle queue": a cross-library page of not-yet-bundled files,
-// shaped like File View entries so one file row renders both surfaces.
+// shaped like File Browser entries so one file row renders both surfaces.
 export type UnbundledFilesPage = components['schemas']['UnbundledFilesPage']
 export const fetchUnbundledFiles = (offset = 0, limit = 200, signal?: AbortSignal) =>
   getJson<UnbundledFilesPage>(`${mb()}/unbundled-files?offset=${offset}&limit=${limit}`, signal)
 
-// --- File View (read-only filesystem browsing) -------------------------------
-export function fetchFileViewEntries(
+// --- File Browser (read-only filesystem browsing) -------------------------------
+export function fetchFileBrowserEntries(
   path: string | null,
   signal?: AbortSignal,
-): Promise<FileViewListing> {
+): Promise<FileBrowserListing> {
   const q = path ? `?path=${encodeURIComponent(path)}` : ''
-  return getJson<FileViewListing>(`${lib()}/file-view/entries${q}`, signal)
+  return getJson<FileBrowserListing>(`${lib()}/file-browser/entries${q}`, signal)
 }
 
 export function fetchBundle(id: string, signal?: AbortSignal): Promise<BundleRead> {
@@ -509,14 +509,14 @@ export function filePreviewUrl(file: FileRead, size: PreviewSize): string {
   return `${lib()}/files/${file.id}/preview?${q.toString()}`
 }
 
-/** WebP preview of a File View entry addressed by library-relative path */
-export function fileViewPreviewUrl(path: string, size: PreviewSize = 1600): string {
+/** WebP preview of a File Browser entry addressed by library-relative path */
+export function fileBrowserPreviewUrl(path: string, size: PreviewSize = 1600): string {
   const q = new URLSearchParams({ path, size: String(size) })
   return `${lib()}/file/preview?${q.toString()}`
 }
 
-/** Raw bytes of a File View entry (library-relative path, read-only). */
-export function fileViewContentUrl(path: string): string {
+/** Raw bytes of a File Browser entry (library-relative path, read-only). */
+export function fileBrowserContentUrl(path: string): string {
   return `${lib()}/file?path=${encodeURIComponent(path)}`
 }
 
