@@ -1,5 +1,131 @@
 # Project status
 
+## In review: media-player M7 — web HLS integration
+
+Branch `feat/web-hls` (off `main`, after the M6 playback-sessions merge #7).
+Latest commit subject: `feat: web HLS integration (hls.js/native-HLS engine)`
+plus a review-fix pass (below). Implements plan 1 M7 — the web player now
+consumes the M6 decision + session foundation, so a source the browser can't
+play directly streams over a server remux/transcode HLS session. Browser-verified
+end to end: an **MKV/H.264 remux** session and a **480p libx264 transcode**
+session both play via hls.js, and the **native-HLS** path plays in WebKit. HEVC
+and other transcode-only *sources* use the same machinery but have not been run
+end to end, so they are not claimed as verified (AGENTS.md).
+
+- **Capability profile (§6.3).** `apps/web/src/app/viewer/player/caps.ts`:
+  memoized once per tab, probing `HTMLVideoElement.canPlayType` **and**
+  `MediaSource.isTypeSupported` for containers (mp4/webm), video codecs
+  (h264/hevc/vp9/av1), audio codecs (aac/mp3/opus/vorbis/flac), and `native_hls`.
+  Only probe-confirmed formats are advertised (AGENTS.md: no untested-format
+  claims); `max_height` is null (no browser decode-ceiling API). Pure
+  `computeCapabilities(probe)` is unit-tested with mocked probes.
+- **Per-file decision + engine (§6.3).** `useHlsSession` POSTs
+  `.../files/{id}/playback-decision` when a video starts. `direct` → existing
+  `NativeEngine` path (unchanged; a decision failure also degrades to the
+  manifest's direct stream). `remux`/`transcode` → the session playlist via the
+  new `HlsEngine` (lazy `import('hls.js')`; native-HLS uses `NativeEngine` with
+  the m3u8). `createEngine()` picks the engine; hls.js is a **separate build
+  chunk** (~157 kB gz) so the main bundle stays flat (verified in `build`). The
+  manifest (`GET /bundles/{id}/playback`) is unchanged and still carries the
+  per-video metadata (subtitles/chapters/storyboard/duration/progress).
+- **Session lifecycle (§6.3).** Teardown (DELETE) on player close, file switch,
+  and unmount; a new **POST `.../playback-sessions/{sid}/teardown`** alias lets
+  `navigator.sendBeacon` reap the session on `pagehide` (mirrors the M4 progress
+  beacon; OpenAPI + `schema.d.ts` regenerated — `gen:api` reached the registry).
+  On a playlist/segment failure (idled-out session) or an hls.js fatal error the
+  client transparently re-requests a decision and re-attaches at the current
+  playhead; the re-attach budget (3) is refunded only when the playhead actually
+  advances (not on the `play` intent), so a persistently broken stream falls
+  back to the "can't play" card instead of looping.
+- **Quality/audio/burn-in menus.** A settings menu (gear) offers a `max_height`
+  ladder (Auto/1080/720/480), an audio-track picker (from `decision.audio_streams`),
+  and a burn-in toggle for non-native subtitle tracks (`burn_subtitle_track_id`).
+  Each switch re-decides + starts a new session at the current position (no
+  in-stream ABR); identical params reuse the live session (M6 F6), changed
+  params tear down the old one. Watch progress/resume is unchanged over the 1:1
+  VOD timeline.
+
+Verification:
+
+- Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check` /
+  `ruff format --check` / `mypy src` / `pytest` all green (**387 passed**, same
+  pre-existing Starlette/httpx deprecation warning). New: a POST-teardown-alias
+  test in `tests/test_hls_sessions.py`. The only server change is the beacon alias.
+- Frontend: `lint` / `format:check` / `typecheck` / `test` (**58 passed**, +11:
+  `caps.test.ts`, `engine.test.ts` engine-selection matrix, `useHlsSession.test.tsx`
+  teardown/switch/re-attach/direct) / `build` (hls.js is its own chunk, main
+  bundle unchanged) / `test:e2e` (**52 passed**, +3 in `player.spec.ts`: mocked
+  decision→hls.js path with real fMP4 bytes + quality/audio menus + a 720p switch
+  re-decide; transparent re-attach on 404 segments → fallback after the budget;
+  and a real-backend H.264 **MKV** that scans/probes then plays over a remux
+  session with the session DELETE firing on close). e2e ran escalated (the
+  sandbox blocks Vite's `::1:5173` bind).
+- Live (real uvicorn on an isolated port + a throwaway generated **720p 2-audio
+  MKV** library in `/tmp` — never the Demo library): a Chromium-like caps profile
+  decided **remux** ("mkv container is not in client capabilities") and started a
+  session; `max_height:480` decided **transcode** and `audio_stream_index:2`
+  decided **remux**, each a **distinct** session id (switch semantics); the POST
+  **teardown alias** returned 204 and removed the session dir; the **idle reaper**
+  (`CAIRNDEX_TRANSCODE_IDLE_TIMEOUT=8`) removed untouched session dirs. The full
+  browser play/seek/re-attach/switch/close-DELETE path is covered by the
+  real-backend + mocked Playwright specs above (Chrome-extension driving was
+  unavailable this session, so the interactive walkthrough was replaced by the
+  deterministic real-browser e2e + live curl checks, which exercise the same
+  server + client paths). The throwaway library/data dir were removed afterward;
+  the owner's Demo backend on :8000 was left untouched.
+
+### Review-fix pass (pre-merge, same branch)
+
+Addressed 8 findings (3 confirmed session-lifecycle bugs, 1 docs violation, rest
+hardening/cleanup):
+
+1. **Abort-orphan (confirmed, reproduced live).** A decision that resolves after
+   its effect was torn down (fast open→close) now DELETEs the session the server
+   started, instead of leaving it to the idle reaper.
+2. **Fallback flash (confirmed).** The hook starts in `deciding` (and the Stage
+   treats `idle` as loading too), so a playable file never shows a frame of the
+   "can't be previewed" card while opening.
+3. **Degrade-to-direct leak (confirmed).** The decision-failure `.catch` tears
+   down the superseded session before swapping to native playback.
+4. **Rapid-switch 429s.** A capacity rejection is retried once (~350 ms) — the
+   superseded session's teardown usually frees a slot in that window — before the
+   error card shows.
+5. **Re-attach window race.** An in-flight re-attach is tracked; a burst of stage
+   errors is swallowed (one budget slot) instead of returning false on the nulled
+   ref and surrendering to the fallback.
+6. **Docs (AGENTS rule).** Scoped the playback-support wording (this section +
+   CHANGELOG): MKV remux and 480p transcode + native-HLS are browser-verified;
+   HEVC-source playback is not claimed. Fixed the stale "~90 kB" hls.js size.
+7. **Cleanup.** Extracted a shared `BaseVideoEngine` for the 7 byte-identical
+   media-delegating methods (Native/Hls keep only load/destroy).
+8. **Cleanup.** Removed the dead `method` field; collapsed the three switch
+   setters into `setParam(key, value)`; shared one `beacon(url, body?)` helper
+   (bodyless teardown, CORS-safelisted) and dropped the gratuitous Blob type; a
+   typed `HttpError` carries the HTTP status.
+
+Tuning applied (reviewer note): the re-attach budget refunds only after ~10 s of
+continuous healthy playback past a re-attach (was ~1 s), so a flapping stream
+still exhausts the budget and falls back.
+
+Fix-pass verification: frontend `lint`/`format:check`/`typecheck`/`test`
+(**61 passed**, +3 hook tests: abort-orphan reap, double-error burst = one slot,
+429 retry-once)/`build` (hls.js still its own chunk, main bundle flat)/`test:e2e`
+(**54 passed**) all green. No backend source changed in this pass. Live
+verification runs through the real-browser + real-backend Playwright specs: the
+real-MKV remux spec now also asserts the server's `{DATA_DIR}/transcode` is
+**empty after close** (no orphaned session dir), and a new spec proves a playable
+file opening shows the loading state with **no fallback-card flash** (a
+MutationObserver records any `.media-fallback` mount). The abort-orphan reap is
+additionally pinned by a unit test (a decision that resolves post-abort DELETEs
+its session).
+
+Known issues / out of scope: embedded text-subtitle **extraction** to servable
+tracks and the multi-track subtitle menu/styling are M8 (M7 still shows only the
+default external track and burns in non-native tracks on transcode); `max_height`
+has no browser probe so it is advertised null (the ladder is user-driven); in-
+stream ABR is deliberately not implemented (switches re-create the session). Next
+recommended media-player task: **plan 1 M8 — subtitle upgrade**.
+
 ## Fixed: library switch refreshes the browser shell
 
 Branch `codex/library-switch-refresh` (off local `main` after the three approved

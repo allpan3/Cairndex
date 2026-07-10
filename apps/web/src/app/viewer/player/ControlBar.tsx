@@ -11,6 +11,8 @@ import {
 } from '../../icons'
 import { formatClock } from '../../../lib/format'
 import { SeekBar } from './SeekBar'
+import { SettingsMenu } from './SettingsMenu'
+import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
@@ -19,11 +21,12 @@ interface ControlBarProps {
   player: PlayerController
   video: PlayableVideo
   subtitles: SubtitleTrackRead[]
+  hls: HlsSessionState
   onSnapshot: () => void
 }
 
-/** Desktop-style custom video controls for direct playback. */
-export function ControlBar({ player, video, subtitles, onSnapshot }: ControlBarProps) {
+/** Desktop-style custom video controls for direct and HLS playback. */
+export function ControlBar({ player, video, subtitles, hls, onSnapshot }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
@@ -84,6 +87,7 @@ export function ControlBar({ player, video, subtitles, onSnapshot }: ControlBarP
         <button className="mv-btn" onClick={onSnapshot} aria-label="Snapshot" title="Snapshot">
           <IconCamera />
         </button>
+        <SettingsMenu hls={hls} subtitles={subtitles} />
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
           onClick={player.togglePiP}

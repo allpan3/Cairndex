@@ -812,9 +812,29 @@ export interface paths {
         post?: never;
         /**
          * Delete Playback Session
-         * @description Tear down a session (player close; a beacon may deliver this).
+         * @description Tear down a session (player close, file switch, unmount).
          */
         delete: operations["delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/teardown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Beacon Teardown Playback Session
+         * @description Tear down a session via a POST beacon (pagehide `navigator.sendBeacon`).
+         */
+        post: operations["beacon_teardown_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__teardown_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4735,6 +4755,39 @@ export interface operations {
         };
     };
     delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                file_id: string;
+                session_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    beacon_teardown_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__teardown_post: {
         parameters: {
             query?: never;
             header?: never;

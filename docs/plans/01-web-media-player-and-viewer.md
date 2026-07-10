@@ -480,8 +480,8 @@ running scan must not queue-block a ten-second export:
 | M3 | ✅ Storyboards (merged, #3) | §4.2 job + endpoints + hover preview + chapter ticks |
 | M4 | ✅ Watch progress (merged, #4) | §5.2 table/API + resume + continue-watching endpoint |
 | M5 | ✅ Image viewer v2 (merged, #5) | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
-| M6 | Playback decisions + HLS sessions ← **next** | §6 server side, fake-ffmpeg tests, config bounds |
-| M7 | Web HLS integration | Engine abstraction, hls.js, quality/audio menus, burn-in option |
+| M6 | ✅ Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
+| M7 | ✅ Web HLS integration ← **next merge** | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
 | M8 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings. Owner-deprioritized behind HLS — embedded-sub extraction is most valuable once MKVs play at all. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
 | M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. **Dual simultaneous subtitles** land here at the earliest (owner: far-deferred; fine to slip past M11). Also: trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
 | M10 | Video wall (web) | §9 |
