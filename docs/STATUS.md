@@ -1,9 +1,10 @@
 # Project status
 
-## Current branch: media-player M5 image viewer v2 + preview derivatives
+## Merged: media-player M5 image viewer v2 + preview derivatives (#5)
 
-Branch `feat/image-viewer`. Implemented plan 1 M5's image viewer v2 and preview
-derivative slice:
+Branch `feat/image-viewer`, merged as **#5**. Implemented plan 1 M5's image
+viewer v2 and preview derivative slice, then two review fix passes (the second
+fixed a progressive-upgrade stall the first pass missed — see Verification):
 
 - Added lazy WebP preview derivatives at
   `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
@@ -78,6 +79,18 @@ Verification:
   sampler observed the displayed image advance from the bundle-file thumbnail
   to `data-tier="original"` with the `/files/{file_id}/content` source in about
   31 ms.
+- Independent reviewer verification before merge (fix pass 2): all gates re-run
+  green (backend 333, frontend unit 47, Playwright 49), and the same Demo
+  `eiffel` bundle opened at fit 72% reached `data-tier="original"`
+  (naturalWidth 600, `/content` source) with zero interaction, reproduced twice
+  including a cold-cache first open. Review history: the first fix pass left
+  `renderedTransform.scale` in the tier-load effect deps, so the mount →
+  viewport-measure scale change cancelled the only in-flight `/content` decode
+  and images never upgraded past the 480px thumbnail; the second pass keys the
+  effect on a discrete `wantedTier` memo, stops cancelling in-flight decodes on
+  re-run (a lifetime symbol invalidates them only on unmount; `key={file.id}`
+  remounts on file switch), and the e2e now asserts the displayed `.mv-image`
+  `data-tier`/src advance instead of only observing a network request.
 
 ## Merged: media-player M4 watch progress/resume (#4)
 
@@ -950,10 +963,12 @@ dialogs).
 
 ## Next recommended tasks
 
-1. **Plan 1 M6 — HLS/remux/transcode session foundation** after the M5 image
-   viewer branch lands. Subtitle depth remains owner-deferred to M8 behind HLS,
+1. **Plan 1 M6 — playback decisions + HLS/remux/transcode session foundation**
+   (M5 merged as #5). Subtitle depth remains owner-deferred to M8 behind HLS,
    and dual subtitles to M9 — see
-   `docs/plans/01-web-media-player-and-viewer.md`.
+   `docs/plans/01-web-media-player-and-viewer.md`. M6 needs the HLS session
+   model / transcode-cache location ADR recorded at implementation time
+   (flagged in plan 1 §12 and ADR-0012).
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 3. Continue File View planning toward guarded write mode and safe desktop-native

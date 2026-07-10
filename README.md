@@ -26,7 +26,9 @@ single-container production deployment. Media playback runs in a unified
 custom **media viewer** — a hand-built video player (auto-hiding controls,
 keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
 tracks, **seek-bar storyboard trickplay** and chapter ticks, and **watch
-progress / resume** — plus a fullscreen image lightbox.
+progress / resume** — plus a **zoom/pan image viewer** with progressive
+preview tiers and server-side WebP derivatives that make HEIC/TIFF/BMP
+openable in the browser.
 
 Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
 each library is a directory carrying its own `.cairndex/` metadata

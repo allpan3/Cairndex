@@ -10,6 +10,13 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
+- **Docs reconciliation through media-player M5 (docs).** Marked plan 1 M5
+  merged (#5, M6 next), retitled the `docs/STATUS.md` M5 section from "Current
+  branch" to "Merged" and recorded the second review fix pass (discrete-tier
+  effect keying + displayed-tier e2e assertions) with its independent live
+  verification, and updated the README feature summary ("fullscreen image
+  lightbox" → zoom/pan image viewer with progressive previews and
+  HEIC/TIFF/BMP openability).
 - **Docs reconciliation through media-player M4 (docs).** Marked plan 1 M3/M4
   merged (M5 next) and folded in the M9 storyboard padding-tile follow-up;
   refreshed the `docs/architecture.md` status header (was "PR 36"); updated the
