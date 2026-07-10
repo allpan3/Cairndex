@@ -1207,16 +1207,23 @@ button {
   margin: 0;
 }
 .notes-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 4px;
+  padding: 2px;
+  border-radius: 4px;
 }
 .notes-add:hover {
   color: var(--text-strong);
+  background: var(--surface);
+}
+.notes-add .icon {
+  width: 14px;
+  height: 14px;
 }
 .note-row {
   position: relative;
@@ -1224,9 +1231,13 @@ button {
 .note-row + .note-row {
   margin-top: 6px;
 }
-/* Leave room for the hover remove affordance so it never overlaps text. */
+/* Leave room for the remove affordance (right) and the resize grip (bottom) so
+   neither overlaps the text. The JS auto-grow / fixed-height controls the box
+   height, so no native resizer/scroll-corner box is drawn. */
 .note-row .edit--note {
   padding-right: 26px;
+  padding-bottom: 10px;
+  min-height: 44px;
 }
 .note-remove {
   position: absolute;
@@ -1247,6 +1258,32 @@ button {
 }
 .note-remove:hover {
   color: var(--text-strong);
+}
+/* Custom resize grip (a thin bottom strip). Replaces the native corner resizer
+   so no box is drawn over the scrollbar; a subtle centered bar hints on hover. */
+.note-resize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.note-resize::after {
+  content: '';
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.note-row:hover .note-resize::after {
+  opacity: 0.7;
 }
 .collection-row__rename {
   position: relative;

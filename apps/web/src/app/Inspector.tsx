@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { ConflictError, type BundleRead, thumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
+import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
+import { IconPlus } from './icons'
 import { TagEditor } from './TagEditor'
 
 /** Shown when an edit was rejected because the bundle changed elsewhere
@@ -102,6 +104,13 @@ function BundleEditor({
     notesRef.current = next
     setNotes(next)
   }
+  // Preferred note-box height, shared across all note boxes and bundles and
+  // persisted. null → auto-grow to fit content; a number → fixed height (a
+  // scrollbar appears when the text overflows), set by dragging the resize grip.
+  const [noteHeight, setNoteHeight] = usePersistentState<number | null>(
+    'cairndex.noteBoxHeight',
+    null,
+  )
 
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
@@ -190,31 +199,21 @@ function BundleEditor({
           aria-label="Add note"
           title="Add another note"
         >
-          +
+          <IconPlus />
         </button>
       </div>
       {notes.map((n, i) => (
-        <div className="note-row" key={i}>
-          <textarea
-            className="edit edit--note"
-            value={n}
-            placeholder="Add a note…"
-            onChange={(e) => changeNote(i, e.target.value)}
-            onBlur={commitNotes}
-            aria-label={notes.length > 1 ? `Note ${i + 1}` : 'Note'}
-            rows={3}
-          />
-          {(notes.length > 1 || n.trim() !== '') && (
-            <button
-              className="note-remove"
-              onClick={() => removeNote(i)}
-              aria-label={`Remove note ${i + 1}`}
-              title="Remove note"
-            >
-              ×
-            </button>
-          )}
-        </div>
+        <NoteBox
+          key={i}
+          value={n}
+          index={i}
+          count={notes.length}
+          height={noteHeight}
+          onChange={(v) => changeNote(i, v)}
+          onCommit={commitNotes}
+          onRemove={() => removeNote(i)}
+          onResize={setNoteHeight}
+        />
       ))}
 
       <TagEditor bundleId={bundleId} />
@@ -229,6 +228,119 @@ function BundleEditor({
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
       />
     </aside>
+  )
+}
+
+const MIN_NOTE_HEIGHT = 44
+
+/** One note textarea. Auto-grows to fit its content until the owner drags the
+ * resize grip; once a manual height is set (shared across all note boxes and
+ * persisted) it becomes a fixed box with a scrollbar when the text overflows.
+ * Double-clicking the grip returns to auto-fit. */
+function NoteBox({
+  value,
+  index,
+  count,
+  height,
+  onChange,
+  onCommit,
+  onRemove,
+  onResize,
+}: {
+  value: string
+  index: number
+  count: number
+  height: number | null
+  onChange: (value: string) => void
+  onCommit: () => void
+  onRemove: () => void
+  onResize: (height: number | null) => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  const grow = (el: HTMLTextAreaElement) => {
+    el.style.height = 'auto'
+    // scrollHeight is the content+padding box; with border-box sizing add the
+    // border so the last line isn't clipped by a couple of pixels.
+    const border = el.offsetHeight - el.clientHeight
+    el.style.height = `${el.scrollHeight + border}px`
+  }
+
+  // Apply the fixed height, or auto-grow to content, whenever either changes.
+  // Layout effect so the size is right before paint (no first-frame flicker).
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (height != null) el.style.height = `${height}px`
+    else grow(el)
+  }, [value, height])
+
+  // In auto mode, re-grow when the panel width changes and text rewraps. Only
+  // width changes are acted on, so setting the height here can't feed back.
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || height != null) return
+    let lastWidth = el.clientWidth
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width === undefined || Math.abs(width - lastWidth) < 0.5) return
+      lastWidth = width
+      grow(el)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [height])
+
+  const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const el = ref.current
+    if (!el) return
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = el.offsetHeight
+    el.style.overflowY = 'auto' // reveal overflow immediately while shrinking
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.max(MIN_NOTE_HEIGHT, Math.round(startHeight + ev.clientY - startY))
+      el.style.height = `${next}px`
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      onResize(el.offsetHeight) // persist the chosen height (switches to fixed)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  return (
+    <div className="note-row">
+      <textarea
+        ref={ref}
+        className="edit edit--note"
+        style={{ resize: 'none', overflowY: height != null ? 'auto' : 'hidden' }}
+        value={value}
+        placeholder="Add a note…"
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit}
+        aria-label={count > 1 ? `Note ${index + 1}` : 'Note'}
+      />
+      {(count > 1 || value.trim() !== '') && (
+        <button
+          className="note-remove"
+          onClick={onRemove}
+          aria-label={`Remove note ${index + 1}`}
+          title="Remove note"
+        >
+          ×
+        </button>
+      )}
+      <div
+        className="note-resize"
+        onPointerDown={startResize}
+        onDoubleClick={() => onResize(null)}
+        title="Drag to resize · double-click to fit"
+        aria-hidden="true"
+      />
+    </div>
   )
 }
 

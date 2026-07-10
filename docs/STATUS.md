@@ -22,10 +22,16 @@ note, used as clean separators (no predefined roles under the hood).
   legacy single `note`, with `notes` winning when both are sent. OpenAPI +
   `apps/web/src/api/schema.d.ts` regenerated (`gen:api` reached the registry).
 - **Frontend.** The inspector "Note" section became **NOTES** with a small `+`
-  affordance that appends a note box below the current ones; each box commits on
-  blur, and a hover `×` removes one (at least one empty box always remains). A
-  synchronously-updated `notesRef` mirrors the list so a blur landing in the same
-  tick as the last keystroke still commits the latest text.
+  **icon** (`IconPlus`) that appends a note box below the current ones; each box
+  commits on blur, and a hover `×` removes one (at least one empty box always
+  remains). A synchronously-updated `notesRef` mirrors the list so a blur landing
+  in the same tick as the last keystroke still commits the latest text. Each note
+  box (`NoteBox`) **auto-grows** to fit its content by default (no scrollbar);
+  dragging a custom bottom grip switches it to a fixed height with `overflow-y:
+  auto` — `resize: none` on the textarea means there is **no native
+  resizer/scroll-corner box** — and that height persists across sessions
+  (`cairndex.noteBoxHeight`, shared by all note boxes; double-click the grip to
+  return to auto-fit).
 
 Verification:
 
@@ -42,10 +48,15 @@ Verification:
   section renders (uppercase label + `+`); typing note 1, clicking `+`, typing
   note 2, and blurring persisted `notes = ["Synopsis…","Cast…"]` with the joined
   `note` shadow (confirmed via the API and a page reload); no console errors.
-  All Demo edits were reverted to `notes: []` afterward, so the Demo library is
-  unchanged for review. (Note: synthetic browser `input`/`blur` events don't
-  drive React's controlled inputs / focusout `onBlur`; the real path is covered
-  by `preview_fill`/`preview_click` and the Playwright case.)
+  The box refinements were also verified live: the `+` renders as a centered
+  14×14 SVG icon; an auto-mode box grew to fit multi-line text (117 px, no
+  clip); dragging the grip shrank it to 57 px with `overflow-y: auto` (scrollbar,
+  no native corner box) and stored `cairndex.noteBoxHeight = 57`, which survived
+  a same-origin reload. All Demo edits were reverted to `notes: []` afterward, so
+  the Demo library is unchanged for review. (Note: synthetic browser
+  `input`/`blur` events don't drive React's controlled inputs / focusout
+  `onBlur`; the real path is covered by `preview_fill`/`preview_click` and the
+  Playwright case.)
 
 Known issues / out of scope: `MultiBundleInspector` still has no notes field
 (bulk-overwriting prose is intentionally omitted); collections keep their single
