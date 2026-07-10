@@ -1,10 +1,12 @@
 """Whole-library FTS5 metadata search: coverage, freshness, escaping, API."""
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, inspect
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, MediaKind
-from cairndex.search import rebuild, to_match_query
+from cairndex.search import ensure_search_schema, rebuild, to_match_query
+from cairndex.search.index import FTS_TABLE
 from cairndex.services import browse as browse_service
 from cairndex.services import bundles as bundle_service
 from cairndex.services import tags as tag_service
@@ -27,7 +29,7 @@ def test_to_match_query_escaping() -> None:
 def test_search_finds_item_beyond_first_page(session: Session) -> None:
     for i in range(150):
         bundle_service.create_bundle(session, title=f"Filler {i:03d}")
-    target = bundle_service.create_bundle(session, title="Cosmos Documentary", note="deep space")
+    target = bundle_service.create_bundle(session, title="Cosmos Documentary", notes=["deep space"])
     bundle_service.add_file(
         session,
         target.id,
@@ -95,6 +97,31 @@ def test_rebuild_repopulates(session: Session) -> None:
     session.commit()
     assert count == 2
     assert _titles(session, "alpha") == ["Alpha"]
+
+
+def test_ensure_search_schema_rebuilds_after_column_rename(
+    engine: Engine, session: Session
+) -> None:
+    """A library whose FTS table predates the note→notes column rename is
+    detected as stale and rebuilt (table + triggers), without data loss."""
+    # Replace the current index with the pre-rename schema (column ``note``).
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {FTS_TABLE}")
+        conn.exec_driver_sql(
+            f"CREATE VIRTUAL TABLE {FTS_TABLE} USING fts5("
+            "bundle_id UNINDEXED, title, note, files, tags, collections)"
+        )
+    assert "note" in {c["name"] for c in inspect(engine).get_columns(FTS_TABLE)}
+
+    ensure_search_schema(engine)
+
+    cols = {c["name"] for c in inspect(engine).get_columns(FTS_TABLE)}
+    assert "notes" in cols and "note" not in cols
+
+    # The rebuilt index + triggers index notes on subsequent writes.
+    bundle_service.create_bundle(session, title="Rebuilt", notes=["distinctivemarker"])
+    session.commit()
+    assert _titles(session, "distinctivemarker") == ["Rebuilt"]
 
 
 def test_browse_api_q_param(client: TestClient, library_id: str, session: Session) -> None:

@@ -21,7 +21,7 @@ export const FIELDS: FieldDef[] = [
     kind: 'text',
     operators: ['contains', 'not_contains', 'equals', 'starts_with'],
   },
-  { field: 'note', label: 'Note', kind: 'text', operators: ['contains', 'not_contains'] },
+  { field: 'notes', label: 'Notes', kind: 'text', operators: ['contains', 'not_contains'] },
   { field: 'source', label: 'Source', kind: 'text', operators: ['contains', 'not_contains'] },
   { field: 'filename', label: 'Filename', kind: 'text', operators: ['contains', 'not_contains'] },
   { field: 'extension', label: 'Extension', kind: 'text', operators: ['equals'] },

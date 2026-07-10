@@ -135,7 +135,7 @@ def create_bundle(payload: BundleCreate, db: LibrarySession) -> BundleRead:
     bundle = service.create_bundle(
         db,
         title=payload.title,
-        note=payload.note,
+        notes=payload.notes,
         rating=payload.rating,
     )
     return BundleRead.model_validate(bundle)

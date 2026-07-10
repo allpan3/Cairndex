@@ -1604,8 +1604,8 @@ export interface components {
         };
         /** BundleCreate */
         BundleCreate: {
-            /** Note */
-            note?: string | null;
+            /** Notes */
+            notes?: string[] | null;
             /** Rating */
             rating?: number | null;
             /** Title */
@@ -1638,8 +1638,8 @@ export interface components {
              * Format: date-time
              */
             imported_at: string;
-            /** Note */
-            note: string | null;
+            /** Notes */
+            notes?: string[];
             /** Primary File Id */
             primary_file_id: string | null;
             /** Rating */
@@ -1718,8 +1718,8 @@ export interface components {
         BundleUpdate: {
             /** Cover File Id */
             cover_file_id?: string | null;
-            /** Note */
-            note?: string | null;
+            /** Notes */
+            notes?: string[] | null;
             /** Primary File Id */
             primary_file_id?: string | null;
             /** Rating */

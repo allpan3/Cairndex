@@ -59,7 +59,7 @@ product brief's "Filter expression contract")
 | Field | Operators |
 | --- | --- |
 | `title` / `name` | `contains`, `not_contains`, `equals`, `starts_with` |
-| `note`, `source` (file origin), `filename` | `contains`, `not_contains` |
+| `notes`, `source` (file origin), `filename` | `contains`, `not_contains` |
 | `tags` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `rating` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
@@ -82,7 +82,7 @@ exactly this set.
 
 | Field | Operators | Value |
 | --- | --- | --- |
-| `title` / `name`, `note`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `note`/`source`/`filename` use contains/not_contains in the UI) | string |
+| `title` / `name`, `notes`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `notes`/`source`/`filename` use contains/not_contains in the UI) | string |
 | `extension` | `equals`, `in`, `not_in` | string / list |
 | `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
 | `rating` (also) | `is_null` | boolean (`true` = unrated, `rating IS NULL`) |

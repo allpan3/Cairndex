@@ -8,6 +8,29 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple notes per bundle.** A bundle now carries an ordered list of
+  freeform note/description blocks instead of a single note. The inspector
+  renames the section to **NOTES** with a small `+` icon that appends another
+  note box below the current ones; each box commits on blur and can be removed
+  (hover ×). No predefined roles — the blocks are just clean separators. Note
+  boxes auto-grow to fit their text by default (no scrollbar); only an explicit
+  drag of the small bottom grip sets a fixed height (with a scrollbar when the
+  text overflows, and no native resizer/scroll-corner box) — a stray click on
+  the grip no longer locks the box out of auto-expand. Each note remembers its
+  own height across sessions (`cairndex.noteHeights`, per bundle, aligned with
+  the notes list). Double-clicking the grip returns that box to auto-fit.
+  New `asset_bundles.notes` JSON column (added additively via
+  `ensure_content_indexes`) is the single source of truth, exposed as
+  `notes: string[]` on `BundleRead` and accepted on `BundleCreate`/`BundleUpdate`
+  (OpenAPI + `schema.d.ts` regenerated). The `notes` filter now compiles to a
+  per-note `EXISTS` over `json_each(notes)` and the `bundle_search` FTS index
+  concatenates the notes, so both text search and the Notes filter match across
+  every note. (Early-dev cleanup: the previous single `note` column/field and
+  its compatibility shim were removed rather than kept as a shadow; libraries
+  created earlier keep a harmless unused `note` column.)
+
 ### Changed
 
 - **Terminology: "Collection/Bundles View" → "Bundle Browser", "File View" →

@@ -526,16 +526,19 @@
       },
       "BundleCreate": {
         "properties": {
-          "note": {
+          "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Note"
+            "title": "Notes"
           },
           "rating": {
             "anyOf": [
@@ -628,16 +631,12 @@
             "title": "Imported At",
             "type": "string"
           },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
           },
           "primary_file_id": {
             "anyOf": [
@@ -685,7 +684,6 @@
         "required": [
           "id",
           "title",
-          "note",
           "rating",
           "cover_file_id",
           "primary_file_id",
@@ -918,16 +916,19 @@
             ],
             "title": "Cover File Id"
           },
-          "note": {
+          "notes": {
             "anyOf": [
               {
-                "type": "string"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Note"
+            "title": "Notes"
           },
           "primary_file_id": {
             "anyOf": [

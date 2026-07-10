@@ -122,7 +122,11 @@ class AssetBundle(Base):
 
     id: Mapped[UlidPk]
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Ordered list of freeform owner notes/descriptions — the store for the
+    # inspector "NOTES" section (the ``+`` affordance appends a block). There are
+    # no predefined roles; each entry is just a separate text block. NULL on rows
+    # created before this column existed reads back as an empty list.
+    notes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
