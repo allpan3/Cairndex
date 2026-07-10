@@ -78,10 +78,14 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
-- **Web HLS integration — MKV/HEVC/etc. now play in the browser (Plan 1 M7,
-  ADR-0014).** The web player consumes the M6 decision + session foundation, so
-  containers/codecs the browser can't play directly (MKV, HEVC, …) stream via a
-  server remux/transcode HLS session.
+- **Web HLS integration — MKVs now play in the browser via remux/transcode
+  (Plan 1 M7, ADR-0014).** The web player consumes the M6 decision + session
+  foundation, so a source the browser can't play directly is streamed over a
+  server remux/transcode HLS session. Browser-verified end to end: an **MKV/H.264
+  remux** session and a **480p libx264 transcode** session both play through the
+  hls.js engine, and the **native-HLS** path plays in WebKit. HEVC and other
+  transcode-only *sources* route through the same session machinery but have not
+  yet been run end to end, so they are not claimed as verified.
   - **Client capability profile** (`viewer/player/caps.ts`): computed once at
     startup and memoized, probing `HTMLVideoElement.canPlayType` **and**
     `MediaSource.isTypeSupported` for containers (mp4/webm), video codecs
@@ -115,6 +119,19 @@ grouped under `Unreleased` until the first tagged release.
     one. Watch progress/resume works unchanged over the 1:1 VOD timeline.
   - New POST teardown alias route (OpenAPI + `apps/web/src/api/schema.d.ts`
     regenerated); `hls.js` added as a lazy-only runtime dependency.
+  - Review-fix pass (pre-merge): a decision that resolves after its effect was
+    torn down (fast open→close) now **reaps** the session the server started
+    instead of orphaning it until the idle reaper; the video stage starts in a
+    `deciding` state so no frame of the "can't be previewed" card flashes while a
+    playable file opens; the decision-failure degrade-to-direct path tears down
+    the superseded session first; a capacity (429) decision is retried once
+    (short delay) before surfacing the error; a burst of stage errors during an
+    in-flight re-attach is swallowed (one budget slot, not a failure); and the
+    re-attach budget is only refunded after ~10 s of continuous healthy playback
+    so a flapping stream still falls back. Cleanups: shared `BaseVideoEngine`
+    for the byte-identical media-delegating methods, one `setParam(key, value)`
+    switch setter, a shared `beacon(url, body?)` helper (bodyless, CORS-safelisted
+    teardown), a typed `HttpError` carrying the status.
 
 - **Playback decisions + HLS remux/transcode session foundation (Plan 1 M6,
   ADR-0014).** Server-side only; the web hls.js integration is M7.

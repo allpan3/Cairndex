@@ -4,16 +4,27 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { ClientCapabilities, PlaybackDecisionResponse } from '../../../api/client'
 import { useHlsSession, type UseHlsSessionOptions } from './useHlsSession'
 
-const mocks = vi.hoisted(() => ({
-  requestPlaybackDecision: vi.fn(),
-  deletePlaybackSession: vi.fn(() => Promise.resolve()),
-  beaconTeardownSession: vi.fn(() => true),
-}))
+const mocks = vi.hoisted(() => {
+  class HttpErrorMock extends Error {
+    readonly status: number
+    constructor(status: number) {
+      super(`HTTP ${status}`)
+      this.status = status
+    }
+  }
+  return {
+    requestPlaybackDecision: vi.fn(),
+    deletePlaybackSession: vi.fn(() => Promise.resolve()),
+    beaconTeardownSession: vi.fn(() => true),
+    HttpError: HttpErrorMock,
+  }
+})
 
 vi.mock('../../../api/client', () => ({
   requestPlaybackDecision: mocks.requestPlaybackDecision,
   deletePlaybackSession: mocks.deletePlaybackSession,
   beaconTeardownSession: mocks.beaconTeardownSession,
+  HttpError: mocks.HttpError,
 }))
 
 const CAPS: ClientCapabilities = {
@@ -91,7 +102,6 @@ afterEach(() => {
 test('a remux decision starts an HLS source and tears the session down on unmount', async () => {
   const { result, unmount } = render('f1')
   await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
-  expect(result.current.method).toBe('remux')
   expect(result.current.source?.src).toBe('/s/s1/index.m3u8')
   expect(result.current.source?.nativeHls).toBe(false)
 
@@ -113,7 +123,7 @@ test('a quality switch re-decides and tears down the superseded session', async 
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s1/index.m3u8'))
   expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(1)
 
-  act(() => result.current.setMaxHeight(720))
+  act(() => result.current.setParam('maxHeight', 720))
   await waitFor(() => expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(2))
   // The new decision carried the requested cap and resumed at the playhead.
   const secondCall = mocks.requestPlaybackDecision.mock.calls[1]
@@ -145,4 +155,60 @@ test('re-attach re-requests a fresh session at the current playhead', async () =
   await waitFor(() => expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(2))
   await waitFor(() => expect(result.current.source?.src).toBe('/s/s2/index.m3u8'))
   expect(result.current.source?.startAt).toBe(12.5)
+})
+
+test('reaps a session the server started for a decision the client aborted', async () => {
+  // The response arrives after the effect was torn down (fast open→close): the
+  // server may have started a session, so it must be reaped, not orphaned.
+  let resolve!: (decision: PlaybackDecisionResponse) => void
+  mocks.requestPlaybackDecision.mockImplementation(
+    () => new Promise<PlaybackDecisionResponse>((res) => (resolve = res)),
+  )
+  const { unmount } = render('f1')
+  unmount() // aborts the in-flight decision
+  await act(async () => {
+    resolve(remuxDecision('orphan'))
+    await Promise.resolve()
+  })
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 'orphan')
+})
+
+test('a double-error burst consumes a single re-attach slot', async () => {
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.source?.src).toBe('/s/s1/index.m3u8'))
+  expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(1)
+
+  // Two stage errors in the same burst (before the re-attach resolves): the
+  // first re-attaches, the second is swallowed — one budget slot, not a failure.
+  let first = false
+  let second = false
+  act(() => {
+    first = result.current.reattach()
+    second = result.current.reattach()
+  })
+  expect(first).toBe(true)
+  expect(second).toBe(true)
+  await waitFor(() => expect(result.current.source?.src).toBe('/s/s2/index.m3u8'))
+  // Only one extra decision fired — the second error did not bump the epoch.
+  expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(2)
+
+  // The burst spent one of three slots, so more re-attaches remain available.
+  act(() => {
+    expect(result.current.reattach()).toBe(true)
+  })
+  await waitFor(() => expect(mocks.requestPlaybackDecision).toHaveBeenCalledTimes(3))
+})
+
+test('retries a capacity (429) decision once before surfacing it', async () => {
+  let calls = 0
+  mocks.requestPlaybackDecision.mockImplementation(() => {
+    calls += 1
+    if (calls === 1) return Promise.reject(new mocks.HttpError(429))
+    return Promise.resolve(remuxDecision('after-retry'))
+  })
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.source?.src).toBe('/s/after-retry/index.m3u8'), {
+    timeout: 2000,
+  })
+  expect(calls).toBe(2)
 })

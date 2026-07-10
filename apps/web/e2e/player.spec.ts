@@ -770,6 +770,27 @@ async function openMovie(page: Page) {
   return video
 }
 
+test('never flashes the unplayable card while opening a playable video', async ({ page }) => {
+  // Regression: the decision round-trip must show "Preparing playback…", not a
+  // frame of the "can't be previewed" fallback, before the source resolves.
+  await page.addInitScript(() => {
+    ;(window as unknown as { __fallbackSeen: boolean }).__fallbackSeen = false
+    new MutationObserver(() => {
+      if (document.querySelector('.media-fallback')) {
+        ;(window as unknown as { __fallbackSeen: boolean }).__fallbackSeen = true
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true })
+  })
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  await openMovie(page)
+  expect(
+    await page.evaluate(() => (window as unknown as { __fallbackSeen: boolean }).__fallbackSeen),
+  ).toBe(false)
+})
+
 test('opens the unified viewer and drives custom video controls', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page)
@@ -1261,6 +1282,13 @@ test('plays a real MKV over a backend remux session and tears it down on close',
     await page.getByRole('button', { name: 'Close' }).click()
     await expect(page.locator('.media-viewer')).toHaveCount(0)
     await expect.poll(() => deletes.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    // The teardown must leave no orphaned transcode session dir on the server.
+    const transcodeDir = join(dataDir, 'transcode')
+    await expect
+      .poll(() => (existsSync(transcodeDir) ? readdirSync(transcodeDir).length : 0), {
+        timeout: 10_000,
+      })
+      .toBe(0)
   } finally {
     if (backend) await stopBackend(backend.child)
     rmSync(libraryRoot, { recursive: true, force: true })
