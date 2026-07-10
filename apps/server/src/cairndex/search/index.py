@@ -27,7 +27,9 @@ CREATE VIEW IF NOT EXISTS {_SOURCE_VIEW} AS
 SELECT
   b.id AS bundle_id,
   coalesce(b.title, '') AS title,
-  coalesce(b.note, '') AS note,
+  -- All of the bundle's notes concatenated into one searchable blob (the FTS
+  -- column is still named ``note``; ``notes`` is a JSON array of strings).
+  coalesce((SELECT group_concat(value, ' ') FROM json_each(b.notes)), '') AS note,
   coalesce((
     SELECT group_concat(
       f.display_title || ' ' || f.original_filename || ' ' || f.relative_path
@@ -135,6 +137,10 @@ def ensure_search_schema(engine: Engine) -> None:
     """
     table_exists = FTS_TABLE in set(inspect(engine).get_table_names())
     with engine.begin() as conn:
+        # Recreate the source view so a library opened after the view definition
+        # changed (e.g. note → notes) picks up the new SELECT. Cheap: a view has
+        # no stored data and the triggers resolve it at fire time.
+        conn.exec_driver_sql(f"DROP VIEW IF EXISTS {_SOURCE_VIEW}")
         conn.exec_driver_sql(_CREATE_VIEW)
         if not table_exists:
             conn.exec_driver_sql(_CREATE_TABLE)

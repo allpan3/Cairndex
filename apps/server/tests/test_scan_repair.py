@@ -34,7 +34,7 @@ def test_same_volume_move_repairs_in_place(session: Session, library_root: Path)
     # Decorate the bundle with metadata that must survive the repair.
     collection = collection_service.create_collection(session, name="Films")
     bundle_service.set_bundle_collections(session, bundle_id, [collection.id])
-    bundle_service.update_bundle(session, bundle_id, {"rating": 5, "note": "keep me"})
+    bundle_service.update_bundle(session, bundle_id, {"rating": 5, "notes": ["keep me"]})
     bundle_service.update_bundle(session, bundle_id, {"cover_file_id": original_id})
     session.add(
         PlaybackProgress(
@@ -67,7 +67,7 @@ def test_same_volume_move_repairs_in_place(session: Session, library_root: Path)
 
     bundle = session.get(AssetBundle, bundle_id)
     assert bundle is not None
-    assert bundle.rating == 5 and bundle.note == "keep me"
+    assert bundle.rating == 5 and bundle.notes == ["keep me"]
     assert bundle.cover_file_id == original_id
     assert {c.name for c in bundle.collections} == {"Films"}
     progress = session.get(PlaybackProgress, original_id)

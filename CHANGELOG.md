@@ -21,11 +21,14 @@ grouped under `Unreleased` until the first tagged release.
   sessions (`cairndex.noteHeights`, per bundle, aligned with the notes list).
   Double-clicking the grip returns that box to auto-fit.
   New `asset_bundles.notes` JSON column (added additively via
-  `ensure_content_indexes`), exposed as `notes: string[]` on `BundleRead` and
-  accepted on `BundleCreate`/`BundleUpdate` (OpenAPI + `schema.d.ts`
-  regenerated). The legacy `note` column/field is kept as a derived shadow (all
-  notes joined) so the `note` filter matches across every note and legacy
-  clients/rows keep working — no data backfill required.
+  `ensure_content_indexes`) is the single source of truth, exposed as
+  `notes: string[]` on `BundleRead` and accepted on `BundleCreate`/`BundleUpdate`
+  (OpenAPI + `schema.d.ts` regenerated). The `note` filter now compiles to a
+  per-note `EXISTS` over `json_each(notes)` and the `bundle_search` FTS index
+  concatenates the notes, so both text search and the Notes filter match across
+  every note. (Early-dev cleanup: the previous single `note` column/field and
+  its compatibility shim were removed rather than kept as a shadow; libraries
+  created earlier keep a harmless unused `note` column.)
 
 ### Changed
 
