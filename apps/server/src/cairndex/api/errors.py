@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from cairndex.api.schemas.common import ErrorBody
 from cairndex.core.errors import (
     AuthRequiredError,
+    CapacityError,
     ConflictError,
     DomainError,
     NotFoundError,
@@ -14,6 +15,7 @@ from cairndex.core.errors import (
 _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
     (NotFoundError, 404),
     (AuthRequiredError, 401),
+    (CapacityError, 429),
     (ConflictError, 409),
     (ValidationError, 422),
 ]

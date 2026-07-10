@@ -53,6 +53,20 @@ class Settings(BaseSettings):
     # Minimum probed duration before a video is eligible for storyboards
     storyboard_min_duration: float = 60.0
 
+    # Maximum concurrent interactive HLS remux/transcode sessions (plan 1 §6.2,
+    # ADR-0014). Sessions run one ffmpeg each and are bounded so a couple of
+    # players can't exhaust the box; starting one beyond this returns 429.
+    transcode_max_sessions: int = 2
+
+    # Seconds without a playlist/segment fetch before an HLS session is reaped
+    # (killed + its transcode dir deleted). Player close also tears sessions down.
+    transcode_idle_timeout: float = 60.0
+
+    # Optional ffmpeg hardware-accelerated *decode* for transcode sessions
+    # (plan 1 §6.2). One of vaapi|qsv|videotoolbox; unset/"none" uses software
+    # decode. Encoding stays libx264 for portability in this MVP.
+    ffmpeg_hwaccel: str | None = None
+
     def resolved_database_url(self) -> str:
         if self.database_url is not None:
             return self.database_url

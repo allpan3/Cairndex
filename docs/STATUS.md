@@ -1,5 +1,91 @@
 # Project status
 
+## In review: media-player M6 — playback decisions + HLS session foundation
+
+Branch `feat/playback-sessions` (off `main` after the browser-terminology
+rename). Implements plan 1 M6 server-side only — the web hls.js/native-HLS
+engine integration is M7. Commit subject: `feat: playback decisions + HLS
+remux/transcode session foundation`.
+
+- **Decision matrix (§6.1).** Pure `media/playback.decide_playback` +
+  `CapabilityProfile` decide `direct`/`remux`/`transcode` from the client's caps
+  versus the source's M1 `tech_metadata` (container from extension, video/audio
+  codecs, height). Container+codecs in caps → direct; codecs in caps but
+  container not → remux; else transcode. A non-default audio track or
+  unsupported audio codec forces at least remux; a burn-in subtitle or an
+  over-height source forces transcode. Legacy rows missing M1 keys degrade
+  safely (unknown codec optimistic, never 500). Container/codec alias
+  normalization (`m4v`→`mp4`, `avc1`/`h265`→`h264`/`hevc`, `mp4a`→`aac`, …).
+- **Decision endpoint (§6.1).**
+  `POST /api/v1/libraries/{lib}/files/{id}/playback-decision`
+  (`{caps, audio_stream_index?, burn_subtitle_track_id?, max_height?}`) returns
+  `method`, `reason`, `stream_url` (direct) or `session {id, playlist_url}`
+  (else), plus `duration`, `audio_streams`, `subtitles`, `chapters`,
+  `storyboard_url`, and resume `progress`. Non-direct decisions **start** a
+  session. `GET /bundles/{id}/playback` stays the playlist-level manifest.
+- **HLS session manager (§6.2, ADR-0014).** New `media/hls.py`
+  (`SessionManager`, in-process dict+locks, **not** the job queue) +
+  `api/v1/playback_sessions.py`. `POST .../files/{id}/playback-sessions`
+  (`{caps, start_s?, …}` → `{session_id, playlist_url, kind}`),
+  `GET .../{sid}/index.m3u8` (VOD fMP4 playlist computed up front from duration,
+  6 s target), `GET .../{sid}/{init.mp4|{n}.m4s}`, `DELETE .../{sid}`. One
+  ffmpeg per session writes segments into
+  `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` (server-local ephemeral, never
+  inside a library package). Segment ahead of the encoder → bounded wait; far
+  seek or backward seek → kill + restart at `t=n*6` (`-ss` + `-start_number`).
+  Remux copies video with an AAC audio fallback (keyframe drift accepted);
+  transcode is `libx264 veryfast` + `force_key_frames` for exact 6 s segments +
+  a capped ladder honoring `max_height`, optional burn-in.
+- **Bounds/lifecycle/security.** `CAIRNDEX_TRANSCODE_MAX_SESSIONS` (default 2;
+  structured **429** `capacity_exhausted` beyond it), idle reaper
+  (`CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`, default 60 s → kill + delete dir),
+  teardown on DELETE and server shutdown (lifespan hook), optional decode-only
+  `CAIRNDEX_FFMPEG_HWACCEL`. Session routes reuse the `LibrarySession` gate;
+  random library-scoped session ids; ffmpeg args from server-side-resolved
+  paths only; every ffmpeg call has a timeout/bounded wait and is killed on
+  teardown (M3 no-timeout lesson applied). New `CapacityError` → 429.
+- **Docs/artifacts.** ADR-0014 (proposed; owner ratification pending) + index;
+  `docs/architecture.md` (new endpoints + transcode dir; resolved the
+  transcode-cache-location debt item); CHANGELOG. Regenerated OpenAPI +
+  `apps/web/src/api/schema.d.ts` (this time `npm run gen:api` reached the
+  registry, so no manual patch was needed).
+
+Verification:
+
+- Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check` /
+  `ruff format --check` / `mypy src` / `pytest` all green (**368 passed**, one
+  pre-existing Starlette/httpx deprecation warning). New tests:
+  `tests/test_playback_decision.py` (caps × source matrix incl. legacy rows,
+  normalization, session-kind, HTTP direct decision) and
+  `tests/test_hls_sessions.py` (fake-ffmpeg stub covering
+  start/serve/wait/far-seek restart/backward-seek restart/idle-reap/concurrency
+  bound/teardown/library-scoping; ffmpeg argv builder unit tests; a real-ffmpeg
+  integration test over a tiny generated MKV doing remux **and** transcode,
+  skipped with a clear message when ffmpeg is absent; HTTP decision→session,
+  playlist/segment serving, DELETE, and 429 capacity).
+- Frontend: `npm run lint` / `format:check` / `typecheck` / `test`
+  (**47 passed**) / `build` / `test:e2e` (**49 passed**) all green. No frontend
+  source changed (M6 is server-side); e2e ran non-escalated this session.
+- Live (real uvicorn against a temp data dir): the Demo library's MP4s
+  (`space_race`, `deep_ocean`, `waves`) decided **direct**. A throwaway 300 s
+  h264+aac MKV in a temp `/tmp` library (never the Demo or any Eagle library)
+  was scanned+probed, then decided **remux** ("mkv container not in client
+  capabilities"); the remux session served a 51-segment VOD playlist
+  (`no-store`), `init.mp4`, and segments 0/5, and `DELETE` 404'd the playlist.
+  A forced-transcode session far-seeking to segment 40 left `[40,41,42,43]` on
+  disk with a gap before 40 — proving ffmpeg was killed and restarted at the
+  seek point — and `DELETE` removed the dir. A left-idle session's transcode
+  dir was removed and its playlist 404'd after the idle timeout (reaper), and
+  server shutdown completed cleanly (sessions torn down).
+
+Known issues / out of scope: no web engine wiring yet (M7); embedded
+subtitle extraction to servable text tracks is M8; remux keyframe drift is an
+accepted MVP trade-off (keyframe-exact playlist is the recorded refinement);
+hardware acceleration is decode-only in this MVP (encode stays `libx264`);
+audio is copied only when the source is already AAC, else transcoded to stereo
+AAC. Next recommended media-player task: **plan 1 M7 — web HLS integration**
+(`PlaybackEngine`/hls.js, quality/audio menus, burn-in option).
+
 ## In review: browsing-surface terminology rename (Bundle Browser / File Browser)
 
 Branch `refactor/browser-terminology` (off `main` after M5). Renamed the two

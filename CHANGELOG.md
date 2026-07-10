@@ -55,6 +55,41 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Playback decisions + HLS remux/transcode session foundation (Plan 1 M6,
+  ADR-0014).** Server-side only; the web hls.js integration is M7.
+  - `POST /api/v1/libraries/{library_id}/files/{file_id}/playback-decision`
+    (`{caps, audio_stream_index?, burn_subtitle_track_id?, max_height?}`) runs a
+    pure decision matrix (`media/playback.decide_playback`) over M1
+    `tech_metadata` versus the client's capability profile: container+codecs in
+    caps → `direct`; codecs in caps but container not → `remux`; else
+    `transcode`. A non-default audio track or unsupported audio codec forces at
+    least remux; a burn-in subtitle or an over-height source forces transcode.
+    Legacy rows missing M1 keys degrade safely (never 500). The response carries
+    `method`, `reason`, `stream_url` (direct) or `session {id, playlist_url}`
+    (else), plus `duration`, `audio_streams`, `subtitles`, `chapters`,
+    `storyboard_url`, and resume `progress`.
+  - New interactive HLS session manager (`media/hls.py` +
+    `api/v1/playback_sessions.py`): `POST .../files/{id}/playback-sessions`
+    (`{caps, start_s?, ...}` → `{session_id, playlist_url, kind}`), `GET
+    .../playback-sessions/{sid}/index.m3u8` (VOD fMP4 playlist computed up front
+    from the known duration, 6 s target), `GET .../{sid}/init.mp4` and
+    `.../{sid}/{n}.m4s` (fMP4/CMAF segments), and `DELETE .../{sid}` teardown.
+    One ffmpeg per session writes segments sequentially into
+    `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` (server-local ephemeral, never
+    inside a library package); a segment ahead of the encoder waits (bounded), a
+    far seek kills + restarts ffmpeg at the requested segment. Remux copies video
+    with an AAC audio fallback (accepting keyframe drift); transcode uses
+    `libx264 veryfast` + `force_key_frames` for exact 6 s segments and a capped
+    ladder honoring `max_height`, with optional burn-in.
+  - Bounds/lifecycle: `CAIRNDEX_TRANSCODE_MAX_SESSIONS` (default 2; a structured
+    **429** `capacity_exhausted` beyond it), an idle reaper
+    (`CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`, default 60 s → kill + delete dir),
+    teardown on DELETE and server shutdown, and optional decode-only
+    `CAIRNDEX_FFMPEG_HWACCEL` (`vaapi|qsv|videotoolbox`). Session routes reuse
+    the `LibrarySession` gate; session ids are random and library-scoped; ffmpeg
+    args come only from server-side-resolved paths. Regenerated OpenAPI +
+    `apps/web/src/api/schema.d.ts`.
+
 - **Image viewer v2 + preview derivatives (Plan 1 M5).** Added a lazy
   `/api/v1/libraries/{library_id}/files/{file_id}/preview?size=640|1600|2560`
   endpoint that writes deterministic WebP derivatives under

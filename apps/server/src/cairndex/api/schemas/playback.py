@@ -2,7 +2,7 @@
 
 import math
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from cairndex.api.schemas.browse import BundleSummary
 
@@ -88,3 +88,80 @@ class ContinueWatchingPage(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+# --- Playback decision + HLS sessions (plan 1 §6.1/§6.2) --------------------
+
+
+# A client's declared playback capabilities. The client computes these at
+# startup (canPlayType/MediaSource.isTypeSupported) or hardcodes them per
+# platform; the server decides direct/remux/transcode from them.
+class ClientCapabilities(BaseModel):
+    protocols: list[str] = Field(default_factory=list)
+    containers: list[str] = Field(default_factory=list)
+    video_codecs: list[str] = Field(default_factory=list)
+    audio_codecs: list[str] = Field(default_factory=list)
+    max_height: int | None = None
+    native_hls: bool = False
+
+
+# One selectable audio track from the source's probed streams
+class AudioStreamRead(BaseModel):
+    index: int | None
+    codec: str | None
+    channels: int | None
+    language: str | None
+    title: str | None
+    default: bool
+
+
+# Reference to a started HLS session (present when method != direct)
+class PlaybackSessionRef(BaseModel):
+    id: str
+    playlist_url: str
+
+
+# Per-file playback decision request (§6.1)
+class PlaybackDecisionRequest(BaseModel):
+    caps: ClientCapabilities
+    audio_stream_index: int | None = None
+    burn_subtitle_track_id: str | None = None
+    max_height: int | None = None
+
+
+# Decision response: how to play plus the metadata the player needs up front
+class PlaybackDecisionResponse(BaseModel):
+    method: str  # "direct" | "remux" | "transcode"
+    reason: str
+    stream_url: str | None  # direct only
+    session: PlaybackSessionRef | None  # remux/transcode only
+    duration: float | None
+    audio_streams: list[AudioStreamRead]
+    subtitles: list[SubtitleTrackRead]
+    chapters: list[PlaybackChapter]
+    storyboard_url: str | None
+    progress: PlaybackProgressRead | None
+
+
+# Explicit HLS session creation (§6.2) — e.g. a quality/audio switch mid-play
+class PlaybackSessionCreate(BaseModel):
+    caps: ClientCapabilities
+    start_s: float | None = None
+    audio_stream_index: int | None = None
+    burn_subtitle_track_id: str | None = None
+    max_height: int | None = None
+
+    @field_validator("start_s")
+    @classmethod
+    def finite_non_negative(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("start_s must be a finite non-negative number")
+        return value
+
+
+class PlaybackSessionCreated(BaseModel):
+    session_id: str
+    playlist_url: str
+    kind: str  # "remux" | "transcode"

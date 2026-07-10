@@ -210,6 +210,79 @@
         "title": "ApplyResultRead",
         "type": "object"
       },
+      "AudioStreamRead": {
+        "properties": {
+          "channels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec"
+          },
+          "default": {
+            "title": "Default",
+            "type": "boolean"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "index",
+          "codec",
+          "channels",
+          "language",
+          "title",
+          "default"
+        ],
+        "title": "AudioStreamRead",
+        "type": "object"
+      },
       "AuthStatus": {
         "description": "Lock state of a library for the current session (ADR-0010).",
         "properties": {
@@ -894,6 +967,56 @@
           }
         },
         "title": "BundleUpdate",
+        "type": "object"
+      },
+      "ClientCapabilities": {
+        "properties": {
+          "audio_codecs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Audio Codecs",
+            "type": "array"
+          },
+          "containers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Containers",
+            "type": "array"
+          },
+          "max_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Height"
+          },
+          "native_hls": {
+            "default": false,
+            "title": "Native Hls",
+            "type": "boolean"
+          },
+          "protocols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Protocols",
+            "type": "array"
+          },
+          "video_codecs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Video Codecs",
+            "type": "array"
+          }
+        },
+        "title": "ClientCapabilities",
         "type": "object"
       },
       "CollectionCleanup": {
@@ -3078,6 +3201,151 @@
         "title": "PlaybackChapter",
         "type": "object"
       },
+      "PlaybackDecisionRequest": {
+        "properties": {
+          "audio_stream_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Stream Index"
+          },
+          "burn_subtitle_track_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burn Subtitle Track Id"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/ClientCapabilities"
+          },
+          "max_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Height"
+          }
+        },
+        "required": [
+          "caps"
+        ],
+        "title": "PlaybackDecisionRequest",
+        "type": "object"
+      },
+      "PlaybackDecisionResponse": {
+        "properties": {
+          "audio_streams": {
+            "items": {
+              "$ref": "#/components/schemas/AudioStreamRead"
+            },
+            "title": "Audio Streams",
+            "type": "array"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybackChapter"
+            },
+            "title": "Chapters",
+            "type": "array"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackProgressRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaybackSessionRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "storyboard_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storyboard Url"
+          },
+          "stream_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stream Url"
+          },
+          "subtitles": {
+            "items": {
+              "$ref": "#/components/schemas/SubtitleTrackRead"
+            },
+            "title": "Subtitles",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "reason",
+          "stream_url",
+          "session",
+          "duration",
+          "audio_streams",
+          "subtitles",
+          "chapters",
+          "storyboard_url",
+          "progress"
+        ],
+        "title": "PlaybackDecisionResponse",
+        "type": "object"
+      },
       "PlaybackManifest": {
         "properties": {
           "bundle_id": {
@@ -3151,6 +3419,103 @@
           "position_s"
         ],
         "title": "PlaybackProgressUpdate",
+        "type": "object"
+      },
+      "PlaybackSessionCreate": {
+        "properties": {
+          "audio_stream_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Stream Index"
+          },
+          "burn_subtitle_track_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burn Subtitle Track Id"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/ClientCapabilities"
+          },
+          "max_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Height"
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          }
+        },
+        "required": [
+          "caps"
+        ],
+        "title": "PlaybackSessionCreate",
+        "type": "object"
+      },
+      "PlaybackSessionCreated": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "playlist_url": {
+            "title": "Playlist Url",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "playlist_url",
+          "kind"
+        ],
+        "title": "PlaybackSessionCreated",
+        "type": "object"
+      },
+      "PlaybackSessionRef": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "playlist_url": {
+            "title": "Playlist Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "playlist_url"
+        ],
+        "title": "PlaybackSessionRef",
         "type": "object"
       },
       "PredicateNode": {
@@ -7488,6 +7853,316 @@
           }
         },
         "summary": "File Content",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-decision": {
+      "post": {
+        "description": "Decide direct/remux/transcode and, for non-direct, start an HLS session.",
+        "operationId": "playback_decision_api_v1_libraries__library_id__files__file_id__playback_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackDecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Playback Decision",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions": {
+      "post": {
+        "description": "Explicitly start an HLS session (e.g. a mid-play quality/audio switch).",
+        "operationId": "create_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackSessionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackSessionCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Playback Session",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}": {
+      "delete": {
+        "description": "Tear down a session (player close; a beacon may deliver this).",
+        "operationId": "delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Playback Session",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/{artifact}": {
+      "get": {
+        "description": "Serve the session playlist, its init segment, or a media segment.\n\n``db`` gates access with the same ``LibrarySession`` dependency as direct\nstreaming; the bytes are throwaway session state, so ``no-store``.",
+        "operationId": "playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact",
+            "required": true,
+            "schema": {
+              "title": "Artifact",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Playback Session Artifact",
         "tags": [
           "playback"
         ]
