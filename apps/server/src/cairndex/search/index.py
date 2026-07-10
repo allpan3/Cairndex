@@ -12,7 +12,7 @@ FTS_TABLE = "bundle_search"
 _SOURCE_VIEW = "bundle_search_source"
 # FTS-indexed columns (bundle_id is stored but UNINDEXED — a lookup key, not a
 # search field). Keep this list in sync with the view + INSERT column lists.
-_COLUMNS = ("bundle_id", "title", "note", "files", "tags", "collections")
+_COLUMNS = ("bundle_id", "title", "notes", "files", "tags", "collections")
 _INDEXED = _COLUMNS[1:]
 
 # A lightweight core Table (its own MetaData so create_all never tries to build
@@ -27,9 +27,9 @@ CREATE VIEW IF NOT EXISTS {_SOURCE_VIEW} AS
 SELECT
   b.id AS bundle_id,
   coalesce(b.title, '') AS title,
-  -- All of the bundle's notes concatenated into one searchable blob (the FTS
-  -- column is still named ``note``; ``notes`` is a JSON array of strings).
-  coalesce((SELECT group_concat(value, ' ') FROM json_each(b.notes)), '') AS note,
+  -- All of the bundle's notes (a JSON array of strings) concatenated into one
+  -- searchable blob.
+  coalesce((SELECT group_concat(value, ' ') FROM json_each(b.notes)), '') AS notes,
   coalesce((
     SELECT group_concat(
       f.display_title || ' ' || f.original_filename || ' ' || f.relative_path
@@ -49,7 +49,7 @@ FROM asset_bundles b
 
 _CREATE_TABLE = (
     f"CREATE VIRTUAL TABLE {FTS_TABLE} USING fts5("
-    "bundle_id UNINDEXED, title, note, files, tags, collections, "
+    "bundle_id UNINDEXED, title, notes, files, tags, collections, "
     "tokenize='unicode61 remove_diacritics 2')"
 )
 
@@ -135,13 +135,26 @@ def ensure_search_schema(engine: Engine) -> None:
     Idempotent; called once per library-engine open. On first creation the index
     is populated from existing rows (triggers only fire on subsequent writes).
     """
-    table_exists = FTS_TABLE in set(inspect(engine).get_table_names())
+    inspector = inspect(engine)
+    table_exists = FTS_TABLE in set(inspector.get_table_names())
+    # A table whose columns no longer match (e.g. after the note → notes rename)
+    # is stale: its schema and the trigger bodies both embed the old column set,
+    # so rebuild both. The FTS index is a derived cache, so a full repopulate
+    # from the source view is lossless.
+    stale = table_exists and {col["name"] for col in inspector.get_columns(FTS_TABLE)} != set(
+        _COLUMNS
+    )
     with engine.begin() as conn:
         # Recreate the source view so a library opened after the view definition
-        # changed (e.g. note → notes) picks up the new SELECT. Cheap: a view has
-        # no stored data and the triggers resolve it at fire time.
+        # changed picks up the new SELECT. Cheap: a view has no stored data and
+        # the triggers resolve it at fire time.
         conn.exec_driver_sql(f"DROP VIEW IF EXISTS {_SOURCE_VIEW}")
         conn.exec_driver_sql(_CREATE_VIEW)
+        if stale:
+            for name, _ in _TRIGGERS:
+                conn.exec_driver_sql(f"DROP TRIGGER IF EXISTS {name}")
+            conn.exec_driver_sql(f"DROP TABLE IF EXISTS {FTS_TABLE}")
+            table_exists = False
         if not table_exists:
             conn.exec_driver_sql(_CREATE_TABLE)
         for name, body in _TRIGGERS:

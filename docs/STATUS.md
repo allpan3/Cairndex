@@ -15,9 +15,11 @@ note, used as clean separators (no predefined roles under the hood).
   `notes IS NULL` row reads back as `[]`. Both note-aware read paths were
   re-pointed at the array: the `notes` **filter** (field key renamed `note` →
   `notes`) compiles to a per-note `EXISTS` over `json_each(notes)`, and the
-  **`bundle_search` FTS view** concatenates `json_each(notes)` into its `note`
-  column (the view is now dropped+recreated in `ensure_search_schema` so an
-  existing library adopts the new definition).
+  **`bundle_search` FTS index** concatenates `json_each(notes)` into its `notes`
+  column. `ensure_search_schema` rebuilds the FTS table + triggers (and always
+  recreates the source view) when the column set no longer matches, so an
+  existing library migrates its search index on open — verified live on the Demo
+  library (existing titles stayed searchable, a new note indexed).
 - **Service/API.** `create_bundle`/`update_bundle` accept `notes` only (blank/
   whitespace-only blocks dropped, order preserved, ≤50). `BundleRead.notes` is
   always a list; the `note` field is gone from `BundleCreate`/`Update`/`Read`.
@@ -39,11 +41,12 @@ note, used as clean separators (no predefined roles under the hood).
 Verification:
 
 - Backend: `ruff check` / `ruff format --check` / `mypy src` clean; `pytest`
-  **385 passed** (`test_bundles.py`: multi-note roundtrip incl.
+  **386 passed** (`test_bundles.py`: multi-note roundtrip incl.
   reorder/blank-strip/clear, create-with-notes, `notes IS NULL` reads `[]`,
   `notes` filter matching a non-first note + `not_contains`, non-string
-  rejection; `test_search.py`/`test_scan_repair.py` updated to `notes`). Same
-  pre-existing Starlette/httpx deprecation warning.
+  rejection; `test_search.py` gained a stale-FTS-schema rebuild test;
+  `test_search.py`/`test_scan_repair.py` updated to `notes`). Same pre-existing
+  Starlette/httpx deprecation warning.
 - Frontend: `lint` / `format:check` / `typecheck` / `test` (**47**) / `build` /
   `test:e2e` (**50**, +1 new `edit.spec.ts` case: `+` adds a second note box and
   both persist in the PATCH body) all green.
