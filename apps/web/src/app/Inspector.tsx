@@ -104,13 +104,28 @@ function BundleEditor({
     notesRef.current = next
     setNotes(next)
   }
-  // Preferred note-box height, shared across all note boxes and bundles and
-  // persisted. null → auto-grow to fit content; a number → fixed height (a
-  // scrollbar appears when the text overflows), set by dragging the resize grip.
-  const [noteHeight, setNoteHeight] = usePersistentState<number | null>(
-    'cairndex.noteBoxHeight',
-    null,
+  // Per-note box heights, persisted per bundle and aligned with the notes list
+  // by index (add/remove keep the arrays in step; there is no reorder gesture).
+  // A missing entry means auto-grow to fit content; a number is a fixed height
+  // set by dragging that box's grip. Trailing auto entries are trimmed so the
+  // stored arrays stay small.
+  const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
+    'cairndex.noteHeights',
+    {},
   )
+  const heights = noteHeights[bundleId] ?? []
+  const setNoteHeight = (index: number, height: number | null) => {
+    setNoteHeights((prev) => {
+      const arr = (prev[bundleId] ?? []).slice()
+      while (arr.length <= index) arr.push(null)
+      arr[index] = height
+      while (arr.length > 0 && arr[arr.length - 1] == null) arr.pop()
+      const next = { ...prev }
+      if (arr.length > 0) next[bundleId] = arr
+      else delete next[bundleId]
+      return next
+    })
+  }
 
   const hasVideo = files.some((f) => f.media_kind === 'video')
 
@@ -135,6 +150,17 @@ function BundleEditor({
     const next = notesRef.current.filter((_, j) => j !== i)
     applyNotes(next.length > 0 ? next : [''])
     commitNotes()
+    // Keep the per-note heights aligned with the notes list.
+    setNoteHeights((prev) => {
+      const arr = prev[bundleId]
+      if (!arr) return prev
+      const trimmed = arr.filter((_, j) => j !== i)
+      while (trimmed.length > 0 && trimmed[trimmed.length - 1] == null) trimmed.pop()
+      const nextMap = { ...prev }
+      if (trimmed.length > 0) nextMap[bundleId] = trimmed
+      else delete nextMap[bundleId]
+      return nextMap
+    })
   }
 
   return (
@@ -208,11 +234,11 @@ function BundleEditor({
           value={n}
           index={i}
           count={notes.length}
-          height={noteHeight}
+          height={heights[i] ?? null}
           onChange={(v) => changeNote(i, v)}
           onCommit={commitNotes}
           onRemove={() => removeNote(i)}
-          onResize={setNoteHeight}
+          onResize={(h) => setNoteHeight(i, h)}
         />
       ))}
 
