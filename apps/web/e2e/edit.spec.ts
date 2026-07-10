@@ -148,10 +148,14 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
   await page.getByRole('button', { name: 'Add note' }).click()
   await expect(page.locator('.note-row')).toHaveCount(2)
 
-  // Fill the second box and blur to commit the whole list.
-  const patched = page.waitForResponse(
-    (r) => r.url().includes('/bundles/b0') && r.request().method() === 'PATCH',
-  )
+  // Fill the second box and blur to commit the whole list. Match the PATCH that
+  // carries the second block specifically — clicking "+" already fired a PATCH
+  // for the first block, whose response can still be in flight.
+  const patched = page.waitForResponse((r) => {
+    if (!r.url().includes('/bundles/b0') || r.request().method() !== 'PATCH') return false
+    const notes = (r.request().postDataJSON() as { notes?: string[] }).notes ?? []
+    return notes.includes('Second block')
+  })
   const second = page.locator('.note-row textarea').nth(1)
   await second.fill('Second block')
   await second.blur()

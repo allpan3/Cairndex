@@ -12,9 +12,13 @@ grouped under `Unreleased` until the first tagged release.
 
 - **Multiple notes per bundle.** A bundle now carries an ordered list of
   freeform note/description blocks instead of a single note. The inspector
-  renames the section to **NOTES** with a small `+` affordance that appends
-  another note box below the current ones; each box commits on blur and can be
-  removed (hover ×). No predefined roles — the blocks are just clean separators.
+  renames the section to **NOTES** with a small `+` icon that appends another
+  note box below the current ones; each box commits on blur and can be removed
+  (hover ×). No predefined roles — the blocks are just clean separators. Note
+  boxes auto-grow to fit their text by default; dragging the bottom grip sets a
+  fixed height (with a scrollbar when the text overflows, and no native
+  resizer/scroll-corner box), and that height is remembered across sessions
+  (`cairndex.noteBoxHeight`). Double-clicking the grip returns to auto-fit.
   New `asset_bundles.notes` JSON column (added additively via
   `ensure_content_indexes`), exposed as `notes: string[]` on `BundleRead` and
   accepted on `BundleCreate`/`BundleUpdate` (OpenAPI + `schema.d.ts`
