@@ -1196,6 +1196,58 @@ button {
   font-size: 13px;
   border-radius: 4px;
 }
+/* --- Inspector notes (multiple freeform note blocks) --------------------- */
+.notes-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 12px 0 4px;
+}
+.notes-head .field-label {
+  margin: 0;
+}
+.notes-add {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.notes-add:hover {
+  color: var(--text-strong);
+}
+.note-row {
+  position: relative;
+}
+.note-row + .note-row {
+  margin-top: 6px;
+}
+/* Leave room for the hover remove affordance so it never overlaps text. */
+.note-row .edit--note {
+  padding-right: 26px;
+}
+.note-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  opacity: 0;
+}
+.note-row:hover .note-remove,
+.note-remove:focus {
+  opacity: 1;
+}
+.note-remove:hover {
+  color: var(--text-strong);
+}
 .collection-row__rename {
   position: relative;
   flex: 1;

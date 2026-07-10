@@ -36,12 +36,25 @@ storage scope, and `asset_files.relative_path` is relative to the library root.
 
 ### `asset_bundles`
 
-`id`, `title` (nullable), `note`, `rating` (nullable int, CHECK 0-5; NULL =
-unrated), `cover_file_id` / `primary_file_id` (nullable FKs to `asset_files`,
-`SET NULL`, `use_alter` to break the FK cycle), `extra_metadata` (JSON),
-`manual_order` (int, `server_default 0`), `grouping_state`, `grouping_source`,
-`grouping_rule_version`, `confirmed_at`, `version`, `created_at`, `imported_at`,
-`updated_at`.
+`id`, `title` (nullable), `note`, `notes` (JSON), `rating` (nullable int,
+CHECK 0-5; NULL = unrated), `cover_file_id` / `primary_file_id` (nullable FKs to
+`asset_files`, `SET NULL`, `use_alter` to break the FK cycle), `extra_metadata`
+(JSON), `manual_order` (int, `server_default 0`), `grouping_state`,
+`grouping_source`, `grouping_rule_version`, `confirmed_at`, `version`,
+`created_at`, `imported_at`, `updated_at`.
+
+`notes` is an ordered list of freeform owner note/description blocks (the
+inspector "NOTES" section, added additively via `ensure_content_indexes`). There
+are no predefined roles — each entry is just a separate text block. It is the
+canonical store; the legacy scalar `note` column is kept in sync as a **derived
+shadow** (all notes joined by blank lines) so the `note` filter
+(`docs/filter-language.md`) transparently matches across every note and any
+legacy reader keeps working. Blank/whitespace-only blocks are dropped on write.
+Rows created before the column exists have `notes IS NULL`; the read layer
+(`services.bundles.bundle_notes` / `BundleRead`) falls back to `[note]`, so no
+data backfill is required. `BundleRead.notes` is always a list; the write
+surface accepts `notes` (list) or the legacy single `note`, with `notes` winning
+when both are supplied.
 
 `manual_order` is the global owner-defined ("custom") order used when browsing
 All/system views with the **Manual** sort (drag-reorder / "Clean up by…"). The

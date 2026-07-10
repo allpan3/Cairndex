@@ -8,6 +8,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple notes per bundle.** A bundle now carries an ordered list of
+  freeform note/description blocks instead of a single note. The inspector
+  renames the section to **NOTES** with a small `+` affordance that appends
+  another note box below the current ones; each box commits on blur and can be
+  removed (hover ×). No predefined roles — the blocks are just clean separators.
+  New `asset_bundles.notes` JSON column (added additively via
+  `ensure_content_indexes`), exposed as `notes: string[]` on `BundleRead` and
+  accepted on `BundleCreate`/`BundleUpdate` (OpenAPI + `schema.d.ts`
+  regenerated). The legacy `note` column/field is kept as a derived shadow (all
+  notes joined) so the `note` filter matches across every note and legacy
+  clients/rows keep working — no data backfill required.
+
 ### Changed
 
 - **Terminology: "Collection/Bundles View" → "Bundle Browser", "File View" →

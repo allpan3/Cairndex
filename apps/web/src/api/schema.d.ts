@@ -1606,6 +1606,8 @@ export interface components {
         BundleCreate: {
             /** Note */
             note?: string | null;
+            /** Notes */
+            notes?: string[] | null;
             /** Rating */
             rating?: number | null;
             /** Title */
@@ -1640,6 +1642,8 @@ export interface components {
             imported_at: string;
             /** Note */
             note: string | null;
+            /** Notes */
+            notes?: string[];
             /** Primary File Id */
             primary_file_id: string | null;
             /** Rating */
@@ -1720,6 +1724,8 @@ export interface components {
             cover_file_id?: string | null;
             /** Note */
             note?: string | null;
+            /** Notes */
+            notes?: string[] | null;
             /** Primary File Id */
             primary_file_id?: string | null;
             /** Rating */

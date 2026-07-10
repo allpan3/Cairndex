@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from cairndex.domain.enums import (
     FileAvailability,
@@ -16,7 +16,9 @@ from cairndex.media.image_support import is_openable_media
 # --- Bundles -----------------------------------------------------------------
 class BundleCreate(BaseModel):
     title: str | None = Field(default=None, max_length=1024)
+    # Legacy single note; ``notes`` (the ordered list) wins when both are given.
     note: str | None = None
+    notes: list[str] | None = None
     rating: int | None = Field(default=None, ge=0, le=5)
 
 
@@ -24,7 +26,9 @@ class BundleUpdate(BaseModel):
     # All optional; the route forwards only explicitly-set fields so passing
     # null clears a field (e.g. unrate, untitle, deselect cover).
     title: str | None = Field(default=None, max_length=1024)
+    # ``notes`` is the multi-note list; ``note`` is the legacy single-note path.
     note: str | None = None
+    notes: list[str] | None = None
     rating: int | None = Field(default=None, ge=0, le=5)
     cover_file_id: str | None = None
     primary_file_id: str | None = None
@@ -35,7 +39,12 @@ class BundleRead(BaseModel):
 
     id: str
     title: str | None
+    # Derived shadow of ``notes`` (all notes joined); kept for backward-compat
+    # and the ``note`` filter.
     note: str | None
+    # Ordered freeform notes (the inspector "NOTES" section). Legacy rows whose
+    # ``notes`` column is NULL fall back to ``[note]``.
+    notes: list[str] = Field(default_factory=list)
     rating: int | None
     cover_file_id: str | None
     primary_file_id: str | None
@@ -48,6 +57,20 @@ class BundleRead(BaseModel):
     updated_at: datetime
     # Optimistic-concurrency counter; echo back as If-Match on edits (phase 9).
     version: int
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def _notes_none_to_empty(cls, value: Any) -> Any:
+        # The ORM column is NULL for rows created before ``notes`` existed;
+        # coerce so validation against ``list[str]`` passes (the legacy note is
+        # then restored in ``_legacy_note_fallback``).
+        return [] if value is None else value
+
+    @model_validator(mode="after")
+    def _legacy_note_fallback(self) -> "BundleRead":
+        if not self.notes and self.note:
+            self.notes = [self.note]
+        return self
 
 
 # --- Files -------------------------------------------------------------------

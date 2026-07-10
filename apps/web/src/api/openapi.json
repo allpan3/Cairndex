@@ -537,6 +537,20 @@
             ],
             "title": "Note"
           },
+          "notes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
           "rating": {
             "anyOf": [
               {
@@ -638,6 +652,13 @@
               }
             ],
             "title": "Note"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
           },
           "primary_file_id": {
             "anyOf": [
@@ -928,6 +949,20 @@
               }
             ],
             "title": "Note"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           },
           "primary_file_id": {
             "anyOf": [

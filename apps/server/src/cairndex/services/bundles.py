@@ -33,7 +33,9 @@ from cairndex.persistence.models import (
 from cairndex.services.pagination import keyset_page
 
 _RATING_MIN, _RATING_MAX = 0, 5
-_BUNDLE_SCALAR_FIELDS = {"title", "note"}
+_BUNDLE_SCALAR_FIELDS = {"title"}
+# Guardrail against an abusive/accidental payload; the inspector never nears it.
+_MAX_NOTES = 50
 
 
 def get_bundle(session: Session, bundle_id: str) -> AssetBundle:
@@ -43,17 +45,53 @@ def get_bundle(session: Session, bundle_id: str) -> AssetBundle:
     return bundle
 
 
+def bundle_notes(bundle: AssetBundle) -> list[str]:
+    """The bundle's ordered notes. Rows created before the ``notes`` column
+    (``notes IS NULL``) fall back to the single legacy ``note`` shadow, so an
+    upgraded library keeps showing its existing note until first edited."""
+    if bundle.notes is not None:
+        return list(bundle.notes)
+    return [bundle.note] if bundle.note else []
+
+
+def _normalize_notes(raw: Any) -> list[str]:
+    """Validate/clean a client-supplied notes list.
+
+    Drops blank/whitespace-only blocks (an untouched draft box in the inspector
+    must not persist) while preserving order and non-blank content verbatim."""
+    if not isinstance(raw, list) or not all(isinstance(n, str) for n in raw):
+        raise ValidationError("notes must be a list of strings")
+    cleaned = [n for n in raw if n.strip()]
+    if len(cleaned) > _MAX_NOTES:
+        raise ValidationError(f"a bundle can have at most {_MAX_NOTES} notes")
+    return cleaned
+
+
+def _apply_notes(bundle: AssetBundle, notes: list[str]) -> None:
+    """Set the canonical ``notes`` list and keep the legacy ``note`` column as a
+    derived shadow (all notes joined) so the note filter and legacy readers keep
+    matching across every note."""
+    bundle.notes = notes
+    bundle.note = "\n\n".join(notes) if notes else None
+
+
 def create_bundle(
     session: Session,
     *,
     title: str | None = None,
     note: str | None = None,
+    notes: list[str] | None = None,
     rating: int | None = None,
 ) -> AssetBundle:
     _validate_rating(rating)
     # A manually created bundle is a direct user grouping decision, so it is
     # confirmed on creation (ADR-0009); model defaults give it confirmed/manual.
-    bundle = AssetBundle(title=title, note=note, rating=rating, confirmed_at=utcnow())
+    bundle = AssetBundle(title=title, rating=rating, confirmed_at=utcnow())
+    # ``notes`` wins when both are supplied; ``note`` is the legacy single-note path.
+    if notes is not None:
+        _apply_notes(bundle, _normalize_notes(notes))
+    elif note:
+        _apply_notes(bundle, _normalize_notes([note]))
     session.add(bundle)
     session.flush()
     return bundle
@@ -84,6 +122,14 @@ def update_bundle(
     for field in _BUNDLE_SCALAR_FIELDS:
         if field in changes:
             setattr(bundle, field, changes[field])
+
+    # ``notes`` (the multi-note list) wins; ``note`` remains for legacy single-note
+    # clients (a bare ``note`` maps onto a one-element list, ``None`` clears it).
+    if "notes" in changes:
+        _apply_notes(bundle, _normalize_notes(changes["notes"]))
+    elif "note" in changes:
+        raw = changes["note"]
+        _apply_notes(bundle, _normalize_notes([raw] if raw else []))
 
     if "rating" in changes:
         _validate_rating(changes["rating"])
