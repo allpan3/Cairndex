@@ -3,10 +3,14 @@
 ## In review: media-player M7 — web HLS integration
 
 Branch `feat/web-hls` (off `main`, after the M6 playback-sessions merge #7).
-Latest commit subject: `feat: web HLS integration (hls.js/native-HLS engine)`.
-Implements plan 1 M7 — the web player now consumes the M6 decision + session
-foundation, so MKV/HEVC/etc. that can't play directly stream over a server
-remux/transcode HLS session.
+Latest commit subject: `feat: web HLS integration (hls.js/native-HLS engine)`
+plus a review-fix pass (below). Implements plan 1 M7 — the web player now
+consumes the M6 decision + session foundation, so a source the browser can't
+play directly streams over a server remux/transcode HLS session. Browser-verified
+end to end: an **MKV/H.264 remux** session and a **480p libx264 transcode**
+session both play via hls.js, and the **native-HLS** path plays in WebKit. HEVC
+and other transcode-only *sources* use the same machinery but have not been run
+end to end, so they are not claimed as verified (AGENTS.md).
 
 - **Capability profile (§6.3).** `apps/web/src/app/viewer/player/caps.ts`:
   memoized once per tab, probing `HTMLVideoElement.canPlayType` **and**
@@ -69,6 +73,51 @@ Verification:
   deterministic real-browser e2e + live curl checks, which exercise the same
   server + client paths). The throwaway library/data dir were removed afterward;
   the owner's Demo backend on :8000 was left untouched.
+
+### Review-fix pass (pre-merge, same branch)
+
+Addressed 8 findings (3 confirmed session-lifecycle bugs, 1 docs violation, rest
+hardening/cleanup):
+
+1. **Abort-orphan (confirmed, reproduced live).** A decision that resolves after
+   its effect was torn down (fast open→close) now DELETEs the session the server
+   started, instead of leaving it to the idle reaper.
+2. **Fallback flash (confirmed).** The hook starts in `deciding` (and the Stage
+   treats `idle` as loading too), so a playable file never shows a frame of the
+   "can't be previewed" card while opening.
+3. **Degrade-to-direct leak (confirmed).** The decision-failure `.catch` tears
+   down the superseded session before swapping to native playback.
+4. **Rapid-switch 429s.** A capacity rejection is retried once (~350 ms) — the
+   superseded session's teardown usually frees a slot in that window — before the
+   error card shows.
+5. **Re-attach window race.** An in-flight re-attach is tracked; a burst of stage
+   errors is swallowed (one budget slot) instead of returning false on the nulled
+   ref and surrendering to the fallback.
+6. **Docs (AGENTS rule).** Scoped the playback-support wording (this section +
+   CHANGELOG): MKV remux and 480p transcode + native-HLS are browser-verified;
+   HEVC-source playback is not claimed. Fixed the stale "~90 kB" hls.js size.
+7. **Cleanup.** Extracted a shared `BaseVideoEngine` for the 7 byte-identical
+   media-delegating methods (Native/Hls keep only load/destroy).
+8. **Cleanup.** Removed the dead `method` field; collapsed the three switch
+   setters into `setParam(key, value)`; shared one `beacon(url, body?)` helper
+   (bodyless teardown, CORS-safelisted) and dropped the gratuitous Blob type; a
+   typed `HttpError` carries the HTTP status.
+
+Tuning applied (reviewer note): the re-attach budget refunds only after ~10 s of
+continuous healthy playback past a re-attach (was ~1 s), so a flapping stream
+still exhausts the budget and falls back.
+
+Fix-pass verification: frontend `lint`/`format:check`/`typecheck`/`test`
+(**61 passed**, +3 hook tests: abort-orphan reap, double-error burst = one slot,
+429 retry-once)/`build` (hls.js still its own chunk, main bundle flat)/`test:e2e`
+(**54 passed**) all green. No backend source changed in this pass. Live
+verification runs through the real-browser + real-backend Playwright specs: the
+real-MKV remux spec now also asserts the server's `{DATA_DIR}/transcode` is
+**empty after close** (no orphaned session dir), and a new spec proves a playable
+file opening shows the loading state with **no fallback-card flash** (a
+MutationObserver records any `.media-fallback` mount). The abort-orphan reap is
+additionally pinned by a unit test (a decision that resolves post-abort DELETEs
+its session).
 
 Known issues / out of scope: embedded text-subtitle **extraction** to servable
 tracks and the multi-track subtitle menu/styling are M8 (M7 still shows only the

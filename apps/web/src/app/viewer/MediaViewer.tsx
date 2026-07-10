@@ -353,7 +353,11 @@ function Stage({
       />
     )
   }
-  if (file.media_kind === 'video' && !failed && hls.status === 'deciding') {
+  if (
+    file.media_kind === 'video' &&
+    !failed &&
+    (hls.status === 'deciding' || hls.status === 'idle')
+  ) {
     return <div className="mv-state">Preparing playback…</div>
   }
   if (file.media_kind === 'video' && !failed && hls.status === 'error') {

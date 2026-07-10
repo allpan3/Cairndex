@@ -3,10 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   beaconTeardownSession,
   deletePlaybackSession,
+  HttpError,
   requestPlaybackDecision,
   type AudioStreamRead,
   type ClientCapabilities,
-  type PlaybackDecisionResponse,
 } from '../../../api/client'
 import type { PlaybackSource } from './engine'
 
@@ -15,8 +15,14 @@ const HLS_MIME = 'application/vnd.apple.mpegurl'
 // hls.js drains its buffer; allow a small re-attach budget before giving up so a
 // genuinely broken stream still surfaces the fallback card instead of looping.
 const MAX_REATTACH = 3
-
-type PlaybackMethod = PlaybackDecisionResponse['method']
+// Require this much continuous healthy playback past a re-attach before refunding
+// the budget, so a stream that flaps (plays a second, dies, repeats) still falls
+// back instead of re-deciding forever.
+const HEALTHY_REFUND_S = 10
+// A rapid quality/audio switch can momentarily exceed the server session bound
+// while the superseded session is still being torn down; retry the decision once
+// after a short delay before surfacing a capacity error.
+const CAPACITY_RETRY_MS = 350
 
 export type HlsStatus = 'idle' | 'deciding' | 'ready' | 'error'
 
@@ -51,15 +57,13 @@ export interface UseHlsSessionOptions {
 export interface HlsSessionState {
   /** The source to feed the player, or null while deciding / unplayable. */
   source: PlaybackSource | null
-  method: PlaybackMethod | null
   status: HlsStatus
   reason: string
   /** Selectable audio tracks (from the decision) — empty for direct play. */
   audioStreams: AudioStreamRead[]
   params: SwitchParams
-  setAudioStream: (index: number | null) => void
-  setMaxHeight: (height: number | null) => void
-  setBurnSubtitle: (trackId: string | null) => void
+  /** Change one switch param (quality/audio/burn-in) → new decision + session. */
+  setParam: <K extends keyof SwitchParams>(key: K, value: SwitchParams[K]) => void
   /** Transparently re-request a decision at the playhead; true if it applies. */
   reattach: () => boolean
   /** Signal that playback resumed so the re-attach budget can be refunded. */
@@ -73,10 +77,11 @@ export interface HlsSessionState {
  * decisions become a native progressive source; remux/transcode decisions start
  * a server HLS session whose playlist becomes an hls.js / native-HLS source.
  * Sessions are torn down on file switch, quality/audio switch, unmount, and
- * pagehide (beacon). A playlist/segment error (e.g. an idled-out session) or an
- * hls.js fatal transparently re-requests a fresh session at the current playhead
- * instead of failing. If the decision request itself fails, a directly-playable
- * file falls back to its native stream so playback still works.
+ * pagehide (beacon) — including a session the server started for a request the
+ * client had already abandoned. A playlist/segment error (e.g. an idled-out
+ * session) or an hls.js fatal transparently re-requests a fresh session at the
+ * current playhead instead of failing. If the decision request itself fails, a
+ * directly-playable file falls back to its native stream so playback still works.
  */
 export function useHlsSession({
   fileId,
@@ -88,8 +93,9 @@ export function useHlsSession({
   getCurrentTime,
 }: UseHlsSessionOptions): HlsSessionState {
   const [source, setSource] = useState<PlaybackSource | null>(null)
-  const [method, setMethod] = useState<PlaybackMethod | null>(null)
-  const [status, setStatus] = useState<HlsStatus>('idle')
+  // Start in 'deciding' so the very first frame of a playable file shows the
+  // loading state, never a flash of the "can't be previewed" fallback card.
+  const [status, setStatus] = useState<HlsStatus>('deciding')
   const [reason, setReason] = useState('')
   const [audioStreams, setAudioStreams] = useState<AudioStreamRead[]>([])
   const [params, setParams] = useState<SwitchParams>(DEFAULT_PARAMS)
@@ -101,6 +107,8 @@ export function useHlsSession({
   const startAtRef = useRef(0)
   const liveSessionRef = useRef<{ fileId: string; sessionId: string } | null>(null)
   const reattachCountRef = useRef(0)
+  const reattachAtRef = useRef(Number.NEGATIVE_INFINITY)
+  const reattachingRef = useRef(false)
   const lastFileRef = useRef<string | null>(null)
   const getCurrentTimeRef = useRef(getCurrentTime)
   useEffect(() => {
@@ -124,6 +132,8 @@ export function useHlsSession({
       paramsRef.current = DEFAULT_PARAMS
       startAtRef.current = 0
       reattachCountRef.current = 0
+      reattachAtRef.current = Number.NEGATIVE_INFINITY
+      reattachingRef.current = false
       teardownLive()
       // Clear the previous file's video immediately; a switch keeps the current
       // stream visible until the new decision resolves.
@@ -152,20 +162,39 @@ export function useHlsSession({
       startAt,
     })
 
-    requestPlaybackDecision(
-      fileId,
-      {
+    const decide = async () => {
+      const payload = {
         caps,
         audio_stream_index: active.audioStreamIndex,
         burn_subtitle_track_id: active.burnSubtitleTrackId,
         max_height: active.maxHeight,
-      },
-      controller.signal,
-    )
+      }
+      try {
+        return await requestPlaybackDecision(fileId, payload, controller.signal)
+      } catch (err) {
+        // The superseded session's teardown may still be freeing a slot; give a
+        // capacity rejection one retry before treating it as a hard failure.
+        if (!controller.signal.aborted && err instanceof HttpError && err.status === 429) {
+          await new Promise((resolve) => setTimeout(resolve, CAPACITY_RETRY_MS))
+          return requestPlaybackDecision(fileId, payload, controller.signal)
+        }
+        throw err
+      }
+    }
+
+    decide()
       .then((decision) => {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted) {
+          // The effect was torn down while this request was in flight, but the
+          // server may have already started a session — reap it so it does not
+          // orphan until the idle reaper runs.
+          if (decision.session) {
+            void deletePlaybackSession(fileId, decision.session.id).catch(() => {})
+          }
+          return
+        }
+        reattachingRef.current = false
         const replaced = liveSessionRef.current
-        setMethod(decision.method)
         setReason(decision.reason)
         setAudioStreams(decision.audio_streams)
         if (decision.method === 'direct') {
@@ -204,11 +233,15 @@ export function useHlsSession({
       })
       .catch(() => {
         if (controller.signal.aborted) return
-        // The decision request failed outright — degrade to the manifest's
-        // direct path so a playable file still plays (and old servers without
-        // the decision endpoint keep working).
+        reattachingRef.current = false
+        // The decision request failed outright. When we can degrade to the
+        // manifest's direct path, we are replacing any prior session with native
+        // playback, so tear it down first (mirrors the success path's replaced-
+        // session teardown). A non-degradable file keeps its live session tracked
+        // (torn down on close/switch/idle) rather than orphaning a working stream
+        // on a transient blip.
         if (directPlayable && directStreamUrl) {
-          setMethod('direct')
+          teardownLive()
           setSource(nativeSource(directStreamUrl))
           setStatus('ready')
         } else {
@@ -233,56 +266,49 @@ export function useHlsSession({
   }, [teardownLive])
 
   // A switch re-decides for the same file, resuming at the live playhead.
-  const applyParams = useCallback((next: SwitchParams) => {
-    paramsRef.current = next
+  const setParam = useCallback(<K extends keyof SwitchParams>(key: K, value: SwitchParams[K]) => {
+    paramsRef.current = { ...paramsRef.current, [key]: value }
     startAtRef.current = Math.max(0, getCurrentTimeRef.current())
-    setParams(next)
-    setEpoch((value) => value + 1)
+    setParams(paramsRef.current)
+    setEpoch((current) => current + 1)
   }, [])
 
-  const setAudioStream = useCallback(
-    (index: number | null) => applyParams({ ...paramsRef.current, audioStreamIndex: index }),
-    [applyParams],
-  )
-  const setMaxHeight = useCallback(
-    (height: number | null) => applyParams({ ...paramsRef.current, maxHeight: height }),
-    [applyParams],
-  )
-  const setBurnSubtitle = useCallback(
-    (trackId: string | null) => applyParams({ ...paramsRef.current, burnSubtitleTrackId: trackId }),
-    [applyParams],
-  )
-
-  // Playback actually resumed (initial start or a successful re-attach), so
-  // refund the re-attach budget. Resetting on decision success instead would let
-  // a persistently broken stream re-decide forever without ever falling back.
+  // Playback advanced past a re-attach point by a healthy margin, so refund the
+  // budget. Gating on real progress (not the `play` intent) keeps a broken stream
+  // from re-deciding forever.
   const notePlaying = useCallback(() => {
-    reattachCountRef.current = 0
+    if (reattachCountRef.current === 0) return
+    if (getCurrentTimeRef.current() - reattachAtRef.current >= HEALTHY_REFUND_S) {
+      reattachCountRef.current = 0
+    }
   }, [])
 
   const reattach = useCallback((): boolean => {
+    // A re-attach is already in flight — swallow the extra stage error(s) that a
+    // single failure burst produces instead of spending another budget slot or
+    // (with the ref already nulled) surrendering to the fallback card.
+    if (reattachingRef.current) return true
     // Only HLS sources can be re-attached (native progressive play just errors).
     if (liveSessionRef.current === null) return false
     if (reattachCountRef.current >= MAX_REATTACH) return false
     reattachCountRef.current += 1
+    reattachingRef.current = true
     startAtRef.current = Math.max(0, getCurrentTimeRef.current())
+    reattachAtRef.current = startAtRef.current
     // The idled-out session is gone server-side; drop the ref so we don't try to
     // DELETE a 404 — the fresh decision installs a new session.
     liveSessionRef.current = null
-    setEpoch((value) => value + 1)
+    setEpoch((current) => current + 1)
     return true
   }, [])
 
   return {
     source,
-    method,
     status,
     reason,
     audioStreams,
     params,
-    setAudioStream,
-    setMaxHeight,
-    setBurnSubtitle,
+    setParam,
     reattach,
     notePlaying,
   }

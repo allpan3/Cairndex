@@ -79,7 +79,7 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
                 role="menuitemradio"
                 aria-checked={hls.params.maxHeight === quality.value}
                 className={`mv-menu__item${hls.params.maxHeight === quality.value ? ' is-selected' : ''}`}
-                onClick={() => hls.setMaxHeight(quality.value)}
+                onClick={() => hls.setParam('maxHeight', quality.value)}
               >
                 {quality.label}
               </button>
@@ -95,7 +95,9 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
                   role="menuitemradio"
                   aria-checked={selectedAudio === track.index}
                   className={`mv-menu__item${selectedAudio === track.index ? ' is-selected' : ''}`}
-                  onClick={() => track.index !== null && hls.setAudioStream(track.index)}
+                  onClick={() =>
+                    track.index !== null && hls.setParam('audioStreamIndex', track.index)
+                  }
                   disabled={track.index === null}
                 >
                   {audioLabel(track)}
@@ -111,7 +113,7 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
                 role="menuitemradio"
                 aria-checked={hls.params.burnSubtitleTrackId === null}
                 className={`mv-menu__item${hls.params.burnSubtitleTrackId === null ? ' is-selected' : ''}`}
-                onClick={() => hls.setBurnSubtitle(null)}
+                onClick={() => hls.setParam('burnSubtitleTrackId', null)}
               >
                 Off
               </button>
@@ -121,7 +123,7 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
                   role="menuitemradio"
                   aria-checked={hls.params.burnSubtitleTrackId === track.id}
                   className={`mv-menu__item${hls.params.burnSubtitleTrackId === track.id ? ' is-selected' : ''}`}
-                  onClick={() => hls.setBurnSubtitle(track.id)}
+                  onClick={() => hls.setParam('burnSubtitleTrackId', track.id)}
                 >
                   {track.label}
                 </button>
