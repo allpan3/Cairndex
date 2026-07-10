@@ -1,5 +1,27 @@
 # Project status
 
+## In progress: pinyin-aware picker search
+
+Branch `codex/pinyin-picker-search` (stacked on the two preceding Update fixes).
+Chinese tag and collection names now match full pinyin, initials, partial
+pinyin, mixed Latin/pinyin, and polyphonic readings in the single- and
+multi-bundle add pickers. The same shared local matcher also covers tag filters,
+All Tags, File Browser entry names, and local file-selection filters. Normal
+case-insensitive substring search and literal exact-name/create behavior are
+unchanged.
+
+`pinyin-pro` 3.28.1 is frontend-only and offline. It is split into a ~142 kB
+gzip lazy chunk loaded when a search-bearing surface mounts; the initial app JS
+remains ~131 kB gzip. Whole-library Bundle Browser search is still server-backed
+SQLite FTS and intentionally does not gain pinyin aliases in this low-cost
+slice, since that would require new indexed data and a per-library FTS rebuild.
+
+Verification: frontend `lint`, `format:check`, `typecheck`, `test` (**51
+passed**), `build`, and Playwright (**52 passed**) are green. Unit coverage
+checks literal, full/initial/partial, mixed, and polyphonic matching. The new
+browser case searches `摄影` with `sheying` and `电影` with `dianying` in the
+actual single-bundle tag and collection pickers.
+
 ## In progress: standalone Update stages
 
 Branch `codex/standalone-update-actions` (stacked on the network-library scan

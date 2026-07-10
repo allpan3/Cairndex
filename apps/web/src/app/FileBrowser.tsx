@@ -8,6 +8,7 @@ import { ContextMenu } from './ContextMenu'
 import { FileEntryViewer } from './FileEntryViewer'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
+import { usePinyinSearch } from './pinyin'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -202,6 +203,7 @@ function FileList({
   const [anchor, setAnchor] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
   const [search, setSearch] = useState('')
+  const matchSearch = usePinyinSearch(search)
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -211,14 +213,14 @@ function FileList({
   // analogous to collections). Whole-library / recursive file search is a
   // future backend enhancement — see docs/STATUS.md.
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+    const q = search.trim()
+    const filtered = q ? entries.filter((e) => matchSearch(e.name)) : entries
     const dir = prefs.order === 'asc' ? 1 : -1
     const cmp = (a: FileBrowserEntry, b: FileBrowserEntry) => compareEntries(a, b, prefs.sort) * dir
     const dirs = filtered.filter((e) => e.kind === 'directory').sort(cmp)
     const files = filtered.filter((e) => e.kind !== 'directory').sort(cmp)
     return [...dirs, ...files]
-  }, [entries, search, prefs.sort, prefs.order])
+  }, [entries, search, prefs.sort, prefs.order, matchSearch])
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openIndex, setOpenIndex] = useState<number | null>(null)
