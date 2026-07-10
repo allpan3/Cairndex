@@ -46,6 +46,10 @@ export type ContinueWatchingProgressRead = components['schemas']['ContinueWatchi
 export type ContinueWatchingItem = components['schemas']['ContinueWatchingItem']
 export type ContinueWatchingPage = components['schemas']['ContinueWatchingPage']
 export type SubtitleTrackRead = components['schemas']['SubtitleTrackRead']
+export type AudioStreamRead = components['schemas']['AudioStreamRead']
+export type ClientCapabilities = components['schemas']['ClientCapabilities']
+export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionRequest']
+export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
 export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count' | 'manual'
@@ -255,6 +259,37 @@ export const deleteSmartCollection = (id: string) =>
 
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
   getJson<PlaybackManifest>(`${lib()}/bundles/${bundleId}/playback`, signal)
+
+// --- Playback decisions + HLS sessions (plan 1 §6.3, M7) ---------------------
+// Ask the server how to play one file for this client's capabilities. A direct
+// decision returns a progressive `stream_url`; remux/transcode returns a started
+// HLS `session` whose playlist the player feeds to hls.js or native HLS.
+export const requestPlaybackDecision = (
+  fileId: string,
+  payload: PlaybackDecisionRequest,
+  signal?: AbortSignal,
+) =>
+  sendSignal<PlaybackDecisionResponse>(
+    `${lib()}/files/${fileId}/playback-decision`,
+    'POST',
+    signal,
+    payload,
+  )
+
+/** Tear down an HLS session (player close, file switch, quality/audio switch). */
+export const deletePlaybackSession = (fileId: string, sessionId: string) =>
+  send<void>(`${lib()}/files/${fileId}/playback-sessions/${sessionId}`, 'DELETE')
+
+/** Best-effort session teardown on pagehide via sendBeacon's POST-only transport. */
+export function beaconTeardownSession(fileId: string, sessionId: string): boolean {
+  if (!navigator.sendBeacon) return false
+  // The teardown alias takes no body; an empty blob keeps the beacon a POST.
+  const body = new Blob([], { type: 'application/json' })
+  return navigator.sendBeacon(
+    `${lib()}/files/${fileId}/playback-sessions/${sessionId}/teardown`,
+    body,
+  )
+}
 
 export const fetchContinueWatching = (limit = 20, offset = 0, signal?: AbortSignal) =>
   getJson<ContinueWatchingPage>(

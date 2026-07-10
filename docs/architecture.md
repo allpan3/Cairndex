@@ -1,10 +1,11 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M6 (probe enrichment,
+> Status: current through the media-player foundation M1–M7 (probe enrichment,
 > the unified custom media viewer, storyboard trickplay, watch progress/resume,
-> image viewer v2 with preview derivatives, and the server-side playback
-> decision + HLS remux/transcode session foundation; PRs #1–#5 plus the M6
-> `feat/playback-sessions` branch). See `AGENTS.md` for the product brief,
+> image viewer v2 with preview derivatives, the server-side playback decision +
+> HLS remux/transcode session foundation, and the web hls.js/native-HLS engine
+> integration; PRs #1–#5, the M6 `feat/playback-sessions` branch, and the M7
+> `feat/web-hls` branch). See `AGENTS.md` for the product brief,
 > `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md` for
 > current gaps, validation state, and recommended next tasks.
 
@@ -350,7 +351,24 @@ Clients declare a capability profile (containers, video/audio codecs,
   `LibrarySession` gating as direct streams; session ids are random and scoped
   to their library; ffmpeg args come only from server-side-resolved paths.
   Optional `CAIRNDEX_FFMPEG_HWACCEL` adds a decode-only hwaccel prefix for
-  transcode sessions. The web hls.js/native-HLS engine integration is M7.
+  transcode sessions.
+- A POST `.../playback-sessions/{session_id}/teardown` alias mirrors the DELETE
+  route so `navigator.sendBeacon` (POST-only) can reap a session on `pagehide`
+  (same pattern as the M4 progress beacon).
+
+**Web engine integration (M7, `apps/web/src/app/viewer/player/`).** The custom
+player drives delivery through the `PlaybackEngine` seam. A memoized capability
+profile (`caps.ts`) is computed once via `canPlayType` + `MediaSource.isTypeSupported`
+and only advertises probe-confirmed formats. When a video starts, `MediaViewer`
+(via `useHlsSession`) POSTs a playback decision: `direct` uses `NativeEngine`
+(progressive `video.src`), `native_hls` uses `NativeEngine` with the m3u8, and
+otherwise `HlsEngine` lazy-loads **hls.js** (a separate build chunk) and attaches
+over MediaSource. The hook owns the session lifecycle — teardown on close/switch/
+unmount, a `sendBeacon` teardown on `pagehide`, and transparent re-attach at the
+current playhead when a session idles out (segment/playlist 404 or an hls.js fatal
+error). Quality (`max_height` ladder), audio-track, and subtitle burn-in choices
+re-decide and start a new session at the current position rather than switching
+in-stream; resume/watch-progress works unchanged over the 1:1 VOD timeline.
 
 ## 9. Filtering and Smart Collections
 
@@ -454,7 +472,8 @@ reverse proxy, not the public internet.
 - scheduled scans and stronger job scheduling;
 - safe File Browser write mode plus desktop/native host integration;
 - single-owner authentication before real remote exposure;
-- web hls.js/native-HLS engine integration for the M6 remux/transcode sessions
-  (M7) and embedded subtitle extraction to servable text tracks (M8);
+- embedded subtitle extraction to servable text tracks (M8) — the web
+  hls.js/native-HLS engine integration for the M6 remux/transcode sessions
+  landed in M7;
 - transcode-cache location is settled (ADR-0014: server-local ephemeral under
   `{CAIRNDEX_DATA_DIR}/transcode/`, never inside a library package).

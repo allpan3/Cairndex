@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -73,6 +73,56 @@ function mediaBytes(): Buffer | null {
 }
 
 const generatedMp4 = mediaBytes()
+
+// Build a real fMP4 HLS stream (init + one segment + VOD playlist) from the MP4
+// fixture so the mocked HLS test drives hls.js over genuine MSE-decodable bytes,
+// mirroring what an M6 remux session serves. Returns null when ffmpeg is absent.
+function hlsFixtureFiles(): Map<string, Buffer> | null {
+  if (generatedMp4 === null) return null
+  const dir = join(tmpdir(), 'cairndex-m7-hls-fixture')
+  const playlist = join(dir, 'index.m3u8')
+  if (!existsSync(playlist)) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      const src = join(tmpdir(), 'cairndex-m2-viewer-fixture-v2.mp4')
+      execFileSync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-i',
+          src,
+          '-c',
+          'copy',
+          '-f',
+          'hls',
+          '-hls_time',
+          '1',
+          '-hls_playlist_type',
+          'vod',
+          '-hls_segment_type',
+          'fmp4',
+          '-hls_fmp4_init_filename',
+          'init.mp4',
+          '-hls_segment_filename',
+          'seg%d.m4s',
+          '-hls_list_size',
+          '0',
+          'index.m3u8',
+        ],
+        { cwd: dir },
+      )
+    } catch {
+      return null
+    }
+  }
+  const files = new Map<string, Buffer>()
+  for (const name of readdirSync(dir)) files.set(name, readFileSync(join(dir, name)))
+  return files
+}
+
+const hlsFixture = hlsFixtureFiles()
 
 // Find a free local TCP port for the throwaway FastAPI server
 async function freePort(): Promise<number> {
@@ -188,6 +238,33 @@ async function waitApiJob(apiBaseUrl: string, jobId: string) {
     await new Promise((resolve) => setTimeout(resolve, 500))
   }
   throw new Error(`job ${jobId} did not finish`)
+}
+
+// Generate a small H.264 + AAC MKV: the browser can't play the container
+// directly, so the decision remuxes it into an HLS session.
+function makeMkv(path: string) {
+  execFileSync('ffmpeg', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc=duration=6:size=160x90:rate=15',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:duration=6',
+    '-shortest',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:v',
+    'libx264',
+    '-c:a',
+    'aac',
+    '-y',
+    path,
+  ])
 }
 
 // Generate a long, low-rate video that stays small enough for e2e
@@ -306,9 +383,17 @@ interface MockApiOptions {
   progress?: { position_s: number; duration_s: number | null; completed: boolean } | null
   secondPlayable?: boolean
   nonNativeImage?: boolean
+  // Force the f0 playback decision to a remux HLS session served from the real
+  // fMP4 fixture, exercising the hls.js engine + settings menus + teardown.
+  forceHls?: boolean
+  // Serve the playlist but 404 the init/segment bytes, simulating a session that
+  // idled out — the client must transparently re-request a decision (re-attach).
+  hlsBreak?: boolean
   onContent?: (url: string) => void
   onPreview?: (url: string) => void
   onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
+  onSessionDelete?: (url: string) => void
+  onDecision?: (fileId: string, body: Record<string, unknown>) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -427,6 +512,97 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }
     await r.fulfill({ status: 200, contentType: 'application/json', json: progressByFile[fileId] })
   })
+
+  // Per-file playback decision (M7). f0 is directly playable (or a forced remux
+  // HLS session under forceHls); the MKV f1 has no session in this mock, so it
+  // still lands on the fallback card — the "can't play" path must keep working
+  // even though real MKVs remux over HLS.
+  const audioStreams = [
+    { index: 1, codec: 'aac', channels: 6, language: 'eng', title: 'Surround', default: true },
+    { index: 2, codec: 'ac3', channels: 2, language: 'fra', title: 'Commentary', default: false },
+  ]
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(f0|f1)\/playback-decision$/, async (r) => {
+    const fileId = r.request().url().includes('/files/f1/') ? 'f1' : 'f0'
+    options.onDecision?.(
+      fileId,
+      JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>,
+    )
+    const streamUrl = `/api/v1/libraries/lib1/files/${fileId}/stream`
+    const base = {
+      duration: fileId === 'f0' ? 120 : options.secondPlayable ? 90 : null,
+      subtitles: [],
+      chapters: [],
+      storyboard_url: null,
+      progress: progressByFile[fileId],
+    }
+    if (options.forceHls && fileId === 'f0') {
+      return r.fulfill({
+        json: {
+          ...base,
+          method: 'remux',
+          reason: 'forced remux for the HLS engine test',
+          stream_url: null,
+          session: {
+            id: 'sess1',
+            playlist_url: '/api/v1/libraries/lib1/files/f0/playback-sessions/sess1/index.m3u8',
+          },
+          audio_streams: audioStreams,
+        },
+      })
+    }
+    if (fileId === 'f1' && !options.secondPlayable) {
+      return r.fulfill({
+        json: {
+          ...base,
+          method: 'transcode',
+          reason: "MKV container isn't playable in browsers",
+          stream_url: null,
+          session: null,
+          audio_streams: [],
+        },
+      })
+    }
+    return r.fulfill({
+      json: {
+        ...base,
+        method: 'direct',
+        reason: '',
+        stream_url: streamUrl,
+        session: null,
+        audio_streams: [],
+      },
+    })
+  })
+
+  if (options.forceHls && hlsFixture) {
+    // Serve the real fMP4 playlist/init/segment bytes for the HLS session.
+    await page.route(
+      /\/api\/v1\/libraries\/lib1\/files\/f0\/playback-sessions\/sess1\/([^/]+)$/,
+      (r) => {
+        const name = decodeURIComponent(r.request().url().split('?')[0].split('/').pop() ?? '')
+        // hlsBreak keeps the playlist reachable but 404s the media bytes, so
+        // hls.js hits a fatal load error and the client must re-attach.
+        if (options.hlsBreak && name !== 'index.m3u8') return r.fulfill({ status: 404, body: '' })
+        const bytes = hlsFixture.get(name)
+        if (!bytes) return r.fulfill({ status: 404, body: '' })
+        const contentType = name === 'index.m3u8' ? 'application/vnd.apple.mpegurl' : 'video/mp4'
+        return r.fulfill({
+          status: 200,
+          contentType,
+          headers: { 'cache-control': 'no-store' },
+          body: bytes,
+        })
+      },
+    )
+    // Session teardown (DELETE on close / file switch / unmount).
+    await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/playback-sessions\/sess1$/, (r) => {
+      if (r.request().method() === 'DELETE') {
+        options.onSessionDelete?.(r.request().url())
+        return r.fulfill({ status: 204, body: '' })
+      }
+      return r.continue()
+    })
+  }
 
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
     r.fulfill({
@@ -910,6 +1086,181 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
     const preview = page.getByTestId('storyboard-preview')
     await expect(preview).toBeVisible()
     await expect(preview).toHaveCSS('background-image', /storyboard\/sb_001\.jpg/)
+  } finally {
+    if (backend) await stopBackend(backend.child)
+    rmSync(libraryRoot, { recursive: true, force: true })
+    rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
+test('plays a remux HLS source through hls.js and shows the quality/audio menus', async ({
+  page,
+}) => {
+  test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS engine e2e')
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'cairndex.prefs',
+      JSON.stringify({
+        layout: 'grid',
+        zoom: 200,
+        sort: 'manual',
+        order: 'asc',
+        sortScope: 'global',
+        collectionSorts: {},
+        player: { volume: 0.5, muted: true, rate: 1, subtitlesOn: true },
+      }),
+    )
+  })
+  const deletes: string[] = []
+  const decisions: Array<Record<string, unknown>> = []
+  await mockApi(page, {
+    forceHls: true,
+    onSessionDelete: (url) => deletes.push(url),
+    onDecision: (fileId, body) => {
+      if (fileId === 'f0') decisions.push(body)
+    },
+  })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  const video = page.getByTestId('media-video')
+  // hls.js attaches (Managed)MediaSource, so the element source is a blob/object
+  // URL, never the progressive `/stream` — proof the HLS engine, not the native
+  // engine, is driving playback.
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).src.includes('/files/f0/stream')))
+    .toBe(false)
+  await expect
+    .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime), { timeout: 15_000 })
+    .toBeGreaterThan(0.2)
+  await expect(page.getByTestId('media-controls')).toBeVisible()
+
+  // Quality ladder + audio-track menus come from the decision.
+  await page.getByRole('button', { name: /playback settings/i }).click()
+  const menu = page.getByTestId('settings-menu')
+  await expect(menu).toContainText('Quality')
+  await expect(menu.getByRole('menuitemradio', { name: '720p' })).toBeVisible()
+  await expect(menu).toContainText('Audio')
+  await expect(menu.getByRole('menuitemradio', { name: /Surround/ })).toBeVisible()
+
+  // Picking a quality tier re-decides at the current playhead with the new cap.
+  await menu.getByRole('menuitemradio', { name: '720p' }).click()
+  await expect.poll(() => decisions.some((body) => body.max_height === 720)).toBe(true)
+
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+  // Closing the player tears the HLS session down.
+  await expect.poll(() => deletes.length).toBeGreaterThan(0)
+})
+
+test('transparently re-attaches a fresh session when HLS segments fail', async ({ page }) => {
+  test.skip(hlsFixture === null, 'ffmpeg is unavailable; skipping HLS re-attach e2e')
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'cairndex.prefs',
+      JSON.stringify({
+        layout: 'grid',
+        zoom: 200,
+        sort: 'manual',
+        order: 'asc',
+        sortScope: 'global',
+        collectionSorts: {},
+        player: { volume: 0.5, muted: true, rate: 1, subtitlesOn: true },
+      }),
+    )
+  })
+  const decisions: Array<Record<string, unknown>> = []
+  // The playlist loads but every media segment 404s — the same failure a session
+  // that idled out during a long pause produces. The client should re-request a
+  // decision rather than immediately surrendering to the fallback card.
+  await mockApi(page, {
+    forceHls: true,
+    hlsBreak: true,
+    onDecision: (fileId, body) => {
+      if (fileId === 'f0') decisions.push(body)
+    },
+  })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await expect(page.getByTestId('media-video')).toBeVisible()
+  // The initial decision plus at least one transparent re-attach.
+  await expect.poll(() => decisions.length, { timeout: 20_000 }).toBeGreaterThan(1)
+  // After the re-attach budget is spent the unplayable card finally shows.
+  await expect(page.locator('.media-fallback')).toBeVisible({ timeout: 20_000 })
+})
+
+test('plays a real MKV over a backend remux session and tears it down on close', async ({
+  page,
+}) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real MKV HLS e2e')
+
+  const libraryRoot = mkdtempSync(join(tmpdir(), 'cairndex-hls-lib-'))
+  const dataDir = mkdtempSync(join(tmpdir(), 'cairndex-hls-data-'))
+  let backend: { baseUrl: string; child: ChildProcessWithoutNullStreams } | null = null
+  try {
+    makeMkv(join(libraryRoot, 'clip.mkv'))
+    backend = await startBackend(dataDir)
+    const library = await apiPost<{ id: string }>(backend.baseUrl, '/api/v1/libraries/create', {
+      root_path: libraryRoot,
+      display_name: 'HLS Test',
+      create_if_missing: false,
+    })
+    const bundle = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/bundles`,
+      { title: 'MKV Movie' },
+    )
+    await apiPost(backend.baseUrl, `/api/v1/libraries/${library.id}/bundles/${bundle.id}/files`, {
+      relative_path: 'clip.mkv',
+      role: 'primary_video',
+      media_kind: 'video',
+      mime_type: 'video/x-matroska',
+    })
+    const probe = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/jobs/probe`,
+    )
+    await waitApiJob(backend.baseUrl, probe.id)
+
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'cairndex.prefs',
+        JSON.stringify({
+          layout: 'grid',
+          zoom: 200,
+          sort: 'manual',
+          order: 'asc',
+          sortScope: 'global',
+          collectionSorts: {},
+          player: { volume: 0.5, muted: true, rate: 1, subtitlesOn: true },
+        }),
+      )
+    })
+    const sessionHits: string[] = []
+    const deletes: string[] = []
+    page.on('request', (req) => {
+      const url = req.url()
+      if (url.includes('/playback-sessions/')) sessionHits.push(`${req.method()} ${url}`)
+      if (req.method() === 'DELETE' && url.includes('/playback-sessions/')) deletes.push(url)
+    })
+
+    await proxyApi(page, backend.baseUrl)
+    await page.goto('/')
+    await page.locator(`[data-bundle-id="${bundle.id}"]`).dblclick()
+
+    const video = page.getByTestId('media-video')
+    await expect(video).toBeVisible()
+    // The MKV is not directly playable, so playback advances only if the real
+    // remux session served fMP4 segments through hls.js.
+    await expect
+      .poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime), { timeout: 30_000 })
+      .toBeGreaterThan(0.2)
+    expect(sessionHits.some((hit) => hit.includes('index.m3u8'))).toBe(true)
+
+    await page.getByRole('button', { name: 'Close' }).click()
+    await expect(page.locator('.media-viewer')).toHaveCount(0)
+    await expect.poll(() => deletes.length, { timeout: 10_000 }).toBeGreaterThan(0)
   } finally {
     if (backend) await stopBackend(backend.child)
     rmSync(libraryRoot, { recursive: true, force: true })

@@ -416,6 +416,25 @@ def delete_playback_session(
     db: LibrarySession,
     manager: SessionManagerDep,
 ) -> Response:
-    """Tear down a session (player close; a beacon may deliver this)."""
+    """Tear down a session (player close, file switch, unmount)."""
+    manager.teardown(library_id, session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# Teardown alias for navigator.sendBeacon, whose pagehide transport can only
+# POST (it cannot issue a DELETE). Mirrors the M4 progress beacon alias so the
+# web player can guarantee session cleanup even when the tab is closing.
+@router.post(
+    "/files/{file_id}/playback-sessions/{session_id}/teardown",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def beacon_teardown_playback_session(
+    library_id: str,
+    file_id: str,
+    session_id: str,
+    db: LibrarySession,
+    manager: SessionManagerDep,
+) -> Response:
+    """Tear down a session via a POST beacon (pagehide `navigator.sendBeacon`)."""
     manager.teardown(library_id, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

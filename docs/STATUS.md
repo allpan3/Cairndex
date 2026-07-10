@@ -1,5 +1,82 @@
 # Project status
 
+## In review: media-player M7 — web HLS integration
+
+Branch `feat/web-hls` (off `main`, after the M6 playback-sessions merge #7).
+Latest commit subject: `feat: web HLS integration (hls.js/native-HLS engine)`.
+Implements plan 1 M7 — the web player now consumes the M6 decision + session
+foundation, so MKV/HEVC/etc. that can't play directly stream over a server
+remux/transcode HLS session.
+
+- **Capability profile (§6.3).** `apps/web/src/app/viewer/player/caps.ts`:
+  memoized once per tab, probing `HTMLVideoElement.canPlayType` **and**
+  `MediaSource.isTypeSupported` for containers (mp4/webm), video codecs
+  (h264/hevc/vp9/av1), audio codecs (aac/mp3/opus/vorbis/flac), and `native_hls`.
+  Only probe-confirmed formats are advertised (AGENTS.md: no untested-format
+  claims); `max_height` is null (no browser decode-ceiling API). Pure
+  `computeCapabilities(probe)` is unit-tested with mocked probes.
+- **Per-file decision + engine (§6.3).** `useHlsSession` POSTs
+  `.../files/{id}/playback-decision` when a video starts. `direct` → existing
+  `NativeEngine` path (unchanged; a decision failure also degrades to the
+  manifest's direct stream). `remux`/`transcode` → the session playlist via the
+  new `HlsEngine` (lazy `import('hls.js')`; native-HLS uses `NativeEngine` with
+  the m3u8). `createEngine()` picks the engine; hls.js is a **separate build
+  chunk** (~157 kB gz) so the main bundle stays flat (verified in `build`). The
+  manifest (`GET /bundles/{id}/playback`) is unchanged and still carries the
+  per-video metadata (subtitles/chapters/storyboard/duration/progress).
+- **Session lifecycle (§6.3).** Teardown (DELETE) on player close, file switch,
+  and unmount; a new **POST `.../playback-sessions/{sid}/teardown`** alias lets
+  `navigator.sendBeacon` reap the session on `pagehide` (mirrors the M4 progress
+  beacon; OpenAPI + `schema.d.ts` regenerated — `gen:api` reached the registry).
+  On a playlist/segment failure (idled-out session) or an hls.js fatal error the
+  client transparently re-requests a decision and re-attaches at the current
+  playhead; the re-attach budget (3) is refunded only when the playhead actually
+  advances (not on the `play` intent), so a persistently broken stream falls
+  back to the "can't play" card instead of looping.
+- **Quality/audio/burn-in menus.** A settings menu (gear) offers a `max_height`
+  ladder (Auto/1080/720/480), an audio-track picker (from `decision.audio_streams`),
+  and a burn-in toggle for non-native subtitle tracks (`burn_subtitle_track_id`).
+  Each switch re-decides + starts a new session at the current position (no
+  in-stream ABR); identical params reuse the live session (M6 F6), changed
+  params tear down the old one. Watch progress/resume is unchanged over the 1:1
+  VOD timeline.
+
+Verification:
+
+- Backend: `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run ruff check` /
+  `ruff format --check` / `mypy src` / `pytest` all green (**387 passed**, same
+  pre-existing Starlette/httpx deprecation warning). New: a POST-teardown-alias
+  test in `tests/test_hls_sessions.py`. The only server change is the beacon alias.
+- Frontend: `lint` / `format:check` / `typecheck` / `test` (**58 passed**, +11:
+  `caps.test.ts`, `engine.test.ts` engine-selection matrix, `useHlsSession.test.tsx`
+  teardown/switch/re-attach/direct) / `build` (hls.js is its own chunk, main
+  bundle unchanged) / `test:e2e` (**52 passed**, +3 in `player.spec.ts`: mocked
+  decision→hls.js path with real fMP4 bytes + quality/audio menus + a 720p switch
+  re-decide; transparent re-attach on 404 segments → fallback after the budget;
+  and a real-backend H.264 **MKV** that scans/probes then plays over a remux
+  session with the session DELETE firing on close). e2e ran escalated (the
+  sandbox blocks Vite's `::1:5173` bind).
+- Live (real uvicorn on an isolated port + a throwaway generated **720p 2-audio
+  MKV** library in `/tmp` — never the Demo library): a Chromium-like caps profile
+  decided **remux** ("mkv container is not in client capabilities") and started a
+  session; `max_height:480` decided **transcode** and `audio_stream_index:2`
+  decided **remux**, each a **distinct** session id (switch semantics); the POST
+  **teardown alias** returned 204 and removed the session dir; the **idle reaper**
+  (`CAIRNDEX_TRANSCODE_IDLE_TIMEOUT=8`) removed untouched session dirs. The full
+  browser play/seek/re-attach/switch/close-DELETE path is covered by the
+  real-backend + mocked Playwright specs above (Chrome-extension driving was
+  unavailable this session, so the interactive walkthrough was replaced by the
+  deterministic real-browser e2e + live curl checks, which exercise the same
+  server + client paths). The throwaway library/data dir were removed afterward;
+  the owner's Demo backend on :8000 was left untouched.
+
+Known issues / out of scope: embedded text-subtitle **extraction** to servable
+tracks and the multi-track subtitle menu/styling are M8 (M7 still shows only the
+default external track and burns in non-native tracks on transcode); `max_height`
+has no browser probe so it is advertised null (the ladder is user-driven); in-
+stream ABR is deliberately not implemented (switches re-create the session). Next
+recommended media-player task: **plan 1 M8 — subtitle upgrade**.
+
 ## In review: multiple notes per bundle
 
 Branch `feat/bundle-multiple-notes` (off `main`, i.e. after the M6 playback
