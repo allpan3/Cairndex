@@ -7,6 +7,7 @@ from cairndex.core.errors import (
     CapacityError,
     ConflictError,
     DomainError,
+    MediaProcessingError,
     NotFoundError,
     ValidationError,
 )
@@ -16,6 +17,7 @@ _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
     (NotFoundError, 404),
     (AuthRequiredError, 401),
     (CapacityError, 429),
+    (MediaProcessingError, 500),
     (ConflictError, 409),
     (ValidationError, 422),
 ]

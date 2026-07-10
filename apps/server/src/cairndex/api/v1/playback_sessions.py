@@ -9,6 +9,7 @@ idle. Path resolution stays server-side and every route is gated by the same
 served with ``no-store`` because they are throwaway session state.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -31,7 +32,7 @@ from cairndex.api.v1.playback import _chapters, _track_read
 from cairndex.core.errors import ValidationError
 from cairndex.core.paths import resolve_within_root
 from cairndex.media import hls, playback
-from cairndex.media.hls import BurnSubtitle, SessionManager, SessionParams
+from cairndex.media.hls import BurnSubtitle, HlsSession, SessionManager, SessionParams
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.services import playback_progress as progress_service
@@ -170,15 +171,16 @@ def _build_params(
     from cairndex.core.config import get_settings
 
     streams = _audio_streams(meta)
-    if audio_stream_index is not None and streams:
+    # Validate a requested audio track whenever one is given — including on a
+    # legacy row with no probed streams (an unknown index can't be honored).
+    if audio_stream_index is not None:
         known = {s.get("index") for s in streams}
         if audio_stream_index not in known:
             raise ValidationError(f"audio stream {audio_stream_index} does not exist")
     selected_codec = _selected_audio_codec(meta, streams, audio_stream_index)
     audio_copy = playback.normalize_audio_codec(selected_codec) == "aac"
 
-    effective_heights = [h for h in (caps.max_height, max_height) if h is not None and h > 0]
-    effective_max_height = min(effective_heights) if effective_heights else None
+    effective_max_height = playback.effective_max_height(caps.max_height, max_height)
 
     burn = (
         _resolve_burn_subtitle(db, asset_file, video_path, burn_subtitle_track_id)
@@ -203,6 +205,73 @@ def _playlist_url(library_id: str, file_id: str, session_id: str) -> str:
     )
 
 
+@dataclass
+class _DecisionContext:
+    """Everything the resolve→probe→decide step yields, shared by both endpoints."""
+
+    video_path: Path
+    asset_file: AssetFile
+    meta: dict[str, Any]
+    caps: playback.CapabilityProfile
+    decision: playback.PlaybackDecision
+
+
+def _resolve_and_decide(
+    db: Session,
+    file_id: str,
+    *,
+    caps: ClientCapabilities,
+    audio_stream_index: int | None,
+    burn_subtitle_track_id: str | None,
+    max_height: int | None,
+) -> _DecisionContext:
+    video_path, asset_file = playback.resolve_video_path(db, file_id)
+    meta = asset_file.tech_metadata or {}
+    profile = _profile(caps)
+    decision = _decide(
+        profile,
+        asset_file,
+        meta,
+        audio_stream_index=audio_stream_index,
+        burn_subtitle_track_id=burn_subtitle_track_id,
+        max_height=max_height,
+    )
+    return _DecisionContext(video_path, asset_file, meta, profile, decision)
+
+
+def _start_session(
+    manager: SessionManager,
+    db: Session,
+    ctx: _DecisionContext,
+    *,
+    library_id: str,
+    file_id: str,
+    audio_stream_index: int | None,
+    burn_subtitle_track_id: str | None,
+    max_height: int | None,
+    start_s: float,
+) -> HlsSession:
+    params = _build_params(
+        db,
+        ctx.asset_file,
+        ctx.video_path,
+        ctx.meta,
+        caps=ctx.caps,
+        audio_stream_index=audio_stream_index,
+        burn_subtitle_track_id=burn_subtitle_track_id,
+        max_height=max_height,
+    )
+    return manager.create_session(
+        library_id=library_id,
+        file_id=file_id,
+        source_path=ctx.video_path,
+        duration=_duration(ctx.meta) or 0.0,
+        kind=ctx.decision.session_kind,
+        params=params,
+        start_s=start_s,
+    )
+
+
 @router.post("/files/{file_id}/playback-decision", response_model=PlaybackDecisionResponse)
 def playback_decision(
     library_id: str,
@@ -212,19 +281,16 @@ def playback_decision(
     manager: SessionManagerDep,
 ) -> PlaybackDecisionResponse:
     """Decide direct/remux/transcode and, for non-direct, start an HLS session."""
-    video_path, asset_file = playback.resolve_video_path(db, file_id)
-    meta = asset_file.tech_metadata or {}
-    caps = _profile(payload.caps)
-    decision = _decide(
-        caps,
-        asset_file,
-        meta,
+    ctx = _resolve_and_decide(
+        db,
+        file_id,
+        caps=payload.caps,
         audio_stream_index=payload.audio_stream_index,
         burn_subtitle_track_id=payload.burn_subtitle_track_id,
         max_height=payload.max_height,
     )
-
-    streams = _audio_streams(meta)
+    meta = ctx.meta
+    duration = _duration(meta)
     tracks = sub_service.list_tracks_for_video(db, file_id)
     from cairndex.media import storyboards
 
@@ -232,42 +298,40 @@ def playback_decision(
 
     stream_url: str | None = None
     session_ref: PlaybackSessionRef | None = None
-    if decision.method == "direct":
+    reason = ctx.decision.reason
+    if ctx.decision.method == "direct":
         stream_url = f"/api/v1/libraries/{library_id}/files/{file_id}/stream"
+    elif duration is None or duration <= 0:
+        # A VOD session needs a known duration; a legacy/un-probed row can't get
+        # one. Don't fail the whole decision — return it with no session so the
+        # client can fall back (e.g. attempt direct) rather than getting a 422.
+        reason = f"{ctx.decision.reason}; session unavailable until the file is probed"
     else:
-        duration = _duration(meta)
-        params = _build_params(
+        created = _start_session(
+            manager,
             db,
-            asset_file,
-            video_path,
-            meta,
-            caps=caps,
+            ctx,
+            library_id=library_id,
+            file_id=file_id,
             audio_stream_index=payload.audio_stream_index,
             burn_subtitle_track_id=payload.burn_subtitle_track_id,
             max_height=payload.max_height,
-        )
-        created = manager.create_session(
-            library_id=library_id,
-            file_id=file_id,
-            source_path=video_path,
-            duration=duration or 0.0,
-            kind=decision.session_kind,
-            params=params,
+            start_s=0.0,
         )
         session_ref = PlaybackSessionRef(
             id=created.id, playlist_url=_playlist_url(library_id, file_id, created.id)
         )
 
     return PlaybackDecisionResponse(
-        method=decision.method,
-        reason=decision.reason,
+        method=ctx.decision.method,
+        reason=reason,
         stream_url=stream_url,
         session=session_ref,
-        duration=_duration(meta),
-        audio_streams=_audio_stream_reads(streams),
+        duration=duration,
+        audio_streams=_audio_stream_reads(_audio_streams(meta)),
         subtitles=[_track_read(db, library_id, t) for t in tracks],
         chapters=_chapters(meta),
-        storyboard_url=storyboards.storyboard_url_for_file(db, library_id, asset_file),
+        storyboard_url=storyboards.storyboard_url_for_file(db, library_id, ctx.asset_file),
         progress=(
             PlaybackProgressRead(
                 position_s=progress.position_s,
@@ -293,40 +357,29 @@ def create_playback_session(
     manager: SessionManagerDep,
 ) -> PlaybackSessionCreated:
     """Explicitly start an HLS session (e.g. a mid-play quality/audio switch)."""
-    video_path, asset_file = playback.resolve_video_path(db, file_id)
-    meta = asset_file.tech_metadata or {}
-    caps = _profile(payload.caps)
-    decision = _decide(
-        caps,
-        asset_file,
-        meta,
-        audio_stream_index=payload.audio_stream_index,
-        burn_subtitle_track_id=payload.burn_subtitle_track_id,
-        max_height=payload.max_height,
-    )
-    params = _build_params(
+    ctx = _resolve_and_decide(
         db,
-        asset_file,
-        video_path,
-        meta,
-        caps=caps,
+        file_id,
+        caps=payload.caps,
         audio_stream_index=payload.audio_stream_index,
         burn_subtitle_track_id=payload.burn_subtitle_track_id,
         max_height=payload.max_height,
     )
-    created = manager.create_session(
+    created = _start_session(
+        manager,
+        db,
+        ctx,
         library_id=library_id,
         file_id=file_id,
-        source_path=video_path,
-        duration=_duration(meta) or 0.0,
-        kind=decision.session_kind,
-        params=params,
+        audio_stream_index=payload.audio_stream_index,
+        burn_subtitle_track_id=payload.burn_subtitle_track_id,
+        max_height=payload.max_height,
         start_s=payload.start_s or 0.0,
     )
     return PlaybackSessionCreated(
         session_id=created.id,
         playlist_url=_playlist_url(library_id, file_id, created.id),
-        kind=decision.session_kind,
+        kind=ctx.decision.session_kind,
     )
 
 

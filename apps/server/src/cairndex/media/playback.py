@@ -221,7 +221,8 @@ def default_audio_stream_index(audio_streams: list[dict[str, Any]]) -> int | Non
     return int(first) if isinstance(first, int) else None
 
 
-def _effective_max_height(cap_height: int | None, requested: int | None) -> int | None:
+def effective_max_height(cap_height: int | None, requested: int | None) -> int | None:
+    """The tightest positive height cap between the client caps and the request."""
     heights = [h for h in (cap_height, requested) if h is not None and h > 0]
     return min(heights) if heights else None
 
@@ -258,7 +259,7 @@ def decide_playback(
     # a legacy row, and remux/transcode still carry a working audio fallback.
     video_ok = vcodec is None or vcodec in caps.video_codecs
     audio_ok = acodec is None or acodec in caps.audio_codecs
-    max_h = _effective_max_height(caps.max_height, requested_max_height)
+    max_h = effective_max_height(caps.max_height, requested_max_height)
     too_tall = source_height is not None and max_h is not None and source_height > max_h
     non_default_audio = audio_stream_index is not None and audio_stream_index != default_audio_index
 

@@ -53,6 +53,47 @@ def run_ffprobe(path: Path, *, timeout: float = 30.0) -> dict[str, Any]:
     return result
 
 
+def keyframe_times(path: Path, *, timeout: float = 60.0) -> list[float] | None:
+    """Sorted video keyframe timestamps (seconds), or ``None`` on failure.
+
+    Used to build a keyframe-accurate HLS playlist for ``-c:v copy`` remux
+    sessions so advertised segment boundaries match where copy-mux can actually
+    split (plan 1 §6.2 / ADR-0014). ``-skip_frame nokey`` decodes only keyframes
+    so the output stays bounded even for long files. Failure (missing ffprobe,
+    timeout, unreadable) returns ``None`` so callers fall back to a
+    duration-derived playlist rather than erroring.
+    """
+    exe = ffprobe_path()
+    if exe is None:
+        return None
+    cmd = [
+        exe,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-skip_frame",
+        "nokey",
+        "-show_entries",
+        "frame=pts_time",
+        "-of",
+        "csv=print_section=0",
+        str(path),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    times: list[float] = []
+    for line in proc.stdout.decode(errors="replace").splitlines():
+        value = _float(line.strip().rstrip(","))
+        if value is not None:
+            times.append(value)
+    return sorted(times) if times else None
+
+
 def _parse_fps(value: str | None) -> float | None:
     if not value or value == "0/0":
         return None

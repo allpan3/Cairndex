@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     # (killed + its transcode dir deleted). Player close also tears sessions down.
     transcode_idle_timeout: float = 60.0
 
+    # Bounded stat-poll wait (seconds) for a segment the encoder is producing
+    # before restarting ffmpeg, and how many segments ahead of the encoder a
+    # request may be before a far-seek restart (plan 1 §6.2).
+    transcode_segment_wait: float = 20.0
+    transcode_ahead_window: int = 5
+
+    # ffprobe deadline for the one-time remux keyframe scan used to build a
+    # keyframe-accurate copy playlist; falls back to a duration-derived playlist
+    # on timeout/failure.
+    transcode_keyframe_timeout: float = 60.0
+
     # Optional ffmpeg hardware-accelerated *decode* for transcode sessions
     # (plan 1 §6.2). One of vaapi|qsv|videotoolbox; unset/"none" uses software
     # decode. Encoding stays libx264 for portability in this MVP.

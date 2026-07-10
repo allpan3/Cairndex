@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -42,24 +44,18 @@ requires_ffmpeg = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not install
 # .. count-1 with a delay between each, and stop cleanly on SIGTERM.
 _STUB_SOURCE = textwrap.dedent(
     """
-    import pathlib, signal, sys, time
+    import os, pathlib, signal, sys, time
 
     out = pathlib.Path(sys.argv[1])
     start = int(sys.argv[2])
     count = int(sys.argv[3])
     delay = float(sys.argv[4])
 
-    state = {"go": True}
-
-    def _stop(_signum, _frame):
-        state["go"] = False
-
-    signal.signal(signal.SIGTERM, _stop)
+    # Exit promptly on SIGTERM like ffmpeg (PEP 475 would otherwise resume sleep).
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     out.mkdir(parents=True, exist_ok=True)
     (out / "init.mp4").write_bytes(b"init")
     for i in range(start, count):
-        if not state["go"]:
-            break
         (out / (str(i) + ".m4s")).write_bytes(("seg" + str(i)).encode())
         time.sleep(delay)
     """
@@ -100,6 +96,8 @@ def make_manager(tmp_path: Path, stub_script: Path) -> Iterator[ManagerFactory]:
         kwargs.setdefault("command_builder", _stub_builder(stub_script, delay))
         kwargs.setdefault("start_reaper", False)
         kwargs.setdefault("segment_wait", 5.0)
+        # No real ffprobe in stub tests: remux falls back to the uniform grid.
+        kwargs.setdefault("keyframe_prober", lambda _src, _t: None)
         manager = SessionManager(**kwargs)  # type: ignore[arg-type]
         managers.append(manager)
         return manager
@@ -188,12 +186,31 @@ def test_backward_seek_restarts_encoder(make_manager: ManagerFactory) -> None:
 # --- concurrency + lifecycle ------------------------------------------------
 def test_concurrency_bound_raises_then_frees(make_manager: ManagerFactory) -> None:
     manager = make_manager(max_sessions=1)
-    first = _create(manager)
+    first = _create(manager, file_id="a")
     with pytest.raises(CapacityError):
-        _create(manager)
+        _create(manager, file_id="b")  # distinct file → no reuse → hits the bound
     manager.teardown("lib", first.id)
     # Freeing one lets the next session start.
-    assert _create(manager) is not None
+    assert _create(manager, file_id="c") is not None
+
+
+def test_identical_requests_reuse_one_session(make_manager: ManagerFactory) -> None:
+    # A decision retry/reload with identical params must reuse, not spawn a
+    # second session (and not 429 against the bound) — finding 6.
+    manager = make_manager(max_sessions=1)
+    first = _create(manager)
+    second = _create(manager)
+    assert second.id == first.id
+    # A different track selection is a different session.
+    with pytest.raises(CapacityError):
+        _create(manager, params=SessionParams(audio_stream_index=3))
+
+
+def test_reuse_can_be_disabled(make_manager: ManagerFactory) -> None:
+    manager = make_manager(max_sessions=2)
+    first = _create(manager)
+    second = _create(manager, reuse=False)
+    assert second.id != first.id
 
 
 def test_teardown_kills_process_and_removes_dir(make_manager: ManagerFactory) -> None:
@@ -269,7 +286,8 @@ def _session(
         source_path=Path(source),
         output_dir=tmp,
         duration=30.0,
-        segment_count=5,
+        segment_starts=[0.0, 6.0, 12.0, 18.0, 24.0],
+        playlist="",
         params=params,
     )
 
@@ -340,6 +358,29 @@ def test_ffmpeg_command_remux_ignores_hwaccel(
     assert "-hwaccel" not in args  # hwaccel decode only matters when transcoding
 
 
+def test_ffmpeg_command_non_burn_seek_is_input_side(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    session = _session(tmp_path, kind="transcode", params=SessionParams())
+    args = build_ffmpeg_command(session, 3, 18.0)
+    # Fast input-side seek: -ss precedes -i.
+    assert args.index("-ss") < args.index("-i")
+
+
+def test_ffmpeg_command_burn_in_seek_is_output_side(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Burn-in overlays at decode-time source PTS, so a far-seek restart must use
+    # an output-side seek (-ss after -i) to keep captions in sync (finding 2).
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    params = SessionParams(burn_subtitle=BurnSubtitle(path=Path("/lib/movie.mkv"), stream_index=0))
+    session = _session(tmp_path, kind="transcode", params=params)
+    args = build_ffmpeg_command(session, 3, 18.0)
+    assert args.index("-ss") > args.index("-i")
+    assert _value_after(args, "-ss") == "18"
+
+
 # --- real ffmpeg integration ------------------------------------------------
 def _make_mkv(path: Path, *, duration: int = 15) -> None:
     assert _FFMPEG is not None
@@ -360,6 +401,13 @@ def _make_mkv(path: Path, *, duration: int = 15) -> None:
             f"sine=frequency=440:duration={duration}",
             "-c:v",
             "libx264",
+            # Keyframe every 3 s so remux (copy) can split into several segments.
+            "-g",
+            "30",
+            "-keyint_min",
+            "30",
+            "-sc_threshold",
+            "0",
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -418,6 +466,86 @@ def test_real_ffmpeg_remux_and_transcode_produce_segments(tmp_path: Path) -> Non
         assert manager.serve_artifact("lib", trans.id, "0.m4s").stat().st_size > 0
     finally:
         manager.shutdown()
+
+
+# --- lock discipline, encoder failure, keyframe playlist --------------------
+def test_teardown_is_prompt_during_an_in_flight_wait(make_manager: ManagerFactory) -> None:
+    # The lock must not be held across the stat-poll wait, so teardown can kill
+    # ffmpeg immediately instead of blocking for segment_wait (finding 1).
+    manager = make_manager(delay=10.0, segment_wait=30.0)
+    session = _create(manager, duration=60.0)
+    result: dict[str, object] = {}
+
+    def fetch() -> None:
+        try:
+            manager.serve_artifact("lib", session.id, "5.m4s")
+            result["ok"] = True
+        except Exception as exc:  # noqa: BLE001
+            result["error"] = type(exc).__name__
+
+    thread = threading.Thread(target=fetch)
+    thread.start()
+    time.sleep(0.5)  # let the fetch enter the bounded wait
+    started = time.monotonic()
+    manager.teardown("lib", session.id)
+    elapsed = time.monotonic() - started
+    thread.join(timeout=5.0)
+
+    assert elapsed < 3.0, f"teardown blocked {elapsed:.1f}s behind the segment wait"
+    assert not thread.is_alive()
+
+
+def test_encoder_nonzero_exit_surfaces_media_error(stub_script: Path, tmp_path: Path) -> None:
+    from cairndex.core.errors import MediaProcessingError
+
+    # A command that exits nonzero and writes nothing must surface a structured
+    # 500-class error, not a silent restart→404 loop (finding 4).
+    def failing_builder(session: HlsSession, _n: int, _s: float) -> list[str]:
+        return [sys.executable, "-c", "import sys; sys.exit(3)"]
+
+    manager = SessionManager(
+        transcode_dir=tmp_path / "t",
+        command_builder=failing_builder,
+        keyframe_prober=lambda _src, _t: None,
+        start_reaper=False,
+        segment_wait=2.0,
+    )
+    try:
+        session = _create(manager, duration=30.0)
+        with pytest.raises(MediaProcessingError):
+            manager.serve_artifact("lib", session.id, "0.m4s")
+    finally:
+        manager.shutdown()
+
+
+def test_remux_playlist_is_keyframe_derived(make_manager: ManagerFactory) -> None:
+    # Remux advertises segments at real keyframes, not a phantom 6 s grid, so the
+    # count matches what copy-mux emits and the encoder does not thrash on the
+    # tail (finding 5).
+    manager = make_manager(keyframe_prober=lambda _src, _t: [0.0, 36.0, 72.0, 108.0])
+    session = _create(manager, kind="remux", duration=120.0)
+    assert session.segment_starts == [0.0, 36.0, 72.0, 108.0]
+    assert session.segment_count == 4
+    lines = manager.serve_playlist("lib", session.id).splitlines()
+    assert lines.count("#EXTINF:36.000,") == 3
+    assert "#EXTINF:12.000," in lines  # last segment: 120 - 108
+
+
+def test_transcode_playlist_stays_uniform(make_manager: ManagerFactory) -> None:
+    # Transcode forces exact 6 s keyframes, so it keeps the uniform grid and
+    # ignores the source keyframe layout.
+    manager = make_manager(keyframe_prober=lambda _src, _t: [0.0, 36.0])
+    session = _create(manager, kind="transcode", duration=30.0)
+    assert session.segment_starts == [0.0, 6.0, 12.0, 18.0, 24.0]
+
+
+def test_keyframe_segment_starts_mirrors_copy_splits() -> None:
+    from cairndex.media.hls import _keyframe_segment_starts
+
+    assert _keyframe_segment_starts([0.0, 36.0, 72.0, 108.0], 120.0) == [0.0, 36.0, 72.0, 108.0]
+    dense = [i * 2.0 for i in range(60)]  # a keyframe every 2 s
+    starts = _keyframe_segment_starts(dense, 120.0)
+    assert starts[:3] == [0.0, 6.0, 12.0]  # collapses to the ~6 s grid
 
 
 # --- HTTP wiring ------------------------------------------------------------
@@ -493,19 +621,90 @@ def test_session_post_and_capacity_error(
 ) -> None:
     manager = make_manager(max_sessions=1)
     _use_stub_manager(client, manager)
-    file_id = _video_row(session, library_root)
-    url = f"/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions"
+    file_a = _video_row(session, library_root, name="a.mkv")
+    file_b = _video_row(session, library_root, name="b.mkv")
     caps = {"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}}
 
-    first = client.post(url, json=caps)
+    first = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_a}/playback-sessions", json=caps
+    )
     assert first.status_code == 201
     body = first.json()
     assert body["kind"] == "remux"  # mkv/h264/aac → copy streams into fMP4
     assert body["playlist_url"].endswith(f"/{body['session_id']}/index.m3u8")
 
-    second = client.post(url, json=caps)
+    # A distinct file needs its own session and hits the bound.
+    second = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_b}/playback-sessions", json=caps
+    )
     assert second.status_code == 429
     assert second.json()["code"] == "capacity_exhausted"
+
+
+def test_identical_decisions_reuse_one_session(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    # Two identical decision calls (a reload) must reuse a single session so a
+    # max_sessions=1 server does not 429 the retry (finding 6).
+    manager = make_manager(max_sessions=1)
+    _use_stub_manager(client, manager)
+    file_id = _video_row(session, library_root)
+    url = f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision"
+    caps = {"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}}
+
+    first = client.post(url, json=caps)
+    second = client.post(url, json=caps)
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["session"]["id"] == second.json()["session"]["id"]
+
+
+def test_decision_without_duration_does_not_fail(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    # A legacy/un-probed row that decides non-direct must still return 200 with
+    # the metadata payload and no session — never a 422 (finding 3).
+    manager = make_manager()
+    _use_stub_manager(client, manager)
+    file_id = _video_row(
+        session, library_root, meta={"video_codec": "h264", "audio_codec": "aac"}
+    )  # no duration
+    body = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-decision",
+        json={"caps": {"containers": ["mp4"], "video_codecs": ["h264"], "audio_codecs": ["aac"]}},
+    )
+    assert body.status_code == 200
+    payload = body.json()
+    assert payload["method"] == "remux"
+    assert payload["session"] is None
+    assert payload["duration"] is None
+    assert "probed" in payload["reason"]
+
+
+def test_session_rejects_unknown_audio_stream_index(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    make_manager: ManagerFactory,
+) -> None:
+    # An audio_stream_index that isn't among the probed streams — including on a
+    # row with no probed audio_streams — must 422 (finding 4).
+    manager = make_manager()
+    _use_stub_manager(client, manager)
+    file_id = _video_row(session, library_root)  # meta has no audio_streams list
+    resp = client.post(
+        f"/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions",
+        json={"caps": {"containers": ["mp4"]}, "audio_stream_index": 9},
+    )
+    assert resp.status_code == 422
 
 
 def test_unknown_session_playlist_404(
