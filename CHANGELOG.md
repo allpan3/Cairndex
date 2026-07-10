@@ -10,6 +10,13 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Immediate library switching.** Changing the active library now removes the
+  previous library's TanStack content queries before remounting the workspace,
+  while preserving the global library registry and library-keyed auth caches.
+  The Bundle Browser, counts, collections, tags, and other shell data refresh
+  immediately instead of showing the old library until a page reload or cache
+  expiry.
+
 - **Network-library scan overflow.** Scanner filesystem identities now preserve
   unsigned 64-bit `st_dev`/`st_ino` values in SQLite's signed 64-bit integer
   range, preventing `Python int too large to convert to SQLite INTEGER` during

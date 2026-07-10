@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type {
   BundleSort,
@@ -27,6 +28,7 @@ import {
   useLibraryAuth,
   useLibraryLock,
   useProbe,
+  resetLibraryContentQueries,
   useRenameCollection,
   useUpdateCollection,
   useScan,
@@ -150,11 +152,12 @@ function Resizer({
 /**
  * App shell: resolve the active library (one per tab, ADR-0008) before any
  * content query runs. While there are no libraries the manager is shown so the
- * owner can create or register one. The workspace is keyed by library id, so
- * switching libraries remounts it with fresh query state — no cross-library
- * cache bleed.
+ * owner can create or register one. Switching libraries drops the previous
+ * library's content queries before the library-keyed workspace remounts, so
+ * neither server state nor local UI state can bleed across libraries.
  */
 export default function App() {
+  const queryClient = useQueryClient()
   const librariesQuery = useLibraries()
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
@@ -164,6 +167,18 @@ export default function App() {
     if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
     return libraries[0]?.id ?? null
   }, [libraries, chosenId])
+
+  const changeLibrary = useCallback(
+    (nextId: string) => {
+      if (nextId === libraryId) return
+      // Set the request scope before active observers are removed so no old
+      // query can restart against the library being left behind
+      setActiveLibraryId(nextId)
+      resetLibraryContentQueries(queryClient)
+      setChosenId(nextId)
+    },
+    [libraryId, queryClient, setChosenId],
+  )
 
   // Set the module-global active library during render so content queries (which
   // run after commit) target the right library.
@@ -198,7 +213,7 @@ export default function App() {
         key={libraryId}
         libraries={libraries}
         libraryId={libraryId}
-        onChangeLibrary={setChosenId}
+        onChangeLibrary={changeLibrary}
         onUnlock={(passphrase) => lock.unlock.mutate(passphrase)}
         unlocking={lock.unlock.isPending}
         error={lock.unlock.error?.message ?? null}
@@ -212,7 +227,7 @@ export default function App() {
         key={libraryId}
         libraries={libraries}
         libraryId={libraryId}
-        onChangeLibrary={setChosenId}
+        onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         canLock={auth.data?.protected === true}
         onLock={() => lock.lock.mutate()}

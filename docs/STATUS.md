@@ -1,5 +1,23 @@
 # Project status
 
+## Fixed: library switch refreshes the browser shell
+
+Branch `codex/library-switch-refresh` (off local `main` after the three approved
+enhancements were fast-forwarded directly). The workspace already remounted on a
+library-id change, but its TanStack query keys were not library-scoped, so the
+shared query client reused the previous library's still-fresh 30-second content
+cache. The switch handler now points requests at the next library, removes only
+active-library content queries, then changes the selected id. Registry and
+library-keyed auth queries are preserved.
+
+Verification: the focused Playwright regression fails before the fix and passes
+after it, with two libraries returning different bundle titles. Live browser
+verification against the real local app switched `lex` (4 items) → `Demo` (21
+items and its own collection tree) → `lex` (4 items) without a page reload; the
+original selected library was restored afterward. Full frontend `lint`,
+`format:check`, `typecheck`, `test` (**51 passed**), `build`, and Playwright
+(**53 passed**) are green.
+
 ## In progress: pinyin-aware picker search
 
 Branch `codex/pinyin-picker-search` (stacked on the two preceding Update fixes).
