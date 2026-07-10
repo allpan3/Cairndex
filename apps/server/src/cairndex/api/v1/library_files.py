@@ -1,6 +1,6 @@
 """Library-scoped filesystem + job routes (ADR-0008).
 
-The read-only File View, raw-file serving, manual fast-add, and scan/probe/
+The read-only File Browser, raw-file serving, manual fast-add, and scan/probe/
 thumbnail/storyboard job enqueueing — all scoped to one library by
 ``{library_id}``. File operations use the library content session (which
 resolves the library root); job enqueueing writes to the registry queue with the
@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 
 from cairndex.api.deps import LibrarySession, RegistryDbSession
-from cairndex.api.schemas.file_view import FileViewEntryRead, FileViewListingRead
+from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
 from cairndex.domain.enums import JobType
@@ -22,25 +22,25 @@ from cairndex.media import previews
 from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.scanning.fast_add import fast_add
-from cairndex.services import file_view as file_view_service
+from cairndex.services import file_browser as file_browser_service
 
 router = APIRouter(prefix="/libraries/{library_id}", tags=["library-files"])
 
 
-@router.get("/file-view/entries", response_model=FileViewListingRead)
-def list_file_view_entries(
+@router.get("/file-browser/entries", response_model=FileBrowserListingRead)
+def list_file_browser_entries(
     db: LibrarySession,
     path: Annotated[str | None, Query()] = None,
-) -> FileViewListingRead:
+) -> FileBrowserListingRead:
     """List non-hidden directories/files under ``path`` in the library root.
 
     Read-only. ``path`` is library-relative (omitted = the root); absolute
     paths, traversal, NUL bytes, and symlink escapes are rejected.
     """
-    listing = file_view_service.list_entries(db, path=path)
-    return FileViewListingRead(
+    listing = file_browser_service.list_entries(db, path=path)
+    return FileBrowserListingRead(
         path=listing.path,
-        entries=[FileViewEntryRead(**vars(e)) for e in listing.entries],
+        entries=[FileBrowserEntryRead(**vars(e)) for e in listing.entries],
     )
 
 
@@ -50,7 +50,7 @@ def serve_file_preview(
     path: Annotated[str, Query()],
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
-    """Serve a path-scoped WebP preview for a File View image.
+    """Serve a path-scoped WebP preview for a File Browser image.
 
     Read-only and path-safe. Files here need not be linked into a bundle, so the
     cache key is derived from the normalized library-relative path plus source
@@ -67,12 +67,12 @@ def serve_file_preview(
 
 @router.get("/file")
 def serve_file(db: LibrarySession, path: Annotated[str, Query()]) -> FileResponse:
-    """Serve the raw bytes of a file under the library root (File View preview).
+    """Serve the raw bytes of a file under the library root (File Browser preview).
 
-    Read-only and path-safe (same scoping as ``/file-view/entries``). Files here
+    Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
     need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
     """
-    target = file_view_service.resolve_entry_path(db, path)
+    target = file_browser_service.resolve_entry_path(db, path)
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     return FileResponse(str(target), media_type=media_type, filename=target.name)
 

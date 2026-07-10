@@ -4,11 +4,11 @@ Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
 self-hosted Docker app on a Linux NAS/server and is used from a browser.
 
-In **Collection View**, the primary object is an **Asset Bundle** (cover + video
+In **Bundle Browser**, the primary object is an **Asset Bundle** (cover + video
 parts + alternate versions + subtitles + screenshots + attachments), not a
 single file. Cairndex links existing files in place — it does not copy, move,
 rename, or otherwise manage your files in the normal MVP path. A separate
-**File View** browses the underlying directories and files inside the active
+**File Browser** browses the underlying directories and files inside the active
 Cairndex library.
 
 See [docs/product-brief.md](docs/product-brief.md) for the product model and
@@ -19,7 +19,7 @@ agents working in this repository.
 
 Cairndex is past the project-foundation phase. It provides an Eagle-inspired
 desktop web browser over asset bundles: portable per-library metadata,
-hierarchical **Collections**, a read-only physical **File View**, hierarchical
+hierarchical **Collections**, a read-only physical **File Browser**, hierarchical
 tags + tag groups, filtering and Smart Collections, scan/probe/thumbnail/
 storyboard jobs with high-confidence moved-file repair, and a hardened
 single-container production deployment. Media playback runs in a unified
@@ -43,7 +43,7 @@ menu. There are no global storage-root content APIs in the current model.
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Important follow-ups include single-owner authentication, richer
-edit-before-apply grouping review, File View write-mode and desktop-client
+edit-before-apply grouping review, File Browser write-mode and desktop-client
 integration, cross-filesystem repair candidates, and media
 fallback/remux/transcoding. Job progress bars, large-library browse indexing, and
 whole-library indexed text search (SQLite FTS5) are now implemented. See

@@ -130,5 +130,5 @@ so no single change is unreviewable.
 ## References
 
 - ADR-0001 (stack and database choice), ADR-0002 (core schema/identity),
-  ADR-0007 (File View host integration).
+  ADR-0007 (File Browser host integration).
 - AGENTS.md §2 (product principles), §3 (fixed decisions), §12 (safety rules).

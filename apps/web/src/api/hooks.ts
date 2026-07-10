@@ -63,7 +63,7 @@ import {
   fetchBundleTags,
   fetchCollectionCounts,
   fetchFacets,
-  fetchFileViewEntries,
+  fetchFileBrowserEntries,
   fetchLibraries,
   fetchPlaybackManifest,
   fetchContinueWatching,
@@ -136,7 +136,7 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     'view-counts',
     'collection-counts',
     'tag-counts',
-    'file-view',
+    'file-browser',
     'unbundled-files',
     'grouping-plans',
     'grouping-plan',
@@ -239,7 +239,7 @@ export function useSmartCollectionMutations() {
   }
 }
 
-// --- Libraries (registry) + File View ----------------------------------------
+// --- Libraries (registry) + File Browser ----------------------------------------
 export function useLibraries() {
   return useQuery({
     queryKey: ['libraries'],
@@ -401,14 +401,14 @@ export function useApplyGroupingPlan() {
       applyGroupingPlan(id, proposalIds),
     onSuccess: () => {
       // Applying confirms bundles and may create collections + subtitle links —
-      // so files leave Unbundled and the File View badges change.
+      // so files leave Unbundled and the File Browser badges change.
       for (const key of [
         'browse',
         'view-counts',
         'collections',
         'collection-counts',
         'unbundled-files',
-        'file-view',
+        'file-browser',
         'grouping-plans',
         'grouping-plan',
         'bundle',
@@ -504,10 +504,10 @@ export function useManualBundling() {
 }
 
 /** List directory entries for a library-relative path (null = library root). */
-export function useFileView(path: string | null, enabled = true) {
+export function useFileBrowser(path: string | null, enabled = true) {
   return useQuery({
-    queryKey: ['file-view', path ?? ''],
-    queryFn: ({ signal }) => fetchFileViewEntries(path, signal),
+    queryKey: ['file-browser', path ?? ''],
+    queryFn: ({ signal }) => fetchFileBrowserEntries(path, signal),
     enabled,
   })
 }
@@ -724,11 +724,11 @@ export function useFileMutations(bundleId: string) {
     remove: useMutation({
       mutationFn: (fileId: string) => removeFile(bundleId, fileId),
       // Removing a file re-stages it into Unbundled (a fresh provisional bundle),
-      // so the Unbundled list, File View badges, and the sidebar count must
+      // so the Unbundled list, File Browser badges, and the sidebar count must
       // refresh too — not just this bundle's files.
       onSuccess: () => {
         invalidate()
-        for (const key of ['unbundled-files', 'file-view', 'view-counts'])
+        for (const key of ['unbundled-files', 'file-browser', 'view-counts'])
           qc.invalidateQueries({ queryKey: [key] })
         qc.invalidateQueries({ queryKey: ['continue-watching'] })
       },
@@ -747,14 +747,14 @@ export function useDeleteBundles() {
     mutationFn: (ids: string[]) => Promise.all(ids.map((id) => deleteBundle(id))),
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
-      // Unbundled list + File View badges must refresh too.
+      // Unbundled list + File Browser badges must refresh too.
       for (const key of [
         'browse',
         'view-counts',
         'collection-counts',
         'tag-counts',
         'unbundled-files',
-        'file-view',
+        'file-browser',
         'bundle',
         'bundle-files',
         'continue-watching',

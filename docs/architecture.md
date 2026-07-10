@@ -53,7 +53,7 @@ api/          FastAPI routers and request/response schemas
 core/         config, app factory, time, structured errors, path helpers
 persistence/  content DB models/session helpers for each library.db
 domain/       enum/domain definitions
-services/     HTTP-agnostic bundle, collection, tag, filter, subtitle, file-view logic
+services/     HTTP-agnostic bundle, collection, tag, filter, subtitle, file-browser logic
 registry/     server-local registered library + job_queue models/services
 jobs/         in-process worker and job context
 scanning/     scan, fast-add, media classification, fingerprints, repair
@@ -66,7 +66,7 @@ Content endpoints are scoped to one library:
 - `GET /api/v1/libraries`, `POST /libraries/create`, `POST /libraries/register`,
   `GET /libraries/{id}` are registry endpoints.
 - `/api/v1/libraries/{library_id}/bundles`, `/collections`, `/tags`,
-  `/tag-groups`, `/smart-collections`, `/filters`, `/file-view`, `/fast-add`,
+  `/tag-groups`, `/smart-collections`, `/filters`, `/file-browser`, `/fast-add`,
   `/grouping`, `/jobs`, `/files`, and playback/subtitle routes operate on the
   selected library's `library.db` and library root.
 - `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
@@ -85,7 +85,7 @@ The frontend is an Eagle-inspired, dark, three-pane desktop UI:
 ```text
 src/
   api/        typed client over /api/v1 + TanStack Query hooks
-  app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileView,
+  app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
@@ -99,11 +99,11 @@ lives in React/localStorage.
 
 Current browsing surfaces:
 
-- **Collection View:** virtualized bundle browser with grid/list/justified
+- **Bundle Browser:** virtualized bundle browser with grid/list/justified
   layouts, sidebar system views, Smart Collections, collections, tags, toolbar
   controls, selection, batch editing, and an in-bundle album/viewer.
-- **File View:** read-only filesystem browser over the active library root,
-  separate from Collection View selection and bundle inspection.
+- **File Browser:** read-only filesystem browser over the active library root,
+  separate from Bundle Browser selection and bundle inspection.
 
 The current sidebar maintenance flow exposes one primary **Update** button plus a
 small overflow menu for **Scan new files**, **Collect metadata**, and **Review
@@ -159,13 +159,13 @@ Path safety rules:
 - hidden dotfiles/dot-directories and known cruft are excluded from scan, File
   View, and grouping review;
 - sensitive operations such as streaming, thumbnailing, subtitle conversion, and
-  File View raw-file preview re-check existence at access time.
+  File Browser raw-file preview re-check existence at access time.
 
 ## 6. Domain model
 
 The implemented schema is documented in `docs/data-model.md`. Core objects:
 
-- `AssetBundle` — primary user-facing item in Collection View, search, tags,
+- `AssetBundle` — primary user-facing item in Bundle Browser, search, tags,
   collections, and Smart Collections. It carries grouping review state
   (`provisional` or `confirmed`).
 - `AssetFile` — one physical file linked into one bundle by library-relative
@@ -291,7 +291,7 @@ the source under the library root, rejects missing or unsupported sources,
 decodes behind a bounded in-process semaphore, writes the WebP derivative by
 atomic replacement, and records the source quick fingerprint in the shared
 `.fingerprint` sidecar. Linked-file preview URLs include `?v={quick_fingerprint}`;
-File View path previews use a path-hash cache key plus a stat-derived quick
+File Browser path previews use a path-hash cache key plus a stat-derived quick
 fingerprint because the file need not be linked into a bundle. The endpoint
 serves current derivatives with `Cache-Control: public, max-age=31536000,
 immutable`. Browser-native raster images can downscale from the original;
@@ -333,10 +333,10 @@ bundle_search WHERE bundle_search MATCH ?)`), so it stacks with views,
 collections, filters, sort, and pagination. Results keep the active sort;
 relevance ranking is future work.
 
-## 10. File View
+## 10. File Browser
 
-File View is a read-only, filesystem-first browser over the active library root:
-`GET /api/v1/libraries/{library_id}/file-view/entries?path=...`.
+File Browser is a read-only, filesystem-first browser over the active library root:
+`GET /api/v1/libraries/{library_id}/file-browser/entries?path=...`.
 
 It returns directories first, then files, sorted case-insensitively. Each entry
 includes name, library-relative path, kind, size, modified time, extension, MIME
@@ -344,11 +344,11 @@ guess, media classification, native support/openable state, and a cheap
 linked-to-bundle hint. Image files are openable when they are browser-native or
 preview-capable through the preview pipeline, so HEIC/TIFF/BMP can now appear as
 supported even though the browser never receives the original bytes directly.
-Raw preview bytes for File View entries are served by
+Raw preview bytes for File Browser entries are served by
 `GET /api/v1/libraries/{library_id}/file?path=...` with the same path-safety
 constraints.
 
-File View selection is independent of Collection View/bundle selection, and the
+File Browser selection is independent of Bundle Browser/bundle selection, and the
 right pane shows `FileInspector` rather than the bundle inspector. There are no
 move/rename/delete controls in the current milestone.
 
@@ -409,7 +409,7 @@ reverse proxy, not the public internet.
 - browse-summary query optimization and indexes for larger libraries;
 - cross-filesystem moved-file repair and manual repair candidates;
 - scheduled scans and stronger job scheduling;
-- safe File View write mode plus desktop/native host integration;
+- safe File Browser write mode plus desktop/native host integration;
 - single-owner authentication before real remote exposure;
 - remux/transcode fallback and embedded subtitle extraction;
 - cache policy for future large transcodes (`inside_library` vs server-local).

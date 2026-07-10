@@ -118,7 +118,7 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
 
 test('File tree: an unlinked file is badged and can be added to a bundle', async ({ page }) => {
   await mockApi(page)
-  await page.route('**/file-view/entries**', (r) =>
+  await page.route('**/file-browser/entries**', (r) =>
     r.fulfill({
       json: {
         path: '',
@@ -179,7 +179,7 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
 
 test('File view grid layout supports drag-to-select', async ({ page }) => {
   await mockApi(page)
-  await page.route('**/file-view/entries**', (r) =>
+  await page.route('**/file-browser/entries**', (r) =>
     r.fulfill({
       json: {
         path: '',
@@ -199,7 +199,7 @@ test('File view grid layout supports drag-to-select', async ({ page }) => {
   const cards = page.locator('[data-relpath]')
   await expect(cards).toHaveCount(3)
 
-  const wrapperBox = await page.locator('.file-view__wrapper').boundingBox()
+  const wrapperBox = await page.locator('.file-browser__wrapper').boundingBox()
   const lastCard = await cards.nth(2).boundingBox()
   if (!wrapperBox || !lastCard) throw new Error('missing bounding box')
 

@@ -40,9 +40,9 @@ When implementation and docs disagree, do not silently pick one. Either correct 
 These are repeated here because violating them can corrupt user data or derail the product model:
 
 - Cairndex is local-first, single-owner-first, and metadata-first.
-- The primary user-facing object in Collection View is an Asset Bundle, not a file.
+- The primary user-facing object in Bundle Browser is an Asset Bundle, not a file.
 - Collections are logical groupings; collection membership must never move files on disk.
-- File View is scoped to the active library root and must never become an unrestricted server filesystem browser.
+- File Browser is scoped to the active library root and must never become an unrestricted server filesystem browser.
 - Existing source media must not be renamed, moved, overwritten, or deleted during metadata-only milestones.
 - A Cairndex library is a root directory with `.cairndex/{manifest.json,library.db,cache/}`; content metadata belongs in the library DB, while the server registry is runtime state.
 - Store file locations as library-relative paths. Do not reintroduce content `storage_roots` or `asset_files.storage_root_id` without a new ADR.
@@ -71,7 +71,7 @@ Prefer simple, measurable improvements before complex infrastructure. Profile re
 - Use stable IDs rather than paths as resource identifiers where possible.
 - Keep path resolution server-side.
 - Never trust client-supplied absolute paths.
-- File View endpoints must accept only library-relative paths and must reject absolute paths, traversal, and symlink escapes.
+- File Browser endpoints must accept only library-relative paths and must reject absolute paths, traversal, and symlink escapes.
 - Paginate all list endpoints.
 - Support deterministic sorting with a stable tie-breaker.
 - Return structured errors.
@@ -140,7 +140,7 @@ Add tests with every non-trivial feature.
 Minimum coverage areas:
 
 - library-root path normalization and traversal rejection;
-- File View path scoping, hidden-file exclusion, and symlink escape rejection;
+- File Browser path scoping, hidden-file exclusion, and symlink escape rejection;
 - asset bundle/file relationships;
 - tag hierarchy and descendant behavior;
 - tag group many-to-many behavior;

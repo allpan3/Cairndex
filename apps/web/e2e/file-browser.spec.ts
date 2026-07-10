@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Hermetic mock for the read-only File View: switch surfaces, list the active
+// Hermetic mock for the read-only File Browser: switch surfaces, list the active
 // library's files, see openable/unsupported/unlinked/unbundled badges, and
-// navigate into a directory. No backend required (ADR-0008: File View is
+// navigate into a directory. No backend required (ADR-0008: File Browser is
 // library-scoped).
 
 function entry(name: string, over: Record<string, unknown> = {}) {
@@ -41,7 +41,7 @@ async function mockApi(page: Page) {
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
 
-  await page.route('**/file-view/entries**', (r) => {
+  await page.route('**/file-browser/entries**', (r) => {
     const url = new URL(r.request().url())
     const path = url.searchParams.get('path') ?? ''
     if (path === 'Show') {
@@ -100,7 +100,7 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   const previewRequests = await mockApi(page)
   await page.goto('/')
 
-  // Switch to the File View surface.
+  // Switch to the File Browser surface.
   await page.getByRole('tab', { name: 'Files' }).click()
 
   // The shared library selector (in the sidebar) + entries with badges.
@@ -121,7 +121,7 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   // Navigate into a directory (double-click); breadcrumb updates and the
   // nested file shows. Single-click only selects (drives the inspector).
   await page.locator('.file-row__name', { hasText: 'Show' }).dblclick()
-  await expect(page.locator('.file-view__crumbs')).toContainText('Show')
+  await expect(page.locator('.file-browser__crumbs')).toContainText('Show')
   await expect(page.locator('.file-row__name', { hasText: 'clip.mp4' })).toBeVisible()
 
   // Selecting the file shows its details in the inspector (not the bundle one).

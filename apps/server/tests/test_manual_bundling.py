@@ -210,7 +210,7 @@ def test_operations_are_metadata_only(session: Session) -> None:
     assert after == before  # same ids, same on-disk paths
 
 
-# --- paths-in (auto-link) from File View -------------------------------------
+# --- paths-in (auto-link) from File Browser -------------------------------------
 def test_create_bundle_from_relative_paths_autolinks_unlinked(
     session: Session, library_root: Path
 ) -> None:
