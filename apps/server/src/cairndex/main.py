@@ -9,12 +9,17 @@ from cairndex.api.v1.router import router as api_v1_router
 from cairndex.core.config import get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
+from cairndex.media.hls import shutdown_session_manager
 from cairndex.registry.engine import get_registry_sessionmaker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Start/stop the in-process background worker around the app's lifetime."""
+    """Start/stop the in-process background worker and reap HLS sessions.
+
+    Interactive HLS sessions (ADR-0014) hold live ffmpeg processes and ephemeral
+    transcode dirs; tearing them down on shutdown avoids orphaned encoders.
+    """
     worker: Worker | None = None
     if get_settings().worker_enabled:
         worker = Worker(get_registry_sessionmaker(), build_registry())
@@ -25,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if worker is not None:
             worker.stop()
+        shutdown_session_manager()
 
 
 def create_app() -> FastAPI:

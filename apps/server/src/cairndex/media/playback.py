@@ -11,8 +11,10 @@ subtitles are converted to browser-native `.vtt` into the library's portable
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
@@ -68,6 +70,215 @@ def assess_playability(asset_file: AssetFile) -> Playability:
     if vcodec and vcodec not in _PLAYABLE_VCODECS:
         return Playability(False, f"{vcodec.upper()} video codec isn't widely supported", mime)
     return Playability(True, "", mime)
+
+
+# --- Playback decision matrix (plan 1 §6.1) ---------------------------------
+# A pure, side-effect-free function decides direct / remux / transcode from the
+# client's declared capabilities versus the source's probed container+codecs. It
+# is the single source of truth reused by the decision endpoint and by session
+# creation, and it must degrade safely on legacy rows missing M1 probe keys
+# (unknown codec → optimistic, never a 500).
+
+# Normalize container/codec aliases to the canonical tokens clients report via
+# canPlayType/isTypeSupported so caps membership tests are apples-to-apples.
+_CONTAINER_BY_EXT: dict[str, str] = {
+    "mp4": "mp4",
+    "m4v": "mp4",
+    "mov": "mov",
+    "webm": "webm",
+    "mkv": "mkv",
+    "avi": "avi",
+    "wmv": "asf",
+    "asf": "asf",
+    "flv": "flv",
+    "ts": "mpegts",
+    "m2ts": "mpegts",
+    "mts": "mpegts",
+    "mpg": "mpeg",
+    "mpeg": "mpeg",
+    "ogv": "ogg",
+    "3gp": "3gp",
+}
+_VIDEO_CODEC_ALIASES: dict[str, str] = {
+    "avc": "h264",
+    "avc1": "h264",
+    "h.264": "h264",
+    "x264": "h264",
+    "hevc": "hevc",
+    "h265": "hevc",
+    "h.265": "hevc",
+    "hvc1": "hevc",
+    "hev1": "hevc",
+    "vp08": "vp8",
+    "vp09": "vp9",
+}
+_AUDIO_CODEC_ALIASES: dict[str, str] = {
+    "mp4a": "aac",
+    "ac-3": "ac3",
+    "eac-3": "eac3",
+    "e-ac-3": "eac3",
+    "dca": "dts",
+    "mp3float": "mp3",
+}
+
+
+def _normalize_token(value: str | None, aliases: Mapping[str, str]) -> str | None:
+    if not value:
+        return None
+    token = value.strip().lower()
+    if not token:
+        return None
+    return aliases.get(token, token)
+
+
+def normalize_container(ext: str | None) -> str | None:
+    """Canonical container token for a file extension (``m4v`` → ``mp4``)."""
+    if not ext:
+        return None
+    token = ext.strip().lower().lstrip(".")
+    return _CONTAINER_BY_EXT.get(token, token or None)
+
+
+def normalize_video_codec(codec: str | None) -> str | None:
+    return _normalize_token(codec, _VIDEO_CODEC_ALIASES)
+
+
+def normalize_audio_codec(codec: str | None) -> str | None:
+    return _normalize_token(codec, _AUDIO_CODEC_ALIASES)
+
+
+@dataclass(frozen=True)
+class CapabilityProfile:
+    """A client's declared playback capabilities (plan 1 §6.1).
+
+    Codecs/containers are normalized on construction so membership tests match
+    the source's normalized tokens regardless of how the client spelled them.
+    """
+
+    containers: frozenset[str] = field(default_factory=frozenset)
+    video_codecs: frozenset[str] = field(default_factory=frozenset)
+    audio_codecs: frozenset[str] = field(default_factory=frozenset)
+    max_height: int | None = None
+    native_hls: bool = False
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        containers: Iterable[str] | None = None,
+        video_codecs: Iterable[str] | None = None,
+        audio_codecs: Iterable[str] | None = None,
+        max_height: int | None = None,
+        native_hls: bool = False,
+    ) -> CapabilityProfile:
+        return cls(
+            containers=frozenset(
+                t for c in (containers or []) if (t := normalize_container(c)) is not None
+            ),
+            video_codecs=frozenset(
+                t for c in (video_codecs or []) if (t := normalize_video_codec(c)) is not None
+            ),
+            audio_codecs=frozenset(
+                t for c in (audio_codecs or []) if (t := normalize_audio_codec(c)) is not None
+            ),
+            max_height=max_height,
+            native_hls=native_hls,
+        )
+
+
+Method = Literal["direct", "remux", "transcode"]
+
+
+@dataclass(frozen=True)
+class PlaybackDecision:
+    """The chosen delivery method plus a human-readable reason."""
+
+    method: Method
+    reason: str
+
+    @property
+    def session_kind(self) -> Literal["remux", "transcode"]:
+        """The HLS session kind for a non-direct method.
+
+        A ``direct``-playable source that is nonetheless forced through HLS
+        (e.g. a client with no progressive path) is a pure copy → remux.
+        """
+        return "transcode" if self.method == "transcode" else "remux"
+
+
+def default_audio_stream_index(audio_streams: list[dict[str, Any]]) -> int | None:
+    """Absolute stream index of the source's default audio track.
+
+    The default-flagged stream, else the first audio stream, else ``None``.
+    Used to tell a track *switch* (which precludes direct play) from a no-op.
+    """
+    if not audio_streams:
+        return None
+    for stream in audio_streams:
+        if stream.get("default") and isinstance(stream.get("index"), int):
+            return int(stream["index"])
+    first = audio_streams[0].get("index")
+    return int(first) if isinstance(first, int) else None
+
+
+def effective_max_height(cap_height: int | None, requested: int | None) -> int | None:
+    """The tightest positive height cap between the client caps and the request."""
+    heights = [h for h in (cap_height, requested) if h is not None and h > 0]
+    return min(heights) if heights else None
+
+
+def decide_playback(
+    caps: CapabilityProfile,
+    *,
+    ext: str | None,
+    video_codec: str | None,
+    audio_codec: str | None,
+    source_height: int | None = None,
+    audio_stream_index: int | None = None,
+    default_audio_index: int | None = None,
+    burn_subtitle: bool = False,
+    requested_max_height: int | None = None,
+) -> PlaybackDecision:
+    """Decide how to deliver a source to a client (plan 1 §6.1).
+
+    - both container and codecs in caps → ``direct``;
+    - codecs in caps but container not (the MKV-with-H.264 class) → ``remux``;
+    - otherwise → ``transcode``.
+
+    Burn-in subtitles and downscaling force ``transcode`` (they re-encode video);
+    a non-default audio track or an unsupported audio codec force at least
+    ``remux`` (progressive streams can't switch/replace tracks). Missing probe
+    metadata degrades toward the more permissive choice rather than erroring.
+    """
+    container = normalize_container(ext)
+    vcodec = normalize_video_codec(video_codec)
+    acodec = normalize_audio_codec(audio_codec)
+
+    container_ok = container is not None and container in caps.containers
+    # Unknown codec → optimistic (matches assess_playability); a reprobe corrects
+    # a legacy row, and remux/transcode still carry a working audio fallback.
+    video_ok = vcodec is None or vcodec in caps.video_codecs
+    audio_ok = acodec is None or acodec in caps.audio_codecs
+    max_h = effective_max_height(caps.max_height, requested_max_height)
+    too_tall = source_height is not None and max_h is not None and source_height > max_h
+    non_default_audio = audio_stream_index is not None and audio_stream_index != default_audio_index
+
+    if burn_subtitle:
+        return PlaybackDecision("transcode", "Subtitle burn-in requires transcoding")
+    if not video_ok:
+        return PlaybackDecision("transcode", f"{vcodec} video codec is not in client capabilities")
+    if too_tall:
+        return PlaybackDecision(
+            "transcode", f"Source height {source_height} exceeds the client height cap"
+        )
+    if not container_ok:
+        label = container or "unknown"
+        return PlaybackDecision("remux", f"{label} container is not in client capabilities")
+    if not audio_ok:
+        return PlaybackDecision("remux", f"{acodec} audio codec is not in client capabilities")
+    if non_default_audio:
+        return PlaybackDecision("remux", "Switching to a non-default audio track requires remux")
+    return PlaybackDecision("direct", "Source container and codecs are directly playable")
 
 
 def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:

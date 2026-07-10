@@ -1,10 +1,12 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M5 (probe enrichment,
+> Status: current through the media-player foundation M1–M6 (probe enrichment,
 > the unified custom media viewer, storyboard trickplay, watch progress/resume,
-> and image viewer v2 with preview derivatives; PRs #1–#5 in this repo). See `AGENTS.md` for the product
-> brief, `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md`
-> for current gaps, validation state, and recommended next tasks.
+> image viewer v2 with preview derivatives, and the server-side playback
+> decision + HLS remux/transcode session foundation; PRs #1–#5 plus the M6
+> `feat/playback-sessions` branch). See `AGENTS.md` for the product brief,
+> `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md` for
+> current gaps, validation state, and recommended next tasks.
 
 ## 1. System overview
 
@@ -306,8 +308,49 @@ Direct playback is implemented around bundle/file routes that serve source bytes
 with safe path resolution and HTTP range behavior. External SRT/VTT subtitles are
 served as browser-native WebVTT through the cache. Storyboard endpoints serve
 cached artifacts only and return 404 until the background job has generated a
-current index. Embedded subtitle streams are detected and represented, but
-extraction/remux/transcode fallback is deferred.
+current index. Embedded subtitle streams are detected and represented, but their
+extraction to servable text tracks is deferred (M8).
+
+### Playback decisions and HLS sessions (ADR-0014)
+
+Clients declare a capability profile (containers, video/audio codecs,
+`max_height`, `native_hls`) and the server decides how to deliver each file
+(plan 1 §6):
+
+- `POST /api/v1/libraries/{library_id}/files/{file_id}/playback-decision` runs a
+  pure decision matrix (`media/playback.decide_playback`) over the source's M1
+  `tech_metadata` versus the caps — container+codecs in caps → `direct`; codecs
+  in caps but container not → `remux`; otherwise → `transcode`. A non-default
+  audio track or an unsupported audio codec forces at least remux; a burn-in
+  subtitle or a source taller than the height cap forces transcode. Legacy rows
+  missing M1 keys degrade safely (unknown codec is optimistic; it never 500s).
+  The response also carries duration, audio streams, subtitles, chapters,
+  `storyboard_url`, and resume `progress`. For `direct` it returns a
+  `stream_url`; for remux/transcode it **starts an HLS session** and returns
+  `{session {id, playlist_url}}`.
+- Sessions are interactive in-process runtime state, **not** background jobs
+  (`media/hls.SessionManager` — a dict guarded by locks, not the `job_queue`).
+  `POST .../playback-sessions` starts one explicitly (e.g. a mid-play
+  quality/audio switch with `start_s`); `GET .../{session_id}/index.m3u8`
+  returns a VOD fMP4 playlist computed up front from the known duration (6 s
+  target); `GET .../{session_id}/{init.mp4|{n}.m4s}` serves the shared init
+  segment and media segments; `DELETE .../{session_id}` tears the session down.
+  One ffmpeg per session writes segments sequentially; serving a segment ahead
+  of the encoder waits (bounded), and a far seek kills and restarts ffmpeg at
+  the requested segment (`-ss` + `-start_number`). Remux copies video with an
+  AAC audio fallback and accepts keyframe drift; transcode uses `libx264`
+  `veryfast` with `force_key_frames` for exact 6 s boundaries and a capped
+  ladder honoring `max_height`.
+- Session output is **server-local and ephemeral** under
+  `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` — never inside a library
+  package. Concurrency is bounded (`CAIRNDEX_TRANSCODE_MAX_SESSIONS`, default 2;
+  a structured 429 beyond it), an idle reaper kills + deletes sessions with no
+  fetch for `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` seconds (default 60), and all
+  sessions are torn down on server shutdown. Session routes use the same
+  `LibrarySession` gating as direct streams; session ids are random and scoped
+  to their library; ffmpeg args come only from server-side-resolved paths.
+  Optional `CAIRNDEX_FFMPEG_HWACCEL` adds a decode-only hwaccel prefix for
+  transcode sessions. The web hls.js/native-HLS engine integration is M7.
 
 ## 9. Filtering and Smart Collections
 
@@ -411,5 +454,7 @@ reverse proxy, not the public internet.
 - scheduled scans and stronger job scheduling;
 - safe File Browser write mode plus desktop/native host integration;
 - single-owner authentication before real remote exposure;
-- remux/transcode fallback and embedded subtitle extraction;
-- cache policy for future large transcodes (`inside_library` vs server-local).
+- web hls.js/native-HLS engine integration for the M6 remux/transcode sessions
+  (M7) and embedded subtitle extraction to servable text tracks (M8);
+- transcode-cache location is settled (ADR-0014: server-local ephemeral under
+  `{CAIRNDEX_DATA_DIR}/transcode/`, never inside a library package).
