@@ -8,6 +8,13 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Network-library scan overflow.** Scanner filesystem identities now preserve
+  unsigned 64-bit `st_dev`/`st_ino` values in SQLite's signed 64-bit integer
+  range, preventing `Python int too large to convert to SQLite INTEGER` during
+  **Update** while retaining exact same-filesystem moved-file repair.
+
 ### Added
 
 - **Multiple notes per bundle.** A bundle now carries an ordered list of

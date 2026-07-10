@@ -1,5 +1,19 @@
 # Project status
 
+## Fixed: network-library scan overflow
+
+Branch `codex/fix-unsigned-filesystem-identity` (off `main`). **Update** no
+longer fails when a mounted/network filesystem reports an unsigned 64-bit inode
+or device identifier above SQLite's signed `INTEGER` maximum. The scanner stores
+the same 64 bits in signed two's-complement form, preserving exact equality for
+moved-file repair without a schema migration. Regression coverage exercises an
+initial scan and same-volume move with an inode above `2^63 - 1`.
+
+Verification: backend `ruff check`, `ruff format --check`, `mypy src`, and
+`pytest` (**387 passed**) are green. A read-only scan of the mounted `lex`
+library into an in-memory database discovered and persisted all 4 supported
+media files without touching its real library database.
+
 ## In review: multiple notes per bundle
 
 Branch `feat/bundle-multiple-notes` (off `main`, i.e. after the M6 playback

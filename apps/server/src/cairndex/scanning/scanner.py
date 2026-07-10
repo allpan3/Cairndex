@@ -46,6 +46,9 @@ from cairndex.scanning.media_types import classify, is_hidden_relative_path
 # separate reviewable plan after scan completes.
 SCAN_GROUPING_RULE_VERSION = 1
 
+_SQLITE_INT64_MAX = (1 << 63) - 1
+_UINT64_MODULUS = 1 << 64
+
 # Called after each committed batch with (processed, total). May raise to abort
 # the scan (the job handler passes a checkpoint that raises on cancellation);
 # work already committed is preserved.
@@ -81,6 +84,19 @@ class _Observed:
     role: FileRole
 
 
+# Encode an unsigned filesystem identifier as the same 64 bits in SQLite
+def _sqlite_filesystem_identity(value: int) -> int:
+    """Return a signed 64-bit representation suitable for SQLite INTEGER.
+
+    ``st_dev`` and ``st_ino`` may be unsigned 64-bit values on network
+    filesystems. SQLite integers are signed, so preserve the bits using their
+    two's-complement representation; equality matching remains exact.
+    """
+    if not 0 <= value < _UINT64_MODULUS:
+        raise ValueError("filesystem identity is outside the unsigned 64-bit range")
+    return value if value <= _SQLITE_INT64_MAX else value - _UINT64_MODULUS
+
+
 def _iter_media_files(root_path: Path) -> Iterator[Path]:
     # followlinks=False avoids symlink cycles and escapes out of the root.
     for dirpath, dirnames, filenames in os.walk(root_path, followlinks=False):
@@ -113,8 +129,8 @@ def _observe(path: Path, root_path: Path) -> _Observed | None:
         size=stat.st_size,
         mtime=datetime.fromtimestamp(stat.st_mtime, UTC),
         fingerprint=quick_fingerprint(stat.st_size, stat.st_mtime_ns),
-        device=stat.st_dev,
-        inode=stat.st_ino,
+        device=_sqlite_filesystem_identity(stat.st_dev),
+        inode=_sqlite_filesystem_identity(stat.st_ino),
         identity_available=identity_available,
         kind=kind,
         role=role,

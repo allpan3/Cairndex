@@ -6,6 +6,7 @@ ambiguous matches, copies, and same-path edits do not spawn or merge bundles.
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -74,6 +75,53 @@ def test_same_volume_move_repairs_in_place(session: Session, library_root: Path)
     assert progress is not None
     assert progress.file_id == original_id and progress.bundle_id == bundle_id
     assert progress.position_s == 42
+
+
+def test_unsigned_64bit_identity_is_stored_and_repairs_in_place(
+    session: Session, library_root: Path, monkeypatch
+) -> None:
+    """Network filesystem identities above SQLite's range remain usable."""
+    high_device = (1 << 64) - 1
+    high_inode = 12_533_741_083_415_795_663
+    stored_device = -1
+    stored_inode = high_inode - (1 << 64)
+    real_stat = Path.stat
+
+    def stat_with_high_inode(path: Path, *, follow_symlinks: bool = True):
+        stat = real_stat(path, follow_symlinks=follow_symlinks)
+        if path.name != "movie.mp4":
+            return stat
+        return SimpleNamespace(
+            st_size=stat.st_size,
+            st_mtime=stat.st_mtime,
+            st_mtime_ns=stat.st_mtime_ns,
+            st_dev=high_device,
+            st_ino=high_inode,
+        )
+
+    source = library_root / "a" / "movie.mp4"
+    source.parent.mkdir()
+    source.write_text("network movie")
+    monkeypatch.setattr(Path, "stat", stat_with_high_inode)
+
+    first = scan_library(session, library_root)
+    row = _only_file(session)
+    original_id = row.id
+    assert first.created == 1
+    assert row.filesystem_device == stored_device
+    assert row.filesystem_inode == stored_inode
+
+    destination = library_root / "b" / "movie.mp4"
+    destination.parent.mkdir()
+    source.rename(destination)
+    second = scan_library(session, library_root)
+
+    repaired = _only_file(session)
+    assert second.repaired == 1
+    assert repaired.id == original_id
+    assert repaired.relative_path == "b/movie.mp4"
+    assert repaired.filesystem_device == stored_device
+    assert repaired.filesystem_inode == stored_inode
 
 
 def test_same_path_edit_is_update_not_move(session: Session, library_root: Path) -> None:
