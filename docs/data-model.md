@@ -105,6 +105,10 @@ root relative), `original_filename`, `display_title`, `note`, `source`, `role`,
 `filesystem_inode`, `identity_available`, `availability`, `version`, timestamps.
 `relative_path` is unique within a library.
 
+Filesystem device/inode identities preserve the unsigned 64-bit `stat()` value
+as signed two's-complement SQLite integers. This avoids overflow on network
+filesystems while preserving exact equality for moved-file repair.
+
 Moved-file repair updates the existing `asset_files` row in place when
 confidence is high, preserving `id`, `bundle_id`, collection memberships, tags,
 rating, cover/primary references, and subtitle links. The normal scan path does
