@@ -53,7 +53,9 @@ ignored). Blank/whitespace-only blocks are dropped on write, and a row whose
 `q` full-text search both index the notes: the filter
 (`docs/filter-language.md`) compiles to a per-note `EXISTS` over
 `json_each(notes)`, and the `bundle_search` FTS view concatenates
-`json_each(notes)` into its `note` column.
+`json_each(notes)` into its `notes` column. (`ensure_search_schema` rebuilds the
+FTS table + triggers when their column set no longer matches, so an existing
+library migrates on open.)
 
 `manual_order` is the global owner-defined ("custom") order used when browsing
 All/system views with the **Manual** sort (drag-reorder / "Clean up by…"). The
