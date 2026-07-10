@@ -29,9 +29,10 @@ note, used as clean separators (no predefined roles under the hood).
   box (`NoteBox`) **auto-grows** to fit its content by default (no scrollbar);
   dragging a custom bottom grip switches it to a fixed height with `overflow-y:
   auto` — `resize: none` on the textarea means there is **no native
-  resizer/scroll-corner box** — and that height persists across sessions
-  (`cairndex.noteBoxHeight`, shared by all note boxes; double-click the grip to
-  return to auto-fit).
+  resizer/scroll-corner box** — and each note remembers **its own** height across
+  sessions (`cairndex.noteHeights`, per bundle, aligned with the notes list by
+  index; add/remove keep the arrays in step; double-click the grip to return that
+  box to auto-fit).
 
 Verification:
 
@@ -50,9 +51,10 @@ Verification:
   `note` shadow (confirmed via the API and a page reload); no console errors.
   The box refinements were also verified live: the `+` renders as a centered
   14×14 SVG icon; an auto-mode box grew to fit multi-line text (117 px, no
-  clip); dragging the grip shrank it to 57 px with `overflow-y: auto` (scrollbar,
-  no native corner box) and stored `cairndex.noteBoxHeight = 57`, which survived
-  a same-origin reload. All Demo edits were reverted to `notes: []` afterward, so
+  clip); dragging each of two boxes to different heights stored
+  `cairndex.noteHeights = {<bundle>: [121, 71]}` and both survived a same-origin
+  reload, and removing the first box left the second keeping its own 71 px height
+  (the stored array spliced to `[71]`). All Demo edits were reverted afterward, so
   the Demo library is unchanged for review. (Note: synthetic browser
   `input`/`blur` events don't drive React's controlled inputs / focusout
   `onBlur`; the real path is covered by `preview_fill`/`preview_click` and the
