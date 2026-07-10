@@ -142,6 +142,20 @@ def test_out_of_range_and_malformed_segments_404(make_manager: ManagerFactory) -
         manager.serve_artifact("lib", session.id, "not-a-segment")
 
 
+def _assert_target_duration_covers_segments(playlist: str) -> int:
+    """RFC 8216 §4.3.3.1: TARGETDURATION must be >= every EXTINF."""
+    lines = playlist.splitlines()
+    target = next(
+        int(line.split(":", 1)[1]) for line in lines if line.startswith("#EXT-X-TARGETDURATION:")
+    )
+    extinfs = [
+        float(line[len("#EXTINF:") :].rstrip(",")) for line in lines if line.startswith("#EXTINF:")
+    ]
+    assert extinfs, "playlist has no segments"
+    assert all(target >= extinf for extinf in extinfs), f"target {target} < max {max(extinfs)}"
+    return target
+
+
 def test_playlist_is_vod_with_computed_segments(make_manager: ManagerFactory) -> None:
     manager = make_manager()
     session = _create(manager, duration=28.0)  # 5 segments; last is 4 s
@@ -155,6 +169,7 @@ def test_playlist_is_vod_with_computed_segments(make_manager: ManagerFactory) ->
     assert "#EXTINF:4.000," in lines  # tail segment shorter than the target
     assert "4.m4s" in lines
     assert lines[-1] == "#EXT-X-ENDLIST"
+    assert _assert_target_duration_covers_segments(playlist) == 6  # uniform 6 s grid
 
 
 # --- wait vs restart --------------------------------------------------------
@@ -526,9 +541,12 @@ def test_remux_playlist_is_keyframe_derived(make_manager: ManagerFactory) -> Non
     session = _create(manager, kind="remux", duration=120.0)
     assert session.segment_starts == [0.0, 36.0, 72.0, 108.0]
     assert session.segment_count == 4
-    lines = manager.serve_playlist("lib", session.id).splitlines()
+    playlist = manager.serve_playlist("lib", session.id)
+    lines = playlist.splitlines()
     assert lines.count("#EXTINF:36.000,") == 3
     assert "#EXTINF:12.000," in lines  # last segment: 120 - 108
+    # Sparse keyframes → 36 s segments; TARGETDURATION must cover them, not 6.
+    assert _assert_target_duration_covers_segments(playlist) == 36
 
 
 def test_transcode_playlist_stays_uniform(make_manager: ManagerFactory) -> None:
