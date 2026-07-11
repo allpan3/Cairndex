@@ -17,7 +17,9 @@ Completed:
   pins auto-hide chrome until release, keeps the 150 ms seek coalescing, and
   commits the exact clamped release position even off-track.
 - Persisted player prefs now include seek step and `preservesPitch`; file loop is
-  intentionally session-only and takes precedence over bundle auto-advance.
+  intentionally session-only and takes precedence over bundle auto-advance. The
+  speed ladder is grouped with pitch preservation in Settings; the standalone
+  control-bar speed selector has been removed.
 - Additive nullable `asset_files.cover_time` plus path-safe POST/DELETE
   `cover-frame` endpoints set/clear a server-extracted current-frame cover,
   regenerate only the cached thumbnail, select that video as the bundle cover,

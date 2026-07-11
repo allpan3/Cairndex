@@ -2625,14 +2625,6 @@ code {
   width: 86px;
   accent-color: var(--accent);
 }
-.mv-speed select {
-  height: 30px;
-  border: 0;
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 12px;
-}
 .mv-settings {
   position: relative;
   display: inline-flex;
