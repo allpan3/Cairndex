@@ -21,9 +21,19 @@ M7 (web HLS) merged (#9):
 
 Updated: `docs/plans/README.md` (build order), plans 01–04 headers/milestone
 tables, this file, CHANGELOG. No code changes; no gates run (docs-only).
-Next recommended task: **plan 1 M9 — player polish** (A-B loop, video
-adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow
-refinements, storyboard padding-tile trim).
+
+**M9 recomposed + M12 added (owner, 2026-07-11):** A-B loop moved to M11
+(it's really the GIF range-picker); video adjustments deferred (owner wants
+color/tone, not brightness sliders); image slideshow deferred. M9 is now
+interaction polish: right-click play/pause, drag-scrub surviving cursor
+leaving the track (bug — suspect control-bar auto-hide breaking pointer
+capture), configurable seek step, pitch-preserve, file loop, set-cover-to-
+current-frame (plan 1 §13.1), storyboard padding-tile trim. New **M12 —
+Eagle-style thumbnail hover video preview** (plan 1 §13.2: dwell-to-play
+muted, cursor-x skim + position bar, time + sound toggle, storyboard-skim
+fallback for non-direct-playable sources, never spawns HLS sessions) lands
+after M9, before the desktop shell.
+Next recommended task: **plan 1 M9 — player interaction polish**.
 
 ## In review: playback DB-pool exhaustion fix
 

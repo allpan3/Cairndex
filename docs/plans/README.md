@@ -121,7 +121,7 @@ order is in git history). Current order:
 |-------|------|----------------|
 | A ✅ | Server foundations 1–7 (probe, storyboards, previews, progress, decisions, HLS) | Shipped as plan 1 M1–M7 |
 | B ✅ | Web player v2 + image viewer v2 + HLS integration (plan 1 M2–M7) | Merged through PR #9 |
-| C | Plan 1 **M9 player polish** | Last near-term web-player slice; every later client (desktop shell renders the same SPA) inherits it |
+| C | Plan 1 **M9 player interaction polish**, then **M12 hover video preview** (both recomposed 2026-07-11 — plan 1 §11/§13) | Last near-term web slices; every later client (desktop shell renders the same SPA) inherits them. A-B loop moved to M11, video adjustments + slideshow deferred |
 | D | Server: **pairing + device tokens** (plan 2 §4 / T0) | Pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it; small additive server slice + web Devices page |
 | E | **macOS desktop shell** (plan 3 D1–D5) | Owner priority. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3) |
 | F | **Library write mode** (plan 4), re-ordered W0 → W1 → W5 | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). W3/W4 (move/trash) follow; W2 waits on M11 (deferred) |
