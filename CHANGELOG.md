@@ -21,6 +21,8 @@ grouped under `Unreleased` until the first tagged release.
   titles share one compact uppercase visual hierarchy.
   The folded Resolution disclosure uses a compact single-row height and expands
   only when its choices are visible.
+  Cover actions use a stable two-button row: Set frame as cover and Reset cover
+  to default, with reset disabled until a custom frame exists.
   The settings menu can set the current server-decoded video frame as the file
   and bundle cover, or clear it back to automatic extraction. The new additive
   `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are
