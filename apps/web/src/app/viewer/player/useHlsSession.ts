@@ -28,7 +28,7 @@ const CAPACITY_RETRY_MS = 350
 // (e.g. an exhausted DB pool makes the request block on a connection). On expiry
 // we abort and surface an explicit "server unavailable" card the user can retry,
 // instead of a spinner that never resolves.
-const DECISION_TIMEOUT_MS = 30_000
+const DECISION_TIMEOUT_MS = 15_000
 const PLAYBACK_UNAVAILABLE_REASON =
   'The playback server is unavailable. It may be overloaded or restarting — try again in a moment.'
 

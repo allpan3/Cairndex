@@ -238,7 +238,7 @@ test('an unanswered decision times out to a retryable unavailable state', async 
 
     // Before the deadline: still preparing.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(29_000)
+      await vi.advanceTimersByTimeAsync(14_000)
     })
     expect(result.current.status).toBe('deciding')
 

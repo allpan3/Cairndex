@@ -24,12 +24,19 @@ grouped under `Unreleased` until the first tagged release.
   pinned during transfer. A regression test asserts the per-library pool has
   zero checked-out connections mid-stream.
 
-- **Finite playback-decision timeout.** The web player capped an unanswered
-  `playback-decision` request (30s) instead of spinning on "Preparing
+- **Finite playback-decision timeout.** The web player caps an unanswered
+  `playback-decision` request (15s) instead of spinning on "Preparing
   playback…" indefinitely. On timeout — or a 5xx from an overloaded server — a
   non-degradable video now shows a distinct, retryable "Playback server is
   unavailable" card; directly-playable sources still fall back to the native
   stream.
+
+- **Coalesced drag-seek requests.** Scrubbing the seek bar throttles the actual
+  `seek()` (leading edge + a single trailing flush per ~150ms) and commits the
+  exact position on release, instead of firing a `seek()` on every `pointermove`.
+  The thumb and storyboard tooltip still track the pointer live, but a drag now
+  issues a handful of byte-range requests rather than dozens of immediately
+  cancelled ones.
 
 - **Immediate library switching.** Changing the active library now removes the
   previous library's TanStack content queries before remounting the workspace,

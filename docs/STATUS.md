@@ -29,19 +29,21 @@ Changes:
   connections on the real per-library pool mid-stream (verified failing before
   the fix).
 - **Frontend (resilience).** `useHlsSession` now caps the decision request at a
-  finite `DECISION_TIMEOUT_MS` (30s) and adds a distinct `'unavailable'` status
+  finite `DECISION_TIMEOUT_MS` (15s) and adds a distinct `'unavailable'` status
   + `retry()`. On timeout or a 5xx, a non-degradable video shows a retryable
   "Playback server is unavailable" card (`MediaViewer`/`MediaFallback`);
   directly-playable sources still degrade to the native stream.
+- **Frontend (efficiency).** `SeekBar` coalesces drag scrubbing: the real
+  `seek()` is throttled (leading edge + one trailing flush per ~150ms) and the
+  exact position is committed on pointer release, instead of a `seek()` per
+  `pointermove`. The thumb/tooltip track the pointer live via a local drag
+  override. A drag now issues a handful of range requests instead of dozens of
+  cancelled ones.
 
 Verification: backend `ruff`/`mypy`/`pytest` green (**389 passed**, +1);
-frontend `lint`/`format:check`/`typecheck`/`test` (**67 passed**, +3)/`build`;
+frontend `lint`/`format:check`/`typecheck`/`test` (**69 passed**, +5)/`build`;
 Playwright `player.spec.ts` (**15 passed**) exercises real MP4/MKV-remux
 streaming end to end through the new dependency.
-
-Not done (optional, deferred): coalescing/debouncing drag seeks to reduce
-redundant range requests — a resilience nicety, not required now that the pool
-is no longer exhausted.
 
 ## In review: media-player M7 — web HLS integration
 
