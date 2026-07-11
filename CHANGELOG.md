@@ -19,7 +19,7 @@ grouped under `Unreleased` until the first tagged release.
   submenu built from the probed source height, exposing 2160p/1440p for
   applicable files while omitting tiers above the source. Settings section
   titles share one compact uppercase visual hierarchy.
-  The folded Resolution disclosure uses a balanced 24px row and expands
+  The folded Resolution disclosure uses a vertically centered 24px row and expands
   only when its choices are visible.
   Cover actions use a stable two-button row: Set frame as cover and Reset cover
   to default, with reset disabled until a custom frame exists.
