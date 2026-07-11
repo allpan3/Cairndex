@@ -1467,6 +1467,20 @@
         "title": "CountsResponse",
         "type": "object"
       },
+      "CoverFrameUpdate": {
+        "description": "Owner-selected timestamp for a video's generated cover thumbnail.",
+        "properties": {
+          "time": {
+            "title": "Time",
+            "type": "number"
+          }
+        },
+        "required": [
+          "time"
+        ],
+        "title": "CoverFrameUpdate",
+        "type": "object"
+      },
       "CreateBundleFromFilesRequest": {
         "properties": {
           "file_ids": {
@@ -1920,6 +1934,17 @@
             "title": "Bundle Id",
             "type": "string"
           },
+          "cover_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Time"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2024,6 +2049,7 @@
           "size_bytes",
           "availability",
           "quick_fingerprint",
+          "cover_time",
           "tech_metadata",
           "created_at",
           "updated_at",
@@ -6650,7 +6676,7 @@
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/thumbnail": {
       "get": {
-        "description": "Serve the bundle's cover thumbnail (generated on first request).\n\n404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.",
+        "description": "Serve the bundle's cover thumbnail (generated on first request).\n\n404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.\nUses the scoped ``LibraryAccess`` gate: grid scrolling aborts thumbnail\nrequests in bursts, and a cancelled request can strand a ``yield``-dependency\nconnection, draining the pool (same class of bug as drag-seek on\n``/stream``). The session closes before the image streams.",
         "operationId": "get_bundle_thumbnail_api_v1_libraries__library_id__bundles__bundle_id__thumbnail_get",
         "parameters": [
           {
@@ -7795,7 +7821,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/content": {
       "get": {
-        "description": "Serve a file's original bytes (e.g. full-resolution images for the viewer).\n\nPath-safe and read-only; FileResponse honors HTTP Range so large images and\nmedia stream incrementally. The mime type is guessed from the filename.",
+        "description": "Serve a file's original bytes (e.g. full-resolution images for the viewer).\n\nPath-safe and read-only; FileResponse honors HTTP Range so large images and\nmedia stream incrementally. The mime type is guessed from the filename. The\ncontent session is released before the response body streams (see\n``LibraryAccess``).",
         "operationId": "file_content_api_v1_libraries__library_id__files__file_id__content_get",
         "parameters": [
           {
@@ -7854,6 +7880,150 @@
           }
         },
         "summary": "File Content",
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/cover-frame": {
+      "delete": {
+        "description": "Clear a selected video cover timestamp and restore automatic extraction.",
+        "operationId": "clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Cover Frame",
+        "tags": [
+          "playback"
+        ]
+      },
+      "post": {
+        "description": "Persist a video cover timestamp and regenerate only its cached thumbnail.",
+        "operationId": "set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverFrameUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Cover Frame",
         "tags": [
           "playback"
         ]
@@ -8157,7 +8327,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/{artifact}": {
       "get": {
-        "description": "Serve the session playlist, its init segment, or a media segment.\n\n``db`` gates access with the same ``LibrarySession`` dependency as direct\nstreaming; the bytes are throwaway session state, so ``no-store``.",
+        "description": "Serve the session playlist, its init segment, or a media segment.\n\n``access`` gates the request with the same registry/lock checks as direct\nstreaming, but without pinning a DB connection while a segment streams \u2014 the\nmanager serves the bytes from session state, so no content session is\nopened at all. Bytes are throwaway session state, so ``no-store``.",
         "operationId": "playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get",
         "parameters": [
           {
@@ -8241,7 +8411,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
       "get": {
-        "description": "Serve a lazily generated, fingerprint-invalidated WebP preview.",
+        "description": "Serve a lazily generated, fingerprint-invalidated WebP preview.\n\nUses the scoped ``LibraryAccess`` gate (like ``stream_file``): drag/scroll\nbursts abort these requests mid-flight, and a cancelled request can strand a\n``yield``-dependency connection, draining the pool. The session closes\ninside the handler, before the response streams.",
         "operationId": "file_preview_api_v1_libraries__library_id__files__file_id__preview_get",
         "parameters": [
           {
@@ -8540,7 +8710,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/storyboard/{sheet_name}.jpg": {
       "get": {
-        "description": "Serve a cached storyboard sheet, never generating on request.",
+        "description": "Serve a cached storyboard sheet, never generating on request.\n\nThe seek-bar hover tooltip requests (and aborts) sheets continuously while\nscrubbing, so this must not hold a ``yield``-dependency connection (see\n``file_preview``).",
         "operationId": "storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get",
         "parameters": [
           {
@@ -8615,7 +8785,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/stream": {
       "get": {
-        "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).",
+        "description": "Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).\n\nThe content session is scoped to path resolution and released *before* the\nresponse streams, so overlapping drag-seek range requests don't pin\nconnections and exhaust the pool (see ``LibraryAccess``).",
         "operationId": "stream_file_api_v1_libraries__library_id__files__file_id__stream_get",
         "parameters": [
           {

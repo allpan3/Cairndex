@@ -212,7 +212,9 @@ function AlbumTile({
         className="album-tile__thumb"
         style={
           thumbnailable
-            ? { backgroundImage: `url(${fileThumbnailUrl(file.bundle_id, file.id)})` }
+            ? {
+                backgroundImage: `url(${fileThumbnailUrl(file.bundle_id, file.id, file.updated_at)})`,
+              }
             : undefined
         }
       >

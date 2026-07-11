@@ -394,6 +394,7 @@ interface MockApiOptions {
   onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
   onSessionDelete?: (url: string) => void
   onDecision?: (fileId: string, body: Record<string, unknown>) => void
+  onCoverFrame?: (time: number | null) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -413,6 +414,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     f0: options.progress ?? null,
     f1: null,
   }
+  let coverTime: number | null = null
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
@@ -460,9 +462,39 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail$/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+  await page.route(
+    /\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail(?:\?.*)?$/,
+    (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/cover-frame$/, async (r) => {
+    coverTime =
+      r.request().method() === 'DELETE'
+        ? null
+        : (JSON.parse(r.request().postData() ?? '{}') as { time: number }).time
+    options.onCoverFrame?.(coverTime)
+    await r.fulfill({
+      json: {
+        id: 'f0',
+        bundle_id: 'b0',
+        relative_path: 'movie.mp4',
+        original_filename: 'movie.mp4',
+        display_title: 'movie.mp4',
+        role: 'primary_video',
+        media_kind: 'video',
+        mime_type: 'video/mp4',
+        sequence: 0,
+        size_bytes: 0,
+        availability: 'available',
+        quick_fingerprint: 'video-fingerprint',
+        cover_time: coverTime,
+        supported: true,
+        tech_metadata: { width: 1920, height: 1080, duration: 120 },
+        created_at: '2026-06-25T00:00:00Z',
+        updated_at: new Date().toISOString(),
+        version: 2,
+      },
+    })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
@@ -620,6 +652,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'video-fingerprint',
+          cover_time: coverTime,
           supported: true,
           tech_metadata: { width: 1920, height: 1080, duration: 120 },
           created_at: '2026-06-25T00:00:00Z',
@@ -639,6 +672,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'image-fingerprint',
+          cover_time: null,
           supported: true,
           tech_metadata: { width: 640, height: 360 },
           created_at: '2026-06-25T00:00:00Z',
@@ -658,6 +692,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'second-fingerprint',
+          cover_time: null,
           supported: true,
           tech_metadata: options.secondPlayable ? { width: 1280, height: 720, duration: 90 } : {},
           created_at: '2026-06-25T00:00:00Z',
@@ -834,6 +869,48 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
   await page.mouse.move(420, 420)
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
+})
+
+test('polishes context play, off-track scrub, seek step, and current-frame cover', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  const coverWrites: Array<number | null> = []
+  await mockApi(page, { onCoverFrame: (time) => coverWrites.push(time) })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
+  const nativeMenuAllowed = await video.evaluate((element) => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+    return element.dispatchEvent(event)
+  })
+  expect(nativeMenuAllowed).toBe(false)
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+
+  const settings = page.getByRole('button', { name: 'Playback settings' })
+  await settings.click()
+  await page.getByRole('menuitemradio', { name: '30 seconds' }).click()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(30)
+
+  const track = page.locator('.mv-seek__track')
+  const box = await track.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width * 0.25, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(2800)
+  await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
+  await page.mouse.move(2, 2)
+  await page.mouse.up()
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(0)
+
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 42))
+  await page.mouse.move(400, 400)
+  await settings.click()
+  await page.getByRole('menuitem', { name: 'Use current frame as cover' }).click()
+  await expect.poll(() => coverWrites.at(-1)).toBe(42)
+  await expect(page.getByRole('menuitem', { name: 'Use automatic cover frame' })).toBeVisible()
 })
 
 test('shows storyboard preview and chapter title on seek hover', async ({ page }) => {

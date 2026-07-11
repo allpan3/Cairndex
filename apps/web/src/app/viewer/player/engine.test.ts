@@ -40,3 +40,14 @@ test('MSE HLS sources use the hls.js engine', () => {
   })
   expect(noFlag).toBeInstanceOf(HlsEngine)
 })
+
+test('base engine applies pitch preservation independently of playback rate', () => {
+  const video = document.createElement('video')
+  const engine = createEngine(video, { src: '/f/stream', mimeType: 'video/mp4' })
+  engine.setRate(1.5)
+  engine.setPreservesPitch(false)
+  expect(video.playbackRate).toBe(1.5)
+  expect(video.preservesPitch).toBe(false)
+  engine.setPreservesPitch(true)
+  expect(video.preservesPitch).toBe(true)
+})

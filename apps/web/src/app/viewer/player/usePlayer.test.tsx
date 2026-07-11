@@ -86,6 +86,14 @@ test('loads a native source and applies persisted playback preferences', async (
   act(() => latest.player.setRate(1.5))
   await waitFor(() => expect(latest.prefs.rate).toBe(1.5))
   expect(latest.video.playbackRate).toBe(1.5)
+
+  act(() => {
+    latest.player.setSeekStep(30)
+    latest.player.setPreservesPitch(false)
+  })
+  await waitFor(() => expect(latest.prefs.seekStep).toBe(30))
+  expect(latest.prefs.preservesPitch).toBe(false)
+  expect(latest.video.preservesPitch).toBe(false)
   unmount()
 })
 

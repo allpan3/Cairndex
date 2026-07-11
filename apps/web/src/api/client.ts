@@ -531,8 +531,17 @@ export function thumbnailUrl(bundleId: string, coverKey?: string | null): string
   return coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base
 }
 
-export function fileThumbnailUrl(bundleId: string, fileId: string): string {
-  return `${lib()}/bundles/${bundleId}/files/${fileId}/thumbnail`
+export function fileThumbnailUrl(bundleId: string, fileId: string, version?: string): string {
+  const base = `${lib()}/bundles/${bundleId}/files/${fileId}/thumbnail`
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base
+}
+
+export function setCoverFrame(fileId: string, time: number): Promise<FileRead> {
+  return send<FileRead>(`${lib()}/files/${fileId}/cover-frame`, 'POST', { time })
+}
+
+export function clearCoverFrame(fileId: string): Promise<FileRead> {
+  return send<FileRead>(`${lib()}/files/${fileId}/cover-frame`, 'DELETE')
 }
 
 /**

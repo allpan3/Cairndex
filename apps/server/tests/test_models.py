@@ -127,6 +127,16 @@ def test_ensure_content_indexes_readds_manual_order_columns(engine: Engine) -> N
     assert "sort_order" in {c["name"] for c in inspector.get_columns("asset_bundle_collections")}
 
 
+def test_ensure_content_indexes_adds_nullable_cover_time(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE asset_files DROP COLUMN cover_time"))
+
+    ensure_content_indexes(engine)
+
+    columns = {c["name"]: c for c in inspect(engine).get_columns("asset_files")}
+    assert columns["cover_time"]["nullable"] is True
+
+
 def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:
     bundle = AssetBundle(title="b")
     session.add(bundle)
