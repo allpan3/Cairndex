@@ -152,7 +152,7 @@ export function SettingsMenu({
 
           <div className="mv-menu__group">
             <button
-              className="mv-menu__submenu-toggle"
+              className={`mv-menu__submenu-toggle${resolutionOpen ? ' is-open' : ''}`}
               role="menuitem"
               aria-expanded={resolutionOpen}
               onClick={() => setResolutionOpen((value) => !value)}

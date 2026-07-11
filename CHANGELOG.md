@@ -19,6 +19,8 @@ grouped under `Unreleased` until the first tagged release.
   submenu built from the probed source height, exposing 2160p/1440p for
   applicable files while omitting tiers above the source. Settings section
   titles share one compact uppercase visual hierarchy.
+  The folded Resolution disclosure uses a compact single-row height and expands
+  only when its choices are visible.
   The settings menu can set the current server-decoded video frame as the file
   and bundle cover, or clear it back to automatic extraction. The new additive
   `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are
