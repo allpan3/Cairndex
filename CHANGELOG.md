@@ -10,6 +10,75 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Registry-pool exhaustion under drag-seek aborts (root cause of unreliable
+  scrubbing).** Even after the content session was scoped, `get_library_access`
+  still took the `get_registry_db` **yield** dependency, so every streaming
+  request pinned a *registry* connection until the body finished — and when a
+  client abort cancels the request task, FastAPI never runs the yield-dep
+  teardown at all, stranding the connection until GC (verified empirically on
+  FastAPI 0.138). Drag-seeking aborts dozens of in-flight range requests, so
+  the registry QueuePool (size 5 + overflow 10) drained: new gates blocked 30 s
+  at resolution, `/stream` 500ed mid-drag, and Chrome's demuxer surfaced
+  `PIPELINE_ERROR_READ` fatal media errors — reproduced live against a real 4K
+  file and eliminated by the fix (600-request abort storm: pre-fix 240
+  QueuePool tracebacks, post-fix zero). The gate now opens the registry session
+  imperatively inside the sync dependency (cancellation-immune) and closes it
+  before returning. The other burst-aborted `FileResponse` routes — previews,
+  storyboard index/sheets, subtitle VTT, bundle/file thumbnails — moved to the
+  same scoped `LibraryAccess` gate. A regression test drives the real,
+  unoverridden dependency chain and asserts neither pool has a connection
+  checked out once the body streams.
+
+- **Silent player freeze when a load wedges (load watchdog).** A range request
+  stuck on a half-open connection (e.g. after a proxy/server reset mid-drag)
+  never produces a media `error` event, so the player used to sit on a black
+  frame at `readyState 0` forever. A 15 s load watchdog now treats a source
+  that never reaches metadata as a stage error: the bounded recovery path
+  reloads on a fresh connection, and an exhausted budget surfaces the retryable
+  "Playback interrupted" card. Verified live against a never-responding server:
+  wedge → automatic reload → playing at the same playhead in one pass.
+
+- **Native-recovery burst guard.** While a native recovery decision is in
+  flight, additional `error` events from the dying pipeline (and continued drag
+  seeks on the errored element) no longer each consume a recovery slot — one
+  failure burst spends one slot, mirroring the HLS re-attach guard.
+
+- **Playback DB-pool exhaustion under drag-seek.** Media byte-streaming routes
+  (`/files/{id}/stream`, `/files/{id}/content`, HLS session artifacts) held a
+  per-library **and** registry DB connection for the *entire* response body,
+  because their `LibrarySession` was a `yield` dependency FastAPI keeps open
+  until the last byte is sent. Dragging the scrub bar fires many overlapping
+  range requests, so the held connections drained the QueuePool; new requests
+  (including the next `playback-decision`) then blocked for the 30s pool timeout
+  and failed with a `QueuePool` 500, leaving the viewer stuck on "Preparing
+  playback…". A new `LibraryAccess` dependency does the same registry/lock gate
+  but hands back a short-lived `session()` scope that resolves the path and
+  releases the connection *before* the response streams — so no connection is
+  pinned during transfer. A regression test asserts the per-library pool has
+  zero checked-out connections mid-stream.
+
+- **Finite playback-decision timeout.** The web player caps an unanswered
+  `playback-decision` request (15s) instead of spinning on "Preparing
+  playback…" indefinitely. On timeout — or a 5xx from an overloaded server — a
+  non-degradable video now shows a distinct, retryable "Playback server is
+  unavailable" card; directly-playable sources still fall back to the native
+  stream.
+
+- **Coalesced drag-seek requests.** Scrubbing the seek bar throttles the actual
+  `seek()` (leading edge + a single trailing flush per ~150ms) and commits the
+  exact position on release, instead of firing a `seek()` on every `pointermove`.
+  The thumb and storyboard tooltip still track the pointer live, but a drag now
+  issues a handful of byte-range requests rather than dozens of immediately
+  cancelled ones.
+
+- **Native playback error recovery.** A transient media error on a direct-play
+  video — e.g. a range read that stalls or drops while seeking into an unbuffered
+  region (common on network storage or heavy 4K decode) — used to dead-end on an
+  unrecoverable "Preview failed" card with the controls gone. Native playback now
+  reloads at the current playhead up to three times (mirroring the HLS re-attach
+  budget, refunded on healthy progress) before giving up, and the terminal state
+  is a retryable "Playback interrupted — Try again" card instead of a dead end.
+
 - **Immediate library switching.** Changing the active library now removes the
   previous library's TanStack content queries before remounting the workspace,
   while preserving the global library registry and library-keyed auth caches.

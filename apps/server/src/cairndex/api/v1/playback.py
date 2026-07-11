@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibrarySession
+from cairndex.api.deps import LibraryAccessDep, LibrarySession
 from cairndex.api.schemas.playback import (
     ContinueWatchingItem,
     ContinueWatchingPage,
@@ -185,38 +185,56 @@ def continue_watching(
 
 
 @router.get("/files/{file_id}/stream")
-def stream_file(file_id: str, db: LibrarySession) -> FileResponse:
-    """Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range)."""
-    path, asset_file = playback.resolve_video_path(db, file_id)
-    cap = playback.assess_playability(asset_file)
-    return FileResponse(str(path), media_type=cap.mime_type, filename=asset_file.original_filename)
+def stream_file(file_id: str, access: LibraryAccessDep) -> FileResponse:
+    """Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).
+
+    The content session is scoped to path resolution and released *before* the
+    response streams, so overlapping drag-seek range requests don't pin
+    connections and exhaust the pool (see ``LibraryAccess``).
+    """
+    with access.session() as db:
+        path, asset_file = playback.resolve_video_path(db, file_id)
+        cap = playback.assess_playability(asset_file)
+        media_type, filename = cap.mime_type, asset_file.original_filename
+    return FileResponse(str(path), media_type=media_type, filename=filename)
 
 
 @router.get("/files/{file_id}/content")
-def file_content(file_id: str, db: LibrarySession) -> FileResponse:
+def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve a file's original bytes (e.g. full-resolution images for the viewer).
 
     Path-safe and read-only; FileResponse honors HTTP Range so large images and
-    media stream incrementally. The mime type is guessed from the filename.
+    media stream incrementally. The mime type is guessed from the filename. The
+    content session is released before the response body streams (see
+    ``LibraryAccess``).
     """
-    path, asset_file = playback.resolve_file_path(db, file_id)
-    media_type = mimetypes.guess_type(asset_file.original_filename)[0] or "application/octet-stream"
-    return FileResponse(str(path), media_type=media_type, filename=asset_file.original_filename)
+    with access.session() as db:
+        path, asset_file = playback.resolve_file_path(db, file_id)
+        filename = asset_file.original_filename
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return FileResponse(str(path), media_type=media_type, filename=filename)
 
 
 # Serve a lazily generated WebP image preview derivative
 @router.get("/files/{file_id}/preview")
 def file_preview(
     file_id: str,
-    db: LibrarySession,
+    access: LibraryAccessDep,
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
-    """Serve a lazily generated, fingerprint-invalidated WebP preview."""
-    try:
-        path = previews.preview_for_file(db, file_id, size)
-    except NotFoundError:
-        db.commit()  # persist access-time missing marks before the 404 response
-        raise
+    """Serve a lazily generated, fingerprint-invalidated WebP preview.
+
+    Uses the scoped ``LibraryAccess`` gate (like ``stream_file``): drag/scroll
+    bursts abort these requests mid-flight, and a cancelled request can strand a
+    ``yield``-dependency connection, draining the pool. The session closes
+    inside the handler, before the response streams.
+    """
+    with access.session() as db:
+        try:
+            path = previews.preview_for_file(db, file_id, size)
+        except NotFoundError:
+            db.commit()  # persist access-time missing marks before the 404 response
+            raise
     return FileResponse(
         str(path),
         media_type="image/webp",
@@ -227,9 +245,10 @@ def file_preview(
 
 # Serve a cached storyboard index without request-path generation
 @router.get("/files/{file_id}/storyboard.vtt")
-def storyboard_vtt(file_id: str, db: LibrarySession) -> FileResponse:
+def storyboard_vtt(file_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve a cached storyboard WebVTT index, never generating on request."""
-    path = storyboards.cached_index_for_file(db, file_id)
+    with access.session() as db:
+        path = storyboards.cached_index_for_file(db, file_id)
     return FileResponse(
         str(path),
         media_type="text/vtt",
@@ -240,9 +259,15 @@ def storyboard_vtt(file_id: str, db: LibrarySession) -> FileResponse:
 
 # Serve a cached storyboard sheet without request-path generation
 @router.get("/files/{file_id}/storyboard/{sheet_name}.jpg")
-def storyboard_sheet(file_id: str, sheet_name: str, db: LibrarySession) -> FileResponse:
-    """Serve a cached storyboard sheet, never generating on request."""
-    path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
+def storyboard_sheet(file_id: str, sheet_name: str, access: LibraryAccessDep) -> FileResponse:
+    """Serve a cached storyboard sheet, never generating on request.
+
+    The seek-bar hover tooltip requests (and aborts) sheets continuously while
+    scrubbing, so this must not hold a ``yield``-dependency connection (see
+    ``file_preview``).
+    """
+    with access.session() as db:
+        path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
     return FileResponse(
         str(path),
         media_type="image/jpeg",
@@ -252,8 +277,9 @@ def storyboard_sheet(file_id: str, sheet_name: str, db: LibrarySession) -> FileR
 
 
 @router.get("/subtitles/{track_id}/vtt")
-def subtitle_vtt(track_id: str, db: LibrarySession) -> FileResponse:
+def subtitle_vtt(track_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve an external subtitle as WebVTT (converted + cached on first hit)."""
-    track = sub_service.get_track(db, track_id)
-    path = playback.build_vtt_for_track(db, track)
+    with access.session() as db:
+        track = sub_service.get_track(db, track_id)
+        path = playback.build_vtt_for_track(db, track)
     return FileResponse(str(path), media_type="text/vtt")
