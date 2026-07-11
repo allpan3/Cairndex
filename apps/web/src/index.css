@@ -2690,6 +2690,7 @@ code {
 }
 .mv-menu__submenu-toggle {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   width: 100%;
   height: 24px;
