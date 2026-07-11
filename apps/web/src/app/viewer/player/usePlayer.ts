@@ -26,7 +26,7 @@ export interface PlayerController {
   volume: number
   muted: boolean
   rate: number
-  seekStep: number
+  seekStep: PlayerPrefs['seekStep']
   preservesPitch: boolean
   fullscreen: boolean
   pip: boolean

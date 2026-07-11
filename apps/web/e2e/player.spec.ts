@@ -889,11 +889,11 @@ test('polishes context play, off-track scrub, seek step, and current-frame cover
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
 
   const settings = page.getByRole('button', { name: 'Playback settings' })
-  await expect(page.getByRole('combobox', { name: 'Playback speed' })).toHaveCount(0)
   await settings.click()
-  await page.getByRole('menuitemradio', { name: '1.5×' }).click()
+  await page.getByRole('slider', { name: 'Playback speed' }).fill('1.5')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).playbackRate)).toBe(1.5)
-  await page.getByRole('menuitemradio', { name: '30 seconds' }).click()
+  await page.getByRole('slider', { name: 'Seek step' }).fill('3')
+  await page.locator('.media-viewer').focus()
   await page.keyboard.press('ArrowRight')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(30)
 

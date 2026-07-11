@@ -2656,6 +2656,23 @@ code {
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.5);
 }
+.mv-menu__slider-label {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px 2px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 650;
+}
+.mv-menu__slider-label output {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.mv-menu__slider {
+  width: calc(100% - 16px);
+  margin: 4px 8px 8px;
+  accent-color: var(--accent);
+}
 .mv-menu__item {
   display: flex;
   align-items: center;
