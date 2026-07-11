@@ -5,6 +5,8 @@ import {
   type FileRead,
   type PlayableVideo,
   type PlaybackManifest,
+  clearCoverFrame,
+  setCoverFrame,
   thumbnailUrl,
   updatePlaybackProgress,
 } from '../../api/client'
@@ -21,6 +23,7 @@ import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
 import { usePlayer } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
+import { handlePlaybackEnded } from './player/endBehavior'
 
 interface MediaViewerProps {
   bundleId: string
@@ -66,6 +69,8 @@ export function MediaViewer({
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [failedFileId, setFailedFileId] = useState<string | null>(null)
+  const [scrubbing, setScrubbing] = useState(false)
+  const [fileLoop, setFileLoop] = useState(false)
   const [resumeNotice, setResumeNotice] = useState<{ fileId: string; position: number } | null>(
     null,
   )
@@ -169,7 +174,7 @@ export function MediaViewer({
     duration: player.duration || playable?.duration || 0,
     completed: playable?.progress?.completed,
   })
-  const chromeIdle = useIdleHide(rootRef)
+  const chromeIdle = useIdleHide(rootRef, scrubbing)
   const title = bundle?.title ?? current?.display_title ?? 'Media'
   const artworkUrl = thumbnailUrl(bundleId, bundle?.cover_file_id ?? null)
 
@@ -288,6 +293,32 @@ export function MediaViewer({
     [currentIndex, files],
   )
 
+  // A file loop owns the ended event; otherwise continue through the bundle
+  useEffect(() => {
+    if (player.status !== 'ended') return
+    handlePlaybackEnded(fileLoop, player, () => step(1))
+  }, [fileLoop, player, player.status, step])
+
+  const refreshCover = useCallback(
+    (updated: FileRead) => {
+      qc.setQueryData<FileRead[]>(['bundle-files', bundleId], (previous) =>
+        previous?.map((file) => (file.id === updated.id ? updated : file)),
+      )
+      void qc.invalidateQueries({ queryKey: ['bundle-files', bundleId] })
+      void qc.invalidateQueries({ queryKey: ['browse'] })
+      void qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
+    },
+    [bundleId, qc],
+  )
+  const useCurrentFrameAsCover = useCallback(() => {
+    if (!currentId) return
+    void setCoverFrame(currentId, player.currentTime).then(refreshCover)
+  }, [currentId, player.currentTime, refreshCover])
+  const clearCurrentCoverFrame = useCallback(() => {
+    if (!currentId) return
+    void clearCoverFrame(currentId).then(refreshCover)
+  }, [currentId, refreshCover])
+
   const snapshot = useCallback(() => {
     const video = videoElement
     if (!video) return
@@ -403,6 +434,12 @@ export function MediaViewer({
           subtitles={playable.subtitles}
           hls={hls}
           onSnapshot={snapshot}
+          onDragChange={setScrubbing}
+          fileLoop={fileLoop}
+          onFileLoop={setFileLoop}
+          onUseCoverFrame={useCurrentFrameAsCover}
+          onClearCoverFrame={clearCurrentCoverFrame}
+          hasCoverFrame={current?.cover_time != null}
         />
       )}
 

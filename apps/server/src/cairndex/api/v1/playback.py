@@ -7,18 +7,21 @@ failure (AGENTS.md §6.1). Streaming is delegated to Starlette's ``FileResponse`
 which honors HTTP Range (206 + Content-Range). Subtitles are served as WebVTT.
 """
 
+import math
 import mimetypes
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
+from cairndex.api.schemas.bundles import FileRead
 from cairndex.api.schemas.playback import (
     ContinueWatchingItem,
     ContinueWatchingPage,
     ContinueWatchingProgressRead,
+    CoverFrameUpdate,
     PlayableVideo,
     PlaybackChapter,
     PlaybackManifest,
@@ -26,11 +29,12 @@ from cairndex.api.schemas.playback import (
     PlaybackProgressUpdate,
     SubtitleTrackRead,
 )
-from cairndex.core.errors import NotFoundError
+from cairndex.core.errors import NotFoundError, ValidationError
+from cairndex.core.paths import PathSafetyError
 from cairndex.domain.enums import MediaKind
-from cairndex.media import playback, previews, storyboards
+from cairndex.media import playback, previews, storyboards, thumbnails
 from cairndex.media.subtitles import extension_of
-from cairndex.persistence.models import AssetFile, SubtitleTrack
+from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
 from cairndex.services.bundles import get_bundle, list_files
@@ -39,6 +43,14 @@ from cairndex.services.pagination import MAX_LIMIT
 router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
 
 _VTT_SERVABLE = ("srt", "vtt")
+
+
+def _video_duration(asset_file: AssetFile) -> float | None:
+    """Return a finite positive probed duration for cover-frame validation."""
+    value = (asset_file.tech_metadata or {}).get("duration")
+    if isinstance(value, (int, float)) and math.isfinite(value) and value > 0:
+        return float(value)
+    return None
 
 
 # Convert stored chapter metadata to the public manifest shape
@@ -156,6 +168,58 @@ def beacon_progress(
     file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
 ) -> PlaybackProgressRead:
     return update_progress(file_id, payload, db)
+
+
+@router.post("/files/{file_id}/cover-frame", response_model=FileRead)
+def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession) -> FileRead:
+    """Persist a video cover timestamp and regenerate only its cached thumbnail."""
+    asset_file = db.get(AssetFile, file_id)
+    if asset_file is None:
+        raise NotFoundError(f"file {file_id!r} not found")
+    if asset_file.media_kind is not MediaKind.VIDEO:
+        raise ValidationError("cover frames are only supported for video files")
+    # Resolve before invoking ffmpeg so missing/traversal/symlink escapes fail
+    # through the same path-safe playback seam as streaming
+    try:
+        playback.resolve_video_path(db, file_id)
+    except PathSafetyError as exc:
+        raise ValidationError(str(exc)) from exc
+    duration = _video_duration(asset_file)
+    if duration is None:
+        raise ValidationError("video duration is unavailable")
+    if payload.time > duration:
+        raise ValidationError("cover frame time exceeds video duration")
+    asset_file.cover_time = payload.time
+    bundle = db.get(AssetBundle, asset_file.bundle_id)
+    if bundle is not None:
+        bundle.cover_file_id = asset_file.id
+    try:
+        thumbnails.generate_for_file(db, file_id, force=True)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    db.flush()
+    return FileRead.model_validate(asset_file)
+
+
+@router.delete("/files/{file_id}/cover-frame", response_model=FileRead)
+def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
+    """Clear a selected video cover timestamp and restore automatic extraction."""
+    asset_file = db.get(AssetFile, file_id)
+    if asset_file is None:
+        raise NotFoundError(f"file {file_id!r} not found")
+    if asset_file.media_kind is not MediaKind.VIDEO:
+        raise ValidationError("cover frames are only supported for video files")
+    try:
+        playback.resolve_video_path(db, file_id)
+    except PathSafetyError as exc:
+        raise ValidationError(str(exc)) from exc
+    asset_file.cover_time = None
+    try:
+        thumbnails.generate_for_file(db, file_id, force=True)
+    except thumbnails.ThumbnailError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    db.flush()
+    return FileRead.model_validate(asset_file)
 
 
 # List bundles with unfinished playback progress

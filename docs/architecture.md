@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M7 (probe enrichment,
+> Status: current through the media-player foundation M1–M9 (probe enrichment,
 > the unified custom media viewer, storyboard trickplay, watch progress/resume,
 > image viewer v2 with preview derivatives, the server-side playback decision +
 > HLS remux/transcode session foundation, and the web hls.js/native-HLS engine
@@ -298,6 +298,15 @@ Thumbnail cover fallback is:
 
 The global sidebar thumbnail button has been removed, but the backend thumbnail
 job endpoint and lazy bundle/file thumbnail endpoints remain.
+
+M9 adds an optional `AssetFile.cover_time`. When set through the path-safe
+`POST /files/{id}/cover-frame` action, video thumbnail regeneration uses a
+single `-ss` frame extraction at that timestamp instead of the representative
+frame filter; clearing it restores automatic extraction. Browse cover keys and
+file thumbnail URLs include a changing version only for custom-frame covers so
+TanStack invalidation also bypasses immutable browser image caches. Storyboard
+generation now parses `showinfo` frame indices from its existing ffmpeg pass and
+limits VTT cues to real sampled frames before the tile filter pads a final sheet.
 
 Image preview derivatives are lazy-only in M5 and use this deterministic cache
 layout:

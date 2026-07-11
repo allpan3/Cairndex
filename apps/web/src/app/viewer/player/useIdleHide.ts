@@ -1,12 +1,17 @@
 import { useEffect, useState, type RefObject } from 'react'
 
 /** Auto-hide viewer chrome after pointer idle; moving the pointer shows it. */
-export function useIdleHide(rootRef: RefObject<HTMLElement | null>, delayMs = 2600) {
+export function useIdleHide(
+  rootRef: RefObject<HTMLElement | null>,
+  pinned = false,
+  delayMs = 2600,
+) {
   const [idle, setIdle] = useState(false)
 
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
+    if (pinned) return
     let timer = window.setTimeout(() => setIdle(true), delayMs)
     const wake = () => {
       setIdle(false)
@@ -20,7 +25,7 @@ export function useIdleHide(rootRef: RefObject<HTMLElement | null>, delayMs = 26
       root.removeEventListener('pointermove', wake)
       root.removeEventListener('pointerdown', wake)
     }
-  }, [delayMs, rootRef])
+  }, [delayMs, pinned, rootRef])
 
-  return idle
+  return pinned ? false : idle
 }

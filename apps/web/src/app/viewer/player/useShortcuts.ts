@@ -46,8 +46,8 @@ export function handleViewerShortcut(
   }
 
   if (key === ' ' || key.toLowerCase() === 'k') player.playPause()
-  else if (key === 'ArrowLeft') player.seekBy(-5)
-  else if (key === 'ArrowRight') player.seekBy(5)
+  else if (key === 'ArrowLeft') player.seekBy(-player.seekStep)
+  else if (key === 'ArrowRight') player.seekBy(player.seekStep)
   else if (key.toLowerCase() === 'j') player.seekBy(-10)
   else if (key.toLowerCase() === 'l') player.seekBy(10)
   else if (key === 'ArrowUp') player.setVolume(Math.min(1, player.volume + 0.05))
@@ -56,10 +56,10 @@ export function handleViewerShortcut(
   else if (key.toLowerCase() === 'f') player.toggleFullscreen()
   else if (key.toLowerCase() === 'c') player.toggleSubtitles()
   else if (key.toLowerCase() === 's') actions.snapshot()
-  else if (event.shiftKey && key === '<') player.setRate(Math.max(0.25, player.rate - 0.25))
-  else if (event.shiftKey && key === '>') player.setRate(Math.min(3, player.rate + 0.25))
-  else if (key === ',') player.frameStep(-1)
-  else if (key === '.') player.frameStep(1)
+  else if (key === '<') player.frameStep(-1)
+  else if (key === '>') player.frameStep(1)
+  else if (key === ',') player.setRate(Math.max(0.25, player.rate - 0.25))
+  else if (key === '.') player.setRate(Math.min(3, player.rate + 0.25))
   else if (/^[0-9]$/.test(key)) player.seek((player.duration * Number(key)) / 10)
   else return false
 

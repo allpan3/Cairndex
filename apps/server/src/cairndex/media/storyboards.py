@@ -213,10 +213,12 @@ def _storyboard_timeout(duration: float) -> float:
 
 
 # Generate tiled storyboard sheets in one ffmpeg pass
-def _generate_sheets(source: Path, output_dir: Path, interval: float, duration: float) -> None:
-    vf = f"fps=1/{interval:g},scale={STORYBOARD_TILE_WIDTH}:-2,tile=5x5"
+def _generate_sheets(source: Path, output_dir: Path, interval: float, duration: float) -> int:
+    # showinfo reports each sampled frame before tile pads the final sheet, so
+    # its final n value is the real tile count without a second decode pass
+    vf = f"fps=1/{interval:g},scale={STORYBOARD_TILE_WIDTH}:-2,showinfo,tile=5x5"
     try:
-        run_ffmpeg(
+        stderr = run_ffmpeg(
             [
                 ffmpeg_exe(),
                 "-y",
@@ -233,6 +235,10 @@ def _generate_sheets(source: Path, output_dir: Path, interval: float, duration: 
         )
     except FfmpegError as exc:
         raise StoryboardError(str(exc)) from exc
+    frames = [int(value) for value in re.findall(r"showinfo[^\n]*\bn:\s*(\d+)", stderr)]
+    if not frames:
+        raise StoryboardError("ffmpeg did not report sampled storyboard frames")
+    return max(frames) + 1
 
 
 # Read JPEG dimensions from SOF metadata without adding an image dependency
@@ -278,13 +284,14 @@ def _build_cues_from_sheets(
     sheets: list[Path],
     sheet_width: int,
     sheet_height: int,
+    frame_count: int,
 ) -> list[StoryboardCue]:
     tile_width = sheet_width // STORYBOARD_GRID_COLUMNS
     tile_height = sheet_height // STORYBOARD_GRID_ROWS
     if tile_width <= 0 or tile_height <= 0:
         raise StoryboardError("invalid storyboard sheet dimensions")
     nominal_cues = max(1, math.ceil(duration / interval))
-    cue_count = min(nominal_cues, len(sheets) * STORYBOARD_TILES_PER_SHEET)
+    cue_count = min(nominal_cues, frame_count, len(sheets) * STORYBOARD_TILES_PER_SHEET)
     cues: list[StoryboardCue] = []
     for index in range(cue_count):
         sheet = (index // STORYBOARD_TILES_PER_SHEET) + 1
@@ -346,7 +353,7 @@ def generate_for_file(
         interval = storyboard_interval(duration)
         cache_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f"{cache_dir.name}.tmp-", dir=cache_dir.parent))
-        _generate_sheets(source, temp_dir, interval, duration)
+        frame_count = _generate_sheets(source, temp_dir, interval, duration)
         sheets = sorted(temp_dir.glob("sb_*.jpg"))
         if not sheets:
             raise StoryboardError("ffmpeg produced no storyboard sheets")
@@ -357,6 +364,7 @@ def generate_for_file(
             sheets=sheets,
             sheet_width=sheet_width,
             sheet_height=sheet_height,
+            frame_count=frame_count,
         )
         (temp_dir / "index.vtt").write_text(
             render_vtt(cues, asset_file.quick_fingerprint),

@@ -58,15 +58,16 @@ def thumbnail_media_type(path: Path) -> str:
     return "image/webp" if path.suffix.lower() == ".webp" else "image/jpeg"
 
 
-def _generate(source: Path, dest: Path, kind: MediaKind) -> None:
+def _generate(source: Path, dest: Path, kind: MediaKind, cover_time: float | None = None) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     scale = f"scale={THUMBNAIL_WIDTH}:-2"
     # The "thumbnail" filter picks a representative video frame without needing
     # the duration (no -ss seek, so very short clips still work).
-    vf = f"thumbnail,{scale}" if kind is MediaKind.VIDEO else scale
+    vf = f"thumbnail,{scale}" if kind is MediaKind.VIDEO and cover_time is None else scale
+    seek = ["-ss", f"{cover_time:g}"] if cover_time is not None else []
     try:
         run_ffmpeg(
-            [ffmpeg_exe(), "-y", "-i", str(source), "-vf", vf, "-frames:v", "1", str(dest)],
+            [ffmpeg_exe(), "-y", *seek, "-i", str(source), "-vf", vf, "-frames:v", "1", str(dest)],
             timeout=60,
             stderr_limit=200,
         )
@@ -96,7 +97,7 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
         return dest  # cache hit — reused, not regenerated
 
     source = resolve_within_root(library_root, asset_file.relative_path)
-    _generate(Path(source), dest, asset_file.media_kind)
+    _generate(Path(source), dest, asset_file.media_kind, asset_file.cover_time)
     return dest
 
 

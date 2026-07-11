@@ -23,10 +23,28 @@ interface ControlBarProps {
   subtitles: SubtitleTrackRead[]
   hls: HlsSessionState
   onSnapshot: () => void
+  onDragChange: (dragging: boolean) => void
+  fileLoop: boolean
+  onFileLoop: (enabled: boolean) => void
+  onUseCoverFrame: () => void
+  onClearCoverFrame: () => void
+  hasCoverFrame: boolean
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
-export function ControlBar({ player, video, subtitles, hls, onSnapshot }: ControlBarProps) {
+export function ControlBar({
+  player,
+  video,
+  subtitles,
+  hls,
+  onSnapshot,
+  onDragChange,
+  fileLoop,
+  onFileLoop,
+  onUseCoverFrame,
+  onClearCoverFrame,
+  hasCoverFrame,
+}: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
@@ -87,7 +105,16 @@ export function ControlBar({ player, video, subtitles, hls, onSnapshot }: Contro
         <button className="mv-btn" onClick={onSnapshot} aria-label="Snapshot" title="Snapshot">
           <IconCamera />
         </button>
-        <SettingsMenu hls={hls} subtitles={subtitles} />
+        <SettingsMenu
+          hls={hls}
+          subtitles={subtitles}
+          player={player}
+          fileLoop={fileLoop}
+          onFileLoop={onFileLoop}
+          onUseCoverFrame={onUseCoverFrame}
+          onClearCoverFrame={onClearCoverFrame}
+          hasCoverFrame={hasCoverFrame}
+        />
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
           onClick={player.togglePiP}
@@ -105,7 +132,7 @@ export function ControlBar({ player, video, subtitles, hls, onSnapshot }: Contro
           <IconFullscreen />
         </button>
       </div>
-      <SeekBar player={player} video={video} />
+      <SeekBar player={player} video={video} onDragChange={onDragChange} />
     </div>
   )
 }

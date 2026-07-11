@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AudioStreamRead, SubtitleTrackRead } from '../../../api/client'
 import { IconSettings } from '../../icons'
 import type { HlsSessionState } from './useHlsSession'
+import type { PlayerController } from './usePlayer'
 
 // Height ladder for the quality menu. Auto (null) lets the client decode the
 // source as-is; picking a cap forces the server to transcode down to it. In-
@@ -17,6 +18,12 @@ const QUALITY_LADDER: Array<{ label: string; value: number | null }> = [
 interface SettingsMenuProps {
   hls: HlsSessionState
   subtitles: SubtitleTrackRead[]
+  player: PlayerController
+  fileLoop: boolean
+  onFileLoop: (enabled: boolean) => void
+  onUseCoverFrame: () => void
+  onClearCoverFrame: () => void
+  hasCoverFrame: boolean
 }
 
 function audioLabel(track: AudioStreamRead): string {
@@ -37,7 +44,16 @@ function audioLabel(track: AudioStreamRead): string {
  * Each choice re-decides and starts a new session at the current playhead;
  * audio and burn-in only appear when the current stream can offer them.
  */
-export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
+export function SettingsMenu({
+  hls,
+  subtitles,
+  player,
+  fileLoop,
+  onFileLoop,
+  onUseCoverFrame,
+  onClearCoverFrame,
+  hasCoverFrame,
+}: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -71,6 +87,41 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
       </button>
       {open && (
         <div className="mv-menu" role="menu" data-testid="settings-menu">
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Seek step</div>
+            {([2, 5, 10, 30] as const).map((step) => (
+              <button
+                key={step}
+                role="menuitemradio"
+                aria-checked={player.seekStep === step}
+                className={`mv-menu__item${player.seekStep === step ? ' is-selected' : ''}`}
+                onClick={() => player.setSeekStep(step)}
+              >
+                {step} seconds
+              </button>
+            ))}
+          </div>
+
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Playback</div>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={player.preservesPitch}
+              className={`mv-menu__item${player.preservesPitch ? ' is-selected' : ''}`}
+              onClick={() => player.setPreservesPitch(!player.preservesPitch)}
+            >
+              Preserve pitch
+            </button>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={fileLoop}
+              className={`mv-menu__item${fileLoop ? ' is-selected' : ''}`}
+              onClick={() => onFileLoop(!fileLoop)}
+            >
+              Loop file
+            </button>
+          </div>
+
           <div className="mv-menu__group">
             <div className="mv-menu__label">Quality</div>
             {QUALITY_LADDER.map((quality) => (
@@ -130,6 +181,17 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
               ))}
             </div>
           )}
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Cover</div>
+            <button className="mv-menu__item" role="menuitem" onClick={onUseCoverFrame}>
+              Use current frame as cover
+            </button>
+            {hasCoverFrame && (
+              <button className="mv-menu__item" role="menuitem" onClick={onClearCoverFrame}>
+                Use automatic cover frame
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

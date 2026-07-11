@@ -480,6 +480,10 @@ export interface paths {
          * @description Serve the bundle's cover thumbnail (generated on first request).
          *
          *     404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
+         *     Uses the scoped ``LibraryAccess`` gate: grid scrolling aborts thumbnail
+         *     requests in bursts, and a cancelled request can strand a ``yield``-dependency
+         *     connection, draining the pool (same class of bug as drag-seek on
+         *     ``/stream``). The session closes before the image streams.
          */
         get: operations["get_bundle_thumbnail_api_v1_libraries__library_id__bundles__bundle_id__thumbnail_get"];
         put?: never;
@@ -749,12 +753,38 @@ export interface paths {
          * @description Serve a file's original bytes (e.g. full-resolution images for the viewer).
          *
          *     Path-safe and read-only; FileResponse honors HTTP Range so large images and
-         *     media stream incrementally. The mime type is guessed from the filename.
+         *     media stream incrementally. The mime type is guessed from the filename. The
+         *     content session is released before the response body streams (see
+         *     ``LibraryAccess``).
          */
         get: operations["file_content_api_v1_libraries__library_id__files__file_id__content_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/cover-frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Cover Frame
+         * @description Persist a video cover timestamp and regenerate only its cached thumbnail.
+         */
+        post: operations["set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post"];
+        /**
+         * Clear Cover Frame
+         * @description Clear a selected video cover timestamp and restore automatic extraction.
+         */
+        delete: operations["clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -851,8 +881,10 @@ export interface paths {
          * Playback Session Artifact
          * @description Serve the session playlist, its init segment, or a media segment.
          *
-         *     ``db`` gates access with the same ``LibrarySession`` dependency as direct
-         *     streaming; the bytes are throwaway session state, so ``no-store``.
+         *     ``access`` gates the request with the same registry/lock checks as direct
+         *     streaming, but without pinning a DB connection while a segment streams — the
+         *     manager serves the bytes from session state, so no content session is
+         *     opened at all. Bytes are throwaway session state, so ``no-store``.
          */
         get: operations["playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get"];
         put?: never;
@@ -873,6 +905,11 @@ export interface paths {
         /**
          * File Preview
          * @description Serve a lazily generated, fingerprint-invalidated WebP preview.
+         *
+         *     Uses the scoped ``LibraryAccess`` gate (like ``stream_file``): drag/scroll
+         *     bursts abort these requests mid-flight, and a cancelled request can strand a
+         *     ``yield``-dependency connection, draining the pool. The session closes
+         *     inside the handler, before the response streams.
          */
         get: operations["file_preview_api_v1_libraries__library_id__files__file_id__preview_get"];
         put?: never;
@@ -931,6 +968,10 @@ export interface paths {
         /**
          * Storyboard Sheet
          * @description Serve a cached storyboard sheet, never generating on request.
+         *
+         *     The seek-bar hover tooltip requests (and aborts) sheets continuously while
+         *     scrubbing, so this must not hold a ``yield``-dependency connection (see
+         *     ``file_preview``).
          */
         get: operations["storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get"];
         put?: never;
@@ -951,6 +992,10 @@ export interface paths {
         /**
          * Stream File
          * @description Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).
+         *
+         *     The content session is scoped to path resolution and released *before* the
+         *     response streams, so overlapping drag-seek range requests don't pin
+         *     connections and exhaust the pool (see ``LibraryAccess``).
          */
         get: operations["stream_file_api_v1_libraries__library_id__files__file_id__stream_get"];
         put?: never;
@@ -1912,6 +1957,14 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * CoverFrameUpdate
+         * @description Owner-selected timestamp for a video's generated cover thumbnail.
+         */
+        CoverFrameUpdate: {
+            /** Time */
+            time: number;
+        };
         /** CreateBundleFromFilesRequest */
         CreateBundleFromFilesRequest: {
             /** File Ids */
@@ -2059,6 +2112,8 @@ export interface components {
             availability: components["schemas"]["FileAvailability"];
             /** Bundle Id */
             bundle_id: string;
+            /** Cover Time */
+            cover_time: number | null;
             /**
              * Created At
              * Format: date-time
@@ -4665,6 +4720,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverFrameUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
                 };
             };
             /** @description Validation Error */

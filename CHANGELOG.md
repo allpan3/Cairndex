@@ -8,7 +8,25 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
+  play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
+  player preferences; file loop is session-only and takes precedence over
+  bundle auto-advance; frame step now uses `<`/`>` and speed uses `,`/`.`.
+  The settings menu can set the current server-decoded video frame as the file
+  and bundle cover, or clear it back to automatic extraction. The new additive
+  `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are
+  path-safe and regenerate only cached thumbnails; originals remain untouched.
+
 ### Fixed
+
+- **Off-track drag scrubbing and storyboard tail tiles (Plan 1 M9).** Seek-bar
+  drags now retain capture through window-level pointer tracking and pin the
+  control bar visible until release, preserving the existing 150 ms seek
+  throttle and exact release commit. Storyboard generation counts sampled
+  frames from the same ffmpeg pass and trims VTT cues before final-sheet padding
+  tiles when stream duration is shorter than container duration.
 
 - **Registry-pool exhaustion under drag-seek aborts (root cause of unreliable
   scrubbing).** Even after the content session was scoped, `get_library_access`

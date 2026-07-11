@@ -95,8 +95,9 @@ def _jpeg_bytes(width: int = 1600, height: int = 900) -> bytes:
 # Write one fake storyboard sheet so tests can avoid invoking ffmpeg
 def _fake_generate_sheets(
     _source: Path, output_dir: Path, _interval: float, _duration: float
-) -> None:
+) -> int:
     (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
+    return 25
 
 
 @requires_ffmpeg
@@ -140,9 +141,9 @@ def test_job_idempotence_and_fingerprint_invalidation(
     asset_file = _video_file(session, library_root, duration=120.0)
     calls = {"count": 0}
 
-    def fake(source: Path, output_dir: Path, interval: float, duration: float) -> None:
+    def fake(source: Path, output_dir: Path, interval: float, duration: float) -> int:
         calls["count"] += 1
-        _fake_generate_sheets(source, output_dir, interval, duration)
+        return _fake_generate_sheets(source, output_dir, interval, duration)
 
     monkeypatch.setattr(storyboards, "_generate_sheets", fake)
 
@@ -172,6 +173,35 @@ def test_generate_for_file_truncates_cues_to_emitted_sheets(
 
     assert len(payloads) == 25
     assert payloads[-1].endswith("#xywh=1280,720,320,180")
+
+
+def test_generate_for_file_trims_padding_tiles_mid_sheet(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+
+    def short_stream(_source: Path, output_dir: Path, _interval: float, _duration: float) -> int:
+        (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
+        return 17
+
+    monkeypatch.setattr(storyboards, "_generate_sheets", short_stream)
+    result = storyboards.generate_for_file(session, asset_file.id)
+
+    assert result.path is not None
+    payloads = [line for line in result.path.read_text().splitlines() if "#xywh=" in line]
+    assert len(payloads) == 17
+    assert payloads[-1].endswith("#xywh=320,540,320,180")
+
+
+def test_generate_sheets_counts_showinfo_frames_in_same_pass(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_run(args: list[str], **_kwargs: object) -> str:
+        Path(args[-1].replace("%03d", "001")).write_bytes(_jpeg_bytes())
+        return "[Parsed_showinfo_2] n:   0 pts:0\n[Parsed_showinfo_2] n:  16 pts:16"
+
+    monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
+    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 17
 
 
 def test_ffmpeg_runner_times_out_fake_hanging_executable() -> None:
