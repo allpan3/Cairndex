@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { PlayableVideo } from '../../../api/client'
 import { formatClock } from '../../../lib/format'
@@ -6,6 +6,14 @@ import { StoryboardPreview } from './StoryboardPreview'
 import type { PlayerController } from './usePlayer'
 
 type Chapter = PlayableVideo['chapters'][number]
+
+// Coalesce drag scrubbing: a pointer drag emits dozens of `pointermove`s per
+// second, and each `seek()` makes the browser cancel the in-flight byte range
+// request and open a new one. Rate-limit the real seek to one per this window
+// (leading edge + trailing flush), and always commit the exact final position
+// on release. The thumb and storyboard tooltip still track the pointer live, so
+// scrubbing stays smooth while the network sees far fewer requests.
+const SEEK_THROTTLE_MS = 150
 
 // Find the chapter containing a hovered playback time
 function chapterForTime(chapters: Chapter[], time: number): Chapter | null {
@@ -21,7 +29,28 @@ function chapterForTime(chapters: Chapter[], time: number): Chapter | null {
 export function SeekBar({ player, video }: { player: PlayerController; video: PlayableVideo }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
+  // While dragging, drive the fill/thumb from the pointer position (dragPct)
+  // rather than currentTime, which the throttle deliberately lags behind.
+  const [dragPct, setDragPct] = useState<number | null>(null)
+  // Keep the latest player in a ref so a trailing-flush timer never seeks a
+  // stale controller.
+  const playerRef = useRef(player)
+  useEffect(() => {
+    playerRef.current = player
+  }, [player])
+  const scrub = useRef<{ last: number; pending: number | null; timer: number | null }>({
+    last: 0,
+    pending: null,
+    timer: null,
+  })
+  useEffect(
+    () => () => {
+      if (scrub.current.timer != null) clearTimeout(scrub.current.timer)
+    },
+    [],
+  )
   const progress = player.duration > 0 ? (player.currentTime / player.duration) * 100 : 0
+  const displayPct = dragPct ?? progress
 
   const buffered = useMemo(
     () =>
@@ -54,12 +83,50 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     return pct * player.duration
   }
+  const pctFor = (time: number) => (player.duration > 0 ? (time / player.duration) * 100 : 0)
 
-  const scrub = (clientX: number) => player.seek(timeFor(clientX))
+  // Seek now, clearing any pending trailing flush.
+  const commitSeek = (time: number) => {
+    const s = scrub.current
+    if (s.timer != null) {
+      clearTimeout(s.timer)
+      s.timer = null
+    }
+    s.pending = null
+    s.last = performance.now()
+    playerRef.current.seek(time)
+  }
+
+  // Seek on the leading edge, then coalesce the rest of the window into a single
+  // trailing seek at the last requested position.
+  const throttledSeek = (time: number) => {
+    const s = scrub.current
+    const elapsed = performance.now() - s.last
+    if (elapsed >= SEEK_THROTTLE_MS) {
+      commitSeek(time)
+      return
+    }
+    s.pending = time
+    if (s.timer == null) {
+      s.timer = window.setTimeout(() => {
+        s.timer = null
+        if (s.pending != null) commitSeek(s.pending)
+      }, SEEK_THROTTLE_MS - elapsed)
+    }
+  }
 
   const onPointerDown = (event: React.PointerEvent) => {
     event.currentTarget.setPointerCapture(event.pointerId)
-    scrub(event.clientX)
+    const time = timeFor(event.clientX)
+    setDragPct(pctFor(time))
+    commitSeek(time) // instant response to the click / drag start
+  }
+
+  // Commit the exact final position and hand the visual back to currentTime.
+  const endDrag = (event: React.PointerEvent) => {
+    if (dragPct == null) return
+    commitSeek(timeFor(event.clientX))
+    setDragPct(null)
   }
 
   return (
@@ -76,9 +143,14 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
         onPointerDown={onPointerDown}
         onPointerMove={(event) => {
           const time = timeFor(event.clientX)
-          if (event.buttons === 1) scrub(event.clientX)
+          if (event.buttons === 1) {
+            setDragPct(pctFor(time))
+            throttledSeek(time)
+          }
           setHover({ x: event.clientX, time })
         }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         onPointerLeave={() => setHover(null)}
         onKeyDown={(event) => {
           if (event.key === 'ArrowLeft') player.seekBy(-5)
@@ -102,8 +174,8 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
             aria-hidden="true"
           />
         ))}
-        <div className="mv-seek__fill" style={{ width: `${progress}%` }} />
-        <div className="mv-seek__thumb" style={{ left: `${progress}%` }} />
+        <div className="mv-seek__fill" style={{ width: `${displayPct}%` }} />
+        <div className="mv-seek__thumb" style={{ left: `${displayPct}%` }} />
       </div>
       {hover && (
         <div className="mv-seek__tip" style={{ left: hover.x }}>
