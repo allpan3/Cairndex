@@ -8,11 +8,13 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
+from cairndex.main import create_app
 from cairndex.media import playback
 from cairndex.media.playback import _srt_to_vtt, assess_playability
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
 from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
+from cairndex.registry.engine import get_registry_engine, get_registry_sessionmaker
 from cairndex.registry.library_engine import get_library_sessionmaker
 from cairndex.services import bundles as bundle_service
 from cairndex.services import subtitles as sub_service
@@ -163,6 +165,64 @@ def test_stream_releases_db_connection_before_body(
 
     assert len(body) == len(payload)
     assert engine.pool.checkedout() == 0
+
+
+def test_stream_releases_registry_connection_before_body(
+    library_root: Path,
+    session: Session,
+) -> None:
+    """Invariant: streaming must not check out a *registry* connection either.
+
+    ``get_library_access`` used to take the ``get_registry_db`` yield dependency.
+    Yield-dep teardown runs only after the response body finishes — and on a
+    client abort (task cancellation) it does not run at all, stranding the
+    connection until GC. Drag-seeking aborts dozens of in-flight range requests,
+    so the registry QueuePool (size 5 + overflow 10) drained: new gates blocked
+    30s at resolution and ``/stream`` 500ed mid-drag, which the browser's demuxer
+    surfaced as a fatal media error. The fix scopes the registry session inside
+    the (sync, cancellation-immune) dependency itself.
+
+    The cancellation strand can't be reproduced deterministically in-process
+    (refcounting GC returns the connection immediately here; it was verified
+    live with an abort-storm against a real server). What this test locks in is
+    the design that makes the strand impossible: through the real, unoverridden
+    dependency chain, neither pool has a connection checked out once the
+    response begins streaming — there is nothing left for a cancelled body to
+    strand.
+    """
+    with get_registry_sessionmaker()() as reg:
+        library = registry_service.register_existing_library(reg, root_path=str(library_root))
+        reg.commit()
+        library_id = library.id
+
+    payload = b"\x00\x01\x02\x03" * (1024 * 1024)  # 4 MiB
+    (library_root / "big.mp4").write_bytes(payload)
+    bundle = bundle_service.create_bundle(session, title="Big")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="big.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    app = create_app()  # no dependency overrides: the real gate + real pools
+    registry_pool = get_registry_engine().pool
+    with (
+        TestClient(app) as raw_client,
+        raw_client.stream("GET", f"/api/v1/libraries/{library_id}/files/{video.id}/stream") as resp,
+    ):
+        assert resp.status_code == 200
+        # Body not yet consumed: pre-fix the registry connection was pinned
+        # for the whole transfer; post-fix both pools are already drained.
+        assert registry_pool.checkedout() == 0
+        library_engine = get_library_sessionmaker(library).kw["bind"]
+        assert library_engine.pool.checkedout() == 0
+        body = resp.read()
+
+    assert len(body) == len(payload)
+    assert registry_pool.checkedout() == 0
 
 
 # Keep old probed rows valid when M1 metadata keys are absent

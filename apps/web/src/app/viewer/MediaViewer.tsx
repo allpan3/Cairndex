@@ -38,6 +38,14 @@ interface MediaViewerProps {
 // re-attach budget.
 const MAX_NATIVE_RECOVER = 3
 
+// A load that never reaches metadata emits no error event — e.g. the range
+// request wedged on a half-open connection after a proxy/server reset — so the
+// player would sit on a silent black frame forever. If a source is still below
+// HAVE_METADATA after this window, treat it as a stage error: a recovery
+// reload opens a fresh connection, and an exhausted budget surfaces the
+// retryable "Playback interrupted" card instead of a dead player.
+const LOAD_WATCHDOG_MS = 15_000
+
 /** Unified bundle media lightbox for direct-play M2 video and simple images. */
 export function MediaViewer({
   bundleId,
@@ -89,6 +97,12 @@ export function MediaViewer({
   // Bounded native-error recovery budget (see MAX_NATIVE_RECOVER); refunded on a
   // fresh file and on healthy playback progress.
   const nativeRecoverRef = useRef(0)
+  // A native recovery is in flight (decision requested, new source not yet
+  // applied). A dying pipeline can emit several error events in one burst —
+  // and continued drag-seeks on the errored element add more — so without this
+  // guard a single failure could burn the whole budget at once. Mirrors the
+  // HLS path's reattachingRef; cleared when the retried source is applied.
+  const nativeRecoveringRef = useRef(false)
   const hls = useHlsSession({
     fileId: isVideo && videoAvailable ? currentId : null,
     enabled: Boolean(isVideo && videoAvailable && playable),
@@ -124,7 +138,14 @@ export function MediaViewer({
   // A fresh file refunds the native-recovery budget.
   useEffect(() => {
     nativeRecoverRef.current = 0
+    nativeRecoveringRef.current = false
   }, [currentId])
+  // The retried decision resolved into a (new) source object and the engine
+  // reloaded — the recovery window is over. If this reload is also broken, its
+  // own error event must count against the budget again.
+  useEffect(() => {
+    nativeRecoveringRef.current = false
+  }, [source])
   const lastTimeRef = useRef(0)
   useEffect(() => {
     const delta = player.currentTime - lastTimeRef.current
@@ -197,10 +218,16 @@ export function MediaViewer({
     // error — e.g. a range read that stalls/drops while seeking into an
     // unbuffered region — would otherwise dead-end here. Reload the source at
     // the current playhead a bounded number of times before giving up.
-    if (source?.kind !== 'hls' && nativeRecoverRef.current < MAX_NATIVE_RECOVER) {
-      nativeRecoverRef.current += 1
-      retryPlayback()
-      return
+    if (source?.kind !== 'hls') {
+      // Swallow the extra error events of a single failure burst while the
+      // recovery decision is in flight (see nativeRecoveringRef).
+      if (nativeRecoveringRef.current) return
+      if (nativeRecoverRef.current < MAX_NATIVE_RECOVER) {
+        nativeRecoverRef.current += 1
+        nativeRecoveringRef.current = true
+        retryPlayback()
+        return
+      }
     }
     if (currentId) setFailedFileId(currentId)
   }, [currentId, reattach, retryPlayback, source?.kind])
@@ -208,9 +235,49 @@ export function MediaViewer({
   // and re-decide at the current playhead.
   const retryFailedPlayback = useCallback(() => {
     nativeRecoverRef.current = 0
+    nativeRecoveringRef.current = false
     setFailedFileId(null)
     retryPlayback()
   }, [retryPlayback])
+  // Load watchdog (see LOAD_WATCHDOG_MS): a wedged load produces no error
+  // event, so poke the stage-error path if metadata never arrives. Kept in a
+  // ref so the effect doesn't re-arm on every handler identity change.
+  const handleStageErrorRef = useRef(handleStageError)
+  useEffect(() => {
+    handleStageErrorRef.current = handleStageError
+  }, [handleStageError])
+  useEffect(() => {
+    const video = videoElement
+    if (!video || !source) return
+    let timer: number | null = null
+    const disarm = () => {
+      if (timer != null) {
+        window.clearTimeout(timer)
+        timer = null
+      }
+    }
+    const arm = () => {
+      disarm()
+      timer = window.setTimeout(() => {
+        timer = null
+        if (video.readyState < HTMLMediaElement.HAVE_METADATA) handleStageErrorRef.current()
+      }, LOAD_WATCHDOG_MS)
+    }
+    // The engine may already have called load() (loadstart fired before this
+    // effect ran), so arm unconditionally when metadata is still missing.
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) arm()
+    video.addEventListener('loadstart', arm)
+    video.addEventListener('loadedmetadata', disarm)
+    // A real error already reaches the stage-error path via the element's
+    // error handler; the watchdog must not fire a second time on top of it.
+    video.addEventListener('error', disarm)
+    return () => {
+      disarm()
+      video.removeEventListener('loadstart', arm)
+      video.removeEventListener('loadedmetadata', disarm)
+      video.removeEventListener('error', disarm)
+    }
+  }, [source, videoElement])
 
   const step = useCallback(
     (delta: number) => {

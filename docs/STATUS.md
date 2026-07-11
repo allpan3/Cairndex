@@ -4,6 +4,58 @@
 
 Branch `fix/playback-pool-exhaustion` (off `main`).
 
+### Follow-up pass: registry-pool abort leak (actual root cause) + load watchdog
+
+After the first three fixes below, sustained scrubbing still eventually broke
+playback. Reproduced live against a real 6.8 GB 4K file (NAS-backed library):
+the drag's aborted range requests produced `/stream` **500s**, which Chrome's
+demuxer surfaced as fatal `PIPELINE_ERROR_READ` media errors, draining the
+native-recovery budget.
+
+Root cause (two mechanisms, both verified empirically on FastAPI 0.138):
+
+1. `get_library_access` still took the `get_registry_db` **yield** dependency.
+   Yield-dep teardown runs only after the response body finishes — and when a
+   client abort cancels the request task, the teardown **never runs at all**,
+   stranding the registry connection until GC. Drag-seeking aborts dozens of
+   in-flight range requests → the registry QueuePool (5+10) drained → new gates
+   blocked 30 s at resolution → 500s mid-drag. A 600-request abort-storm against
+   a real server produced **240** QueuePool tracebacks pre-fix and **zero**
+   post-fix.
+2. A range request wedged on a half-open connection emits no media `error`
+   event, so a recovery reload could stall at `readyState 0` forever — a silent
+   black frame with no card (observed live).
+
+Changes in this pass:
+
+- **Backend.** `get_registry_access`/`RegistryAccess` in `api/deps.py`:
+  `get_library_access` now opens the registry session imperatively inside the
+  sync dependency (cancellation-immune) and closes it before returning; no
+  yield dependency remains in the streaming gate chain. The other burst-aborted
+  `FileResponse` routes — `/preview`, `/storyboard.vtt`,
+  `/storyboard/{sheet}.jpg`, `/subtitles/{id}/vtt` (`api/v1/playback.py`) and
+  bundle/file thumbnails (`api/v1/bundles.py`) — moved to the same scoped
+  `LibraryAccess` gate. New regression test
+  `test_stream_releases_registry_connection_before_body` drives the real,
+  unoverridden dependency chain and asserts neither pool has a connection
+  checked out once the body streams (the cancellation strand itself is masked
+  in-process by refcounting GC; it was proven with the live abort-storm A/B).
+- **Frontend.** `MediaViewer`: 15 s **load watchdog** (`LOAD_WATCHDOG_MS`) — a
+  source that never reaches `HAVE_METADATA` is treated as a stage error, so the
+  bounded recovery path reloads on a fresh connection instead of freezing;
+  verified live against a never-responding server (wedge → auto-reload →
+  playing). Plus a **burst guard** (`nativeRecoveringRef`, mirroring the HLS
+  `reattachingRef`): extra error events during an in-flight recovery no longer
+  each consume a budget slot.
+
+Verification: backend `ruff`/`mypy`/`pytest` (**390 passed**, +1); frontend
+`lint`/`format:check`/`typecheck`/`test` (**69 passed**); live e2e — a 120 s
+automated scrub of the real 4K file through the real dev stack recovered from a
+dev-proxy 502 and the wedged-load case automatically; abort-storm A/B as above.
+Note for local testing: uvicorn's worker can wedge if its stdout pipe stops
+draining while it spews tracebacks (SIGTERM-immune, needs SIGKILL) — another
+reason the pre-fix traceback storms could hard-hang the server.
+
 Fixes a viewer hang where dragging the scrub bar eventually wedged playback with
 repeated 30s `QueuePool` timeout 500s and a stuck "Preparing playback…" screen.
 
