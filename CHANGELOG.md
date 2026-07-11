@@ -17,7 +17,8 @@ grouped under `Unreleased` until the first tagged release.
   loop is session-only and takes precedence over bundle auto-advance; frame step
   now uses `<`/`>` and speed uses `,`/`.`. Resolution caps live in a foldable
   submenu built from the probed source height, exposing 2160p/1440p for
-  applicable files while omitting tiers above the source.
+  applicable files while omitting tiers above the source. Settings section
+  titles share one compact uppercase visual hierarchy.
   The settings menu can set the current server-decoded video frame as the file
   and bundle cover, or clear it back to automatic extraction. The new additive
   `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are
