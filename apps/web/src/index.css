@@ -2860,6 +2860,19 @@ code {
 .media-fallback__meta {
   font-size: 12px;
 }
+.media-fallback__action {
+  margin-top: 4px;
+  padding: 6px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  cursor: pointer;
+}
+.media-fallback__action:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
 
 /* --- Mode switch (Bundle Browser / File Browser) ---------------------------- */
 .sidebar__library {

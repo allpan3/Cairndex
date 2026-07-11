@@ -360,6 +360,16 @@ function Stage({
   ) {
     return <div className="mv-state">Preparing playback…</div>
   }
+  if (file.media_kind === 'video' && !failed && hls.status === 'unavailable') {
+    return (
+      <FallbackCard
+        file={file}
+        message={hls.reason}
+        heading="Playback server is unavailable."
+        action={{ label: 'Try again', onClick: hls.retry }}
+      />
+    )
+  }
   if (file.media_kind === 'video' && !failed && hls.status === 'error') {
     return (
       <FallbackCard
@@ -462,16 +472,18 @@ function FallbackCard({
   file,
   message,
   heading = file.display_title,
+  action,
 }: {
   file: FileRead
   message: string
   heading?: string
+  action?: { label: string; onClick: () => void }
 }) {
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
   const dur = formatDuration(meta.duration as number)
   const metaText = `${file.role} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
-  return <MediaFallback heading={heading} message={message} meta={metaText} />
+  return <MediaFallback heading={heading} message={message} meta={metaText} action={action} />
 }
 
 /** Filesystem-safe-ish basename for downloaded PNG snapshots. */

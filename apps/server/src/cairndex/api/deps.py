@@ -1,4 +1,6 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
 
@@ -78,6 +80,73 @@ def get_library_session(
 
 
 LibrarySession = Annotated[Session, Depends(get_library_session)]
+
+
+@dataclass
+class LibraryAccess:
+    """An authorized library handle that does NOT pin a DB connection.
+
+    ``LibrarySession`` is a ``yield`` dependency, so FastAPI keeps its content
+    connection — and the registry connection it depends on — checked out of the
+    pool until the *response body finishes*. For a streaming ``FileResponse``
+    (video range requests, HLS segments, full-res images) that means two
+    connections are held for the entire byte transfer. Under drag-seek, the
+    browser fires many overlapping range requests, and the held connections
+    exhaust the per-library and registry QueuePools; new requests then block for
+    ``pool_timeout`` (30s) and fail with a ``QueuePool`` timeout 500.
+
+    This handle does the same registry-resolution + passphrase-lock gate up
+    front, but hands back a *short-lived* ``session()`` scope the caller opens
+    only to resolve the path and closes **before** constructing the response.
+    No connection is held while the bytes stream.
+    """
+
+    open_session: Callable[[], AbstractContextManager[Session]]
+
+    def session(self) -> AbstractContextManager[Session]:
+        """A transactional content session for this library (commit/rollback/close)."""
+        return self.open_session()
+
+
+def get_library_access(
+    library_id: str,
+    registry: RegistryDbSession,
+    session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+) -> LibraryAccess:
+    """Gate library access for streaming routes without holding a connection.
+
+    Same resolution + lock checks as ``get_library_session`` (404 for an
+    unavailable library, 401 for a locked one), but returns a ``LibraryAccess``
+    whose ``session()`` the caller scopes narrowly around path resolution, so
+    the streaming response body runs with no DB connection checked out. See
+    ``LibraryAccess`` for why this matters.
+    """
+    library = registry_service.get_library(registry, library_id)  # 404 if unknown
+    if library.status != LibraryStatus.AVAILABLE:
+        raise NotFoundError(f"library {library_id!r} is currently unavailable")
+
+    root = Path(library.root_path)
+    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
+        raise AuthRequiredError(f"library {library_id!r} is locked")
+
+    maker = get_library_sessionmaker(library)
+
+    @contextmanager
+    def _open() -> Iterator[Session]:
+        session = maker()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return LibraryAccess(open_session=_open)
+
+
+LibraryAccessDep = Annotated[LibraryAccess, Depends(get_library_access)]
 
 
 # Optimistic-concurrency precondition (ADR-0008 phase 9). A client sends the

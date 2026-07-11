@@ -1,5 +1,48 @@
 # Project status
 
+## In review: playback DB-pool exhaustion fix
+
+Branch `fix/playback-pool-exhaustion` (off `main`).
+
+Fixes a viewer hang where dragging the scrub bar eventually wedged playback with
+repeated 30s `QueuePool` timeout 500s and a stuck "Preparing playback…" screen.
+
+Root cause: media byte-streaming routes took their content session via the
+`LibrarySession` `yield` dependency, which FastAPI holds open until the response
+body finishes. A streaming `FileResponse` therefore pinned a per-library **and**
+registry connection for the whole transfer; overlapping drag-seek range requests
+drained both QueuePools (SQLAlchemy defaults: size 5 + overflow 10, 30s timeout),
+so the next `playback-decision` blocked on a registry connection and 500ed.
+
+Changes:
+
+- **Backend (essential).** New `LibraryAccess` dependency + `get_library_access`
+  in `apps/server/src/cairndex/api/deps.py`: same registry-resolution +
+  passphrase-lock gate as `get_library_session`, but returns a handle whose
+  short-lived `session()` scope the endpoint closes *before* returning the
+  `FileResponse`. `stream_file`, `file_content`
+  (`api/v1/playback.py`), and the HLS `playback_session_artifact`
+  (`api/v1/playback_sessions.py`; it never used the session — pure auth gate)
+  now use it, so no DB connection is checked out while bytes stream. Test
+  override added in `tests/conftest.py`; regression test
+  `test_stream_releases_db_connection_before_body` asserts zero checked-out
+  connections on the real per-library pool mid-stream (verified failing before
+  the fix).
+- **Frontend (resilience).** `useHlsSession` now caps the decision request at a
+  finite `DECISION_TIMEOUT_MS` (30s) and adds a distinct `'unavailable'` status
+  + `retry()`. On timeout or a 5xx, a non-degradable video shows a retryable
+  "Playback server is unavailable" card (`MediaViewer`/`MediaFallback`);
+  directly-playable sources still degrade to the native stream.
+
+Verification: backend `ruff`/`mypy`/`pytest` green (**389 passed**, +1);
+frontend `lint`/`format:check`/`typecheck`/`test` (**67 passed**, +3)/`build`;
+Playwright `player.spec.ts` (**15 passed**) exercises real MP4/MKV-remux
+streaming end to end through the new dependency.
+
+Not done (optional, deferred): coalescing/debouncing drag seeks to reduce
+redundant range requests — a resilience nicety, not required now that the pool
+is no longer exhausted.
+
 ## In review: media-player M7 — web HLS integration
 
 Branch `feat/web-hls` (off `main`, after the M6 playback-sessions merge #7).
