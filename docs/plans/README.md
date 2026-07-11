@@ -7,8 +7,12 @@
 
 Four major initiatives. The first three were planned together because they
 share most of their server-side media foundations; the fourth (write mode)
-is its own server-side track, **owner-prioritized directly after the core
-video player** and ahead of the desktop/TV clients.
+is its own server-side track. Owner re-prioritized 2026-07-10 (after plan 1
+M7 merged): **plan 1 M9 (player polish) → macOS desktop shell (plan 3) →
+write mode (plan 4, so media can be dragged into the app) → Android client
+(plan 2)**. Plan 1 M8/M10/M11 moved to the future bucket. A Linux desktop
+app is a stated future want — the desktop shell must be architected for
+cross-platform reuse (plan 3 §2–§3), not as a macOS-only codebase.
 
 | # | Plan | Doc |
 |---|------|-----|
@@ -110,20 +114,23 @@ older/newer clients degrade gracefully instead of version-matching.
 
 ## Recommended build order across all three plans
 
+Re-sequenced 2026-07-10 (owner decision, after M1–M7 shipped; the prior
+order is in git history). Current order:
+
 | Phase | Work | Why this order |
 |-------|------|----------------|
-| A | Server foundations 1–6 (everything except HLS + pairing) | Unblocks all clients; each item is a small reviewable slice |
-| B | Web player v2 + image viewer v2 (plan 1) | Validates the new APIs with the cheapest client; immediate daily-use value |
-| C | Library write mode (plan 4) | **Owner priority #2**, right after the core player; independent server track (gate → journal → exports-to-library → move → trash) |
-| D | HLS sessions + web integration (plan 1 §6) | Biggest server risk; web is the client that needs it most. Independent of C — swap ahead if unplayable-format pain (MKV) bites before write mode does |
-| E | Desktop Tauri shell (plan 3) | Small increment over B; delivers open-with/reveal/drag-out (ADR-0007); drag-in copy lights up once plan 4 W5 exists |
-| F | Android TV client (plan 2), pairing first | Largest new surface; by now every server API it needs exists and is proven |
-| G | Multi-video wall: TV first, then web/desktop parity | Depends on stable single-player foundations on each platform |
+| A ✅ | Server foundations 1–7 (probe, storyboards, previews, progress, decisions, HLS) | Shipped as plan 1 M1–M7 |
+| B ✅ | Web player v2 + image viewer v2 + HLS integration (plan 1 M2–M7) | Merged through PR #9 |
+| C | Plan 1 **M9 player polish** | Last near-term web-player slice; every later client (desktop shell renders the same SPA) inherits it |
+| D | Server: **pairing + device tokens** (plan 2 §4 / T0) | Pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it; small additive server slice + web Devices page |
+| E | **macOS desktop shell** (plan 3 D1–D5) | Owner priority. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3) |
+| F | **Library write mode** (plan 4), re-ordered W0 → W1 → W5 | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). W3/W4 (move/trash) follow; W2 waits on M11 (deferred) |
+| G | **Android client** (plan 2 T1–T7) | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D) |
+| Future | Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (exports) + plan 4 W2, Linux/Windows shells, TV wall follow-ups | Deferred by owner 2026-07-10 |
 
-Phases are sequenced by dependency, not by strict calendar; C and D are
-independent server tracks and can interleave with each other and with E. Each
-phase decomposes into the milestone slices listed in its plan and lands via
-normal branch/PR discipline.
+Phases are sequenced by dependency, not by strict calendar. Each phase
+decomposes into the milestone slices listed in its plan and lands via normal
+branch/PR discipline.
 
 ## Out of scope for all three plans
 

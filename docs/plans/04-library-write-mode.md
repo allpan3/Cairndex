@@ -250,6 +250,14 @@ temp-file staging, partial-upload cleanup).
 | W5 | Import external | §6 upload op; plan 3 drag-in copy flow lights up |
 | W6 | Hardening | EXDEV/case-only edge cases, retention config, journal history UI, deployment/backup docs, perf pass on bulk ops |
 
+Owner re-sequenced 2026-07-10 (milestone ids kept stable, order changed):
+build **W0 → W1 → W5** first — the driving use case is dragging media from
+Finder into the desktop app (plan 3 §6), which needs only the gate, the
+journal, and import-external. W3 (move) and W4 (trash) follow; W2 waits on
+plan 1 M11 (media exports), which the owner deferred to the future bucket;
+W6 closes the track. W5's dependencies are genuinely just W0+W1 — it shares
+the journal/validator machinery but touches neither move nor trash paths.
+
 Testing per slice: unit — validator rejections (traversal/symlink/absolute on
 src *and* dest), collision policies, trash round-trip preserving
 `AssetFile.id` + cover/subtitle links, journal crash-recovery reconciliation
