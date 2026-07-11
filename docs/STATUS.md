@@ -27,7 +27,8 @@ tables, this file, CHANGELOG. No code changes; no gates run (docs-only).
 color/tone, not brightness sliders); image slideshow deferred. M9 is now
 interaction polish: right-click play/pause, drag-scrub surviving cursor
 leaving the track (bug — suspect control-bar auto-hide breaking pointer
-capture), configurable seek step, pitch-preserve, file loop, set-cover-to-
+capture), configurable seek step, pitch-preserve, file loop, frame-step
+rebound to `<`/`>` with speed moving to `,`/`.`, set-cover-to-
 current-frame (plan 1 §13.1), storyboard padding-tile trim. New **M12 —
 Eagle-style thumbnail hover video preview** (plan 1 §13.2: dwell-to-play
 muted, cursor-x skim + position bar, time + sound toggle, storyboard-skim
