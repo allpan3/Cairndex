@@ -994,9 +994,12 @@ button {
 }
 .list-row__thumb {
   width: 48px;
-  height: 32px;
+  height: 24px;
   border-radius: 3px;
   background: var(--bg-2) center/cover no-repeat;
+}
+.mv-menu__submenu-toggle.is-open {
+  height: 30px;
 }
 .list-row__title {
   overflow: hidden;
