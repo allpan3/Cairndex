@@ -12,6 +12,8 @@ from cairndex.media import playback
 from cairndex.media.playback import _srt_to_vtt, assess_playability
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
 from cairndex.registry import library_package as pkg
+from cairndex.registry import services as registry_service
+from cairndex.registry.library_engine import get_library_sessionmaker
 from cairndex.services import bundles as bundle_service
 from cairndex.services import subtitles as sub_service
 
@@ -113,6 +115,54 @@ def test_file_content_serves_image_with_guessed_mime(
 
     missing = client.get(f"{base}/files/does-not-exist/content")
     assert missing.status_code == 404
+
+
+def test_stream_releases_db_connection_before_body(
+    isolated_client: TestClient,
+    registry_session: Session,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+) -> None:
+    """Regression: the content session must be released before the body streams.
+
+    A ``yield`` session dependency stays checked out until the response body
+    finishes, so a streaming ``FileResponse`` used to pin a per-library (and
+    registry) connection for the whole transfer. Under drag-seek, overlapping
+    range requests then exhausted the QueuePool and new requests timed out (30s)
+    with a ``QueuePool`` 500. The fix scopes resolution and releases the
+    connection before streaming — so mid-transfer, none is checked out.
+    """
+    # A large body so the FileResponse streams in chunks and the response can be
+    # held open mid-transfer (small bodies buffer and complete before we sample).
+    payload = b"\x00\x01\x02\x03" * (1024 * 1024)  # 4 MiB
+    (library_root / "big.mp4").write_bytes(payload)
+    bundle = bundle_service.create_bundle(session, title="Big")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="big.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+
+    # The pool of the *real* per-library engine that isolated_client resolves to.
+    library = registry_service.get_library(registry_session, library_id)
+    engine = get_library_sessionmaker(library).kw["bind"]
+
+    base = f"/api/v1/libraries/{library_id}"
+    assert engine.pool.checkedout() == 0
+
+    with isolated_client.stream("GET", f"{base}/files/{video.id}/stream") as resp:
+        assert resp.status_code == 200
+        # Body not yet consumed: pre-fix this was 1 (session pinned for the whole
+        # transfer); post-fix the connection is already back in the pool.
+        assert engine.pool.checkedout() == 0
+        body = resp.read()
+
+    assert len(body) == len(payload)
+    assert engine.pool.checkedout() == 0
 
 
 # Keep old probed rows valid when M1 metadata keys are absent

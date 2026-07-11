@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibrarySession
+from cairndex.api.deps import LibraryAccessDep, LibrarySession
 from cairndex.api.schemas.playback import (
     AudioStreamRead,
     ClientCapabilities,
@@ -389,13 +389,15 @@ def playback_session_artifact(
     file_id: str,
     session_id: str,
     artifact: str,
-    db: LibrarySession,
+    access: LibraryAccessDep,
     manager: SessionManagerDep,
 ) -> Response:
     """Serve the session playlist, its init segment, or a media segment.
 
-    ``db`` gates access with the same ``LibrarySession`` dependency as direct
-    streaming; the bytes are throwaway session state, so ``no-store``.
+    ``access`` gates the request with the same registry/lock checks as direct
+    streaming, but without pinning a DB connection while a segment streams — the
+    manager serves the bytes from session state, so no content session is
+    opened at all. Bytes are throwaway session state, so ``no-store``.
     """
     no_store = {"Cache-Control": "no-store"}
     if artifact == "index.m3u8":

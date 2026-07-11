@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from cairndex.api.deps import LibrarySession
+from cairndex.api.deps import LibraryAccessDep, LibrarySession
 from cairndex.api.schemas.playback import (
     ContinueWatchingItem,
     ContinueWatchingPage,
@@ -185,23 +185,34 @@ def continue_watching(
 
 
 @router.get("/files/{file_id}/stream")
-def stream_file(file_id: str, db: LibrarySession) -> FileResponse:
-    """Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range)."""
-    path, asset_file = playback.resolve_video_path(db, file_id)
-    cap = playback.assess_playability(asset_file)
-    return FileResponse(str(path), media_type=cap.mime_type, filename=asset_file.original_filename)
+def stream_file(file_id: str, access: LibraryAccessDep) -> FileResponse:
+    """Range-streamed video (FileResponse emits 206/Accept-Ranges/Content-Range).
+
+    The content session is scoped to path resolution and released *before* the
+    response streams, so overlapping drag-seek range requests don't pin
+    connections and exhaust the pool (see ``LibraryAccess``).
+    """
+    with access.session() as db:
+        path, asset_file = playback.resolve_video_path(db, file_id)
+        cap = playback.assess_playability(asset_file)
+        media_type, filename = cap.mime_type, asset_file.original_filename
+    return FileResponse(str(path), media_type=media_type, filename=filename)
 
 
 @router.get("/files/{file_id}/content")
-def file_content(file_id: str, db: LibrarySession) -> FileResponse:
+def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve a file's original bytes (e.g. full-resolution images for the viewer).
 
     Path-safe and read-only; FileResponse honors HTTP Range so large images and
-    media stream incrementally. The mime type is guessed from the filename.
+    media stream incrementally. The mime type is guessed from the filename. The
+    content session is released before the response body streams (see
+    ``LibraryAccess``).
     """
-    path, asset_file = playback.resolve_file_path(db, file_id)
-    media_type = mimetypes.guess_type(asset_file.original_filename)[0] or "application/octet-stream"
-    return FileResponse(str(path), media_type=media_type, filename=asset_file.original_filename)
+    with access.session() as db:
+        path, asset_file = playback.resolve_file_path(db, file_id)
+        filename = asset_file.original_filename
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return FileResponse(str(path), media_type=media_type, filename=filename)
 
 
 # Serve a lazily generated WebP image preview derivative

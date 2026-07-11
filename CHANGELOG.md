@@ -10,6 +10,27 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Playback DB-pool exhaustion under drag-seek.** Media byte-streaming routes
+  (`/files/{id}/stream`, `/files/{id}/content`, HLS session artifacts) held a
+  per-library **and** registry DB connection for the *entire* response body,
+  because their `LibrarySession` was a `yield` dependency FastAPI keeps open
+  until the last byte is sent. Dragging the scrub bar fires many overlapping
+  range requests, so the held connections drained the QueuePool; new requests
+  (including the next `playback-decision`) then blocked for the 30s pool timeout
+  and failed with a `QueuePool` 500, leaving the viewer stuck on "Preparing
+  playback…". A new `LibraryAccess` dependency does the same registry/lock gate
+  but hands back a short-lived `session()` scope that resolves the path and
+  releases the connection *before* the response streams — so no connection is
+  pinned during transfer. A regression test asserts the per-library pool has
+  zero checked-out connections mid-stream.
+
+- **Finite playback-decision timeout.** The web player capped an unanswered
+  `playback-decision` request (30s) instead of spinning on "Preparing
+  playback…" indefinitely. On timeout — or a 5xx from an overloaded server — a
+  non-degradable video now shows a distinct, retryable "Playback server is
+  unavailable" card; directly-playable sources still fall back to the native
+  stream.
+
 - **Immediate library switching.** Changing the active library now removes the
   previous library's TanStack content queries before remounting the workspace,
   while preserving the global library registry and library-keyed auth caches.

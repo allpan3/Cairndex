@@ -23,8 +23,18 @@ const HEALTHY_REFUND_S = 10
 // while the superseded session is still being torn down; retry the decision once
 // after a short delay before surfacing a capacity error.
 const CAPACITY_RETRY_MS = 350
+// Cap how long we wait on a playback decision before giving up. Without this the
+// UI could sit on "Preparing playback…" indefinitely when the server is wedged
+// (e.g. an exhausted DB pool makes the request block on a connection). On expiry
+// we abort and surface an explicit "server unavailable" card the user can retry,
+// instead of a spinner that never resolves.
+const DECISION_TIMEOUT_MS = 30_000
+const PLAYBACK_UNAVAILABLE_REASON =
+  'The playback server is unavailable. It may be overloaded or restarting — try again in a moment.'
 
-export type HlsStatus = 'idle' | 'deciding' | 'ready' | 'error'
+// 'unavailable' is a distinct terminal state from 'error': the source may be
+// perfectly playable, but the server could not be reached to decide/prepare it.
+export type HlsStatus = 'idle' | 'deciding' | 'ready' | 'error' | 'unavailable'
 
 /** User-selectable switches that force a fresh decision + session (§6.3). */
 export interface SwitchParams {
@@ -68,6 +78,8 @@ export interface HlsSessionState {
   reattach: () => boolean
   /** Signal that playback resumed so the re-attach budget can be refunded. */
   notePlaying: () => void
+  /** Re-run the decision from the start (e.g. after an 'unavailable' timeout). */
+  retry: () => void
 }
 
 /**
@@ -150,6 +162,13 @@ export function useHlsSession({
     }
 
     const controller = new AbortController()
+    // Distinguishes a timeout abort (surface 'unavailable') from a teardown abort
+    // (switch/unmount — stay silent). Set just before we abort on the deadline.
+    let timedOut = false
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, DECISION_TIMEOUT_MS)
     const startAt = startAtRef.current
     const active = paramsRef.current
     setStatus('deciding')
@@ -231,8 +250,9 @@ export function useHlsSession({
           void deletePlaybackSession(replaced.fileId, replaced.sessionId).catch(() => {})
         }
       })
-      .catch(() => {
-        if (controller.signal.aborted) return
+      .catch((err: unknown) => {
+        // A teardown abort (switch/unmount) stays silent; a timeout abort does not.
+        if (controller.signal.aborted && !timedOut) return
         reattachingRef.current = false
         // The decision request failed outright. When we can degrade to the
         // manifest's direct path, we are replacing any prior session with native
@@ -244,12 +264,24 @@ export function useHlsSession({
           teardownLive()
           setSource(nativeSource(directStreamUrl))
           setStatus('ready')
+        } else if (timedOut || (err instanceof HttpError && err.status >= 500)) {
+          // The client deadline elapsed, or the server reported it could not
+          // service the request (e.g. an exhausted DB pool → QueuePool 500).
+          // Surface a distinct, retryable "server unavailable" state instead of
+          // the format-oriented "can't play" card.
+          liveSessionRef.current = null
+          setReason(PLAYBACK_UNAVAILABLE_REASON)
+          setStatus('unavailable')
         } else {
           setStatus('error')
         }
       })
+      .finally(() => window.clearTimeout(timeoutId))
 
-    return () => controller.abort()
+    return () => {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [fileId, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
 
   // Tear down the live session on unmount; beacon it on pagehide (POST-only).
@@ -283,6 +315,15 @@ export function useHlsSession({
     }
   }, [])
 
+  // Re-run the decision from scratch (start at 0), used by the 'unavailable'
+  // retry affordance. Unlike reattach it does not consume the re-attach budget
+  // and applies even with no live session.
+  const retry = useCallback(() => {
+    reattachingRef.current = false
+    startAtRef.current = Math.max(0, getCurrentTimeRef.current())
+    setEpoch((current) => current + 1)
+  }, [])
+
   const reattach = useCallback((): boolean => {
     // A re-attach is already in flight — swallow the extra stage error(s) that a
     // single failure burst produces instead of spending another budget slot or
@@ -311,5 +352,6 @@ export function useHlsSession({
     setParam,
     reattach,
     notePlaying,
+    retry,
   }
 }

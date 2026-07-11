@@ -212,3 +212,51 @@ test('retries a capacity (429) decision once before surfacing it', async () => {
   })
   expect(calls).toBe(2)
 })
+
+test('a server error on a non-degradable decision surfaces an unavailable state', async () => {
+  // A remux/transcode file (not directly playable) whose decision fails with a
+  // 5xx — e.g. the server's DB pool is exhausted — must show the distinct
+  // "server unavailable" card, not the format "can't play" card.
+  mocks.requestPlaybackDecision.mockRejectedValue(new mocks.HttpError(500))
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.status).toBe('unavailable'))
+  expect(result.current.reason).toMatch(/unavailable/i)
+})
+
+test('an unanswered decision times out to a retryable unavailable state', async () => {
+  vi.useFakeTimers()
+  try {
+    // A decision that never resolves until its request is aborted (as fetch does
+    // when the client deadline fires).
+    mocks.requestPlaybackDecision.mockImplementation(
+      (_id: string, _payload: unknown, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+    const { result } = render('f1')
+
+    // Before the deadline: still preparing.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000)
+    })
+    expect(result.current.status).toBe('deciding')
+
+    // Past the deadline: aborts and surfaces the unavailable card.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000)
+    })
+    expect(result.current.status).toBe('unavailable')
+    expect(result.current.reason).toMatch(/unavailable/i)
+
+    // Retrying re-runs the decision; a now-healthy server plays.
+    mocks.requestPlaybackDecision.mockResolvedValueOnce(remuxDecision('s-retry'))
+    await act(async () => {
+      result.current.retry()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.source?.src).toBe('/s/s-retry/index.m3u8')
+  } finally {
+    vi.useRealTimers()
+  }
+})
