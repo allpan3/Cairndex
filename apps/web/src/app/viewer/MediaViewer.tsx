@@ -30,6 +30,14 @@ interface MediaViewerProps {
   onClose: () => void
 }
 
+// A native progressive video has no HLS session to re-attach, so a transient
+// media error (a dropped/slow range read while seeking into an unbuffered
+// region — common on network storage or heavy 4K decode) would otherwise
+// dead-end on the unplayable card with no way back. Reload the source at the
+// current playhead this many times before giving up, mirroring the HLS
+// re-attach budget.
+const MAX_NATIVE_RECOVER = 3
+
 /** Unified bundle media lightbox for direct-play M2 video and simple images. */
 export function MediaViewer({
   bundleId,
@@ -78,6 +86,9 @@ export function MediaViewer({
   const caps = useMemo(() => getClientCapabilities(), [])
   const liveVideoRef = useRef<HTMLVideoElement | null>(null)
   const getCurrentTime = useCallback(() => liveVideoRef.current?.currentTime ?? 0, [])
+  // Bounded native-error recovery budget (see MAX_NATIVE_RECOVER); refunded on a
+  // fresh file and on healthy playback progress.
+  const nativeRecoverRef = useRef(0)
   const hls = useHlsSession({
     fileId: isVideo && videoAvailable ? currentId : null,
     enabled: Boolean(isVideo && videoAvailable && playable),
@@ -110,11 +121,20 @@ export function MediaViewer({
   // small forward delta means real playback, whereas the `play` intent event or
   // a re-attach seek must not reset it (else a broken stream re-decides forever).
   const notePlaying = hls.notePlaying
+  // A fresh file refunds the native-recovery budget.
+  useEffect(() => {
+    nativeRecoverRef.current = 0
+  }, [currentId])
   const lastTimeRef = useRef(0)
   useEffect(() => {
     const delta = player.currentTime - lastTimeRef.current
     lastTimeRef.current = player.currentTime
-    if (delta > 0 && delta < 1.5) notePlaying()
+    // Healthy forward progress refunds both recovery budgets so a later,
+    // unrelated glitch still gets its full allotment of retries.
+    if (delta > 0 && delta < 1.5) {
+      notePlaying()
+      nativeRecoverRef.current = 0
+    }
   }, [notePlaying, player.currentTime])
   // A video plays once the decision produced a source (native or HLS); this,
   // not the manifest's direct-only `playable` flag, gates the video UI in M7.
@@ -168,14 +188,29 @@ export function MediaViewer({
   }, [bundleId, playableDuration, playableFileId, player, qc])
   const visibleResume =
     resumeNotice && resumeNotice.fileId === playable?.file_id ? resumeNotice.position : null
-  const { reattach } = hls
+  const { reattach, retry: retryPlayback } = hls
   const handleStageError = useCallback(() => {
     // An HLS session that idled out (long pause) or hit an hls.js fatal error
-    // re-attaches transparently at the current playhead; only a non-recoverable
-    // source falls through to the "can't play" card.
+    // re-attaches transparently at the current playhead.
     if (reattach()) return
+    // Native progressive playback has no session to re-attach. A transient media
+    // error — e.g. a range read that stalls/drops while seeking into an
+    // unbuffered region — would otherwise dead-end here. Reload the source at
+    // the current playhead a bounded number of times before giving up.
+    if (source?.kind !== 'hls' && nativeRecoverRef.current < MAX_NATIVE_RECOVER) {
+      nativeRecoverRef.current += 1
+      retryPlayback()
+      return
+    }
     if (currentId) setFailedFileId(currentId)
-  }, [currentId, reattach])
+  }, [currentId, reattach, retryPlayback, source?.kind])
+  // Manually recover from the failed card: clear the failure, refund the budget,
+  // and re-decide at the current playhead.
+  const retryFailedPlayback = useCallback(() => {
+    nativeRecoverRef.current = 0
+    setFailedFileId(null)
+    retryPlayback()
+  }, [retryPlayback])
 
   const step = useCallback(
     (delta: number) => {
@@ -283,6 +318,7 @@ export function MediaViewer({
             videoActive={videoActive}
             hls={hls}
             onError={handleStageError}
+            onRetryFailed={retryFailedPlayback}
           />
         )}
       </div>
@@ -320,6 +356,7 @@ function Stage({
   videoActive,
   hls,
   onError,
+  onRetryFailed,
 }: {
   file: FileRead
   playable: PlayableVideo | null
@@ -331,9 +368,22 @@ function Stage({
   videoActive: boolean
   hls: HlsSessionState
   onError: () => void
+  onRetryFailed: () => void
 }) {
   if (file.availability !== 'available') {
     return <FallbackCard file={file} message="This file is missing on disk." />
+  }
+  // A video whose playback errored out (after exhausting auto-recovery) — offer a
+  // manual retry that reloads at the current playhead instead of a dead end.
+  if (file.media_kind === 'video' && failed) {
+    return (
+      <FallbackCard
+        file={file}
+        heading="Playback interrupted."
+        message="The video stopped unexpectedly — this can happen after seeking into a part that hasn’t loaded yet. Try again to resume."
+        action={{ label: 'Try again', onClick: onRetryFailed }}
+      />
+    )
   }
   if (file.media_kind === 'image' && file.supported && !failed) {
     return <ImageStage key={file.id} file={file} onError={onError} />

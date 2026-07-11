@@ -39,11 +39,24 @@ Changes:
   `pointermove`. The thumb/tooltip track the pointer live via a local drag
   override. A drag now issues a handful of range requests instead of dozens of
   cancelled ones.
+- **Frontend (native error recovery).** A transient media error on a direct-play
+  video (a stalled/dropped range read while seeking into an unbuffered region —
+  the reported "seek to an unbuffered spot → stuck → Preview failed" bug) used to
+  dead-end on an unrecoverable card. `MediaViewer` now reloads native playback at
+  the current playhead up to `MAX_NATIVE_RECOVER` (3) times before giving up
+  (mirroring the HLS re-attach budget, refunded on healthy progress via the same
+  forward-progress effect), and the terminal card is a retryable "Playback
+  interrupted — Try again" (`MediaFallback` action) instead of a dead end.
 
 Verification: backend `ruff`/`mypy`/`pytest` green (**389 passed**, +1);
 frontend `lint`/`format:check`/`typecheck`/`test` (**69 passed**, +5)/`build`;
 Playwright `player.spec.ts` (**15 passed**) exercises real MP4/MKV-remux
-streaming end to end through the new dependency.
+streaming end to end. The native error-recovery flow was verified live against a
+real backend + a generated 4K MP4: forcing a media error mid-play auto-reloaded
+and resumed at the playhead (36s→48s, no card); exhausting the budget surfaced
+the retryable "Playback interrupted" card; and its **Try again** restored
+playback. (The mocked e2e harness swallows media `error` events by design, so
+this path is proven by live verification rather than a Playwright spec.)
 
 ## In review: media-player M7 — web HLS integration
 

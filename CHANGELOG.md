@@ -38,6 +38,14 @@ grouped under `Unreleased` until the first tagged release.
   issues a handful of byte-range requests rather than dozens of immediately
   cancelled ones.
 
+- **Native playback error recovery.** A transient media error on a direct-play
+  video — e.g. a range read that stalls or drops while seeking into an unbuffered
+  region (common on network storage or heavy 4K decode) — used to dead-end on an
+  unrecoverable "Preview failed" card with the controls gone. Native playback now
+  reloads at the current playhead up to three times (mirroring the HLS re-attach
+  budget, refunded on healthy progress) before giving up, and the terminal state
+  is a retryable "Playback interrupted — Try again" card instead of a dead end.
+
 - **Immediate library switching.** Changing the active library now removes the
   previous library's TanStack content queries before remounting the workspace,
   while preserving the global library registry and library-keyed auth caches.
