@@ -266,3 +266,19 @@ def resolve_cover_bundle_id(session: Session, collection_id: str) -> str | None:
         .limit(1)
     )
     return session.scalar(stmt)
+
+
+def touch_cover_collections_for_bundle(session: Session, bundle_id: str) -> None:
+    """Refresh collection cover versions when their effective bundle changes image.
+
+    Covers may be explicit or auto-picked through a descendant collection, so
+    inspect the small collection metadata set rather than only direct membership.
+    This changes display freshness only; optimistic-concurrency versions stay put.
+    """
+    now = utcnow()
+    for collection_id in session.scalars(select(Collection.id)):
+        if resolve_cover_bundle_id(session, collection_id) == bundle_id:
+            collection = session.get(Collection, collection_id)
+            if collection is not None:
+                collection.updated_at = now
+    session.flush()

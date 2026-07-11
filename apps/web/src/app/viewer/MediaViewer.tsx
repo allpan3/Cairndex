@@ -307,6 +307,7 @@ export function MediaViewer({
       void qc.invalidateQueries({ queryKey: ['bundle-files', bundleId] })
       void qc.invalidateQueries({ queryKey: ['browse'] })
       void qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
+      void qc.invalidateQueries({ queryKey: ['collections'] })
     },
     [bundleId, qc],
   )

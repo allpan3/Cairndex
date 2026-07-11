@@ -81,9 +81,13 @@ test('maps player utility shortcuts', () => {
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: '>' }), player, actions)
   expect(player.frameStep).toHaveBeenLastCalledWith(1)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: '<' }), player, actions)
+  expect(player.frameStep).toHaveBeenLastCalledWith(-1)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: '.' }), player, actions)
   expect(player.setRate).toHaveBeenLastCalledWith(1.25)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: ',' }), player, actions)
+  expect(player.setRate).toHaveBeenLastCalledWith(0.75)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'S' }), player, actions)
   expect(actions.snapshot).toHaveBeenCalled()

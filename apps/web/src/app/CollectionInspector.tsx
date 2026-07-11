@@ -40,7 +40,7 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
       {hasCover && (
         <div className="inspector__cover">
           <img
-            src={collectionThumbnailUrl(collection.id, collection.cover_bundle_id)}
+            src={collectionThumbnailUrl(collection.id, collection.updated_at)}
             alt=""
             onError={() => setHasCover(false)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}

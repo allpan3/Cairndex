@@ -45,6 +45,13 @@ subtitles, and hover video previews remain out of scope.
 Next recommended task: **Plan 1 M12 — Eagle-style thumbnail hover video
 preview** (§13.2), before the desktop shell.
 
+Follow-up fix: collection cover timestamps are now refreshed when their
+effective bundle's custom video frame is set or cleared, and collection image
+URLs version from that timestamp. This fixes the stale single-bundle collection
+cover without changing collection membership or optimistic-concurrency versions.
+The M9 keymap swap is also explicitly regression-tested in both directions:
+`<`/`>` frame-step and `,`/`.` speed down/up.
+
 ## Latest: roadmap re-sequenced (docs only, 2026-07-10)
 
 Branch `docs/roadmap-resequence` (off `main`). Owner decision after plan 1

@@ -546,8 +546,8 @@ export function clearCoverFrame(fileId: string): Promise<FileRead> {
 
 /**
  * URL for a collection's cover thumbnail (its chosen or auto-picked cover
- * bundle). `coverKey` (the collection's `cover_bundle_id`) busts the browser
- * cache when the cover changes.
+ * bundle). `coverKey` (the collection's `updated_at`) busts the browser cache
+ * when its selected or automatically resolved bundle cover changes.
  */
 export function collectionThumbnailUrl(collectionId: string, coverKey?: string | null): string {
   const base = `${lib()}/collections/${collectionId}/thumbnail`
