@@ -15,8 +15,6 @@ import { SettingsMenu } from './SettingsMenu'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
-
 interface ControlBarProps {
   player: PlayerController
   video: PlayableVideo
@@ -78,20 +76,6 @@ export function ControlBar({
           value={player.muted ? 0 : player.volume}
           onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
         />
-        <label className="mv-speed">
-          <span className="sr-only">Speed</span>
-          <select
-            aria-label="Playback speed"
-            value={player.rate}
-            onChange={(event) => player.setRate(Number(event.currentTarget.value))}
-          >
-            {SPEEDS.map((speed) => (
-              <option key={speed} value={speed}>
-                {speed}×
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           className={`mv-btn${player.subtitlesOn ? ' is-active' : ''}`}
           onClick={player.toggleSubtitles}

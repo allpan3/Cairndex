@@ -14,6 +14,7 @@ const QUALITY_LADDER: Array<{ label: string; value: number | null }> = [
   { label: '720p', value: 720 },
   { label: '480p', value: 480 },
 ]
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
 
 interface SettingsMenuProps {
   hls: HlsSessionState
@@ -103,7 +104,18 @@ export function SettingsMenu({
           </div>
 
           <div className="mv-menu__group">
-            <div className="mv-menu__label">Playback</div>
+            <div className="mv-menu__label">Speed</div>
+            {SPEEDS.map((speed) => (
+              <button
+                key={speed}
+                role="menuitemradio"
+                aria-checked={player.rate === speed}
+                className={`mv-menu__item${player.rate === speed ? ' is-selected' : ''}`}
+                onClick={() => player.setRate(speed)}
+              >
+                {speed}×
+              </button>
+            ))}
             <button
               role="menuitemcheckbox"
               aria-checked={player.preservesPitch}
@@ -112,6 +124,10 @@ export function SettingsMenu({
             >
               Preserve pitch
             </button>
+          </div>
+
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Playback</div>
             <button
               role="menuitemcheckbox"
               aria-checked={fileLoop}
