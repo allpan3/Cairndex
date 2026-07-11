@@ -150,7 +150,9 @@ export function SettingsMenu({
             </button>
           </div>
 
-          <div className="mv-menu__group">
+          <div
+            className={`mv-menu__group mv-menu__group--resolution${resolutionOpen ? ' is-open' : ''}`}
+          >
             <button
               className={`mv-menu__submenu-toggle${resolutionOpen ? ' is-open' : ''}`}
               role="menuitem"
@@ -225,14 +227,19 @@ export function SettingsMenu({
           )}
           <div className="mv-menu__group">
             <div className="mv-menu__label">Cover</div>
-            <button className="mv-menu__item" role="menuitem" onClick={onUseCoverFrame}>
-              Use current frame as cover
-            </button>
-            {hasCoverFrame && (
-              <button className="mv-menu__item" role="menuitem" onClick={onClearCoverFrame}>
-                Use automatic cover frame
+            <div className="mv-menu__actions">
+              <button className="mv-menu__action" role="menuitem" onClick={onUseCoverFrame}>
+                Set frame as cover
               </button>
-            )}
+              <button
+                className="mv-menu__action"
+                role="menuitem"
+                onClick={onClearCoverFrame}
+                disabled={!hasCoverFrame}
+              >
+                Reset cover to default
+              </button>
+            </div>
           </div>
         </div>
       )}
