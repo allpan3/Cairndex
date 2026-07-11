@@ -59,9 +59,11 @@ opens it on that file.
   thumbnail**, chapter markers from container metadata.
 - Keyboard: `Space`/`K` play-pause, `←/→` ± seek step (default 5 s,
   configurable), `J/L` ±10 s, `↑/↓` volume, `M` mute, `F` fullscreen, `I`
-  info panel, `C` cycle subtitles, `Shift+,/.` speed down/up, `,`/`.` frame
-  step while paused, `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set A-B
-  loop points, `Esc` close. Same map reused by the desktop shell.
+  info panel, `C` cycle subtitles, `<`/`>` frame step back/forward while
+  paused, `,`/`.` speed down/up (owner 2026-07-11: swapped from the original
+  map — M2 shipped frame step on `,`/`.` and speed on `<`/`>`; M9 rebinds),
+  `0–9` seek to N×10 %, `S` snapshot, `[`/`]` set A-B loop points (M11),
+  `Esc` close. Same map reused by the desktop shell.
 - Subtitle experience (Movist-inspired): external + embedded text tracks,
   on/off + track pick, styling settings (size, color, background/edge,
   vertical offset — persisted), timing offset nudge (±). Owner-deprioritized:
@@ -484,7 +486,7 @@ running scan must not queue-block a ten-second export:
 | M5 | ✅ Image viewer v2 (merged, #5) | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
 | M6 | ✅ Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
 | M7 | ✅ Web HLS integration (merged, #9) | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
-| M9 | Player interaction polish ← **next** (recomposed 2026-07-11, owner) | Right-click on video toggles play/pause; drag-scrub must survive the cursor leaving the track/control bar while the button is held (bug — suspect control-bar auto-hide breaking pointer capture); configurable seek step; pitch-preserve toggle; file-loop toggle; **set cover to current frame** (§13.1); trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
+| M9 | Player interaction polish ← **next** (recomposed 2026-07-11, owner) | Right-click on video toggles play/pause; drag-scrub must survive the cursor leaving the track/control bar while the button is held (bug — suspect control-bar auto-hide breaking pointer capture); configurable seek step; pitch-preserve toggle; file-loop toggle; rebind frame step to `<`/`>` with speed on `,`/`.` (§2 keymap); **set cover to current frame** (§13.1); trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
 | M12 | Thumbnail hover video preview (Eagle-style, §13.2) | Dwell-to-autoplay muted preview on video/bundle cards, cursor-x proportional skim with position bar, time + sound toggle; storyboard-skim fallback for non-direct-playable sources. Sequenced right after M9, before the desktop shell |
 | M8 | Subtitle upgrade — **deferred to future** | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
 | M10 | Video wall (web) — **deferred to future** | §9 |

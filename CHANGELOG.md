@@ -133,7 +133,8 @@ grouped under `Unreleased` until the first tagged release.
   documenting the cross-platform posture that keeps a future Linux shell a
   packaging exercise rather than a port. Revised 2026-07-11: M9 recomposed
   into interaction polish (right-click play/pause, drag-scrub off-track fix,
-  seek step, pitch-preserve, file loop, set-cover-to-frame) — A-B loop moved
+  seek step, pitch-preserve, file loop, frame-step rebound to `<`/`>`,
+  set-cover-to-frame) — A-B loop moved
   to M11 as the GIF range-picker, video adjustments (reframed color/tone)
   and slideshow deferred; new M12 Eagle-style thumbnail hover video preview
   specced (plan 1 §13) between M9 and the desktop shell.
