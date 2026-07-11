@@ -1,5 +1,50 @@
 # Project status
 
+## In review: Plan 1 M9 — player interaction polish
+
+Branch `feat/player-polish` (off `main`). Commits: `9c68c6c` (`feat: polish
+player interactions and cover frames`) plus the final `test: verify M9 cover
+frames end to end` verification/handoff commit. Do not merge before owner
+review.
+
+Completed:
+
+- Video-surface right-click now suppresses the native menu and toggles
+  play/pause without affecting controls or side panels. The shared shortcut map
+  uses the persisted 2/5/10/30-second seek step for arrows, keeps J/L at 10
+  seconds, and restores `<`/`>` frame step plus `,`/`.` speed adjustment.
+- Drag scrubbing retains pointer capture plus window-level move/release tracking,
+  pins auto-hide chrome until release, keeps the 150 ms seek coalescing, and
+  commits the exact clamped release position even off-track.
+- Persisted player prefs now include seek step and `preservesPitch`; file loop is
+  intentionally session-only and takes precedence over bundle auto-advance.
+- Additive nullable `asset_files.cover_time` plus path-safe POST/DELETE
+  `cover-frame` endpoints set/clear a server-extracted current-frame cover,
+  regenerate only the cached thumbnail, select that video as the bundle cover,
+  honor the timestamp on later regeneration, and version file/bundle card URLs
+  so the UI refreshes without reload. OpenAPI and `schema.d.ts` are regenerated.
+- Storyboards count sampled frames from `showinfo` in the existing ffmpeg pass
+  and trim VTT cues before final-sheet tile padding. Existing cached storyboards
+  are not force-regenerated; normal fingerprint invalidation applies.
+
+Verification (scratch ffmpeg fixtures only; no Demo/Eagle/user libraries):
+
+- Backend: Ruff check + format, mypy, full pytest (**395 passed**).
+- Frontend: ESLint, Prettier check, TypeScript, full Vitest (**72 passed**),
+  production build (hls.js remains a separate chunk).
+- Playwright: full suite (**58 passed**), including video context-menu toggle,
+  off-track drag with controls pinned, seek-step selection, and a real-backend
+  set/clear cover-frame flow that compares the regenerated thumbnail bytes.
+  Scratch libraries/data directories are removed in `finally` blocks.
+
+Known issues / intentional limits: file loop does not persist; previously cached
+storyboards keep their old final padding cues until normal regeneration. Both
+match M9 scope. A-B loop/GIF range selection, video adjustments, slideshow,
+subtitles, and hover video previews remain out of scope.
+
+Next recommended task: **Plan 1 M12 — Eagle-style thumbnail hover video
+preview** (§13.2), before the desktop shell.
+
 ## Latest: roadmap re-sequenced (docs only, 2026-07-10)
 
 Branch `docs/roadmap-resequence` (off `main`). Owner decision after plan 1
