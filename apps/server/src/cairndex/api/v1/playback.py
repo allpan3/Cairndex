@@ -219,15 +219,22 @@ def file_content(file_id: str, access: LibraryAccessDep) -> FileResponse:
 @router.get("/files/{file_id}/preview")
 def file_preview(
     file_id: str,
-    db: LibrarySession,
+    access: LibraryAccessDep,
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
-    """Serve a lazily generated, fingerprint-invalidated WebP preview."""
-    try:
-        path = previews.preview_for_file(db, file_id, size)
-    except NotFoundError:
-        db.commit()  # persist access-time missing marks before the 404 response
-        raise
+    """Serve a lazily generated, fingerprint-invalidated WebP preview.
+
+    Uses the scoped ``LibraryAccess`` gate (like ``stream_file``): drag/scroll
+    bursts abort these requests mid-flight, and a cancelled request can strand a
+    ``yield``-dependency connection, draining the pool. The session closes
+    inside the handler, before the response streams.
+    """
+    with access.session() as db:
+        try:
+            path = previews.preview_for_file(db, file_id, size)
+        except NotFoundError:
+            db.commit()  # persist access-time missing marks before the 404 response
+            raise
     return FileResponse(
         str(path),
         media_type="image/webp",
@@ -238,9 +245,10 @@ def file_preview(
 
 # Serve a cached storyboard index without request-path generation
 @router.get("/files/{file_id}/storyboard.vtt")
-def storyboard_vtt(file_id: str, db: LibrarySession) -> FileResponse:
+def storyboard_vtt(file_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve a cached storyboard WebVTT index, never generating on request."""
-    path = storyboards.cached_index_for_file(db, file_id)
+    with access.session() as db:
+        path = storyboards.cached_index_for_file(db, file_id)
     return FileResponse(
         str(path),
         media_type="text/vtt",
@@ -251,9 +259,15 @@ def storyboard_vtt(file_id: str, db: LibrarySession) -> FileResponse:
 
 # Serve a cached storyboard sheet without request-path generation
 @router.get("/files/{file_id}/storyboard/{sheet_name}.jpg")
-def storyboard_sheet(file_id: str, sheet_name: str, db: LibrarySession) -> FileResponse:
-    """Serve a cached storyboard sheet, never generating on request."""
-    path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
+def storyboard_sheet(file_id: str, sheet_name: str, access: LibraryAccessDep) -> FileResponse:
+    """Serve a cached storyboard sheet, never generating on request.
+
+    The seek-bar hover tooltip requests (and aborts) sheets continuously while
+    scrubbing, so this must not hold a ``yield``-dependency connection (see
+    ``file_preview``).
+    """
+    with access.session() as db:
+        path = storyboards.cached_sheet_for_file(db, file_id, sheet_name)
     return FileResponse(
         str(path),
         media_type="image/jpeg",
@@ -263,8 +277,9 @@ def storyboard_sheet(file_id: str, sheet_name: str, db: LibrarySession) -> FileR
 
 
 @router.get("/subtitles/{track_id}/vtt")
-def subtitle_vtt(track_id: str, db: LibrarySession) -> FileResponse:
+def subtitle_vtt(track_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve an external subtitle as WebVTT (converted + cached on first hit)."""
-    track = sub_service.get_track(db, track_id)
-    path = playback.build_vtt_for_track(db, track)
+    with access.session() as db:
+        track = sub_service.get_track(db, track_id)
+        path = playback.build_vtt_for_track(db, track)
     return FileResponse(str(path), media_type="text/vtt")

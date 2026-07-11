@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.api.deps import (
     LibraryAccess,
+    RegistryAccess,
     get_library_access,
     get_library_session,
+    get_registry_access,
     get_registry_db,
 )
 from cairndex.core.config import get_settings
@@ -175,6 +177,22 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
+def _registry_access_override(registry_session: Session) -> RegistryAccess:
+    """A ``RegistryAccess`` bound to the shared test registry session (commit on
+    exit, never close — the fixture owns the session's lifetime)."""
+
+    @contextmanager
+    def _open() -> Iterator[Session]:
+        try:
+            yield registry_session
+            registry_session.commit()
+        except Exception:
+            registry_session.rollback()
+            raise
+
+    return RegistryAccess(open_session=_open)
+
+
 @pytest.fixture
 def isolated_client(registry_session: Session) -> Iterator[TestClient]:
     """A TestClient with only the registry overridden, so library-scoped routes
@@ -191,6 +209,9 @@ def isolated_client(registry_session: Session) -> Iterator[TestClient]:
             raise
 
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
+    app.dependency_overrides[get_registry_access] = lambda: _registry_access_override(
+        registry_session
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
