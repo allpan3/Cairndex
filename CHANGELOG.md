@@ -21,6 +21,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Collection covers refresh after a custom video frame is selected.** Setting
+  or clearing a file cover now refreshes every collection whose explicit or
+  auto-picked effective cover is that bundle, including ancestor collections.
+  Collection thumbnail URLs use the refreshed collection timestamp, so the
+  browser requests the regenerated image even when the bundle id is unchanged.
+
 - **Off-track drag scrubbing and storyboard tail tiles (Plan 1 M9).** Seek-bar
   drags now retain capture through window-level pointer tracking and pin the
   control bar visible until release, preserving the existing 150 ms seek

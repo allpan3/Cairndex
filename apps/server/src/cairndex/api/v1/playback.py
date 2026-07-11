@@ -35,6 +35,7 @@ from cairndex.domain.enums import MediaKind
 from cairndex.media import playback, previews, storyboards, thumbnails
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
+from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
 from cairndex.services.bundles import get_bundle, list_files
@@ -193,6 +194,7 @@ def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession)
     bundle = db.get(AssetBundle, asset_file.bundle_id)
     if bundle is not None:
         bundle.cover_file_id = asset_file.id
+        collection_service.touch_cover_collections_for_bundle(db, bundle.id)
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:
@@ -214,6 +216,7 @@ def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
     except PathSafetyError as exc:
         raise ValidationError(str(exc)) from exc
     asset_file.cover_time = None
+    collection_service.touch_cover_collections_for_bundle(db, asset_file.bundle_id)
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:

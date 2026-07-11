@@ -15,6 +15,7 @@ from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package as pkg
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
+from cairndex.services import collections as collection_service
 
 _FFMPEG = shutil.which("ffmpeg")
 requires_ffmpeg = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not installed")
@@ -255,6 +256,9 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
 ) -> None:
     (library_root / "movie.mp4").write_bytes(b"video")
     bundle = bundle_service.create_bundle(session, title="b")
+    collection = collection_service.create_collection(session, name="only")
+    bundle_service.set_bundle_collections(session, bundle.id, [collection.id])
+    collection_updated_at = collection.updated_at
     video = bundle_service.add_file(
         session,
         bundle.id,
@@ -284,6 +288,8 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     session.expire_all()
     assert session.get(AssetFile, video.id).cover_time == 12.5
     assert bundle_service.get_bundle(session, bundle.id).cover_file_id == video.id
+    session.refresh(collection)
+    assert collection.updated_at > collection_updated_at
     assert seen == [12.5]
 
     # Future forced regeneration continues to honor the persisted timestamp

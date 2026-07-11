@@ -128,7 +128,7 @@ function CollectionCard({
         {hasCover && (
           <img
             className="collcard__thumb-img"
-            src={collectionThumbnailUrl(collection.id, collection.cover_bundle_id)}
+            src={collectionThumbnailUrl(collection.id, collection.updated_at)}
             alt=""
             loading="lazy"
             onError={() => setHasCover(false)}
