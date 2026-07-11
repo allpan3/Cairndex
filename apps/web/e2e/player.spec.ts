@@ -1266,10 +1266,13 @@ test('plays a remux HLS source through hls.js and shows the quality/audio menus'
     .toBeGreaterThan(0.2)
   await expect(page.getByTestId('media-controls')).toBeVisible()
 
-  // Quality ladder + audio-track menus come from the decision.
+  // Source-aware resolution submenu + audio-track menus come from the decision.
   await page.getByRole('button', { name: /playback settings/i }).click()
   const menu = page.getByTestId('settings-menu')
-  await expect(menu).toContainText('Quality')
+  const resolution = menu.getByRole('menuitem', { name: /Resolution/ })
+  await expect(resolution).toHaveAttribute('aria-expanded', 'false')
+  await resolution.click()
+  await expect(resolution).toHaveAttribute('aria-expanded', 'true')
   await expect(menu.getByRole('menuitemradio', { name: '720p' })).toBeVisible()
   await expect(menu).toContainText('Audio')
   await expect(menu.getByRole('menuitemradio', { name: /Surround/ })).toBeVisible()

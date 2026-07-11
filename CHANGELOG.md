@@ -13,9 +13,11 @@ grouped under `Unreleased` until the first tagged release.
 - **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
   play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
   player preferences; seek step and speed use compact settings sliders, with
-  the pitch toggle beside speed instead of a separate control-bar selector; file loop
-  is session-only and takes precedence over
-  bundle auto-advance; frame step now uses `<`/`>` and speed uses `,`/`.`.
+  the pitch toggle beside speed instead of a separate control-bar selector; file
+  loop is session-only and takes precedence over bundle auto-advance; frame step
+  now uses `<`/`>` and speed uses `,`/`.`. Resolution caps live in a foldable
+  submenu built from the probed source height, exposing 2160p/1440p for
+  applicable files while omitting tiers above the source.
   The settings menu can set the current server-decoded video frame as the file
   and bundle cover, or clear it back to automatic extraction. The new additive
   `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are

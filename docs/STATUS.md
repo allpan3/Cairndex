@@ -21,6 +21,9 @@ Completed:
   seek-step and speed controls are compact Settings sliders, with pitch
   preservation grouped beside speed; no standalone speed control occupies the
   control bar.
+- Resolution choices are a foldable Settings submenu derived from the current
+  video's probed height (Auto plus standard tiers at or below the source), so
+  4K sources expose 2160p and 1440p instead of stopping at 1080p.
 - Additive nullable `asset_files.cover_time` plus path-safe POST/DELETE
   `cover-frame` endpoints set/clear a server-extracted current-frame cover,
   regenerate only the cached thumbnail, select that video as the bundle cover,

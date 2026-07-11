@@ -98,6 +98,7 @@ export function ControlBar({
           onUseCoverFrame={onUseCoverFrame}
           onClearCoverFrame={onClearCoverFrame}
           hasCoverFrame={hasCoverFrame}
+          sourceHeight={video.height}
         />
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
