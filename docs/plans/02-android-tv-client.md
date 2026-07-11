@@ -2,7 +2,10 @@
 
 > Status: planning document (2026-07-04). See [README.md](README.md) for the
 > shared server foundations (plan 1 §3–§6) this client consumes and for the
-> repo strategy. Decision summary in ADR-0012 (proposed).
+> repo strategy. Decision summary in ADR-0012 (accepted). Sequenced 2026-07-10
+> **after** the macOS desktop shell (plan 3) and write mode (plan 4); the T0
+> pairing/device-token server slice is pulled forward anyway because the
+> desktop shell's auth (plan 3 D2) reuses it.
 
 ## 1. Goals
 

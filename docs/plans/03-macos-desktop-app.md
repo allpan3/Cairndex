@@ -1,9 +1,14 @@
 # Plan 3 — macOS desktop app (Tauri 2 shell)
 
-> Status: planning document (2026-07-04). See [README.md](README.md) for the
-> shared strategy; decision summary in ADR-0012 (proposed). Builds directly on
-> plan 1 (the shell renders `apps/web`, so every player/viewer improvement
-> lands here for free) and on plan 2 §4 (device tokens).
+> Status: planning document (2026-07-04); **owner-prioritized 2026-07-10 as
+> the next initiative after plan 1 M9**, ahead of write mode and the Android
+> client. See [README.md](README.md) for the shared strategy; decision summary
+> in ADR-0012 (accepted). Builds directly on plan 1 (the shell renders
+> `apps/web`, so every player/viewer improvement lands here for free) and on
+> plan 2 §4 (device tokens — that server slice is pulled forward ahead of D2).
+> The owner also wants a **Linux desktop app in the future**, so the shell is
+> architected cross-platform-first (§2.1, §3): macOS ships first, but nothing
+> macOS-only leaks outside clearly-marked edges.
 
 ## 1. Goal and the "Eagle gap"
 
@@ -37,11 +42,42 @@ already anticipated.
 
 WKWebView playback notes (why the ceiling is acceptable): Safari's engine
 gives hardware HEVC — the web client's biggest codec hole closes *natively*
-on desktop; `caps.native_hls = true` means the plan-1 HLS fallback plays
-without hls.js/MSE; MKV still needs server remux, which plan 1 provides.
-Local-file playback bypassing the server (mpv-style) is deliberately **not**
-a goal — streams come from the server like every other client, keeping one
-playback pipeline.
+on desktop (verified end-to-end 2026-07-10 on the M7 pipeline: HEVC-in-MP4
+direct-plays, HEVC-in-MKV codec-copy remuxes); `caps.native_hls = true` means
+the plan-1 HLS fallback plays without hls.js/MSE; MKV still needs server
+remux, which plan 1 provides. Local-file playback bypassing the server
+(mpv-style) is deliberately **not** a goal — streams come from the server
+like every other client, keeping one playback pipeline.
+
+### 2.1 Cross-platform posture (Linux later, maybe Windows)
+
+Tauri 2 is the same shell on macOS/Linux/Windows; the deliberate choices that
+keep a future Linux app cheap (packaging + a polish pass, not a port):
+
+- **Every native capability goes through cross-platform Tauri plugins** —
+  opener (reveal/open-with), drag, store, updater, single-instance,
+  deep-link all support the three desktop OSes. No direct `NSWorkspace`/
+  AppKit calls in v1.
+- **The Rust command layer is platform-agnostic by construction.** Path
+  mapping + validation (§5) is pure `std::path` logic with unit tests;
+  anything genuinely OS-specific lives behind `#[cfg(target_os = "…")]` in
+  one clearly-named module (`commands/host.rs` edges), never scattered.
+- **The web seam stays OS-neutral.** `HostPlatform.kind` is `'desktop'`, not
+  `'macos'`; user-facing strings ("Reveal in Finder" vs "Show in file
+  manager") come from a per-OS label map beside the keymap table, which
+  already plans per-platform bindings (§7).
+- **CI keeps Linux honest from day one:** alongside the macOS build job, a
+  cheap Ubuntu `cargo clippy && cargo test` job (no bundling) so the Rust
+  layer never silently grows a macOS-only dependency.
+- **Known Linux deltas, accepted now:** WebKitGTK instead of WKWebView — no
+  HEVC hardware decode and patchier codec support, which the plan-1
+  capability/decision pipeline already absorbs (those files transcode);
+  packaging is AppImage/deb + no notarization; menu conventions differ
+  (in-window menus). None of these change the architecture.
+- The **Android client shares no shell code** (separate repo/toolchain, plan
+  2); its reuse surface is the server: OpenAPI contract, decision endpoint,
+  HLS sessions, storyboards, progress, and the **same device-token pairing**
+  the desktop shell uses.
 
 ## 3. Repo layout & build
 
@@ -64,8 +100,9 @@ apps/desktop/
 - The Vite dev server / build of `apps/web` is the frontend
   (`build.devUrl` / `frontendDist` point at it). No fork of the web app.
 - CI: a `desktop` job (macOS runner) running `cargo clippy/test` +
-  `tauri build`; web gates already cover the UI. Windows/Linux shells are a
-  free option later but explicitly out of scope now.
+  `tauri build`, plus the Ubuntu check job from §2.1; web gates already cover
+  the UI. Linux/Windows shells stay out of scope for v1 but are kept cheap by
+  the §2.1 rules (owner wants Linux eventually).
 - Distribution: Developer ID signing + notarization; auto-update via the
   Tauri updater plugin against GitHub Releases. Dev builds unsigned.
 
@@ -140,7 +177,11 @@ handoff:
   copy/import in this milestone. Once plan 4 W5 (import-external upload)
   lands, this upgrades into an optional **"Copy into library…"** flow: the
   shell streams the local file to the server, which writes it through the
-  journaled write-mode path.
+  journaled write-mode path. **Drag-and-drop media into the app is the
+  owner's stated reason for write mode** (2026-07-10), so plan 4 is
+  sequenced immediately after this shell with W5 promoted (W0 → W1 → W5) —
+  D4 should land with the reverse-map flow *and* the seam for the copy flow
+  so W5 plugs in without reworking the drop handler.
 
 ## 7. Native shell niceties
 
@@ -197,5 +238,6 @@ the features a browser can never have.
   rewrite). Explicitly deferred.
 - **`tauri-plugin-drag` maintenance** — small plugin; if it stalls, drag-out
   is implementable directly with an NSDraggingSession snippet in `src-tauri`.
-- Open: Windows/Linux shells (free-ish later, unplanned), second-window
-  viewer, local-mode sidecar (§8).
+- Open: second-window viewer, local-mode sidecar (§8). Linux shell is a
+  stated future want (not v1); §2.1 records the rules that keep it a
+  packaging exercise. Windows remains free-ish and unplanned.

@@ -481,15 +481,18 @@ running scan must not queue-block a ten-second export:
 | M4 | ✅ Watch progress (merged, #4) | §5.2 table/API + resume + continue-watching endpoint |
 | M5 | ✅ Image viewer v2 (merged, #5) | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
 | M6 | ✅ Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
-| M7 | ✅ Web HLS integration ← **next merge** | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
-| M8 | Subtitle upgrade | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings. Owner-deprioritized behind HLS — embedded-sub extraction is most valuable once MKVs play at all. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
-| M9 | Player polish (Movist/Elmedia parity) | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. **Dual simultaneous subtitles** land here at the earliest (owner: far-deferred; fine to slip past M11). Also: trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
-| M10 | Video wall (web) | §9 |
-| M11 | Media exports | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5) |
+| M7 | ✅ Web HLS integration (merged, #9) | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
+| M9 | Player polish (Movist/Elmedia parity) ← **next** | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. Also: trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up). Dual simultaneous subtitles do **not** land here — they wait on M8 (deferred) |
+| M8 | Subtitle upgrade — **deferred to future** | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
+| M10 | Video wall (web) — **deferred to future** | §9 |
+| M11 | Media exports — **deferred to future** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). Plan 4 W2 (save exports into library) waits on this |
 
-Re-sequenced after M2 shipped (owner decision): the subtitle-depth slice moved
-from third to M8 (after HLS) and dual subtitles became a far-deferred M9+ item;
-basic default-track on/off already shipped in M2.
+Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved
+behind HLS; after M7 merged (2026-07-10), **M8/M10/M11 moved to the future
+bucket** — M9 player polish is the last near-term plan-1 slice, and the
+roadmap then shifts to the macOS desktop shell (plan 3), write mode for
+drag-and-drop import (plan 4), and the Android client (plan 2). See
+[README.md](README.md) for the current cross-plan order.
 
 Every slice: focused backend/frontend tests + Playwright for user flows
 (controls, shortcuts, track menu, resume, viewer zoom), OpenAPI + `schema.d.ts`

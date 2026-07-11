@@ -1,5 +1,30 @@
 # Project status
 
+## Latest: roadmap re-sequenced (docs only, 2026-07-10)
+
+Branch `docs/roadmap-resequence` (off `main`). Owner decision after plan 1
+M7 (web HLS) merged (#9):
+
+- **Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (media exports)
+  moved to the future bucket.** Plan 4 W2 (save exports into library) moves
+  with M11.
+- **New order:** plan 1 **M9 player polish** → pairing/device tokens (plan 2
+  T0, pulled forward for desktop auth) → **macOS desktop shell** (plan 3
+  D1–D5) → **write mode** (plan 4, re-ordered W0 → W1 → W5 so Finder
+  drag-and-drop *into* the app lands early) → **Android client** (plan 2).
+- A **Linux desktop app is a stated future want**; plan 3 gained §2.1
+  (cross-platform posture): cross-platform Tauri plugins only, OS-specific
+  Rust isolated behind `#[cfg]` edges, OS-neutral `HostPlatform` seam +
+  label/keymap maps, an Ubuntu clippy/test CI job from D1, and accepted
+  WebKitGTK codec deltas (the decision pipeline transcodes what Linux can't
+  decode). Android reuse stays server-side only (OpenAPI + pairing).
+
+Updated: `docs/plans/README.md` (build order), plans 01–04 headers/milestone
+tables, this file, CHANGELOG. No code changes; no gates run (docs-only).
+Next recommended task: **plan 1 M9 — player polish** (A-B loop, video
+adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow
+refinements, storyboard padding-tile trim).
+
 ## In review: playback DB-pool exhaustion fix
 
 Branch `fix/playback-pool-exhaustion` (off `main`).

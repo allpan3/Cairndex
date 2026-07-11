@@ -124,6 +124,15 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Roadmap re-sequenced (docs only, owner decision 2026-07-10).** Plan 1
+  M8/M10/M11 (subtitle depth, web video wall, media exports) deferred to a
+  future bucket; new order is M9 player polish → pairing/device tokens →
+  macOS desktop shell (plan 3) → library write mode (plan 4, W5
+  import-external promoted right after W0/W1 so Finder drag-and-drop into
+  the app lands early) → Android client (plan 2). Plan 3 gained §2.1
+  documenting the cross-platform posture that keeps a future Linux shell a
+  packaging exercise rather than a port.
+
 - **Standalone Update stages.** The library maintenance overflow now exposes
   **Generate storyboards** alongside **Scan new files**, **Suggest grouping**,
   and **Collect metadata**, so every stage performed by **Update** has an
