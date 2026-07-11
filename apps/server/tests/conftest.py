@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.api.deps import get_library_session, get_registry_db
+from cairndex.api.deps import (
+    LibraryAccess,
+    RegistryAccess,
+    get_library_access,
+    get_library_session,
+    get_registry_access,
+    get_registry_db,
+)
 from cairndex.core.config import get_settings
 from cairndex.main import create_app
 from cairndex.persistence import models  # noqa: F401  (register metadata)
@@ -146,11 +154,43 @@ def client(session: Session, registry_session: Session) -> Iterator[TestClient]:
             session.rollback()
             raise
 
+    def _override_get_library_access() -> LibraryAccess:
+        # Streaming routes resolve the path through this handle. Bind its scope
+        # to the shared test session (commit on exit, never close — the fixture
+        # owns the session's lifetime) so assertions still see the same rows.
+        @contextmanager
+        def _open() -> Iterator[Session]:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+        return LibraryAccess(open_session=_open)
+
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
     app.dependency_overrides[get_library_session] = _override_get_library_session
+    app.dependency_overrides[get_library_access] = _override_get_library_access
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def _registry_access_override(registry_session: Session) -> RegistryAccess:
+    """A ``RegistryAccess`` bound to the shared test registry session (commit on
+    exit, never close — the fixture owns the session's lifetime)."""
+
+    @contextmanager
+    def _open() -> Iterator[Session]:
+        try:
+            yield registry_session
+            registry_session.commit()
+        except Exception:
+            registry_session.rollback()
+            raise
+
+    return RegistryAccess(open_session=_open)
 
 
 @pytest.fixture
@@ -169,6 +209,9 @@ def isolated_client(registry_session: Session) -> Iterator[TestClient]:
             raise
 
     app.dependency_overrides[get_registry_db] = _override_get_registry_db
+    app.dependency_overrides[get_registry_access] = lambda: _registry_access_override(
+        registry_session
+    )
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

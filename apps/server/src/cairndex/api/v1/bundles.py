@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
     BatchResult,
@@ -244,24 +244,30 @@ def set_collections(
 
 # --- Thumbnails (generated lazily and cached) --------------------------------
 @router.get("/{bundle_id}/thumbnail")
-def get_bundle_thumbnail(bundle_id: str, db: LibrarySession) -> FileResponse:
+def get_bundle_thumbnail(bundle_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve the bundle's cover thumbnail (generated on first request).
 
     404 if the bundle has no thumbnailable file; 503 if ffmpeg is unavailable.
+    Uses the scoped ``LibraryAccess`` gate: grid scrolling aborts thumbnail
+    requests in bursts, and a cancelled request can strand a ``yield``-dependency
+    connection, draining the pool (same class of bug as drag-seek on
+    ``/stream``). The session closes before the image streams.
     """
-    try:
-        path = thumbnails.generate_for_bundle(db, bundle_id)
-    except thumbnails.ThumbnailError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    with access.session() as db:
+        try:
+            path = thumbnails.generate_for_bundle(db, bundle_id)
+        except thumbnails.ThumbnailError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"bundle {bundle_id!r} has no thumbnail")
     return _thumbnail_response(path)
 
 
 @router.get("/{bundle_id}/files/{file_id}/thumbnail")
-def get_file_thumbnail(bundle_id: str, file_id: str, db: LibrarySession) -> FileResponse:
-    try:
-        path = thumbnails.generate_for_file(db, file_id)
-    except thumbnails.ThumbnailError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+def get_file_thumbnail(bundle_id: str, file_id: str, access: LibraryAccessDep) -> FileResponse:
+    with access.session() as db:
+        try:
+            path = thumbnails.generate_for_file(db, file_id)
+        except thumbnails.ThumbnailError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     return _thumbnail_response(path)
