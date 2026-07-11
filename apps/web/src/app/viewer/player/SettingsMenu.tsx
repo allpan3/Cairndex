@@ -14,7 +14,12 @@ const QUALITY_LADDER: Array<{ label: string; value: number | null }> = [
   { label: '720p', value: 720 },
   { label: '480p', value: 480 },
 ]
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
+const SEEK_STEPS = [2, 5, 10, 30] as const
+
+/** Map the slider's linear stop index to the supported seek-step values. */
+function seekStepAt(index: number): (typeof SEEK_STEPS)[number] {
+  return SEEK_STEPS[index] ?? 5
+}
 
 interface SettingsMenuProps {
   hls: HlsSessionState
@@ -89,33 +94,43 @@ export function SettingsMenu({
       {open && (
         <div className="mv-menu" role="menu" data-testid="settings-menu">
           <div className="mv-menu__group">
-            <div className="mv-menu__label">Seek step</div>
-            {([2, 5, 10, 30] as const).map((step) => (
-              <button
-                key={step}
-                role="menuitemradio"
-                aria-checked={player.seekStep === step}
-                className={`mv-menu__item${player.seekStep === step ? ' is-selected' : ''}`}
-                onClick={() => player.setSeekStep(step)}
-              >
-                {step} seconds
-              </button>
-            ))}
+            <label className="mv-menu__slider-label" htmlFor="mv-seek-step">
+              <span>Seek step</span>
+              <output>{player.seekStep} s</output>
+            </label>
+            <input
+              id="mv-seek-step"
+              className="mv-menu__slider"
+              type="range"
+              min={0}
+              max={SEEK_STEPS.length - 1}
+              step={1}
+              value={SEEK_STEPS.indexOf(player.seekStep)}
+              aria-label="Seek step"
+              aria-valuetext={`${player.seekStep} seconds`}
+              onChange={(event) =>
+                player.setSeekStep(seekStepAt(Number(event.currentTarget.value)))
+              }
+            />
           </div>
 
           <div className="mv-menu__group">
-            <div className="mv-menu__label">Speed</div>
-            {SPEEDS.map((speed) => (
-              <button
-                key={speed}
-                role="menuitemradio"
-                aria-checked={player.rate === speed}
-                className={`mv-menu__item${player.rate === speed ? ' is-selected' : ''}`}
-                onClick={() => player.setRate(speed)}
-              >
-                {speed}×
-              </button>
-            ))}
+            <label className="mv-menu__slider-label" htmlFor="mv-playback-speed">
+              <span>Speed</span>
+              <output>{player.rate}×</output>
+            </label>
+            <input
+              id="mv-playback-speed"
+              className="mv-menu__slider"
+              type="range"
+              min={0.25}
+              max={3}
+              step={0.25}
+              value={player.rate}
+              aria-label="Playback speed"
+              aria-valuetext={`${player.rate} times`}
+              onChange={(event) => player.setRate(Number(event.currentTarget.value))}
+            />
             <button
               role="menuitemcheckbox"
               aria-checked={player.preservesPitch}

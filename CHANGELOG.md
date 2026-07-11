@@ -12,8 +12,8 @@ grouped under `Unreleased` until the first tagged release.
 
 - **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
   play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
-  player preferences; the speed ladder and pitch toggle live together in the
-  settings menu instead of occupying a separate control-bar selector; file loop
+  player preferences; seek step and speed use compact settings sliders, with
+  the pitch toggle beside speed instead of a separate control-bar selector; file loop
   is session-only and takes precedence over
   bundle auto-advance; frame step now uses `<`/`>` and speed uses `,`/`.`.
   The settings menu can set the current server-decoded video frame as the file

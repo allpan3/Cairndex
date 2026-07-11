@@ -18,8 +18,9 @@ Completed:
   commits the exact clamped release position even off-track.
 - Persisted player prefs now include seek step and `preservesPitch`; file loop is
   intentionally session-only and takes precedence over bundle auto-advance. The
-  speed ladder is grouped with pitch preservation in Settings; the standalone
-  control-bar speed selector has been removed.
+  seek-step and speed controls are compact Settings sliders, with pitch
+  preservation grouped beside speed; no standalone speed control occupies the
+  control bar.
 - Additive nullable `asset_files.cover_time` plus path-safe POST/DELETE
   `cover-frame` endpoints set/clear a server-extracted current-frame cover,
   regenerate only the cached thumbnail, select that video as the bundle cover,
