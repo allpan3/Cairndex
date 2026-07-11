@@ -70,8 +70,9 @@ opens it on that file.
   (M9 at the earliest).
 - Snapshot capture: save/copy the current frame via a canvas grab (streams
   are same-origin, so the canvas stays untainted).
-- A-B loop between two marked points; video adjustments
-  (brightness/contrast/saturation as CSS filters, view-only, with reset).
+- A-B loop between two marked points (2026-07-11: moved to M11 as the GIF
+  range-picker); video adjustments (2026-07-11: deferred, reframed as
+  color/tone — see §11 future rows).
 - Resume: reopening a partially-watched file offers/starts at the saved
   position; progress saved throttled + on pause/close.
 - Playlist behavior inside a bundle: auto-advance toggle, next/previous.
@@ -88,8 +89,9 @@ opens it on that file.
 - Progressive load: cached thumbnail → sized preview → full resolution.
 - Non-native formats (HEIC, TIFF, BMP) displayed via
   server-side preview derivatives (§5).
-- Slideshow (interval, shuffle), rotation (view-only, non-destructive),
-  EXIF/tech panel from `tech_metadata`, neighbor preloading.
+- Slideshow (interval, shuffle — 2026-07-11: deferred to future), rotation
+  (view-only, non-destructive), EXIF/tech panel from `tech_metadata`,
+  neighbor preloading.
 - GIF/animated formats play natively; video files in the filmstrip open the
   video stage.
 
@@ -482,10 +484,12 @@ running scan must not queue-block a ten-second export:
 | M5 | ✅ Image viewer v2 (merged, #5) | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
 | M6 | ✅ Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
 | M7 | ✅ Web HLS integration (merged, #9) | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
-| M9 | Player polish (Movist/Elmedia parity) ← **next** | A-B loop, video adjustments, configurable seek step, pitch-preserve toggle, loop/slideshow refinements. Also: trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up). Dual simultaneous subtitles do **not** land here — they wait on M8 (deferred) |
+| M9 | Player interaction polish ← **next** (recomposed 2026-07-11, owner) | Right-click on video toggles play/pause; drag-scrub must survive the cursor leaving the track/control bar while the button is held (bug — suspect control-bar auto-hide breaking pointer capture); configurable seek step; pitch-preserve toggle; file-loop toggle; **set cover to current frame** (§13.1); trim storyboard cues to the frames ffmpeg actually emitted (§4.2 padding-tile follow-up) |
+| M12 | Thumbnail hover video preview (Eagle-style, §13.2) | Dwell-to-autoplay muted preview on video/bundle cards, cursor-x proportional skim with position bar, time + sound toggle; storyboard-skim fallback for non-direct-playable sources. Sequenced right after M9, before the desktop shell |
 | M8 | Subtitle upgrade — **deferred to future** | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
 | M10 | Video wall (web) — **deferred to future** | §9 |
-| M11 | Media exports — **deferred to future** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). Plan 4 W2 (save exports into library) waits on this |
+| M11 | Media exports — **deferred to future** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **A-B loop moved here from M9** (owner 2026-07-11: its real use is picking a GIF range, so it lands as the export range-picker UI). Plan 4 W2 (save exports into library) waits on this |
+| — | Video adjustments — **deferred to future** | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred |
 
 Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved
 behind HLS; after M7 merged (2026-07-10), **M8/M10/M11 moved to the future
@@ -512,3 +516,40 @@ value before the heavy M6 lands.
 - **Pillow dependency** — accepted trade-off (§5.1); RAW formats deferred.
 - Needs ADR at implementation time: HLS session model + transcode-cache
   location (this doc is the draft rationale), covered in ADR-0012's list.
+
+## 13. Owner additions 2026-07-11
+
+### 13.1 Set cover to a specific frame (M9)
+
+- Player action (settings/context menu): **"Use current frame as cover"** —
+  sends the current playback time; no canvas upload (server-side extraction
+  works for HLS playback too and avoids shipping pixels up).
+- Server: additive `cover_time REAL NULL` on the file row in `library.db`;
+  `POST /libraries/{lib}/files/{id}/cover-frame {time}` validates the time
+  against probed duration, stores it, and regenerates the thumbnail
+  derivative seeking to that time (single-frame extract; replaces the
+  representative-frame filter for files with `cover_time` set — including
+  on future fingerprint-driven regeneration). `DELETE` clears back to the
+  automatic frame. Bundle covers need no work: `effective_cover_file`
+  already resolves through file thumbnails.
+- Metadata + cache only — originals untouched; allowed pre-write-mode.
+
+### 13.2 Thumbnail hover video preview (M12) — Eagle-style
+
+Applies to video file cards and bundle cards whose effective cover file is a
+video (the preview plays that file). Interaction (Eagle is the reference):
+
+- Cursor rests on a card ~500 ms → a muted `<video preload="metadata">`
+  mounts over the cover and plays from the beginning.
+- Moving the cursor horizontally while over the card skims: cursor x as a
+  fraction of card width maps proportionally to the timeline; seeks are
+  throttled (`fastSeek` where available). A **thin position bar** along the
+  card's bottom edge tracks the play position; **current time** bottom-right
+  beside a **speaker toggle** (muted by default; click to unmute).
+- Leaving the card tears the preview down fully (element + network). At most
+  **one** active preview at a time; grid virtualization unaffected.
+- Format gate: live video only when the client capability profile
+  (`caps.ts`) says the source direct-plays. Otherwise fall back to
+  **storyboard-sprite skimming** (same interaction, tiles instead of video)
+  — hover must **never** create an HLS session. No new server work: stream
+  endpoint, storyboards, and caps all exist.

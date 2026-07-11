@@ -131,7 +131,12 @@ grouped under `Unreleased` until the first tagged release.
   import-external promoted right after W0/W1 so Finder drag-and-drop into
   the app lands early) → Android client (plan 2). Plan 3 gained §2.1
   documenting the cross-platform posture that keeps a future Linux shell a
-  packaging exercise rather than a port.
+  packaging exercise rather than a port. Revised 2026-07-11: M9 recomposed
+  into interaction polish (right-click play/pause, drag-scrub off-track fix,
+  seek step, pitch-preserve, file loop, set-cover-to-frame) — A-B loop moved
+  to M11 as the GIF range-picker, video adjustments (reframed color/tone)
+  and slideshow deferred; new M12 Eagle-style thumbnail hover video preview
+  specced (plan 1 §13) between M9 and the desktop shell.
 
 - **Standalone Update stages.** The library maintenance overflow now exposes
   **Generate storyboards** alongside **Scan new files**, **Suggest grouping**,
