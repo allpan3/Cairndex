@@ -24,11 +24,23 @@ grouped under `Unreleased` until the first tagged release.
   Cover actions use a stable two-button row: Set frame as cover and Reset cover
   to default, with reset disabled until a custom frame exists.
   The settings menu can set the current server-decoded video frame as the file
-  and bundle cover, or clear it back to automatic extraction. The new additive
-  `asset_files.cover_time` metadata and POST/DELETE `cover-frame` endpoints are
-  path-safe and regenerate only cached thumbnails; originals remain untouched.
+  and bundle cover, or clear it back to the previously selected/automatic cover.
+  Additive `asset_files.cover_time` and prior-cover metadata plus POST/DELETE
+  `cover-frame` endpoints are path-safe and regenerate only cached thumbnails;
+  originals remain untouched. Requests at or just past reported duration clamp
+  to a decodable frame immediately before EOF.
 
 ### Fixed
+
+- **M9 review hardening.** Ended playback is latched per transition so effect
+  identity changes cannot skip a second file or make a loop toggle restart an
+  already-ended video. Inspector/viewer cover URLs now version from bundle
+  timestamps. Cover operations share `useFileMutations`, retain their optimistic
+  file row, and refresh only version-bearing bundle/browse/collection data.
+  Storyboard `showinfo` parsing strips ANSI; missing counts warn and fall back to
+  emitted-sheet capacity. Collection cover refreshes reverse-walk only direct
+  memberships, ancestors, and explicit selectors instead of every collection.
+  Seek-bar window listeners are removed on unmount.
 
 - **Collection covers refresh after a custom video frame is selected.** Setting
   or clearing a file cover now refreshes every collection whose explicit or
