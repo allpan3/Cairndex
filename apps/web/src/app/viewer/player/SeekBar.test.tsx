@@ -133,3 +133,37 @@ test('tracks the captured pointer off-track and pins chrome until window release
   fireEvent.keyDown(track, { key: 'ArrowLeft' })
   expect(player.seekBy).toHaveBeenLastCalledWith(-30)
 })
+
+test('releases the parent drag pin when unmounted mid-drag', () => {
+  const onDragChange = vi.fn()
+  const seek = vi.fn()
+  const player = {
+    duration: 100,
+    currentTime: 0,
+    buffered: [],
+    seek,
+    seekBy: vi.fn(),
+    seekStep: 5,
+  } as unknown as PlayerController
+  const video = { chapters: [], storyboard_url: null } as unknown as PlayableVideo
+  const utils = render(<SeekBar player={player} video={video} onDragChange={onDragChange} />, {
+    wrapper,
+  })
+  const track = utils.container.querySelector('.mv-seek__track') as HTMLElement
+  vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    width: 100,
+    top: 0,
+    height: 8,
+    right: 100,
+    bottom: 8,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect)
+
+  fireEvent.pointerDown(track, { clientX: 50, pointerId: 2, button: 0 })
+  utils.unmount()
+
+  expect(onDragChange.mock.calls).toEqual([[true], [false]])
+})

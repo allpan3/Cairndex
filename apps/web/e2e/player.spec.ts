@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -21,6 +21,13 @@ function summary(id: string, title: string) {
     has_cover: true,
     openable: true,
     cover_key: null,
+    cover_video_file_id: 'f0',
+    cover_video_relative_path: 'movie.mp4',
+    cover_video_container: 'mov,mp4,m4a,3gp,3g2,mj2',
+    cover_video_codec: 'h264',
+    cover_video_audio_codec: 'aac',
+    cover_video_duration: 3,
+    cover_video_resume_position: null,
     media_kind: 'video',
     width: 1920,
     height: 1080,
@@ -35,10 +42,11 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
 )
+const GENERATED_MP4_PATH = join(tmpdir(), 'cairndex-m2-viewer-fixture-v3.mp4')
 
 /** Build a tiny browser-decodable MP4 fixture from generated color/audio. */
 function mediaBytes(): Buffer | null {
-  const out = join(tmpdir(), 'cairndex-m2-viewer-fixture-v2.mp4')
+  const out = GENERATED_MP4_PATH
   if (!existsSync(out)) {
     try {
       execFileSync('ffmpeg', [
@@ -48,7 +56,7 @@ function mediaBytes(): Buffer | null {
         '-f',
         'lavfi',
         '-i',
-        'color=c=black:s=320x180:d=3',
+        'testsrc2=size=320x180:rate=25:duration=3',
         '-f',
         'lavfi',
         '-i',
@@ -74,6 +82,42 @@ function mediaBytes(): Buffer | null {
 
 const generatedMp4 = mediaBytes()
 
+/** Fulfill a media request with HTTP byte-range semantics matching the server stream route. */
+async function fulfillMedia(route: Route, body: Buffer) {
+  const range = route.request().headers().range
+  const match = range?.match(/^bytes=(\d+)-(\d*)$/)
+  if (!match) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'video/mp4',
+      headers: { 'Accept-Ranges': 'bytes', 'Content-Length': String(body.length) },
+      body,
+    })
+    return
+  }
+  const start = Number(match[1])
+  const requestedEnd = match[2] ? Number(match[2]) : body.length - 1
+  const end = Math.min(requestedEnd, body.length - 1)
+  if (!Number.isFinite(start) || start < 0 || start > end) {
+    await route.fulfill({
+      status: 416,
+      headers: { 'Content-Range': `bytes */${body.length}` },
+    })
+    return
+  }
+  const chunk = body.subarray(start, end + 1)
+  await route.fulfill({
+    status: 206,
+    contentType: 'video/mp4',
+    headers: {
+      'Accept-Ranges': 'bytes',
+      'Content-Length': String(chunk.length),
+      'Content-Range': `bytes ${start}-${end}/${body.length}`,
+    },
+    body: chunk,
+  })
+}
+
 // Build a real fMP4 HLS stream (init + one segment + VOD playlist) from the MP4
 // fixture so the mocked HLS test drives hls.js over genuine MSE-decodable bytes,
 // mirroring what an M6 remux session serves. Returns null when ffmpeg is absent.
@@ -84,7 +128,6 @@ function hlsFixtureFiles(): Map<string, Buffer> | null {
   if (!existsSync(playlist)) {
     try {
       mkdirSync(dir, { recursive: true })
-      const src = join(tmpdir(), 'cairndex-m2-viewer-fixture-v2.mp4')
       execFileSync(
         'ffmpeg',
         [
@@ -92,7 +135,7 @@ function hlsFixtureFiles(): Map<string, Buffer> | null {
           '-loglevel',
           'error',
           '-i',
-          src,
+          GENERATED_MP4_PATH,
           '-c',
           'copy',
           '-f',
@@ -143,40 +186,54 @@ async function freePort(): Promise<number> {
 
 // Start a real backend for the one Playwright test that exercises API jobs
 async function startBackend(dataDir: string) {
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
   const serverDir = fileURLToPath(new URL('../../server/', import.meta.url))
-  const child = spawn(
-    'uv',
-    ['run', 'uvicorn', 'cairndex.main:app', '--host', '127.0.0.1', '--port', String(port)],
-    {
-      cwd: serverDir,
-      env: {
-        ...process.env,
-        CAIRNDEX_DATA_DIR: dataDir,
-        CAIRNDEX_WORKER_ENABLED: 'true',
+  let lastOutput = ''
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const port = await freePort()
+    const baseUrl = `http://127.0.0.1:${port}`
+    const child = spawn(
+      'uv',
+      ['run', 'uvicorn', 'cairndex.main:app', '--host', '127.0.0.1', '--port', String(port)],
+      {
+        cwd: serverDir,
+        env: {
+          ...process.env,
+          CAIRNDEX_DATA_DIR: dataDir,
+          CAIRNDEX_WORKER_ENABLED: 'true',
+        },
+        stdio: 'pipe',
       },
-      stdio: 'pipe',
-    },
-  )
-  const started = Date.now()
-  while (Date.now() - started < 30_000) {
-    if (child.exitCode !== null) throw new Error('backend exited before startup')
-    try {
-      const response = await fetch(`${baseUrl}/api/v1/health`)
-      if (response.ok) return { baseUrl, child }
-    } catch {
-      /* wait for uvicorn */
+    )
+    let output = ''
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+    })
+    const ownReadyLine = `Uvicorn running on http://127.0.0.1:${port}`
+    const started = Date.now()
+    while (Date.now() - started < 30_000) {
+      if (child.exitCode !== null || child.signalCode !== null) break
+      if (output.includes(ownReadyLine)) {
+        try {
+          const response = await fetch(`${baseUrl}/api/v1/health`)
+          if (response.ok) return { baseUrl, child }
+        } catch {
+          // Uvicorn logged its socket before the health route accepted requests
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    lastOutput = output
+    await stopBackend(child)
   }
-  child.kill()
-  throw new Error('backend did not start')
+  throw new Error(`backend did not start its reserved port: ${lastOutput.slice(-500)}`)
 }
 
 // Stop the throwaway backend without leaving a child process behind
 async function stopBackend(child: ChildProcessWithoutNullStreams) {
-  if (child.exitCode !== null) return
+  if (child.exitCode !== null || child.signalCode !== null) return
   child.kill('SIGTERM')
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
@@ -240,6 +297,27 @@ async function waitApiJob(apiBaseUrl: string, jobId: string) {
   throw new Error(`job ${jobId} did not finish`)
 }
 
+// Wait until the completed job's index and first referenced sheet are both servable
+async function waitStoryboardArtifacts(apiBaseUrl: string, libraryId: string, fileId: string) {
+  const fileBase = `${apiBaseUrl}/api/v1/libraries/${libraryId}/files/${fileId}/`
+  const indexUrl = `${fileBase}storyboard.vtt`
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await fetch(indexUrl)
+    if (response.ok) {
+      const payload = await response.text()
+      const sheetRef = payload.split('\n').find((line) => line.includes('#xywh='))
+      if (sheetRef) {
+        const sheetUrl = new URL(sheetRef.split('#', 1)[0]!, fileBase)
+        if ((await fetch(sheetUrl)).ok) return
+      }
+    } else if (response.status !== 404) {
+      throw new Error(`storyboard index failed with ${response.status}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error(`storyboard artifacts for ${fileId} did not become servable`)
+}
+
 // Generate a small H.264 + AAC MKV: the browser can't play the container
 // directly, so the decision remuxes it into an HLS session.
 function makeMkv(path: string) {
@@ -276,7 +354,7 @@ function makeLongVideo(path: string) {
     '-f',
     'lavfi',
     '-i',
-    'testsrc=duration=65:size=160x90:rate=1',
+    'testsrc2=duration=65:size=160x90:rate=4',
     '-movflags',
     '+faststart',
     '-pix_fmt',
@@ -396,6 +474,9 @@ interface MockApiOptions {
   onSessionDelete?: (url: string) => void
   onDecision?: (fileId: string, body: Record<string, unknown>) => void
   onCoverFrame?: (time: number | null) => void
+  summaryPatch?: Record<string, unknown>
+  summaryCount?: number
+  hoverStreamFailure?: boolean
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -444,7 +525,22 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     }),
   )
   await page.route('**/bundles/browse**', (r) =>
-    r.fulfill({ json: { items: [summary('b0', 'Movie 0')], total: 1, offset: 0, limit: 100 } }),
+    r.fulfill({
+      json: {
+        items: Array.from({ length: options.summaryCount ?? 1 }, (_, index) => ({
+          ...summary(index === 0 ? 'b0' : `b${index}`, `Movie ${index}`),
+          cover_video_file_id: index === 0 ? 'f0' : `f${index}`,
+          cover_video_resume_position:
+            index === 0 && options.progress && !options.progress.completed
+              ? options.progress.position_s
+              : null,
+          ...options.summaryPatch,
+        })),
+        total: options.summaryCount ?? 1,
+        offset: 0,
+        limit: 100,
+      },
+    }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/collections\?/, (r) =>
     r.fulfill({ json: { items: [], next_cursor: null } }),
@@ -484,14 +580,21 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
         display_title: 'movie.mp4',
         role: 'primary_video',
         media_kind: 'video',
-        mime_type: 'video/mp4',
+        mime_type: null,
         sequence: 0,
         size_bytes: 0,
         availability: 'available',
         quick_fingerprint: 'video-fingerprint',
         cover_time: coverTime,
         supported: true,
-        tech_metadata: { width: 1920, height: 1080, duration: 120 },
+        tech_metadata: {
+          container: 'mov,mp4,m4a,3gp,3g2,mj2',
+          width: 1920,
+          height: 1080,
+          duration: 120,
+          video_codec: 'h264',
+          audio_codec: 'aac',
+        },
         created_at: '2026-06-25T00:00:00Z',
         updated_at: new Date().toISOString(),
         version: 2,
@@ -499,7 +602,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     })
   })
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1|f2)\/stream$/, (r) =>
-    r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
+    fulfillMedia(r, options.hoverStreamFailure ? Buffer.from('not a video') : mp4),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
     options.onContent?.(r.request().url())
@@ -657,14 +760,23 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           display_title: 'movie.mp4',
           role: 'primary_video',
           media_kind: 'video',
-          mime_type: 'video/mp4',
+          mime_type: null,
           sequence: 0,
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'video-fingerprint',
           cover_time: coverTime,
+          resume_position:
+            progressByFile.f0 && !progressByFile.f0.completed ? progressByFile.f0.position_s : null,
           supported: true,
-          tech_metadata: { width: 1920, height: 1080, duration: 120 },
+          tech_metadata: {
+            container: 'mov,mp4,m4a,3gp,3g2,mj2',
+            width: 1920,
+            height: 1080,
+            duration: 120,
+            video_codec: 'h264',
+            audio_codec: 'aac',
+          },
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
           version: 1,
@@ -685,6 +797,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
                 availability: 'available',
                 quick_fingerprint: 'image-fingerprint',
                 cover_time: null,
+                resume_position: null,
                 supported: true,
                 tech_metadata: { width: 640, height: 360 },
                 created_at: '2026-06-25T00:00:00Z',
@@ -707,6 +820,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           availability: 'available',
           quick_fingerprint: 'second-fingerprint',
           cover_time: null,
+          resume_position: null,
           supported: true,
           tech_metadata: secondaryPlayable ? { width: 1280, height: 720, duration: 90 } : {},
           created_at: '2026-06-25T00:00:00Z',
@@ -729,6 +843,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
                 availability: 'available',
                 quick_fingerprint: 'third-fingerprint',
                 cover_time: null,
+                resume_position: null,
                 supported: true,
                 tech_metadata: { width: 1280, height: 720, duration: 90 },
                 created_at: '2026-06-25T00:00:00Z',
@@ -777,7 +892,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             display_title: 'movie.mp4',
             playable: true,
             reason: '',
-            mime_type: 'video/mp4',
+            mime_type: null,
             stream_url: '/api/v1/libraries/lib1/files/f0/stream',
             width: 1920,
             height: 1080,
@@ -861,6 +976,464 @@ async function openMovie(page: Page) {
   await expect(page.locator('.mv-time')).toContainText('/ 2:00')
   return video
 }
+
+/** Cache the visible sprite pixels before arming the time-sensitive handoff observer. */
+async function prepareHoverFrameComparison(page: Page) {
+  await page.evaluate(async () => {
+    const sprite = document.querySelector<SVGSVGElement>('[data-testid="hover-preview-storyboard"]')
+    const spriteImage = sprite?.querySelector<SVGImageElement>('image')
+    if (!sprite || !spriteImage) throw new Error('hover comparison sprite missing')
+
+    const image = new Image()
+    image.src = spriteImage.href.baseVal
+    await image.decode()
+    const [cueX, cueY] = (sprite.dataset.cuePosition ?? '').split(',').map(Number)
+    const cueWidth = sprite.viewBox.baseVal.width
+    const cueHeight = sprite.viewBox.baseVal.height
+    const width = 80
+    const height = 45
+    const spriteCanvas = document.createElement('canvas')
+    spriteCanvas.width = width
+    spriteCanvas.height = height
+    const spriteContext = spriteCanvas.getContext('2d')
+    if (!spriteContext) throw new Error('sprite canvas unavailable')
+    spriteContext.drawImage(image, cueX!, cueY!, cueWidth, cueHeight, 0, 0, width, height)
+    const spritePixels = spriteContext.getImageData(0, 0, width, height).data
+    const state = window as unknown as {
+      __hoverPreviewFrameReference: {
+        cueStart: number
+        height: number
+        pixels: Uint8ClampedArray
+        width: number
+      }
+    }
+    state.__hoverPreviewFrameReference = {
+      cueStart: Number(sprite.dataset.cueStart),
+      height,
+      pixels: spritePixels,
+      width,
+    }
+  })
+}
+
+/** Compare the prepared sprite crop with the first video frame exposed at rest. */
+async function armHoverFrameComparison(page: Page) {
+  await page.evaluate(() => {
+    const video = document.querySelector<HTMLVideoElement>('[data-testid="hover-preview-video"]')
+    const sprite = document.querySelector<SVGSVGElement>('[data-testid="hover-preview-storyboard"]')
+    const container = sprite?.parentElement
+    const state = window as unknown as {
+      __hoverPreviewFrameMatch: { difference: number; time: number } | null
+      __hoverPreviewFrameReference: {
+        cueStart: number
+        height: number
+        pixels: Uint8ClampedArray
+        width: number
+      }
+    }
+    if (!video || !sprite || !container || !state.__hoverPreviewFrameReference) {
+      throw new Error('hover comparison layers missing')
+    }
+    const reference = state.__hoverPreviewFrameReference
+    if (Number(sprite.dataset.cueStart) !== reference.cueStart) {
+      throw new Error('hover comparison cue changed')
+    }
+    state.__hoverPreviewFrameMatch = null
+
+    const observer = new MutationObserver(() => {
+      if (sprite.isConnected) return
+      const videoCanvas = document.createElement('canvas')
+      videoCanvas.width = reference.width
+      videoCanvas.height = reference.height
+      const videoContext = videoCanvas.getContext('2d')
+      if (!videoContext) return
+      videoContext.drawImage(video, 0, 0, reference.width, reference.height)
+      const videoPixels = videoContext.getImageData(0, 0, reference.width, reference.height).data
+      let difference = 0
+      for (let index = 0; index < reference.pixels.length; index += 4) {
+        difference += Math.abs(reference.pixels[index]! - videoPixels[index]!)
+        difference += Math.abs(reference.pixels[index + 1]! - videoPixels[index + 1]!)
+        difference += Math.abs(reference.pixels[index + 2]! - videoPixels[index + 2]!)
+      }
+      state.__hoverPreviewFrameMatch = {
+        difference: difference / (reference.width * reference.height * 3),
+        time: video.currentTime,
+      }
+      observer.disconnect()
+    })
+    observer.observe(container, { childList: true })
+  })
+}
+
+test('uses storyboard motion and resting video on a real MP4 bundle preview', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real hover preview e2e')
+  const forbidden: string[] = []
+  await page.addInitScript(() => {
+    ;(window as unknown as { __hoverPreviewSeeks: number }).__hoverPreviewSeeks = 0
+    ;(window as unknown as { __hoverPreviewSeekedTimes: number[] }).__hoverPreviewSeekedTimes = []
+    document.addEventListener(
+      'seeking',
+      (event) => {
+        if (
+          event.target instanceof HTMLVideoElement &&
+          event.target.getAttribute('data-testid') === 'hover-preview-video'
+        ) {
+          ;(window as unknown as { __hoverPreviewSeeks: number }).__hoverPreviewSeeks += 1
+        }
+      },
+      true,
+    )
+    document.addEventListener(
+      'seeked',
+      (event) => {
+        if (
+          event.target instanceof HTMLVideoElement &&
+          event.target.getAttribute('data-testid') === 'hover-preview-video'
+        ) {
+          ;(
+            window as unknown as { __hoverPreviewSeekedTimes: number[] }
+          ).__hoverPreviewSeekedTimes.push(event.target.currentTime)
+        }
+      },
+      true,
+    )
+  })
+  page.on('request', (request) => {
+    const url = request.url()
+    if (url.includes('/playback-decision') || url.includes('/playback-sessions')) {
+      forbidden.push(url)
+    }
+  })
+  await mockApi(page, { progress: { position_s: 1.2, duration_s: 3, completed: false } })
+  await page.goto('/')
+
+  const card = page.locator('[data-bundle-id="b0"]')
+  const storyboardRequest = page.waitForRequest((request) =>
+    request.url().includes('/files/f0/storyboard.vtt'),
+  )
+  await card.hover()
+  await storyboardRequest
+  await expect(page.getByTestId('hover-preview-video')).toHaveCount(0)
+  const video = page.getByTestId('hover-preview-video')
+  await expect(video).toBeVisible()
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(1.1)
+  await expect(card.locator('.card__thumb')).toHaveCSS('background-size', 'contain')
+  await expect(video).toHaveCSS('object-fit', 'contain')
+
+  const box = await card.locator('.card__thumb').boundingBox()
+  if (!box) throw new Error('missing bundle hover card bounds')
+  // Capture motion state from its DOM commit, independent of driver scheduling
+  const nextSkimState = () =>
+    card.evaluate(
+      (element) =>
+        new Promise<{
+          storyboardVisible: boolean
+          preserveAspectRatio: string | null
+          cueStart: string | null
+          clipId: string | null
+          clipPath: string | null
+          videoVisible: boolean
+          videoPaused: boolean | null
+          seeks: number
+          clockRight: number | null
+        }>((resolve, reject) => {
+          const thumb = element.querySelector<HTMLElement>('.card__thumb')
+          if (!thumb) {
+            reject(new Error('missing hover preview thumb'))
+            return
+          }
+          const readState = () => {
+            const storyboard = thumb.querySelector<SVGElement>(
+              '[data-testid="hover-preview-storyboard"]',
+            )
+            const video = thumb.querySelector<HTMLVideoElement>(
+              '[data-testid="hover-preview-video"]',
+            )
+            const clock = thumb.querySelector<HTMLElement>('.hover-preview__clock')
+            const storyboardBox = storyboard?.getBoundingClientRect()
+            const videoBox = video?.getBoundingClientRect()
+            const clockBox = clock?.getBoundingClientRect()
+            const storyboardStyle = storyboard ? getComputedStyle(storyboard) : null
+            const videoStyle = video ? getComputedStyle(video) : null
+            const clipId = storyboard?.querySelector('clipPath')?.getAttribute('id') ?? null
+            return {
+              storyboardVisible: Boolean(
+                storyboardBox?.width &&
+                storyboardBox.height &&
+                storyboardStyle?.display !== 'none' &&
+                storyboardStyle?.visibility !== 'hidden',
+              ),
+              preserveAspectRatio: storyboard?.getAttribute('preserveAspectRatio') ?? null,
+              cueStart: storyboard?.getAttribute('data-cue-start') ?? null,
+              clipId,
+              clipPath: storyboard?.querySelector('g')?.getAttribute('clip-path') ?? null,
+              videoVisible: Boolean(
+                videoBox?.width &&
+                videoBox.height &&
+                videoStyle?.display !== 'none' &&
+                videoStyle?.visibility !== 'hidden',
+              ),
+              videoPaused: video?.paused ?? null,
+              seeks: (window as unknown as { __hoverPreviewSeeks: number }).__hoverPreviewSeeks,
+              clockRight: clockBox?.right ?? null,
+            }
+          }
+          let lastSkimState: ReturnType<typeof readState> | null = null
+          const observer = new MutationObserver(() => {
+            if (thumb.getAttribute('data-hover-preview-state') === 'skimming') {
+              lastSkimState = readState()
+              return
+            }
+            if (!lastSkimState) return
+            observer.disconnect()
+            window.clearTimeout(timeout)
+            resolve(lastSkimState)
+          })
+          const timeout = window.setTimeout(() => {
+            observer.disconnect()
+            reject(new Error('hover preview never entered skimming'))
+          }, 5_000)
+          observer.observe(thumb, { attributes: true, childList: true, subtree: true })
+        }),
+    )
+  const cursorFraction = 0.8
+  const rawCursorTime = 3 * cursorFraction
+  const seeksBeforeSkim = await page.evaluate(
+    () => (window as unknown as { __hoverPreviewSeeks: number }).__hoverPreviewSeeks,
+  )
+  const skimStatePromise = nextSkimState()
+  await page.mouse.move(box.x + box.width * cursorFraction, box.y + box.height / 2, { steps: 6 })
+  const storyboard = page.getByTestId('hover-preview-storyboard')
+  const skimState = await skimStatePromise
+  expect(skimState.storyboardVisible).toBe(true)
+  expect(skimState.preserveAspectRatio).toBe('xMidYMid meet')
+  const storyboardCueStart = Number(skimState.cueStart)
+  expect(storyboardCueStart).toBe(2)
+  expect(rawCursorTime).toBeCloseTo(2.4, 2)
+  expect(storyboardCueStart).not.toBeCloseTo(rawCursorTime, 1)
+  expect(skimState.clipId).toBeTruthy()
+  expect(skimState.clipPath).toBe(`url(#${skimState.clipId})`)
+  expect(skimState.videoVisible).toBe(true)
+  expect(skimState.videoPaused).toBe(true)
+  expect(skimState.seeks).toBe(seeksBeforeSkim)
+  const clock = card.locator('.hover-preview__clock')
+  expect(skimState.clockRight).not.toBeNull()
+
+  await expect(video).toBeVisible()
+  await expect(storyboard).toHaveCount(0)
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).paused))
+    .toBe(false)
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(2.1)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __hoverPreviewSeeks: number }).__hoverPreviewSeeks,
+    ),
+  ).toBe(seeksBeforeSkim + 1)
+  const restClockBox = await clock.boundingBox()
+  const soundBox = await card.getByRole('button', { name: 'Unmute preview' }).boundingBox()
+  expect(restClockBox).not.toBeNull()
+  expect(soundBox).not.toBeNull()
+  expect(Math.abs(restClockBox!.x + restClockBox!.width - skimState.clockRight!)).toBeLessThan(1)
+  expect(soundBox!.x + soundBox!.width).toBeLessThanOrEqual(restClockBox!.x)
+  const seekedTimes = await page.evaluate(
+    () => (window as unknown as { __hoverPreviewSeekedTimes: number[] }).__hoverPreviewSeekedTimes,
+  )
+  const restSeekTime = seekedTimes.at(-1)
+  expect(restSeekTime).toBeCloseTo(storyboardCueStart, 2)
+  expect(restSeekTime).not.toBeCloseTo(rawCursorTime, 1)
+
+  await card.getByRole('button', { name: 'Unmute preview' }).click()
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).muted))
+    .toBe(false)
+  await expect(page.locator('.album')).toHaveCount(0)
+
+  const secondSkimStatePromise = nextSkimState()
+  await page.mouse.move(box.x + box.width * 0.35, box.y + box.height / 2, { steps: 4 })
+  const secondSkimState = await secondSkimStatePromise
+  expect(secondSkimState.storyboardVisible).toBe(true)
+  expect(secondSkimState.videoPaused).toBe(true)
+  await expect(video).toBeVisible()
+  await expect(storyboard).toHaveCount(0)
+  await expect.poll(() => video.evaluate((element) => element.paused)).toBe(false)
+  await expect.poll(() => video.evaluate((element) => element.muted)).toBe(false)
+  await expect(card.locator('.card__thumb')).toHaveAttribute('data-hover-preview-mode', 'direct')
+
+  await page.getByRole('tab', { name: 'Files' }).hover()
+  await expect(video).toHaveCount(0)
+  expect(forbidden).toEqual([])
+})
+
+test('uses the same real MP4 hover behavior on a bundle-album file card', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real hover preview e2e')
+  const forbidden: string[] = []
+  page.on('request', (request) => {
+    const url = request.url()
+    if (url.includes('/playback-decision') || url.includes('/playback-sessions')) {
+      forbidden.push(url)
+    }
+  })
+  await mockApi(page)
+  await page.goto('/')
+  await page.locator('[data-bundle-id="b0"]').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open Bundle' }).click()
+
+  const tile = page.locator('[data-file-id="f0"]')
+  await tile.focus()
+  await page.keyboard.press('Enter')
+  await expect(tile).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+  const secondTile = page.locator('[data-file-id="f1"]')
+  await secondTile.focus()
+  await page.keyboard.press('Space')
+  await expect(secondTile).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+
+  await tile.hover()
+  const video = page.getByTestId('hover-preview-video')
+  await expect(video).toBeVisible()
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(0.1)
+  await page.mouse.move(0, 0)
+  await expect(video).toHaveCount(0)
+  expect(forbidden).toEqual([])
+})
+
+test('previews a linked video card in the File Browser grid', async ({ page }) => {
+  test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real hover preview e2e')
+  const forbidden: string[] = []
+  page.on('request', (request) => {
+    const url = request.url()
+    if (url.includes('/playback-decision') || url.includes('/playback-sessions')) {
+      forbidden.push(url)
+    }
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      'cairndex.filePrefs',
+      JSON.stringify({ layout: 'grid', zoom: 200, sort: 'name', order: 'asc' }),
+    )
+  })
+  await mockApi(page)
+  await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
+    route.fulfill({
+      json: {
+        path: '',
+        entries: [
+          {
+            name: 'movie.mp4',
+            relative_path: 'movie.mp4',
+            kind: 'file',
+            size_bytes: generatedMp4?.length ?? 0,
+            modified_at: '2026-06-25T00:00:00Z',
+            created_at: '2026-06-25T00:00:00Z',
+            extension: 'mp4',
+            mime_type: null,
+            media_kind: 'video',
+            supported: true,
+            linked: true,
+            bundle_id: 'b0',
+            file_id: 'f0',
+            container: 'mov,mp4,m4a,3gp,3g2,mj2',
+            video_codec: 'h264',
+            audio_codec: 'aac',
+            duration: 3,
+            resume_position: null,
+            unbundled: false,
+          },
+        ],
+      },
+    }),
+  )
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Files' }).click()
+
+  const card = page.locator('[data-relpath="movie.mp4"]')
+  await card.hover()
+  const video = page.getByTestId('hover-preview-video')
+  await expect(video).toBeVisible()
+  await expect
+    .poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
+    .toBeGreaterThan(0.1)
+  expect(forbidden).toEqual([])
+})
+
+test('skims an MKV cover through storyboards without stream or session requests', async ({
+  page,
+}) => {
+  const requests: string[] = []
+  page.on('request', (request) => requests.push(request.url()))
+  await mockApi(page, {
+    summaryPatch: {
+      cover_video_relative_path: 'movie.mkv',
+      cover_video_container: 'matroska,webm',
+      cover_video_codec: 'h264',
+      cover_video_audio_codec: 'aac',
+    },
+  })
+  await page.goto('/')
+
+  const thumb = page.locator('[data-bundle-id="b0"] .card__thumb')
+  await thumb.hover()
+  const storyboard = page.getByTestId('hover-preview-storyboard')
+  await expect(storyboard).toBeVisible()
+  const initial = await storyboard.getAttribute('data-cue-position')
+  const box = await thumb.boundingBox()
+  if (!box) throw new Error('missing storyboard hover card bounds')
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2)
+  await expect.poll(() => storyboard.getAttribute('data-cue-position')).not.toBe(initial)
+
+  expect(requests.some((url) => url.includes('/storyboard.vtt'))).toBe(true)
+  expect(requests.some((url) => url.includes('/stream'))).toBe(false)
+  expect(requests.some((url) => url.includes('/playback-decision'))).toBe(false)
+  expect(requests.some((url) => url.includes('/playback-sessions'))).toBe(false)
+})
+
+test('falls back to a storyboard when a direct hover stream cannot decode', async ({ page }) => {
+  const requests: string[] = []
+  page.on('request', (request) => requests.push(request.url()))
+  await mockApi(page, { hoverStreamFailure: true })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').hover()
+  await expect(page.getByTestId('hover-preview-storyboard')).toBeVisible()
+  await expect(page.getByTestId('hover-preview-video')).toHaveCount(0)
+  expect(requests.some((url) => url.includes('/stream'))).toBe(true)
+  expect(requests.some((url) => url.includes('/playback-decision'))).toBe(false)
+  expect(requests.some((url) => url.includes('/playback-sessions'))).toBe(false)
+})
+
+test('sweeps across video cards without dwelling and starts no preview requests', async ({
+  page,
+}) => {
+  let streamRequests = 0
+  let storyboardRequests = 0
+  page.on('request', (request) => {
+    if (request.url().includes('/stream')) streamRequests += 1
+    if (request.url().includes('/storyboard.vtt')) storyboardRequests += 1
+  })
+  await mockApi(page, { summaryCount: 8 })
+  await page.goto('/')
+
+  const cards = page.locator('[data-bundle-id]')
+  await expect(cards).toHaveCount(8)
+  for (let index = 0; index < 8; index += 1) {
+    const box = await cards.nth(index).boundingBox()
+    if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  }
+  await page.getByRole('tab', { name: 'Files' }).hover()
+  await page.waitForTimeout(200)
+
+  expect(streamRequests).toBe(0)
+  expect(storyboardRequests).toBe(0)
+  await expect(page.getByTestId('hover-preview-video')).toHaveCount(0)
+})
 
 test('never flashes the unplayable card while opening a playable video', async ({ page }) => {
   // Regression: the decision round-trip must show "Preparing playback…", not a
@@ -1251,12 +1824,77 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
       `/api/v1/libraries/${library.id}/jobs/storyboards`,
     )
     await waitApiJob(backend.baseUrl, storyboard.id)
+    await waitStoryboardArtifacts(backend.baseUrl, library.id, file.id)
     const thumbnailUrl = `${backend.baseUrl}/api/v1/libraries/${library.id}/bundles/${bundle.id}/thumbnail`
     const automaticThumbnail = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
 
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
-    await page.locator(`[data-bundle-id="${bundle.id}"]`).dblclick()
+    const card = page.locator(`[data-bundle-id="${bundle.id}"]`)
+    const storyboardResponse = page.waitForResponse((response) =>
+      response.url().includes(`/files/${file.id}/storyboard.vtt`),
+    )
+    await card.hover()
+    expect((await storyboardResponse).status()).toBe(200)
+    const hoverVideo = page.getByTestId('hover-preview-video')
+    await expect(hoverVideo).toBeVisible()
+    const hoverBounds = await card.locator('.card__thumb').boundingBox()
+    if (!hoverBounds) throw new Error('missing real storyboard card bounds')
+    const hoverX = hoverBounds.x + hoverBounds.width * (27 / 65)
+    const hoverY = hoverBounds.y + hoverBounds.height / 2
+    await page.mouse.move(hoverX, hoverY, { steps: 6 })
+    await expect(card.locator('.card__thumb')).toHaveAttribute(
+      'data-hover-preview-state',
+      'skimming',
+    )
+    const hoverStoryboard = page.getByTestId('hover-preview-storyboard')
+    await expect(hoverStoryboard).toBeVisible()
+    await expect(hoverStoryboard).toHaveAttribute('data-cue-start', '26')
+    const cueStart = Number(await hoverStoryboard.getAttribute('data-cue-start'))
+    expect(cueStart).toBe(26)
+    await prepareHoverFrameComparison(page)
+    await page.mouse.move(hoverX + 0.5, hoverY)
+    await expect(hoverStoryboard).toBeVisible()
+    await armHoverFrameComparison(page)
+    await page.mouse.move(hoverX + 1, hoverY)
+    await expect(card.locator('.card__thumb')).toHaveAttribute(
+      'data-hover-preview-state',
+      'playing',
+    )
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __hoverPreviewFrameMatch: { difference: number; time: number } | null
+              }
+            ).__hoverPreviewFrameMatch,
+        ),
+      )
+      .not.toBeNull()
+    const capturedFrame = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __hoverPreviewFrameMatch: { difference: number; time: number }
+          }
+        ).__hoverPreviewFrameMatch,
+    )
+    expect(capturedFrame.time).toBeGreaterThanOrEqual(cueStart)
+    expect(capturedFrame.time).toBeLessThan(cueStart + 0.3)
+    expect(capturedFrame.difference).toBeLessThan(12)
+    await expect(hoverVideo).toBeVisible()
+    await expect
+      .poll(() => hoverVideo.evaluate((element) => (element as HTMLVideoElement).paused))
+      .toBe(false)
+    await expect
+      .poll(() => hoverVideo.evaluate((element) => (element as HTMLVideoElement).currentTime))
+      .toBeGreaterThan(cueStart + 0.05)
+    await page.getByRole('tab', { name: 'Files' }).hover()
+    await expect(hoverVideo).toHaveCount(0)
+
+    await card.dblclick()
     await expect(page.getByTestId('media-video')).toHaveAttribute('src', /story\.mp4|stream/)
     await expect(page.locator('.mv-time')).toContainText('/ 1:05')
 
@@ -1266,7 +1904,12 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
     await expect(preview).toHaveCSS('background-image', /storyboard\/sb_001\.jpg/)
 
     const video = page.getByTestId('media-video')
-    await video.evaluate((element) => ((element as HTMLVideoElement).currentTime = 26))
+    const coverTime = await video.evaluate((element) => {
+      const media = element as HTMLVideoElement
+      media.pause()
+      media.currentTime = 26
+      return media.currentTime
+    })
     await page.getByRole('button', { name: 'Playback settings' }).click()
     const setResponse = page.waitForResponse(
       (response) =>
@@ -1275,7 +1918,7 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
     )
     await page.getByRole('menuitem', { name: 'Set frame as cover' }).click()
     const selected = (await (await setResponse).json()) as { cover_time: number | null }
-    expect(selected.cover_time).toBeCloseTo(26, 2)
+    expect(selected.cover_time).toBeCloseTo(coverTime, 3)
     const selectedThumbnail = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
     expect(selectedThumbnail.equals(automaticThumbnail)).toBe(false)
 
@@ -1289,6 +1932,7 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
       cover_time: null,
     })
   } finally {
+    if (!page.isClosed()) await page.close()
     if (backend) await stopBackend(backend.child)
     rmSync(libraryRoot, { recursive: true, force: true })
     rmSync(dataDir, { recursive: true, force: true })

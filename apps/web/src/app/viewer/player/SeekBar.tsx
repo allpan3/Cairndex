@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { PlayableVideo } from '../../../api/client'
 import { formatClock } from '../../../lib/format'
+import {
+  createLeadingTrailingThrottle,
+  type LeadingTrailingThrottle,
+} from '../../../lib/leadingTrailingThrottle'
 import { StoryboardPreview } from './StoryboardPreview'
 import type { PlayerController } from './usePlayer'
 
@@ -47,19 +51,19 @@ export function SeekBar({
   useEffect(() => {
     playerRef.current = player
   }, [player])
-  const scrub = useRef<{ last: number; pending: number | null; timer: number | null }>({
-    last: 0,
-    pending: null,
-    timer: null,
-  })
+  const scrub = useRef<LeadingTrailingThrottle<number> | null>(null)
   const dragCleanup = useRef<(() => void) | null>(null)
-  useEffect(
-    () => () => {
-      if (scrub.current.timer != null) clearTimeout(scrub.current.timer)
+  useEffect(() => {
+    const throttle = createLeadingTrailingThrottle(SEEK_THROTTLE_MS, (time: number) => {
+      playerRef.current.seek(time)
+    })
+    scrub.current = throttle
+    return () => {
+      throttle.cancel()
+      scrub.current = null
       dragCleanup.current?.()
-    },
-    [],
-  )
+    }
+  }, [])
   const progress = player.duration > 0 ? (player.currentTime / player.duration) * 100 : 0
   const displayPct = dragPct ?? progress
 
@@ -96,35 +100,8 @@ export function SeekBar({
   }
   const pctFor = (time: number) => (player.duration > 0 ? (time / player.duration) * 100 : 0)
 
-  // Seek now, clearing any pending trailing flush.
-  const commitSeek = (time: number) => {
-    const s = scrub.current
-    if (s.timer != null) {
-      clearTimeout(s.timer)
-      s.timer = null
-    }
-    s.pending = null
-    s.last = performance.now()
-    playerRef.current.seek(time)
-  }
-
-  // Seek on the leading edge, then coalesce the rest of the window into a single
-  // trailing seek at the last requested position.
-  const throttledSeek = (time: number) => {
-    const s = scrub.current
-    const elapsed = performance.now() - s.last
-    if (elapsed >= SEEK_THROTTLE_MS) {
-      commitSeek(time)
-      return
-    }
-    s.pending = time
-    if (s.timer == null) {
-      s.timer = window.setTimeout(() => {
-        s.timer = null
-        if (s.pending != null) commitSeek(s.pending)
-      }, SEEK_THROTTLE_MS - elapsed)
-    }
-  }
+  const commitSeek = (time: number) => scrub.current?.flush(time)
+  const throttledSeek = (time: number) => scrub.current?.schedule(time)
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -146,6 +123,7 @@ export function SeekBar({
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)
+      onDragChange?.(false)
       dragCleanup.current = null
     }
     const end = (endEvent: PointerEvent) => {
@@ -157,7 +135,6 @@ export function SeekBar({
       dragging.current = null
       setDragPct(null)
       setHover(null)
-      onDragChange?.(false)
       removeListeners()
     }
     window.addEventListener('pointermove', move)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
@@ -11,8 +12,9 @@ from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import MediaKind
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
-from cairndex.services import browse as browse_service
-from cairndex.services.browse import BundleSummary
+
+if TYPE_CHECKING:
+    from cairndex.services.browse import BundleSummary
 
 COMPLETED_THRESHOLD = 0.95
 
@@ -41,6 +43,13 @@ class ContinueWatchingPage:
     total: int
     offset: int
     limit: int
+
+
+# Return only meaningful incomplete progress for card hover activation
+def resume_position(position_s: float | None, completed: bool | None) -> float | None:
+    if position_s is None or completed or position_s <= 0:
+        return None
+    return position_s
 
 
 # Normalize service inputs after schema-level numeric validation
@@ -133,6 +142,8 @@ def progress_for_files(session: Session, file_ids: list[str]) -> dict[str, Progr
 
 # Return bundle summaries with an unfinished progress row, newest progress first
 def continue_watching(session: Session, *, offset: int, limit: int) -> ContinueWatchingPage:
+    from cairndex.services.browse import _summarize
+
     ranked = (
         select(
             PlaybackProgress.file_id.label("file_id"),
@@ -169,7 +180,7 @@ def continue_watching(session: Session, *, offset: int, limit: int) -> ContinueW
     by_id = {bundle.id: bundle for bundle in bundles}
     items = [
         ContinueWatchingItem(
-            bundle=browse_service._summarize(session, by_id[bundle_id]),
+            bundle=_summarize(session, by_id[bundle_id]),
             progress=ProgressValue(
                 file_id=file_id,
                 bundle_id=bundle_id,

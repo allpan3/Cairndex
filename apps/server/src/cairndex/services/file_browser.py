@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
@@ -28,8 +28,9 @@ from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolv
 from cairndex.domain.enums import GroupingSource, GroupingState
 from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.engine import library_root_for_session
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
 from cairndex.scanning.media_types import classify, is_hidden_relative_path
+from cairndex.services.playback_progress import resume_position as progress_resume_position
 
 # Non-dotfile names we still hide: caches, OS/DB cruft, thumbnails. Dotfiles and
 # dot-directories (e.g. .git, .DS_Store, .env, the .cairndex marker) are hidden
@@ -69,6 +70,14 @@ class FileBrowserEntry:
     # Cheap "already linked into a bundle" hint for this exact path.
     linked: bool
     bundle_id: str | None
+    # Linked-file metadata for direct/storyboard card hover preview. Unlinked
+    # filesystem entries remain null rather than triggering per-card lookups
+    file_id: str | None
+    container: str | None
+    video_codec: str | None
+    audio_codec: str | None
+    duration: float | None
+    resume_position: float | None
     # True when linked into a scan-staged *provisional* bundle — i.e. the file is
     # known but not yet in a confirmed bundle ("unbundled"). False for unlinked
     # files and for files already in a confirmed bundle.
@@ -80,6 +89,12 @@ class _Link:
     """A path's bundle membership, for the File Browser linked/unbundled badges."""
 
     bundle_id: str
+    file_id: str
+    container: str | None
+    video_codec: str | None
+    audio_codec: str | None
+    duration: float | None
+    resume_position: float | None
     unbundled: bool  # in a provisional/scan_suggestion bundle (not yet confirmed)
 
 
@@ -159,19 +174,58 @@ def list_unbundled_files(
         AssetBundle.grouping_source == GroupingSource.SCAN_SUGGESTION
     )
     base = (
-        select(AssetFile.relative_path, AssetFile.bundle_id, AssetFile.size_bytes, AssetFile.mtime)
+        select(
+            AssetFile.id.label("file_id"),
+            AssetFile.relative_path.label("relative_path"),
+            AssetFile.bundle_id.label("bundle_id"),
+            AssetFile.size_bytes.label("size_bytes"),
+            AssetFile.mtime.label("mtime"),
+            func.json_extract(AssetFile.tech_metadata, "$.container").label("container"),
+            func.json_extract(AssetFile.tech_metadata, "$.video_codec").label("video_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.audio_codec").label("audio_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.duration").label("duration"),
+            PlaybackProgress.position_s.label("resume_position"),
+            PlaybackProgress.completed.label("progress_completed"),
+        )
         .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
         .where(unbundled)
     )
-    rows = [r for r in session.execute(base).all() if not is_hidden_relative_path(r[0])]
-    rows.sort(key=lambda r: r[0].lower())
+    rows = [
+        row for row in session.execute(base).all() if not is_hidden_relative_path(row.relative_path)
+    ]
+    rows.sort(key=lambda row: row.relative_path.lower())
     total = len(rows)
-    items = [_unbundled_entry(*r) for r in rows[offset : offset + limit]]
+    items = [
+        _unbundled_entry(
+            row.file_id,
+            row.relative_path,
+            row.bundle_id,
+            row.size_bytes,
+            row.mtime,
+            row.container,
+            row.video_codec,
+            row.audio_codec,
+            row.duration,
+            progress_resume_position(row.resume_position, row.progress_completed),
+        )
+        for row in rows[offset : offset + limit]
+    ]
     return UnbundledFilesPage(items=items, total=total, offset=offset, limit=limit)
 
 
+# Shape one linked provisional row like a File Browser entry
 def _unbundled_entry(
-    relative_path: str, bundle_id: str, size_bytes: int | None, mtime: datetime | None
+    file_id: str,
+    relative_path: str,
+    bundle_id: str,
+    size_bytes: int | None,
+    mtime: datetime | None,
+    container: str | None,
+    video_codec: str | None,
+    audio_codec: str | None,
+    duration: float | None,
+    resume_position: float | None,
 ) -> FileBrowserEntry:
     name = relative_path.rsplit("/", 1)[-1]
     _, _, ext = name.rpartition(".")
@@ -190,6 +244,12 @@ def _unbundled_entry(
         supported=is_openable_media(classification[0], relative_path) if classification else False,
         linked=True,
         bundle_id=bundle_id,
+        file_id=file_id,
+        container=container,
+        video_codec=video_codec,
+        audio_codec=audio_codec,
+        duration=duration,
+        resume_position=resume_position,
         unbundled=True,
     )
 
@@ -261,6 +321,12 @@ def _build_entry(
             supported=False,
             linked=False,
             bundle_id=None,
+            file_id=None,
+            container=None,
+            video_codec=None,
+            audio_codec=None,
+            duration=None,
+            resume_position=None,
             unbundled=False,
         )
 
@@ -281,6 +347,12 @@ def _build_entry(
         supported=is_openable_media(classification[0], child_rel) if classification else False,
         linked=link is not None,
         bundle_id=link.bundle_id if link is not None else None,
+        file_id=link.file_id if link is not None else None,
+        container=link.container if link is not None else None,
+        video_codec=link.video_codec if link is not None else None,
+        audio_codec=link.audio_codec if link is not None else None,
+        duration=link.duration if link is not None else None,
+        resume_position=link.resume_position if link is not None else None,
         unbundled=link.unbundled if link is not None else False,
     )
 
@@ -291,21 +363,53 @@ def _linked_paths(session: Session, parent_rel: str) -> dict[str, _Link]:
     unbundled badges without a per-file query. Joins the owning bundle to know
     whether the grouping is still provisional (scan-staged) or confirmed."""
     prefix = f"{parent_rel}/" if parent_rel else ""
-    stmt = select(
-        AssetFile.relative_path,
-        AssetFile.bundle_id,
-        AssetBundle.grouping_state,
-        AssetBundle.grouping_source,
-    ).join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+    stmt = (
+        select(
+            AssetFile.relative_path,
+            AssetFile.id,
+            AssetFile.bundle_id,
+            func.json_extract(AssetFile.tech_metadata, "$.container"),
+            func.json_extract(AssetFile.tech_metadata, "$.video_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.audio_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.duration"),
+            PlaybackProgress.position_s,
+            PlaybackProgress.completed,
+            AssetBundle.grouping_state,
+            AssetBundle.grouping_source,
+        )
+        .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
+    )
     if prefix:
         stmt = stmt.where(AssetFile.relative_path.startswith(prefix))
     out: dict[str, _Link] = {}
-    for rel_path, bundle_id, grouping_state, grouping_source in session.execute(stmt):
+    for (
+        rel_path,
+        file_id,
+        bundle_id,
+        container,
+        video_codec,
+        audio_codec,
+        duration,
+        resume_position,
+        progress_completed,
+        grouping_state,
+        grouping_source,
+    ) in session.execute(stmt):
         remainder = rel_path[len(prefix) :]
         if "/" not in remainder:  # direct child, not nested nested
             unbundled = (
                 grouping_state is GroupingState.PROVISIONAL
                 and grouping_source is GroupingSource.SCAN_SUGGESTION
             )
-            out[rel_path] = _Link(bundle_id=bundle_id, unbundled=unbundled)
+            out[rel_path] = _Link(
+                bundle_id=bundle_id,
+                file_id=file_id,
+                container=container,
+                video_codec=video_codec,
+                audio_codec=audio_codec,
+                duration=duration,
+                resume_position=progress_resume_position(resume_position, progress_completed),
+                unbundled=unbundled,
+            )
     return out

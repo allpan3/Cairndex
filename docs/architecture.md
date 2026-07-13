@@ -1,11 +1,11 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M9 (probe enrichment,
+> Status: current through the media-player foundation M1–M12 (probe enrichment,
 > the unified custom media viewer, storyboard trickplay, watch progress/resume,
 > image viewer v2 with preview derivatives, the server-side playback decision +
 > HLS remux/transcode session foundation, and the web hls.js/native-HLS engine
-> integration; PRs #1–#5, the M6 `feat/playback-sessions` branch, and the M7
-> `feat/web-hls` branch). See `AGENTS.md` for the product brief,
+> integration, player polish, and card hover previews; merged through M9 #11,
+> with M12 on `feat/hover-preview`). See `AGENTS.md` for the product brief,
 > `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md` for
 > current gaps, validation state, and recommended next tasks.
 
@@ -110,6 +110,19 @@ Current browsing surfaces:
   controls, selection, batch editing, and an in-bundle album/viewer.
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
+
+M12 adds one shared card-hover preview path across video effective-cover bundle
+cards, bundle-album file tiles, and linked File Browser grid cards. A module-level
+owner permits only one active preview. Direct-capable sources use the existing
+range `/stream` URL after a 500 ms dwell. Storyboard indexes prefetch after a
+150 ms sub-dwell; motion pauses and hides the still-mounted direct video,
+renders the cursor-time sprite, and performs no video seeks. After 250 ms rest,
+one seek lands on the displayed storyboard cue's sampled timestamp and playback
+resumes. Final pointer time is used only when no storyboard is available; the
+paused video frame then stays visible during motion. Non-direct sources use the
+same sprite path without mounting video. The hover path never calls the
+playback-decision or HLS-session APIs. Leave, guarded interactions, and
+virtualized unmount pause the element, remove its source, and reload it.
 
 Local list/picker search uses the shared `app/pinyin.ts` matcher. It preserves
 case-insensitive literal substring matching and adds contiguous full-pinyin,
@@ -274,19 +287,26 @@ Storyboard artifacts use this cache layout:
   sb_002.jpg
 ```
 
-`index.fingerprint` stores the source file's quick fingerprint for cheap
-request-path validation; `index.vtt` also includes
-`NOTE cairndex-quick-fingerprint: {quick_fingerprint}` so the artifact is
-self-describing. Manifest `storyboard_url` values and VTT sheet payloads include
-`?v={quick_fingerprint}` and storyboard endpoints serve them with immutable cache
-headers. A cue payload is always a relative URL plus tile fragment:
+`index.fingerprint` stores the storyboard format version plus the source file's
+quick fingerprint for cheap request-path validation without reading the VTT;
+`index.vtt` keeps a quick-fingerprint note for artifact inspection. Storyboard
+format v2 anchors ffmpeg sampling at t=0 and selects the source frame active at
+each VTT cue boundary. Old-format indexes are rejected even when their source
+fingerprint still matches. Manifest `storyboard_url` values and VTT sheet
+payloads include a URL-encoded token derived from the format plus quick
+fingerprint. VTT responses use `Cache-Control: no-cache` so clients revalidate
+the index; versioned JPEG
+sheets remain immutable. A cue payload is always a relative URL plus tile
+fragment:
 
 ```text
-storyboard/sb_001.jpg?v={quick_fingerprint}#xywh={x},{y},{w},{h}
+storyboard/sb_001.jpg?v={format-and-fingerprint-token}#xywh={x},{y},{w},{h}
 ```
 
 Clients should resolve that relative to the VTT URL using normal URL rules. The
 VTT is an application index for trickplay loaders, not a browser `<track>`.
+After a storyboard format change, existing libraries require an explicit
+Update/storyboards run; request handlers never generate derivatives on demand.
 
 Thumbnail cover fallback is:
 
@@ -314,6 +334,12 @@ queries and refetch version-bearing bundle/browse/collection data. Collection
 timestamps are touched through reverse membership plus ancestor traversal, not
 an all-collection scan. Storyboard parsing removes ANSI control sequences and
 falls back to emitted-sheet capacity with a warning when `showinfo` is absent.
+
+Bundle browse summaries expose nullable effective-cover video file id, relative
+path, ffmpeg container list, video/audio codecs, and duration for M12 without
+another query: the fields are derived beside the existing cover key from the
+already-loaded ordered file list. Image, missing, and empty effective covers
+return null preview fields.
 
 Image preview derivatives are lazy-only in M5 and use this deterministic cache
 layout:
@@ -438,7 +464,10 @@ File Browser is a read-only, filesystem-first browser over the active library ro
 It returns directories first, then files, sorted case-insensitively. Each entry
 includes name, library-relative path, kind, size, modified time, extension, MIME
 guess, media classification, native support/openable state, and a cheap
-linked-to-bundle hint. Image files are openable when they are browser-native or
+linked-to-bundle hint. Linked entries also carry nullable file id, container,
+video/audio codecs, and duration for card hover preview; SQLite extracts only
+those JSON keys in the existing batched membership query, while unlinked paths
+remain null. Image files are openable when they are browser-native or
 preview-capable through the preview pipeline, so HEIC/TIFF/BMP can now appear as
 supported even though the browser never receives the original bytes directly.
 Raw preview bytes for File Browser entries are served by

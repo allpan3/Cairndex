@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     storyboards: bool = True
 
     # Minimum probed duration before a video is eligible for storyboards
-    storyboard_min_duration: float = 60.0
+    storyboard_min_duration: float = 10.0
 
     # Maximum concurrent interactive HLS remux/transcode sessions (plan 1 §6.2,
     # ADR-0014). Sessions run one ffmpeg each and are bounded so a couple of

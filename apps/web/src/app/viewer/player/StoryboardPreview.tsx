@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useId, useMemo } from 'react'
 
-import { cueForTime, parseStoryboardVtt, storyboardSheetUrl } from './storyboardVtt'
+import { cueForTime, storyboardSheetUrl, type StoryboardCue } from './storyboardVtt'
+import { useStoryboardCues } from './useStoryboardCues'
 
 const MAX_PREVIEW_WIDTH = 320
 const MAX_PREVIEW_HEIGHT = 240
@@ -14,24 +14,74 @@ interface StoryboardPreviewProps {
   time: number
 }
 
-// Fetch and parse a storyboard index, treating absence as an optional feature
-async function fetchStoryboard(url: string, signal?: AbortSignal) {
-  const response = await fetch(url, { signal })
-  if (response.status === 404) return null
-  if (!response.ok) throw new Error(`Storyboard request failed (${response.status})`)
-  const cues = parseStoryboardVtt(await response.text())
-  return cues.length > 0 ? cues : null
+// Render one cropped sprite tile for seek tooltips or a cover-filling card
+export function StoryboardTile({
+  storyboardUrl,
+  cue,
+  fill = false,
+  testId,
+}: {
+  storyboardUrl: string
+  cue: StoryboardCue
+  fill?: boolean
+  testId?: string
+}) {
+  const clipId = `storyboard-tile-${useId().replaceAll(':', '')}`
+
+  if (fill) {
+    return (
+      <svg
+        className="hover-preview__storyboard"
+        data-testid={testId}
+        data-cue-position={`${cue.x},${cue.y}`}
+        data-cue-start={cue.start}
+        viewBox={`0 0 ${cue.w} ${cue.h}`}
+        preserveAspectRatio="xMidYMid meet"
+        aria-hidden="true"
+      >
+        <defs>
+          <clipPath id={clipId}>
+            <rect width={cue.w} height={cue.h} />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          <image
+            href={storyboardSheetUrl(storyboardUrl, cue.url)}
+            x={-cue.x}
+            y={-cue.y}
+            width={cue.w * SHEET_COLUMNS}
+            height={cue.h * SHEET_ROWS}
+            preserveAspectRatio="none"
+          />
+        </g>
+      </svg>
+    )
+  }
+
+  const scale = Math.min(1, MAX_PREVIEW_WIDTH / cue.w, MAX_PREVIEW_HEIGHT / cue.h)
+  const width = Math.round(cue.w * scale)
+  const height = Math.round(cue.h * scale)
+  const sheetWidth = cue.w * SHEET_COLUMNS * scale
+  const sheetHeight = cue.h * SHEET_ROWS * scale
+
+  return (
+    <div
+      className="mv-storyboard-preview"
+      data-testid={testId}
+      style={{
+        width,
+        height,
+        backgroundImage: `url(${storyboardSheetUrl(storyboardUrl, cue.url)})`,
+        backgroundPosition: `-${cue.x * scale}px -${cue.y * scale}px`,
+        backgroundSize: `${sheetWidth}px ${sheetHeight}px`,
+      }}
+    />
+  )
 }
 
 // Cropped storyboard tile for the seek-bar hover tooltip
 export function StoryboardPreview({ storyboardUrl, time }: StoryboardPreviewProps) {
-  const { data: cues } = useQuery({
-    queryKey: ['storyboard-vtt', storyboardUrl],
-    queryFn: ({ signal }) => fetchStoryboard(storyboardUrl!, signal),
-    enabled: storyboardUrl !== null,
-    retry: false,
-    staleTime: Infinity,
-  })
+  const { data: cues } = useStoryboardCues(storyboardUrl)
   const match = useMemo(() => cueForTime(cues, time), [cues, time])
   const cue = match?.cue ?? null
   const cueIndex = match?.index ?? -1
@@ -47,23 +97,5 @@ export function StoryboardPreview({ storyboardUrl, time }: StoryboardPreviewProp
 
   if (!storyboardUrl || !cue) return null
 
-  const scale = Math.min(1, MAX_PREVIEW_WIDTH / cue.w, MAX_PREVIEW_HEIGHT / cue.h)
-  const width = Math.round(cue.w * scale)
-  const height = Math.round(cue.h * scale)
-  const sheetWidth = cue.w * SHEET_COLUMNS * scale
-  const sheetHeight = cue.h * SHEET_ROWS * scale
-
-  return (
-    <div
-      className="mv-storyboard-preview"
-      data-testid="storyboard-preview"
-      style={{
-        width,
-        height,
-        backgroundImage: `url(${storyboardSheetUrl(storyboardUrl, cue.url)})`,
-        backgroundPosition: `-${cue.x * scale}px -${cue.y * scale}px`,
-        backgroundSize: `${sheetWidth}px ${sheetHeight}px`,
-      }}
-    />
-  )
+  return <StoryboardTile storyboardUrl={storyboardUrl} cue={cue} testId="storyboard-preview" />
 }

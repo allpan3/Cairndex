@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { type FileRead, fileThumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles } from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import { ContextMenu } from './ContextMenu'
+import { HoverPreview } from './HoverPreview'
+import type { HoverPreviewSource } from './hoverPreviewState'
 import { useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
@@ -52,7 +54,7 @@ export function BundleAlbum({
     return () => window.removeEventListener('keydown', onKey)
   }, [viewing, onBack])
 
-  const clickTile = (file: FileRead, e: React.MouseEvent) => {
+  const clickTile = (file: FileRead, e: React.MouseEvent | React.KeyboardEvent) => {
     const ids = files.map((f) => f.id)
     if (e.shiftKey && anchor) {
       const a = ids.indexOf(anchor)
@@ -155,9 +157,10 @@ export function BundleAlbum({
               key={f.id}
               file={f}
               selected={selected.has(f.id)}
-              onClick={(e) => clickTile(f, e)}
+              onSelect={(e) => clickTile(f, e)}
               onOpen={() => openFile(i)}
               onContextMenu={(e) => contextTile(f, e)}
+              previewDisabled={marqueeRect !== null || menu.state !== null}
             />
           ))}
         </div>
@@ -181,15 +184,17 @@ export function BundleAlbum({
 function AlbumTile({
   file,
   selected,
-  onClick,
+  onSelect,
   onOpen,
   onContextMenu,
+  previewDisabled,
 }: {
   file: FileRead
   selected: boolean
-  onClick: (e: React.MouseEvent) => void
+  onSelect: (e: React.MouseEvent | React.KeyboardEvent) => void
   onOpen: () => void
   onContextMenu: (e: React.MouseEvent) => void
+  previewDisabled: boolean
 }) {
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
@@ -197,18 +202,58 @@ function AlbumTile({
   const thumbnailable =
     file.availability === 'available' &&
     (file.media_kind === 'image' || file.media_kind === 'video')
+  const duration = typeof meta.duration === 'number' ? meta.duration : 0
+  const container = typeof meta.container === 'string' ? meta.container : null
+  const videoCodec = typeof meta.video_codec === 'string' ? meta.video_codec : null
+  const audioCodec = typeof meta.audio_codec === 'string' ? meta.audio_codec : null
+  const previewSource = useMemo<HoverPreviewSource | null>(
+    () =>
+      file.availability === 'available' && file.media_kind === 'video' && duration > 0
+        ? {
+            fileId: file.id,
+            mimeType: file.mime_type,
+            relativePath: file.relative_path,
+            container,
+            videoCodec,
+            audioCodec,
+            duration,
+            startTime: file.resume_position,
+          }
+        : null,
+    [
+      audioCodec,
+      container,
+      duration,
+      file.availability,
+      file.id,
+      file.media_kind,
+      file.mime_type,
+      file.relative_path,
+      file.resume_position,
+      videoCodec,
+    ],
+  )
 
   return (
-    <button
+    <div
       className={`album-tile${selected ? ' album-tile--selected' : ''}`}
-      onClick={onClick}
+      onClick={(event) => onSelect(event)}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
-      role="listitem"
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onSelect(event)
+      }}
+      role="button"
+      aria-pressed={selected}
+      tabIndex={0}
       title={file.display_title}
       data-file-id={file.id}
     >
-      <div
+      <HoverPreview
+        source={previewSource}
+        disabled={previewDisabled}
         className="album-tile__thumb"
         style={
           thumbnailable
@@ -225,11 +270,11 @@ function AlbumTile({
         {file.media_kind === 'video' && meta.duration != null && (
           <span className="card__dur">{dur}</span>
         )}
-      </div>
+      </HoverPreview>
       <div className="album-tile__name">{file.display_title}</div>
       <div className="album-tile__sub">
         {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
       </div>
-    </button>
+    </div>
   )
 }

@@ -1739,6 +1739,20 @@ export interface components {
         BundleSummary: {
             /** Cover Key */
             cover_key: string | null;
+            /** Cover Video Audio Codec */
+            cover_video_audio_codec: string | null;
+            /** Cover Video Codec */
+            cover_video_codec: string | null;
+            /** Cover Video Container */
+            cover_video_container: string | null;
+            /** Cover Video Duration */
+            cover_video_duration: number | null;
+            /** Cover Video File Id */
+            cover_video_file_id: string | null;
+            /** Cover Video Relative Path */
+            cover_video_relative_path: string | null;
+            /** Cover Video Resume Position */
+            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -1893,6 +1907,20 @@ export interface components {
         ContinueWatchingItem: {
             /** Cover Key */
             cover_key: string | null;
+            /** Cover Video Audio Codec */
+            cover_video_audio_codec: string | null;
+            /** Cover Video Codec */
+            cover_video_codec: string | null;
+            /** Cover Video Container */
+            cover_video_container: string | null;
+            /** Cover Video Duration */
+            cover_video_duration: number | null;
+            /** Cover Video File Id */
+            cover_video_file_id: string | null;
+            /** Cover Video Relative Path */
+            cover_video_relative_path: string | null;
+            /** Cover Video Resume Position */
+            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -2053,12 +2081,20 @@ export interface components {
         FileAvailability: "available" | "missing";
         /** FileBrowserEntryRead */
         FileBrowserEntryRead: {
+            /** Audio Codec */
+            audio_codec: string | null;
             /** Bundle Id */
             bundle_id: string | null;
+            /** Container */
+            container: string | null;
             /** Created At */
             created_at: string | null;
+            /** Duration */
+            duration: number | null;
             /** Extension */
             extension: string | null;
+            /** File Id */
+            file_id: string | null;
             /** Kind */
             kind: string;
             /** Linked */
@@ -2073,12 +2109,16 @@ export interface components {
             name: string;
             /** Relative Path */
             relative_path: string;
+            /** Resume Position */
+            resume_position: number | null;
             /** Size Bytes */
             size_bytes: number | null;
             /** Supported */
             supported: boolean;
             /** Unbundled */
             unbundled: boolean;
+            /** Video Codec */
+            video_codec: string | null;
         };
         /** FileBrowserListingRead */
         FileBrowserListingRead: {
@@ -2132,6 +2172,8 @@ export interface components {
             quick_fingerprint: string | null;
             /** Relative Path */
             relative_path: string;
+            /** Resume Position */
+            resume_position?: number | null;
             role: components["schemas"]["FileRole"];
             /** Sequence */
             sequence: number;

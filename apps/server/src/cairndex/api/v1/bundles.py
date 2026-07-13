@@ -26,8 +26,10 @@ from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
 from cairndex.media import thumbnails
+from cairndex.persistence.models import AssetFile
 from cairndex.services import browse as browse_service
 from cairndex.services import bundles as service
+from cairndex.services import playback_progress as progress_service
 from cairndex.services.browse import BundleSort, SystemView
 from cairndex.services.pagination import MAX_LIMIT
 
@@ -36,6 +38,27 @@ router = APIRouter(prefix="/libraries/{library_id}/bundles", tags=["bundles"])
 
 def _thumbnail_response(path: object) -> FileResponse:
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(Path(str(path))))
+
+
+# Add incomplete watch progress to file rows without per-file queries
+def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
+    file_ids = [asset_file.id for asset_file in files]
+    progress_by_file = progress_service.progress_for_files(db, file_ids)
+    return [
+        FileRead.model_validate(asset_file).model_copy(
+            update={
+                "resume_position": progress_service.resume_position(
+                    progress_by_file[asset_file.id].position_s
+                    if asset_file.id in progress_by_file
+                    else None,
+                    progress_by_file[asset_file.id].completed
+                    if asset_file.id in progress_by_file
+                    else None,
+                )
+            }
+        )
+        for asset_file in files
+    ]
 
 
 # --- Browse (declared before /{bundle_id} so the static paths win) -----------
@@ -170,7 +193,7 @@ def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
 # --- Files -------------------------------------------------------------------
 @router.get("/{bundle_id}/files", response_model=list[FileRead])
 def list_files(bundle_id: str, db: LibrarySession) -> list[FileRead]:
-    return [FileRead.model_validate(f) for f in service.list_files(db, bundle_id)]
+    return _file_reads(db, list(service.list_files(db, bundle_id)))
 
 
 @router.post("/{bundle_id}/files", response_model=FileRead, status_code=status.HTTP_201_CREATED)
@@ -187,7 +210,7 @@ def add_file(bundle_id: str, payload: FileLink, db: LibrarySession) -> FileRead:
         source=payload.source,
         mime_type=payload.mime_type,
     )
-    return FileRead.model_validate(asset_file)
+    return _file_reads(db, [asset_file])[0]
 
 
 @router.patch("/{bundle_id}/files/{file_id}", response_model=FileRead)
@@ -199,15 +222,14 @@ def update_file(
     if_match: IfMatchVersion = None,
 ) -> FileRead:
     changes = payload.model_dump(exclude_unset=True)
-    return FileRead.model_validate(
-        service.update_file(db, bundle_id, file_id, changes, expected_version=if_match)
-    )
+    asset_file = service.update_file(db, bundle_id, file_id, changes, expected_version=if_match)
+    return _file_reads(db, [asset_file])[0]
 
 
 @router.put("/{bundle_id}/files/order", response_model=list[FileRead])
 def reorder_files(bundle_id: str, payload: FileReorder, db: LibrarySession) -> list[FileRead]:
     files = service.reorder_files(db, bundle_id, payload.ordered_ids)
-    return [FileRead.model_validate(f) for f in files]
+    return _file_reads(db, list(files))
 
 
 @router.delete("/{bundle_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

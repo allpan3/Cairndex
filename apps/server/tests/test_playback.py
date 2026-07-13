@@ -17,10 +17,21 @@ from cairndex.registry import services as registry_service
 from cairndex.registry.engine import get_registry_engine, get_registry_sessionmaker
 from cairndex.registry.library_engine import get_library_sessionmaker
 from cairndex.services import bundles as bundle_service
+from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
 
-
 # --- capability detection ----------------------------------------------------
+
+
+# Resume cards accept only positive, unfinished scalar progress
+def test_resume_position_scalar_predicate() -> None:
+    assert progress_service.resume_position(12.0, False) == 12.0
+    assert progress_service.resume_position(None, False) is None
+    assert progress_service.resume_position(0.0, False) is None
+    assert progress_service.resume_position(-1.0, False) is None
+    assert progress_service.resume_position(12.0, True) is None
+
+
 def test_assess_playability_by_container_and_codec(session: Session) -> None:
     bundle = bundle_service.create_bundle(session, title="m")
 

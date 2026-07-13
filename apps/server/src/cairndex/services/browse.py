@@ -33,6 +33,7 @@ from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
     Collection,
+    PlaybackProgress,
     Tag,
     asset_bundle_collections,
     asset_bundle_tags,
@@ -40,6 +41,7 @@ from cairndex.persistence.models import (
 from cairndex.search import search_predicate, to_match_query
 from cairndex.services.collections import collection_descendant_ids
 from cairndex.services.hierarchy import descendant_ids
+from cairndex.services.playback_progress import resume_position
 
 
 class SystemView(StrEnum):
@@ -77,6 +79,14 @@ class BundleSummary:
     # the cover selection changes, so the client uses it to bust the browser's
     # image cache on the (otherwise-stable) thumbnail URL.
     cover_key: str | None
+    # Hover preview source when the effective cover itself is a video
+    cover_video_file_id: str | None
+    cover_video_relative_path: str | None
+    cover_video_container: str | None
+    cover_video_codec: str | None
+    cover_video_audio_codec: str | None
+    cover_video_duration: float | None
+    cover_video_resume_position: float | None
     media_kind: str | None
     width: int | None
     height: int | None
@@ -359,51 +369,69 @@ def cleanup_bundle_order(
     _write_manual_order(session, collection_id, ids)
 
 
-def _effective_cover_id(bundle: AssetBundle, files: list[AssetFile]) -> str | None:
-    """Id of the file the cover thumbnail is derived from, computed from the
+# Resolve the effective cover from the already-loaded file list
+def _effective_cover_file(bundle: AssetBundle, files: list[AssetFile]) -> AssetFile | None:
+    """File the cover thumbnail is derived from, computed from the
     already-loaded ``files`` (no extra queries). Mirrors the precedence in
     ``media.thumbnails.effective_cover_file`` (selected cover → first image →
     primary video → first video) — keep the two in sync."""
     thumbnailable = (MediaKind.IMAGE, MediaKind.VIDEO)
 
-    def cache_key(asset_file: AssetFile) -> str:
-        return (
-            f"{asset_file.id}:{asset_file.updated_at.timestamp()}"
-            if asset_file.cover_time is not None
-            else asset_file.id
-        )
-
     if bundle.cover_file_id is not None:
         cover = next((f for f in files if f.id == bundle.cover_file_id), None)
         if cover is not None and cover.media_kind in thumbnailable:
-            return cache_key(cover)
+            return cover
     image = next((f for f in files if f.media_kind is MediaKind.IMAGE), None)
     if image is not None:
-        return cache_key(image)
+        return image
     if bundle.primary_file_id is not None:
         primary = next((f for f in files if f.id == bundle.primary_file_id), None)
         if primary is not None and primary.media_kind is MediaKind.VIDEO:
-            return cache_key(primary)
+            return primary
     video = next((f for f in files if f.media_kind is MediaKind.VIDEO), None)
-    if video is not None:
-        return cache_key(video)
-    return None
+    return video
+
+
+# Build the thumbnail cache key for one effective cover file
+def _cover_key(asset_file: AssetFile | None) -> str | None:
+    if asset_file is None:
+        return None
+    return (
+        f"{asset_file.id}:{asset_file.updated_at.timestamp()}"
+        if asset_file.cover_time is not None
+        else asset_file.id
+    )
 
 
 def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
-    files = list(
-        session.scalars(
-            select(AssetFile)
+    file_rows = list(
+        session.execute(
+            select(AssetFile, PlaybackProgress)
+            .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
             .where(AssetFile.bundle_id == bundle.id)
             .order_by(AssetFile.sequence, AssetFile.id)
         )
     )
+    files = [asset_file for asset_file, _progress in file_rows]
+    progress_by_file = {
+        asset_file.id: progress for asset_file, progress in file_rows if progress is not None
+    }
     total_size = sum(f.size_bytes or 0 for f in files)
     has_missing = any(f.availability == FileAvailability.MISSING for f in files)
     has_cover = bundle.cover_file_id is not None or any(
         f.media_kind in (MediaKind.IMAGE, MediaKind.VIDEO) for f in files
     )
-    cover_key = _effective_cover_id(bundle, files)
+    effective_cover = _effective_cover_file(bundle, files)
+    cover_key = _cover_key(effective_cover)
+    cover_video = (
+        effective_cover
+        if effective_cover is not None
+        and effective_cover.media_kind is MediaKind.VIDEO
+        and effective_cover.availability is FileAvailability.AVAILABLE
+        else None
+    )
+    cover_video_meta: dict[str, Any] = (cover_video.tech_metadata or {}) if cover_video else {}
+    cover_video_progress = progress_by_file.get(cover_video.id) if cover_video else None
 
     # The representative file for card stats: chosen primary, else first video,
     # else first file.
@@ -429,6 +457,16 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         has_cover=has_cover,
         openable=any(is_openable_media(f.media_kind, f.relative_path) for f in files),
         cover_key=cover_key,
+        cover_video_file_id=cover_video.id if cover_video else None,
+        cover_video_relative_path=cover_video.relative_path if cover_video else None,
+        cover_video_container=cover_video_meta.get("container"),
+        cover_video_codec=cover_video_meta.get("video_codec"),
+        cover_video_audio_codec=cover_video_meta.get("audio_codec"),
+        cover_video_duration=cover_video_meta.get("duration"),
+        cover_video_resume_position=resume_position(
+            cover_video_progress.position_s if cover_video_progress else None,
+            cover_video_progress.completed if cover_video_progress else None,
+        ),
         media_kind=str(primary.media_kind) if primary else None,
         width=meta.get("width"),
         height=meta.get("height"),

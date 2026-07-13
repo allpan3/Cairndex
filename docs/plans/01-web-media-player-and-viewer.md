@@ -16,19 +16,19 @@ Playback today (`apps/server/src/cairndex/media/`, `api/v1/playback.py`,
   controls, no keyboard shortcuts, no track menu, no seek preview, no resume,
   no speed, no PiP, no fullscreen management, and a crude playlist strip.
 - **Subtitles:** external SRT/VTT converted to cached WebVTT and attached as
-  `<track>` elements. Embedded streams are *detected* (`SubtitleTrack` rows
+  `<track>` elements. Embedded streams are _detected_ (`SubtitleTrack` rows
   with `stream_index`) but not extractable/servable. ASS/SSA not convertible.
 - **`FileViewer.tsx` (lightbox):** full-res `<img>` or bare `<video>`,
   arrow-key stepping, Escape. No zoom/pan, no fit modes, no slideshow, no
   EXIF panel, no non-native format support (HEIC/TIFF fall to an info card).
-- **Probe** stores only the *first* audio stream and no chapters.
+- **Probe** stores only the _first_ audio stream and no chapters.
 - No watch positions, no storyboard thumbnails, no image preview derivatives.
 
 ## 2. Target experience
 
 Reference points — the owner's stated bar for the player is desktop-native
 macOS players, **Movist and Elmedia** (Eagle's own built-in player — no
-subtitles, no PiP — is explicitly *not* the playback reference; Eagle stays
+subtitles, no PiP — is explicitly _not_ the playback reference; Eagle stays
 the reference for browsing and the image viewer only):
 
 - Movist: dual simultaneous subtitles, deep subtitle styling, A-B repeat,
@@ -51,10 +51,10 @@ opens it on that file.
 ### Video stage — feature list (acceptance criteria for the UI milestones)
 
 - Custom control bar (auto-hiding): play/pause, seek bar with buffered ranges
-  + chapter ticks, time/duration, volume slider + mute, settings menu
-  (speed 0.25–3× with pitch-preserve toggle, quality when transcoding, loop,
-  A-B loop, video adjustments, seek-step size), subtitle menu, audio-track
-  menu, PiP, theater/fullscreen.
+  - chapter ticks, time/duration, volume slider + mute, settings menu
+    (speed 0.25–3× with pitch-preserve toggle, quality when transcoding, loop,
+    A-B loop, video adjustments, seek-step size), subtitle menu, audio-track
+    menu, PiP, theater/fullscreen.
 - Seek bar: click/drag scrubbing, hover time tooltip with **storyboard
   thumbnail**, chapter markers from container metadata.
 - Keyboard: `Space`/`K` play-pause, `←/→` ± seek step (default 5 s,
@@ -173,7 +173,7 @@ New job type `storyboard` beside scan/probe/thumbnail:
 - **Known follow-up (deferred to M9 polish):** as shipped in M3, the VTT cue
   count is derived from probed duration and capped to the sheets ffmpeg
   actually emitted (so no cue ever references a missing sheet / 404s). When a
-  video *stream* is shorter than its *container* duration and the shortfall
+  video _stream_ is shorter than its _container_ duration and the shortfall
   lands mid-sheet, the final cues can point at ffmpeg `tile` filter **padding
   tiles** (a dark thumbnail at the very end rather than a broken one). Fix
   requires counting the frames ffmpeg actually emitted (parse ffmpeg output or
@@ -192,7 +192,7 @@ New module `media/previews.py` + endpoint
 - Generated lazily on first request (thumbnail-endpoint pattern),
   from the original for native formats and for **HEIC/TIFF/BMP** via
   Pillow (+`pillow-heif`). New dependency, justified: unlocks non-browser
-  formats for *all* clients and TV-sized grid images; pure wheels, low
+  formats for _all_ clients and TV-sized grid images; pure wheels, low
   maintenance. (pyvips is faster for gigapixel sources — revisit only if
   profiling demands it.)
 - `file-browser`/playability metadata: image files with a preview-capable format
@@ -244,7 +244,7 @@ platform on TV/desktop):
   "video_codecs": ["h264", "vp9", "av1"],
   "audio_codecs": ["aac", "mp3", "opus", "vorbis", "flac"],
   "max_height": 2160,
-  "native_hls": false          // true in Safari/WKWebView
+  "native_hls": false, // true in Safari/WKWebView
 }
 ```
 
@@ -279,17 +279,17 @@ Jellyfin-proven shape: one ffmpeg per session writing segments sequentially,
 serve segments on demand, restart on far seeks.
 
 - `POST .../files/{id}/playback-sessions {caps, start_s?, audio_stream_index?,
-  burn_subtitle_track_id?, max_height?}` → `{session_id, playlist_url, kind}`.
+burn_subtitle_track_id?, max_height?}` → `{session_id, playlist_url, kind}`.
 - **Output location:** `{CAIRNDEX_DATA_DIR}/transcode/{session_id}/` —
-  server-local ephemeral runtime state, *not* inside the library package
+  server-local ephemeral runtime state, _not_ inside the library package
   (resolves the STATUS.md open question for transcode cache: portable caches
   hold only reproducible per-file artifacts; sessions are throwaway).
 - **Playlist:** VOD playlist computed up front from the known duration with a
   fixed 6 s target (`#EXT-X-PLAYLIST-TYPE:VOD`, N = ceil(duration/6) entries)
   so players get instant duration + free native seeking.
-  - *Transcode:* `-force_key_frames "expr:gte(t,n_forced*6)"` makes segment
+  - _Transcode:_ `-force_key_frames "expr:gte(t,n_forced*6)"` makes segment
     durations exact.
-  - *Remux (`-c:v copy`):* segments split on source keyframes, so real
+  - _Remux (`-c:v copy`):_ segments split on source keyframes, so real
     durations drift from the nominal 6 s. Accepted MVP trade-off (hls.js and
     Safari tolerate it); refinement if drift proves annoying: probe keyframe
     timestamps once per file and emit an exact playlist.
@@ -300,7 +300,7 @@ serve segments on demand, restart on far seeks.
   segment numbering offset `-start_number n`.
 - **ffmpeg templates:**
   - remux: `-ss {t} -i in -map 0:v:0 -map 0:a:{a} -c:v copy -c:a aac -ac 2
-    -f hls -hls_segment_type fmp4 -hls_time 6 ...` (audio transcoded to AAC
+-f hls -hls_segment_type fmp4 -hls_time 6 ...` (audio transcoded to AAC
     whenever the source audio isn't in caps — most common remux case).
   - transcode: `-c:v h264 -preset veryfast -crf 21 -maxrate/-bufsize` from a
     small quality ladder capped by `max_height`; optional
@@ -459,7 +459,7 @@ running scan must not queue-block a ten-second export:
   (`fps=(rows*cols)/duration`, `drawtext=text='%{pts\:hms}'`, `scale`,
   `tile=CxR`), then Pillow (§5.1 dependency) composes the metadata banner
   above the grid and encodes the final JPEG.
-- M11 ships **download-only**. Saving an export *into the library* (and
+- M11 ships **download-only**. Saving an export _into the library_ (and
   linking it to a bundle / setting it as the cover) is the write-mode
   `save_new` op — specced in [plan 4 §5](04-library-write-mode.md) (slice
   W2, ADR-0013) — and the Export dialog gains "Save into library…" once
@@ -477,27 +477,29 @@ running scan must not queue-block a ten-second export:
 
 ## 11. Milestones (each = one reviewable branch/PR)
 
-| # | Slice | Contents |
-|---|-------|----------|
-| M1 | ✅ Probe enrichment (merged, #1) | §3; regenerate OpenAPI/types; reprobe path |
-| M2 | ✅ Viewer shell + video controls v1 (merged, #2) | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only. Shipped subtitle on/off over external VTT (default track) |
-| M3 | ✅ Storyboards (merged, #3) | §4.2 job + endpoints + hover preview + chapter ticks |
-| M4 | ✅ Watch progress (merged, #4) | §5.2 table/API + resume + continue-watching endpoint |
-| M5 | ✅ Image viewer v2 (merged, #5) | §8 + previews pipeline (§5.1) + HEIC/TIFF openability |
-| M6 | ✅ Playback decisions + HLS sessions | §6 server side, fake-ffmpeg tests, config bounds |
-| M7 | ✅ Web HLS integration (merged, #9) | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option |
-| M9 | ✅ Player interaction polish (`feat/player-polish`, awaiting review) | Right-click play/pause; off-track drag-scrub with pinned controls; persisted seek step + pitch preserve; session file loop; corrected frame/speed keys; set/clear current-frame cover (§13.1); storyboard padding-tile cue trim (§4.2) |
-| M12 | Thumbnail hover video preview (Eagle-style, §13.2) | Dwell-to-autoplay muted preview on video/bundle cards, cursor-x proportional skim with position bar, time + sound toggle; storyboard-skim fallback for non-direct-playable sources. Sequenced right after M9, before the desktop shell |
-| M8 | Subtitle upgrade — **deferred to future** | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice |
-| M10 | Video wall (web) — **deferred to future** | §9 |
-| M11 | Media exports — **deferred to future** | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **A-B loop moved here from M9** (owner 2026-07-11: its real use is picking a GIF range, so it lands as the export range-picker UI). Plan 4 W2 (save exports into library) waits on this |
-| — | Video adjustments — **deferred to future** | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred |
+| #   | Slice                                                                               | Contents                                                                                                                                                                                                                                                                                                           |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M1  | ✅ Probe enrichment (merged, #1)                                                    | §3; regenerate OpenAPI/types; reprobe path                                                                                                                                                                                                                                                                         |
+| M2  | ✅ Viewer shell + video controls v1 (merged, #2)                                    | Unified `MediaViewer`, custom control bar, shortcuts, fullscreen/PiP, MediaSession, snapshot capture, prev/next navigation — direct-play files only. Shipped subtitle on/off over external VTT (default track)                                                                                                     |
+| M3  | ✅ Storyboards (merged, #3)                                                         | §4.2 job + endpoints + hover preview + chapter ticks                                                                                                                                                                                                                                                               |
+| M4  | ✅ Watch progress (merged, #4)                                                      | §5.2 table/API + resume + continue-watching endpoint                                                                                                                                                                                                                                                               |
+| M5  | ✅ Image viewer v2 (merged, #5)                                                     | §8 + previews pipeline (§5.1) + HEIC/TIFF openability                                                                                                                                                                                                                                                              |
+| M6  | ✅ Playback decisions + HLS sessions                                                | §6 server side, fake-ffmpeg tests, config bounds                                                                                                                                                                                                                                                                   |
+| M7  | ✅ Web HLS integration (merged, #9)                                                 | Engine abstraction (`HlsEngine`), lazy hls.js + native HLS, capability profile, per-file decision, session teardown/beacon + transparent re-attach, quality/audio menus, burn-in option                                                                                                                            |
+| M9  | ✅ Player interaction polish (merged, #11)                                          | Right-click play/pause; off-track drag-scrub with pinned controls; persisted seek step + pitch preserve; session file loop; corrected frame/speed keys; set/clear current-frame cover (§13.1); storyboard padding-tile cue trim (§4.2)                                                                             |
+| M12 | Thumbnail hover video preview (Eagle-style, §13.2; `feat/hover-preview`, in review) | Dwell-to-play muted video at rest; storyboard sprites while the cursor moves; one video seek/resume after 250 ms rest; position bar, time, sound toggle, and storyboard-only fallback. Sequenced right after M9, before the desktop shell                                                                          |
+| M8  | Subtitle upgrade — **deferred to future**                                           | Embedded text extraction (§4.1), track menu, styling (size/color/background/offset) + timing settings, dual simultaneous subtitles at the earliest here. Known interim gap: M2 shows only the default external track; switching among multiple external tracks waits for this slice                                |
+| M10 | Video wall (web) — **deferred to future**                                           | §9                                                                                                                                                                                                                                                                                                                 |
+| M11 | Media exports — **deferred to future**                                              | §10: GIF-snippet + contact-sheet export tasks, web Export dialog + context-menu entry (desktop hooks land with plan 3 D5). **A-B loop moved here from M9** (owner 2026-07-11: its real use is picking a GIF range, so it lands as the export range-picker UI). Plan 4 W2 (save exports into library) waits on this |
+| —   | Video adjustments — **deferred to future**                                          | Owner 2026-07-11: reframed — the interesting part is **color/tone adjustment**, not brightness/contrast sliders; design when picked up. Image **slideshow** likewise deferred                                                                                                                                      |
 
 Re-sequenced twice by owner decision: after M2, the subtitle-depth slice moved
 behind HLS; after M7 merged (2026-07-10), **M8/M10/M11 moved to the future
 bucket** — M9 player polish is the last near-term plan-1 slice, and the
-roadmap then shifts to the macOS desktop shell (plan 3), write mode for
-drag-and-drop import (plan 4), and the Android client (plan 2). See
+bucket. M12 was then added as the final near-term plan-1 slice after M9. The
+roadmap next shifts to pairing/device tokens (plan 2 T0), the macOS desktop
+shell (plan 3), write mode for drag-and-drop import (plan 4), and the remaining
+Android client (plan 2 T1–T7). See
 [README.md](README.md) for the current cross-plan order.
 
 Every slice: focused backend/frontend tests + Playwright for user flows
@@ -539,19 +541,63 @@ value before the heavy M6 lands.
 ### 13.2 Thumbnail hover video preview (M12) — Eagle-style
 
 Applies to video file cards and bundle cards whose effective cover file is a
-video (the preview plays that file). Interaction (Eagle is the reference):
+video. Owner decision 2026-07-12 after testing against Eagle: native decoders can
+keyframe-snap through local media, but browser video seeking creates a
+frame-accurate seek plus HTTP range work at every step. The web interaction is
+therefore hybrid: storyboard sprites while moving, live video only at rest.
+Owner follow-up 2026-07-13: on rest, exact sprite-to-video visual continuity
+takes precedence over preserving the raw cursor timestamp within that cue.
 
-- Cursor rests on a card ~500 ms → a muted `<video preload="metadata">`
-  mounts over the cover and plays from the beginning.
-- Moving the cursor horizontally while over the card skims: cursor x as a
-  fraction of card width maps proportionally to the timeline; seeks are
-  throttled (`fastSeek` where available). A **thin position bar** along the
-  card's bottom edge tracks the play position; **current time** bottom-right
-  beside a **speaker toggle** (muted by default; click to unmute).
-- Leaving the card tears the preview down fully (element + network). At most
-  **one** active preview at a time; grid virtualization unaffected.
-- Format gate: live video only when the client capability profile
-  (`caps.ts`) says the source direct-plays. Otherwise fall back to
-  **storyboard-sprite skimming** (same interaction, tiles instead of video)
-  — hover must **never** create an HLS session. No new server work: stream
-  endpoint, storyboards, and caps all exist.
+- Pointer entry starts a 150 ms prefetch sub-dwell, then lazily fetches cached
+  `storyboard.vtt` during the existing ~500 ms activation window. Crossing a
+  card more quickly creates no request. Video does not mount and `/stream` is
+  not requested before the activation dwell completes.
+- Storyboard artifacts use format v2. Sampling is anchored at t=0 and rounds to
+  the source frame active at each VTT cue start; the index fingerprint sidecar
+  carries the format marker plus source fingerprint, VTT responses revalidate,
+  and sheet URLs include the same inputs. Older indexes are stale and must be
+  regenerated.
+- Activation enters **resting** at the incomplete saved progress position when
+  one exists, otherwise t=0. For a source accepted by `caps.ts`, a muted
+  `<video preload="metadata">` mounts, seeks once when needed, and plays.
+- Any active pointer movement enters **skimming**. Cursor x maps proportionally
+  to the API duration; the direct video pauses and remains mounted with its
+  source intact while the matching storyboard crop replaces it. Motion performs
+  zero video seeks. Storyboard-only sources use the same cursor/time/crop path.
+- After ~250 ms without motion, the preview returns to **resting**. A direct
+  video seeks once to the displayed cue's sampled timestamp (its VTT start), and
+  the clock and position strip snap to that honest time. This makes the first
+  live frame match the sprite instead of seeking later within its cue range.
+  Resolve the cue when the rest debounce expires, not on the last pointer move,
+  so a VTT prefetch completing during that window cannot leave the sprite and
+  video target out of sync. Show the transition sprite only when the selected
+  target matches its cue start. For a cue-backed transition, keep the paused
+  direct video mounted beneath the sprite, arm frame presentation before
+  assigning `currentTime`, and wait for both seek completion and the target
+  frame callback. Remove the sprite and resume playback only after that frame is
+  ready. Browsers without the callback API use completed seek as the best
+  frame-ready signal; an exposed API that omits its post-seek callback has a
+  bounded fallback. If the browser omits a no-op `seeked` event, a readiness
+  check completes the same transition. If the
+  storyboard is missing (including clips without a cached board), motion leaves
+  the last paused video frame visible while the position bar and clock follow
+  the cursor; rest seeks to that exact cursor time and the static cover masks
+  the transition.
+- Static video covers, storyboard crops, and live video use the same contained,
+  black-letterboxed viewport. The full frame keeps its source aspect ratio;
+  portrait video is pillarboxed instead of stretched, and switching layers does
+  not resize or shake the card. Card storyboards clip the full sprite sheet to
+  the selected cue rectangle before the contain transform, so adjacent tiles
+  cannot paint into the letterbox bands.
+- A **thin position bar** tracks the active timeline position. **Current time**
+  remains anchored bottom-right in every state. The direct video's **speaker
+  toggle** sits immediately to its left (muted by default; click to unmute
+  without restarting or opening the card).
+- Leaving or virtualized unmount tears the preview down fully (pause, clear
+  `src`, `load()`, unmount). At most **one** preview is active page-wide; touch,
+  drag, and context-menu guards remain.
+- Direct playback rejection/media error demotes to the cached storyboard-only
+  path. Hover never calls playback-decision or creates an HLS session. The
+  storyboard minimum-duration default is 10 seconds. Because format v2 corrects
+  sampling semantics, existing libraries need one Update/storyboards run for
+  all prior boards; the same run backfills boards for 10–60 second videos.
