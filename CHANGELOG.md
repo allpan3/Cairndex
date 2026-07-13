@@ -8,7 +8,52 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
+  play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
+  player preferences; seek step and speed use compact settings sliders, with
+  the pitch toggle beside speed instead of a separate control-bar selector; file
+  loop is session-only and takes precedence over bundle auto-advance; frame step
+  now uses `<`/`>` and speed uses `,`/`.`. Resolution caps live in a foldable
+  submenu built from the probed source height, exposing 2160p/1440p for
+  applicable files while omitting tiers above the source. Settings section
+  titles share one compact uppercase visual hierarchy.
+  The folded Resolution disclosure uses a vertically centered 24px row and expands
+  only when its choices are visible.
+  Cover actions use a stable two-button row: Set frame as cover and Reset cover
+  to default, with reset disabled until a custom frame exists.
+  The settings menu can set the current server-decoded video frame as the file
+  and bundle cover, or clear it back to the previously selected/automatic cover.
+  Additive `asset_files.cover_time` and prior-cover metadata plus POST/DELETE
+  `cover-frame` endpoints are path-safe and regenerate only cached thumbnails;
+  originals remain untouched. Requests at or just past reported duration clamp
+  to a decodable frame immediately before EOF.
+
 ### Fixed
+
+- **M9 review hardening.** Ended playback is latched per transition so effect
+  identity changes cannot skip a second file or make a loop toggle restart an
+  already-ended video. Inspector/viewer cover URLs now version from bundle
+  timestamps. Cover operations share `useFileMutations`, retain their optimistic
+  file row, and refresh only version-bearing bundle/browse/collection data.
+  Storyboard `showinfo` parsing strips ANSI; missing counts warn and fall back to
+  emitted-sheet capacity. Collection cover refreshes reverse-walk only direct
+  memberships, ancestors, and explicit selectors instead of every collection.
+  Seek-bar window listeners are removed on unmount.
+
+- **Collection covers refresh after a custom video frame is selected.** Setting
+  or clearing a file cover now refreshes every collection whose explicit or
+  auto-picked effective cover is that bundle, including ancestor collections.
+  Collection thumbnail URLs use the refreshed collection timestamp, so the
+  browser requests the regenerated image even when the bundle id is unchanged.
+
+- **Off-track drag scrubbing and storyboard tail tiles (Plan 1 M9).** Seek-bar
+  drags now retain capture through window-level pointer tracking and pin the
+  control bar visible until release, preserving the existing 150 ms seek
+  throttle and exact release commit. Storyboard generation counts sampled
+  frames from the same ffmpeg pass and trims VTT cues before final-sheet padding
+  tiles when stream duration is shorter than container duration.
 
 - **Registry-pool exhaustion under drag-seek aborts (root cause of unreliable
   scrubbing).** Even after the content session was scoped, `get_library_access`

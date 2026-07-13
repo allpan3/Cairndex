@@ -96,6 +96,10 @@ export function VideoStage({
         crossOrigin="anonymous"
         onError={onError}
         data-testid="media-video"
+        onContextMenu={(event) => {
+          event.preventDefault()
+          player.playPause()
+        }}
       >
         {withSrc.map((track, index) => (
           <track

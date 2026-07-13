@@ -15,6 +15,7 @@ from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package as pkg
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
+from cairndex.services import collections as collection_service
 
 _FFMPEG = shutil.which("ffmpeg")
 requires_ffmpeg = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not installed")
@@ -244,3 +245,96 @@ def test_non_thumbnailable_file_rejected(session: Session, library_root: Path) -
 
     with pytest.raises(ValidationError):
         thumbnails.generate_for_file(session, sub.id)
+
+
+def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    library_id: str,
+    library_root: Path,
+    session: Session,
+) -> None:
+    (library_root / "movie.mp4").write_bytes(b"video")
+    bundle = bundle_service.create_bundle(session, title="b")
+    collection = collection_service.create_collection(session, name="only")
+    bundle_service.set_bundle_collections(session, bundle.id, [collection.id])
+    collection_updated_at = collection.updated_at
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="movie.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="poster.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": image.id})
+    video.tech_metadata = {"duration": 20.0}
+    session.commit()
+    seen: list[float | None] = []
+
+    def fake_generate(
+        _source: Path, dest: Path, _kind: MediaKind, cover_time: float | None
+    ) -> None:
+        seen.append(cover_time)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"jpg")
+
+    monkeypatch.setattr(thumbnails, "_generate", fake_generate)
+    base = f"/api/v1/libraries/{library_id}/files/{video.id}/cover-frame"
+
+    assert client.post(base, json={"time": -1}).status_code == 422
+    at_end = client.post(base, json={"time": 20})
+    assert at_end.status_code == 200
+    assert at_end.json()["cover_time"] == pytest.approx(19.9)
+    just_past_end = client.post(base, json={"time": 20.05})
+    assert just_past_end.status_code == 200
+    assert just_past_end.json()["cover_time"] == pytest.approx(19.9)
+    session.expire_all()
+    assert session.get(AssetFile, video.id).cover_time == pytest.approx(19.9)
+    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == video.id
+    session.refresh(collection)
+    assert collection.updated_at > collection_updated_at
+    assert seen == [pytest.approx(19.9), pytest.approx(19.9)]
+
+    # Future forced regeneration continues to honor the persisted timestamp
+    thumbnails.generate_for_file(session, video.id, force=True)
+    assert seen[-1] == pytest.approx(19.9)
+
+    cleared = client.delete(base)
+    assert cleared.status_code == 200
+    assert cleared.json()["cover_time"] is None
+    session.expire_all()
+    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == image.id
+    assert seen[-1] is None
+
+
+def test_cover_frame_endpoint_rejects_symlink_escape(
+    client: TestClient, library_id: str, session: Session, library_root: Path, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside.mp4"
+    outside.write_bytes(b"video")
+    target = library_root / "escape.mp4"
+    target.write_bytes(b"original")
+    bundle = bundle_service.create_bundle(session, title="b")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="escape.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    video.tech_metadata = {"duration": 20.0}
+    session.commit()
+    target.unlink()
+    target.symlink_to(outside)
+
+    response = client.post(
+        f"/api/v1/libraries/{library_id}/files/{video.id}/cover-frame", json={"time": 1}
+    )
+    assert response.status_code == 422

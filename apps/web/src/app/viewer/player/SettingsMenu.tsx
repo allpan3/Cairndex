@@ -1,22 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { AudioStreamRead, SubtitleTrackRead } from '../../../api/client'
+import { PLAYER_SEEK_STEPS } from '../../types'
 import { IconSettings } from '../../icons'
+import { qualityOptions } from './quality'
 import type { HlsSessionState } from './useHlsSession'
+import type { PlayerController } from './usePlayer'
 
-// Height ladder for the quality menu. Auto (null) lets the client decode the
-// source as-is; picking a cap forces the server to transcode down to it. In-
-// stream ABR is out of scope — each choice is a fresh decision + session (§6.3).
-const QUALITY_LADDER: Array<{ label: string; value: number | null }> = [
-  { label: 'Auto', value: null },
-  { label: '1080p', value: 1080 },
-  { label: '720p', value: 720 },
-  { label: '480p', value: 480 },
-]
+/** Map the slider's linear stop index to the supported seek-step values. */
+function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
+  return PLAYER_SEEK_STEPS[index] ?? 5
+}
 
 interface SettingsMenuProps {
   hls: HlsSessionState
   subtitles: SubtitleTrackRead[]
+  player: PlayerController
+  fileLoop: boolean
+  onFileLoop: (enabled: boolean) => void
+  onUseCoverFrame: () => void
+  onClearCoverFrame: () => void
+  hasCoverFrame: boolean
+  sourceHeight: number | null
 }
 
 function audioLabel(track: AudioStreamRead): string {
@@ -37,8 +42,19 @@ function audioLabel(track: AudioStreamRead): string {
  * Each choice re-decides and starts a new session at the current playhead;
  * audio and burn-in only appear when the current stream can offer them.
  */
-export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
+export function SettingsMenu({
+  hls,
+  subtitles,
+  player,
+  fileLoop,
+  onFileLoop,
+  onUseCoverFrame,
+  onClearCoverFrame,
+  hasCoverFrame,
+  sourceHeight,
+}: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
+  const [resolutionOpen, setResolutionOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -56,6 +72,8 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
   const audioTracks = hls.audioStreams
   const defaultAudio = audioTracks.find((s) => s.default)?.index ?? audioTracks[0]?.index ?? null
   const selectedAudio = hls.params.audioStreamIndex ?? defaultAudio
+  const resolutions = qualityOptions(sourceHeight)
+  const selectedResolution = resolutions.find((item) => item.value === hls.params.maxHeight)
 
   return (
     <div className="mv-settings" ref={ref}>
@@ -72,18 +90,94 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
       {open && (
         <div className="mv-menu" role="menu" data-testid="settings-menu">
           <div className="mv-menu__group">
-            <div className="mv-menu__label">Quality</div>
-            {QUALITY_LADDER.map((quality) => (
-              <button
-                key={quality.label}
-                role="menuitemradio"
-                aria-checked={hls.params.maxHeight === quality.value}
-                className={`mv-menu__item${hls.params.maxHeight === quality.value ? ' is-selected' : ''}`}
-                onClick={() => hls.setParam('maxHeight', quality.value)}
-              >
-                {quality.label}
-              </button>
-            ))}
+            <label className="mv-menu__slider-label" htmlFor="mv-seek-step">
+              <span>Seek step</span>
+              <output>{player.seekStep} s</output>
+            </label>
+            <input
+              id="mv-seek-step"
+              className="mv-menu__slider"
+              type="range"
+              min={0}
+              max={PLAYER_SEEK_STEPS.length - 1}
+              step={1}
+              value={PLAYER_SEEK_STEPS.indexOf(player.seekStep)}
+              aria-label="Seek step"
+              aria-valuetext={`${player.seekStep} seconds`}
+              onChange={(event) =>
+                player.setSeekStep(seekStepAt(Number(event.currentTarget.value)))
+              }
+            />
+          </div>
+
+          <div className="mv-menu__group">
+            <label className="mv-menu__slider-label" htmlFor="mv-playback-speed">
+              <span>Speed</span>
+              <output>{player.rate}×</output>
+            </label>
+            <input
+              id="mv-playback-speed"
+              className="mv-menu__slider"
+              type="range"
+              min={0.25}
+              max={3}
+              step={0.25}
+              value={player.rate}
+              aria-label="Playback speed"
+              aria-valuetext={`${player.rate} times`}
+              onChange={(event) => player.setRate(Number(event.currentTarget.value))}
+            />
+            <button
+              role="menuitemcheckbox"
+              aria-checked={player.preservesPitch}
+              className={`mv-menu__item${player.preservesPitch ? ' is-selected' : ''}`}
+              onClick={() => player.setPreservesPitch(!player.preservesPitch)}
+            >
+              Preserve pitch
+            </button>
+          </div>
+
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Playback</div>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={fileLoop}
+              className={`mv-menu__item${fileLoop ? ' is-selected' : ''}`}
+              onClick={() => onFileLoop(!fileLoop)}
+            >
+              Loop file
+            </button>
+          </div>
+
+          <div
+            className={`mv-menu__group mv-menu__group--resolution${resolutionOpen ? ' is-open' : ''}`}
+          >
+            <button
+              className={`mv-menu__submenu-toggle${resolutionOpen ? ' is-open' : ''}`}
+              role="menuitem"
+              aria-expanded={resolutionOpen}
+              onClick={() => setResolutionOpen((value) => !value)}
+            >
+              <span>Resolution</span>
+              <span>
+                {selectedResolution?.label ?? 'Auto'} {resolutionOpen ? '▾' : '›'}
+              </span>
+            </button>
+            {resolutionOpen && (
+              <div className="mv-menu__submenu">
+                {resolutions.map((quality) => (
+                  <button
+                    key={quality.label}
+                    role="menuitemradio"
+                    aria-checked={hls.params.maxHeight === quality.value}
+                    className={`mv-menu__item${hls.params.maxHeight === quality.value ? ' is-selected' : ''}`}
+                    onClick={() => hls.setParam('maxHeight', quality.value)}
+                  >
+                    {quality.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {audioTracks.length > 1 && (
@@ -130,6 +224,22 @@ export function SettingsMenu({ hls, subtitles }: SettingsMenuProps) {
               ))}
             </div>
           )}
+          <div className="mv-menu__group">
+            <div className="mv-menu__label">Cover</div>
+            <div className="mv-menu__actions">
+              <button className="mv-menu__action" role="menuitem" onClick={onUseCoverFrame}>
+                Set frame as cover
+              </button>
+              <button
+                className="mv-menu__action"
+                role="menuitem"
+                onClick={onClearCoverFrame}
+                disabled={!hasCoverFrame}
+              >
+                Reset cover to default
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

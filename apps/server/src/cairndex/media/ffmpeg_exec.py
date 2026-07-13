@@ -19,11 +19,13 @@ def ffmpeg_exe() -> str:
 
 
 # Run ffmpeg with captured stderr and a bounded timeout
-def run_ffmpeg(args: list[str], *, timeout: float = 60.0, stderr_limit: int = 300) -> None:
+def run_ffmpeg(args: list[str], *, timeout: float = 60.0, stderr_limit: int = 300) -> str:
     """Run ffmpeg with captured stderr and a bounded timeout."""
     try:
         proc = subprocess.run(args, capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired as exc:
         raise FfmpegError("ffmpeg timed out") from exc
+    stderr = proc.stderr.decode(errors="replace")
     if proc.returncode != 0:
-        raise FfmpegError(proc.stderr.decode(errors="replace")[:stderr_limit])
+        raise FfmpegError(stderr[:stderr_limit])
+    return stderr

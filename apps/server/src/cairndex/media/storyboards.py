@@ -1,5 +1,6 @@
 """Storyboard generation and cached trickplay artifact lookup."""
 
+import logging
 import math
 import re
 import shutil
@@ -22,6 +23,8 @@ from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
 
+logger = logging.getLogger(__name__)
+
 STORYBOARD_CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
 STORYBOARD_TILE_WIDTH = 320
 STORYBOARD_GRID_COLUMNS = 5
@@ -31,6 +34,7 @@ STORYBOARD_TILES_PER_SHEET = STORYBOARD_GRID_COLUMNS * STORYBOARD_GRID_ROWS
 ProgressFn = Callable[[int, int | None], None]
 
 _SHEET_STEM = re.compile(r"^sb_\d{3}$")
+_ANSI_ESCAPE = re.compile(r"\x1b(?:[@-_]|\[[0-?]*[ -/]*[@-~])")
 _FINGERPRINT_NOTE = "NOTE cairndex-quick-fingerprint:"
 _JPEG_SOF_MARKERS = {
     0xC0,
@@ -213,10 +217,14 @@ def _storyboard_timeout(duration: float) -> float:
 
 
 # Generate tiled storyboard sheets in one ffmpeg pass
-def _generate_sheets(source: Path, output_dir: Path, interval: float, duration: float) -> None:
-    vf = f"fps=1/{interval:g},scale={STORYBOARD_TILE_WIDTH}:-2,tile=5x5"
+def _generate_sheets(
+    source: Path, output_dir: Path, interval: float, duration: float
+) -> int | None:
+    # showinfo reports each sampled frame before tile pads the final sheet, so
+    # its final n value is the real tile count without a second decode pass
+    vf = f"fps=1/{interval:g},scale={STORYBOARD_TILE_WIDTH}:-2,showinfo,tile=5x5"
     try:
-        run_ffmpeg(
+        stderr = run_ffmpeg(
             [
                 ffmpeg_exe(),
                 "-y",
@@ -233,6 +241,9 @@ def _generate_sheets(source: Path, output_dir: Path, interval: float, duration: 
         )
     except FfmpegError as exc:
         raise StoryboardError(str(exc)) from exc
+    clean_stderr = _ANSI_ESCAPE.sub("", stderr)
+    frames = [int(value) for value in re.findall(r"showinfo[^\n]*\bn:\s*(\d+)", clean_stderr)]
+    return max(frames) + 1 if frames else None
 
 
 # Read JPEG dimensions from SOF metadata without adding an image dependency
@@ -278,13 +289,14 @@ def _build_cues_from_sheets(
     sheets: list[Path],
     sheet_width: int,
     sheet_height: int,
+    frame_count: int,
 ) -> list[StoryboardCue]:
     tile_width = sheet_width // STORYBOARD_GRID_COLUMNS
     tile_height = sheet_height // STORYBOARD_GRID_ROWS
     if tile_width <= 0 or tile_height <= 0:
         raise StoryboardError("invalid storyboard sheet dimensions")
     nominal_cues = max(1, math.ceil(duration / interval))
-    cue_count = min(nominal_cues, len(sheets) * STORYBOARD_TILES_PER_SHEET)
+    cue_count = min(nominal_cues, frame_count, len(sheets) * STORYBOARD_TILES_PER_SHEET)
     cues: list[StoryboardCue] = []
     for index in range(cue_count):
         sheet = (index // STORYBOARD_TILES_PER_SHEET) + 1
@@ -346,10 +358,15 @@ def generate_for_file(
         interval = storyboard_interval(duration)
         cache_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f"{cache_dir.name}.tmp-", dir=cache_dir.parent))
-        _generate_sheets(source, temp_dir, interval, duration)
+        frame_count = _generate_sheets(source, temp_dir, interval, duration)
         sheets = sorted(temp_dir.glob("sb_*.jpg"))
         if not sheets:
             raise StoryboardError("ffmpeg produced no storyboard sheets")
+        if frame_count is None:
+            frame_count = len(sheets) * STORYBOARD_TILES_PER_SHEET
+            logger.warning(
+                "ffmpeg showinfo frame count unavailable; using storyboard sheet capacity"
+            )
         sheet_width, sheet_height = _jpeg_dimensions(sheets[0])
         cues = _build_cues_from_sheets(
             duration=duration,
@@ -357,6 +374,7 @@ def generate_for_file(
             sheets=sheets,
             sheet_width=sheet_width,
             sheet_height=sheet_height,
+            frame_count=frame_count,
         )
         (temp_dir / "index.vtt").write_text(
             render_vtt(cues, asset_file.quick_fingerprint),

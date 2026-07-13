@@ -243,6 +243,12 @@ class AssetFile(Base):
     filesystem_inode: Mapped[int | None] = mapped_column(Integer, nullable=True)
     identity_available: Mapped[bool] = mapped_column(default=False)
     tech_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Owner-selected video timestamp used when regenerating this file's cover
+    # thumbnail; NULL keeps automatic representative-frame selection
+    cover_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Bundle cover displaced by the first custom-frame selection, restored when
+    # that frame is cleared; NULL also represents an originally automatic cover
+    cover_previous_file_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]

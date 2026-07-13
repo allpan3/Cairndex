@@ -15,18 +15,34 @@ import { SettingsMenu } from './SettingsMenu'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
-const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
-
 interface ControlBarProps {
   player: PlayerController
   video: PlayableVideo
   subtitles: SubtitleTrackRead[]
   hls: HlsSessionState
   onSnapshot: () => void
+  onDragChange: (dragging: boolean) => void
+  fileLoop: boolean
+  onFileLoop: (enabled: boolean) => void
+  onUseCoverFrame: () => void
+  onClearCoverFrame: () => void
+  hasCoverFrame: boolean
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
-export function ControlBar({ player, video, subtitles, hls, onSnapshot }: ControlBarProps) {
+export function ControlBar({
+  player,
+  video,
+  subtitles,
+  hls,
+  onSnapshot,
+  onDragChange,
+  fileLoop,
+  onFileLoop,
+  onUseCoverFrame,
+  onClearCoverFrame,
+  hasCoverFrame,
+}: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
   return (
@@ -60,20 +76,6 @@ export function ControlBar({ player, video, subtitles, hls, onSnapshot }: Contro
           value={player.muted ? 0 : player.volume}
           onChange={(event) => player.setVolume(Number(event.currentTarget.value))}
         />
-        <label className="mv-speed">
-          <span className="sr-only">Speed</span>
-          <select
-            aria-label="Playback speed"
-            value={player.rate}
-            onChange={(event) => player.setRate(Number(event.currentTarget.value))}
-          >
-            {SPEEDS.map((speed) => (
-              <option key={speed} value={speed}>
-                {speed}×
-              </option>
-            ))}
-          </select>
-        </label>
         <button
           className={`mv-btn${player.subtitlesOn ? ' is-active' : ''}`}
           onClick={player.toggleSubtitles}
@@ -87,7 +89,17 @@ export function ControlBar({ player, video, subtitles, hls, onSnapshot }: Contro
         <button className="mv-btn" onClick={onSnapshot} aria-label="Snapshot" title="Snapshot">
           <IconCamera />
         </button>
-        <SettingsMenu hls={hls} subtitles={subtitles} />
+        <SettingsMenu
+          hls={hls}
+          subtitles={subtitles}
+          player={player}
+          fileLoop={fileLoop}
+          onFileLoop={onFileLoop}
+          onUseCoverFrame={onUseCoverFrame}
+          onClearCoverFrame={onClearCoverFrame}
+          hasCoverFrame={hasCoverFrame}
+          sourceHeight={video.height}
+        />
         <button
           className={`mv-btn${player.pip ? ' is-active' : ''}`}
           onClick={player.togglePiP}
@@ -105,7 +117,7 @@ export function ControlBar({ player, video, subtitles, hls, onSnapshot }: Contro
           <IconFullscreen />
         </button>
       </div>
-      <SeekBar player={player} video={video} />
+      <SeekBar player={player} video={video} onDragChange={onDragChange} />
     </div>
   )
 }

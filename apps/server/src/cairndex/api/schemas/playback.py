@@ -49,6 +49,19 @@ class PlaybackProgressUpdate(BaseModel):
         return value
 
 
+class CoverFrameUpdate(BaseModel):
+    """Owner-selected timestamp for a video's generated cover thumbnail."""
+
+    time: float
+
+    @field_validator("time")
+    @classmethod
+    def finite_non_negative(cls, value: float) -> float:
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("time must be a finite non-negative number")
+        return value
+
+
 class PlayableVideo(BaseModel):
     file_id: str
     display_title: str

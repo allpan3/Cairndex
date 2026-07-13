@@ -26,6 +26,8 @@ export interface PlayerController {
   volume: number
   muted: boolean
   rate: number
+  seekStep: PlayerPrefs['seekStep']
+  preservesPitch: boolean
   fullscreen: boolean
   pip: boolean
   subtitlesOn: boolean
@@ -37,6 +39,8 @@ export interface PlayerController {
   setVolume: (volume: number) => void
   setMuted: (muted: boolean) => void
   setRate: (rate: number) => void
+  setSeekStep: (step: 2 | 5 | 10 | 30) => void
+  setPreservesPitch: (enabled: boolean) => void
   toggleSubtitles: () => void
   toggleFullscreen: () => void
   togglePiP: () => void
@@ -129,6 +133,7 @@ export function usePlayer({
     engine.setVolume(initialPrefs.volume)
     engine.setMuted(initialPrefs.muted)
     engine.setRate(initialPrefs.rate)
+    engine.setPreservesPitch(initialPrefs.preservesPitch)
     engine.load(source)
     void engine.play().catch(() => setStatus('paused'))
     return () => {
@@ -143,7 +148,8 @@ export function usePlayer({
     engine.setVolume(prefs.volume)
     engine.setMuted(prefs.muted)
     engine.setRate(prefs.rate)
-  }, [prefs.muted, prefs.rate, prefs.volume, videoElement])
+    engine.setPreservesPitch(prefs.preservesPitch)
+  }, [prefs.muted, prefs.preservesPitch, prefs.rate, prefs.volume, videoElement])
 
   useEffect(() => {
     const engine = engineRef.current
@@ -263,6 +269,19 @@ export function usePlayer({
     [updatePrefs],
   )
 
+  const setSeekStep = useCallback(
+    (seekStep: 2 | 5 | 10 | 30) => updatePrefs((previous) => ({ ...previous, seekStep })),
+    [updatePrefs],
+  )
+
+  const setPreservesPitch = useCallback(
+    (preservesPitch: boolean) => {
+      engineRef.current?.setPreservesPitch(preservesPitch)
+      updatePrefs((previous) => ({ ...previous, preservesPitch }))
+    },
+    [updatePrefs],
+  )
+
   const toggleSubtitles = useCallback(() => {
     updatePrefs((previous) => ({ ...previous, subtitlesOn: !previous.subtitlesOn }))
   }, [updatePrefs])
@@ -299,6 +318,8 @@ export function usePlayer({
       volume: prefs.volume,
       muted: prefs.muted,
       rate: prefs.rate,
+      seekStep: prefs.seekStep,
+      preservesPitch: prefs.preservesPitch,
       fullscreen,
       pip,
       subtitlesOn: prefs.subtitlesOn,
@@ -310,6 +331,8 @@ export function usePlayer({
       setVolume,
       setMuted,
       setRate,
+      setSeekStep,
+      setPreservesPitch,
       toggleSubtitles,
       toggleFullscreen,
       togglePiP,
@@ -324,6 +347,8 @@ export function usePlayer({
     prefs.volume,
     prefs.muted,
     prefs.rate,
+    prefs.seekStep,
+    prefs.preservesPitch,
     prefs.subtitlesOn,
     fullscreen,
     pip,
@@ -336,6 +361,8 @@ export function usePlayer({
     setVolume,
     setMuted,
     setRate,
+    setSeekStep,
+    setPreservesPitch,
     toggleSubtitles,
     toggleFullscreen,
     togglePiP,

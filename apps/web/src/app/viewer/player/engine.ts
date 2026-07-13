@@ -45,6 +45,7 @@ export interface PlaybackEngine {
   setVolume(volume: number): void
   setMuted(muted: boolean): void
   setRate(rate: number): void
+  setPreservesPitch(enabled: boolean): void
   destroy(): void
 }
 
@@ -91,7 +92,10 @@ abstract class BaseVideoEngine implements PlaybackEngine {
 
   setRate(rate: number): void {
     this.video.playbackRate = rate
-    this.video.preservesPitch = true
+  }
+
+  setPreservesPitch(enabled: boolean): void {
+    this.video.preservesPitch = enabled
   }
 }
 
