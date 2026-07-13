@@ -31,6 +31,7 @@ from cairndex.api.schemas.playback import (
 )
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
+from cairndex.core.time import utcnow
 from cairndex.domain.enums import MediaKind
 from cairndex.media import playback, previews, storyboards, thumbnails
 from cairndex.media.subtitles import extension_of
@@ -188,13 +189,19 @@ def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession)
     duration = _video_duration(asset_file)
     if duration is None:
         raise ValidationError("video duration is unavailable")
-    if payload.time > duration:
-        raise ValidationError("cover frame time exceeds video duration")
-    asset_file.cover_time = payload.time
+    # Browser duration and ffprobe format duration can differ by milliseconds;
+    # seek just before EOF so ffmpeg always has a decodable frame to extract
+    cover_time = max(0.0, min(payload.time, max(0.0, duration - 0.1)))
     bundle = db.get(AssetBundle, asset_file.bundle_id)
     if bundle is not None:
+        if asset_file.cover_time is None or bundle.cover_file_id != asset_file.id:
+            asset_file.cover_previous_file_id = bundle.cover_file_id
+        asset_file.cover_time = cover_time
         bundle.cover_file_id = asset_file.id
+        bundle.updated_at = utcnow()
         collection_service.touch_cover_collections_for_bundle(db, bundle.id)
+    else:
+        asset_file.cover_time = cover_time
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:
@@ -216,7 +223,14 @@ def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
     except PathSafetyError as exc:
         raise ValidationError(str(exc)) from exc
     asset_file.cover_time = None
-    collection_service.touch_cover_collections_for_bundle(db, asset_file.bundle_id)
+    bundle = db.get(AssetBundle, asset_file.bundle_id)
+    if bundle is not None:
+        # Preserve a newer manual cover choice made after the frame was set
+        if bundle.cover_file_id == asset_file.id:
+            bundle.cover_file_id = asset_file.cover_previous_file_id
+        bundle.updated_at = utcnow()
+        collection_service.touch_cover_collections_for_bundle(db, bundle.id)
+    asset_file.cover_previous_file_id = None
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:

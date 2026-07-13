@@ -52,9 +52,11 @@ export function SeekBar({
     pending: null,
     timer: null,
   })
+  const dragCleanup = useRef<(() => void) | null>(null)
   useEffect(
     () => () => {
       if (scrub.current.timer != null) clearTimeout(scrub.current.timer)
+      dragCleanup.current?.()
     },
     [],
   )
@@ -126,6 +128,7 @@ export function SeekBar({
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
+    dragCleanup.current?.()
     const track = event.currentTarget as HTMLElement
     track.setPointerCapture(event.pointerId)
     dragging.current = { pointerId: event.pointerId, track }
@@ -139,6 +142,12 @@ export function SeekBar({
       setDragPct(pctFor(next))
       throttledSeek(next)
     }
+    const removeListeners = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      dragCleanup.current = null
+    }
     const end = (endEvent: PointerEvent) => {
       if (endEvent.pointerId !== event.pointerId) return
       commitSeek(timeFor(endEvent.clientX))
@@ -149,13 +158,12 @@ export function SeekBar({
       setDragPct(null)
       setHover(null)
       onDragChange?.(false)
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', end)
-      window.removeEventListener('pointercancel', end)
+      removeListeners()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', end)
     window.addEventListener('pointercancel', end)
+    dragCleanup.current = removeListeners
   }
 
   return (

@@ -23,12 +23,15 @@ export interface SortPref {
   order: SortOrder
 }
 
+export const PLAYER_SEEK_STEPS = [2, 5, 10, 30] as const
+export type PlayerSeekStep = (typeof PLAYER_SEEK_STEPS)[number]
+
 export interface PlayerPrefs {
   volume: number
   muted: boolean
   rate: number
   subtitlesOn: boolean
-  seekStep: 2 | 5 | 10 | 30
+  seekStep: PlayerSeekStep
   preservesPitch: boolean
 }
 

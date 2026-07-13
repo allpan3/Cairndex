@@ -233,6 +233,47 @@ def test_collection_cover_prefers_chosen_bundle_then_auto_picks(session: Session
     assert collection_service.resolve_cover_bundle_id(session, root.id) == nested.id
 
 
+def test_touch_cover_collections_checks_only_membership_ancestors_and_explicit_covers(
+    monkeypatch: pytest.MonkeyPatch, session: Session
+) -> None:
+    from cairndex.domain.enums import FileRole, MediaKind
+
+    root = collection_service.create_collection(session, name="root")
+    leaf = collection_service.create_collection(session, name="leaf", parent_id=root.id)
+    explicit = collection_service.create_collection(session, name="explicit")
+    unrelated = collection_service.create_collection(session, name="unrelated")
+    bundle = bundle_service.create_bundle(session, title="covered")
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path="movie.mp4",
+            original_filename="movie.mp4",
+            display_title="movie.mp4",
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+        )
+    )
+    bundle_service.set_bundle_collections(session, bundle.id, [leaf.id])
+    collection_service.update_collection(
+        session, explicit.id, cover_bundle_id=bundle.id, set_cover=True
+    )
+    session.flush()
+    unrelated_updated_at = unrelated.updated_at
+    resolved: list[str] = []
+    original = collection_service.resolve_cover_bundle_id
+
+    def track_resolve(db: Session, collection_id: str) -> str | None:
+        resolved.append(collection_id)
+        return original(db, collection_id)
+
+    monkeypatch.setattr(collection_service, "resolve_cover_bundle_id", track_resolve)
+    collection_service.touch_cover_collections_for_bundle(session, bundle.id)
+
+    assert set(resolved) == {root.id, leaf.id, explicit.id}
+    assert unrelated.id not in resolved
+    assert unrelated.updated_at == unrelated_updated_at
+
+
 # --- Tag groups (many-to-many, independent of hierarchy) ---------------------
 def test_tag_belongs_to_multiple_groups_without_changing_hierarchy(session: Session) -> None:
     parent = tag_service.create_tag(session, name="genre")

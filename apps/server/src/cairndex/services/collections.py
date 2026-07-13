@@ -271,12 +271,35 @@ def resolve_cover_bundle_id(session: Session, collection_id: str) -> str | None:
 def touch_cover_collections_for_bundle(session: Session, bundle_id: str) -> None:
     """Refresh collection cover versions when their effective bundle changes image.
 
-    Covers may be explicit or auto-picked through a descendant collection, so
-    inspect the small collection metadata set rather than only direct membership.
-    This changes display freshness only; optimistic-concurrency versions stay put.
+    Candidate collections are direct memberships, their ancestors (whose auto
+    cover can resolve through that subtree), and explicit selectors of this
+    bundle. This changes display freshness only; optimistic-concurrency versions
+    stay put.
     """
+    direct = set(
+        session.scalars(
+            select(asset_bundle_collections.c.collection_id).where(
+                asset_bundle_collections.c.bundle_id == bundle_id
+            )
+        )
+    )
+    candidates = direct | set(
+        session.scalars(select(Collection.id).where(Collection.cover_bundle_id == bundle_id))
+    )
+    frontier = direct
+    while frontier:
+        parents = {
+            parent_id
+            for parent_id in session.scalars(
+                select(Collection.parent_id).where(Collection.id.in_(frontier))
+            )
+            if parent_id is not None
+        }
+        frontier = parents - candidates
+        candidates.update(parents)
+
     now = utcnow()
-    for collection_id in session.scalars(select(Collection.id)):
+    for collection_id in candidates:
         if resolve_cover_bundle_id(session, collection_id) == bundle_id:
             collection = session.get(Collection, collection_id)
             if collection is not None:

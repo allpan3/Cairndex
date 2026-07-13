@@ -266,6 +266,14 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,
     )
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="poster.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": image.id})
     video.tech_metadata = {"duration": 20.0}
     session.commit()
     seen: list[float | None] = []
@@ -281,24 +289,28 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     base = f"/api/v1/libraries/{library_id}/files/{video.id}/cover-frame"
 
     assert client.post(base, json={"time": -1}).status_code == 422
-    assert client.post(base, json={"time": 21}).status_code == 422
-    selected = client.post(base, json={"time": 12.5})
-    assert selected.status_code == 200
-    assert selected.json()["cover_time"] == 12.5
+    at_end = client.post(base, json={"time": 20})
+    assert at_end.status_code == 200
+    assert at_end.json()["cover_time"] == pytest.approx(19.9)
+    just_past_end = client.post(base, json={"time": 20.05})
+    assert just_past_end.status_code == 200
+    assert just_past_end.json()["cover_time"] == pytest.approx(19.9)
     session.expire_all()
-    assert session.get(AssetFile, video.id).cover_time == 12.5
+    assert session.get(AssetFile, video.id).cover_time == pytest.approx(19.9)
     assert bundle_service.get_bundle(session, bundle.id).cover_file_id == video.id
     session.refresh(collection)
     assert collection.updated_at > collection_updated_at
-    assert seen == [12.5]
+    assert seen == [pytest.approx(19.9), pytest.approx(19.9)]
 
     # Future forced regeneration continues to honor the persisted timestamp
     thumbnails.generate_for_file(session, video.id, force=True)
-    assert seen[-1] == 12.5
+    assert seen[-1] == pytest.approx(19.9)
 
     cleared = client.delete(base)
     assert cleared.status_code == 200
     assert cleared.json()["cover_time"] is None
+    session.expire_all()
+    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == image.id
     assert seen[-1] is None
 
 

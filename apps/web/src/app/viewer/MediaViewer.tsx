@@ -5,12 +5,10 @@ import {
   type FileRead,
   type PlayableVideo,
   type PlaybackManifest,
-  clearCoverFrame,
-  setCoverFrame,
   thumbnailUrl,
   updatePlaybackProgress,
 } from '../../api/client'
-import { useBundle, useBundleFiles, usePlaybackManifest } from '../../api/hooks'
+import { useBundle, useBundleFiles, useFileMutations, usePlaybackManifest } from '../../api/hooks'
 import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
@@ -21,9 +19,9 @@ import { ControlBar } from './player/ControlBar'
 import { useHlsSession, type HlsSessionState } from './player/useHlsSession'
 import { useIdleHide } from './player/useIdleHide'
 import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporter'
-import { usePlayer } from './player/usePlayer'
+import { usePlayer, type PlayerController } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
-import { handlePlaybackEnded } from './player/endBehavior'
+import { consumeEndedTransition, handlePlaybackEnded } from './player/endBehavior'
 
 interface MediaViewerProps {
   bundleId: string
@@ -58,6 +56,7 @@ export function MediaViewer({
   onClose,
 }: MediaViewerProps) {
   const qc = useQueryClient()
+  const fileMutations = useFileMutations(bundleId)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const { data: bundle, isLoading: bundleLoading, error: bundleError } = useBundle(bundleId)
   const { data: files = [], isLoading: filesLoading, error: filesError } = useBundleFiles(bundleId)
@@ -71,6 +70,12 @@ export function MediaViewer({
   const [failedFileId, setFailedFileId] = useState<string | null>(null)
   const [scrubbing, setScrubbing] = useState(false)
   const [fileLoop, setFileLoop] = useState(false)
+  const endedHandledRef = useRef(false)
+  const endedContextRef = useRef<{
+    fileLoop: boolean
+    player: PlayerController | null
+    step: (delta: number) => void
+  }>({ fileLoop: false, player: null, step: () => {} })
   const [resumeNotice, setResumeNotice] = useState<{ fileId: string; position: number } | null>(
     null,
   )
@@ -176,7 +181,7 @@ export function MediaViewer({
   })
   const chromeIdle = useIdleHide(rootRef, scrubbing)
   const title = bundle?.title ?? current?.display_title ?? 'Media'
-  const artworkUrl = thumbnailUrl(bundleId, bundle?.cover_file_id ?? null)
+  const artworkUrl = thumbnailUrl(bundleId, bundle?.updated_at ?? null)
 
   useEffect(() => rootRef.current?.focus(), [])
 
@@ -293,32 +298,29 @@ export function MediaViewer({
     [currentIndex, files],
   )
 
-  // A file loop owns the ended event; otherwise continue through the bundle
   useEffect(() => {
-    if (player.status !== 'ended') return
-    handlePlaybackEnded(fileLoop, player, () => step(1))
-  }, [fileLoop, player, player.status, step])
+    endedContextRef.current = { fileLoop, player, step }
+  }, [fileLoop, player, step])
 
-  const refreshCover = useCallback(
-    (updated: FileRead) => {
-      qc.setQueryData<FileRead[]>(['bundle-files', bundleId], (previous) =>
-        previous?.map((file) => (file.id === updated.id ? updated : file)),
-      )
-      void qc.invalidateQueries({ queryKey: ['bundle-files', bundleId] })
-      void qc.invalidateQueries({ queryKey: ['browse'] })
-      void qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
-      void qc.invalidateQueries({ queryKey: ['collections'] })
-    },
-    [bundleId, qc],
-  )
+  // Consume each ended transition once; live refs keep identity/settings
+  // changes from re-firing it while the media remains ended
+  useEffect(() => {
+    consumeEndedTransition(player.status, endedHandledRef, () => {
+      const context = endedContextRef.current
+      if (context.player) {
+        handlePlaybackEnded(context.fileLoop, context.player, () => context.step(1))
+      }
+    })
+  }, [player.status])
+
   const useCurrentFrameAsCover = useCallback(() => {
     if (!currentId) return
-    void setCoverFrame(currentId, player.currentTime).then(refreshCover)
-  }, [currentId, player.currentTime, refreshCover])
+    fileMutations.setCoverFrame.mutate({ fileId: currentId, time: player.currentTime })
+  }, [currentId, fileMutations.setCoverFrame, player.currentTime])
   const clearCurrentCoverFrame = useCallback(() => {
     if (!currentId) return
-    void clearCoverFrame(currentId).then(refreshCover)
-  }, [currentId, refreshCover])
+    fileMutations.clearCoverFrame.mutate(currentId)
+  }, [currentId, fileMutations.clearCoverFrame])
 
   const snapshot = useCallback(() => {
     const video = videoElement

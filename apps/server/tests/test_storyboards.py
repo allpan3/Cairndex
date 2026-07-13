@@ -204,6 +204,37 @@ def test_generate_sheets_counts_showinfo_frames_in_same_pass(
     assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 17
 
 
+def test_generate_sheets_strips_ansi_before_counting_showinfo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_run(_args: list[str], **_kwargs: object) -> str:
+        return "\x1b[32m[Parsed_showinfo_2]\x1b[0m n: 0\n\x1b[31mshowinfo\x1b[0m n: 8"
+
+    monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
+    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 9
+
+
+def test_generate_for_file_falls_back_to_sheet_capacity_without_showinfo(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    session: Session,
+    library_root: Path,
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+
+    def no_count(_source: Path, output_dir: Path, _interval: float, _duration: float) -> None:
+        (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
+
+    monkeypatch.setattr(storyboards, "_generate_sheets", no_count)
+    with caplog.at_level("WARNING"):
+        result = storyboards.generate_for_file(session, asset_file.id)
+
+    assert result.path is not None
+    payloads = [line for line in result.path.read_text().splitlines() if "#xywh=" in line]
+    assert len(payloads) == 25
+    assert "showinfo frame count unavailable" in caplog.text
+
+
 def test_ffmpeg_runner_times_out_fake_hanging_executable() -> None:
     with pytest.raises(FfmpegError, match="timed out"):
         run_ffmpeg(
