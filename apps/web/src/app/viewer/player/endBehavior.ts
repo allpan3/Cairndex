@@ -13,3 +13,18 @@ export function handlePlaybackEnded(
     advance()
   }
 }
+
+/** Consume one ended transition until playback leaves the ended state. */
+export function consumeEndedTransition(
+  status: PlayerController['status'],
+  handled: { current: boolean },
+  onEnded: () => void,
+) {
+  if (status !== 'ended') {
+    handled.current = false
+    return
+  }
+  if (handled.current) return
+  handled.current = true
+  onEnded()
+}

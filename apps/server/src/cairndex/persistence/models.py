@@ -246,6 +246,9 @@ class AssetFile(Base):
     # Owner-selected video timestamp used when regenerating this file's cover
     # thumbnail; NULL keeps automatic representative-frame selection
     cover_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Bundle cover displaced by the first custom-frame selection, restored when
+    # that frame is cleared; NULL also represents an originally automatic cover
+    cover_previous_file_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]

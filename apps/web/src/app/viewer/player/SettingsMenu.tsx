@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { AudioStreamRead, SubtitleTrackRead } from '../../../api/client'
+import { PLAYER_SEEK_STEPS } from '../../types'
 import { IconSettings } from '../../icons'
 import { qualityOptions } from './quality'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
-const SEEK_STEPS = [2, 5, 10, 30] as const
-
 /** Map the slider's linear stop index to the supported seek-step values. */
-function seekStepAt(index: number): (typeof SEEK_STEPS)[number] {
-  return SEEK_STEPS[index] ?? 5
+function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
+  return PLAYER_SEEK_STEPS[index] ?? 5
 }
 
 interface SettingsMenuProps {
@@ -100,9 +99,9 @@ export function SettingsMenu({
               className="mv-menu__slider"
               type="range"
               min={0}
-              max={SEEK_STEPS.length - 1}
+              max={PLAYER_SEEK_STEPS.length - 1}
               step={1}
-              value={SEEK_STEPS.indexOf(player.seekStep)}
+              value={PLAYER_SEEK_STEPS.indexOf(player.seekStep)}
               aria-label="Seek step"
               aria-valuetext={`${player.seekStep} seconds`}
               onChange={(event) =>
