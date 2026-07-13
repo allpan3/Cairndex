@@ -22,6 +22,14 @@ export interface CapabilityProbe {
   isTypeSupported: ((type: string) => boolean) | null
 }
 
+export interface DirectVideoSource {
+  mimeType?: string | null
+  relativePath?: string | null
+  container?: string | null
+  videoCodec?: string | null
+  audioCodec?: string | null
+}
+
 // Candidate MIME/codec strings per normalized codec/container name. The names
 // on the left match the server's normalized vocabulary (media/playback.py); the
 // strings on the right are representative RFC 6381 codec parameters. A name is
@@ -64,6 +72,73 @@ function names(probe: CapabilityProbe, table: Record<string, string[]>): string[
   return Object.entries(table)
     .filter(([, candidates]) => supported(probe, candidates))
     .map(([name]) => name)
+}
+
+const MIME_CONTAINERS: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'video/x-m4v': 'mp4',
+  'video/webm': 'webm',
+  'video/x-matroska': 'mkv',
+}
+
+const CODEC_ALIASES: Record<string, string> = {
+  avc1: 'h264',
+  avc: 'h264',
+  h265: 'hevc',
+  hvc1: 'hevc',
+  hev1: 'hevc',
+  vp09: 'vp9',
+  av01: 'av1',
+}
+
+const AUDIO_CODEC_ALIASES: Record<string, string> = {
+  mp4a: 'aac',
+  'mp4a.40.2': 'aac',
+}
+
+const EXTENSION_ALIASES: Record<string, string> = {
+  m4v: 'mp4',
+}
+
+const FFMPEG_CONTAINER_ALIASES: Record<string, string> = {
+  mov: 'mp4',
+  mp4: 'mp4',
+  m4a: 'mp4',
+  '3gp': 'mp4',
+  '3g2': 'mp4',
+  mj2: 'mp4',
+  matroska: 'mkv',
+  mkv: 'mkv',
+  webm: 'webm',
+}
+
+// Normalize the source container into the vocabulary advertised by the profile
+export function sourceContainer(source: DirectVideoSource): string | null {
+  const path = source.relativePath?.split(/[?#]/, 1)[0] ?? ''
+  const extension = path.includes('.') ? path.split('.').at(-1)?.toLowerCase() : null
+  if (extension) return EXTENSION_ALIASES[extension] ?? extension
+  const mime = source.mimeType?.split(';', 1)[0]?.trim().toLowerCase()
+  if (mime && MIME_CONTAINERS[mime]) return MIME_CONTAINERS[mime]
+  for (const token of source.container?.toLowerCase().split(',') ?? []) {
+    const normalized = FFMPEG_CONTAINER_ALIASES[token.trim()]
+    if (normalized) return normalized
+  }
+  return null
+}
+
+// Apply the same optimistic-legacy container/codec gate used by playback caps
+export function canDirectPlayVideo(
+  source: DirectVideoSource,
+  capabilities: ClientCapabilities = getClientCapabilities(),
+): boolean {
+  const container = sourceContainer(source)
+  if (!container || !(capabilities.containers ?? []).includes(container)) return false
+  const rawVideoCodec = source.videoCodec?.trim().toLowerCase()
+  const videoCodec = rawVideoCodec ? (CODEC_ALIASES[rawVideoCodec] ?? rawVideoCodec) : null
+  if (videoCodec && !(capabilities.video_codecs ?? []).includes(videoCodec)) return false
+  const rawAudioCodec = source.audioCodec?.trim().toLowerCase()
+  const audioCodec = rawAudioCodec ? (AUDIO_CODEC_ALIASES[rawAudioCodec] ?? rawAudioCodec) : null
+  return !audioCodec || (capabilities.audio_codecs ?? []).includes(audioCodec)
 }
 
 /** Derive a capability profile from an injectable probe (pure, unit-testable). */

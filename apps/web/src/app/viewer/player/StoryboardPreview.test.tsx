@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { StoryboardPreview } from './StoryboardPreview'
+import { StoryboardPreview, StoryboardTile } from './StoryboardPreview'
+import type { StoryboardCue } from './storyboardVtt'
 
 const VTT = `WEBVTT
 
@@ -23,6 +24,31 @@ function renderPreview(storyboardUrl: string) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('StoryboardPreview', () => {
+  test('uses an aspect-preserving SVG viewport for card fill', () => {
+    const cue: StoryboardCue = {
+      start: 0,
+      end: 2,
+      url: 'storyboard/sb_001.jpg?v=test',
+      x: 320,
+      y: 568,
+      w: 320,
+      h: 568,
+    }
+    render(<StoryboardTile storyboardUrl="/storyboard.vtt" cue={cue} fill testId="tile" />)
+
+    const tile = screen.getByTestId('tile')
+    expect(tile.tagName).toBe('svg')
+    expect(tile).toHaveAttribute('viewBox', '0 0 320 568')
+    expect(tile).toHaveAttribute('preserveAspectRatio', 'xMidYMid meet')
+    expect(tile).toHaveAttribute('data-cue-start', '0')
+    const clip = tile.querySelector('clipPath')
+    expect(clip?.querySelector('rect')).toHaveAttribute('width', '320')
+    expect(clip?.querySelector('rect')).toHaveAttribute('height', '568')
+    expect(tile.querySelector('g')).toHaveAttribute('clip-path', `url(#${clip?.id})`)
+    expect(tile.querySelector('image')).toHaveAttribute('x', '-320')
+    expect(tile.querySelector('image')).toHaveAttribute('y', '-568')
+  })
+
   test('scales portrait tiles to fit the hover tooltip bounds', async () => {
     vi.stubGlobal(
       'fetch',

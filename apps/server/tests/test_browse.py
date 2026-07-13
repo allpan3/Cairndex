@@ -13,6 +13,7 @@ from cairndex.domain.enums import (
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
+from cairndex.services import playback_progress as progress_service
 from cairndex.services.browse import (
     BundleSort,
     SystemView,
@@ -56,8 +57,16 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
         media_kind=MediaKind.VIDEO,
     )
     f.size_bytes = 1000
-    f.tech_metadata = {"width": 1920, "height": 1080, "duration": 90.0}
+    f.tech_metadata = {
+        "container": "mov,mp4,m4a,3gp,3g2,mj2",
+        "width": 1920,
+        "height": 1080,
+        "duration": 90.0,
+        "video_codec": "h264",
+        "audio_codec": "aac",
+    }
     bundle_service.update_bundle(session, bundle.id, {"primary_file_id": f.id})
+    progress_service.upsert_progress(session, f.id, position_s=22.0, duration_s=90.0)
     session.commit()
 
     page = browse_bundles(session)
@@ -72,6 +81,43 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.grouping_state == bundle.grouping_state
     # The lone video is the derived cover, so it drives the cache-busting key.
     assert s.cover_key == f.id
+    assert s.cover_video_file_id == f.id
+    assert s.cover_video_relative_path == "m/movie.mp4"
+    assert s.cover_video_container == "mov,mp4,m4a,3gp,3g2,mj2"
+    assert s.cover_video_codec == "h264"
+    assert s.cover_video_audio_codec == "aac"
+    assert s.cover_video_duration == 90.0
+    assert s.cover_video_resume_position == 22.0
+
+    progress_service.upsert_progress(session, f.id, position_s=89.0, duration_s=90.0)
+    session.commit()
+    assert browse_bundles(session).items[0].cover_video_resume_position is None
+
+
+# Cover hover metadata is absent when the effective cover is not a video
+def test_summary_hover_preview_fields_exclude_image_and_empty_bundles(session: Session) -> None:
+    image_bundle = bundle_service.create_bundle(session, title="Still")
+    image = bundle_service.add_file(
+        session,
+        image_bundle.id,
+        relative_path="stills/frame.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    image.mime_type = "image/jpeg"
+    empty_bundle = bundle_service.create_bundle(session, title="Empty")
+    session.commit()
+
+    summaries = {item.id: item for item in browse_bundles(session).items}
+    for bundle_id in (image_bundle.id, empty_bundle.id):
+        summary = summaries[bundle_id]
+        assert summary.cover_video_file_id is None
+        assert summary.cover_video_relative_path is None
+        assert summary.cover_video_container is None
+        assert summary.cover_video_codec is None
+        assert summary.cover_video_audio_codec is None
+        assert summary.cover_video_duration is None
+        assert summary.cover_video_resume_position is None
 
 
 def test_summary_cover_key_tracks_the_selected_cover(session: Session) -> None:

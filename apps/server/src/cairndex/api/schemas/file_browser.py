@@ -24,6 +24,13 @@ class FileBrowserEntryRead(BaseModel):
     # True when this exact path is already linked into a bundle.
     linked: bool
     bundle_id: str | None
+    # Linked-file metadata used by card hover preview; unlinked paths stay null
+    file_id: str | None
+    container: str | None
+    video_codec: str | None
+    audio_codec: str | None
+    duration: float | None
+    resume_position: float | None
     # True when linked into a scan-staged provisional bundle (not yet confirmed).
     unbundled: bool
 

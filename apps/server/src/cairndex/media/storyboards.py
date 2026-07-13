@@ -25,7 +25,9 @@ from cairndex.registry import library_package
 
 logger = logging.getLogger(__name__)
 
+STORYBOARD_INDEX_CACHE_CONTROL = "no-cache"
 STORYBOARD_CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
+STORYBOARD_FORMAT_VERSION = 2
 STORYBOARD_TILE_WIDTH = 320
 STORYBOARD_GRID_COLUMNS = 5
 STORYBOARD_GRID_ROWS = 5
@@ -115,7 +117,7 @@ def _timestamp(seconds: float) -> str:
 
 # Render the constrained storyboard WebVTT format consumed by web and TV clients
 def render_vtt(cues: Iterable[StoryboardCue], quick_fingerprint: str | None) -> str:
-    version = derived_cache.version_param(quick_fingerprint)
+    version = storyboard_version_param(quick_fingerprint)
     lines = ["WEBVTT", "", f"{_FINGERPRINT_NOTE} {quick_fingerprint or ''}", ""]
     for cue in cues:
         lines.append(f"{_timestamp(cue.start)} --> {_timestamp(cue.end)}")
@@ -127,9 +129,20 @@ def render_vtt(cues: Iterable[StoryboardCue], quick_fingerprint: str | None) -> 
     return "\n".join(lines)
 
 
+# Combine the source fingerprint and storyboard format for sidecar validation
+def storyboard_cache_key(quick_fingerprint: str | None) -> str:
+    return f"sb{STORYBOARD_FORMAT_VERSION}:{quick_fingerprint or ''}"
+
+
+# Return a URL-safe token that invalidates sheets when sampling semantics change
+def storyboard_version_param(quick_fingerprint: str | None) -> str:
+    return derived_cache.version_param(storyboard_cache_key(quick_fingerprint))
+
+
 # Return True when the cached index was generated for the current quick fingerprint
 def is_current_index(library_root: Path, file_id: str, quick_fingerprint: str | None) -> bool:
-    return derived_cache.is_current(storyboard_index_path(library_root, file_id), quick_fingerprint)
+    index = storyboard_index_path(library_root, file_id)
+    return derived_cache.is_current(index, storyboard_cache_key(quick_fingerprint))
 
 
 # Extract a float duration from probed tech metadata
@@ -182,9 +195,9 @@ def _cached_context(
 
 # Return the cached WebVTT index when present and current
 def cached_index_for_file(session: Session, file_id: str) -> Path:
-    asset_file, _library_root, cache_dir = _cached_context(session, file_id)
+    asset_file, library_root, cache_dir = _cached_context(session, file_id)
     index = cache_dir / "index.vtt"
-    if not derived_cache.is_current(index, asset_file.quick_fingerprint):
+    if not is_current_index(library_root, file_id, asset_file.quick_fingerprint):
         raise NotFoundError("storyboard index not found")
     return index
 
@@ -207,7 +220,7 @@ def storyboard_url_for_file(session: Session, library_id: str, asset_file: Asset
     library_root = library_root_for_session(session)
     if not is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint):
         return None
-    version = derived_cache.version_param(asset_file.quick_fingerprint)
+    version = storyboard_version_param(asset_file.quick_fingerprint)
     return f"/api/v1/libraries/{library_id}/files/{asset_file.id}/storyboard.vtt?v={version}"
 
 
@@ -222,7 +235,11 @@ def _generate_sheets(
 ) -> int | None:
     # showinfo reports each sampled frame before tile pads the final sheet, so
     # its final n value is the real tile count without a second decode pass
-    vf = f"fps=1/{interval:g},scale={STORYBOARD_TILE_WIDTH}:-2,showinfo,tile=5x5"
+    # Anchoring and upward rounding select the frame active at each VTT cue start
+    vf = (
+        f"fps=1/{interval:g}:start_time=0:round=up,"
+        f"scale={STORYBOARD_TILE_WIDTH}:-2,showinfo,tile=5x5"
+    )
     try:
         stderr = run_ffmpeg(
             [
@@ -380,7 +397,9 @@ def generate_for_file(
             render_vtt(cues, asset_file.quick_fingerprint),
             encoding="utf-8",
         )
-        derived_cache.write_fingerprint(temp_dir / "index.vtt", asset_file.quick_fingerprint)
+        derived_cache.write_fingerprint(
+            temp_dir / "index.vtt", storyboard_cache_key(asset_file.quick_fingerprint)
+        )
         _replace_cache_dir(cache_dir, temp_dir)
         temp_dir = None
     except (StoryboardError, FfmpegError, OSError, PathSafetyError) as exc:

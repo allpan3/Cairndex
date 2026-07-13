@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest'
 
-import { computeCapabilities, type CapabilityProbe } from './caps'
+import {
+  canDirectPlayVideo,
+  computeCapabilities,
+  sourceContainer,
+  type CapabilityProbe,
+} from './caps'
 
 // Build a probe from an allow-list of MIME/codec strings. `canPlayType` returns
 // 'probably' for allowed strings (empty otherwise, like a real browser);
@@ -62,4 +67,26 @@ test('advertises nothing beyond progressive when no probe reports support', () =
   expect(caps.audio_codecs).toEqual([])
   expect(caps.native_hls).toBe(false)
   expect(caps.protocols).toEqual(['progressive'])
+})
+
+test('normalizes ffprobe container lists and gates both stored codecs', () => {
+  const caps = {
+    protocols: ['progressive'],
+    containers: ['mp4'],
+    video_codecs: ['h264'],
+    audio_codecs: ['aac'],
+    max_height: null,
+    native_hls: false,
+  }
+  const source = {
+    container: 'mov,mp4,m4a,3gp,3g2,mj2',
+    videoCodec: 'h264',
+    audioCodec: 'aac',
+  }
+  expect(sourceContainer(source)).toBe('mp4')
+  expect(canDirectPlayVideo(source, caps)).toBe(true)
+  expect(canDirectPlayVideo({ ...source, audioCodec: 'dts' }, caps)).toBe(false)
+  expect(canDirectPlayVideo({ ...source, audioCodec: null }, caps)).toBe(true)
+  expect(sourceContainer({ container: 'matroska,webm' })).toBe('mkv')
+  expect(sourceContainer({ relativePath: 'clip.mov', container: source.container })).toBe('mov')
 })

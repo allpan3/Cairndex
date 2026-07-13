@@ -81,7 +81,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_STATIC_DIR` | `/app/web` | Built SPA dir the backend serves. Unset -> backend serves API only (dev). |
 | `CAIRNDEX_WORKER_ENABLED` | `true` | Run the in-process scan/probe/thumbnail worker. |
 | `CAIRNDEX_STORYBOARDS` | `true` | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards. |
-| `CAIRNDEX_STORYBOARD_MIN_DURATION` | `60` | Minimum probed video duration, in seconds, before storyboard generation is attempted. |
+| `CAIRNDEX_STORYBOARD_MIN_DURATION` | `10` | Minimum probed video duration, in seconds, before storyboard generation is attempted. |
 | `CAIRNDEX_TRANSCODE_MAX_SESSIONS` | `2` | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use. |
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` | `60` | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted. |
 | `CAIRNDEX_FFMPEG_HWACCEL` | _unset_ | Optional ffmpeg hardware-accelerated *decode* for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |

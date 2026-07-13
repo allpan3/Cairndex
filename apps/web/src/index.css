@@ -911,6 +911,10 @@ button {
   position: relative;
   min-height: 0;
 }
+.hover-preview--video {
+  background-color: #050609;
+  background-size: contain;
+}
 .card__badge {
   position: absolute;
   top: 6px;
@@ -963,6 +967,74 @@ button {
   height: 100%;
   color: var(--text-muted);
   font-size: 22px;
+}
+.hover-preview__video,
+.hover-preview__storyboard {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #050609;
+}
+.hover-preview__video {
+  object-fit: contain;
+}
+.hover-preview__video--sprite-hidden {
+  visibility: hidden;
+}
+.hover-preview__storyboard {
+  overflow: hidden;
+}
+.hover-preview__chrome {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  color: #fff;
+  pointer-events: none;
+}
+.hover-preview__position {
+  position: absolute;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.hover-preview__controls {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hover-preview__clock {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.72);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.hover-preview__sound {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.hover-preview__sound:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+.hover-preview__sound .icon {
+  width: 14px;
+  height: 14px;
 }
 
 /* --- List / table layout -------------------------------------------------- */

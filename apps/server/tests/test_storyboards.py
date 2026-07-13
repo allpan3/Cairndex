@@ -48,6 +48,47 @@ def _make_video(path: Path, *, duration: int = 65) -> None:
     )
 
 
+# Generate motion-distinct frames for storyboard sampling verification
+def _make_sampling_video(path: Path) -> None:
+    assert _FFMPEG is not None
+    subprocess.run(
+        [
+            _FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=4:size=160x90:rate=30",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:v",
+            "libx264",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+# Decode one RGB frame with an optional exact seek and crop/scale filter
+def _rgb_frame(path: Path, vf: str, *, at: float | None = None) -> bytes:
+    assert _FFMPEG is not None
+    args = [_FFMPEG, "-hide_banner", "-loglevel", "error", "-i", str(path)]
+    if at is not None:
+        args.extend(["-ss", str(at)])
+    args.extend(["-vf", vf, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+    return subprocess.run(args, check=True, capture_output=True).stdout
+
+
+# Return mean absolute RGB-channel error between equal-sized decoded frames
+def _mean_absolute_error(left: bytes, right: bytes) -> float:
+    assert len(left) == len(right)
+    return sum(abs(a - b) for a, b in zip(left, right, strict=True)) / len(left)
+
+
 # Add a video AssetFile with enough probe metadata for storyboard generation
 def _video_file(
     session: Session,
@@ -117,7 +158,7 @@ def test_generates_vtt_with_exact_interval_tiles_and_coords(
     index_path = result.path
     text = index_path.read_text(encoding="utf-8")
     payloads = [line for line in text.splitlines() if "#xywh=" in line]
-    version = asset_file.quick_fingerprint.replace(":", "%3A")
+    version = storyboards.storyboard_version_param(asset_file.quick_fingerprint)
 
     assert index_path.is_relative_to(pkg.cache_dir(library_root) / "storyboards")
     assert len(payloads) == 33
@@ -132,7 +173,31 @@ def test_generates_vtt_with_exact_interval_tiles_and_coords(
     assert payloads[32] == f"storyboard/sb_002.jpg?v={version}#xywh=640,180,320,180"
     assert (index_path.parent / "sb_001.jpg").exists()
     assert (index_path.parent / "sb_002.jpg").exists()
-    assert derived_cache.read_fingerprint(index_path) == asset_file.quick_fingerprint
+    assert derived_cache.read_fingerprint(index_path) == storyboards.storyboard_cache_key(
+        asset_file.quick_fingerprint
+    )
+
+
+@requires_ffmpeg
+def test_storyboard_tiles_match_frames_active_at_vtt_cue_starts(tmp_path: Path) -> None:
+    source = tmp_path / "sampling.mp4"
+    _make_sampling_video(source)
+
+    assert storyboards._generate_sheets(source, tmp_path, 2, 4) == 2
+    sheet = tmp_path / "sb_001.jpg"
+    tile_zero = _rgb_frame(sheet, "crop=320:180:0:0")
+    tile_two = _rgb_frame(sheet, "crop=320:180:320:0")
+    source_zero = _rgb_frame(source, "scale=320:-2", at=0)
+    source_one = _rgb_frame(source, "scale=320:-2", at=1)
+    source_two = _rgb_frame(source, "scale=320:-2", at=2)
+    source_three = _rgb_frame(source, "scale=320:-2", at=3)
+
+    zero_error = _mean_absolute_error(tile_zero, source_zero)
+    two_error = _mean_absolute_error(tile_two, source_two)
+    assert zero_error < 12
+    assert two_error < 12
+    assert zero_error < _mean_absolute_error(tile_zero, source_one) / 2
+    assert two_error < _mean_absolute_error(tile_two, source_three) / 2
 
 
 def test_job_idempotence_and_fingerprint_invalidation(
@@ -196,12 +261,16 @@ def test_generate_for_file_trims_padding_tiles_mid_sheet(
 def test_generate_sheets_counts_showinfo_frames_in_same_pass(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    captured: list[str] = []
+
     def fake_run(args: list[str], **_kwargs: object) -> str:
+        captured.extend(args)
         Path(args[-1].replace("%03d", "001")).write_bytes(_jpeg_bytes())
         return "[Parsed_showinfo_2] n:   0 pts:0\n[Parsed_showinfo_2] n:  16 pts:16"
 
     monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
     assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 17
+    assert "fps=1/2:start_time=0:round=up" in next(arg for arg in captured if "fps=" in arg)
 
 
 def test_generate_sheets_strips_ansi_before_counting_showinfo(
@@ -246,12 +315,13 @@ def test_ffmpeg_runner_times_out_fake_hanging_executable() -> None:
 def test_min_duration_and_disabled_config_skip(
     monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
 ) -> None:
-    _video_file(session, library_root, name="short.mp4", duration=20.0)
+    _video_file(session, library_root, name="below-threshold.mp4", duration=9.0)
+    _video_file(session, library_root, name="at-threshold.mp4", duration=10.0)
     monkeypatch.setattr(storyboards, "_generate_sheets", _fake_generate_sheets)
 
-    short = storyboards.generate_for_library(session)
-    assert short.generated == 0
-    assert short.skipped == 1
+    threshold = storyboards.generate_for_library(session)
+    assert threshold.generated == 1
+    assert threshold.skipped == 1
 
     monkeypatch.setenv("CAIRNDEX_STORYBOARDS", "off")
     get_settings.cache_clear()
@@ -260,7 +330,7 @@ def test_min_duration_and_disabled_config_skip(
     finally:
         get_settings.cache_clear()
     assert disabled.generated == 0
-    assert disabled.skipped == 1
+    assert disabled.skipped == 2
 
 
 def test_cached_endpoints_404_until_artifacts_exist_and_validate_sheet_names(
@@ -274,17 +344,24 @@ def test_cached_endpoints_404_until_artifacts_exist_and_validate_sheet_names(
     cache_dir = storyboards.storyboard_cache_dir(library_root, asset_file.id)
     cache_dir.mkdir(parents=True)
     cue = storyboards.StoryboardCue(0, 2, 1, 0, 0, 320, 180)
-    (cache_dir / "index.vtt").write_text(
+    index = cache_dir / "index.vtt"
+    index.write_text("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nold.jpg#xywh=0,0,320,180\n")
+    derived_cache.write_fingerprint(index, asset_file.quick_fingerprint)
+    (cache_dir / "sb_001.jpg").write_bytes(b"jpg")
+    assert client.get(f"{base}/storyboard.vtt").status_code == 404
+
+    index.write_text(
         storyboards.render_vtt([cue], asset_file.quick_fingerprint),
         encoding="utf-8",
     )
-    derived_cache.write_fingerprint(cache_dir / "index.vtt", asset_file.quick_fingerprint)
-    (cache_dir / "sb_001.jpg").write_bytes(b"jpg")
+    derived_cache.write_fingerprint(
+        index, storyboards.storyboard_cache_key(asset_file.quick_fingerprint)
+    )
 
     vtt = client.get(f"{base}/storyboard.vtt")
     assert vtt.status_code == 200
     assert vtt.headers["content-type"].startswith("text/vtt")
-    assert vtt.headers["cache-control"] == storyboards.STORYBOARD_CACHE_CONTROL
+    assert vtt.headers["cache-control"] == storyboards.STORYBOARD_INDEX_CACHE_CONTROL
 
     sheet = client.get(f"{base}/storyboard/sb_001.jpg")
     assert sheet.status_code == 200
@@ -306,18 +383,45 @@ def test_playback_manifest_includes_current_storyboard_and_chapters(
         storyboards.render_vtt([cue], asset_file.quick_fingerprint),
         encoding="utf-8",
     )
-    derived_cache.write_fingerprint(cache_dir / "index.vtt", asset_file.quick_fingerprint)
+    derived_cache.write_fingerprint(
+        cache_dir / "index.vtt", storyboards.storyboard_cache_key(asset_file.quick_fingerprint)
+    )
     (cache_dir / "sb_001.jpg").write_bytes(b"jpg")
 
     body = client.get(
         f"/api/v1/libraries/{library_id}/bundles/{asset_file.bundle_id}/playback"
     ).json()
     video = body["videos"][0]
-    version = asset_file.quick_fingerprint.replace(":", "%3A")
+    version = storyboards.storyboard_version_param(asset_file.quick_fingerprint)
     assert video["storyboard_url"] == (
         f"/api/v1/libraries/{library_id}/files/{asset_file.id}/storyboard.vtt?v={version}"
     )
     assert video["chapters"] == [{"start": 0.0, "end": 90.0, "title": "Intro"}]
+
+
+# Current-index checks read only the small sidecar on manifest hot paths
+def test_current_index_does_not_read_vtt(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=90.0)
+    index = storyboards.storyboard_index_path(library_root, asset_file.id)
+    index.parent.mkdir(parents=True)
+    index.write_text("WEBVTT\n", encoding="utf-8")
+    derived_cache.write_fingerprint(
+        index, storyboards.storyboard_cache_key(asset_file.quick_fingerprint)
+    )
+    original_read_text = Path.read_text
+
+    def guarded_read_text(
+        path: Path, encoding: str | None = None, errors: str | None = None
+    ) -> str:
+        if path.suffix == ".vtt":
+            raise AssertionError("current-index validation opened the VTT")
+        return original_read_text(path, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    assert storyboards.is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint)
 
 
 def test_storyboard_job_honors_cancellation(

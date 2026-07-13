@@ -751,6 +751,83 @@
             ],
             "title": "Cover Key"
           },
+          "cover_video_audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Audio Codec"
+          },
+          "cover_video_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Codec"
+          },
+          "cover_video_container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Container"
+          },
+          "cover_video_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Duration"
+          },
+          "cover_video_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video File Id"
+          },
+          "cover_video_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Relative Path"
+          },
+          "cover_video_resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Resume Position"
+          },
           "date_added": {
             "format": "date-time",
             "title": "Date Added",
@@ -871,6 +948,13 @@
           "has_cover",
           "openable",
           "cover_key",
+          "cover_video_file_id",
+          "cover_video_relative_path",
+          "cover_video_container",
+          "cover_video_codec",
+          "cover_video_audio_codec",
+          "cover_video_duration",
+          "cover_video_resume_position",
           "media_kind",
           "width",
           "height",
@@ -1254,6 +1338,83 @@
             ],
             "title": "Cover Key"
           },
+          "cover_video_audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Audio Codec"
+          },
+          "cover_video_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Codec"
+          },
+          "cover_video_container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Container"
+          },
+          "cover_video_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Duration"
+          },
+          "cover_video_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video File Id"
+          },
+          "cover_video_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Relative Path"
+          },
+          "cover_video_resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Video Resume Position"
+          },
           "date_added": {
             "format": "date-time",
             "title": "Date Added",
@@ -1377,6 +1538,13 @@
           "has_cover",
           "openable",
           "cover_key",
+          "cover_video_file_id",
+          "cover_video_relative_path",
+          "cover_video_container",
+          "cover_video_codec",
+          "cover_video_audio_codec",
+          "cover_video_duration",
+          "cover_video_resume_position",
           "media_kind",
           "width",
           "height",
@@ -1709,6 +1877,17 @@
       },
       "FileBrowserEntryRead": {
         "properties": {
+          "audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Codec"
+          },
           "bundle_id": {
             "anyOf": [
               {
@@ -1719,6 +1898,17 @@
               }
             ],
             "title": "Bundle Id"
+          },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
           },
           "created_at": {
             "anyOf": [
@@ -1732,6 +1922,17 @@
             ],
             "title": "Created At"
           },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
           "extension": {
             "anyOf": [
               {
@@ -1742,6 +1943,17 @@
               }
             ],
             "title": "Extension"
+          },
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
           },
           "kind": {
             "title": "Kind",
@@ -1793,6 +2005,17 @@
             "title": "Relative Path",
             "type": "string"
           },
+          "resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Position"
+          },
           "size_bytes": {
             "anyOf": [
               {
@@ -1811,6 +2034,17 @@
           "unbundled": {
             "title": "Unbundled",
             "type": "boolean"
+          },
+          "video_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Codec"
           }
         },
         "required": [
@@ -1826,6 +2060,12 @@
           "supported",
           "linked",
           "bundle_id",
+          "file_id",
+          "container",
+          "video_codec",
+          "audio_codec",
+          "duration",
+          "resume_position",
           "unbundled"
         ],
         "title": "FileBrowserEntryRead",
@@ -1990,6 +2230,17 @@
           "relative_path": {
             "title": "Relative Path",
             "type": "string"
+          },
+          "resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Position"
           },
           "role": {
             "$ref": "#/components/schemas/FileRole"

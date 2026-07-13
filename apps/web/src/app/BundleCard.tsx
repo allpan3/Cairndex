@@ -1,6 +1,10 @@
+import { useMemo } from 'react'
+
 import type { BundleSummary } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
+import { HoverPreview } from './HoverPreview'
+import type { HoverPreviewSource } from './hoverPreviewState'
 
 interface BundleCardProps {
   item: BundleSummary
@@ -9,6 +13,7 @@ interface BundleCardProps {
   onSelect: (id: string, e: React.MouseEvent) => void
   onOpen: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
+  previewDisabled?: boolean
 }
 
 export function BundleCard({
@@ -18,11 +23,35 @@ export function BundleCard({
   onSelect,
   onOpen,
   onContextMenu,
+  previewDisabled = false,
 }: BundleCardProps) {
   // Duration only makes sense for a video-backed card; an image bundle whose
   // primary file happens to carry a stray "duration" in its metadata shouldn't
   // show a runtime badge next to a JPG type badge.
   const isVideo = item.media_kind === 'video'
+  const previewSource = useMemo<HoverPreviewSource | null>(
+    () =>
+      item.cover_video_file_id && item.cover_video_duration
+        ? {
+            fileId: item.cover_video_file_id,
+            relativePath: item.cover_video_relative_path,
+            container: item.cover_video_container,
+            videoCodec: item.cover_video_codec,
+            audioCodec: item.cover_video_audio_codec,
+            duration: item.cover_video_duration,
+            startTime: item.cover_video_resume_position,
+          }
+        : null,
+    [
+      item.cover_video_audio_codec,
+      item.cover_video_codec,
+      item.cover_video_container,
+      item.cover_video_duration,
+      item.cover_video_file_id,
+      item.cover_video_relative_path,
+      item.cover_video_resume_position,
+    ],
+  )
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
@@ -33,7 +62,9 @@ export function BundleCard({
       aria-selected={selected}
       data-bundle-id={item.id}
     >
-      <div
+      <HoverPreview
+        source={previewSource}
+        disabled={previewDisabled}
         className="card__thumb"
         style={
           item.has_cover
@@ -57,7 +88,7 @@ export function BundleCard({
         {isVideo && item.duration ? (
           <span className="card__dur">{formatDuration(item.duration)}</span>
         ) : null}
-      </div>
+      </HoverPreview>
       {showMeta && (
         <div className="card__meta">
           <div className="card__title">{item.title ?? 'Untitled'}</div>

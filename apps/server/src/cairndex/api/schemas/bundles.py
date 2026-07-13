@@ -129,6 +129,8 @@ class FileRead(BaseModel):
     availability: FileAvailability
     quick_fingerprint: str | None
     cover_time: float | None
+    # Incomplete saved progress for hover activation; null for new/completed files
+    resume_position: float | None = None
     # True when the app can preview/play this linked file in the web viewer
     supported: bool = False
     # Normalized ffprobe output (dimensions/duration/codecs/streams), or null

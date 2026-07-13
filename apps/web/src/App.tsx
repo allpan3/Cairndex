@@ -1194,6 +1194,7 @@ function Workspace({
                     onMarqueeSelect={selectMany}
                     onOpen={open}
                     onContextMenu={bundleContextMenu}
+                    contextMenuOpen={menu.state !== null}
                     onEmptyContextMenu={emptyContextMenu}
                     onReorder={
                       // Reordering only makes sense on a scoped, non-flattened

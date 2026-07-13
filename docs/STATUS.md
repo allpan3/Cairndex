@@ -1,14 +1,189 @@
 # Project status
 
-## In review: Plan 1 M9 — player interaction polish
+## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 
-Branch `feat/player-polish` (off `main`). Latest implementation commit:
-`88c334e` (`fix: address M9 player polish review findings`). Post-`ecdb9fb`
-history also includes the collection-cover fix `7f4ce9c`, speed/seek Settings
-refactors `af2f9be` + `4ddced9`, source-aware Resolution submenu `463fad9`, and
-the UI polish series `f203dcd` → `9cc8440`. Do not merge before owner
-re-verification. The branch handoff tip is the docs-only `docs: refresh M9
-review-fix handoff` commit containing this status.
+Branch `feat/hover-preview` (off `main` at `02cb18b`, after M9 merged as #11).
+Implementation commits: `f6aefeb` (`feat: add thumbnail hover video previews`)
+and `374f7e0` (`fix: address M12 hover preview review findings`). Hybrid
+interaction tip: `37368b4` (`feat: make hover previews hybrid at rest`). The
+first documentation handoff is `986e399`; the follow-up stability fix is
+`37a8ef2` (`fix: stabilize hover preview resume`) plus final race/docs handoff
+`e325cff` (`fix: finish stable hover resume`). The compositor/geometry and saved
+progress follow-up is `ebc73bd` (`fix: unify hover preview frame geometry`). M12
+then clips storyboard sprite sheets at the cue boundary in `daf96b7` (`fix: clip
+hover storyboard tiles`) and aligns rest playback to that sampled frame in
+`d9df60c` (`fix: align hover video with storyboard frame`). `7b40b95` (`fix:
+keep hover resume scoped to storyboard cues`) removes the earlier broad paused-
+compositor experiment, while `8520db9` (`fix: resolve hover cue when rest
+begins`) closes the delayed-VTT race. `ab9d330` (`fix: align hover sprites with
+playback frames`) fixes the underlying ffmpeg sample timing, invalidates old
+artifacts as storyboard format v2, and retains
+only a target-frame-gated sprite handoff. Its regressions compare generated tile
+pixels to source frames and the first exposed browser decode frame to the actual
+displayed sprite. Current implementation tip `f667ce1` (`fix: harden hybrid
+hover preview review`) adds condition-based real-backend waits, a single hover
+phase model, bounded metadata fallback, delayed prefetch, shared resume
+filtering, and sidecar-only storyboard freshness checks. M12 remains in review
+and is not merged. Final parallel-test tip `7f1a554` (`test: stabilize parallel
+hover preview coverage`) makes motion assertions follow the committed skim
+phase, targets a real outside element for leave, and pins teardown while the
+aligned reveal animation frame is queued.
+
+Completed:
+
+- A shared `useHoverPreview` + `HoverPreview` path now drives bundle cards,
+  bundle-album file tiles, and linked File Browser grid cards. A ~500 ms dwell
+  mounts a muted, inline, non-looping direct `<video>` at the existing `/stream`
+  URL and plays from incomplete saved progress when available, otherwise t=0.
+  Storyboard VTT prefetch begins after a 150 ms sub-dwell, so a quick pass over
+  a card issues no preview request. While the cursor moves, the video pauses and
+  stays mounted with its source intact;
+  the proportional storyboard sprite replaces it with zero video seeks. After
+  250 ms rest, the clock and strip snap to the displayed cue's sampled timestamp
+  and the video seeks once to that same frame. During a cue-backed rest, the
+  paused video stays mounted beneath the sprite. The preview waits for both seek
+  completion and presentation of the target frame, removes the sprite, then
+  resumes playback on the following animation frame. The cue is resolved when
+  rest begins rather than at the last pointer move, so a VTT prefetch completing
+  during the debounce is included in the target. A transition sprite is shown
+  only when that target matches its cue sample. Without a storyboard, rest
+  retains the exact cursor time and the static cover masks only its seek
+  transition. Static video covers, storyboard crops, and the live element share
+  one contained,
+  black-letterboxed viewport, preventing aspect-ratio stretch and transition
+  shake while pillarboxing portrait media. The storyboard SVG additionally
+  clips the full 5×5 sheet to the selected cue rectangle before that letterboxing
+  transform; adjacent sheet rows therefore cannot render in the top or bottom
+  bands. Current time stays at the lower right, with the click-isolated speaker
+  toggle immediately to its left, plus a 2 px position strip along the bottom.
+  Starting a skim while the initial
+  `play()` is still pending ignores that intentional pause cancellation instead
+  of falsely demoting the card to storyboard-only.
+- One module-level owner enforces a single active preview page-wide. Pointer
+  leave, card/virtual-row unmount, source/guard changes, and ownership transfer
+  clear timers, pause, remove `src`, call `load()`, and unmount the element.
+  Hover is disabled on coarse/touch pointers and while drag-select, native DnD,
+  or a card context menu is active.
+- Non-direct sources use the existing capability vocabulary and lazily fetch
+  cached `storyboard.vtt`; the existing parser/crop renderer was generalized for
+  cover-filling sprite tiles. A 404 or invalid/absent board leaves the card
+  static. Direct sources with a missing board retain their frozen paused frame
+  during motion, then seek once on rest. A rejected `play()` or media decode
+  error demotes the active card to the storyboard-only path. Hover contains no
+  playback-decision/session code and cannot start HLS.
+- Browse summaries expose the effective cover video's relative path plus the
+  probe-backed ffmpeg container list, video codec, audio codec, duration, and
+  file id in the existing one-pass summary. The unpopulated MIME field was
+  removed. Bundle summaries, bundle file rows, and linked File Browser entries
+  also expose incomplete resume positions through their existing batched
+  queries. OpenAPI and `schema.d.ts` are regenerated.
+- Review fixes also restore hidden-path exclusion and alphabetical sorting in
+  the unbundled File Browser query, gate direct preview on audio support, resume
+  dwell when a menu/drag guard clears under a stationary cursor, restore
+  Space/Enter album-tile selection semantics, and extract the leading/trailing
+  `SeekBar` throttle into a reusable helper.
+- The final review pass collapses hover state into skimming, transitioning, and
+  playing phases; bounds a missing `loadedmetadata` event at five seconds before
+  storyboard fallback; and centralizes the positive, unfinished resume-position
+  predicate across bundle summaries, bundle file rows, and both File Browser
+  paths.
+- Owner follow-up (2026-07-12, tested against Eagle): browser video seeking is
+  not used for motion skimming because every step creates frame-accurate seek
+  and range work. The shared throttle remains with `SeekBar`; hover's hybrid
+  state machine uses sprites for motion and one video seek at rest.
+- Storyboard format v2 anchors ffmpeg sampling at t=0, rounds to the source frame
+  active at each VTT cue start, stores the format marker plus source fingerprint
+  in `index.fingerprint`, rejects legacy sidecars without that marker as stale,
+  revalidates VTT responses, and versions immutable sheet URLs with the same
+  inputs. Manifest checks read only the small sidecar rather than each full VTT.
+  Existing libraries need one Update/storyboards run for all prior boards; that
+  run also backfills 10–60 second videos after the default minimum dropped from
+  60 to 10 seconds. Until regeneration, old boards intentionally appear
+  unavailable.
+- M9 follow-up: `SeekBar` now reports `onDragChange(false)` inside shared
+  listener cleanup, preventing a mid-drag unmount from leaving controls pinned.
+
+Verification (ffmpeg-generated scratch media and temporary libraries only; no
+Demo/Eagle/user libraries):
+
+- Backend: Ruff check + format, mypy, full pytest (**403 passed**). Browse tests
+  cover realistic null-MIME/probe-container video covers versus image/empty
+  bundles; File Browser tests cover linked preview metadata plus hidden-path and
+  creation-order regressions. Storyboard tests cover the new default boundary,
+  exact t=0/t=2 tile-to-source pixel matching, neighboring-frame rejection,
+  format-v2 ffmpeg flags and marker/URL versioning, v1 rejection, VTT
+  revalidation, scalar resume filtering, and sidecar-only current-index checks.
+- Frontend: ESLint, Prettier check, TypeScript, full Vitest (**97 passed**),
+  production build. Unit coverage includes dwell/cancel, cursor-time math,
+  rest/skim transitions, zero motion seeks, retained video source, single
+  rest-seek timing, seek-complete reveal, omitted-`seeked` readiness recovery,
+  unmuted resume recovery, intentional initial-play cancellation,
+  missing-storyboard frozen-frame/static-cover behavior, container/video/audio
+  capability gating, page-wide ownership, guard recovery, direct-failure
+  storyboard fallback, unmount source teardown, saved-progress clamping,
+  frame-gated reveal, stale-frame callback rejection, bounded missing-callback
+  recovery, cue-sampled rest targeting, VTT arrival during the rest debounce,
+  metadata-stall fallback, delayed/cancelled VTT prefetch, contained storyboard
+  geometry, queued-reveal pointer-leave teardown, and the SeekBar drag cleanup.
+- Playwright: full suite (**65 passed**). Five consecutive unpiped full-suite
+  runs at seven workers each exited 0 with **65 passed**. New real-browser cases
+  use a generated moving-pattern MP4 on bundle, bundle-album, and File Browser
+  cards. The stream mock now implements real HTTP byte ranges; the prior
+  whole-body response reset native seeks to zero and could pass only by letting
+  a black video play forward.
+  At an 80% cursor position on a 3-second clip, the hover case asserts that the
+  displayed VTT cue starts at 2.0 seconds, the raw cursor time is 2.4 seconds,
+  and the browser's native `seeked` event lands at 2.0 seconds. It also covers
+  VTT prefetch, no motion seeks, contained geometry, right-anchored controls,
+  cue clipping, direct unmuted resume, album keyboard selection, leave teardown,
+  MKV and decode-failure fallback, and zero stream or VTT requests during a
+  rapid sweep.
+  Request interception proves hover sends no playback-decision or
+  playback-session requests. A separate real-backend case generates a moving
+  65-second MP4 and its production storyboard, skims inside the 26–28 second
+  cue, and verifies the first exposed video decode frame lands at 26–26.3
+  seconds and pixel-matches the displayed sprite (mean RGB error below 12)
+  before playback advances. The exact unpiped blocker command
+  `npx playwright test -g "storyboard generated" --repeat-each=10` passes all
+  10 repeats with seven workers. The hybrid-card case additionally passes
+  **20/20** under `--repeat-each=20 --workers=7`. Its final parallel flake was
+  test-side: a raw move to `(0, 0)` did not prove Chromium delivered a leave,
+  while sequential motion assertions could outlive the real 250 ms debounce
+  under load. The test now captures the last committed skim state inside the
+  page and explicitly hovers the Files tab to leave. A unit regression confirms
+  that an actually delivered pointer leave cancels the reveal queued between
+  target-frame presentation and the `flushSync` playing handoff.
+
+Known limits: unlinked or unprobed File Browser paths have no stable file id or
+API duration and remain static; storyboard fallback remains cached-artifact-only.
+A direct source with a 404 board uses its frozen video frame during motion and
+its static cover while the resting seek completes; a non-direct source without
+a board remains static. If a board arrives only after rest has already begun,
+the transition keeps the static cover and uses the cursor target; the board is
+available on the next motion. Exact sprite-to-video continuity means rest can
+snap back within the selected storyboard sampling interval (2–30 seconds
+according to source duration); the cursor-proportional clock remains exact
+during motion.
+Cue-backed handoffs use `requestVideoFrameCallback` where available; browsers
+without it use completed seek as the best frame-ready signal, and an omitted
+post-seek callback has a bounded 250 ms fallback. No hover transcode/HLS,
+image/audio/viewer preview, or new runtime dependency was added. The
+reviewer-requested live scratch-library feel check remains the final
+re-verification step. Run Update/storyboards first so every scratch file has a
+format-v2 board, including newly eligible sub-60-second clips. This fix pass used
+generated media in Playwright and never touched Demo/Eagle/user libraries.
+
+Next recommended task: **pairing + device tokens (plan 2 T0)**, then the
+cross-platform-first macOS desktop shell (plan 3 D1–D5) per
+`docs/plans/README.md`.
+
+## Merged: Plan 1 M9 — player interaction polish (#11)
+
+Merged to `main` as #11 at `02cb18b`. The review history includes implementation
+commit `88c334e` (`fix: address M9 player polish review findings`), the
+collection-cover fix `7f4ce9c`, speed/seek Settings refactors `af2f9be` +
+`4ddced9`, source-aware Resolution submenu `463fad9`, and the UI polish series
+`f203dcd` → `9cc8440`.
 
 Completed:
 
@@ -55,15 +230,14 @@ Verification (scratch ffmpeg fixtures only; no Demo/Eagle/user libraries):
   three-video ended transition that advances exactly one file.
   Scratch libraries/data directories are removed in `finally` blocks.
 
-Known issues / intentional limits: file loop does not persist; previously cached
+Historical M9 limits at merge: file loop does not persist; previously cached
 storyboards keep their old final padding cues until normal regeneration. If an
 ffmpeg build omits parsable `showinfo`, new generation safely caps cues to sheet
 capacity but cannot trim padding within its final sheet; a warning records that
-fallback. A-B loop/GIF range selection, video adjustments, slideshow, subtitles,
-and hover video previews remain out of scope.
+fallback. A-B loop/GIF range selection, video adjustments, slideshow, and
+subtitle depth remain out of scope. Hover previews followed in M12 above.
 
-Next recommended task: **Plan 1 M12 — Eagle-style thumbnail hover video
-preview** (§13.2), before the desktop shell.
+The next task after M9 was M12; it is now the in-review section above.
 
 ## Latest: roadmap re-sequenced (docs only, 2026-07-10)
 
@@ -76,7 +250,7 @@ M7 (web HLS) merged (#9):
 - **New order:** plan 1 **M9 player polish** → pairing/device tokens (plan 2
   T0, pulled forward for desktop auth) → **macOS desktop shell** (plan 3
   D1–D5) → **write mode** (plan 4, re-ordered W0 → W1 → W5 so Finder
-  drag-and-drop *into* the app lands early) → **Android client** (plan 2).
+  drag-and-drop _into_ the app lands early) → **Android client** (plan 2).
 - A **Linux desktop app is a stated future want**; plan 3 gained §2.1
   (cross-platform posture): cross-platform Tauri plugins only, OS-specific
   Rust isolated behind `#[cfg]` edges, OS-neutral `HostPlatform` seam +
@@ -172,7 +346,7 @@ Changes:
 - **Backend (essential).** New `LibraryAccess` dependency + `get_library_access`
   in `apps/server/src/cairndex/api/deps.py`: same registry-resolution +
   passphrase-lock gate as `get_library_session`, but returns a handle whose
-  short-lived `session()` scope the endpoint closes *before* returning the
+  short-lived `session()` scope the endpoint closes _before_ returning the
   `FileResponse`. `stream_file`, `file_content`
   (`api/v1/playback.py`), and the HLS `playback_session_artifact`
   (`api/v1/playback_sessions.py`; it never used the session — pure auth gate)
@@ -183,9 +357,9 @@ Changes:
   the fix).
 - **Frontend (resilience).** `useHlsSession` now caps the decision request at a
   finite `DECISION_TIMEOUT_MS` (15s) and adds a distinct `'unavailable'` status
-  + `retry()`. On timeout or a 5xx, a non-degradable video shows a retryable
-  "Playback server is unavailable" card (`MediaViewer`/`MediaFallback`);
-  directly-playable sources still degrade to the native stream.
+  - `retry()`. On timeout or a 5xx, a non-degradable video shows a retryable
+    "Playback server is unavailable" card (`MediaViewer`/`MediaFallback`);
+    directly-playable sources still degrade to the native stream.
 - **Frontend (efficiency).** `SeekBar` coalesces drag scrubbing: the real
   `seek()` is throttled (leading edge + one trailing flush per ~150ms) and the
   exact position is committed on pointer release, instead of a `seek()` per
@@ -220,7 +394,7 @@ consumes the M6 decision + session foundation, so a source the browser can't
 play directly streams over a server remux/transcode HLS session. Browser-verified
 end to end: an **MKV/H.264 remux** session and a **480p libx264 transcode**
 session both play via hls.js, and the **native-HLS** path plays in WebKit. HEVC
-and other transcode-only *sources* use the same machinery but have not been run
+and other transcode-only _sources_ use the same machinery but have not been run
 end to end, so they are not claimed as verified (AGENTS.md).
 
 - **Capability profile (§6.3).** `apps/web/src/app/viewer/player/caps.ts`:
@@ -463,7 +637,7 @@ Verification:
   the API and a page reload); no console errors. After the single-source-of-truth
   cleanup, a fresh backend against the (existing) Demo library recreated the FTS
   view and both indexed notes: `q=xylophone` and a `note contains "penguins"`
-  filter each returned only the bundle whose *notes* held those terms; the
+  filter each returned only the bundle whose _notes_ held those terms; the
   throwaway bundle was then deleted (Demo back to 21).
   The box refinements were also verified live: the `+` renders as a centered
   14×14 SVG icon; an auto-mode box grew to fit multi-line text (117 px, no
@@ -710,11 +884,11 @@ Verification:
   `npm run build` passed.
 - Focused review-fix checks also passed:
   `uv run pytest tests/test_previews.py tests/test_thumbnails.py
-  tests/test_storyboards.py tests/test_file_view.py` (`44 passed`) and
+tests/test_storyboards.py tests/test_file_view.py` (`44 passed`) and
   `npm run test -- ImageStage` (`6 passed`).
 - OpenAPI was regenerated with
   `UV_CACHE_DIR=/private/tmp/cairndex-uv-cache uv run python -m
-  cairndex.devtools.openapi > ../web/src/api/openapi.json`. `npm run gen:api`
+cairndex.devtools.openapi > ../web/src/api/openapi.json`. `npm run gen:api`
   could not complete in this sandbox because `npx` waited on the registry path,
   so `apps/web/src/api/schema.d.ts` was patched manually to match the small
   OpenAPI delta.
@@ -793,12 +967,12 @@ multi-user behavior changed; `user_id = NULL` remains the owner convention.
 Verification:
 
 - Backend: focused review-fix check `uv run pytest tests/test_playback.py
-  tests/test_scan_repair.py` passed (`19 passed`, one existing Starlette/httpx
+tests/test_scan_repair.py` passed (`19 passed`, one existing Starlette/httpx
   deprecation warning). Full backend gate also passed: `uv run ruff check`,
   `uv run ruff format --check`, `uv run mypy src`, and `uv run pytest`
   (`317 passed`, same existing warning).
 - Frontend: focused review-fix check `npm run test -- usePlayer
-  usePlaybackProgressReporter` passed (`11 passed`). Full frontend gate also
+usePlaybackProgressReporter` passed (`11 passed`). Full frontend gate also
   passed: `npm run lint`, `npm run format:check`, `npm run typecheck`,
   `npm run test` (`36 passed`), `npm run build`, and `npm run test:e2e`
   (`48 passed`).
@@ -819,23 +993,26 @@ chapter-tick slice:
 
 - Added a registry-backed `storyboard` job type and worker handler. It scans
   available video files with probed duration, skips videos below
-  `CAIRNDEX_STORYBOARD_MIN_DURATION` (default 60 seconds), can be disabled with
+  `CAIRNDEX_STORYBOARD_MIN_DURATION` (default 60 seconds when M3 merged; current
+  default 10 seconds after the M12 follow-up), can be disabled with
   `CAIRNDEX_STORYBOARDS=off`, dedupes queued storyboard jobs per library, reports
   `storyboarding` progress, and cooperatively honors cancellation before each
   file. Running storyboard jobs do not dedupe; a follow-up queued job can sweep
   files the in-flight pass missed.
 - Storyboards are generated into deterministic portable cache paths:
   `.cairndex/cache/storyboards/{file_id[:2]}/{file_id}/index.vtt` plus
-  `index.fingerprint` and `sb_*.jpg` 5×5 tile sheets. The sidecar stores the source
-  quick fingerprint for cheap request-path validation; the VTT keeps the same
-  fingerprint in a `NOTE` for artifact self-description.
+  `index.fingerprint` and `sb_*.jpg` 5×5 tile sheets. As of M12, the sidecar
+  stores the storyboard format plus source quick fingerprint for cheap
+  request-path validation without opening the VTT; the VTT keeps the source
+  fingerprint in a `NOTE` for artifact inspection.
 - Added cached-only storyboard endpoints:
   `/api/v1/libraries/{library_id}/files/{file_id}/storyboard.vtt` and
   `/storyboard/{sheet}.jpg`. They never generate on request and return 404 when
-  absent/stale/disabled. Served artifacts use immutable cache headers.
+  absent/stale/disabled. VTT indexes revalidate; versioned sheets use immutable
+  cache headers.
 - Extended playback manifests with `storyboard_url` (null until a current cache
-  exists, versioned with `?v={quick_fingerprint}`) and `chapters` from M1
-  `tech_metadata`; regenerated OpenAPI and `apps/web/src/api/schema.d.ts`.
+  exists, versioned with `?v={format-and-quick-fingerprint}`) and `chapters` from
+  M1 `tech_metadata`; regenerated OpenAPI and `apps/web/src/api/schema.d.ts`.
 - Updated the web Update flow to run scan → probe as the blocking mutation, then
   enqueue storyboards fire-and-forget while reusing the existing sidebar job
   progress UI. Storyboard failures surface as their own job error state instead
@@ -865,7 +1042,8 @@ Verification:
   `/Users/owner/DemoLibrary`, clicked **Update**, opened `trailer_neon`, hovered
   the seek bar, verified the storyboard preview loaded from a versioned URL, and
   captured `/private/tmp/cairndex-storyboards-demo.png`. Demo videos are 4–6 seconds, so this manual run used
-  `CAIRNDEX_STORYBOARD_MIN_DURATION=1`; production default remains 60 seconds.
+  `CAIRNDEX_STORYBOARD_MIN_DURATION=1`; the M3 production default was 60 seconds
+  and the M12 follow-up lowers the current default to 10 seconds.
 
 Known issues / out of scope: no HLS/remux/transcode work, no subtitle upgrade, no
 image zoom/pan, and no chapter-skip keys. Next recommended media-player task:
@@ -1018,7 +1196,7 @@ they share:
   2026-07-04)** after a decision-by-decision review: Tauri 2/WKWebView
   confirmed for macOS (Electron is the recorded fallback), custom headless
   player confirmed with the UX bar set to desktop-native players
-  (**Movist/Elmedia/IINA** — Eagle's own player is explicitly *not* the
+  (**Movist/Elmedia/IINA** — Eagle's own player is explicitly _not_ the
   playback reference), and a separate `cairndex-android` repo confirmed for
   the TV client. Plan 1 gained the Movist/Elmedia-inspired features (dual
   simultaneous subtitles, subtitle styling, A-B loop, snapshot capture,
@@ -1092,9 +1270,10 @@ append in `test_taxonomy`, bundle MANUAL ordering + reorder/cleanup in
 `test_browse`). Frontend `lint`/`format:check`/`typecheck`/`vitest`/`build` clean;
 Playwright **37 passed** (new `e2e/ordering.spec.ts`). Manually verified against
 the local Synthetic Library via the browser preview (decoupled sizing, Manual sort
-+ Clean up button, flatten → 165 descendants, folder Delete-Collection menu,
-Shift-range select) plus a reversible live `collections/reorder` round-trip
-(swapped then restored the root order). OpenAPI + `schema.d.ts` regenerated.
+
+- Clean up button, flatten → 165 descendants, folder Delete-Collection menu,
+  Shift-range select) plus a reversible live `collections/reorder` round-trip
+  (swapped then restored the root order). OpenAPI + `schema.d.ts` regenerated.
 
 Out of scope / known limitation: bundle drag-reorder only rewrites the loaded
 window (use "Clean up by…" for a full deterministic order); reparenting collections
@@ -1119,7 +1298,7 @@ Playwright 39 passed.
 
 **Second follow-up round (review feedback):** chevron fold icons (bigger on the
 sidebar section headings); the **All tab** now shows top-level collections +
-*uncategorized* bundles by default and flattens to everything with the toggle
+_uncategorized_ bundles by default and flattens to everything with the toggle
 (there is no global manual order — reorder/"Clean up…" are disabled and greyed
 when flattened); **cross-surface drag** to reparent collections (center = into,
 edge = reorder) and move bundles into a collection (Alt = add without removing),
@@ -1232,7 +1411,7 @@ Eagle-like ad-hoc filtering + tag management, merged as **#46**
   left-click includes, right-click excludes (mutually exclusive; browser context
   menu suppressed). Counts are **faceted** — a new
   `POST /filters/facets` endpoint returns tag/rating counts scoped to the current
-  browse context and the *other* active categories (never global static counts),
+  browse context and the _other_ active categories (never global static counts),
   with parent-tag counts rolled up as distinct-bundle counts in Any/All or direct
   in Equal. `apply_scope()` was extracted in `services/browse.py` so the grid,
   its counts, and facets scope identically. Tag Equal/direct needs no new AST —
@@ -1292,7 +1471,7 @@ Latest session's changes (frontend-only, no backend files touched):
 - **Collection and bundle titles commit on Enter**, not just blur.
 - Fixed: bundle cards showed a duration badge on image bundles when the
   primary file's metadata had a stray `duration` — now gated on `media_kind
-  === 'video'`.
+=== 'video'`.
 - **Removed the top "batch bar"** (`BatchBar.tsx`, deleted) for 2+ selected
   bundles. Replaced with a right-panel `MultiBundleInspector`: title
   overwrites all, rating shows the common value (or unset) and overwrites all,
@@ -1336,7 +1515,7 @@ demo library is unchanged for review).
 - **"Create '<search>'" in the tag/collection pickers.** Typing a search (in
   the single-bundle TagEditor/CollectionPicker, and the multi-bundle bulk
   editor's pickers) shows a "+ Create "…"" row whenever the search doesn't
-  already name an existing tag/collection *exactly* — including when it's a
+  already name an existing tag/collection _exactly_ — including when it's a
   substring of one (searching "Act" while "Action" exists still offers to
   create "Act", alongside the "Action" partial match; first cut only showed
   it when there were zero matches at all, corrected same-day per feedback).
@@ -1441,7 +1620,7 @@ Playwright 17 specs pass (incl. `e2e/manual-bundling.spec.ts`). Not yet merged.
 browse indexing + benchmark tooling, whole-library FTS5 search, and an optional
 per-library passphrase lock all landed. The next candidates are richer
 edit-before-apply grouping review, File Browser write-mode planning, and search
-relevance ranking (see *Next recommended tasks*).
+relevance ranking (see _Next recommended tasks_).
 
 The grouping/maintenance flow it builds on is unchanged — the normal maintenance
 path matches the intended product model:
@@ -1475,7 +1654,7 @@ original files.
   owner wants a fresh plan.
 - **Unbundled staging (file-first):** scan-created provisional bundles
   (`grouping_state = provisional`, `grouping_source = scan_suggestion`) are treated
-  as *unbundled files* and hidden from All/Recent/Uncategorized/Untagged/Missing
+  as _unbundled files_ and hidden from All/Recent/Uncategorized/Untagged/Missing
   and every collection (browse keeps a `view=unbundled` + count for the hiding
   logic). The two top-left tabs are **Bundles** (renamed from Collections) and
   **Files**; the sidebar **Unbundled** view opens the **Files** surface as a flat,
@@ -1622,8 +1801,8 @@ dialogs).
 2. Add richer grouping review editing: merge/split/reclassify/rename before
    apply, while preserving the current safe apply/conflict model.
 3. Continue File Browser planning toward guarded write mode and safe desktop-native
-   handoff. *(Planning now done: `docs/plans/04-library-write-mode.md` +
-   proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)*
+   handoff. _(Planning now done: `docs/plans/04-library-write-mode.md` +
+   proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)_
 4. Consider relevance ranking for text search (results currently keep the active
    sort).
 5. Consider hardening the passphrase lock for wider exposure (rate limiting,

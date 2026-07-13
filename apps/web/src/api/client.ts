@@ -57,6 +57,8 @@ export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_coun
 export type CleanupSort = Exclude<BundleSort, 'manual'>
 export type SortOrder = 'asc' | 'desc'
 
+const STORYBOARD_INDEX_CACHE_VERSION = 'sb2'
+
 // --- Manual bundling assistant (Unbundled staging follow-up to ADR-0009) ------
 export type TargetSuggestion = components['schemas']['TargetSuggestionRead']
 export type FileSuggestion = components['schemas']['FileSuggestionRead']
@@ -580,6 +582,11 @@ export function fileBrowserContentUrl(path: string): string {
 
 export function fileStreamUrl(fileId: string): string {
   return `${lib()}/files/${fileId}/stream`
+}
+
+// The version bypasses legacy immutable VTTs; current indexes revalidate via no-cache
+export function fileStoryboardUrl(fileId: string): string {
+  return `${lib()}/files/${fileId}/storyboard.vtt?v=${STORYBOARD_INDEX_CACHE_VERSION}`
 }
 
 // --- Taxonomy (for the tag editor) ------------------------------------------

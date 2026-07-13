@@ -6,6 +6,8 @@ import { formatBytes, formatDate } from '../lib/format'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { FileEntryViewer } from './FileEntryViewer'
+import { HoverPreview } from './HoverPreview'
+import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
@@ -485,6 +487,7 @@ function FileList({
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
+                      previewDisabled={marqueeRect !== null || menu.state !== null}
                     />
                   ))}
                 </div>
@@ -570,14 +573,42 @@ function FileCard({
   onClick,
   onDoubleClick,
   onContextMenu,
+  previewDisabled,
 }: {
   entry: FileBrowserEntry
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
+  previewDisabled: boolean
 }) {
   const isDir = entry.kind === 'directory'
+  const previewSource = useMemo<HoverPreviewSource | null>(
+    () =>
+      entry.media_kind === 'video' && entry.file_id && entry.duration
+        ? {
+            fileId: entry.file_id,
+            mimeType: entry.mime_type,
+            relativePath: entry.relative_path,
+            container: entry.container,
+            videoCodec: entry.video_codec,
+            audioCodec: entry.audio_codec,
+            duration: entry.duration,
+            startTime: entry.resume_position,
+          }
+        : null,
+    [
+      entry.audio_codec,
+      entry.container,
+      entry.duration,
+      entry.file_id,
+      entry.media_kind,
+      entry.mime_type,
+      entry.relative_path,
+      entry.resume_position,
+      entry.video_codec,
+    ],
+  )
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
@@ -588,7 +619,7 @@ function FileCard({
       aria-selected={selected}
       data-relpath={entry.relative_path}
     >
-      <div className="card__thumb">
+      <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
         <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
         {!isDir && !entry.linked && (
           <span className="card__badge card__badge--missing">unlinked</span>
@@ -596,7 +627,7 @@ function FileCard({
         {!isDir && entry.linked && entry.unbundled && (
           <span className="card__badge card__badge--review">unbundled</span>
         )}
-      </div>
+      </HoverPreview>
       <div className="card__meta">
         <div className="card__title">{entry.name}</div>
         <div className="card__sub">

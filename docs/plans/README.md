@@ -7,19 +7,20 @@
 
 Four major initiatives. The first three were planned together because they
 share most of their server-side media foundations; the fourth (write mode)
-is its own server-side track. Owner re-prioritized 2026-07-10 (after plan 1
-M7 merged): **plan 1 M9 (player polish) → macOS desktop shell (plan 3) →
-write mode (plan 4, so media can be dragged into the app) → Android client
-(plan 2)**. Plan 1 M8/M10/M11 moved to the future bucket. A Linux desktop
+is its own server-side track. Owner re-prioritized 2026-07-10 and added M12 on
+2026-07-11: **plan 1 M9 + M12 → pairing/device tokens (plan 2 T0) → macOS
+desktop shell (plan 3) → write mode (plan 4, so media can be dragged into the
+app) → Android client (plan 2 T1–T7)**. Plan 1 M8/M10/M11 moved to the future
+bucket. A Linux desktop
 app is a stated future want — the desktop shell must be architected for
 cross-platform reuse (plan 3 §2–§3), not as a macOS-only codebase.
 
-| # | Plan | Doc |
-|---|------|-----|
-| 1 | First-class web video player & image viewer | [01-web-media-player-and-viewer.md](01-web-media-player-and-viewer.md) |
-| 2 | Android TV client (native Kotlin/Compose, multi-video grid) | [02-android-tv-client.md](02-android-tv-client.md) |
-| 3 | macOS desktop app (Tauri 2 shell) | [03-macos-desktop-app.md](03-macos-desktop-app.md) |
-| 4 | Library write mode (guarded file operations) | [04-library-write-mode.md](04-library-write-mode.md) — ADR-0013 (accepted 2026-07-04) |
+| #   | Plan                                                        | Doc                                                                                   |
+| --- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 1   | First-class web video player & image viewer                 | [01-web-media-player-and-viewer.md](01-web-media-player-and-viewer.md)                |
+| 2   | Android TV client (native Kotlin/Compose, multi-video grid) | [02-android-tv-client.md](02-android-tv-client.md)                                    |
+| 3   | macOS desktop app (Tauri 2 shell)                           | [03-macos-desktop-app.md](03-macos-desktop-app.md)                                    |
+| 4   | Library write mode (guarded file operations)                | [04-library-write-mode.md](04-library-write-mode.md) — ADR-0013 (accepted 2026-07-04) |
 
 ## How the three initiatives relate
 
@@ -54,8 +55,8 @@ Reuse map:
 - **Web player/viewer (plan 1)** is built inside `apps/web`, so the **desktop
   app (plan 3) inherits 100% of it** — the Tauri shell renders the same SPA.
 - **The TV app (plan 2) shares no UI code** (different language/runtime, and a
-  10-foot UI should not be a mouse UI anyway), but consumes the *same server
-  features*: the playback decision endpoint, HLS sessions, storyboards, watch
+  10-foot UI should not be a mouse UI anyway), but consumes the _same server
+  features_: the playback decision endpoint, HLS sessions, storyboards, watch
   progress, pairing tokens, and thumbnails/previews — all built once in plan 1's
   server phase.
 - **Multi-video grid ("video wall")** is specified once (plan 2 §7, it is the
@@ -66,7 +67,7 @@ Reuse map:
 
 - **This repo stays the product core**: `apps/server` (the platform),
   `apps/web` (the reference/plain web client), plus a new **`apps/desktop`**
-  for the Tauri shell. Tauri's frontend *is* `apps/web`'s Vite build — putting
+  for the Tauri shell. Tauri's frontend _is_ `apps/web`'s Vite build — putting
   it in another repo would mean versioning a build artifact across repos for
   zero benefit. The existing monorepo gates extend naturally (a `desktop` CI
   job builds the shell; web gates already cover the UI).
@@ -83,7 +84,7 @@ Reuse map:
 
 These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
 
-1. **Probe enrichment** — store *all* audio/subtitle streams and chapters in
+1. **Probe enrichment** — store _all_ audio/subtitle streams and chapters in
    `tech_metadata`, not just the first audio stream.
 2. **Embedded text-subtitle extraction** to cached WebVTT (ffmpeg `-map 0:s:n`)
    — owner-deprioritized: lands with plan 1 M8 (after HLS), not as an early
@@ -95,7 +96,7 @@ These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
    thumbnails.
 5. **Watch progress** — `playback_progress` table in `library.db` (nullable
    `user_id` for future multi-user), throttled `PUT`, continue-watching query.
-6. **Playback decision endpoint** — client sends a *capability profile*, server
+6. **Playback decision endpoint** — client sends a _capability profile_, server
    answers `direct | remux | transcode` with URLs. Keeps the decision
    server-side (AGENTS.md) but capability-informed per client.
 7. **HLS playback sessions** — bounded ffmpeg session manager (remux `-c copy`
@@ -103,7 +104,7 @@ These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
    server work item.
 8. **Device pairing / bearer tokens** — short-code pairing approved from an
    unlocked web session; token hashes in the registry DB; `Authorization:
-   Bearer` accepted alongside the ADR-0010 cookie. Needed by TV (no cookie/
+Bearer` accepted alongside the ADR-0010 cookie. Needed by TV (no cookie/
    typing UX) and cleaner for the desktop shell. Requires an auth ADR when
    implemented.
 
@@ -117,16 +118,16 @@ older/newer clients degrade gracefully instead of version-matching.
 Re-sequenced 2026-07-10 (owner decision, after M1–M7 shipped; the prior
 order is in git history). Current order:
 
-| Phase | Work | Why this order |
-|-------|------|----------------|
-| A ✅ | Server foundations 1–7 (probe, storyboards, previews, progress, decisions, HLS) | Shipped as plan 1 M1–M7 |
-| B ✅ | Web player v2 + image viewer v2 + HLS integration (plan 1 M2–M7) | Merged through PR #9 |
-| C | Plan 1 **M9 player interaction polish**, then **M12 hover video preview** (both recomposed 2026-07-11 — plan 1 §11/§13) | Last near-term web slices; every later client (desktop shell renders the same SPA) inherits them. A-B loop moved to M11, video adjustments + slideshow deferred |
-| D | Server: **pairing + device tokens** (plan 2 §4 / T0) | Pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it; small additive server slice + web Devices page |
-| E | **macOS desktop shell** (plan 3 D1–D5) | Owner priority. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3) |
-| F | **Library write mode** (plan 4), re-ordered W0 → W1 → W5 | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). W3/W4 (move/trash) follow; W2 waits on M11 (deferred) |
-| G | **Android client** (plan 2 T1–T7) | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D) |
-| Future | Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (exports) + plan 4 W2, Linux/Windows shells, TV wall follow-ups | Deferred by owner 2026-07-10 |
+| Phase  | Work                                                                                                                    | Why this order                                                                                                                                                                                     |
+| ------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A ✅   | Server foundations 1–7 (probe, storyboards, previews, progress, decisions, HLS)                                         | Shipped as plan 1 M1–M7                                                                                                                                                                            |
+| B ✅   | Web player v2 + image viewer v2 + HLS integration (plan 1 M2–M7)                                                        | Merged through PR #9                                                                                                                                                                               |
+| C      | Plan 1 **M9 player interaction polish**, then **M12 hover video preview** (both recomposed 2026-07-11 — plan 1 §11/§13) | M9 is merged; M12 is implemented on `feat/hover-preview` and remains in review. Every later client inherits the same SPA behavior. A-B loop remains in M11, video adjustments + slideshow deferred |
+| D      | Server: **pairing + device tokens** (plan 2 §4 / T0)                                                                    | Pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it; small additive server slice + web Devices page                                                          |
+| E      | **macOS desktop shell** (plan 3 D1–D5)                                                                                  | Owner priority. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3)                                                                    |
+| F      | **Library write mode** (plan 4), re-ordered W0 → W1 → W5                                                                | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). W3/W4 (move/trash) follow; W2 waits on M11 (deferred)                                          |
+| G      | **Android client** (plan 2 T1–T7)                                                                                       | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D)                                                                                            |
+| Future | Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (exports) + plan 4 W2, Linux/Windows shells, TV wall follow-ups   | Deferred by owner 2026-07-10                                                                                                                                                                       |
 
 Phases are sequenced by dependency, not by strict calendar. Each phase
 decomposes into the milestone slices listed in its plan and lands via normal
@@ -141,4 +142,4 @@ branch/PR discipline.
 
 The product brief's first-release anti-goals ("native macOS or Android TV
 applications") stand: these plans target the post-first-release roadmap the
-brief already names under *Future compatibility*.
+brief already names under _Future compatibility_.

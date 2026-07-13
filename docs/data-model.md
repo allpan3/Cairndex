@@ -298,10 +298,11 @@ artifacts are generated under the library's portable `.cairndex/cache/` package:
 - `subtitles/{track_id[:2]}/{track_id}.vtt`
 - `storyboards/{file_id[:2]}/{file_id}/{index.vtt,index.fingerprint,sb_*.jpg}`
 
-Preview `size` is restricted to `640`, `1600`, or `2560`, and the fingerprint
-sidecar stores the source file's quick fingerprint so stale derivatives can be
-ignored and regenerated. These are reproducible cache artifacts, not `AssetFile`
-rows, and scanners intentionally ignore them.
+Preview `size` is restricted to `640`, `1600`, or `2560`. Preview fingerprint
+sidecars store the source file's quick fingerprint; the storyboard index
+sidecar stores its format version plus that fingerprint, so stale-format checks
+do not open the full VTT. These are reproducible cache artifacts, not
+`AssetFile` rows, and scanners intentionally ignore them.
 
 Video `AssetFile` rows may store nullable `cover_time`; it selects the
 timestamp used whenever that file's thumbnail is regenerated. Clearing the

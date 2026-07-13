@@ -334,7 +334,7 @@ def storyboard_vtt(file_id: str, access: LibraryAccessDep) -> FileResponse:
         str(path),
         media_type="text/vtt",
         filename="storyboard.vtt",
-        headers={"Cache-Control": storyboards.STORYBOARD_CACHE_CONTROL},
+        headers={"Cache-Control": storyboards.STORYBOARD_INDEX_CACHE_CONTROL},
     )
 
 

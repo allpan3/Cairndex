@@ -46,8 +46,14 @@ def test_full_bundle_acceptance_flow(
     _link(client, base, bundle_id, "movie/part2.mp4", "video_part", "video")
     _link(client, base, bundle_id, "movie/movie.srt", "subtitle", "subtitle")
 
+    progress = client.put(
+        f"{base}/files/{primary['id']}/progress",
+        json={"position_s": 12, "duration_s": 120},
+    )
+    assert progress.status_code == 200
     files = client.get(f"{base}/bundles/{bundle_id}/files").json()
     assert len(files) == 4
+    assert next(file for file in files if file["id"] == primary["id"])["resume_position"] == 12
 
     patched = client.patch(
         f"{base}/bundles/{bundle_id}",

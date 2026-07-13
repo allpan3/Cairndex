@@ -10,6 +10,23 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
+  covers and linked video file cards now wait for a ~500 ms mouse dwell before
+  mounting a muted direct-play preview. Storyboard indexes prefetch after a
+  150 ms sub-dwell: cursor motion pauses the still-mounted video beneath the
+  proportional sprite and performs no video seeks. After 250 ms rest, one video
+  seek lands at the displayed sprite's sampled timestamp; the sprite remains on
+  top until the sought frame is presented, then live playback resumes from it. Without a
+  cached board, the seek uses the exact cursor position while the paused frame
+  stays visible during motion. A
+  click-isolated mute toggle remains
+  available, and a shared page-wide owner guarantees one active preview. Leave
+  or virtualized unmount clears the media source and reloads the element so
+  range traffic stops. Non-direct MKV/codec combinations use the same sprite
+  path; hover never calls playback-decision or HLS session routes. Touch/coarse
+  pointers, drag-select, native DnD, context menus, missing/unprobed files, and
+  image/audio cards preserve the static card.
+
 - **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
   play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
   player preferences; seek step and speed use compact settings sliders, with
@@ -30,7 +47,89 @@ grouped under `Unreleased` until the first tagged release.
   originals remain untouched. Requests at or just past reported duration clamp
   to a decodable frame immediately before EOF.
 
+### Changed
+
+- **Short-clip storyboards.** The default
+  `CAIRNDEX_STORYBOARD_MIN_DURATION` is now 10 seconds instead of 60 so hybrid
+  card skimming has sprites for typical short clips. The format-v2 regeneration
+  below also backfills cached boards for 10–60 second videos.
+
+- **Storyboard cache format v2.** Sampling now anchors at t=0 and rounds to the
+  source frame active at each cue boundary. The index fingerprint sidecar
+  carries the format marker plus source fingerprint, so manifest checks do not
+  read the full VTT; VTT responses revalidate, while sheet URLs version on the
+  same inputs. Unversioned, v1, and pre-sidecar-marker indexes are stale by
+  design; existing libraries need one Update/storyboards run to regenerate all
+  boards. That run also performs the
+  10–60 second backfill above.
+
 ### Fixed
+
+- **Storyboard-to-video frame alignment.** Resting after a sprite skim now
+  uses format-v2 sprites because ffmpeg's prior default `fps` timing could put a
+  neighboring source frame in a tile whose VTT cue named the interval boundary.
+  Sampling now anchors at t=0 and selects the frame active at each cue start.
+  Rest resolves the current cue after the debounce, seeks once to that start,
+  waits for the paused target frame beneath the sprite, and only then hands off
+  to live playback. Cards without a storyboard retain exact cursor-time seeking.
+
+- **Stable hover-preview frame handoff and geometry.** Direct previews now keep
+  the cover or storyboard visible until both the seek completes and the browser
+  reports that the paused target frame has been presented. Browsers without the
+  callback API use seek completion as the best frame-ready signal; an exposed
+  callback that omits its post-seek notification has a bounded fallback. Static
+  video covers, storyboard
+  crops, and live video now share one contained, black-letterboxed viewport, so
+  portrait media is pillarboxed and transitions no longer stretch or shake the
+  card. The card storyboard explicitly clips the 5×5 sprite sheet to the chosen
+  cue before letterboxing, preventing adjacent rows from bleeding into the
+  black bands. Hover activation starts from incomplete saved progress when
+  available; completed, zero, and absent progress still start at the beginning.
+
+- **Stable hover-preview resume and controls.** Returning from sprite skimming
+  now waits for the one resting video seek and paused target-frame presentation,
+  then removes the sprite and resumes playback. The sprite (or static cover when
+  no board exists) stays over stale/first frames. A readiness check prevents a missing no-op
+  `seeked` event from leaving playback stuck, and transient unmuted autoplay
+  rejection retries without incorrectly demoting the card to storyboard-only.
+  An intentional skim pause can no longer turn its pending initial `play()`
+  cancellation into a false decode failure.
+  The clock remains anchored at the lower right in every preview state, with
+  the speaker control immediately to its left.
+
+- **M12 review hardening.** Bundle hover gating now uses the cover file's
+  probe-backed relative path, ffmpeg container list, video codec, and audio
+  codec instead of an unpopulated MIME column; direct preview therefore works
+  for real MP4-cover summaries and rejects unsupported audio. Direct playback
+  rejection or decode failure falls back to cached storyboards, menu/drag hover
+  guards can recover without pointer exit, and album tiles restore Space/Enter
+  selection semantics. The unbundled File Browser query again filters hidden
+  relative paths and sorts by path after its file-id projection changed. The
+  final hybrid interaction supersedes motion-seek throttling: hover performs no
+  video seek until the cursor rests, while SeekBar keeps its leading/trailing
+  throttle helper.
+
+- **M12 hybrid review hardening.** Hover now has one explicit skimming →
+  transitioning → playing phase model and a 5-second metadata-readiness bound;
+  a stalled direct source demotes to its storyboard instead of hanging. A
+  150 ms storyboard-prefetch sub-dwell prevents rapid grid sweeps from issuing
+  VTT requests. Resume-position filtering is shared across bundle and File
+  Browser summaries, and storyboard freshness checks read only their small
+  format-bearing fingerprint sidecar. The real-backend Playwright fixture waits
+  for its own uvicorn process, a servable VTT plus first sheet, the playing
+  phase, and page-request teardown instead of fixed sleeps or cross-worker port
+  responses.
+
+- **Parallel hover-preview verification.** The real-browser hybrid test now
+  records the last committed skimming state instead of racing the 250 ms rest
+  debounce, and it leaves the card by hovering a known outside tab instead of
+  moving to an unverified viewport coordinate. A hook regression also pins
+  teardown after the aligned target frame has queued its reveal but before that
+  animation frame runs.
+
+- **Seek drag teardown on unmount.** `SeekBar` now reports
+  `onDragChange(false)` from its shared listener cleanup, so switching files or
+  unmounting mid-drag cannot leave the player controls pinned visible.
 
 - **M9 review hardening.** Ended playback is latched per transition so effect
   identity changes cannot skip a second file or make a loop toggle restart an
@@ -58,7 +157,7 @@ grouped under `Unreleased` until the first tagged release.
 - **Registry-pool exhaustion under drag-seek aborts (root cause of unreliable
   scrubbing).** Even after the content session was scoped, `get_library_access`
   still took the `get_registry_db` **yield** dependency, so every streaming
-  request pinned a *registry* connection until the body finished — and when a
+  request pinned a _registry_ connection until the body finished — and when a
   client abort cancels the request task, FastAPI never runs the yield-dep
   teardown at all, stranding the connection until GC (verified empirically on
   FastAPI 0.138). Drag-seeking aborts dozens of in-flight range requests, so
@@ -90,7 +189,7 @@ grouped under `Unreleased` until the first tagged release.
 
 - **Playback DB-pool exhaustion under drag-seek.** Media byte-streaming routes
   (`/files/{id}/stream`, `/files/{id}/content`, HLS session artifacts) held a
-  per-library **and** registry DB connection for the *entire* response body,
+  per-library **and** registry DB connection for the _entire_ response body,
   because their `LibrarySession` was a `yield` dependency FastAPI keeps open
   until the last byte is sent. Dragging the scrub bar fires many overlapping
   range requests, so the held connections drained the QueuePool; new requests
@@ -98,7 +197,7 @@ grouped under `Unreleased` until the first tagged release.
   and failed with a `QueuePool` 500, leaving the viewer stuck on "Preparing
   playback…". A new `LibraryAccess` dependency does the same registry/lock gate
   but hands back a short-lived `session()` scope that resolves the path and
-  releases the connection *before* the response streams — so no connection is
+  releases the connection _before_ the response streams — so no connection is
   pinned during transfer. A regression test asserts the per-library pool has
   zero checked-out connections mid-stream.
 
@@ -241,7 +340,7 @@ grouped under `Unreleased` until the first tagged release.
   server remux/transcode HLS session. Browser-verified end to end: an **MKV/H.264
   remux** session and a **480p libx264 transcode** session both play through the
   hls.js engine, and the **native-HLS** path plays in WebKit. HEVC and other
-  transcode-only *sources* route through the same session machinery but have not
+  transcode-only _sources_ route through the same session machinery but have not
   yet been run end to end, so they are not claimed as verified.
   - **Client capability profile** (`viewer/player/caps.ts`): computed once at
     startup and memoized, probing `HTMLVideoElement.canPlayType` **and**
@@ -306,7 +405,7 @@ grouped under `Unreleased` until the first tagged release.
   - New interactive HLS session manager (`media/hls.py` +
     `api/v1/playback_sessions.py`): `POST .../files/{id}/playback-sessions`
     (`{caps, start_s?, ...}` → `{session_id, playlist_url, kind}`), `GET
-    .../playback-sessions/{sid}/index.m3u8` (VOD fMP4 playlist computed up front
+.../playback-sessions/{sid}/index.m3u8` (VOD fMP4 playlist computed up front
     from the known duration, 6 s target), `GET .../{sid}/init.mp4` and
     `.../{sid}/{n}.m4s` (fMP4/CMAF segments), and `DELETE .../{sid}` teardown.
     One ffmpeg per session writes segments sequentially into
@@ -358,7 +457,7 @@ grouped under `Unreleased` until the first tagged release.
   after metadata loads, shows a transient "Resumed at …" restart affordance, and
   reports progress on a throttled cadence, pause/close, and `pagehide` beacon.
   Continue-watching rows now include the in-progress `{file_id, position_s,
-  duration_s}`, restart explicitly writes position zero, completion requires a
+duration_s}`, restart explicitly writes position zero, completion requires a
   known duration, and progress `bundle_id` syncs from the central `AssetFile`
   reparent hook.
 - **Storyboard trickplay + chapter ticks (Plan 1 M3).** Added a deduplicated
@@ -884,7 +983,7 @@ provisional` + `grouping_source = scan_suggestion`) and confines them to a
   drag aimed "behind the last collection".
 - **Bundle drag with Option/Alt held was rejected on macOS.** The drag now
   advertises `copyMove` (and reflects copy vs move as the cursor), so
-  Option-drag to *add* bundles to a collection (without removing them from the
+  Option-drag to _add_ bundles to a collection (without removing them from the
   current one) works.
 - **A "drop into" highlight could stick on the last-hovered folder card / sidebar
   row** after a bundle drag (which begins in the Browser and never fired those

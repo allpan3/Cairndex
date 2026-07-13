@@ -24,6 +24,7 @@ interface BrowserProps {
   onMarqueeSelect: (ids: string[]) => void
   onOpen: (id: string) => void
   onContextMenu: (id: string, e: React.MouseEvent) => void
+  contextMenuOpen?: boolean
   // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
   onEmptyContextMenu?: (e: React.MouseEvent) => void
   // When set (Manual sort), cards/rows become drag-reorderable; a drop fires the
@@ -352,6 +353,11 @@ export function Browser(props: BrowserProps) {
                           onSelect={onSelect}
                           onOpen={onOpen}
                           onContextMenu={onContextMenu}
+                          previewDisabled={
+                            dragId !== null ||
+                            marqueeRect !== null ||
+                            props.contextMenuOpen === true
+                          }
                         />
                       </div>
                     ))}

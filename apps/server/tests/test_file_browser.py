@@ -16,6 +16,7 @@ from cairndex.domain.enums import (
 from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.services import bundles as bundle_service
 from cairndex.services import file_browser as service
+from cairndex.services import playback_progress as progress_service
 
 
 def _stage_unbundled(session: Session, relative_path: str) -> AssetFile:
@@ -108,7 +109,7 @@ def test_preview_capable_images_are_openable(session: Session, library_root: Pat
 def test_linked_file_is_flagged(session: Session, library_root: Path) -> None:
     _make_media(library_root)
     bundle = bundle_service.create_bundle(session, title="b")
-    bundle_service.add_file(
+    linked = bundle_service.add_file(
         session,
         bundle.id,
         relative_path="Show/cover.jpg",
@@ -120,6 +121,7 @@ def test_linked_file_is_flagged(session: Session, library_root: Path) -> None:
     by_name = {e.name: e for e in service.list_entries(session, path="Show").entries}
     assert by_name["cover.jpg"].linked is True
     assert by_name["cover.jpg"].bundle_id == bundle.id
+    assert by_name["cover.jpg"].file_id == linked.id
     # Linked into a *confirmed* bundle → not unbundled.
     assert by_name["cover.jpg"].unbundled is False
     assert by_name["notes.txt"].linked is False
@@ -148,9 +150,32 @@ def test_unbundled_flag_tracks_provisional_bundles(session: Session, library_roo
     assert show["notes.txt"].unbundled is False  # unlinked
 
 
+# Linked videos expose only the stored probe fields needed by card hover preview
+def test_linked_video_carries_hover_preview_metadata(session: Session, library_root: Path) -> None:
+    _make_media(library_root)
+    file = _stage_unbundled(session, "top.mp4")
+    file.tech_metadata = {
+        "container": "mov,mp4,m4a,3gp,3g2,mj2",
+        "video_codec": "h264",
+        "audio_codec": "aac",
+        "duration": 3.5,
+    }
+    progress_service.upsert_progress(session, file.id, position_s=1.0, duration_s=3.5)
+    session.commit()
+
+    top = {entry.name: entry for entry in service.list_entries(session).entries}["top.mp4"]
+    assert top.file_id == file.id
+    assert top.container == "mov,mp4,m4a,3gp,3g2,mj2"
+    assert top.video_codec == "h264"
+    assert top.audio_codec == "aac"
+    assert top.duration == 3.5
+    assert top.resume_position == 1.0
+
+
 def test_list_unbundled_files_flat(session: Session, library_root: Path) -> None:
-    _stage_unbundled(session, "movie/feature.mp4")
-    _stage_unbundled(session, "photos/sunset.jpg")
+    _stage_unbundled(session, "z-last.mp4")
+    _stage_unbundled(session, ".hidden/secret.mp4")
+    _stage_unbundled(session, "a-first.mp4")
     # A confirmed file must not appear in the unbundled queue.
     confirmed = bundle_service.create_bundle(session, title="real")
     bundle_service.add_file(
@@ -165,7 +190,7 @@ def test_list_unbundled_files_flat(session: Session, library_root: Path) -> None
     page = service.list_unbundled_files(session)
     assert page.total == 2
     paths = [e.relative_path for e in page.items]
-    assert paths == ["movie/feature.mp4", "photos/sunset.jpg"]  # sorted by path
+    assert paths == ["a-first.mp4", "z-last.mp4"]  # sorted by path
     feature = page.items[0]
     assert feature.kind == "file" and feature.linked is True and feature.unbundled is True
     assert feature.supported is True and feature.media_kind == "video"
