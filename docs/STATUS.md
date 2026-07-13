@@ -2,10 +2,13 @@
 
 ## In review: Plan 1 M9 — player interaction polish
 
-Branch `feat/player-polish` (off `main`). Commits: `9c68c6c` (`feat: polish
-player interactions and cover frames`) plus the final `test: verify M9 cover
-frames end to end` verification/handoff commit. Do not merge before owner
-review.
+Branch `feat/player-polish` (off `main`). Latest implementation commit:
+`88c334e` (`fix: address M9 player polish review findings`). Post-`ecdb9fb`
+history also includes the collection-cover fix `7f4ce9c`, speed/seek Settings
+refactors `af2f9be` + `4ddced9`, source-aware Resolution submenu `463fad9`, and
+the UI polish series `f203dcd` → `9cc8440`. Do not merge before owner
+re-verification. The branch handoff tip is the docs-only `docs: refresh M9
+review-fix handoff` commit containing this status.
 
 Completed:
 
@@ -32,31 +35,35 @@ Completed:
 - Storyboards count sampled frames from `showinfo` in the existing ffmpeg pass
   and trim VTT cues before final-sheet tile padding. Existing cached storyboards
   are not force-regenerated; normal fingerprint invalidation applies.
+- Review fixes: ended transitions are consumed once (no double auto-advance or
+  loop-toggle restart); EOF cover requests clamp 100 ms before duration; reset
+  restores the displaced image/automatic bundle cover; Inspector/viewer URLs
+  use bundle timestamps; cover writes use shared file mutations without
+  discarding their optimistic file cache; storyboard parsing strips ANSI and
+  falls back to sheet capacity with a warning; collection refresh candidates
+  are limited to membership ancestors and explicit selectors. Seek drags also
+  remove their window listeners on unmount.
 
 Verification (scratch ffmpeg fixtures only; no Demo/Eagle/user libraries):
 
-- Backend: Ruff check + format, mypy, full pytest (**395 passed**).
-- Frontend: ESLint, Prettier check, TypeScript, full Vitest (**72 passed**),
+- Backend: Ruff check + format, mypy, full pytest (**398 passed**).
+- Frontend: ESLint, Prettier check, TypeScript, full Vitest (**75 passed**),
   production build (hls.js remains a separate chunk).
-- Playwright: full suite (**58 passed**), including video context-menu toggle,
+- Playwright: full suite (**59 passed**), including video context-menu toggle,
   off-track drag with controls pinned, seek-step selection, and a real-backend
-  set/clear cover-frame flow that compares the regenerated thumbnail bytes.
+  set/clear cover-frame flow that compares regenerated thumbnail bytes, plus a
+  three-video ended transition that advances exactly one file.
   Scratch libraries/data directories are removed in `finally` blocks.
 
 Known issues / intentional limits: file loop does not persist; previously cached
-storyboards keep their old final padding cues until normal regeneration. Both
-match M9 scope. A-B loop/GIF range selection, video adjustments, slideshow,
-subtitles, and hover video previews remain out of scope.
+storyboards keep their old final padding cues until normal regeneration. If an
+ffmpeg build omits parsable `showinfo`, new generation safely caps cues to sheet
+capacity but cannot trim padding within its final sheet; a warning records that
+fallback. A-B loop/GIF range selection, video adjustments, slideshow, subtitles,
+and hover video previews remain out of scope.
 
 Next recommended task: **Plan 1 M12 — Eagle-style thumbnail hover video
 preview** (§13.2), before the desktop shell.
-
-Follow-up fix: collection cover timestamps are now refreshed when their
-effective bundle's custom video frame is set or cleared, and collection image
-URLs version from that timestamp. This fixes the stale single-bundle collection
-cover without changing collection membership or optimistic-concurrency versions.
-The M9 keymap swap is also explicitly regression-tested in both directions:
-`<`/`>` frame-step and `,`/`.` speed down/up.
 
 ## Latest: roadmap re-sequenced (docs only, 2026-07-10)
 
