@@ -59,6 +59,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # bundle order on the membership table, global bundle order on the bundle.
     ("asset_bundle_collections", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
     ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("asset_files", "cover_time", "REAL"),
+    ("asset_files", "cover_previous_file_id", "VARCHAR(26)"),
 )
 
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress",)

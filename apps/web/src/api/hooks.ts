@@ -19,6 +19,7 @@ import {
   type SortOrder,
   type FacetParams,
   type FilePatch,
+  type FileRead,
   type FileSelection,
   type FilterExpression,
   type JobRead,
@@ -82,9 +83,11 @@ import {
   cleanupCollectionOrder,
   reorderBundles,
   cleanupBundleOrder,
+  clearCoverFrame,
   reorderFiles,
   setBundleCollections,
   setBundleTags,
+  setCoverFrame,
   suggestBundleFromFiles,
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
@@ -723,10 +726,17 @@ export function useSetBundleCollections(id: string) {
 
 export function useFileMutations(bundleId: string) {
   const qc = useQueryClient()
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['bundle-files', bundleId] })
+  const invalidate = ({ files = true, collections = false } = {}) => {
+    if (files) qc.invalidateQueries({ queryKey: ['bundle-files', bundleId] })
     qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
     qc.invalidateQueries({ queryKey: ['browse'] })
+    if (collections) qc.invalidateQueries({ queryKey: ['collections'] })
+  }
+  const updateCoverCache = (updated: FileRead) => {
+    qc.setQueryData<FileRead[]>(['bundle-files', bundleId], (previous) =>
+      previous?.map((file) => (file.id === updated.id ? updated : file)),
+    )
+    invalidate({ files: false, collections: true })
   }
   return {
     update: useMutation({
@@ -739,11 +749,11 @@ export function useFileMutations(bundleId: string) {
         patch: FilePatch
         version?: number
       }) => updateFile(bundleId, fileId, patch, version),
-      onSettled: invalidate,
+      onSettled: () => invalidate(),
     }),
     reorder: useMutation({
       mutationFn: (orderedIds: string[]) => reorderFiles(bundleId, orderedIds),
-      onSuccess: invalidate,
+      onSuccess: () => invalidate(),
     }),
     remove: useMutation({
       mutationFn: (fileId: string) => removeFile(bundleId, fileId),
@@ -756,6 +766,15 @@ export function useFileMutations(bundleId: string) {
           qc.invalidateQueries({ queryKey: [key] })
         qc.invalidateQueries({ queryKey: ['continue-watching'] })
       },
+    }),
+    setCoverFrame: useMutation({
+      mutationFn: ({ fileId, time }: { fileId: string; time: number }) =>
+        setCoverFrame(fileId, time),
+      onSuccess: updateCoverCache,
+    }),
+    clearCoverFrame: useMutation({
+      mutationFn: (fileId: string) => clearCoverFrame(fileId),
+      onSuccess: updateCoverCache,
     }),
   }
 }

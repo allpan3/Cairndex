@@ -13,6 +13,8 @@ function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController
     volume: 0.5,
     muted: false,
     rate: 1,
+    seekStep: 5,
+    preservesPitch: true,
     fullscreen: false,
     pip: false,
     subtitlesOn: true,
@@ -24,6 +26,8 @@ function mockPlayer(overrides: Partial<PlayerController> = {}): PlayerController
     setVolume: vi.fn(),
     setMuted: vi.fn(),
     setRate: vi.fn(),
+    setSeekStep: vi.fn(),
+    setPreservesPitch: vi.fn(),
     toggleSubtitles: vi.fn(),
     toggleFullscreen: vi.fn(),
     togglePiP: vi.fn(),
@@ -43,8 +47,8 @@ function mockActions() {
   }
 }
 
-test('maps playback and seek shortcuts', () => {
-  const player = mockPlayer()
+test('maps playback and configurable seek shortcuts', () => {
+  const player = mockPlayer({ seekStep: 30 })
   const actions = mockActions()
 
   expect(handleViewerShortcut(new KeyboardEvent('keydown', { key: ' ' }), player, actions)).toBe(
@@ -53,7 +57,7 @@ test('maps playback and seek shortcuts', () => {
   expect(player.playPause).toHaveBeenCalled()
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'ArrowRight' }), player, actions)
-  expect(player.seekBy).toHaveBeenLastCalledWith(5)
+  expect(player.seekBy).toHaveBeenLastCalledWith(30)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'j' }), player, actions)
   expect(player.seekBy).toHaveBeenLastCalledWith(-10)
@@ -75,11 +79,15 @@ test('maps player utility shortcuts', () => {
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'c' }), player, actions)
   expect(player.toggleSubtitles).toHaveBeenCalled()
 
-  handleViewerShortcut(new KeyboardEvent('keydown', { key: '>', shiftKey: true }), player, actions)
-  expect(player.setRate).toHaveBeenLastCalledWith(1.25)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: '>' }), player, actions)
+  expect(player.frameStep).toHaveBeenLastCalledWith(1)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: '<' }), player, actions)
+  expect(player.frameStep).toHaveBeenLastCalledWith(-1)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: '.' }), player, actions)
-  expect(player.frameStep).toHaveBeenCalledWith(1)
+  expect(player.setRate).toHaveBeenLastCalledWith(1.25)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: ',' }), player, actions)
+  expect(player.setRate).toHaveBeenLastCalledWith(0.75)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'S' }), player, actions)
   expect(actions.snapshot).toHaveBeenCalled()

@@ -1,5 +1,70 @@
 # Project status
 
+## In review: Plan 1 M9 — player interaction polish
+
+Branch `feat/player-polish` (off `main`). Latest implementation commit:
+`88c334e` (`fix: address M9 player polish review findings`). Post-`ecdb9fb`
+history also includes the collection-cover fix `7f4ce9c`, speed/seek Settings
+refactors `af2f9be` + `4ddced9`, source-aware Resolution submenu `463fad9`, and
+the UI polish series `f203dcd` → `9cc8440`. Do not merge before owner
+re-verification. The branch handoff tip is the docs-only `docs: refresh M9
+review-fix handoff` commit containing this status.
+
+Completed:
+
+- Video-surface right-click now suppresses the native menu and toggles
+  play/pause without affecting controls or side panels. The shared shortcut map
+  uses the persisted 2/5/10/30-second seek step for arrows, keeps J/L at 10
+  seconds, and restores `<`/`>` frame step plus `,`/`.` speed adjustment.
+- Drag scrubbing retains pointer capture plus window-level move/release tracking,
+  pins auto-hide chrome until release, keeps the 150 ms seek coalescing, and
+  commits the exact clamped release position even off-track.
+- Persisted player prefs now include seek step and `preservesPitch`; file loop is
+  intentionally session-only and takes precedence over bundle auto-advance. The
+  seek-step and speed controls are compact Settings sliders, with pitch
+  preservation grouped beside speed; no standalone speed control occupies the
+  control bar.
+- Resolution choices are a foldable Settings submenu derived from the current
+  video's probed height (Auto plus standard tiers at or below the source), so
+  4K sources expose 2160p and 1440p instead of stopping at 1080p.
+- Additive nullable `asset_files.cover_time` plus path-safe POST/DELETE
+  `cover-frame` endpoints set/clear a server-extracted current-frame cover,
+  regenerate only the cached thumbnail, select that video as the bundle cover,
+  honor the timestamp on later regeneration, and version file/bundle card URLs
+  so the UI refreshes without reload. OpenAPI and `schema.d.ts` are regenerated.
+- Storyboards count sampled frames from `showinfo` in the existing ffmpeg pass
+  and trim VTT cues before final-sheet tile padding. Existing cached storyboards
+  are not force-regenerated; normal fingerprint invalidation applies.
+- Review fixes: ended transitions are consumed once (no double auto-advance or
+  loop-toggle restart); EOF cover requests clamp 100 ms before duration; reset
+  restores the displaced image/automatic bundle cover; Inspector/viewer URLs
+  use bundle timestamps; cover writes use shared file mutations without
+  discarding their optimistic file cache; storyboard parsing strips ANSI and
+  falls back to sheet capacity with a warning; collection refresh candidates
+  are limited to membership ancestors and explicit selectors. Seek drags also
+  remove their window listeners on unmount.
+
+Verification (scratch ffmpeg fixtures only; no Demo/Eagle/user libraries):
+
+- Backend: Ruff check + format, mypy, full pytest (**398 passed**).
+- Frontend: ESLint, Prettier check, TypeScript, full Vitest (**75 passed**),
+  production build (hls.js remains a separate chunk).
+- Playwright: full suite (**59 passed**), including video context-menu toggle,
+  off-track drag with controls pinned, seek-step selection, and a real-backend
+  set/clear cover-frame flow that compares regenerated thumbnail bytes, plus a
+  three-video ended transition that advances exactly one file.
+  Scratch libraries/data directories are removed in `finally` blocks.
+
+Known issues / intentional limits: file loop does not persist; previously cached
+storyboards keep their old final padding cues until normal regeneration. If an
+ffmpeg build omits parsable `showinfo`, new generation safely caps cues to sheet
+capacity but cannot trim padding within its final sheet; a warning records that
+fallback. A-B loop/GIF range selection, video adjustments, slideshow, subtitles,
+and hover video previews remain out of scope.
+
+Next recommended task: **Plan 1 M12 — Eagle-style thumbnail hover video
+preview** (§13.2), before the desktop shell.
+
 ## Latest: roadmap re-sequenced (docs only, 2026-07-10)
 
 Branch `docs/roadmap-resequence` (off `main`). Owner decision after plan 1

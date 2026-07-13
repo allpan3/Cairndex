@@ -26,12 +26,21 @@ function chapterForTime(chapters: Chapter[], time: number): Chapter | null {
 }
 
 /** Seek bar with buffered ranges, drag scrubbing, trickplay, and chapter ticks */
-export function SeekBar({ player, video }: { player: PlayerController; video: PlayableVideo }) {
+export function SeekBar({
+  player,
+  video,
+  onDragChange,
+}: {
+  player: PlayerController
+  video: PlayableVideo
+  onDragChange?: (dragging: boolean) => void
+}) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [hover, setHover] = useState<{ x: number; time: number } | null>(null)
   // While dragging, drive the fill/thumb from the pointer position (dragPct)
   // rather than currentTime, which the throttle deliberately lags behind.
   const [dragPct, setDragPct] = useState<number | null>(null)
+  const dragging = useRef<{ pointerId: number; track: HTMLElement } | null>(null)
   // Keep the latest player in a ref so a trailing-flush timer never seeks a
   // stale controller.
   const playerRef = useRef(player)
@@ -43,9 +52,11 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
     pending: null,
     timer: null,
   })
+  const dragCleanup = useRef<(() => void) | null>(null)
   useEffect(
     () => () => {
       if (scrub.current.timer != null) clearTimeout(scrub.current.timer)
+      dragCleanup.current?.()
     },
     [],
   )
@@ -116,17 +127,43 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
   }
 
   const onPointerDown = (event: React.PointerEvent) => {
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (event.button !== 0) return
+    dragCleanup.current?.()
+    const track = event.currentTarget as HTMLElement
+    track.setPointerCapture(event.pointerId)
+    dragging.current = { pointerId: event.pointerId, track }
+    onDragChange?.(true)
     const time = timeFor(event.clientX)
     setDragPct(pctFor(time))
     commitSeek(time) // instant response to the click / drag start
-  }
-
-  // Commit the exact final position and hand the visual back to currentTime.
-  const endDrag = (event: React.PointerEvent) => {
-    if (dragPct == null) return
-    commitSeek(timeFor(event.clientX))
-    setDragPct(null)
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) return
+      const next = timeFor(moveEvent.clientX)
+      setDragPct(pctFor(next))
+      throttledSeek(next)
+    }
+    const removeListeners = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      dragCleanup.current = null
+    }
+    const end = (endEvent: PointerEvent) => {
+      if (endEvent.pointerId !== event.pointerId) return
+      commitSeek(timeFor(endEvent.clientX))
+      if (track.hasPointerCapture?.(event.pointerId)) {
+        track.releasePointerCapture(event.pointerId)
+      }
+      dragging.current = null
+      setDragPct(null)
+      setHover(null)
+      onDragChange?.(false)
+      removeListeners()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    dragCleanup.current = removeListeners
   }
 
   return (
@@ -142,19 +179,14 @@ export function SeekBar({ player, video }: { player: PlayerController; video: Pl
         tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={(event) => {
+          if (dragging.current) return
           const time = timeFor(event.clientX)
-          if (event.buttons === 1) {
-            setDragPct(pctFor(time))
-            throttledSeek(time)
-          }
           setHover({ x: event.clientX, time })
         }}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
         onPointerLeave={() => setHover(null)}
         onKeyDown={(event) => {
-          if (event.key === 'ArrowLeft') player.seekBy(-5)
-          else if (event.key === 'ArrowRight') player.seekBy(5)
+          if (event.key === 'ArrowLeft') player.seekBy(-player.seekStep)
+          else if (event.key === 'ArrowRight') player.seekBy(player.seekStep)
           else return
           event.preventDefault()
         }}

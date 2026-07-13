@@ -303,6 +303,14 @@ sidecar stores the source file's quick fingerprint so stale derivatives can be
 ignored and regenerated. These are reproducible cache artifacts, not `AssetFile`
 rows, and scanners intentionally ignore them.
 
+Video `AssetFile` rows may store nullable `cover_time`; it selects the
+timestamp used whenever that file's thumbnail is regenerated. Clearing the
+field restores automatic representative-frame selection. A private nullable
+`cover_previous_file_id` remembers the bundle cover displaced by the first
+custom-frame selection so reset restores an image or automatic cover; a newer
+manual cover choice is never overwritten. These values are portable metadata in
+`library.db`; only the derived JPEG changes, never the original.
+
 ## Deferred to later phases
 
 - Generalized media tracks / embedded-stream extraction and remux/transcode

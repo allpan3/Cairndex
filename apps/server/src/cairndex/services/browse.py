@@ -365,20 +365,28 @@ def _effective_cover_id(bundle: AssetBundle, files: list[AssetFile]) -> str | No
     ``media.thumbnails.effective_cover_file`` (selected cover → first image →
     primary video → first video) — keep the two in sync."""
     thumbnailable = (MediaKind.IMAGE, MediaKind.VIDEO)
+
+    def cache_key(asset_file: AssetFile) -> str:
+        return (
+            f"{asset_file.id}:{asset_file.updated_at.timestamp()}"
+            if asset_file.cover_time is not None
+            else asset_file.id
+        )
+
     if bundle.cover_file_id is not None:
         cover = next((f for f in files if f.id == bundle.cover_file_id), None)
         if cover is not None and cover.media_kind in thumbnailable:
-            return cover.id
+            return cache_key(cover)
     image = next((f for f in files if f.media_kind is MediaKind.IMAGE), None)
     if image is not None:
-        return image.id
+        return cache_key(image)
     if bundle.primary_file_id is not None:
         primary = next((f for f in files if f.id == bundle.primary_file_id), None)
         if primary is not None and primary.media_kind is MediaKind.VIDEO:
-            return primary.id
+            return cache_key(primary)
     video = next((f for f in files if f.media_kind is MediaKind.VIDEO), None)
     if video is not None:
-        return video.id
+        return cache_key(video)
     return None
 
 

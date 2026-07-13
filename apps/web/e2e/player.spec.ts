@@ -382,6 +382,7 @@ interface MockApiOptions {
   chapters?: Array<{ start: number; end: number; title: string }>
   progress?: { position_s: number; duration_s: number | null; completed: boolean } | null
   secondPlayable?: boolean
+  threeVideos?: boolean
   nonNativeImage?: boolean
   // Force the f0 playback decision to a remux HLS session served from the real
   // fMP4 fixture, exercising the hls.js engine + settings menus + teardown.
@@ -394,6 +395,7 @@ interface MockApiOptions {
   onProgress?: (fileId: string, body: { position_s: number; duration_s: number | null }) => void
   onSessionDelete?: (url: string) => void
   onDecision?: (fileId: string, body: Record<string, unknown>) => void
+  onCoverFrame?: (time: number | null) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -402,6 +404,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   const storyboardStatus = options.storyboardStatus ?? 200
   const imageName = options.nonNativeImage ? 'poster.heic' : 'poster.png'
   const imageMime = options.nonNativeImage ? 'image/heic' : 'image/png'
+  const secondaryPlayable = options.secondPlayable || options.threeVideos
   const chapters = options.chapters ?? [
     { start: 0, end: 60, title: 'Intro' },
     { start: 60, end: 120, title: 'Middle' },
@@ -412,7 +415,9 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   > = {
     f0: options.progress ?? null,
     f1: null,
+    f2: null,
   }
+  let coverTime: number | null = null
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
@@ -460,10 +465,40 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/thumbnail/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail$/, (r) =>
-    r.fulfill({ status: 200, contentType: 'image/png', body: png }),
+  await page.route(
+    /\/api\/v1\/libraries\/lib1\/bundles\/b0\/files\/[^/]+\/thumbnail(?:\?.*)?$/,
+    (r) => r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/stream$/, (r) =>
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/cover-frame$/, async (r) => {
+    coverTime =
+      r.request().method() === 'DELETE'
+        ? null
+        : (JSON.parse(r.request().postData() ?? '{}') as { time: number }).time
+    options.onCoverFrame?.(coverTime)
+    await r.fulfill({
+      json: {
+        id: 'f0',
+        bundle_id: 'b0',
+        relative_path: 'movie.mp4',
+        original_filename: 'movie.mp4',
+        display_title: 'movie.mp4',
+        role: 'primary_video',
+        media_kind: 'video',
+        mime_type: 'video/mp4',
+        sequence: 0,
+        size_bytes: 0,
+        availability: 'available',
+        quick_fingerprint: 'video-fingerprint',
+        cover_time: coverTime,
+        supported: true,
+        tech_metadata: { width: 1920, height: 1080, duration: 120 },
+        created_at: '2026-06-25T00:00:00Z',
+        updated_at: new Date().toISOString(),
+        version: 2,
+      },
+    })
+  })
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1|f2)\/stream$/, (r) =>
     r.fulfill({ status: 200, contentType: 'video/mp4', body: mp4 }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/img1\/content$/, (r) => {
@@ -494,7 +529,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/files\/f0\/storyboard\/sb_001\.jpg/, (r) =>
     r.fulfill({ status: 200, contentType: 'image/png', body: png }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1)\/progress$/, async (r) => {
+  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(?:f0|f1|f2)\/progress$/, async (r) => {
     const match = r
       .request()
       .url()
@@ -521,58 +556,65 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     { index: 1, codec: 'aac', channels: 6, language: 'eng', title: 'Surround', default: true },
     { index: 2, codec: 'ac3', channels: 2, language: 'fra', title: 'Commentary', default: false },
   ]
-  await page.route(/\/api\/v1\/libraries\/lib1\/files\/(f0|f1)\/playback-decision$/, async (r) => {
-    const fileId = r.request().url().includes('/files/f1/') ? 'f1' : 'f0'
-    options.onDecision?.(
-      fileId,
-      JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>,
-    )
-    const streamUrl = `/api/v1/libraries/lib1/files/${fileId}/stream`
-    const base = {
-      duration: fileId === 'f0' ? 120 : options.secondPlayable ? 90 : null,
-      subtitles: [],
-      chapters: [],
-      storyboard_url: null,
-      progress: progressByFile[fileId],
-    }
-    if (options.forceHls && fileId === 'f0') {
-      return r.fulfill({
-        json: {
-          ...base,
-          method: 'remux',
-          reason: 'forced remux for the HLS engine test',
-          stream_url: null,
-          session: {
-            id: 'sess1',
-            playlist_url: '/api/v1/libraries/lib1/files/f0/playback-sessions/sess1/index.m3u8',
+  await page.route(
+    /\/api\/v1\/libraries\/lib1\/files\/(f0|f1|f2)\/playback-decision$/,
+    async (r) => {
+      const fileId =
+        r
+          .request()
+          .url()
+          .match(/\/files\/(f\d)\//)?.[1] ?? 'f0'
+      options.onDecision?.(
+        fileId,
+        JSON.parse(r.request().postData() ?? '{}') as Record<string, unknown>,
+      )
+      const streamUrl = `/api/v1/libraries/lib1/files/${fileId}/stream`
+      const base = {
+        duration: fileId === 'f0' ? 120 : options.secondPlayable || options.threeVideos ? 90 : null,
+        subtitles: [],
+        chapters: [],
+        storyboard_url: null,
+        progress: progressByFile[fileId],
+      }
+      if (options.forceHls && fileId === 'f0') {
+        return r.fulfill({
+          json: {
+            ...base,
+            method: 'remux',
+            reason: 'forced remux for the HLS engine test',
+            stream_url: null,
+            session: {
+              id: 'sess1',
+              playlist_url: '/api/v1/libraries/lib1/files/f0/playback-sessions/sess1/index.m3u8',
+            },
+            audio_streams: audioStreams,
           },
-          audio_streams: audioStreams,
-        },
-      })
-    }
-    if (fileId === 'f1' && !options.secondPlayable) {
+        })
+      }
+      if (fileId === 'f1' && !options.secondPlayable && !options.threeVideos) {
+        return r.fulfill({
+          json: {
+            ...base,
+            method: 'transcode',
+            reason: "MKV container isn't playable in browsers",
+            stream_url: null,
+            session: null,
+            audio_streams: [],
+          },
+        })
+      }
       return r.fulfill({
         json: {
           ...base,
-          method: 'transcode',
-          reason: "MKV container isn't playable in browsers",
-          stream_url: null,
+          method: 'direct',
+          reason: '',
+          stream_url: streamUrl,
           session: null,
           audio_streams: [],
         },
       })
-    }
-    return r.fulfill({
-      json: {
-        ...base,
-        method: 'direct',
-        reason: '',
-        stream_url: streamUrl,
-        session: null,
-        audio_streams: [],
-      },
-    })
-  })
+    },
+  )
 
   if (options.forceHls && hlsFixture) {
     // Serve the real fMP4 playlist/init/segment bytes for the HLS session.
@@ -620,50 +662,81 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'video-fingerprint',
+          cover_time: coverTime,
           supported: true,
           tech_metadata: { width: 1920, height: 1080, duration: 120 },
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
           version: 1,
         },
-        {
-          id: 'img1',
-          bundle_id: 'b0',
-          relative_path: imageName,
-          original_filename: imageName,
-          display_title: imageName,
-          role: 'image',
-          media_kind: 'image',
-          mime_type: imageMime,
-          sequence: 1,
-          size_bytes: 0,
-          availability: 'available',
-          quick_fingerprint: 'image-fingerprint',
-          supported: true,
-          tech_metadata: { width: 640, height: 360 },
-          created_at: '2026-06-25T00:00:00Z',
-          updated_at: '2026-06-25T00:00:00Z',
-          version: 1,
-        },
+        ...(!options.threeVideos
+          ? [
+              {
+                id: 'img1',
+                bundle_id: 'b0',
+                relative_path: imageName,
+                original_filename: imageName,
+                display_title: imageName,
+                role: 'image',
+                media_kind: 'image',
+                mime_type: imageMime,
+                sequence: 1,
+                size_bytes: 0,
+                availability: 'available',
+                quick_fingerprint: 'image-fingerprint',
+                cover_time: null,
+                supported: true,
+                tech_metadata: { width: 640, height: 360 },
+                created_at: '2026-06-25T00:00:00Z',
+                updated_at: '2026-06-25T00:00:00Z',
+                version: 1,
+              },
+            ]
+          : []),
         {
           id: 'f1',
           bundle_id: 'b0',
-          relative_path: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
-          original_filename: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
-          display_title: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
-          role: options.secondPlayable ? 'video_part' : 'alternate_version',
+          relative_path: secondaryPlayable ? 'part2.mp4' : 'movie.mkv',
+          original_filename: secondaryPlayable ? 'part2.mp4' : 'movie.mkv',
+          display_title: secondaryPlayable ? 'part2.mp4' : 'movie.mkv',
+          role: secondaryPlayable ? 'video_part' : 'alternate_version',
           media_kind: 'video',
-          mime_type: options.secondPlayable ? 'video/mp4' : 'video/x-matroska',
-          sequence: 2,
+          mime_type: secondaryPlayable ? 'video/mp4' : 'video/x-matroska',
+          sequence: options.threeVideos ? 1 : 2,
           size_bytes: 0,
           availability: 'available',
           quick_fingerprint: 'second-fingerprint',
+          cover_time: null,
           supported: true,
-          tech_metadata: options.secondPlayable ? { width: 1280, height: 720, duration: 90 } : {},
+          tech_metadata: secondaryPlayable ? { width: 1280, height: 720, duration: 90 } : {},
           created_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
           version: 1,
         },
+        ...(options.threeVideos
+          ? [
+              {
+                id: 'f2',
+                bundle_id: 'b0',
+                relative_path: 'part3.mp4',
+                original_filename: 'part3.mp4',
+                display_title: 'part3.mp4',
+                role: 'video_part',
+                media_kind: 'video',
+                mime_type: 'video/mp4',
+                sequence: 2,
+                size_bytes: 0,
+                availability: 'available',
+                quick_fingerprint: 'third-fingerprint',
+                cover_time: null,
+                supported: true,
+                tech_metadata: { width: 1280, height: 720, duration: 90 },
+                created_at: '2026-06-25T00:00:00Z',
+                updated_at: '2026-06-25T00:00:00Z',
+                version: 1,
+              },
+            ]
+          : []),
       ],
     }),
   )
@@ -727,19 +800,38 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
           },
           {
             file_id: 'f1',
-            display_title: options.secondPlayable ? 'part2.mp4' : 'movie.mkv',
-            playable: options.secondPlayable ?? false,
-            reason: options.secondPlayable ? '' : "MKV container isn't playable in browsers",
-            mime_type: options.secondPlayable ? 'video/mp4' : 'video/x-matroska',
+            display_title: secondaryPlayable ? 'part2.mp4' : 'movie.mkv',
+            playable: secondaryPlayable ?? false,
+            reason: secondaryPlayable ? '' : "MKV container isn't playable in browsers",
+            mime_type: secondaryPlayable ? 'video/mp4' : 'video/x-matroska',
             stream_url: '/api/v1/libraries/lib1/files/f1/stream',
-            width: options.secondPlayable ? 1280 : null,
-            height: options.secondPlayable ? 720 : null,
-            duration: options.secondPlayable ? 90 : null,
+            width: secondaryPlayable ? 1280 : null,
+            height: secondaryPlayable ? 720 : null,
+            duration: secondaryPlayable ? 90 : null,
             storyboard_url: null,
             chapters: [],
             progress: progressByFile.f1,
             subtitles: [],
           },
+          ...(options.threeVideos
+            ? [
+                {
+                  file_id: 'f2',
+                  display_title: 'part3.mp4',
+                  playable: true,
+                  reason: '',
+                  mime_type: 'video/mp4',
+                  stream_url: '/api/v1/libraries/lib1/files/f2/stream',
+                  width: 1280,
+                  height: 720,
+                  duration: 90,
+                  storyboard_url: null,
+                  chapters: [],
+                  progress: progressByFile.f2,
+                  subtitles: [],
+                },
+              ]
+            : []),
         ],
       },
     }),
@@ -834,6 +926,51 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '0')
   await page.mouse.move(420, 420)
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
+})
+
+test('polishes context play, off-track scrub, seek step, and current-frame cover', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  const coverWrites: Array<number | null> = []
+  await mockApi(page, { onCoverFrame: (time) => coverWrites.push(time) })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
+  const nativeMenuAllowed = await video.evaluate((element) => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
+    return element.dispatchEvent(event)
+  })
+  expect(nativeMenuAllowed).toBe(false)
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+
+  const settings = page.getByRole('button', { name: 'Playback settings' })
+  await settings.click()
+  await page.getByRole('slider', { name: 'Playback speed' }).fill('1.5')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).playbackRate)).toBe(1.5)
+  await page.getByRole('slider', { name: 'Seek step' }).fill('3')
+  await page.locator('.media-viewer').focus()
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(30)
+
+  const track = page.locator('.mv-seek__track')
+  const box = await track.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width * 0.25, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(2800)
+  await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
+  await page.mouse.move(2, 2)
+  await page.mouse.up()
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(0)
+
+  await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 42))
+  await page.mouse.move(400, 400)
+  await settings.click()
+  await page.getByRole('menuitem', { name: 'Set frame as cover' }).click()
+  await expect.poll(() => coverWrites.at(-1)).toBe(42)
+  await expect(page.getByRole('menuitem', { name: 'Reset cover to default' })).toBeEnabled()
 })
 
 test('shows storyboard preview and chapter title on seek hover', async ({ page }) => {
@@ -1061,6 +1198,20 @@ test('does not carry a previous video position into progress for the next video'
   expect(writes.filter((write) => write.fileId === 'f1' && write.position_s > 1)).toEqual([])
 })
 
+test('auto-advance consumes one ended transition in a three-video bundle', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page, { threeVideos: true })
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await video.evaluate((element) => element.dispatchEvent(new Event('ended')))
+
+  await expect(video).toHaveAttribute('src', /files\/f1\/stream/)
+  await expect(page.locator('.mv-subtitle')).toContainText('part2.mp4 · 2 / 3')
+  await page.waitForTimeout(100)
+  await expect(video).not.toHaveAttribute('src', /files\/f2\/stream/)
+})
+
 test('shows a storyboard generated by the real backend job', async ({ page }) => {
   test.skip(generatedMp4 === null, 'ffmpeg is unavailable; skipping real storyboard e2e')
 
@@ -1080,12 +1231,16 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
       `/api/v1/libraries/${library.id}/bundles`,
       { title: 'Storyboard Movie' },
     )
-    await apiPost(backend.baseUrl, `/api/v1/libraries/${library.id}/bundles/${bundle.id}/files`, {
-      relative_path: 'story.mp4',
-      role: 'primary_video',
-      media_kind: 'video',
-      mime_type: 'video/mp4',
-    })
+    const file = await apiPost<{ id: string }>(
+      backend.baseUrl,
+      `/api/v1/libraries/${library.id}/bundles/${bundle.id}/files`,
+      {
+        relative_path: 'story.mp4',
+        role: 'primary_video',
+        media_kind: 'video',
+        mime_type: 'video/mp4',
+      },
+    )
     const probe = await apiPost<{ id: string }>(
       backend.baseUrl,
       `/api/v1/libraries/${library.id}/jobs/probe`,
@@ -1096,6 +1251,8 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
       `/api/v1/libraries/${library.id}/jobs/storyboards`,
     )
     await waitApiJob(backend.baseUrl, storyboard.id)
+    const thumbnailUrl = `${backend.baseUrl}/api/v1/libraries/${library.id}/bundles/${bundle.id}/thumbnail`
+    const automaticThumbnail = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
 
     await proxyApi(page, backend.baseUrl)
     await page.goto('/')
@@ -1107,6 +1264,30 @@ test('shows a storyboard generated by the real backend job', async ({ page }) =>
     const preview = page.getByTestId('storyboard-preview')
     await expect(preview).toBeVisible()
     await expect(preview).toHaveCSS('background-image', /storyboard\/sb_001\.jpg/)
+
+    const video = page.getByTestId('media-video')
+    await video.evaluate((element) => ((element as HTMLVideoElement).currentTime = 26))
+    await page.getByRole('button', { name: 'Playback settings' }).click()
+    const setResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/files/${file.id}/cover-frame`) &&
+        response.request().method() === 'POST',
+    )
+    await page.getByRole('menuitem', { name: 'Set frame as cover' }).click()
+    const selected = (await (await setResponse).json()) as { cover_time: number | null }
+    expect(selected.cover_time).toBeCloseTo(26, 2)
+    const selectedThumbnail = Buffer.from(await (await fetch(thumbnailUrl)).arrayBuffer())
+    expect(selectedThumbnail.equals(automaticThumbnail)).toBe(false)
+
+    const clearResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/files/${file.id}/cover-frame`) &&
+        response.request().method() === 'DELETE',
+    )
+    await page.getByRole('menuitem', { name: 'Reset cover to default' }).click()
+    expect((await (await clearResponse).json()) as { cover_time: number | null }).toMatchObject({
+      cover_time: null,
+    })
   } finally {
     if (backend) await stopBackend(backend.child)
     rmSync(libraryRoot, { recursive: true, force: true })
@@ -1156,10 +1337,13 @@ test('plays a remux HLS source through hls.js and shows the quality/audio menus'
     .toBeGreaterThan(0.2)
   await expect(page.getByTestId('media-controls')).toBeVisible()
 
-  // Quality ladder + audio-track menus come from the decision.
+  // Source-aware resolution submenu + audio-track menus come from the decision.
   await page.getByRole('button', { name: /playback settings/i }).click()
   const menu = page.getByTestId('settings-menu')
-  await expect(menu).toContainText('Quality')
+  const resolution = menu.getByRole('menuitem', { name: /Resolution/ })
+  await expect(resolution).toHaveAttribute('aria-expanded', 'false')
+  await resolution.click()
+  await expect(resolution).toHaveAttribute('aria-expanded', 'true')
   await expect(menu.getByRole('menuitemradio', { name: '720p' })).toBeVisible()
   await expect(menu).toContainText('Audio')
   await expect(menu.getByRole('menuitemradio', { name: /Surround/ })).toBeVisible()
