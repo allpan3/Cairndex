@@ -305,7 +305,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   ]
   let renamedCollection: string | null = null
   let fileMove: { source: string; target: string; index: number } | null = null
-  let bundleParent: string | null = null
+  const bundleParents: Array<string | null> = []
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
       json: [
@@ -338,14 +338,14 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     proposals[0].title = renamedCollection
     return route.fulfill({ json: proposals[0] })
   })
-  await page.route('**/grouping/plans/plan1/proposals/proposal1/files/file1/move', (route) => {
+  await page.route('**/grouping/plans/plan1/proposals/proposal2/files/file4/move', (route) => {
     const body = route.request().postDataJSON() as {
       target_proposal_id: string
       target_index: number
     }
-    const source = proposals[1]
+    const source = proposals[2]
     const target = proposals.find((proposal) => proposal.id === body.target_proposal_id)!
-    const sourceIndex = source.files.findIndex((file) => file.asset_file_id === 'file1')
+    const sourceIndex = source.files.findIndex((file) => file.asset_file_id === 'file4')
     const [moved] = source.files.splice(sourceIndex, 1)
     target.files.splice(body.target_index, 0, moved!)
     source.files.forEach((file, sequence) => (file.sequence = sequence))
@@ -353,11 +353,12 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     fileMove = { source: source.id, target: target.id, index: body.target_index }
     return route.fulfill({ json: [source, target] })
   })
-  await page.route('**/grouping/plans/plan1/proposals/proposal2/parent', (route) => {
-    bundleParent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
+  await page.route('**/grouping/plans/plan1/proposals/proposal1/parent', (route) => {
+    const bundleParent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
       .parent_proposal_id
-    proposals[2].parent_proposal_id = bundleParent
-    return route.fulfill({ json: proposals[2] })
+    bundleParents.push(bundleParent)
+    proposals[1].parent_proposal_id = bundleParent
+    return route.fulfill({ json: proposals[1] })
   })
 
   await page.goto('/')
@@ -373,23 +374,47 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   ).toBeVisible()
 
-  const targetFile = page.getByRole('list', { name: 'Files in Extras' }).locator('.grp-file')
+  const targetList = page.getByRole('list', { name: 'Files in SRCV-005 - cut' })
+  const targetFile = targetList.locator('.grp-file').last()
   const targetBox = await targetFile.boundingBox()
   if (!targetBox) throw new Error('missing file drop target')
-  await page.getByRole('button', { name: 'Drag file SRCV-005.mp4' }).dragTo(targetFile, {
+  await page.getByRole('button', { name: 'Drag file trailer.mp4' }).dragTo(targetFile, {
     targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
   })
-  await expect.poll(() => fileMove).toEqual({ source: 'proposal1', target: 'proposal2', index: 1 })
-  await expect(
-    page.getByRole('list', { name: 'Files in Extras' }).locator('.grp-file__name'),
-  ).toHaveText(['trailer.mp4', 'SRCV-005.mp4'])
+  await expect.poll(() => fileMove).toEqual({ source: 'proposal2', target: 'proposal1', index: 3 })
+  await expect(targetList.locator('.grp-file__name')).toHaveText([
+    'SRCV-005.mp4',
+    'SRCV-005.mp3',
+    'cover.jpg',
+    'trailer.mp4',
+  ])
+  const emptyBundle = page.getByRole('checkbox', { name: 'Accept Extras' })
+  await expect(emptyBundle).not.toBeChecked()
+  await expect(emptyBundle).toBeDisabled()
 
   const collectionRow = page.locator('.grp-row--collection', {
     has: page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   })
-  await page.getByRole('button', { name: 'Drag bundle Extras' }).dragTo(collectionRow)
-  await expect.poll(() => bundleParent).toBe('collection1')
-  await expect(collectionRow.locator('..').getByText('Extras', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }).dragTo(collectionRow)
+  await expect.poll(() => bundleParents).toEqual(['collection1'])
+  const collectionCheckbox = page.getByRole('checkbox', { name: 'Accept Favorites' })
+  await expect(collectionCheckbox).toBeChecked()
+  await expect(
+    collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),
+  ).toBeVisible()
+
+  const bundleHandle = page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' })
+  const rootTarget = page.locator('.grp-root-drop')
+  const bundleBox = await bundleHandle.boundingBox()
+  const rootBox = await rootTarget.boundingBox()
+  if (!bundleBox || !rootBox) throw new Error('missing bundle drop target')
+  await page.mouse.move(bundleBox.x + bundleBox.width / 2, bundleBox.y + bundleBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect.poll(() => bundleParents).toEqual(['collection1', null])
+  await expect(collectionCheckbox).not.toBeChecked()
+  await expect(collectionCheckbox).toBeDisabled()
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {

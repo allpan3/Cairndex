@@ -102,6 +102,18 @@ level. Double-click rename now applies to collection titles as well as bundle
 titles. The generated default remains video, audio, image, then other files with
 natural order inside each group.
 
+An empty bundle suggestion now auto-deselects and disables its acceptance
+checkbox. Collection selection is content-aware recursively: moving out its last
+file-backed bundle also auto-deselects/disables the collection, while adding an
+item makes it selectable again.
+
+Suggester rule v4 improves flat multi-video directories. Sidecars first match a
+unique normalized full video stem or a full-stem suffix, then fall back to the
+coarser leading subject prefix. The screenshot case with two long `Ada Larson`
+video/image pairs now yields two bundles instead of four single-file bundles;
+image-only directories retain their item-per-file behavior. Existing open plans
+remain snapshots; regenerate suggestions to receive the v4 result.
+
 Every edit persists on the open plan. File moves recompute dense sequence and
 derived roles for affected proposals, while apply preserves original bundle IDs
 when an explicit drag revises confirmed uncategorized membership. Untouched
@@ -117,13 +129,11 @@ collection rename/reparent, addition order, React interaction, and the
 browser-visible drag flow.
 
 Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
-and all 420 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 104
-Vitest tests, and the production build pass. The grouping Playwright flow passes
-focused and in every full run. The full 70-test suite reached 69/70 in two
-parallel runs and one serial run because existing real-media hover/storyboard
-tests timed out at different frame-transition assertions; the first isolated
-failure passed when rerun alone. The in-app browser runtime also could not
-initialize (`Cannot redefine property: process`).
+and all 421 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 106
+Vitest tests, the production build, and all 70 Playwright tests pass. The browser
+flow covers empty bundle/collection deselection; the exact long-filename Python
+fixture covers v4 pairing. The in-app browser runtime was also attempted but
+could not initialize (`Cannot redefine property: process`).
 
 ## Current: ordered bundle media cursor
 

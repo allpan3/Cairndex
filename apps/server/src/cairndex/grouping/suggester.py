@@ -30,7 +30,7 @@ from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 3
+SUGGESTER_RULE_VERSION = 4
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -139,6 +139,12 @@ def _subject_prefix(name: str) -> str:
     return _SUBJECT_DELIMITER.split(stem, maxsplit=1)[0]
 
 
+# Normalize separators while retaining the complete filename subject
+def _normalized_stem(name: str) -> str:
+    """Return a comparable full stem across spaces, dots, dashes, and underscores."""
+    return " ".join(part for part in _SUBJECT_DELIMITER.split(_stem(name).casefold()) if part)
+
+
 def _natural_key(name: str) -> list[object]:
     """Sort key that orders ``ep2`` before ``ep10`` (numeric runs compared as
     ints), case-insensitively."""
@@ -232,9 +238,27 @@ def _bundle_groups(media: list[FileObservation]) -> list[list[FileObservation]]:
         for video, group in zip(videos, groups, strict=True)
         if prefix_counts[_subject_prefix(video.relative_path)] == 1
     }
+    video_stems = [_normalized_stem(video.relative_path) for video in videos]
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
-        group = group_by_prefix.get(_subject_prefix(f.relative_path))
+        stem = _normalized_stem(f.relative_path)
+        exact_matches = [
+            group
+            for video_stem, group in zip(video_stems, groups, strict=True)
+            if stem == video_stem
+        ]
+        suffix_matches = [
+            group
+            for video_stem, group in zip(video_stems, groups, strict=True)
+            if stem.startswith(f"{video_stem} ")
+        ]
+        group = (
+            exact_matches[0]
+            if len(exact_matches) == 1
+            else suffix_matches[0]
+            if not exact_matches and len(suffix_matches) == 1
+            else group_by_prefix.get(_subject_prefix(f.relative_path))
+        )
         if group is None:
             unassigned.append(f)
         else:
@@ -396,12 +420,17 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
         return proposals
     # A container of unrelated items: one child bundle per subject or file
     groups = _bundle_groups(media)
+    grouped_count = sum(len(group) > 1 for group in groups)
     proposals.append(
         _container_proposal(
             node.path,
             parent,
             child_count=len(groups),
-            reason=f"{len(media)} unrelated files",
+            reason=(
+                f"{len(groups)} filename-matched bundle(s) from {len(media)} files"
+                if grouped_count
+                else f"{len(media)} unrelated files"
+            ),
         )
     )
     proposals.extend(_direct_media_proposals(media, node.path, parent_for_children=node.path))

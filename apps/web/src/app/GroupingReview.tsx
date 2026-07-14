@@ -98,6 +98,21 @@ function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.proposal.id, ...collectIds(node.children)])
 }
 
+/** Determine whether a proposal still contains any file-backed item. */
+function nodeHasItems(node: TreeNode): boolean {
+  return node.proposal.kind === 'bundle'
+    ? node.proposal.files.length > 0
+    : node.children.some(nodeHasItems)
+}
+
+/** Collect suggestions that became empty after a review drag. */
+function collectEmptyIds(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((node) => [
+    ...(nodeHasItems(node) ? [] : [node.proposal.id]),
+    ...collectEmptyIds(node.children),
+  ])
+}
+
 function Confidence({ value }: { value: number }) {
   const pct = Math.round(value * 100)
   const level = value >= 0.8 ? 'high' : value >= 0.6 ? 'mid' : 'low'
@@ -181,6 +196,7 @@ function ProposalNode({
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
+  const hasItems = nodeHasItems(node)
   if (proposal.kind === 'container') {
     const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
     return (
@@ -205,6 +221,7 @@ function ProposalNode({
             className="grp-check"
             type="checkbox"
             checked={checked}
+            disabled={!hasItems}
             onChange={(e) => onToggle(node, e.currentTarget.checked)}
             aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
@@ -240,6 +257,7 @@ function ProposalNode({
           className="grp-check"
           type="checkbox"
           checked={checked}
+          disabled={!hasItems}
           onChange={(e) => onToggle(node, e.currentTarget.checked)}
           aria-label={`Accept ${proposal.title || 'bundle'}`}
         />
@@ -395,9 +413,11 @@ export function GroupingReview({
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
   const allProposalIds = useMemo(() => collectIds(tree), [tree])
+  const emptyProposalIds = useMemo(() => new Set(collectEmptyIds(tree)), [tree])
   const selectedIds = useMemo(
-    () => new Set(allProposalIds.filter((id) => !deselectedIds.has(id))),
-    [allProposalIds, deselectedIds],
+    () =>
+      new Set(allProposalIds.filter((id) => !deselectedIds.has(id) && !emptyProposalIds.has(id))),
+    [allProposalIds, deselectedIds, emptyProposalIds],
   )
 
   const toggleNode = (node: TreeNode, checked: boolean) => {
@@ -504,6 +524,17 @@ export function GroupingReview({
     setDropSlot(null)
   }
 
+  const rememberEmptiedSuggestions = (updated: GroupingProposal[]) => {
+    if (!plan.data) return
+    const byId = new Map(updated.map((proposal) => [proposal.id, proposal]))
+    const projected = plan.data.proposals.map((proposal) => byId.get(proposal.id) ?? proposal)
+    const emptied = collectEmptyIds(buildTree(projected)).filter(
+      (proposalId) => !emptyProposalIds.has(proposalId),
+    )
+    if (emptied.length === 0) return
+    setDeselectedIds((current) => new Set([...current, ...emptied]))
+  }
+
   const dropFile = (targetProposalId: string, targetIndex: number) => {
     if (dragItem?.kind !== 'file') return
     const { proposalId, assetFileId } = dragItem
@@ -514,7 +545,12 @@ export function GroupingReview({
         targetProposalId,
         targetIndex,
       },
-      { onSuccess: () => setNotice('Bundle file arrangement updated.') },
+      {
+        onSuccess: (updated) => {
+          rememberEmptiedSuggestions(updated)
+          setNotice('Bundle file arrangement updated.')
+        },
+      },
     )
     clearDrag()
   }
@@ -524,12 +560,14 @@ export function GroupingReview({
     reparentProposal.mutate(
       { proposalId: dragItem.proposalId, parentProposalId },
       {
-        onSuccess: () =>
+        onSuccess: (updated) => {
+          rememberEmptiedSuggestions([updated])
           setNotice(
             parentProposalId
               ? 'Bundle moved into the collection suggestion.'
               : 'Bundle moved to the top level.',
-          ),
+          )
+        },
       },
     )
     clearDrag()
