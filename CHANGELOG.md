@@ -106,9 +106,9 @@ grouped under `Unreleased` until the first tagged release.
   each File Browser directory read compares only the linked rows indexed to that
   directory and persists vanished paths as missing. The latter reports how many
   rows changed so the web client refreshes Bundle Browser and sidebar counts
-  only when needed. The Missing Files count is now visibly labeled as affected
-  bundles, and the inspector's Files in bundle section reports its missing-file
-  count and highlights/badges each missing member. The viewer still gives
+  only when needed. The Missing Files value remains a compact numeric count of
+  affected bundles, and the inspector's Files in bundle section reports its
+  missing-file count and highlights/badges each missing member. The viewer gives
   missing state precedence over stale codec/container fallbacks. These bounded
   checks do not guess which unlinked path replaces a missing row; Update/scan
   remains responsible for high-confidence moved-file repair.

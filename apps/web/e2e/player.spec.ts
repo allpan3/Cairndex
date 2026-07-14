@@ -1643,14 +1643,14 @@ test('shows a moved unsupported video as missing and refreshes the sidebar count
   await page.goto('/')
 
   const missingView = page.getByRole('button', { name: /Missing Files/ })
-  await expect(missingView.locator('.nav-item__count')).toHaveText('0 bundles')
+  await expect(missingView.locator('.nav-item__count')).toHaveText('0')
   await page.locator('[data-bundle-id="b0"]').dblclick()
 
   const fallback = page.locator('.media-fallback')
   await expect(fallback).toContainText('Missing file.')
   await expect(fallback).toContainText('no longer available at its linked path')
   await expect(fallback).not.toContainText("AVI container isn't playable")
-  await expect(missingView.locator('.nav-item__count')).toHaveText('1 bundle')
+  await expect(missingView.locator('.nav-item__count')).toHaveText('1')
   expect(missingCounts).toEqual(expect.arrayContaining([0, 1]))
   expect(decisions).toBe(0)
 })
