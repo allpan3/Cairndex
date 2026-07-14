@@ -24,6 +24,15 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
+- **Grouping suggestion inline rename.** Double-clicking a new-bundle title in
+  grouping review now opens an inline field; Enter or blur saves and Escape
+  cancels, with Enter/F2 available from the focused title. Renames persist on
+  the open grouping plan through the new library-scoped
+  `PATCH /grouping/plans/{plan_id}/proposals/{proposal_id}` route, and the edited
+  title is used when **Accept selected** confirms the bundle. Collection
+  suggestions and additions to existing bundles remain read-only, and no source
+  file is renamed or otherwise changed.
+
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before
   mounting a muted direct-play preview. Storyboard indexes prefetch after a

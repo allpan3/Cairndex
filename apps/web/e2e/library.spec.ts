@@ -203,6 +203,73 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await storyboardRequest
 })
 
+test('double-click renames a bundle suggestion before accepting it', async ({ page }) => {
+  await mockApi(page)
+  const proposal = {
+    id: 'proposal1',
+    kind: 'bundle',
+    title: 'SRCV-005 - cut',
+    directory: 'SRCV-005',
+    parent_proposal_id: null,
+    target_bundle_id: null,
+    confidence: 0.95,
+    reason: 'same filename stem',
+    files: [
+      {
+        asset_file_id: 'file1',
+        relative_path: 'SRCV-005/SRCV-005.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  let renamedTitle: string | null = null
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan1',
+          status: 'open',
+          rule_version: 2,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: 1,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan1', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan1',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: 'job1',
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals: [proposal],
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan1/proposals/proposal1', (route) => {
+    renamedTitle = (route.request().postDataJSON() as { title: string }).title
+    return route.fulfill({ json: { ...proposal, title: renamedTitle } })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  await page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }).dblclick()
+  const input = page.getByRole('textbox', { name: 'Bundle suggestion title' })
+  await input.fill('SRCV-005')
+  await input.press('Enter')
+
+  await expect.poll(() => renamedTitle).toBe('SRCV-005')
+  await expect(
+    page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005' }),
+  ).toBeVisible()
+})
+
 test('selecting a bundle opens the inspector', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')

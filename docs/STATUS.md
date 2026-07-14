@@ -1804,6 +1804,11 @@ original files.
   open grouping plans; Update is the primary maintenance flow; hidden/cache paths
   are excluded; grouping review supports selected accept; the global thumbnail
   action is removed from the sidebar.
+- **Follow-up — bundle suggestion inline rename.** New-bundle titles can be
+  edited in grouping review by double-click (or Enter/F2 while focused), persist
+  on the open plan, and become the confirmed bundle title on apply. Collection
+  suggestions and additions to existing bundles remain read-only; source files
+  are unchanged.
 
 ## Completed in ADR-0008
 
@@ -1858,8 +1863,8 @@ dialogs).
   (determinate/indeterminate) progress bar under Update plus redacted error
   text. Branch `feat/job-progress-observability`. Cancellation is wired but has
   no dedicated UI button yet.
-- Grouping review can select/deselect proposals but does not yet provide rich
-  edit-before-apply controls for merge/split/reclassify/rename.
+- Grouping review can select/deselect proposals and rename new-bundle suggestions,
+  but does not yet provide edit-before-apply merge/split/reclassify controls.
 - Whole-library indexed metadata search (SQLite FTS5) is implemented: the toolbar
   search box queries a per-library `bundle_search` FTS5 index (kept fresh by
   triggers; rebuildable via `cairndex.devtools.reindex_search`) over
@@ -1891,8 +1896,8 @@ dialogs).
    `docs/plans/01-web-media-player-and-viewer.md`. M6 needs the HLS session
    model / transcode-cache location ADR recorded at implementation time
    (flagged in plan 1 §12 and ADR-0012).
-2. Add richer grouping review editing: merge/split/reclassify/rename before
-   apply, while preserving the current safe apply/conflict model.
+2. Add richer grouping review editing: merge/split/reclassify before apply,
+   while preserving the current safe apply/conflict model.
 3. Continue File Browser planning toward guarded write mode and safe desktop-native
    handoff. _(Planning now done: `docs/plans/04-library-write-mode.md` +
    proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)_

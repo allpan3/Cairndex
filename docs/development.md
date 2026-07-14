@@ -77,6 +77,8 @@ refreshes the UI, opens grouping review when suggestions exist, and starts
 missing/stale storyboard generation in the background. The maintenance overflow
 menu exposes standalone **Scan new files**, **Suggest grouping**, **Collect
 metadata**, and **Generate storyboards** actions.
+In grouping review, double-click a new-bundle suggestion title to edit it; Enter
+or blur saves the open-plan edit, while Escape cancels it.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the

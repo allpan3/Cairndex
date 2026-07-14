@@ -22,6 +22,7 @@ import {
   type FileRead,
   type FileSelection,
   type FilterExpression,
+  type GroupingPlan,
   type JobRead,
   type LibraryCreate,
   type LibraryRegister,
@@ -80,6 +81,7 @@ import {
   registerLibrary,
   removeFile,
   revokeDevice,
+  renameGroupingProposal,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -449,6 +451,28 @@ export function useGenerateGroupingPlan() {
   return useMutation({
     mutationFn: () => generateGroupingPlan(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['grouping-plans'] }),
+  })
+}
+
+/** Persist an inline rename and update the open plan in-place. */
+export function useRenameGroupingProposal(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proposalId, title }: { proposalId: string; title: string }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return renameGroupingProposal(planId, proposalId, title)
+    },
+    onSuccess: (updated) =>
+      qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
+        current
+          ? {
+              ...current,
+              proposals: current.proposals.map((proposal) =>
+                proposal.id === updated.id ? updated : proposal,
+              ),
+            }
+          : current,
+      ),
   })
 }
 

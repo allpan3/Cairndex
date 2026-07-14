@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind
 
@@ -29,6 +29,11 @@ class ProposalRead(BaseModel):
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
+
+
+# Validate the editable fields accepted for an open grouping proposal
+class ProposalUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=1024)
 
 
 class PlanRead(BaseModel):
