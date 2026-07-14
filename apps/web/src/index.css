@@ -2157,6 +2157,12 @@ code {
   align-items: center;
   gap: 8px;
 }
+.grp-row--bundle {
+  gap: 4px;
+}
+.grp-row--bundle .grp-check {
+  margin-right: 4px;
+}
 .grp-row__content {
   display: flex;
   flex: 1 1 auto;

@@ -35,7 +35,8 @@ grouped under `Unreleased` until the first tagged release.
   match their rendered title width and grow live up to the review-dialog edge.
   The destination switch is a compact circular-arrows icon beside the title with
   an immediate state-specific tooltip; numeric confidence and manual badges are
-  removed, and wrapped metadata stays aligned to the title column.
+  removed, and wrapped metadata stays aligned to the title column. Existing
+  targets read **Add to 🎬 [bundle name]** with tighter drag-handle spacing.
 
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;

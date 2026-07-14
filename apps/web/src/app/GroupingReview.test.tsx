@@ -299,7 +299,8 @@ test('switches one addition proposal to a renameable new bundle and back', async
     name: 'Accept Surf On The Ridge - 4K',
   })
   expect(checkbox).toBeChecked()
-  expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
+  expect(screen.queryByText('➕')).not.toBeInTheDocument()
   expect(screen.getByText('2 new files')).toBeInTheDocument()
   expect(screen.queryByText('Create new bundle instead')).not.toBeInTheDocument()
   const createNew = screen.getByRole('button', {
@@ -334,7 +335,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
       name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
     }),
   )
-  await screen.findByText('Add to Sky, Sand, Sea & Salt - 4K')
+  await screen.findByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
 
@@ -353,7 +354,7 @@ test('uses the legacy proposal title when the target snapshot title is absent', 
   )
   renderReview()
 
-  expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
+  expect(await screen.findByText('Add to 🎬 Legacy Target')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   expect(
     await screen.findByRole('button', {
@@ -390,7 +391,7 @@ test('disables destination actions while saving and surfaces a switch error', as
 
   await screen.findByText('Existing bundle disappeared')
   expect(switchButton).toBeEnabled()
-  expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
 })
 
 test('regenerating suggestions replaces the open plan without showing settled bundles', async () => {
