@@ -130,7 +130,7 @@ function targetTitle(proposal: GroupingProposal): string {
 /** Build the title shown for the proposal's current destination mode. */
 function proposalDisplayTitle(proposal: GroupingProposal): string {
   return proposal.target_bundle_id && !proposal.create_new_bundle
-    ? `Add to ${targetTitle(proposal)}`
+    ? `Add to 🎬 ${targetTitle(proposal)}`
     : proposal.title || '(untitled)'
 }
 
@@ -325,7 +325,7 @@ function ProposalNode({
   const displayTitle = proposalDisplayTitle(proposal)
   return (
     <li className="grp-node grp-node--bundle">
-      <div className="grp-row">
+      <div className="grp-row grp-row--bundle">
         <input
           className="grp-check"
           type="checkbox"
@@ -348,7 +348,7 @@ function ProposalNode({
             ⠿
           </button>
         )}
-        <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
+        {!isAddition && <span className="grp-kind">🎬</span>}
         <span className="grp-row__content">
           <span className="grp-title-cluster">
             <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />

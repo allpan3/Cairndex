@@ -500,7 +500,8 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
   await expect(checkbox).toBeChecked()
-  const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
+  const additionTitle = page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })
+  const dragHandle = page.getByRole('button', { name: `Drag bundle Add to 🎬 ${targetTitle}` })
   const destinationButton = page.getByRole('button', {
     name: 'Create a new bundle from these files',
   })
@@ -517,12 +518,14 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)
 
   const titleBox = await additionTitle.boundingBox()
+  const dragBox = await dragHandle.boundingBox()
   const destinationBox = await destinationButton.boundingBox()
   const contentBox = await rowContent.boundingBox()
   const countBox = await fileCount.boundingBox()
-  if (!titleBox || !destinationBox || !contentBox || !countBox) {
+  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox) {
     throw new Error('missing grouping destination geometry')
   }
+  expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
   expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
   expect(
     Math.abs(destinationBox.y + destinationBox.height / 2 - (titleBox.y + titleBox.height / 2)),
@@ -558,7 +561,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   ).toBeVisible()
 
   await addBackButton.click()
-  await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })
 
