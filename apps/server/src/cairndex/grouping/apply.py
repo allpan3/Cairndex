@@ -205,10 +205,10 @@ def _apply_addition(session: Session, proposal: GroupingProposal, result: ApplyR
         return
 
     role_by_id = {pf.asset_file_id: pf.proposed_role for pf in proposal.files}
-    seq_by_id = {pf.asset_file_id: pf.sequence for pf in proposal.files}
     source_bundles: set[AssetBundle] = set()
+    base_sequence = max((row.sequence for row in target.files), default=-1) + 1
     moved = 0
-    for pf in proposal.files:
+    for offset, pf in enumerate(proposal.files):
         row = session.get(AssetFile, pf.asset_file_id)
         if row is None:
             result.conflicts.append(_conflict(proposal, "a file to add no longer exists"))
@@ -225,7 +225,7 @@ def _apply_addition(session: Session, proposal: GroupingProposal, result: ApplyR
         source_bundles.add(row.bundle)
         row.bundle_id = target.id
         row.role = role_by_id.get(row.id, row.role)
-        row.sequence = seq_by_id.get(row.id, row.sequence)
+        row.sequence = base_sequence + offset
         moved += 1
 
     if moved == 0:

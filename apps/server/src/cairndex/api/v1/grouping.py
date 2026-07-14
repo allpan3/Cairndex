@@ -15,6 +15,8 @@ from cairndex.api.schemas.grouping import (
     ApplyResultRead,
     PlanRead,
     PlanSummary,
+    ProposalFileRead,
+    ProposalFileReorder,
     ProposalRead,
     ProposalUpdate,
 )
@@ -69,6 +71,19 @@ def update_proposal(
     """Rename a new-bundle suggestion before its open plan is applied."""
     proposal = plan_store.rename_bundle_proposal(db, plan_id, proposal_id, payload.title)
     return ProposalRead.model_validate(proposal)
+
+
+# Persist the reviewed playback order before grouping apply
+@router.put(
+    "/plans/{plan_id}/proposals/{proposal_id}/files/order",
+    response_model=list[ProposalFileRead],
+)
+def reorder_proposal_files(
+    plan_id: str, proposal_id: str, payload: ProposalFileReorder, db: LibrarySession
+) -> list[ProposalFileRead]:
+    """Replace a bundle suggestion's complete file order while its plan is open."""
+    files = plan_store.reorder_proposal_files(db, plan_id, proposal_id, payload.ordered_ids)
+    return [ProposalFileRead.model_validate(proposal_file) for proposal_file in files]
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)

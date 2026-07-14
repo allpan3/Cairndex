@@ -24,6 +24,15 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
+- **Grouping-review file ordering.** Bundle suggestions now expose accessible
+  up/down controls for arranging files before acceptance. The reviewed order is
+  persisted on the open plan through
+  `PUT /grouping/plans/{plan_id}/proposals/{proposal_id}/files/order` and becomes
+  the confirmed bundle playlist sequence. New suggestions default to video,
+  then audio, then image, then remaining files while retaining natural order
+  within each group. Files proposed for an existing bundle append after its
+  current sequence in the reviewed order; source files are never changed.
+
 - **One remembered media location per bundle.** A new additive
   `bundle_cursors` table stores the current ordered image/video independently
   from bundle metadata; `PUT /bundles/{bundle_id}/cursor` updates it without a

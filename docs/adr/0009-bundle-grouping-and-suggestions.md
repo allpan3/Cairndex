@@ -87,9 +87,11 @@ Concretely:
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external
-   `.srt`/`.vtt` become subtitle tracks linked to the primary video
-   (language/forced parsed from the suffix, per ADR-0003); `sequence` comes from
-   numeric/name order.
+   `.srt`/`.vtt` become subtitle tracks linked to the current video
+   (language/forced parsed from the suffix, per ADR-0003). As amended on
+   2026-07-14, the default `sequence` ranks video, then audio, then image, then
+   remaining files, preserving numeric/name order within each group; grouping
+   review can persist an exact override before apply.
 
 ## Provisional bundle model
 

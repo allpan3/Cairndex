@@ -372,13 +372,18 @@ Current workflow details:
 
 - scan jobs persist an open grouping plan without applying it;
 - the primary **Update** flow runs scan/grouping-plan generation, then metadata probe, refreshes affected queries, and opens grouping review when suggestions exist;
-- the grouping review UI supports checkbox selection, parent/child cascading, Select all / Deselect all, inline rename for new-bundle suggestions, and **Accept selected**;
+- the grouping review UI supports checkbox selection, parent/child cascading,
+  Select all / Deselect all, inline rename for new-bundle suggestions, persisted
+  up/down file reordering within bundle suggestions, and **Accept selected**;
+- suggested file order is video first, then audio, then image, then every other
+  file, preserving natural path order within each group; review can override the
+  sequence, which becomes the bundle playlist order on apply;
 - applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
 - confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered file in its directory is suggested as an addition, not auto-applied;
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
 - fast-add and manual creation confirm immediately because the user already chose the grouping.
 
-Richer edit-before-apply grouping UI for merge/split/reclassify remains a follow-up. Addition proposals name an existing confirmed bundle and are intentionally not rename controls.
+Richer edit-before-apply grouping UI for merge/split/reclassify remains a follow-up. Addition proposals name an existing confirmed bundle and are intentionally not rename controls, but their proposed files can be reordered before they are appended.
 
 ## UI and interaction direction
 

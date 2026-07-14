@@ -268,7 +268,10 @@ before apply.
 Grouping behavior:
 
 - the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
-  reasons, parent links, and natural ordering;
+  reasons, parent links, and a stable video → audio → image → remaining-files
+  order (natural path order within each group);
+- grouping review can persist an exact bundle-proposal file sequence before
+  apply; that sequence becomes the confirmed bundle's playlist order;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
 - confirmed bundles are excluded from re-grouping; new files in confirmed-owned
   directories are proposed as additions;
@@ -563,7 +566,7 @@ authenticating reverse proxy, not the public internet.
 
 ## 14. Known architectural debt
 
-- richer grouping review editing before apply (merge/split/reclassify/rename);
+- richer grouping review editing before apply (merge/split/reclassify);
 - browse-summary query optimization and indexes for larger libraries;
 - cross-filesystem moved-file repair and manual repair candidates;
 - scheduled scans and stronger job scheduling;

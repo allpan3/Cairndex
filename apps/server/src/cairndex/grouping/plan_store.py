@@ -58,6 +58,31 @@ def rename_bundle_proposal(
     return proposal
 
 
+# Persist an exact file order only for a bundle proposal on an open plan
+def reorder_proposal_files(
+    session: Session, plan_id: str, proposal_id: str, ordered_ids: list[str]
+) -> list[GroupingProposalFile]:
+    """Set dense proposed file sequences before the grouping plan is applied."""
+    plan = get_plan(session, plan_id)
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be edited")
+
+    proposal = session.get(GroupingProposal, proposal_id)
+    if proposal is None or proposal.plan_id != plan.id:
+        raise NotFoundError(f"grouping proposal {proposal_id!r} not found")
+    if proposal.kind is not ProposalKind.BUNDLE:
+        raise ValidationError("only bundle suggestion files can be reordered")
+
+    by_id = {proposal_file.asset_file_id: proposal_file for proposal_file in proposal.files}
+    if len(ordered_ids) != len(by_id) or set(ordered_ids) != set(by_id):
+        raise ValidationError("ordered ids must be exactly the proposal's files")
+    for sequence, asset_file_id in enumerate(ordered_ids):
+        by_id[asset_file_id].sequence = sequence
+    session.flush()
+    session.expire(proposal, ["files"])
+    return list(proposal.files)
+
+
 def supersede_open_plans(session: Session) -> None:
     """Mark every still-open plan superseded (a newer plan takes over)."""
     session.execute(

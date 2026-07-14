@@ -240,7 +240,7 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await storyboardRequest
 })
 
-test('double-click renames a bundle suggestion before accepting it', async ({ page }) => {
+test('edits a bundle suggestion before accepting it', async ({ page }) => {
   await mockApi(page)
   const proposal = {
     id: 'proposal1',
@@ -258,9 +258,22 @@ test('double-click renames a bundle suggestion before accepting it', async ({ pa
         proposed_role: 'primary_video',
         sequence: 0,
       },
+      {
+        asset_file_id: 'file2',
+        relative_path: 'SRCV-005/SRCV-005.mp3',
+        proposed_role: 'attachment',
+        sequence: 1,
+      },
+      {
+        asset_file_id: 'file3',
+        relative_path: 'SRCV-005/cover.jpg',
+        proposed_role: 'cover',
+        sequence: 2,
+      },
     ],
   }
   let renamedTitle: string | null = null
+  let reorderedIds: string[] | null = null
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
       json: [
@@ -292,6 +305,13 @@ test('double-click renames a bundle suggestion before accepting it', async ({ pa
     renamedTitle = (route.request().postDataJSON() as { title: string }).title
     return route.fulfill({ json: { ...proposal, title: renamedTitle } })
   })
+  await page.route('**/grouping/plans/plan1/proposals/proposal1/files/order', (route) => {
+    reorderedIds = (route.request().postDataJSON() as { ordered_ids: string[] }).ordered_ids
+    const byId = new Map(proposal.files.map((file) => [file.asset_file_id, file]))
+    return route.fulfill({
+      json: reorderedIds.map((id, sequence) => ({ ...byId.get(id)!, sequence })),
+    })
+  })
 
   await page.goto('/')
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
@@ -305,6 +325,14 @@ test('double-click renames a bundle suggestion before accepting it', async ({ pa
   await expect(
     page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005' }),
   ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Move SRCV-005.mp4 down' }).click()
+  await expect.poll(() => reorderedIds).toEqual(['file2', 'file1', 'file3'])
+  await expect(page.locator('.grp-file__name')).toHaveText([
+    'SRCV-005.mp3',
+    'SRCV-005.mp4',
+    'cover.jpg',
+  ])
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {

@@ -83,6 +83,7 @@ import {
   removeFile,
   revokeDevice,
   renameGroupingProposal,
+  reorderGroupingProposalFiles,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -481,6 +482,31 @@ export function useRenameGroupingProposal(planId: string | null) {
               ...current,
               proposals: current.proposals.map((proposal) =>
                 proposal.id === updated.id ? updated : proposal,
+              ),
+            }
+          : current,
+      ),
+  })
+}
+
+/** Persist a reviewed proposal file order and update the open plan in-place. */
+export function useReorderGroupingProposalFiles(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proposalId, orderedIds }: { proposalId: string; orderedIds: string[] }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return reorderGroupingProposalFiles(planId, proposalId, orderedIds).then((files) => ({
+        proposalId,
+        files,
+      }))
+    },
+    onSuccess: ({ proposalId, files }) =>
+      qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
+        current
+          ? {
+              ...current,
+              proposals: current.proposals.map((proposal) =>
+                proposal.id === proposalId ? { ...proposal, files } : proposal,
               ),
             }
           : current,

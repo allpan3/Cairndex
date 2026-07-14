@@ -7,6 +7,7 @@ import {
   useGroupingPlan,
   useGroupingPlans,
   useRenameGroupingProposal,
+  useReorderGroupingProposalFiles,
 } from '../api/hooks'
 
 /**
@@ -50,6 +51,13 @@ interface RenameControls {
   start: (proposal: GroupingProposal) => void
   commit: (proposalId: string, title: string) => void
   cancel: () => void
+}
+
+/** Coordinate persisted file-order edits across the recursive proposal tree. */
+interface ReorderControls {
+  canEdit: boolean
+  pending: boolean
+  move: (proposal: GroupingProposal, index: number, delta: number) => void
 }
 
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
@@ -143,11 +151,13 @@ function ProposalNode({
   selectedIds,
   onToggle,
   rename,
+  reorder,
 }: {
   node: TreeNode
   selectedIds: Set<string>
   onToggle: (node: TreeNode, checked: boolean) => void
   rename: RenameControls
+  reorder: ReorderControls
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -178,6 +188,7 @@ function ProposalNode({
                 selectedIds={selectedIds}
                 onToggle={onToggle}
                 rename={rename}
+                reorder={reorder}
               />
             ))}
           </ul>
@@ -202,10 +213,34 @@ function ProposalNode({
         {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
       </div>
       <ul className="grp-files">
-        {proposal.files.map((f) => (
+        {proposal.files.map((f, index) => (
           <li key={f.asset_file_id} className="grp-file">
             <span className="grp-file__name">{baseName(f.relative_path)}</span>
             <span className="grp-file__role">{ROLE_LABEL[f.proposed_role] ?? f.proposed_role}</span>
+            {reorder.canEdit && proposal.files.length > 1 && (
+              <span className="grp-file__actions">
+                <button
+                  type="button"
+                  className="tip"
+                  data-tip="Move up"
+                  aria-label={`Move ${baseName(f.relative_path)} up`}
+                  disabled={reorder.pending || index === 0}
+                  onClick={() => reorder.move(proposal, index, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="tip"
+                  data-tip="Move down"
+                  aria-label={`Move ${baseName(f.relative_path)} down`}
+                  disabled={reorder.pending || index === proposal.files.length - 1}
+                  onClick={() => reorder.move(proposal, index, 1)}
+                >
+                  ↓
+                </button>
+              </span>
+            )}
           </li>
         ))}
       </ul>
@@ -252,6 +287,7 @@ export function GroupingReview({
   const plan = useGroupingPlan(planId)
   const generate = useGenerateGroupingPlan()
   const rename = useRenameGroupingProposal(planId)
+  const reorder = useReorderGroupingProposalFiles(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -346,11 +382,22 @@ export function GroupingReview({
       )
   }
 
+  const moveFile = (proposal: GroupingProposal, index: number, delta: number) => {
+    const target = index + delta
+    const orderedIds = proposal.files.map((file) => file.asset_file_id)
+    const currentId = orderedIds[index]
+    const targetId = orderedIds[target]
+    if (currentId === undefined || targetId === undefined) return
+    orderedIds[index] = targetId
+    orderedIds[target] = currentId
+    reorder.mutate({ proposalId: proposal.id, orderedIds })
+  }
+
   const status = plan.data?.status
   const applied = status === 'applied' || result !== null
-  const busy = generate.isPending || rename.isPending || apply.isPending
+  const busy = generate.isPending || rename.isPending || reorder.isPending || apply.isPending
   const actionBlocked = busy || editing !== null
-  const error = (generate.error ?? apply.error) as Error | null
+  const error = (generate.error ?? reorder.error ?? apply.error) as Error | null
   const selectedCount = selectedIds.size
   const renameControls: RenameControls = {
     canEdit: status === 'open',
@@ -359,6 +406,11 @@ export function GroupingReview({
     start: startRename,
     commit: commitRename,
     cancel: cancelRename,
+  }
+  const reorderControls: ReorderControls = {
+    canEdit: status === 'open',
+    pending: reorder.isPending,
+    move: moveFile,
   }
 
   return (
@@ -412,6 +464,7 @@ export function GroupingReview({
                     selectedIds={selectedIds}
                     onToggle={toggleNode}
                     rename={renameControls}
+                    reorder={reorderControls}
                   />
                 ))}
               </ul>
