@@ -4,8 +4,8 @@
 
 Branch `feat/device-pairing` (off `main` at `776e0d7`, after M12 merged as
 #12). Implementation commits: `6e4cf5e` (`feat: add device pairing and bearer
-auth`) and tested implementation tip `cfc754f` (`feat: add Settings Devices
-page`).
+auth`), `cfc754f` (`feat: add Settings Devices page`), and tested implementation
+tip `d07ed2d` (`fix: block offline library pairing bypass`).
 
 Completed:
 
@@ -47,13 +47,13 @@ Completed:
 Verification (temporary databases/libraries only; no user media):
 
 - Backend: `ruff check`, `ruff format --check`, `mypy src`, and full pytest
-  (**411 passed**, one pre-existing Starlette/httpx deprecation warning).
+  (**412 passed**, one pre-existing Starlette/httpx deprecation warning).
 - Frontend: Prettier check, ESLint, TypeScript, full Vitest (**97 passed**), and
-  production build. The first unit run hit the unrelated M12
+  production build. Two development runs hit the unrelated intermittent M12
   `falls back to a storyboard when direct playback rejects` timing assertion;
-  its focused rerun and the immediate full rerun both passed.
-- Playwright: full suite run **unpiped** with seven workers exited 0
-  (**66 passed**), including the new real-backend Devices flow. The known
+  focused/immediate full reruns passed, and the final required full run passed.
+- Playwright: two full suite runs **unpiped** with seven workers each exited 0
+  (**66 passed** each), including the new real-backend Devices flow. The known
   pre-existing real-backend flake did not reproduce. A configurable dedicated
   Playwright frontend port prevents the runner from reusing another checkout's
   Vite server.
