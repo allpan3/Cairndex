@@ -185,7 +185,7 @@ Required behavior:
 - parent-child nesting;
 - many-to-many membership between bundles and collections;
 - zero-collection bundles appear under `Uncategorized` or another clearly named system view;
-- collection counts;
+- collection counts that roll up distinct bundles across the full descendant subtree;
 - `Show subcollection contents` / `Include descendants` toggle;
 - drag-and-drop assignment in a later UI milestone;
 - no file movement when collection membership changes.
@@ -413,7 +413,7 @@ The tag selector should combine the useful Eagle group picker with the new hiera
 
 ### Bundle Browser
 
-Inside a collection, show breadcrumb/title, direct subcollection selector/count, `Show subcollection contents` toggle, normal filters and views, and collection counts in the sidebar.
+Inside a collection, show breadcrumb/title, direct subcollection selector/count, `Show subcollection contents` toggle, normal filters and views, and descendant-inclusive collection counts in the sidebar.
 
 ### File Browser
 

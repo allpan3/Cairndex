@@ -326,9 +326,21 @@ def test_cleanup_bundle_order_by_title_rewrites_collection_membership(session: S
 
 def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None:
     base = f"/api/v1/libraries/{library_id}"
-    collection_id = client.post(f"{base}/collections", json={"name": "F"}).json()["id"]
-    bundle_id = client.post(f"{base}/bundles", json={"title": "x"}).json()["id"]
-    client.put(f"{base}/bundles/{bundle_id}/collections", json={"ids": [collection_id]})
+    root = client.post(f"{base}/collections", json={"name": "Root"}).json()["id"]
+    child = client.post(f"{base}/collections", json={"name": "Child", "parent_id": root}).json()[
+        "id"
+    ]
+    leaf = client.post(f"{base}/collections", json={"name": "Leaf", "parent_id": child}).json()[
+        "id"
+    ]
+    empty = client.post(f"{base}/collections", json={"name": "Empty"}).json()["id"]
+
+    direct = client.post(f"{base}/bundles", json={"title": "direct"}).json()["id"]
+    nested = client.post(f"{base}/bundles", json={"title": "nested"}).json()["id"]
+    shared = client.post(f"{base}/bundles", json={"title": "shared"}).json()["id"]
+    client.put(f"{base}/bundles/{direct}/collections", json={"ids": [root]})
+    client.put(f"{base}/bundles/{nested}/collections", json={"ids": [leaf]})
+    client.put(f"{base}/bundles/{shared}/collections", json={"ids": [child, leaf]})
 
     counts = client.get(f"{base}/collections/counts").json()["counts"]
-    assert counts[collection_id] == 1
+    assert counts == {root: 3, child: 2, leaf: 2, empty: 0}

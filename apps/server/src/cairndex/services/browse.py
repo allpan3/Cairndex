@@ -511,17 +511,30 @@ def view_counts(session: Session) -> dict[str, int]:
     }
 
 
+# Count each collection's distinct bundle membership across its full subtree
 def collection_counts(session: Session) -> dict[str, int]:
-    """Direct (non-recursive) bundle count per collection id, for the sidebar."""
-    stmt = select(asset_bundle_collections.c.collection_id, func.count()).group_by(
-        asset_bundle_collections.c.collection_id
+    """Distinct bundle count per collection subtree, for the sidebar."""
+    subtree = select(Collection.id.label("ancestor_id"), Collection.id.label("descendant_id")).cte(
+        "collection_subtree", recursive=True
     )
-    rows = session.execute(stmt).all()
-    counts = {collection_id: count for collection_id, count in rows}
-    # Ensure every collection appears (zero if empty).
-    for (collection_id,) in session.execute(select(Collection.id)).all():
-        counts.setdefault(collection_id, 0)
-    return counts
+    subtree = subtree.union_all(
+        select(subtree.c.ancestor_id, Collection.id).join(
+            subtree, Collection.parent_id == subtree.c.descendant_id
+        )
+    )
+    stmt = (
+        select(
+            subtree.c.ancestor_id,
+            func.count(func.distinct(asset_bundle_collections.c.bundle_id)),
+        )
+        .select_from(subtree)
+        .outerjoin(
+            asset_bundle_collections,
+            asset_bundle_collections.c.collection_id == subtree.c.descendant_id,
+        )
+        .group_by(subtree.c.ancestor_id)
+    )
+    return {collection_id: count for collection_id, count in session.execute(stmt).all()}
 
 
 def tag_counts(session: Session) -> dict[str, int]:

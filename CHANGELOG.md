@@ -101,6 +101,11 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
+- **Collection counts include nested bundles.** Sidebar and collection-card
+  counts now roll up distinct bundles from the collection’s entire descendant
+  subtree. A bundle assigned to more than one nested collection is counted once
+  for each ancestor, while empty collections still report zero.
+
 - **Storyboard-to-video frame alignment.** Resting after a sprite skim now
   uses format-v2 sprites because ffmpeg's prior default `fps` timing could put a
   neighboring source frame in a tile whose VTT cue named the interval boundary.
