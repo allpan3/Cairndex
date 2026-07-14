@@ -1208,6 +1208,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Proposal
+         * @description Rename a new-bundle suggestion before its open plan is applied.
+         */
+        patch: operations["update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch"];
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/jobs/probe": {
         parameters: {
             query?: never;
@@ -2896,6 +2916,11 @@ export interface components {
             target_bundle_id: string | null;
             /** Title */
             title: string | null;
+        };
+        /** ProposalUpdate */
+        ProposalUpdate: {
+            /** Title */
+            title: string;
         };
         /** ProposedRoleRead */
         ProposedRoleRead: {
@@ -5867,6 +5892,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplyResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
                 };
             };
             /** @description Validation Error */

@@ -11,7 +11,7 @@ from __future__ import annotations
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import NotFoundError
+from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import GroupingPlanStatus, ProposalKind
 from cairndex.grouping.service import SuggestScope, gather_observations
 from cairndex.grouping.suggester import GroupingPlan as PlanData
@@ -33,6 +33,29 @@ def get_plan(session: Session, plan_id: str) -> GroupingPlan:
 
 def list_plans(session: Session) -> list[GroupingPlan]:
     return list(session.scalars(select(GroupingPlan).order_by(GroupingPlan.generated_at.desc())))
+
+
+# Persist an edited title only for a new-bundle proposal on an open plan
+def rename_bundle_proposal(
+    session: Session, plan_id: str, proposal_id: str, title: str
+) -> GroupingProposal:
+    """Rename a new-bundle suggestion while its grouping plan is open."""
+    plan = get_plan(session, plan_id)
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be edited")
+
+    proposal = session.get(GroupingProposal, proposal_id)
+    if proposal is None or proposal.plan_id != plan.id:
+        raise NotFoundError(f"grouping proposal {proposal_id!r} not found")
+    if proposal.kind is not ProposalKind.BUNDLE or proposal.target_bundle_id is not None:
+        raise ValidationError("only new bundle suggestions can be renamed")
+
+    normalized = title.strip()
+    if not normalized:
+        raise ValidationError("bundle suggestion title cannot be empty")
+    proposal.title = normalized
+    session.flush()
+    return proposal
 
 
 def supersede_open_plans(session: Session) -> None:

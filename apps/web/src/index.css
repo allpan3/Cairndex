@@ -2152,6 +2152,30 @@ code {
   color: var(--text-strong);
   font-size: 13px;
 }
+.grp-title--editable {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: text;
+  text-align: left;
+}
+.grp-title--editable:hover,
+.grp-title--editable:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 3px;
+}
+.grp-title-input {
+  min-width: 160px;
+  max-width: min(360px, 55vw);
+  padding: 2px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  outline: none;
+}
 .grp-reason {
   font-size: 11px;
   color: var(--text-muted);

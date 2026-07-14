@@ -46,8 +46,8 @@ model.
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail. Important follow-ups
-include richer edit-before-apply grouping review, File Browser write mode and
-desktop-client integration, cross-filesystem repair candidates, and token
+include additional edit-before-apply grouping controls, File Browser write mode
+and desktop-client integration, cross-filesystem repair candidates, and token
 rotation/expiry policy. Job progress bars, large-library browse indexing,
 whole-library indexed text search (SQLite FTS5), media fallback/transcoding,
 and pinyin matching in local tag/collection and file pickers are implemented.

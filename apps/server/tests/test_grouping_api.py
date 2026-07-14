@@ -38,6 +38,14 @@ def test_generate_get_and_apply_plan(
     assert fetched.status_code == 200
     assert fetched.json()["id"] == plan_id
 
+    proposal_id = bundle_proposals[0]["id"]
+    renamed = client.patch(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}",
+        json={"title": "  Renamed Cosmos  "},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Renamed Cosmos"
+
     listed = client.get(f"{base}/plans")
     assert listed.status_code == 200
     assert any(p["id"] == plan_id for p in listed.json())
@@ -51,6 +59,34 @@ def test_generate_get_and_apply_plan(
 
     bundle = session.scalars(select(AssetBundle)).one()
     assert bundle.grouping_state is GroupingState.CONFIRMED
+    assert bundle.title == "Renamed Cosmos"
+
+    closed_edit = client.patch(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}", json={"title": "Too late"}
+    )
+    assert closed_edit.status_code == 409
+
+
+# Keep collection suggestions out of the bundle-title edit path
+def test_rename_rejects_non_bundle_proposal(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    (library_root / "Movies" / "Cosmos").mkdir(parents=True)
+    (library_root / "Movies" / "Cosmos" / "cosmos.mp4").write_text("v")
+    (library_root / "Movies" / "Waves").mkdir()
+    (library_root / "Movies" / "Waves" / "waves.mp4").write_text("v")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    container = next(p for p in plan["proposals"] if p["kind"] == "container")
+
+    response = client.patch(
+        f"{base}/plans/{plan['id']}/proposals/{container['id']}",
+        json={"title": "Not a bundle"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
 
 
 def test_get_unknown_plan_is_404(client: TestClient, library_id: str) -> None:

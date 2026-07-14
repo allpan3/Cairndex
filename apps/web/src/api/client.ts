@@ -477,6 +477,16 @@ export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSu
 export const fetchGroupingPlan = (id: string, signal?: AbortSignal): Promise<GroupingPlan> =>
   getJson<GroupingPlan>(`${lib()}/grouping/plans/${id}`, signal)
 
+/** Rename a new-bundle suggestion while its grouping plan is open. */
+export const renameGroupingProposal = (
+  planId: string,
+  proposalId: string,
+  title: string,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(`${lib()}/grouping/plans/${planId}/proposals/${proposalId}`, 'PATCH', {
+    title,
+  })
+
 /** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */
 export const applyGroupingPlan = (
   id: string,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import type { GroupingApplyResult, GroupingProposal } from '../api/client'
 import {
@@ -6,6 +6,7 @@ import {
   useGenerateGroupingPlan,
   useGroupingPlan,
   useGroupingPlans,
+  useRenameGroupingProposal,
 } from '../api/hooks'
 
 /**
@@ -41,6 +42,16 @@ interface TreeNode {
   children: TreeNode[]
 }
 
+/** Coordinate one persisted inline rename across the recursive proposal tree. */
+interface RenameControls {
+  canEdit: boolean
+  editingId: string | null
+  pending: boolean
+  start: (proposal: GroupingProposal) => void
+  commit: (proposalId: string, title: string) => void
+  cancel: () => void
+}
+
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
   const byParent = new Map<string | null, GroupingProposal[]>()
   for (const p of proposals) {
@@ -71,14 +82,72 @@ function Confidence({ value }: { value: number }) {
   )
 }
 
+/** Render a bundle suggestion title with an inline double-click rename field. */
+function BundleTitle({
+  proposal,
+  isAddition,
+  rename,
+}: {
+  proposal: GroupingProposal
+  isAddition: boolean
+  rename: RenameControls
+}) {
+  const displayTitle = proposal.title || '(untitled)'
+  const editable = rename.canEdit && !isAddition
+  if (editable && rename.editingId === proposal.id) {
+    return (
+      <input
+        className="grp-title grp-title-input"
+        aria-label="Bundle suggestion title"
+        defaultValue={proposal.title ?? ''}
+        autoFocus
+        disabled={rename.pending}
+        onFocus={(event) => event.currentTarget.select()}
+        onBlur={(event) => rename.commit(proposal.id, event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            rename.commit(proposal.id, event.currentTarget.value)
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            rename.cancel()
+          }
+        }}
+      />
+    )
+  }
+  if (editable) {
+    return (
+      <button
+        type="button"
+        className="grp-title grp-title--editable"
+        aria-label={`Rename bundle suggestion ${displayTitle}`}
+        title="Double-click to rename"
+        onDoubleClick={() => rename.start(proposal)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === 'F2') {
+            event.preventDefault()
+            rename.start(proposal)
+          }
+        }}
+      >
+        {displayTitle}
+      </button>
+    )
+  }
+  return <span className="grp-title">{isAddition ? `Add to ${displayTitle}` : displayTitle}</span>
+}
+
 function ProposalNode({
   node,
   selectedIds,
   onToggle,
+  rename,
 }: {
   node: TreeNode
   selectedIds: Set<string>
   onToggle: (node: TreeNode, checked: boolean) => void
+  rename: RenameControls
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -108,6 +177,7 @@ function ProposalNode({
                 node={c}
                 selectedIds={selectedIds}
                 onToggle={onToggle}
+                rename={rename}
               />
             ))}
           </ul>
@@ -127,9 +197,7 @@ function ProposalNode({
           aria-label={`Accept ${proposal.title || 'bundle'}`}
         />
         <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
-        <span className="grp-title">
-          {isAddition ? `Add to ${proposal.title || 'bundle'}` : proposal.title || '(untitled)'}
-        </span>
+        <BundleTitle proposal={proposal} isAddition={isAddition} rename={rename} />
         <Confidence value={proposal.confidence} />
         {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
       </div>
@@ -183,10 +251,14 @@ export function GroupingReview({
   const planId = chosenId ?? openPlan?.id ?? null
   const plan = useGroupingPlan(planId)
   const generate = useGenerateGroupingPlan()
+  const rename = useRenameGroupingProposal(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
+  const [editing, setEditing] = useState<{ id: string; original: string } | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const committingRename = useRef<string | null>(null)
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
   const allProposalIds = useMemo(() => collectIds(tree), [tree])
@@ -212,10 +284,54 @@ export function GroupingReview({
       onSuccess: (p) => {
         setChosenId(p.id)
         setResult(null)
+        setEditing(null)
+        setRenameError(null)
         setDeselectedIds(new Set())
         setNotice('Suggestions generated from the current library state.')
       },
     })
+
+  const startRename = (proposal: GroupingProposal) => {
+    rename.reset()
+    setRenameError(null)
+    setEditing({ id: proposal.id, original: proposal.title?.trim() ?? '' })
+  }
+
+  const cancelRename = () => {
+    if (rename.isPending) return
+    rename.reset()
+    setRenameError(null)
+    setEditing(null)
+  }
+
+  const commitRename = (proposalId: string, rawTitle: string) => {
+    if (editing?.id !== proposalId || committingRename.current === proposalId) return
+    const title = rawTitle.trim()
+    if (!title) {
+      setRenameError('Bundle suggestion title cannot be empty.')
+      return
+    }
+    if (title === editing.original) {
+      cancelRename()
+      return
+    }
+
+    committingRename.current = proposalId
+    setRenameError(null)
+    rename.mutate(
+      { proposalId, title },
+      {
+        onSuccess: () => setEditing(null),
+        onError: (failure) =>
+          setRenameError(
+            failure instanceof Error ? failure.message : 'Could not rename suggestion.',
+          ),
+        onSettled: () => {
+          committingRename.current = null
+        },
+      },
+    )
+  }
 
   const onApply = () => {
     if (planId)
@@ -232,9 +348,18 @@ export function GroupingReview({
 
   const status = plan.data?.status
   const applied = status === 'applied' || result !== null
-  const busy = generate.isPending || apply.isPending
+  const busy = generate.isPending || rename.isPending || apply.isPending
+  const actionBlocked = busy || editing !== null
   const error = (generate.error ?? apply.error) as Error | null
   const selectedCount = selectedIds.size
+  const renameControls: RenameControls = {
+    canEdit: status === 'open',
+    editingId: editing?.id ?? null,
+    pending: rename.isPending,
+    start: startRename,
+    commit: commitRename,
+    cancel: cancelRename,
+  }
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -260,6 +385,7 @@ export function GroupingReview({
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
+          {renameError && <div className="grp-error">{renameError}</div>}
           {notice && !result && <div className="grp-notice">{notice}</div>}
 
           {result && <ResultPanel result={result} />}
@@ -285,6 +411,7 @@ export function GroupingReview({
                     node={node}
                     selectedIds={selectedIds}
                     onToggle={toggleNode}
+                    rename={renameControls}
                   />
                 ))}
               </ul>
@@ -301,7 +428,7 @@ export function GroupingReview({
         </div>
 
         <div className="modal__foot grp-foot">
-          <button className="btn" onClick={onGenerate} disabled={busy}>
+          <button className="btn" onClick={onGenerate} disabled={actionBlocked}>
             {generate.isPending ? 'Suggesting…' : 'Suggest grouping'}
           </button>
           <div className="grp-foot__spacer" />
@@ -313,7 +440,7 @@ export function GroupingReview({
             <button
               className="btn btn--primary"
               onClick={onApply}
-              disabled={busy || !plan.data || selectedCount === 0 || status !== 'open'}
+              disabled={actionBlocked || !plan.data || selectedCount === 0 || status !== 'open'}
             >
               {apply.isPending ? 'Accepting…' : 'Accept selected'}
             </button>

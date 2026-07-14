@@ -15,6 +15,8 @@ from cairndex.api.schemas.grouping import (
     ApplyResultRead,
     PlanRead,
     PlanSummary,
+    ProposalRead,
+    ProposalUpdate,
 )
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
@@ -57,6 +59,16 @@ def list_plans(db: LibrarySession) -> list[PlanSummary]:
 def get_plan(plan_id: str, db: LibrarySession) -> PlanRead:
     plan = plan_store.get_plan(db, plan_id)  # 404 if unknown
     return PlanRead.model_validate(plan)
+
+
+# Persist an inline bundle-title edit before grouping apply
+@router.patch("/plans/{plan_id}/proposals/{proposal_id}", response_model=ProposalRead)
+def update_proposal(
+    plan_id: str, proposal_id: str, payload: ProposalUpdate, db: LibrarySession
+) -> ProposalRead:
+    """Rename a new-bundle suggestion before its open plan is applied."""
+    proposal = plan_store.rename_bundle_proposal(db, plan_id, proposal_id, payload.title)
+    return ProposalRead.model_validate(proposal)
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)

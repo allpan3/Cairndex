@@ -244,6 +244,10 @@ subtitles, creates suggested collections, and never touches the filesystem.
 `POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
 that selected subset is accepted and the plan is marked applied, so unchecked
 proposals are not retained as pending work for the same plan.
+`PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a new BUNDLE
+proposal while the plan is open; apply uses that persisted title when it confirms
+the bundle. CONTAINER proposals and additions targeting an existing confirmed
+bundle remain read-only.
 
 ## Registry database
 
