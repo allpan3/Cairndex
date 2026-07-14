@@ -278,6 +278,18 @@ test('title editor mirrors its live text instead of shrinking to a fixed width',
   expect(review.container.querySelectorAll('.grp-title-input')).toHaveLength(1)
 })
 
+test('keeps suggestion reasons without rendering numeric confidence badges', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  const review = renderReview()
+
+  expect(await screen.findByText('holds related bundles')).toBeInTheDocument()
+  expect(screen.getByText('same filename stem')).toBeInTheDocument()
+  expect(screen.getByText('same folder')).toBeInTheDocument()
+  expect(review.container.querySelectorAll('.grp-conf')).toHaveLength(0)
+  expect(screen.queryByText('90%')).not.toBeInTheDocument()
+  expect(screen.queryByText('95%')).not.toBeInTheDocument()
+})
+
 test('switches one addition proposal to a renameable new bundle and back', async () => {
   const fetchMock = mockGroupingApi([ADDITION])
   vi.stubGlobal('fetch', fetchMock)
@@ -288,10 +300,26 @@ test('switches one addition proposal to a renameable new bundle and back', async
   })
   expect(checkbox).toBeChecked()
   expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Create new bundle instead' }))
+  expect(screen.getByText('2 new files')).toBeInTheDocument()
+  expect(screen.queryByText('Create new bundle instead')).not.toBeInTheDocument()
+  const createNew = screen.getByRole('button', {
+    name: 'Create a new bundle from these files',
+  })
+  expect(createNew).toHaveAttribute('aria-pressed', 'false')
+  expect(createNew).toHaveAttribute('data-tip', 'Create a new bundle from these files')
+  fireEvent.click(createNew)
 
-  await screen.findByText('manual')
-  expect(screen.getByText('create 2 files as a new bundle')).toBeInTheDocument()
+  const addToExisting = await screen.findByRole('button', {
+    name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
+  })
+  expect(addToExisting).toHaveAttribute('aria-pressed', 'true')
+  expect(addToExisting).toHaveAttribute(
+    'data-tip',
+    'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
+  )
+  expect(screen.getByText('2 files')).toBeInTheDocument()
+  expect(screen.queryByText('manual')).not.toBeInTheDocument()
+  expect(screen.queryByText('create 2 files as a new bundle')).not.toBeInTheDocument()
   expect(checkbox).toBeChecked()
   fireEvent.doubleClick(
     screen.getByRole('button', { name: 'Rename bundle suggestion Surf On The Ridge - 4K' }),
@@ -301,9 +329,13 @@ test('switches one addition proposal to a renameable new bundle and back', async
   fireEvent.keyDown(input, { key: 'Enter' })
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
 
-  fireEvent.click(screen.getByRole('button', { name: 'Add to Sky, Sand, Sea & Salt - 4K instead' }))
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
+    }),
+  )
   await screen.findByText('Add to Sky, Sand, Sea & Salt - 4K')
-  fireEvent.click(screen.getByRole('button', { name: 'Create new bundle instead' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
 
   const destinationCalls = fetchMock.mock.calls.filter(([url]) => url.endsWith('/destination'))
@@ -322,7 +354,12 @@ test('uses the legacy proposal title when the target snapshot title is absent', 
   renderReview()
 
   expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Create new bundle instead' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
+  expect(
+    await screen.findByRole('button', {
+      name: 'Add these files to “Legacy Target” instead',
+    }),
+  ).toBeInTheDocument()
 })
 
 test('disables destination actions while saving and surfaces a switch error', async () => {
@@ -344,7 +381,9 @@ test('disables destination actions while saving and surfaces a switch error', as
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
 
-  const switchButton = await screen.findByRole('button', { name: 'Create new bundle instead' })
+  const switchButton = await screen.findByRole('button', {
+    name: 'Create a new bundle from these files',
+  })
   fireEvent.click(switchButton)
   await waitFor(() => expect(switchButton).toBeDisabled())
   finishDestination?.()

@@ -25,14 +25,17 @@ grouped under `Unreleased` until the first tagged release.
   `trickplay`, `hls`, `progress`, and `pairing`.
 
 - **Reversible grouping destinations.** A re-scan addition still recommends its
-  existing confirmed bundle by default, but grouping review can convert the same
-  proposal in place to **Create new bundle instead** and switch back without
-  losing selection, file order, collection placement, or an edited new-bundle
-  title. New mode receives normal bundle roles and remains applicable if the old
-  target disappears; existing mode retains the current addition behavior. The
+  existing confirmed bundle by default, but grouping review can switch that same
+  proposal in place between the existing target and a new bundle without losing
+  selection, file order, collection placement, or an edited new-bundle title.
+  New mode receives normal bundle roles and remains applicable if the old target
+  disappears; existing mode retains the current addition behavior. The
   choice and target-title snapshot are additive persisted plan fields exposed by
   a library-scoped destination endpoint. Bundle and collection rename fields now
   match their rendered title width and grow live up to the review-dialog edge.
+  The destination switch is a compact circular-arrows icon beside the title with
+  an immediate state-specific tooltip; numeric confidence and manual badges are
+  removed, and wrapped metadata stays aligned to the title column.
 
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;

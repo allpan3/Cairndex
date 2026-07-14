@@ -381,9 +381,9 @@ Current workflow details:
   drag-and-drop into any suggested collection or back to the top level, and
   **Accept selected**;
 - a re-scan addition recommends its existing confirmed bundle by default, with
-  **Create new bundle instead** converting that same proposal in place; the
-  owner can switch back without losing selection, file order, collection parent,
-  or an edited new-bundle title;
+  a compact, tooltip-described destination icon converting that same proposal
+  in place to a new bundle; the owner can switch back without losing selection,
+  file order, collection parent, or an edited new-bundle title;
 - suggested file order is video first, then audio, then image, then every other
   file, preserving natural path order within each group; review can override the
   sequence, which becomes the bundle playlist order on apply;
