@@ -259,6 +259,8 @@ Durable, reviewable snapshots of the grouping suggester output.
   return its id/proposal count without applying it.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (self
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
+  `target_bundle_title` (nullable display snapshot), `create_new_bundle`
+  (additive destination override, default false),
   `base_bundle_id` (the stable original identity used by explicitly edited
   bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
   `directory`, `confidence`, `reason`, `sort_order`.
@@ -274,14 +276,20 @@ that selected subset is accepted and the plan is marked applied, so unchecked
 proposals are not retained as pending work for the same plan.
 `PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
 CONTAINER proposal while the plan is open. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/destination` switches an addition
+between its existing target and a separate new bundle while retaining the target
+id as a reversible alternative. Existing mode uses addition roles; new mode uses
+normal bundle roles without changing reviewed sequence and permits proposal
+rename. A missing target blocks switching back to existing mode but does not
+block applying new mode. Legacy open plans backfill the target-title snapshot
+and derive their fresh-bundle title on first switch. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
 stable file id to an exact position within any BUNDLE proposal and rewrites dense
 sequence/derived-role values for every affected proposal. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
 into a CONTAINER proposal or back to the top level. These owner edits are marked
 explicitly so apply can preserve `base_bundle_id` across reviewed provisional
-membership changes. Confirmed bundles remain outside regenerated plans. Addition
-titles remain read-only; their files can participate in review moves.
+membership changes. Confirmed bundles remain outside regenerated plans.
 
 ## Registry database
 

@@ -29,6 +29,11 @@ bundle could silently fall in and out of, which read as noise.
    generation from inside grouping review therefore uses the same candidates as
    entering the review.
 
+   A new addition remains one proposal with its confirmed owner as the default
+   destination. The owner may explicitly switch that proposal to create a new
+   bundle instead without reintroducing the confirmed bundle as a grouping
+   candidate.
+
 2. **Retire the user-facing "review" state.** The "Needs review" badge is
    removed. Provisional/confirmed remain **internal** (they still drive
    re-scan-addition durability per ADR-0009 phase 5); they are no longer
@@ -42,8 +47,9 @@ bundle could silently fall in and out of, which read as noise.
 - The internal provisional/confirmed model is intentionally **kept** (removing
   it would be destructive and break ADR-0009 phase-5 rescan additions). Only the
   UI vocabulary changed.
-- No schema or API-shape change. The server-internal alternate scope is removed
-  so the endpoint and scan handler cannot drift apart again.
+- The candidate-scope amendment itself has no schema or API-shape change. The
+  later reversible addition destination uses additive plan fields and a scoped
+  proposal endpoint; it does not broaden suggestion eligibility.
 
 ## Amendment history
 
@@ -52,3 +58,6 @@ The 2026-07-03 decision originally gave manual **Suggest grouping** a broader
 and clicking **Suggest grouping** again changed the candidate set and made
 already-bundled files appear unbundled. The 2026-07-14 amendment removes that
 alternate scope and restores confirmation as the single grouping boundary.
+The same-day addition-destination amendment keeps that boundary while allowing
+the owner to apply newly eligible files as a separate bundle from the existing
+target suggested by the heuristic.

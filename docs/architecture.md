@@ -275,13 +275,18 @@ Grouping behavior:
 - grouping review persists file drag-and-drop within or across bundle proposals,
   bundle reparenting into suggested collections, and bundle/collection title
   edits before apply; reviewed file sequence becomes playlist order;
+- additions to confirmed bundles retain that bundle as a reversible target while
+  persisting a target-title snapshot, a derived fresh-bundle title, and the
+  owner's existing/new destination choice; switching modes recomputes roles but
+  preserves the reviewed sequence and proposal identity;
 - bundle proposals with no files and collection proposals with no file-backed
   descendants are automatically excluded from the accepted selection;
 - explicitly edited proposals retain their original bundle identity while
   confirmed bundles remain outside every grouping-regeneration candidate set;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
 - confirmed bundles are excluded from re-grouping; new files in confirmed-owned
-  directories are proposed as additions;
+  directories are proposed as additions, while an explicit new-bundle override
+  applies those files separately and leaves the confirmed target untouched;
 - applying a plan is the only step that confirms scan-staged bundles, creates
   suggested collections, assigns roles, selects a cover, and links external
   subtitles;

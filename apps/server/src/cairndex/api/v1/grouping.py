@@ -15,6 +15,7 @@ from cairndex.api.schemas.grouping import (
     ApplyResultRead,
     PlanRead,
     PlanSummary,
+    ProposalDestinationUpdate,
     ProposalFileMove,
     ProposalRead,
     ProposalReparent,
@@ -67,6 +68,21 @@ def update_proposal(
 ) -> ProposalRead:
     """Rename a bundle or collection suggestion before its open plan is applied."""
     proposal = plan_store.rename_proposal(db, plan_id, proposal_id, payload.title)
+    return ProposalRead.model_validate(proposal)
+
+
+# Persist an addition proposal's existing-versus-new destination choice
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/destination", response_model=ProposalRead)
+def update_proposal_destination(
+    plan_id: str,
+    proposal_id: str,
+    payload: ProposalDestinationUpdate,
+    db: LibrarySession,
+) -> ProposalRead:
+    """Switch an addition candidate between its existing target and a new bundle."""
+    proposal = plan_store.set_proposal_destination(
+        db, plan_id, proposal_id, payload.create_new_bundle
+    )
     return ProposalRead.model_validate(proposal)
 
 

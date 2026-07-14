@@ -65,6 +65,9 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Owner-edited grouping plans may explicitly override confirmed membership
     ("grouping_proposals", "base_bundle_id", "VARCHAR(26)"),
     ("grouping_proposals", "owner_edited", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Reversible destination for new files suggested into a confirmed bundle
+    ("grouping_proposals", "target_bundle_title", "VARCHAR(1024)"),
+    ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress", "bundle_cursors")

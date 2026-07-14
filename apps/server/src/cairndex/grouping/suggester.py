@@ -94,8 +94,12 @@ class GroupingProposal:
     reason: str
     files: tuple[ProposedFile, ...] = ()
     # When set, this is an *addition* proposal (ADR-0009 phase 5): its files
-    # join an existing confirmed bundle rather than forming a new one.
+    # default to joining an existing confirmed bundle.
     target_bundle_id: str | None = None
+    # Snapshot title for the reversible existing-bundle destination
+    target_bundle_title: str | None = None
+    # Owner override that turns an addition candidate into a fresh bundle
+    create_new_bundle: bool = False
     # Existing bundle whose identity this proposal should preserve if the owner
     # edits a confirmed grouping before apply
     base_bundle_id: str | None = None
@@ -352,6 +356,12 @@ def _bundle_proposal(
     )
 
 
+# Derive the title an addition candidate would use as a fresh bundle
+def _new_bundle_title(files: list[FileObservation], directory: str) -> str:
+    """Use the normal fresh-bundle naming rule without claiming the directory."""
+    return _bundle_proposal(_media_first(files), directory, None, owns_directory=False).title
+
+
 def _container_proposal(
     directory: str, parent: str | None, *, child_count: int, reason: str
 ) -> GroupingProposal:
@@ -506,11 +516,12 @@ def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingP
         kind=ProposalKind.BUNDLE,
         directory=directory,
         parent_directory=None,
-        title=owner.title or _basename(directory),
+        title=_new_bundle_title(files, directory),
         confidence=0.8,
         reason=f"add {len(files)} new file(s) to existing bundle",
         files=_addition_roles(files),
         target_bundle_id=owner.bundle_id,
+        target_bundle_title=owner.title or _basename(directory),
     )
 
 

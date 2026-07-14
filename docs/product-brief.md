@@ -380,6 +380,10 @@ Current workflow details:
   suggestions, file drag-and-drop within or across bundle suggestions, bundle
   drag-and-drop into any suggested collection or back to the top level, and
   **Accept selected**;
+- a re-scan addition recommends its existing confirmed bundle by default, with
+  **Create new bundle instead** converting that same proposal in place; the
+  owner can switch back without losing selection, file order, collection parent,
+  or an edited new-bundle title;
 - suggested file order is video first, then audio, then image, then every other
   file, preserving natural path order within each group; review can override the
   sequence, which becomes the bundle playlist order on apply;
@@ -397,9 +401,10 @@ Current workflow details:
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
 - fast-add and manual creation confirm immediately because the user already chose the grouping.
 
-Bundle/container reclassification remains a follow-up. Addition proposals name
-an existing confirmed bundle and are intentionally not rename controls, but
-their proposed files can be reordered or moved before apply.
+Bundle/container reclassification remains a follow-up. An addition proposal is
+not renameable while it targets its existing confirmed bundle. Switching it to
+new-bundle mode enables the same title editor as other new bundles and applies
+without changing the suggested existing bundle.
 
 ## UI and interaction direction
 

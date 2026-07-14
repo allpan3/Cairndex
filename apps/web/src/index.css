@@ -2193,13 +2193,34 @@ code {
   text-decoration-color: var(--text-muted);
   text-underline-offset: 3px;
 }
+.grp-title-editor {
+  display: inline-grid;
+  max-width: min(100%, 70vw);
+  overflow: hidden;
+  vertical-align: middle;
+}
+.grp-title-editor::after {
+  content: attr(data-value) ' ';
+  grid-area: 1 / 1;
+  min-width: 1ch;
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  visibility: hidden;
+  white-space: pre;
+}
 .grp-title-input {
-  min-width: 160px;
-  max-width: min(360px, 55vw);
+  grid-area: 1 / 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 2px 5px;
   border: 1px solid var(--accent);
   border-radius: 4px;
   background: var(--bg);
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
   outline: none;
 }
 .grp-reason {
@@ -2222,6 +2243,32 @@ code {
 }
 .grp-conf--low {
   color: var(--text-muted);
+}
+.grp-manual {
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 10px;
+}
+.grp-destination {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grp-destination:hover,
+.grp-destination:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.grp-destination:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
 }
 .grp-files {
   min-height: 25px;

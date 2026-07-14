@@ -85,6 +85,7 @@ import {
   removeFile,
   revokeDevice,
   renameGroupingProposal,
+  setGroupingProposalDestination,
   moveGroupingProposalFile,
   reparentGroupingProposal,
   renameCollection,
@@ -507,6 +508,24 @@ export function useRenameGroupingProposal(planId: string | null) {
             }
           : current,
       ),
+  })
+}
+
+/** Persist a reversible existing-versus-new bundle destination. */
+export function useSetGroupingProposalDestination(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      createNewBundle,
+    }: {
+      proposalId: string
+      createNewBundle: boolean
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return setGroupingProposalDestination(planId, proposalId, createNewBundle)
+    },
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
   })
 }
 
