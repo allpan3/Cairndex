@@ -1,13 +1,15 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12 (probe enrichment,
-> the unified custom media viewer, storyboard trickplay, watch progress/resume,
-> image viewer v2 with preview derivatives, the server-side playback decision +
-> HLS remux/transcode session foundation, and the web hls.js/native-HLS engine
-> integration, player polish, and card hover previews; merged through M9 #11,
-> with M12 on `feat/hover-preview`). See `AGENTS.md` for the product brief,
-> `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md` for
-> current gaps, validation state, and recommended next tasks.
+> Status: current through the media-player foundation M1–M12 and plan 2 T0
+> (probe enrichment, the unified custom media viewer, storyboard trickplay,
+> watch progress/resume, image viewer v2 with preview derivatives, the
+> server-side playback decision + HLS remux/transcode session foundation, and
+> the web hls.js/native-HLS engine
+> integration, player polish, card hover previews, and device pairing/scoped
+> bearer tokens; merged through M12 #12, with T0 on `feat/device-pairing`). See
+> `AGENTS.md` for the product brief, `docs/plans/` for the client-platform
+> roadmap, and `docs/STATUS.md` for current gaps, validation state, and
+> recommended next tasks.
 
 ## 1. System overview
 
