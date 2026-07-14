@@ -101,6 +101,14 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
+- **Missing files reconcile when a bundle opens.** Bundle file-list and playback
+  manifest reads now re-check only that bundle's linked paths and persist newly
+  vanished files as missing. The viewer shows the missing-file state before any
+  stale container/codec fallback and refreshes the Bundle Browser plus Missing
+  Files sidebar count immediately. This bounded access check does not scan the
+  library or guess a moved file's new path; the next scan still performs
+  high-confidence moved-file repair.
+
 - **Collection counts include nested bundles.** Sidebar and collection-card
   counts now roll up distinct bundles from the collection’s entire descendant
   subtree. A bundle assigned to more than one nested collection is counted once

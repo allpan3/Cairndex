@@ -477,6 +477,8 @@ interface MockApiOptions {
   summaryPatch?: Record<string, unknown>
   summaryCount?: number
   hoverStreamFailure?: boolean
+  missingPrimary?: boolean
+  onViewCounts?: (missing: number) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -499,6 +501,7 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     f2: null,
   }
   let coverTime: number | null = null
+  let missingReconciled = false
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
@@ -519,11 +522,13 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) =>
-    r.fulfill({
-      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0, unbundled: 0 },
-    }),
-  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) => {
+    const missing = missingReconciled ? 1 : 0
+    options.onViewCounts?.(missing)
+    return r.fulfill({
+      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing, unbundled: 0 },
+    })
+  })
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
       json: {
@@ -749,21 +754,22 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     })
   }
 
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
-    r.fulfill({
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) => {
+    if (options.missingPrimary) missingReconciled = true
+    return r.fulfill({
       json: [
         {
           id: 'f0',
           bundle_id: 'b0',
-          relative_path: 'movie.mp4',
-          original_filename: 'movie.mp4',
-          display_title: 'movie.mp4',
+          relative_path: options.missingPrimary ? 'movie.avi' : 'movie.mp4',
+          original_filename: options.missingPrimary ? 'movie.avi' : 'movie.mp4',
+          display_title: options.missingPrimary ? 'movie.avi' : 'movie.mp4',
           role: 'primary_video',
           media_kind: 'video',
-          mime_type: null,
+          mime_type: options.missingPrimary ? 'video/x-msvideo' : null,
           sequence: 0,
           size_bytes: 0,
-          availability: 'available',
+          availability: options.missingPrimary ? 'missing' : 'available',
           quick_fingerprint: 'video-fingerprint',
           cover_time: coverTime,
           resume_position:
@@ -853,8 +859,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             ]
           : []),
       ],
-    }),
-  )
+    })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/collections$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
@@ -882,17 +888,18 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       },
     }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) =>
-    r.fulfill({
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) => {
+    if (options.missingPrimary) missingReconciled = true
+    return r.fulfill({
       json: {
         bundle_id: 'b0',
         videos: [
           {
             file_id: 'f0',
-            display_title: 'movie.mp4',
-            playable: true,
-            reason: '',
-            mime_type: null,
+            display_title: options.missingPrimary ? 'movie.avi' : 'movie.mp4',
+            playable: !options.missingPrimary,
+            reason: options.missingPrimary ? "AVI container isn't playable in browsers" : '',
+            mime_type: options.missingPrimary ? 'video/x-msvideo' : null,
             stream_url: '/api/v1/libraries/lib1/files/f0/stream',
             width: 1920,
             height: 1080,
@@ -949,8 +956,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             : []),
         ],
       },
-    }),
-  )
+    })
+  })
 }
 
 /** Hover the custom seek bar at a fraction of its width. */
@@ -1618,6 +1625,34 @@ test('navigates files without the inline filmstrip and shows the fallback card',
 
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.media-fallback')).toContainText("isn't playable")
+})
+
+test('shows a moved unsupported video as missing and refreshes the sidebar count', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  const missingCounts: number[] = []
+  let decisions = 0
+  await mockApi(page, {
+    missingPrimary: true,
+    onViewCounts: (missing) => missingCounts.push(missing),
+    onDecision: () => {
+      decisions += 1
+    },
+  })
+  await page.goto('/')
+
+  const missingView = page.getByRole('button', { name: /Missing Files/ })
+  await expect(missingView.locator('.nav-item__count')).toHaveText('0')
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+
+  const fallback = page.locator('.media-fallback')
+  await expect(fallback).toContainText('Missing file.')
+  await expect(fallback).toContainText('no longer available at its linked path')
+  await expect(fallback).not.toContainText("AVI container isn't playable")
+  await expect(missingView.locator('.nav-item__count')).toHaveText('1')
+  expect(missingCounts).toEqual(expect.arrayContaining([0, 1]))
+  expect(decisions).toBe(0)
 })
 
 test('zooms and pans a non-native image through preview derivatives', async ({ page }) => {

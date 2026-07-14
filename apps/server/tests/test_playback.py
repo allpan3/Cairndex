@@ -7,7 +7,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
 from cairndex.main import create_app
 from cairndex.media import playback
 from cairndex.media.playback import _srt_to_vtt, assess_playability
@@ -270,6 +276,37 @@ def test_playback_manifest_lists_videos_and_subtitles(
     assert track["kind"] == "external"
     assert track["language"] == "en"
     assert track["src"] == f"{base}/subtitles/{track['id']}/vtt"
+
+
+# Opening a bundle reconciles only its linked paths and persists missing state
+def test_bundle_files_marks_vanished_file_missing(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    (library_root / "movie.mp4").rename(library_root / "moved.mp4")
+    base = f"/api/v1/libraries/{library_id}"
+
+    response = client.get(f"{base}/bundles/{bundle.id}/files")
+
+    assert response.status_code == 200
+    by_id = {item["id"]: item for item in response.json()}
+    assert by_id[video.id]["availability"] == "missing"
+    assert video.availability is FileAvailability.MISSING
+
+
+# Manifest access also reconciles missing files when it is requested alone
+def test_playback_manifest_persists_missing_state_for_vanished_file(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    bundle, video = _bundle_with_media(session, library_root)
+    (library_root / "movie.mp4").rename(library_root / "moved.mp4")
+    base = f"/api/v1/libraries/{library_id}"
+
+    response = client.get(f"{base}/bundles/{bundle.id}/playback")
+
+    assert response.status_code == 200
+    assert video.availability is FileAvailability.MISSING
+    assert client.get(f"{base}/bundles/counts").json()["missing"] == 1
 
 
 def test_progress_put_upserts_clamps_and_marks_completion(

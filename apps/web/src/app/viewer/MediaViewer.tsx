@@ -65,6 +65,7 @@ export function MediaViewer({
     isLoading: playbackLoading,
     error: playbackError,
   } = usePlaybackManifest(bundleId)
+  const hasMissingFiles = files.some((file) => file.availability !== 'available')
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [failedFileId, setFailedFileId] = useState<string | null>(null)
@@ -184,6 +185,13 @@ export function MediaViewer({
   const artworkUrl = thumbnailUrl(bundleId, bundle?.updated_at ?? null)
 
   useEffect(() => rootRef.current?.focus(), [])
+
+  // Bundle reads can persist a newly missing path, so refresh its library views
+  useEffect(() => {
+    if (!hasMissingFiles) return
+    qc.invalidateQueries({ queryKey: ['view-counts'] })
+    qc.invalidateQueries({ queryKey: ['browse'] })
+  }, [hasMissingFiles, qc])
 
   useEffect(() => {
     if (resumeNotice === null) return
@@ -478,7 +486,13 @@ function Stage({
   onRetryFailed: () => void
 }) {
   if (file.availability !== 'available') {
-    return <FallbackCard file={file} message="This file is missing on disk." />
+    return (
+      <FallbackCard
+        file={file}
+        heading="Missing file."
+        message="This file is no longer available at its linked path."
+      />
+    )
   }
   // A video whose playback errored out (after exhausting auto-recovery) — offer a
   // manual retry that reloads at the current playhead instead of a dead end.

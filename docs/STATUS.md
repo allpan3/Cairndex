@@ -93,6 +93,22 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
+## Current: bundle-open missing-file reconciliation
+
+Opening a bundle now checks only that bundle's linked file paths. A vanished
+path is persisted as `missing`, the viewer gives that state precedence over a
+stale unsupported-container message, and the web client refreshes the Bundle
+Browser plus Missing Files sidebar count. The access path remains bounded: it
+does not scan the library or guess a moved file's new location. Update/scan
+continues to own high-confidence moved-file repair and stable-ID relinking.
+
+Regression coverage moves a linked source path after import, verifies both
+bundle-file and playback-manifest reads persist the missing state, and exercises
+the full viewer/count behavior with an unsupported AVI reason present.
+Verified on `main`: backend Ruff check/format, mypy, and full pytest
+(**406 passed**); frontend ESLint, Prettier, TypeScript, Vitest
+(**99 passed**), production build, and full Playwright (**67 passed**).
+
 ## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 
 Branch `feat/hover-preview` (off `main` at `02cb18b`, after M9 merged as #11).
