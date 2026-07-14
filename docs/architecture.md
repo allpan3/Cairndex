@@ -279,6 +279,10 @@ Grouping behavior:
   persisting a target-title snapshot, a derived fresh-bundle title, and the
   owner's existing/new destination choice; switching modes recomputes roles but
   preserves the reviewed sequence and proposal identity;
+- relevant existing collection branches remain in the review plan even when
+  their confirmed bundles are excluded; additions prefer their target bundle's
+  collection, while fresh top-level proposals reuse the deepest matching
+  collection path, and apply resolves those nodes to existing collections;
 - bundle proposals with no files and collection proposals with no file-backed
   descendants are automatically excluded from the accepted selection;
 - explicitly edited proposals retain their original bundle identity while

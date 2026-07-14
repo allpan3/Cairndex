@@ -37,7 +37,11 @@ grouped under `Unreleased` until the first tagged release.
   an immediate state-specific tooltip; numeric confidence and manual badges are
   removed, and wrapped metadata stays aligned to the title column. Existing
   targets read **Add to 🎬 [bundle name]** with tighter drag-handle spacing, and
-  the destination icon no longer remains highlighted after activation.
+  the destination icon no longer remains highlighted after activation. Relevant
+  existing collection branches now remain visible, letting a new-bundle
+  override inherit or change collection placement without reopening confirmed
+  bundles. The hidden top-level drop target no longer reserves blank space above
+  the suggestions.
 
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;

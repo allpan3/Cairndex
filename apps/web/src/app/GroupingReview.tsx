@@ -764,25 +764,22 @@ export function GroupingReview({
                   Deselect all
                 </button>
               </div>
-              <div
-                className={`grp-root-drop${
-                  dragItem?.kind === 'bundle' ? '' : ' grp-root-drop--inactive'
-                }${dropSlot?.kind === 'root' ? ' grp-root-drop--over' : ''}`}
-                aria-hidden={dragItem?.kind !== 'bundle'}
-                onDragOver={(event) => {
-                  if (dragItem?.kind !== 'bundle') return
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  setDropSlot({ kind: 'root' })
-                }}
-                onDrop={(event) => {
-                  if (dragItem?.kind !== 'bundle') return
-                  event.preventDefault()
-                  dropBundle(null)
-                }}
-              >
-                Drop here to leave the bundle outside a collection
-              </div>
+              {dragItem?.kind === 'bundle' && (
+                <div
+                  className={`grp-root-drop${dropSlot?.kind === 'root' ? ' grp-root-drop--over' : ''}`}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    setDropSlot({ kind: 'root' })
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    dropBundle(null)
+                  }}
+                >
+                  Drop here to leave the bundle outside a collection
+                </div>
+              )}
               <ul className="grp-tree">
                 {tree.map((node) => (
                   <ProposalNode

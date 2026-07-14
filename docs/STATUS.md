@@ -108,6 +108,15 @@ are recomputed without changing the reviewed sequence. Applying new mode creates
 a separate confirmed bundle and leaves the old target and every stable file id
 intact.
 
+Grouping regeneration now keeps the relevant branches of the existing logical
+collection tree in the review plan. Additions default under their confirmed
+target's collection, while fresh top-level proposals reuse the deepest
+collection hierarchy matching their library-relative directory. Apply reuses
+those collections instead of creating duplicates, so switching to a new bundle
+does not silently leave it uncollected. The top-level drop target is rendered
+only during a bundle drag and no longer leaves a blank block above the review
+tree.
+
 The additive `target_bundle_title` and `create_new_bundle` proposal fields
 persist that reversible choice. Legacy open plans derive a fresh title and
 snapshot the target title on their first switch. New mode remains applicable if
@@ -167,7 +176,7 @@ role conversion, rename eligibility, legacy backfill, missing-target behavior,
 separate-bundle apply, title-editor growth, and one-row/one-checkbox switching.
 
 Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
-and all 423 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 112
+and all 425 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 112
 Vitest tests, the production build, and all 73 Playwright tests pass. Browser
 flows cover title growth, destination-icon geometry and tooltip visibility,
 reversible switching, repeated suggestion regeneration, and empty
