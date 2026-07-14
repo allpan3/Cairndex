@@ -569,6 +569,7 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
 
   const collectionCheckbox = await screen.findByRole('checkbox', { name: 'Accept Movies' })
   expect(collectionCheckbox).toBeChecked()
+  expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
   fireEvent.dragStart(screen.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
     dataTransfer,
   })

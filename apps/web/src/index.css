@@ -2371,10 +2371,6 @@ code {
   font-size: 11px;
   text-align: center;
 }
-.grp-root-drop--inactive {
-  visibility: hidden;
-  pointer-events: none;
-}
 .grp-root-drop--over {
   border-color: var(--accent);
   background: var(--accent-soft);

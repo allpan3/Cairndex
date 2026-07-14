@@ -507,7 +507,9 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   })
   const rowContent = page.locator('.grp-row__content')
   const fileCount = page.getByText('2 new files', { exact: true })
+  const selectBar = page.locator('.grp-selectbar')
   await expect(additionTitle).toBeVisible()
+  await expect(page.locator('.grp-root-drop')).toHaveCount(0)
   await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
   await expect(destinationButton).not.toHaveClass(/is-active/)
   await expect(destinationButton).toHaveAttribute(
@@ -523,9 +525,11 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   const destinationBox = await destinationButton.boundingBox()
   const contentBox = await rowContent.boundingBox()
   const countBox = await fileCount.boundingBox()
-  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox) {
+  const selectBox = await selectBar.boundingBox()
+  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox || !selectBox) {
     throw new Error('missing grouping destination geometry')
   }
+  expect(titleBox.y - (selectBox.y + selectBox.height)).toBeLessThanOrEqual(28)
   expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
   expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
   expect(

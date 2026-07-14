@@ -13,13 +13,12 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind
-from cairndex.grouping.service import gather_observations
+from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
     _addition_roles_in_order,
     _new_bundle_title,
     _roles_in_order,
-    suggest_grouping,
 )
 from cairndex.grouping.suggester import (
     GroupingPlan as PlanData,
@@ -290,7 +289,7 @@ def persist_plan(
 
 def generate_plan(session: Session, *, scan_job_id: str | None = None) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
-    data = suggest_grouping(gather_observations(session))
+    data = suggest_for_session(session)
     return persist_plan(session, data, scan_job_id=scan_job_id)
 
 
