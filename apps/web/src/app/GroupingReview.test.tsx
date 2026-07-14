@@ -68,8 +68,8 @@ const PROPOSALS: GroupingProposal[] = [
 ]
 
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
-function mockGroupingApi() {
-  let proposals = structuredClone(PROPOSALS)
+function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
+  let proposals = structuredClone(initialProposals)
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.endsWith('/grouping/plans')) {
@@ -288,6 +288,33 @@ test('drags a file into another bundle suggestion', async () => {
   })
 })
 
+test('auto-deselects a bundle after its last file is dragged away', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+  const dataTransfer = dragData()
+
+  const sourceCheckbox = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  expect(sourceCheckbox).toBeChecked()
+  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag file second.mp4' }), {
+    dataTransfer,
+  })
+  const target = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
+  fireEvent.dragOver(target, { dataTransfer })
+  fireEvent.drop(target, { dataTransfer })
+
+  await waitFor(() => {
+    expect(sourceCheckbox).not.toBeChecked()
+    expect(sourceCheckbox).toBeDisabled()
+  })
+  expect([...target.querySelectorAll('.grp-file__name')].map((node) => node.textContent)).toEqual([
+    'SRCV-005.mp4',
+    'SRCV-005.mp3',
+    'cover.jpg',
+    'second.mp4',
+  ])
+})
+
 test('drags a bundle suggestion into a collection suggestion', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
@@ -309,5 +336,36 @@ test('drags a bundle suggestion into a collection suggestion', async () => {
   )
   expect(reparentCall?.[1]).toMatchObject({
     body: JSON.stringify({ parent_proposal_id: 'collection1' }),
+  })
+})
+
+test('auto-deselects a collection after its last bundle is dragged out', async () => {
+  const initial = PROPOSALS.map((proposal) =>
+    proposal.id === 'proposal1' ? { ...proposal, parent_proposal_id: 'collection1' } : proposal,
+  )
+  const fetchMock = mockGroupingApi(initial)
+  vi.stubGlobal('fetch', fetchMock)
+  const review = renderReview()
+  const dataTransfer = dragData()
+
+  const collectionCheckbox = await screen.findByRole('checkbox', { name: 'Accept Movies' })
+  expect(collectionCheckbox).toBeChecked()
+  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
+    dataTransfer,
+  })
+  const rootTarget = review.container.querySelector('.grp-root-drop')
+  if (!rootTarget) throw new Error('missing root drop target')
+  fireEvent.dragOver(rootTarget, { dataTransfer })
+  fireEvent.drop(rootTarget, { dataTransfer })
+
+  await waitFor(() => {
+    expect(collectionCheckbox).not.toBeChecked()
+    expect(collectionCheckbox).toBeDisabled()
+  })
+  const reparentCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/proposal1/parent') && init?.method === 'PUT',
+  )
+  expect(reparentCall?.[1]).toMatchObject({
+    body: JSON.stringify({ parent_proposal_id: null }),
   })
 })

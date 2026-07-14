@@ -187,6 +187,13 @@ Lean **CONTAINER** when:
 - it holds subfolders that are themselves bundles, or
 - the name matches a category-ish hint (configurable; secondary to content).
 
+As amended on 2026-07-14, a flat directory with multiple videos pairs sidecars
+by a unique normalized full filename stem first, including full-stem suffixes
+such as language subtitles or `-poster`. Only then does it fall back to a unique
+leading subject prefix. This avoids treating long filenames that share an
+author/source prefix as ambiguous while preserving one-file proposals for
+image-only folders.
+
 Nested folders recurse: a CONTAINER's children are classified independently, so
 `Movies/` (container) can hold `Cosmos/` and `Waves/` (bundles).
 

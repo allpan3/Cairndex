@@ -119,6 +119,39 @@ def test_multi_subject_folder_groups_sidecars_by_delimited_prefix() -> None:
     assert _roles(by_title["waves"])["Movies/waves.en.srt"] is FileRole.SUBTITLE
 
 
+# Full stems disambiguate sidecars when long video names share a leading token
+def test_multi_subject_folder_pairs_images_by_complete_filename_stem() -> None:
+    beach = "Nora Vance - [Lumina.com] - [2023] - Surf On The Ridge - 4K"
+    sea = "Nora Vance - [Lumina.com] - [2023] - Sky, Sand, Sea & Salt - 4K"
+    plan = suggest_grouping(
+        [
+            _f(f"Western/Nora Vance/{beach}.mp4", MediaKind.VIDEO),
+            _f(f"Western/Nora Vance/{sea}.mp4", MediaKind.VIDEO),
+            _f(f"Western/Nora Vance/{beach}.jpg", MediaKind.IMAGE),
+            _f(f"Western/Nora Vance/{sea}.jpg", MediaKind.IMAGE),
+        ]
+    )
+
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 2
+    by_title = {bundle.title: bundle for bundle in bundles}
+    assert set(by_title) == {beach, sea}
+    for title, bundle in by_title.items():
+        assert {file.asset_file_id for file in bundle.files} == {
+            f"Western/Nora Vance/{title}.mp4",
+            f"Western/Nora Vance/{title}.jpg",
+        }
+        assert _roles(bundle)[f"Western/Nora Vance/{title}.jpg"] is FileRole.COVER
+        assert bundle.reason == "one video with 1 sidecar file(s)"
+
+    anna = next(
+        proposal
+        for proposal in plan.proposals
+        if proposal.kind is ProposalKind.CONTAINER and proposal.directory == "Western/Nora Vance"
+    )
+    assert anna.reason == "2 filename-matched bundle(s) from 4 files"
+
+
 # Image-only folders remain item collections even when camera prefixes match
 def test_photo_folder_with_shared_prefix_does_not_collapse() -> None:
     plan = suggest_grouping(

@@ -380,6 +380,13 @@ Current workflow details:
 - suggested file order is video first, then audio, then image, then every other
   file, preserving natural path order within each group; review can override the
   sequence, which becomes the bundle playlist order on apply;
+- a drag that empties a bundle suggestion auto-deselects it; a collection with
+  no file-backed descendants is likewise auto-deselected and cannot be accepted
+  until it contains an item again;
+- in a flat multi-video directory, sidecars first match a unique normalized full
+  video stem (including suffix variants such as subtitles/posters), then fall
+  back to the leading subject prefix; this separates long filenames with a
+  shared author/source prefix without collapsing image-only folders;
 - explicit cross-bundle review edits may revise a confirmed uncategorized
   bundle, preserve its stable bundle/file identities, and clean up an emptied
   source bundle; untouched confirmed proposals keep conflict protection and are

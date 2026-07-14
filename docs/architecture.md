@@ -270,9 +270,13 @@ Grouping behavior:
 - the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
   reasons, parent links, and a stable video → audio → image → remaining-files
   order (natural path order within each group);
+- multi-video directories pair sidecars by unique normalized full video stem or
+  full-stem suffix before falling back to a unique leading subject prefix;
 - grouping review persists file drag-and-drop within or across bundle proposals,
   bundle reparenting into suggested collections, and bundle/collection title
   edits before apply; reviewed file sequence becomes playlist order;
+- bundle proposals with no files and collection proposals with no file-backed
+  descendants are automatically excluded from the accepted selection;
 - explicitly edited proposals retain their original bundle identity and may
   revise confirmed uncategorized membership, while untouched proposals retain
   the normal confirmed-grouping conflict boundary;
