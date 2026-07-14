@@ -151,6 +151,18 @@ def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine
     assert columns["cover_previous_file_id"]["nullable"] is True
 
 
+# Existing libraries gain grouping-review edit metadata on open
+def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN base_bundle_id"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN owner_edited"))
+
+    ensure_content_indexes(engine)
+
+    columns = {c["name"] for c in inspect(engine).get_columns("grouping_proposals")}
+    assert {"base_bundle_id", "owner_edited"} <= columns
+
+
 # Existing libraries gain the additive bundle cursor table on open
 def test_ensure_content_indexes_adds_bundle_cursor_table(engine: Engine) -> None:
     with engine.begin() as conn:

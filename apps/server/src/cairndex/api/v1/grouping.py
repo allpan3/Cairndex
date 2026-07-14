@@ -15,9 +15,9 @@ from cairndex.api.schemas.grouping import (
     ApplyResultRead,
     PlanRead,
     PlanSummary,
-    ProposalFileRead,
-    ProposalFileReorder,
+    ProposalFileMove,
     ProposalRead,
+    ProposalReparent,
     ProposalUpdate,
 )
 from cairndex.grouping import apply as apply_service
@@ -63,27 +63,50 @@ def get_plan(plan_id: str, db: LibrarySession) -> PlanRead:
     return PlanRead.model_validate(plan)
 
 
-# Persist an inline bundle-title edit before grouping apply
+# Persist an inline bundle/collection title edit before grouping apply
 @router.patch("/plans/{plan_id}/proposals/{proposal_id}", response_model=ProposalRead)
 def update_proposal(
     plan_id: str, proposal_id: str, payload: ProposalUpdate, db: LibrarySession
 ) -> ProposalRead:
-    """Rename a new-bundle suggestion before its open plan is applied."""
-    proposal = plan_store.rename_bundle_proposal(db, plan_id, proposal_id, payload.title)
+    """Rename a bundle or collection suggestion before its open plan is applied."""
+    proposal = plan_store.rename_proposal(db, plan_id, proposal_id, payload.title)
     return ProposalRead.model_validate(proposal)
 
 
-# Persist the reviewed playback order before grouping apply
+# Move one reviewed file within or across bundle suggestions
 @router.put(
-    "/plans/{plan_id}/proposals/{proposal_id}/files/order",
-    response_model=list[ProposalFileRead],
+    "/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move",
+    response_model=list[ProposalRead],
 )
-def reorder_proposal_files(
-    plan_id: str, proposal_id: str, payload: ProposalFileReorder, db: LibrarySession
-) -> list[ProposalFileRead]:
-    """Replace a bundle suggestion's complete file order while its plan is open."""
-    files = plan_store.reorder_proposal_files(db, plan_id, proposal_id, payload.ordered_ids)
-    return [ProposalFileRead.model_validate(proposal_file) for proposal_file in files]
+def move_proposal_file(
+    plan_id: str,
+    proposal_id: str,
+    asset_file_id: str,
+    payload: ProposalFileMove,
+    db: LibrarySession,
+) -> list[ProposalRead]:
+    """Move a file to an exact position in any bundle suggestion."""
+    proposals = plan_store.move_proposal_file(
+        db,
+        plan_id,
+        proposal_id,
+        asset_file_id,
+        payload.target_proposal_id,
+        payload.target_index,
+    )
+    return [ProposalRead.model_validate(proposal) for proposal in proposals]
+
+
+# Move one reviewed bundle into a collection suggestion
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/parent", response_model=ProposalRead)
+def reparent_proposal(
+    plan_id: str, proposal_id: str, payload: ProposalReparent, db: LibrarySession
+) -> ProposalRead:
+    """Move a bundle suggestion into a collection suggestion or to top level."""
+    proposal = plan_store.reparent_bundle_proposal(
+        db, plan_id, proposal_id, payload.parent_proposal_id
+    )
+    return ProposalRead.model_validate(proposal)
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)

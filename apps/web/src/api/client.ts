@@ -465,7 +465,6 @@ export const revokeDevice = (deviceId: string) =>
 // --- Grouping plans (ADR-0009) ------------------------------------------------
 export type GroupingPlan = components['schemas']['PlanRead']
 export type GroupingProposal = components['schemas']['ProposalRead']
-export type GroupingProposalFile = components['schemas']['ProposalFileRead']
 export type GroupingPlanSummary = components['schemas']['PlanSummary']
 export type GroupingApplyResult = components['schemas']['ApplyResultRead']
 
@@ -478,7 +477,7 @@ export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSu
 export const fetchGroupingPlan = (id: string, signal?: AbortSignal): Promise<GroupingPlan> =>
   getJson<GroupingPlan>(`${lib()}/grouping/plans/${id}`, signal)
 
-/** Rename a new-bundle suggestion while its grouping plan is open. */
+/** Rename a bundle or collection suggestion while its grouping plan is open. */
 export const renameGroupingProposal = (
   planId: string,
   proposalId: string,
@@ -488,16 +487,30 @@ export const renameGroupingProposal = (
     title,
   })
 
-/** Persist the complete file order for one bundle suggestion. */
-export const reorderGroupingProposalFiles = (
+/** Move a file within or across bundle suggestions. */
+export const moveGroupingProposalFile = (
+  planId: string,
+  sourceProposalId: string,
+  assetFileId: string,
+  targetProposalId: string,
+  targetIndex: number,
+): Promise<GroupingProposal[]> =>
+  send<GroupingProposal[]>(
+    `${lib()}/grouping/plans/${planId}/proposals/${sourceProposalId}/files/${assetFileId}/move`,
+    'PUT',
+    { target_proposal_id: targetProposalId, target_index: targetIndex },
+  )
+
+/** Move a bundle suggestion into a collection suggestion or to top level. */
+export const reparentGroupingProposal = (
   planId: string,
   proposalId: string,
-  orderedIds: string[],
-): Promise<GroupingProposalFile[]> =>
-  send<GroupingProposalFile[]>(
-    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/files/order`,
+  parentProposalId: string | null,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/parent`,
     'PUT',
-    { ordered_ids: orderedIds },
+    { parent_proposal_id: parentProposalId },
   )
 
 /** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */

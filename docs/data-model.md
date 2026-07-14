@@ -258,9 +258,10 @@ Durable, reviewable snapshots of the grouping suggester output.
   a new plan supersedes the prior open one. Scan jobs generate an open plan and
   return its id/proposal count without applying it.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (self
-  FK, SET NULL), `target_bundle_id` (plain id for addition proposals), `kind`
-  (`bundle` | `container`), `title`, `directory`, `confidence`, `reason`,
-  `sort_order`.
+  FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
+  `base_bundle_id` (the stable original identity used by explicitly edited
+  bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
+  `directory`, `confidence`, `reason`, `sort_order`.
 - `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
   (snapshot id, not an FK), `relative_path` (display snapshot), `proposed_role`,
   `sequence`.
@@ -271,14 +272,16 @@ subtitles, creates suggested collections, and never touches the filesystem.
 `POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
 that selected subset is accepted and the plan is marked applied, so unchecked
 proposals are not retained as pending work for the same plan.
-`PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a new BUNDLE
-proposal while the plan is open; apply uses that persisted title when it confirms
-the bundle. `PUT /grouping/plans/{id}/proposals/{proposal_id}/files/order`
-requires the BUNDLE proposal's complete `asset_file_id` set, rewrites dense
-proposal-file `sequence` values, and apply carries that reviewed playlist order
-into the confirmed bundle. Addition proposals append their reviewed files after
-the target bundle's existing sequence. CONTAINER proposals and addition titles
-remain read-only.
+`PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
+CONTAINER proposal while the plan is open. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
+stable file id to an exact position within any BUNDLE proposal and rewrites dense
+sequence/derived-role values for every affected proposal. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
+into a CONTAINER proposal or back to the top level. These owner edits are marked
+explicitly: apply may revise confirmed uncategorized membership while preserving
+`base_bundle_id`, but untouched suggestions keep conflict protection. Addition
+titles remain read-only; their files can participate in review moves.
 
 ## Registry database
 

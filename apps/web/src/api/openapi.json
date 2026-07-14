@@ -4081,6 +4081,25 @@
         "title": "PredicateNode",
         "type": "object"
       },
+      "ProposalFileMove": {
+        "properties": {
+          "target_index": {
+            "minimum": 0.0,
+            "title": "Target Index",
+            "type": "integer"
+          },
+          "target_proposal_id": {
+            "title": "Target Proposal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_proposal_id",
+          "target_index"
+        ],
+        "title": "ProposalFileMove",
+        "type": "object"
+      },
       "ProposalFileRead": {
         "properties": {
           "asset_file_id": {
@@ -4106,23 +4125,6 @@
           "sequence"
         ],
         "title": "ProposalFileRead",
-        "type": "object"
-      },
-      "ProposalFileReorder": {
-        "properties": {
-          "ordered_ids": {
-            "items": {
-              "type": "string"
-            },
-            "minItems": 1,
-            "title": "Ordered Ids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ordered_ids"
-        ],
-        "title": "ProposalFileReorder",
         "type": "object"
       },
       "ProposalKind": {
@@ -4215,6 +4217,26 @@
           "files"
         ],
         "title": "ProposalRead",
+        "type": "object"
+      },
+      "ProposalReparent": {
+        "properties": {
+          "parent_proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Proposal Id"
+          }
+        },
+        "required": [
+          "parent_proposal_id"
+        ],
+        "title": "ProposalReparent",
         "type": "object"
       },
       "ProposalUpdate": {
@@ -11052,7 +11074,7 @@
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}": {
       "patch": {
-        "description": "Rename a new-bundle suggestion before its open plan is applied.",
+        "description": "Rename a bundle or collection suggestion before its open plan is applied.",
         "operationId": "update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch",
         "parameters": [
           {
@@ -11137,10 +11159,110 @@
         ]
       }
     },
-    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/order": {
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
       "put": {
-        "description": "Replace a bundle suggestion's complete file order while its plan is open.",
-        "operationId": "reorder_proposal_files_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files_order_put",
+        "description": "Move a file to an exact position in any bundle suggestion.",
+        "operationId": "move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_file_id",
+            "required": true,
+            "schema": {
+              "title": "Asset File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalFileMove"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProposalRead"
+                  },
+                  "title": "Response Move Proposal File Api V1 Libraries  Library Id  Grouping Plans  Plan Id  Proposals  Proposal Id  Files  Asset File Id  Move Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Proposal File",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
+      "put": {
+        "description": "Move a bundle suggestion into a collection suggestion or to top level.",
+        "operationId": "reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put",
         "parameters": [
           {
             "in": "path",
@@ -11190,7 +11312,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ProposalFileReorder"
+                "$ref": "#/components/schemas/ProposalReparent"
               }
             }
           },
@@ -11201,11 +11323,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ProposalFileRead"
-                  },
-                  "title": "Response Reorder Proposal Files Api V1 Libraries  Library Id  Grouping Plans  Plan Id  Proposals  Proposal Id  Files Order Put",
-                  "type": "array"
+                  "$ref": "#/components/schemas/ProposalRead"
                 }
               }
             },
@@ -11222,7 +11340,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Reorder Proposal Files",
+        "summary": "Reparent Proposal",
         "tags": [
           "grouping"
         ]

@@ -53,8 +53,14 @@ def test_applying_an_addition_folds_the_file_in_and_links_subtitle(
 
     plan = plan_store.generate_plan(session)
     addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
-    reviewed_ids = [proposal_file.asset_file_id for proposal_file in reversed(addition.files)]
-    plan_store.reorder_proposal_files(session, plan.id, addition.id, reviewed_ids)
+    plan_store.move_proposal_file(
+        session,
+        plan.id,
+        addition.id,
+        addition.files[0].asset_file_id,
+        addition.id,
+        len(addition.files),
+    )
     result = apply_service.apply_plan(session, plan)
 
     assert result.files_added_to_bundles == 2

@@ -1240,12 +1240,12 @@ export interface paths {
         head?: never;
         /**
          * Update Proposal
-         * @description Rename a new-bundle suggestion before its open plan is applied.
+         * @description Rename a bundle or collection suggestion before its open plan is applied.
          */
         patch: operations["update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch"];
         trace?: never;
     };
-    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/order": {
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
         parameters: {
             query?: never;
             header?: never;
@@ -1254,10 +1254,30 @@ export interface paths {
         };
         get?: never;
         /**
-         * Reorder Proposal Files
-         * @description Replace a bundle suggestion's complete file order while its plan is open.
+         * Move Proposal File
+         * @description Move a file to an exact position in any bundle suggestion.
          */
-        put: operations["reorder_proposal_files_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files_order_put"];
+        put: operations["move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reparent Proposal
+         * @description Move a bundle suggestion into a collection suggestion or to top level.
+         */
+        put: operations["reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2937,6 +2957,13 @@ export interface components {
             /** Value */
             value?: unknown;
         };
+        /** ProposalFileMove */
+        ProposalFileMove: {
+            /** Target Index */
+            target_index: number;
+            /** Target Proposal Id */
+            target_proposal_id: string;
+        };
         /** ProposalFileRead */
         ProposalFileRead: {
             /** Asset File Id */
@@ -2946,11 +2973,6 @@ export interface components {
             relative_path: string;
             /** Sequence */
             sequence: number;
-        };
-        /** ProposalFileReorder */
-        ProposalFileReorder: {
-            /** Ordered Ids */
-            ordered_ids: string[];
         };
         /**
          * ProposalKind
@@ -2980,6 +3002,11 @@ export interface components {
             target_bundle_id: string | null;
             /** Title */
             title: string | null;
+        };
+        /** ProposalReparent */
+        ProposalReparent: {
+            /** Parent Proposal Id */
+            parent_proposal_id: string | null;
         };
         /** ProposalUpdate */
         ProposalUpdate: {
@@ -6046,7 +6073,47 @@ export interface operations {
             };
         };
     };
-    reorder_proposal_files_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files_order_put: {
+    move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                asset_file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalFileMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -6061,7 +6128,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ProposalFileReorder"];
+                "application/json": components["schemas"]["ProposalReparent"];
             };
         };
         responses: {
@@ -6071,7 +6138,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProposalFileRead"][];
+                    "application/json": components["schemas"]["ProposalRead"];
                 };
             };
             /** @description Validation Error */

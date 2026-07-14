@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import GroupingState
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.persistence.models import AssetBundle, AssetFile, Collection
 from cairndex.scanning.scanner import scan_library
 
 
@@ -47,14 +47,15 @@ def test_generate_get_and_apply_plan(
     assert renamed.json()["title"] == "Renamed Cosmos"
 
     original_ids = [file["asset_file_id"] for file in bundle_proposals[0]["files"]]
-    reviewed_ids = list(reversed(original_ids))
-    reordered = client.put(
-        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/order",
-        json={"ordered_ids": reviewed_ids},
+    reviewed_ids = [*original_ids[1:], original_ids[0]]
+    moved = client.put(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/{original_ids[0]}/move",
+        json={"target_proposal_id": proposal_id, "target_index": len(original_ids)},
     )
-    assert reordered.status_code == 200
-    assert [file["asset_file_id"] for file in reordered.json()] == reviewed_ids
-    assert [file["sequence"] for file in reordered.json()] == [0, 1, 2]
+    assert moved.status_code == 200
+    edited_proposal = moved.json()[0]
+    assert [file["asset_file_id"] for file in edited_proposal["files"]] == reviewed_ids
+    assert [file["sequence"] for file in edited_proposal["files"]] == [0, 1, 2]
 
     listed = client.get(f"{base}/plans")
     assert listed.status_code == 200
@@ -83,15 +84,15 @@ def test_generate_get_and_apply_plan(
         f"{base}/plans/{plan_id}/proposals/{proposal_id}", json={"title": "Too late"}
     )
     assert closed_edit.status_code == 409
-    closed_reorder = client.put(
-        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/order",
-        json={"ordered_ids": reviewed_ids},
+    closed_move = client.put(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/{original_ids[0]}/move",
+        json={"target_proposal_id": proposal_id, "target_index": 0},
     )
-    assert closed_reorder.status_code == 409
+    assert closed_move.status_code == 409
 
 
-# Require a proposal's complete file set so no reviewed member can be dropped
-def test_reorder_rejects_incomplete_proposal_file_set(
+# Reject a drag position outside the target bundle suggestion
+def test_file_move_rejects_invalid_target_index(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     _seed(session, library_root)
@@ -99,35 +100,98 @@ def test_reorder_rejects_incomplete_proposal_file_set(
     plan = client.post(f"{base}/plans").json()
     proposal = next(p for p in plan["proposals"] if p["kind"] == "bundle")
 
+    asset_file_id = proposal["files"][0]["asset_file_id"]
     response = client.put(
-        f"{base}/plans/{plan['id']}/proposals/{proposal['id']}/files/order",
-        json={"ordered_ids": [proposal["files"][0]["asset_file_id"]]},
+        f"{base}/plans/{plan['id']}/proposals/{proposal['id']}/files/{asset_file_id}/move",
+        json={"target_proposal_id": proposal["id"], "target_index": 99},
     )
 
     assert response.status_code == 422
     assert response.json()["code"] == "validation_error"
 
 
-# Keep collection suggestions out of the bundle-title edit path
-def test_rename_rejects_non_bundle_proposal(
+# Collection titles and bundle parents remain editable until apply
+def test_rename_collection_and_reparent_bundle_proposal(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     (library_root / "Movies" / "Cosmos").mkdir(parents=True)
     (library_root / "Movies" / "Cosmos" / "cosmos.mp4").write_text("v")
     (library_root / "Movies" / "Waves").mkdir()
     (library_root / "Movies" / "Waves" / "waves.mp4").write_text("v")
+    (library_root / "Loose").mkdir()
+    (library_root / "Loose" / "loose.mp4").write_text("v")
     scan_library(session, library_root)
     base = f"/api/v1/libraries/{library_id}/grouping"
     plan = client.post(f"{base}/plans").json()
     container = next(p for p in plan["proposals"] if p["kind"] == "container")
+    loose = next(p for p in plan["proposals"] if p["title"] == "Loose")
 
-    response = client.patch(
+    renamed = client.patch(
         f"{base}/plans/{plan['id']}/proposals/{container['id']}",
-        json={"title": "Not a bundle"},
+        json={"title": "Films"},
+    )
+    reparented = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{loose['id']}/parent",
+        json={"parent_proposal_id": container["id"]},
     )
 
-    assert response.status_code == 422
-    assert response.json()["code"] == "validation_error"
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Films"
+    assert reparented.status_code == 200
+    assert reparented.json()["parent_proposal_id"] == container["id"]
+
+    applied = client.post(f"{base}/plans/{plan['id']}/apply")
+    assert applied.status_code == 200
+    collection = session.scalar(select(Collection).where(Collection.name == "Films"))
+    assert collection is not None
+    collection_bundles = session.scalars(
+        select(AssetBundle).join(AssetBundle.collections).where(Collection.id == collection.id)
+    ).all()
+    assert {bundle.title for bundle in collection_bundles} == {"Cosmos", "Waves", "Loose"}
+
+
+# Explicit file drags can revise confirmed uncategorized bundle membership
+def test_file_move_applies_across_confirmed_bundle_suggestions(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    for name in ("Alpha", "Beta"):
+        (library_root / name).mkdir()
+        (library_root / name / f"{name.lower()}.mp4").write_text("v")
+        (library_root / name / "poster.jpg").write_text("i")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    first_plan = client.post(f"{base}/plans").json()
+    assert client.post(f"{base}/plans/{first_plan['id']}/apply").status_code == 200
+
+    original_bundles = {
+        bundle.title: bundle.id for bundle in session.scalars(select(AssetBundle)).all()
+    }
+    plan = client.post(f"{base}/plans").json()
+    alpha = next(proposal for proposal in plan["proposals"] if proposal["title"] == "Alpha")
+    beta = next(proposal for proposal in plan["proposals"] if proposal["title"] == "Beta")
+    alpha_poster = next(
+        file for file in alpha["files"] if file["relative_path"] == "Alpha/poster.jpg"
+    )
+
+    moved = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{alpha['id']}/files/{alpha_poster['asset_file_id']}/move",
+        json={"target_proposal_id": beta["id"], "target_index": len(beta["files"])},
+    )
+    applied = client.post(f"{base}/plans/{plan['id']}/apply")
+
+    assert moved.status_code == 200
+    assert applied.status_code == 200
+    assert applied.json()["conflicts"] == []
+    alpha_bundle = session.get(AssetBundle, original_bundles["Alpha"])
+    beta_bundle = session.get(AssetBundle, original_bundles["Beta"])
+    assert alpha_bundle is not None and beta_bundle is not None
+    assert {file.relative_path for file in alpha_bundle.files} == {"Alpha/alpha.mp4"}
+    assert {file.relative_path for file in beta_bundle.files} == {
+        "Beta/beta.mp4",
+        "Beta/poster.jpg",
+        "Alpha/poster.jpg",
+    }
+    assert alpha_bundle.cover_file_id is None
 
 
 def test_get_unknown_plan_is_404(client: TestClient, library_id: str) -> None:

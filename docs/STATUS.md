@@ -93,32 +93,37 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
-## Current: grouping-review file ordering
+## Current: grouping-review drag-and-drop editing
 
-Grouping suggestions now default their bundle files to video first, audio
-second, image third, and remaining types last, with natural path ordering kept
-inside each group. Grouping review exposes accessible up/down controls for every
-multi-file BUNDLE proposal, including additions to an existing bundle.
+Grouping review now uses native drag-and-drop instead of up/down buttons. Files
+can move to an exact position within any bundle suggestion or into another
+bundle; bundles can move into any suggested collection or back to the top
+level. Double-click rename now applies to collection titles as well as bundle
+titles. The generated default remains video, audio, image, then other files with
+natural order inside each group.
 
-Each move persists a complete stable-ID order on the open grouping plan. Apply
-uses that reviewed sequence as the confirmed bundle playlist order. Addition
-proposals preserve the target bundle's current order and append their reviewed
-files after it instead of colliding with existing sequence values. This remains
-metadata-only and never renames or moves source files.
+Every edit persists on the open plan. File moves recompute dense sequence and
+derived roles for affected proposals, while apply preserves original bundle IDs
+when an explicit drag revises confirmed uncategorized membership. Untouched
+confirmed suggestions retain conflict protection. The new persisted
+`base_bundle_id` / `owner_edited` fields are additive, and no operation moves,
+renames, or deletes a source file.
 
-The API adds the library-scoped
-`PUT /grouping/plans/{plan_id}/proposals/{proposal_id}/files/order` contract,
-which rejects incomplete file sets, non-bundle proposals, and closed plans.
-Regression coverage checks default media ranking, persisted review/apply order,
-safe addition append order, React interaction, and the browser-visible edit
-flow.
+The API replaces complete-order writes with library-scoped file-move and
+bundle-parent routes and broadens proposal title updates to bundle or collection
+suggestions. OpenAPI and frontend generated types are current. Regression
+coverage checks within/cross-bundle movement, confirmed identity preservation,
+collection rename/reparent, addition order, React interaction, and the
+browser-visible drag flow.
 
-Verified on `main`: backend Ruff check and format check, mypy, and all 418
-pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 101 Vitest tests,
-the production build, and all 70 Playwright tests pass. The in-app browser
-runtime was also attempted for manual inspection but could not initialize
-(`Cannot redefine property: process`); the complete Playwright run is the
-browser proof for this slice.
+Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
+and all 420 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 104
+Vitest tests, and the production build pass. The grouping Playwright flow passes
+focused and in every full run. The full 70-test suite reached 69/70 in two
+parallel runs and one serial run because existing real-media hover/storyboard
+tests timed out at different frame-transition assertions; the first isolated
+failure passed when rerun alone. The in-app browser runtime also could not
+initialize (`Cannot redefine property: process`).
 
 ## Current: ordered bundle media cursor
 

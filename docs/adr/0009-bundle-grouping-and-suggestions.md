@@ -92,6 +92,13 @@ Concretely:
    2026-07-14, the default `sequence` ranks video, then audio, then image, then
    remaining files, preserving numeric/name order within each group; grouping
    review can persist an exact override before apply.
+7. **Explicit review edits are owner decisions.** As amended on 2026-07-14,
+   dragging a file within or across bundle proposals, reparenting a bundle into
+   a suggested collection, or renaming a proposal marks the affected proposal as
+   owner-edited. Apply may therefore revise membership in a confirmed
+   uncategorized bundle while preserving its snapshotted `base_bundle_id` and
+   every `AssetFile.id`. This does not weaken heuristic safety: an untouched
+   suggestion still cannot silently split, merge, or retitle a confirmed bundle.
 
 ## Provisional bundle model
 

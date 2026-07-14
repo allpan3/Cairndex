@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { type DragEvent, useMemo, useRef, useState } from 'react'
 
 import type { GroupingApplyResult, GroupingProposal } from '../api/client'
 import {
@@ -6,8 +6,9 @@ import {
   useGenerateGroupingPlan,
   useGroupingPlan,
   useGroupingPlans,
+  useMoveGroupingProposalFile,
   useRenameGroupingProposal,
-  useReorderGroupingProposalFiles,
+  useReparentGroupingProposal,
 } from '../api/hooks'
 
 /**
@@ -53,11 +54,28 @@ interface RenameControls {
   cancel: () => void
 }
 
-/** Coordinate persisted file-order edits across the recursive proposal tree. */
-interface ReorderControls {
+type ReviewDragItem =
+  | { kind: 'file'; proposalId: string; assetFileId: string }
+  | { kind: 'bundle'; proposalId: string }
+
+type ReviewDropSlot =
+  | { kind: 'file'; proposalId: string; assetFileId: string; before: boolean }
+  | { kind: 'file-list'; proposalId: string }
+  | { kind: 'collection'; proposalId: string }
+  | { kind: 'root' }
+
+/** Coordinate native drag-and-drop edits across the recursive proposal tree. */
+interface DragControls {
   canEdit: boolean
   pending: boolean
-  move: (proposal: GroupingProposal, index: number, delta: number) => void
+  item: ReviewDragItem | null
+  slot: ReviewDropSlot | null
+  startFile: (event: DragEvent, proposalId: string, assetFileId: string) => void
+  startBundle: (event: DragEvent, proposalId: string) => void
+  hover: (slot: ReviewDropSlot) => void
+  dropFile: (targetProposalId: string, targetIndex: number) => void
+  dropBundle: (parentProposalId: string | null) => void
+  end: () => void
 }
 
 function buildTree(proposals: GroupingProposal[]): TreeNode[] {
@@ -90,8 +108,8 @@ function Confidence({ value }: { value: number }) {
   )
 }
 
-/** Render a bundle suggestion title with an inline double-click rename field. */
-function BundleTitle({
+/** Render a bundle or collection title with inline double-click rename. */
+function ProposalTitle({
   proposal,
   isAddition,
   rename,
@@ -101,12 +119,14 @@ function BundleTitle({
   rename: RenameControls
 }) {
   const displayTitle = proposal.title || '(untitled)'
+  const kindLabel = proposal.kind === 'container' ? 'collection' : 'bundle'
+  const inputLabel = `${kindLabel[0]?.toUpperCase()}${kindLabel.slice(1)} suggestion title`
   const editable = rename.canEdit && !isAddition
   if (editable && rename.editingId === proposal.id) {
     return (
       <input
         className="grp-title grp-title-input"
-        aria-label="Bundle suggestion title"
+        aria-label={inputLabel}
         defaultValue={proposal.title ?? ''}
         autoFocus
         disabled={rename.pending}
@@ -129,7 +149,7 @@ function BundleTitle({
       <button
         type="button"
         className="grp-title grp-title--editable"
-        aria-label={`Rename bundle suggestion ${displayTitle}`}
+        aria-label={`Rename ${kindLabel} suggestion ${displayTitle}`}
         title="Double-click to rename"
         onDoubleClick={() => rename.start(proposal)}
         onKeyDown={(event) => {
@@ -151,20 +171,36 @@ function ProposalNode({
   selectedIds,
   onToggle,
   rename,
-  reorder,
+  drag,
 }: {
   node: TreeNode
   selectedIds: Set<string>
   onToggle: (node: TreeNode, checked: boolean) => void
   rename: RenameControls
-  reorder: ReorderControls
+  drag: DragControls
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
   if (proposal.kind === 'container') {
+    const isDropTarget = drag.slot?.kind === 'collection' && drag.slot.proposalId === proposal.id
     return (
       <li className="grp-node grp-node--container">
-        <div className="grp-row">
+        <div
+          className={`grp-row grp-row--collection${isDropTarget ? ' grp-row--drop' : ''}`}
+          onDragOver={(event) => {
+            if (drag.item?.kind !== 'bundle') return
+            event.preventDefault()
+            event.stopPropagation()
+            event.dataTransfer.dropEffect = 'move'
+            drag.hover({ kind: 'collection', proposalId: proposal.id })
+          }}
+          onDrop={(event) => {
+            if (drag.item?.kind !== 'bundle') return
+            event.preventDefault()
+            event.stopPropagation()
+            drag.dropBundle(proposal.id)
+          }}
+        >
           <input
             className="grp-check"
             type="checkbox"
@@ -173,9 +209,7 @@ function ProposalNode({
             aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
           <span className="grp-kind">📁</span>
-          <span className="grp-title">
-            {proposal.title || baseName(proposal.directory) || 'Collection'}
-          </span>
+          <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
           <Confidence value={proposal.confidence} />
           {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
         </div>
@@ -188,7 +222,7 @@ function ProposalNode({
                 selectedIds={selectedIds}
                 onToggle={onToggle}
                 rename={rename}
-                reorder={reorder}
+                drag={drag}
               />
             ))}
           </ul>
@@ -197,6 +231,8 @@ function ProposalNode({
     )
   }
   const isAddition = proposal.target_bundle_id !== null
+  const fileListDrop = drag.slot?.kind === 'file-list' && drag.slot.proposalId === proposal.id
+  const displayTitle = proposal.title || 'bundle'
   return (
     <li className="grp-node grp-node--bundle">
       <div className="grp-row">
@@ -207,40 +243,98 @@ function ProposalNode({
           onChange={(e) => onToggle(node, e.currentTarget.checked)}
           aria-label={`Accept ${proposal.title || 'bundle'}`}
         />
+        {drag.canEdit && (
+          <button
+            type="button"
+            className="grp-drag-handle"
+            draggable={!drag.pending}
+            disabled={drag.pending}
+            aria-label={`Drag bundle ${displayTitle}`}
+            title="Drag bundle into a collection"
+            onDragStart={(event) => drag.startBundle(event, proposal.id)}
+            onDragEnd={drag.end}
+          >
+            ⠿
+          </button>
+        )}
         <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
-        <BundleTitle proposal={proposal} isAddition={isAddition} rename={rename} />
+        <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
         <Confidence value={proposal.confidence} />
         {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
       </div>
-      <ul className="grp-files">
+      <ul
+        className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
+        aria-label={`Files in ${displayTitle}`}
+        onDragOver={(event) => {
+          if (drag.item?.kind !== 'file') return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          drag.hover({ kind: 'file-list', proposalId: proposal.id })
+        }}
+        onDrop={(event) => {
+          if (drag.item?.kind !== 'file') return
+          event.preventDefault()
+          event.stopPropagation()
+          drag.dropFile(proposal.id, proposal.files.length)
+        }}
+      >
+        {proposal.files.length === 0 && <li className="grp-file-empty">Drop files here</li>}
         {proposal.files.map((f, index) => (
-          <li key={f.asset_file_id} className="grp-file">
+          <li
+            key={f.asset_file_id}
+            className={`grp-file${
+              drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
+                ? ' grp-file--dragging'
+                : ''
+            }`}
+            data-drop={
+              drag.slot?.kind === 'file' &&
+              drag.slot.proposalId === proposal.id &&
+              drag.slot.assetFileId === f.asset_file_id
+                ? drag.slot.before
+                  ? 'before'
+                  : 'after'
+                : undefined
+            }
+            onDragOver={(event) => {
+              if (drag.item?.kind !== 'file') return
+              event.preventDefault()
+              event.stopPropagation()
+              event.dataTransfer.dropEffect = 'move'
+              const rect = event.currentTarget.getBoundingClientRect()
+              drag.hover({
+                kind: 'file',
+                proposalId: proposal.id,
+                assetFileId: f.asset_file_id,
+                before: event.clientY < rect.top + rect.height / 2,
+              })
+            }}
+            onDrop={(event) => {
+              if (drag.item?.kind !== 'file') return
+              event.preventDefault()
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              const before = event.clientY < rect.top + rect.height / 2
+              drag.dropFile(proposal.id, index + (before ? 0 : 1))
+            }}
+          >
+            {drag.canEdit && (
+              <button
+                type="button"
+                className="grp-drag-handle grp-drag-handle--file"
+                draggable={!drag.pending}
+                disabled={drag.pending}
+                aria-label={`Drag file ${baseName(f.relative_path)}`}
+                title="Drag to reorder or move into another bundle"
+                onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
+                onDragEnd={drag.end}
+              >
+                ⠿
+              </button>
+            )}
             <span className="grp-file__name">{baseName(f.relative_path)}</span>
             <span className="grp-file__role">{ROLE_LABEL[f.proposed_role] ?? f.proposed_role}</span>
-            {reorder.canEdit && proposal.files.length > 1 && (
-              <span className="grp-file__actions">
-                <button
-                  type="button"
-                  className="tip"
-                  data-tip="Move up"
-                  aria-label={`Move ${baseName(f.relative_path)} up`}
-                  disabled={reorder.pending || index === 0}
-                  onClick={() => reorder.move(proposal, index, -1)}
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="tip"
-                  data-tip="Move down"
-                  aria-label={`Move ${baseName(f.relative_path)} down`}
-                  disabled={reorder.pending || index === proposal.files.length - 1}
-                  onClick={() => reorder.move(proposal, index, 1)}
-                >
-                  ↓
-                </button>
-              </span>
-            )}
           </li>
         ))}
       </ul>
@@ -287,13 +381,16 @@ export function GroupingReview({
   const plan = useGroupingPlan(planId)
   const generate = useGenerateGroupingPlan()
   const rename = useRenameGroupingProposal(planId)
-  const reorder = useReorderGroupingProposalFiles(planId)
+  const moveProposalFile = useMoveGroupingProposalFile(planId)
+  const reparentProposal = useReparentGroupingProposal(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ id: string; original: string } | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
+  const [dragItem, setDragItem] = useState<ReviewDragItem | null>(null)
+  const [dropSlot, setDropSlot] = useState<ReviewDropSlot | null>(null)
   const committingRename = useRef<string | null>(null)
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
@@ -322,6 +419,8 @@ export function GroupingReview({
         setResult(null)
         setEditing(null)
         setRenameError(null)
+        setDragItem(null)
+        setDropSlot(null)
         setDeselectedIds(new Set())
         setNotice('Suggestions generated from the current library state.')
       },
@@ -344,7 +443,9 @@ export function GroupingReview({
     if (editing?.id !== proposalId || committingRename.current === proposalId) return
     const title = rawTitle.trim()
     if (!title) {
-      setRenameError('Bundle suggestion title cannot be empty.')
+      const proposal = plan.data?.proposals.find((item) => item.id === proposalId)
+      const kindLabel = proposal?.kind === 'container' ? 'Collection' : 'Bundle'
+      setRenameError(`${kindLabel} suggestion title cannot be empty.`)
       return
     }
     if (title === editing.original) {
@@ -382,22 +483,71 @@ export function GroupingReview({
       )
   }
 
-  const moveFile = (proposal: GroupingProposal, index: number, delta: number) => {
-    const target = index + delta
-    const orderedIds = proposal.files.map((file) => file.asset_file_id)
-    const currentId = orderedIds[index]
-    const targetId = orderedIds[target]
-    if (currentId === undefined || targetId === undefined) return
-    orderedIds[index] = targetId
-    orderedIds[target] = currentId
-    reorder.mutate({ proposalId: proposal.id, orderedIds })
+  const clearDrag = () => {
+    setDragItem(null)
+    setDropSlot(null)
+  }
+
+  const startFileDrag = (event: DragEvent, proposalId: string, assetFileId: string) => {
+    event.stopPropagation()
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', assetFileId)
+    setDragItem({ kind: 'file', proposalId, assetFileId })
+    setDropSlot(null)
+  }
+
+  const startBundleDrag = (event: DragEvent, proposalId: string) => {
+    event.stopPropagation()
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', proposalId)
+    setDragItem({ kind: 'bundle', proposalId })
+    setDropSlot(null)
+  }
+
+  const dropFile = (targetProposalId: string, targetIndex: number) => {
+    if (dragItem?.kind !== 'file') return
+    const { proposalId, assetFileId } = dragItem
+    moveProposalFile.mutate(
+      {
+        sourceProposalId: proposalId,
+        assetFileId,
+        targetProposalId,
+        targetIndex,
+      },
+      { onSuccess: () => setNotice('Bundle file arrangement updated.') },
+    )
+    clearDrag()
+  }
+
+  const dropBundle = (parentProposalId: string | null) => {
+    if (dragItem?.kind !== 'bundle') return
+    reparentProposal.mutate(
+      { proposalId: dragItem.proposalId, parentProposalId },
+      {
+        onSuccess: () =>
+          setNotice(
+            parentProposalId
+              ? 'Bundle moved into the collection suggestion.'
+              : 'Bundle moved to the top level.',
+          ),
+      },
+    )
+    clearDrag()
   }
 
   const status = plan.data?.status
   const applied = status === 'applied' || result !== null
-  const busy = generate.isPending || rename.isPending || reorder.isPending || apply.isPending
+  const busy =
+    generate.isPending ||
+    rename.isPending ||
+    moveProposalFile.isPending ||
+    reparentProposal.isPending ||
+    apply.isPending
   const actionBlocked = busy || editing !== null
-  const error = (generate.error ?? reorder.error ?? apply.error) as Error | null
+  const error = (generate.error ??
+    moveProposalFile.error ??
+    reparentProposal.error ??
+    apply.error) as Error | null
   const selectedCount = selectedIds.size
   const renameControls: RenameControls = {
     canEdit: status === 'open',
@@ -407,10 +557,17 @@ export function GroupingReview({
     commit: commitRename,
     cancel: cancelRename,
   }
-  const reorderControls: ReorderControls = {
+  const dragControls: DragControls = {
     canEdit: status === 'open',
-    pending: reorder.isPending,
-    move: moveFile,
+    pending: moveProposalFile.isPending || reparentProposal.isPending,
+    item: dragItem,
+    slot: dropSlot,
+    startFile: startFileDrag,
+    startBundle: startBundleDrag,
+    hover: setDropSlot,
+    dropFile,
+    dropBundle,
+    end: clearDrag,
   }
 
   return (
@@ -432,13 +589,18 @@ export function GroupingReview({
           <p className="grp-intro">
             Suggestions cover every bundle that isn’t filed into a collection yet — including one
             whose collections you later removed — plus any still-unbundled files. Review the
-            proposed bundles and collections, then accept only the checked items. Bundles already
-            filed into a collection are left untouched. Nothing on disk changes.
+            proposed bundles and collections, drag files between bundles or bundles into
+            collections, then accept only the checked items. Double-click either title to rename it.
+            Bundles already filed into a collection are left untouched. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
           {renameError && <div className="grp-error">{renameError}</div>}
-          {notice && !result && <div className="grp-notice">{notice}</div>}
+          {notice && !result && (
+            <div className="grp-notice" role="status">
+              {notice}
+            </div>
+          )}
 
           {result && <ResultPanel result={result} />}
 
@@ -456,6 +618,25 @@ export function GroupingReview({
                   Deselect all
                 </button>
               </div>
+              <div
+                className={`grp-root-drop${
+                  dragItem?.kind === 'bundle' ? '' : ' grp-root-drop--inactive'
+                }${dropSlot?.kind === 'root' ? ' grp-root-drop--over' : ''}`}
+                aria-hidden={dragItem?.kind !== 'bundle'}
+                onDragOver={(event) => {
+                  if (dragItem?.kind !== 'bundle') return
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  setDropSlot({ kind: 'root' })
+                }}
+                onDrop={(event) => {
+                  if (dragItem?.kind !== 'bundle') return
+                  event.preventDefault()
+                  dropBundle(null)
+                }}
+              >
+                Drop here to leave the bundle outside a collection
+              </div>
               <ul className="grp-tree">
                 {tree.map((node) => (
                   <ProposalNode
@@ -464,7 +645,7 @@ export function GroupingReview({
                     selectedIds={selectedIds}
                     onToggle={toggleNode}
                     rename={renameControls}
-                    reorder={reorderControls}
+                    drag={dragControls}
                   />
                 ))}
               </ul>
