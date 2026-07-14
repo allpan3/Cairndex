@@ -2235,6 +2235,15 @@ code {
   border-radius: 4px;
   padding: 0 5px;
 }
+.grp-file__actions {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.grp-file__actions button {
+  width: 22px;
+  height: 22px;
+}
 .grp-foot {
   display: flex;
   align-items: center;

@@ -21,12 +21,25 @@ const PROPOSAL = {
       proposed_role: 'primary_video',
       sequence: 0,
     },
+    {
+      asset_file_id: 'file2',
+      relative_path: 'SRCV-005/SRCV-005.mp3',
+      proposed_role: 'attachment',
+      sequence: 1,
+    },
+    {
+      asset_file_id: 'file3',
+      relative_path: 'SRCV-005/cover.jpg',
+      proposed_role: 'cover',
+      sequence: 2,
+    },
   ],
 }
 
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi() {
   let title = PROPOSAL.title
+  let files = PROPOSAL.files
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.endsWith('/grouping/plans')) {
@@ -48,14 +61,19 @@ function mockGroupingApi() {
         scan_job_id: 'job1',
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
-        proposals: [{ ...PROPOSAL, title }],
+        proposals: [{ ...PROPOSAL, title, files }],
       }
     } else if (
       url.endsWith('/grouping/plans/plan1/proposals/proposal1') &&
       init?.method === 'PATCH'
     ) {
       title = (JSON.parse(init.body as string) as { title: string }).title
-      body = { ...PROPOSAL, title }
+      body = { ...PROPOSAL, title, files }
+    } else if (url.endsWith('/proposals/proposal1/files/order') && init?.method === 'PUT') {
+      const orderedIds = (JSON.parse(init.body as string) as { ordered_ids: string[] }).ordered_ids
+      const byId = new Map(files.map((file) => [file.asset_file_id, file]))
+      files = orderedIds.map((id, sequence) => ({ ...byId.get(id)!, sequence }))
+      body = files
     } else {
       body = {}
     }
@@ -119,4 +137,24 @@ test('Escape cancels a bundle suggestion rename', async () => {
     ).toBeInTheDocument(),
   )
   expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
+})
+
+test('moves proposal files and persists the reviewed order', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  const review = renderReview()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Move SRCV-005.mp4 down' }))
+
+  await waitFor(() =>
+    expect(
+      [...review.container.querySelectorAll('.grp-file__name')].map((node) => node.textContent),
+    ).toEqual(['SRCV-005.mp3', 'SRCV-005.mp4', 'cover.jpg']),
+  )
+  const reorderCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/proposal1/files/order') && init?.method === 'PUT',
+  )
+  expect(reorderCall?.[1]).toMatchObject({
+    body: JSON.stringify({ ordered_ids: ['file2', 'file1', 'file3'] }),
+  })
 })

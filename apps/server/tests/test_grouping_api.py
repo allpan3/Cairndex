@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import GroupingState
-from cairndex.persistence.models import AssetBundle
+from cairndex.persistence.models import AssetBundle, AssetFile
 from cairndex.scanning.scanner import scan_library
 
 
@@ -46,6 +46,16 @@ def test_generate_get_and_apply_plan(
     assert renamed.status_code == 200
     assert renamed.json()["title"] == "Renamed Cosmos"
 
+    original_ids = [file["asset_file_id"] for file in bundle_proposals[0]["files"]]
+    reviewed_ids = list(reversed(original_ids))
+    reordered = client.put(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/order",
+        json={"ordered_ids": reviewed_ids},
+    )
+    assert reordered.status_code == 200
+    assert [file["asset_file_id"] for file in reordered.json()] == reviewed_ids
+    assert [file["sequence"] for file in reordered.json()] == [0, 1, 2]
+
     listed = client.get(f"{base}/plans")
     assert listed.status_code == 200
     assert any(p["id"] == plan_id for p in listed.json())
@@ -60,11 +70,42 @@ def test_generate_get_and_apply_plan(
     bundle = session.scalars(select(AssetBundle)).one()
     assert bundle.grouping_state is GroupingState.CONFIRMED
     assert bundle.title == "Renamed Cosmos"
+    applied_ids = list(
+        session.scalars(
+            select(AssetFile.id)
+            .where(AssetFile.bundle_id == bundle.id)
+            .order_by(AssetFile.sequence)
+        )
+    )
+    assert applied_ids == reviewed_ids
 
     closed_edit = client.patch(
         f"{base}/plans/{plan_id}/proposals/{proposal_id}", json={"title": "Too late"}
     )
     assert closed_edit.status_code == 409
+    closed_reorder = client.put(
+        f"{base}/plans/{plan_id}/proposals/{proposal_id}/files/order",
+        json={"ordered_ids": reviewed_ids},
+    )
+    assert closed_reorder.status_code == 409
+
+
+# Require a proposal's complete file set so no reviewed member can be dropped
+def test_reorder_rejects_incomplete_proposal_file_set(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    proposal = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+
+    response = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{proposal['id']}/files/order",
+        json={"ordered_ids": [proposal["files"][0]["asset_file_id"]]},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
 
 
 # Keep collection suggestions out of the bundle-title edit path

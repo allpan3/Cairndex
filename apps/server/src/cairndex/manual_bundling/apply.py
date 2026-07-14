@@ -245,7 +245,7 @@ def create_bundle_from_unbundled(
     role_by_id = _apply_overrides({p.asset_file_id: p.role for p in proposed}, role_overrides)
     row_by_id = {r.id: r for r in rows}
 
-    # Reuse the first (natural-order) file's provisional bundle as the target so
+    # Reuse the first proposed-order file's provisional bundle as the target so
     # its id/thumbnail identity survives, mirroring grouping-apply's merge.
     target = row_by_id[proposed[0].asset_file_id].bundle
     source_bundles: set[AssetBundle] = set()

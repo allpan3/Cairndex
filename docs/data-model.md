@@ -273,8 +273,12 @@ that selected subset is accepted and the plan is marked applied, so unchecked
 proposals are not retained as pending work for the same plan.
 `PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a new BUNDLE
 proposal while the plan is open; apply uses that persisted title when it confirms
-the bundle. CONTAINER proposals and additions targeting an existing confirmed
-bundle remain read-only.
+the bundle. `PUT /grouping/plans/{id}/proposals/{proposal_id}/files/order`
+requires the BUNDLE proposal's complete `asset_file_id` set, rewrites dense
+proposal-file `sequence` values, and apply carries that reviewed playlist order
+into the confirmed bundle. Addition proposals append their reviewed files after
+the target bundle's existing sequence. CONTAINER proposals and addition titles
+remain read-only.
 
 ## Registry database
 

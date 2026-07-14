@@ -63,6 +63,33 @@ def test_movie_folder_is_one_bundle_with_roles() -> None:
     assert roles["Cosmos/cosmos.en.srt"] is FileRole.SUBTITLE
 
 
+# Default sequence favors openable media while preserving natural order within groups
+def test_bundle_sequence_is_video_then_audio_then_image_then_other() -> None:
+    plan = suggest_grouping(
+        [
+            _f("Epic/work.part2.mkv", MediaKind.VIDEO),
+            _f("Epic/track2.mp3", MediaKind.AUDIO),
+            _f("Epic/work.en.srt", MediaKind.SUBTITLE),
+            _f("Epic/poster.jpg", MediaKind.IMAGE),
+            _f("Epic/notes.pdf", MediaKind.OTHER),
+            _f("Epic/track1.flac", MediaKind.AUDIO),
+            _f("Epic/work.part1.mkv", MediaKind.VIDEO),
+        ]
+    )
+
+    bundle = _bundles(plan.proposals)[0]
+    assert [proposed.asset_file_id for proposed in bundle.files] == [
+        "Epic/work.part1.mkv",
+        "Epic/work.part2.mkv",
+        "Epic/track1.flac",
+        "Epic/track2.mp3",
+        "Epic/poster.jpg",
+        "Epic/notes.pdf",
+        "Epic/work.en.srt",
+    ]
+    assert [proposed.sequence for proposed in bundle.files] == list(range(7))
+
+
 # Multi-video folders attach sidecars by normalized filename subject prefix
 def test_multi_subject_folder_groups_sidecars_by_delimited_prefix() -> None:
     plan = suggest_grouping(
@@ -155,7 +182,7 @@ def test_multipart_video_is_one_bundle_with_video_parts() -> None:
     assert roles["Epic/epic.part1.mkv"] is FileRole.VIDEO_PART
     assert roles["Epic/epic.part2.mkv"] is FileRole.VIDEO_PART
     assert roles["Epic/cover.jpg"] is FileRole.COVER
-    # Sequence follows natural order: part1 before part2.
+    # Sequence keeps natural order within the video group
     seq = {pf.asset_file_id: pf.sequence for pf in bundles[0].files}
     assert seq["Epic/epic.part1.mkv"] < seq["Epic/epic.part2.mkv"]
 

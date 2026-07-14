@@ -93,6 +93,33 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
+## Current: grouping-review file ordering
+
+Grouping suggestions now default their bundle files to video first, audio
+second, image third, and remaining types last, with natural path ordering kept
+inside each group. Grouping review exposes accessible up/down controls for every
+multi-file BUNDLE proposal, including additions to an existing bundle.
+
+Each move persists a complete stable-ID order on the open grouping plan. Apply
+uses that reviewed sequence as the confirmed bundle playlist order. Addition
+proposals preserve the target bundle's current order and append their reviewed
+files after it instead of colliding with existing sequence values. This remains
+metadata-only and never renames or moves source files.
+
+The API adds the library-scoped
+`PUT /grouping/plans/{plan_id}/proposals/{proposal_id}/files/order` contract,
+which rejects incomplete file sets, non-bundle proposals, and closed plans.
+Regression coverage checks default media ranking, persisted review/apply order,
+safe addition append order, React interaction, and the browser-visible edit
+flow.
+
+Verified on `main`: backend Ruff check and format check, mypy, and all 418
+pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 101 Vitest tests,
+the production build, and all 70 Playwright tests pass. The in-app browser
+runtime was also attempted for manual inspection but could not initialize
+(`Cannot redefine property: process`); the complete Playwright run is the
+browser proof for this slice.
+
 ## Current: ordered bundle media cursor
 
 Cover artwork and playback location are now independent (ADR-0016). Every
@@ -1927,8 +1954,9 @@ dialogs).
   (determinate/indeterminate) progress bar under Update plus redacted error
   text. Branch `feat/job-progress-observability`. Cancellation is wired but has
   no dedicated UI button yet.
-- Grouping review can select/deselect proposals and rename new-bundle suggestions,
-  but does not yet provide edit-before-apply merge/split/reclassify controls.
+- Grouping review can select/deselect proposals, rename new-bundle suggestions,
+  and reorder proposed bundle files, but does not yet provide edit-before-apply
+  merge/split/reclassify controls.
 - Whole-library indexed metadata search (SQLite FTS5) is implemented: the toolbar
   search box queries a per-library `bundle_search` FTS5 index (kept fresh by
   triggers; rebuildable via `cairndex.devtools.reindex_search`) over

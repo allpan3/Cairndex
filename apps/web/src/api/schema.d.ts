@@ -1245,6 +1245,26 @@ export interface paths {
         patch: operations["update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch"];
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder Proposal Files
+         * @description Replace a bundle suggestion's complete file order while its plan is open.
+         */
+        put: operations["reorder_proposal_files_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/jobs/probe": {
         parameters: {
             query?: never;
@@ -2926,6 +2946,11 @@ export interface components {
             relative_path: string;
             /** Sequence */
             sequence: number;
+        };
+        /** ProposalFileReorder */
+        ProposalFileReorder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
         /**
          * ProposalKind
@@ -6008,6 +6033,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reorder_proposal_files_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files_order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalFileReorder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalFileRead"][];
                 };
             };
             /** @description Validation Error */

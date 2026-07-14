@@ -488,6 +488,18 @@ export const renameGroupingProposal = (
     title,
   })
 
+/** Persist the complete file order for one bundle suggestion. */
+export const reorderGroupingProposalFiles = (
+  planId: string,
+  proposalId: string,
+  orderedIds: string[],
+): Promise<GroupingProposalFile[]> =>
+  send<GroupingProposalFile[]>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/files/order`,
+    'PUT',
+    { ordered_ids: orderedIds },
+  )
+
 /** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */
 export const applyGroupingPlan = (
   id: string,

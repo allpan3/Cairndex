@@ -30,7 +30,7 @@ from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 2
+SUGGESTER_RULE_VERSION = 3
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -40,6 +40,12 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
 _SUBJECT_DELIMITER = re.compile(r"[._\-\s]+")
+
+_MEDIA_SEQUENCE_RANK = {
+    MediaKind.VIDEO: 0,
+    MediaKind.AUDIO: 1,
+    MediaKind.IMAGE: 2,
+}
 
 
 @dataclass(frozen=True)
@@ -240,11 +246,18 @@ def _obs_sort_key(f: FileObservation) -> list[object]:
     return _natural_key(f.relative_path)
 
 
+# Put playable media first without disturbing natural order within each group
+def _media_first(files: list[FileObservation]) -> list[FileObservation]:
+    """Order video, audio, and image first; preserve natural order otherwise."""
+    naturally_ordered = sorted(files, key=_obs_sort_key)
+    return sorted(naturally_ordered, key=lambda f: _MEDIA_SEQUENCE_RANK.get(f.media_kind, 3))
+
+
 # --- role assignment ---------------------------------------------------------
 
 
 def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
-    ordered = sorted(files, key=lambda f: _natural_key(f.relative_path))
+    ordered = _media_first(files)
     videos = [f for f in ordered if f.media_kind is MediaKind.VIDEO]
     multipart = _is_multipart(videos)
     images = [f for f in ordered if f.media_kind is MediaKind.IMAGE]
@@ -426,7 +439,7 @@ def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     already has a primary/cover, so an added image is just an image, an added
     video a part, and a subtitle a subtitle."""
     proposed: list[ProposedFile] = []
-    for sequence, f in enumerate(sorted(files, key=lambda x: _natural_key(x.relative_path))):
+    for sequence, f in enumerate(_media_first(files)):
         match f.media_kind:
             case MediaKind.SUBTITLE:
                 role = FileRole.SUBTITLE

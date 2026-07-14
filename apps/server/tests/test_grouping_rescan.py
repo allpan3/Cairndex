@@ -46,21 +46,37 @@ def test_applying_an_addition_folds_the_file_in_and_links_subtitle(
     session: Session, library_root: Path
 ) -> None:
     bundle_id = _confirm_movie_folder(session, library_root)
+    (library_root / "Cosmos" / "soundtrack.mp3").write_text("a")
     (library_root / "Cosmos" / "cosmos.en.srt").write_text("s")
     scan_library(session, library_root)
-    assert session.scalar(select(func.count()).select_from(AssetBundle)) == 2
+    assert session.scalar(select(func.count()).select_from(AssetBundle)) == 3
 
     plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+    reviewed_ids = [proposal_file.asset_file_id for proposal_file in reversed(addition.files)]
+    plan_store.reorder_proposal_files(session, plan.id, addition.id, reviewed_ids)
     result = apply_service.apply_plan(session, plan)
 
-    assert result.files_added_to_bundles == 1
+    assert result.files_added_to_bundles == 2
     assert result.subtitles_linked == 1
     # The provisional one-file bundle was emptied and removed.
     assert session.scalar(select(func.count()).select_from(AssetBundle)) == 1
     bundle = session.get(AssetBundle, bundle_id)
     assert bundle is not None and bundle.grouping_state is GroupingState.CONFIRMED
-    rels = {f.relative_path for f in bundle.files}
-    assert rels == {"Cosmos/cosmos.mp4", "Cosmos/poster.jpg", "Cosmos/cosmos.en.srt"}
+    rels = [
+        relative_path
+        for (relative_path,) in session.execute(
+            select(AssetFile.relative_path)
+            .where(AssetFile.bundle_id == bundle.id)
+            .order_by(AssetFile.sequence)
+        )
+    ]
+    assert rels == [
+        "Cosmos/cosmos.mp4",
+        "Cosmos/poster.jpg",
+        "Cosmos/cosmos.en.srt",
+        "Cosmos/soundtrack.mp3",
+    ]
     track = session.scalars(select(SubtitleTrack)).one()
     assert track.video_file_id is not None
 

@@ -36,6 +36,11 @@ class ProposalUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=1024)
 
 
+# Validate a complete replacement order for one bundle suggestion's files
+class ProposalFileReorder(BaseModel):
+    ordered_ids: list[str] = Field(min_length=1)
+
+
 class PlanRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
