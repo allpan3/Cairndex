@@ -5,7 +5,9 @@
 Branch `feat/device-pairing` (off `main` at `776e0d7`, after M12 merged as
 #12). Implementation commits: `6e4cf5e` (`feat: add device pairing and bearer
 auth`), `cfc754f` (`feat: add Settings Devices page`), and tested implementation
-tip `d07ed2d` (`fix: block offline library pairing bypass`).
+tip `d07ed2d` (`fix: block offline library pairing bypass`). Review hardening and
+its final full-gate evidence are recorded in `93edc04` (`fix: harden device
+pairing review findings`).
 
 Completed:
 
