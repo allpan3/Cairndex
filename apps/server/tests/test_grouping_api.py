@@ -1,5 +1,6 @@
 """Grouping plan review/apply API (ADR-0009 phase 3)."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -7,6 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import GroupingState
+from cairndex.grouping import plan_store
+from cairndex.grouping.service import gather_observations
+from cairndex.grouping.suggester import suggest_grouping
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection
 from cairndex.scanning.scanner import scan_library
 
@@ -91,6 +95,26 @@ def test_generate_get_and_apply_plan(
     assert closed_move.status_code == 409
 
 
+# Repeated manual generation must use the same confirmed-bundle boundary as Update
+def test_regenerate_plan_does_not_reopen_confirmed_bundles(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    first_plan = client.post(f"{base}/plans").json()
+    assert client.post(f"{base}/plans/{first_plan['id']}/apply").status_code == 200
+
+    bundle = session.scalars(select(AssetBundle)).one()
+    original_file_ids = {file.id for file in bundle.files}
+    regenerated = client.post(f"{base}/plans")
+
+    assert regenerated.status_code == 201
+    assert regenerated.json()["proposals"] == []
+    session.refresh(bundle)
+    assert bundle.grouping_state is GroupingState.CONFIRMED
+    assert {file.id for file in bundle.files} == original_file_ids
+
+
 # Reject a drag position outside the target bundle suggestion
 def test_file_move_rejects_invalid_target_index(
     client: TestClient, library_id: str, library_root: Path, session: Session
@@ -150,8 +174,8 @@ def test_rename_collection_and_reparent_bundle_proposal(
     assert {bundle.title for bundle in collection_bundles} == {"Cosmos", "Waves", "Loose"}
 
 
-# Explicit file drags can revise confirmed uncategorized bundle membership
-def test_file_move_applies_across_confirmed_bundle_suggestions(
+# Existing broader-scope plans remain safely editable after the scope is retired
+def test_legacy_plan_file_move_applies_across_confirmed_bundles(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
     for name in ("Alpha", "Beta"):
@@ -166,7 +190,12 @@ def test_file_move_applies_across_confirmed_bundle_suggestions(
     original_bundles = {
         bundle.title: bundle.id for bundle in session.scalars(select(AssetBundle)).all()
     }
-    plan = client.post(f"{base}/plans").json()
+    legacy_observations = [
+        replace(observation, grouping_confirmed=False)
+        for observation in gather_observations(session)
+    ]
+    legacy_plan = plan_store.persist_plan(session, suggest_grouping(legacy_observations))
+    plan = client.get(f"{base}/plans/{legacy_plan.id}").json()
     alpha = next(proposal for proposal in plan["proposals"] if proposal["title"] == "Alpha")
     beta = next(proposal for proposal in plan["proposals"] if proposal["title"] == "Beta")
     alpha_poster = next(

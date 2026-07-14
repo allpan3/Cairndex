@@ -10816,7 +10816,7 @@
         ]
       },
       "post": {
-        "description": "Suggest a grouping for the current library and store it as the active\nplan (superseding any earlier open plan).\n\nThis is the manual \"Suggest grouping\" entrypoint, so it uses the\n``uncategorized`` scope: every bundle not yet filed into a collection \u2014\nincluding a previously confirmed one whose collections were later removed \u2014\nis re-proposed for grouping, alongside still-unbundled files. Routine\nscan/Update generation stays on the ``new`` scope (confirmed groupings are\nleft untouched).",
+        "description": "Suggest a grouping for the current library and store it as the active\nplan (superseding any earlier open plan).\n\nManual and scan-triggered generation share the same durable boundary:\nconfirmed bundles stay settled regardless of collection membership, while\nstill-unbundled files and new additions remain eligible.",
         "operationId": "generate_plan_api_v1_libraries__library_id__grouping_plans_post",
         "parameters": [
           {

@@ -123,6 +123,13 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
+- **Repeated grouping suggestions no longer reopen bundled files.** Manual
+  **Suggest grouping** and Update now share the same durable confirmation
+  boundary: confirmed bundles stay settled even when they do not belong to a
+  collection. Regenerating inside grouping review only proposes still-unbundled
+  files and new additions instead of switching to a broader categorization
+  pass.
+
 - **Empty grouping suggestions deselect after drag.** Moving the final file out
   of a bundle suggestion now clears and disables its acceptance checkbox. Moving
   the last file-backed bundle out of a suggested collection does the same for
@@ -698,15 +705,12 @@ duration_s}`, restart explicitly writes position zero, completion requires a
 - **Fold arrows are a slim disclosure triangle** (`IconChevron`) — narrow on
   purpose (width < height) so the caret barely widens a row, sized larger on the
   Collections / Smart Collections section headings.
-- **"Review grouping" is now "Suggest grouping" and is categorization-driven**
-  (ADR-0011). The manual action re-proposes grouping for **every bundle that
-  isn't filed into a collection** — including a previously confirmed one whose
-  collections were later removed — plus still-unbundled files; bundles already in
-  a collection are left untouched. Routine **Update**/scan keeps its narrower
-  scope (only files not yet in a confirmed grouping). The internal
-  provisional/confirmed state is unchanged (it still protects confirmed bundles
-  at apply time and drives re-scan additions) but the user-facing **"Needs
-  review" badge is removed** — there's no "review" state to track.
+- **"Review grouping" is now "Suggest grouping"** (ADR-0011). Manual and
+  Update-triggered suggestions share the confirmed-grouping boundary: they
+  propose still-unbundled files and new additions without reopening confirmed
+  bundles based on collection membership. The internal provisional/confirmed
+  state is unchanged, but the user-facing **"Needs review" badge is removed** —
+  there is no review state to track.
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
 - **Folder and bundle card sizes are decoupled** on the shared zoom slider:

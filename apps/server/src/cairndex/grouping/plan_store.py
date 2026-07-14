@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import GroupingPlanStatus, ProposalKind
-from cairndex.grouping.service import SuggestScope, gather_observations
+from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import (
     FileObservation,
     _addition_roles_in_order,
@@ -241,15 +241,9 @@ def persist_plan(
     return plan
 
 
-def generate_plan(
-    session: Session, *, scope: SuggestScope = "new", scan_job_id: str | None = None
-) -> GroupingPlan:
-    """Suggest a grouping for the current library and persist it (read→write).
-
-    ``scope`` selects what is reconsidered: ``new`` (scan/Update — only files not
-    yet in a confirmed grouping) or ``uncategorized`` (manual Suggest grouping —
-    every bundle not filed into a collection, including confirmed ones)."""
-    data = suggest_grouping(gather_observations(session, scope=scope))
+def generate_plan(session: Session, *, scan_job_id: str | None = None) -> GroupingPlan:
+    """Persist grouping suggestions without reopening confirmed bundles."""
+    data = suggest_grouping(gather_observations(session))
     return persist_plan(session, data, scan_job_id=scan_job_id)
 
 
