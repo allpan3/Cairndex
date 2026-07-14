@@ -324,6 +324,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
+- **Full-stack Playwright CI partition.** Browser-only Playwright coverage stays
+  in the Node-only frontend job, while tests tagged `@fullstack` run in a
+  dedicated job with Chromium, ffmpeg, `uv`, and the locked backend environment.
+  This keeps frontend checks independent of Python while ensuring the Devices
+  pairing, real storyboard-job, and real MKV-remux flows execute in CI instead
+  of failing or skipping for missing backend tooling.
 - **Docs reconciliation through media-player M5 (docs).** Marked plan 1 M5
   merged (#5, M6 next), retitled the `docs/STATUS.md` M5 section from "Current
   branch" to "Merged" and recorded the second review fix pass (discrete-tier

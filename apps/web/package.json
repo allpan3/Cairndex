@@ -14,7 +14,9 @@
     "gen:api": "npx -y openapi-typescript@^7 ./src/api/openapi.json -o ./src/api/schema.d.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:frontend": "playwright test --grep-invert @fullstack",
+    "test:e2e:fullstack": "playwright test --grep @fullstack"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.1",

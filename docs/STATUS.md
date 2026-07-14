@@ -57,6 +57,11 @@ Verification (temporary databases/libraries only; no user media):
   pre-existing real-backend flake did not reproduce. A configurable dedicated
   Playwright frontend port prevents the runner from reusing another checkout's
   Vite server.
+- PR #13 CI follow-up partitions the same 66 cases into **63 browser-only**
+  tests in the Node-only frontend job and **3 real-backend** tests in a
+  dedicated full-stack job. The latter provisions ffmpeg, `uv`, and the locked
+  server environment for Devices pairing plus the existing storyboard-job and
+  MKV-remux coverage.
 
 Known limits: device tokens have no automatic expiry, refresh, or rotation;
 they remain valid until revoked. Scope is immutable, so changing library access
