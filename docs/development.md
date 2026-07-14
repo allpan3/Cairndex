@@ -80,7 +80,8 @@ metadata**, and **Generate storyboards** actions.
 In grouping review, double-click a new-bundle or collection suggestion title to
 edit it; Enter or blur saves the open-plan edit, while Escape cancels it. A
 re-scan addition can be switched from its recommended existing bundle to
-**Create new bundle instead**, renamed, and switched back on the same row.
+a new bundle with the circular-arrows icon beside its title, renamed, and
+switched back on the same row. Hover or focus the icon to see its exact action.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the

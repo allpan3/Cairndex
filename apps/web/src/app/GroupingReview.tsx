@@ -11,13 +11,14 @@ import {
   useReparentGroupingProposal,
   useSetGroupingProposalDestination,
 } from '../api/hooks'
+import { IconRefreshCw } from './icons'
 
 /**
  * Review grouping suggestions and apply them (ADR-0009 phase 4).
  *
  * The scanner over-fragments a real library (one bundle per file). This surface
  * shows the suggester's plan — proposed bundles and the logical containers that
- * would hold them, with each file's role, a confidence, and a reason — and lets
+ * would hold them, with each file's role and a reason — and lets
  * the owner apply it. Applying confirms the bundles, creates the collections,
  * and links subtitles; nothing on disk is touched. Conflicts (files that moved,
  * vanished, or were already grouped by hand) are reported, not silently forced.
@@ -121,16 +122,6 @@ function collectEmptyIds(nodes: TreeNode[]): string[] {
   ])
 }
 
-function Confidence({ value }: { value: number }) {
-  const pct = Math.round(value * 100)
-  const level = value >= 0.8 ? 'high' : value >= 0.6 ? 'mid' : 'low'
-  return (
-    <span className={`grp-conf grp-conf--${level}`} title={`${pct}% confidence`}>
-      {pct}%
-    </span>
-  )
-}
-
 /** Resolve the stable destination label, including legacy open-plan fallback. */
 function targetTitle(proposal: GroupingProposal): string {
   return proposal.target_bundle_title || proposal.title || 'bundle'
@@ -141,6 +132,46 @@ function proposalDisplayTitle(proposal: GroupingProposal): string {
   return proposal.target_bundle_id && !proposal.create_new_bundle
     ? `Add to ${targetTitle(proposal)}`
     : proposal.title || '(untitled)'
+}
+
+/** Describe the destination change performed by the compact switch button */
+function destinationActionLabel(proposal: GroupingProposal): string {
+  return proposal.create_new_bundle
+    ? `Add these files to “${targetTitle(proposal)}” instead`
+    : 'Create a new bundle from these files'
+}
+
+/** Render a compact accessible destination switch beside an addition title */
+function DestinationToggle({
+  proposal,
+  hasItems,
+  destination,
+}: {
+  proposal: GroupingProposal
+  hasItems: boolean
+  destination: DestinationControls
+}) {
+  const label = destinationActionLabel(proposal)
+  return (
+    <button
+      type="button"
+      className={`grp-destination tip${proposal.create_new_bundle ? ' is-active' : ''}`}
+      aria-label={label}
+      aria-pressed={proposal.create_new_bundle}
+      data-tip={label}
+      disabled={destination.pending || !hasItems}
+      onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
+    >
+      <IconRefreshCw />
+    </button>
+  )
+}
+
+/** Show a compact file count for either destination of an addition proposal */
+function additionFileCount(proposal: GroupingProposal): string {
+  const count = proposal.files.length
+  const files = `${count} ${count === 1 ? 'file' : 'files'}`
+  return proposal.create_new_bundle ? files : `${count} new ${count === 1 ? 'file' : 'files'}`
 }
 
 /** Edit a title in a field whose rendered width mirrors its live contents. */
@@ -265,9 +296,10 @@ function ProposalNode({
             aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
           <span className="grp-kind">📁</span>
-          <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
-          <Confidence value={proposal.confidence} />
-          {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
+          <span className="grp-row__content">
+            <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
+            {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
+          </span>
         </div>
         {children.length > 0 && (
           <ul className="grp-children">
@@ -317,29 +349,21 @@ function ProposalNode({
           </button>
         )}
         <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
-        <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
-        {hasDestinationChoice && proposal.create_new_bundle ? (
-          <span className="grp-manual">manual</span>
-        ) : (
-          <Confidence value={proposal.confidence} />
-        )}
-        <span className="grp-reason">
-          {hasDestinationChoice && proposal.create_new_bundle
-            ? `create ${proposal.files.length} file${proposal.files.length === 1 ? '' : 's'} as a new bundle`
-            : proposal.reason}
+        <span className="grp-row__content">
+          <span className="grp-title-cluster">
+            <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
+            {hasDestinationChoice && destination.canEdit && (
+              <DestinationToggle
+                proposal={proposal}
+                hasItems={hasItems}
+                destination={destination}
+              />
+            )}
+          </span>
+          <span className="grp-reason">
+            {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
+          </span>
         </span>
-        {hasDestinationChoice && destination.canEdit && (
-          <button
-            type="button"
-            className="grp-destination"
-            disabled={destination.pending || !hasItems}
-            onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
-          >
-            {proposal.create_new_bundle
-              ? `Add to ${targetTitle(proposal)} instead`
-              : 'Create new bundle instead'}
-          </button>
-        )}
       </div>
       <ul
         className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
