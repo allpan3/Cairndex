@@ -444,9 +444,7 @@ export function Sidebar({
                       hinted && count > 0 ? ' nav-item__count--hint' : ''
                     }`}
                   >
-                    {v.view === 'missing'
-                      ? `${count} ${count === 1 ? 'bundle' : 'bundles'}`
-                      : count}
+                    {count}
                   </span>
                 )}
               </button>

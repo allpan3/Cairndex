@@ -101,8 +101,8 @@ directory, without walking unrelated database rows. Vanished paths are
 persisted as `missing`; the directory response reports the number changed so
 the web client refreshes bundle/count queries only when necessary.
 
-The Missing Files sidebar value remains a bundle count and now renders as, for
-example, `1 bundle`, even when that bundle contains two missing files. The
+The Missing Files sidebar value remains a compact numeric count of affected
+bundles, so it renders `1` when one bundle contains two missing files. The
 inspector's Files in bundle heading reports both total and missing counts, and
 each missing row is highlighted and badged. The viewer continues to give the
 selected file's missing state precedence over a stale unsupported-container

@@ -121,7 +121,7 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   // Switch to the File Browser surface.
   await page.getByRole('tab', { name: 'Files' }).click()
   const missingView = page.getByRole('button', { name: /Missing Files/ })
-  await expect(missingView.locator('.nav-item__count')).toHaveText('0 bundles')
+  await expect(missingView.locator('.nav-item__count')).toHaveText('0')
 
   // The shared library selector (in the sidebar) + entries with badges.
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
@@ -145,7 +145,7 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
   await expect(page.locator('.file-row__name', { hasText: 'clip.mp4' })).toBeVisible()
   await expect(page.locator('.file-row', { hasText: 'clip.mp4' })).toContainText('unlinked')
   await expect(page.locator('.file-row', { hasText: 'art.jpg' })).toContainText('unlinked')
-  await expect(missingView.locator('.nav-item__count')).toHaveText('1 bundle')
+  await expect(missingView.locator('.nav-item__count')).toHaveText('1')
 
   // Selecting the file shows its details in the inspector (not the bundle one).
   await page.locator('.file-row__name', { hasText: 'clip.mp4' }).click()
