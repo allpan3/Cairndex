@@ -388,6 +388,12 @@ function Workspace({
     return () => clearTimeout(t)
   }, [flash])
 
+  // Report the total still missing after scan reconciliation, including old misses
+  const reportScanComplete = useCallback((missingTotal: number) => {
+    const files = missingTotal === 1 ? 'file is' : 'files are'
+    setFlash(`Scan complete: ${missingTotal} linked ${files} missing.`)
+  }, [])
+
   const [mode, setMode] = useState<AppMode>('collection')
   // The Files surface has two scopes: browse the directory tree, or the flat
   // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
@@ -407,6 +413,7 @@ function Workspace({
   const collectionCounts = useCollectionCounts()
   const updateLibrary = useUpdateLibrary({
     onProgress: setActiveJob,
+    onScanComplete: reportScanComplete,
     onGroupingPlan: (planId) => {
       setReviewPlanId(planId)
       setReviewingGrouping(true)
@@ -414,6 +421,7 @@ function Workspace({
   })
   const scanFiles = useScan({
     onProgress: setActiveJob,
+    onScanComplete: reportScanComplete,
     onGroupingPlan: (planId) => {
       setReviewPlanId(planId)
       setReviewingGrouping(true)

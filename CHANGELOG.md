@@ -113,6 +113,11 @@ grouped under `Unreleased` until the first tagged release.
   checks do not guess which unlinked path replaces a missing row; Update/scan
   remains responsible for high-confidence moved-file repair.
 
+- **Scan reports the linked missing-file total.** Update and standalone Scan now
+  show a completion message with the number of linked files that remain missing
+  after reconciliation. This is the full persisted total, not only files newly
+  marked missing during the latest run.
+
 - **Collection counts include nested bundles.** Sidebar and collection-card
   counts now roll up distinct bundles from the collection’s entire descendant
   subtree. A bundle assigned to more than one nested collection is counted once

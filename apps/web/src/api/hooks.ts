@@ -349,8 +349,16 @@ function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => v
   }
 }
 
+// Read the post-reconciliation linked-missing total from a completed scan
+function scanMissingTotal(job: JobRead): number {
+  const result = job.result as Record<string, unknown> | null
+  const count = Number(result?.missing_total ?? 0)
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0
+}
+
 interface MaintenanceOptions {
   onGroupingPlan?: (planId: string) => void
+  onScanComplete?: (missingTotal: number) => void
   // Receives each polled job snapshot (and null when the run settles) so the
   // sidebar can render a live progress bar with phase/message.
   onProgress?: JobProgressFn
@@ -362,6 +370,7 @@ export function useScan(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      options.onScanComplete?.(scanMissingTotal(scanJob))
       return scanJob
     },
     onSuccess: (job) => {
@@ -378,6 +387,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      options.onScanComplete?.(scanMissingTotal(scanJob))
       await waitForJob(await enqueueProbe(), options.onProgress)
       return scanJob
     },

@@ -112,6 +112,11 @@ Access-time checks do not infer that an unlinked path is a particular moved
 file. Update/scan continues to own high-confidence moved-file repair and
 stable-ID relinking.
 
+Update and standalone Scan now report the total number of linked files that
+remain missing after scan reconciliation. The message uses the persisted total,
+so repeated scans continue to report an unresolved missing file rather than
+dropping to zero when no additional path disappeared during that run.
+
 Regression coverage moves multiple linked paths while leaving another bundle
 member present, verifies bundle and directory reads persist every relevant
 missing row, confirms directory scope leaves another directory untouched, and
@@ -120,7 +125,7 @@ unsupported AVI reason present.
 
 Verified on `main`: backend Ruff check and format check, mypy, and all 410
 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 99 Vitest tests,
-the production build, and all 67 Playwright tests pass.
+the production build, and all 68 Playwright tests pass.
 
 ## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 
