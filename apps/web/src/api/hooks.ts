@@ -45,11 +45,13 @@ import {
   deleteCollection,
   deleteSmartCollection,
   applyGroupingPlan,
+  approveDevicePairing,
   enqueueProbe,
   enqueueScan,
   enqueueStoryboards,
   enqueueThumbnails,
   fetchAuthStatus,
+  fetchDevices,
   fetchJob,
   lockLibrary,
   unlockLibrary,
@@ -77,6 +79,7 @@ import {
   previewFilter,
   registerLibrary,
   removeFile,
+  revokeDevice,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -301,6 +304,31 @@ export function useLibraryLock(libraryId: string | null) {
     }),
     lock: useMutation({
       mutationFn: () => lockLibrary(libraryId!),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+/** Paired devices are global registry state, refreshed while Settings is open. */
+export function useDevices() {
+  return useQuery({
+    queryKey: ['devices'],
+    queryFn: ({ signal }) => fetchDevices(signal),
+    refetchInterval: 2000,
+  })
+}
+
+export function useDeviceMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['devices'] })
+  return {
+    approve: useMutation({
+      mutationFn: ({ pairCode, libraryIds }: { pairCode: string; libraryIds: string[] }) =>
+        approveDevicePairing(pairCode, libraryIds),
+      onSuccess: invalidate,
+    }),
+    revoke: useMutation({
+      mutationFn: (deviceId: string) => revokeDevice(deviceId),
       onSuccess: invalidate,
     }),
   }
