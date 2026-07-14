@@ -99,8 +99,9 @@ link table rather than hiding it in `extra_metadata`.
 
 `id`, `bundle_id` (FK to `asset_bundles`, **CASCADE** — metadata-only bundle
 deletion removes file rows, never the physical file), `relative_path` (library
-root relative), `original_filename`, `display_title`, `note`, `source`, `role`,
-`media_kind`, `mime_type`, `sequence`, `size_bytes`, `mtime`,
+root relative), indexed derived `directory_path`, `original_filename`,
+`display_title`, `note`, `source`, `role`, `media_kind`, `mime_type`, `sequence`,
+`size_bytes`, `mtime`,
 `quick_fingerprint`, `full_hash`, `tech_metadata`, `filesystem_device`,
 `filesystem_inode`, `identity_available`, `availability`, `version`, timestamps.
 `relative_path` is unique within a library.
@@ -115,11 +116,15 @@ rating, cover/primary references, and subtitle links. The normal scan path does
 not full-hash large files; `full_hash` remains lazy for future duplicate
 verification or ambiguous repair workflows.
 
-`availability` is refreshed by full scan reconciliation and by bounded
-access-time checks. Opening a bundle checks only its linked rows and can change
-`available` to `missing` when the stored path has vanished; it does not change
-the relative path or guess which unlinked filesystem entry is the moved file.
-Only scan reconciliation performs high-confidence moved-file repair.
+`directory_path` is synchronized from `relative_path` on create and moved-file
+repair, additively backfilled for existing libraries, and indexed so File
+Browser access can retrieve only one directory's linked rows. `availability` is
+refreshed by full scan reconciliation and bounded access-time checks. Opening a
+bundle checks all of its linked rows; entering a directory checks its linked
+direct children. These checks can change `available` to `missing` when the
+stored path has vanished, but do not change the relative path or guess which
+unlinked filesystem entry is the moved file. Only scan reconciliation performs
+high-confidence moved-file repair.
 
 The scanner ignores hidden paths (`.cairndex`, dotfiles/dot-directories, and a
 small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).

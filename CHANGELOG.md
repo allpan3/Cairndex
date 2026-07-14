@@ -101,13 +101,17 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
-- **Missing files reconcile when a bundle opens.** Bundle file-list and playback
-  manifest reads now re-check only that bundle's linked paths and persist newly
-  vanished files as missing. The viewer shows the missing-file state before any
-  stale container/codec fallback and refreshes the Bundle Browser plus Missing
-  Files sidebar count immediately. This bounded access check does not scan the
-  library or guess a moved file's new path; the next scan still performs
-  high-confidence moved-file repair.
+- **Missing files reconcile on bundle and directory access.** Bundle file-list
+  and playback-manifest reads re-check every linked member of that bundle, while
+  each File Browser directory read compares only the linked rows indexed to that
+  directory and persists vanished paths as missing. The latter reports how many
+  rows changed so the web client refreshes Bundle Browser and sidebar counts
+  only when needed. The Missing Files count is now visibly labeled as affected
+  bundles, and the inspector's Files in bundle section reports its missing-file
+  count and highlights/badges each missing member. The viewer still gives
+  missing state precedence over stale codec/container fallbacks. These bounded
+  checks do not guess which unlinked path replaces a missing row; Update/scan
+  remains responsible for high-confidence moved-file repair.
 
 - **Collection counts include nested bundles.** Sidebar and collection-card
   counts now roll up distinct bundles from the collection’s entire descendant

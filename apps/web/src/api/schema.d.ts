@@ -2262,6 +2262,8 @@ export interface components {
         FileBrowserListingRead: {
             /** Entries */
             entries: components["schemas"]["FileBrowserEntryRead"][];
+            /** Missing Files Updated */
+            missing_files_updated: number;
             /** Path */
             path: string;
         };

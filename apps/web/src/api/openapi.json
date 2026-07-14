@@ -2138,6 +2138,10 @@
             "title": "Entries",
             "type": "array"
           },
+          "missing_files_updated": {
+            "title": "Missing Files Updated",
+            "type": "integer"
+          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -2145,7 +2149,8 @@
         },
         "required": [
           "path",
-          "entries"
+          "entries",
+          "missing_files_updated"
         ],
         "title": "FileBrowserListingRead",
         "type": "object"

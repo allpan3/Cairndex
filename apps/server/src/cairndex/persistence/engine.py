@@ -59,6 +59,7 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # bundle order on the membership table, global bundle order on the bundle.
     ("asset_bundle_collections", "sort_order", "INTEGER NOT NULL DEFAULT 0"),
     ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
+    ("asset_files", "directory_path", "TEXT NOT NULL DEFAULT ''"),
     ("asset_files", "cover_time", "REAL"),
     ("asset_files", "cover_previous_file_id", "VARCHAR(26)"),
 )
@@ -87,17 +88,29 @@ def ensure_content_indexes(engine: Engine) -> None:
             table = Base.metadata.tables[table_name]
             table.create(bind=conn, checkfirst=True)
             existing.add(table_name)
-        for table in Base.metadata.sorted_tables:
-            if table.name not in existing:
-                continue
-            for index in table.indexes:
-                index.create(bind=conn, checkfirst=True)
         for table_name, column, sql_type in _ADDITIVE_CONTENT_COLUMNS:
             if table_name not in existing:
                 continue
             columns = {col["name"] for col in inspector.get_columns(table_name)}
             if column not in columns:
                 conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {sql_type}"))
+        if "asset_files" in existing:
+            # rtrim stops at the final slash; the second rtrim removes that slash
+            conn.execute(
+                text(
+                    """UPDATE asset_files
+                       SET directory_path = rtrim(
+                           rtrim(relative_path, replace(relative_path, '/', '')), '/'
+                       )
+                       WHERE directory_path = '' AND instr(relative_path, '/') > 0"""
+                )
+            )
+        # Additive columns must exist before indexes that reference them
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing:
+                continue
+            for index in table.indexes:
+                index.create(bind=conn, checkfirst=True)
 
 
 @lru_cache

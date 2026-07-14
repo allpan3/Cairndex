@@ -93,21 +93,34 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
-## Current: bundle-open missing-file reconciliation
+## Current: bounded missing-file reconciliation
 
-Opening a bundle now checks only that bundle's linked file paths. A vanished
-path is persisted as `missing`, the viewer gives that state precedence over a
-stale unsupported-container message, and the web client refreshes the Bundle
-Browser plus Missing Files sidebar count. The access path remains bounded: it
-does not scan the library or guess a moved file's new location. Update/scan
-continues to own high-confidence moved-file repair and stable-ID relinking.
+Opening a bundle checks every linked member of that bundle. Entering a File
+Browser directory checks the indexed linked rows whose stored parent is that
+directory, without walking unrelated database rows. Vanished paths are
+persisted as `missing`; the directory response reports the number changed so
+the web client refreshes bundle/count queries only when necessary.
 
-Regression coverage moves a linked source path after import, verifies both
-bundle-file and playback-manifest reads persist the missing state, and exercises
-the full viewer/count behavior with an unsupported AVI reason present.
-Verified on `main`: backend Ruff check/format, mypy, and full pytest
-(**406 passed**); frontend ESLint, Prettier, TypeScript, Vitest
-(**99 passed**), production build, and full Playwright (**67 passed**).
+The Missing Files sidebar value remains a bundle count and now renders as, for
+example, `1 bundle`, even when that bundle contains two missing files. The
+inspector's Files in bundle heading reports both total and missing counts, and
+each missing row is highlighted and badged. The viewer continues to give the
+selected file's missing state precedence over a stale unsupported-container
+message.
+
+Access-time checks do not infer that an unlinked path is a particular moved
+file. Update/scan continues to own high-confidence moved-file repair and
+stable-ID relinking.
+
+Regression coverage moves multiple linked paths while leaving another bundle
+member present, verifies bundle and directory reads persist every relevant
+missing row, confirms directory scope leaves another directory untouched, and
+exercises the sidebar/inspector/viewer behavior with two unlinked files and an
+unsupported AVI reason present.
+
+Verified on `main`: backend Ruff check and format check, mypy, and all 410
+pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 99 Vitest tests,
+the production build, and all 67 Playwright tests pass.
 
 ## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 

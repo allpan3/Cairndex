@@ -1158,6 +1158,22 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.files .file-row--missing {
+  margin-inline: -6px;
+  padding-inline: 6px;
+  border-radius: 4px;
+  background: rgba(248, 113, 113, 0.1);
+}
+.files .file-row__name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.files .file-row__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .file-row__role {
   color: var(--text-muted);
 }
@@ -3595,6 +3611,10 @@ code {
 .badge--link {
   background: rgba(120, 200, 120, 0.18);
   color: #79c879;
+}
+.badge--missing {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--error);
 }
 
 /* --- File inspector ------------------------------------------------------- */
