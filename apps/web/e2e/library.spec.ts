@@ -59,6 +59,22 @@ async function mockApi(page: Page) {
             created_at: '2026-06-25T00:00:00Z',
             updated_at: '2026-06-25T00:00:00Z',
           },
+          {
+            id: 'f1',
+            bundle_id: 'b0',
+            relative_path: 'poster.jpg',
+            original_filename: 'poster.jpg',
+            display_title: 'poster.jpg',
+            role: 'image',
+            media_kind: 'image',
+            mime_type: 'image/jpeg',
+            sequence: 1,
+            size_bytes: 500,
+            availability: 'missing',
+            tech_metadata: { width: 640, height: 480 },
+            created_at: '2026-06-25T00:00:00Z',
+            updated_at: '2026-06-25T00:00:00Z',
+          },
         ],
       })
     } else {
@@ -277,6 +293,10 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   // Inspector shows the bundle's (editable) title + its files.
   await expect(page.locator('.inspector input[aria-label="Title"]')).toHaveValue('Movie 0')
   await expect(page.getByText('movie.mp4')).toBeVisible()
+  await expect(page.getByText('Files in bundle (2 · 1 missing)')).toBeVisible()
+  const missingFile = page.locator('.files .file-row', { hasText: 'poster.jpg' })
+  await expect(missingFile).toHaveClass(/file-row--missing/)
+  await expect(missingFile.getByText('missing')).toBeVisible()
 })
 
 test('drag-selects multiple bundles with a marquee', async ({ page }) => {

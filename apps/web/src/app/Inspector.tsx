@@ -394,6 +394,7 @@ function FileList({
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
+  const missingCount = files.filter((file) => file.availability !== 'available').length
 
   const move = (index: number, delta: number) => {
     const target = index + delta
@@ -409,7 +410,8 @@ function FileList({
   return (
     <div className="files">
       <div className="sidebar__heading sidebar__heading--row" style={{ padding: '4px 0' }}>
-        Files in bundle ({files.length})
+        Files in bundle ({files.length}
+        {missingCount > 0 ? ` · ${missingCount} missing` : ''})
         {onAddFiles && (
           <button
             className="sidebar__add"
@@ -428,11 +430,18 @@ function FileList({
         const dur = formatDuration(meta.duration as number)
         const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
         return (
-          <div className="file-row" key={f.id}>
+          <div
+            className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}`}
+            key={f.id}
+          >
             <div className="file-row__main">
               <div className="file-row__name">
                 {f.id === primaryId && <span title="Primary">▶</span>}
-                {f.id === coverId && <span title="Cover">★</span>} {f.display_title}
+                {f.id === coverId && <span title="Cover">★</span>}
+                <span className="file-row__title">{f.display_title}</span>
+                {f.availability !== 'available' && (
+                  <span className="badge badge--missing">missing</span>
+                )}
               </div>
               <div className="file-row__role">
                 {f.role} · {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}

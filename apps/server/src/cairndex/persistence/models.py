@@ -34,7 +34,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     inspect as sa_inspect,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.orm import Session as OrmSession
 
 from cairndex.domain.enums import (
@@ -214,6 +214,8 @@ class AssetFile(Base):
     # Normalized path relative to the library root (ADR-0008). The library DB is
     # itself the storage scope, so there is no storage-root reference anymore.
     relative_path: Mapped[str] = mapped_column(Text)
+    # Indexed parent directory for bounded File Browser reconciliation
+    directory_path: Mapped[str] = mapped_column(Text, default="", index=True)
     original_filename: Mapped[str] = mapped_column(String(1024))
     display_title: Mapped[str] = mapped_column(String(1024))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -255,6 +257,12 @@ class AssetFile(Base):
     version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     bundle: Mapped[AssetBundle] = relationship(back_populates="files", foreign_keys=[bundle_id])
+
+    # Keep the indexed directory key synchronized with every path create/repair
+    @validates("relative_path")
+    def _sync_directory_path(self, _key: str, value: str) -> str:
+        self.directory_path = value.rpartition("/")[0]
+        return value
 
     __table_args__ = (
         # One physical file (by library-relative path) is linked at most once

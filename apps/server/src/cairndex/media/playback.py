@@ -282,18 +282,17 @@ def decide_playback(
 
 
 # Persist vanished linked paths without attempting moved-file repair
-def reconcile_missing_files(session: Session, asset_files: Iterable[AssetFile]) -> bool:
+def reconcile_missing_files(session: Session, asset_files: Iterable[AssetFile]) -> int:
     """Mark available files missing after bounded on-access path checks."""
     root = library_root_for_session(session)
-    changed = False
+    changed = 0
     for asset_file in asset_files:
         if asset_file.availability != FileAvailability.AVAILABLE:
             continue
-        path = Path(resolve_within_root(root, asset_file.relative_path))
-        if path.exists():
+        if Path(resolve_within_root(root, asset_file.relative_path)).is_file():
             continue
         asset_file.availability = FileAvailability.MISSING
-        changed = True
+        changed += 1
     if changed:
         session.flush()
     return changed

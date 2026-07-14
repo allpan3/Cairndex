@@ -278,12 +278,28 @@ def test_playback_manifest_lists_videos_and_subtitles(
     assert track["src"] == f"{base}/subtitles/{track['id']}/vtt"
 
 
-# Opening a bundle reconciles only its linked paths and persists missing state
-def test_bundle_files_marks_vanished_file_missing(
+# Opening a bundle reconciles every member while preserving present members
+def test_bundle_files_reconciles_every_linked_path(
     client: TestClient, library_id: str, session: Session, library_root: Path
 ) -> None:
     bundle, video = _bundle_with_media(session, library_root)
+    (library_root / "poster.jpg").write_bytes(b"image")
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="poster.jpg",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+    )
+    subtitle = session.scalar(
+        select(AssetFile).where(
+            AssetFile.bundle_id == bundle.id, AssetFile.media_kind == MediaKind.SUBTITLE
+        )
+    )
+    assert subtitle is not None
+    session.commit()
     (library_root / "movie.mp4").rename(library_root / "moved.mp4")
+    (library_root / "movie.en.srt").rename(library_root / "moved.en.srt")
     base = f"/api/v1/libraries/{library_id}"
 
     response = client.get(f"{base}/bundles/{bundle.id}/files")
@@ -291,7 +307,10 @@ def test_bundle_files_marks_vanished_file_missing(
     assert response.status_code == 200
     by_id = {item["id"]: item for item in response.json()}
     assert by_id[video.id]["availability"] == "missing"
+    assert by_id[subtitle.id]["availability"] == "missing"
+    assert by_id[image.id]["availability"] == "available"
     assert video.availability is FileAvailability.MISSING
+    assert subtitle.availability is FileAvailability.MISSING
 
 
 # Manifest access also reconciles missing files when it is requested alone
