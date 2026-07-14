@@ -123,6 +123,17 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
+- **Empty grouping suggestions deselect after drag.** Moving the final file out
+  of a bundle suggestion now clears and disables its acceptance checkbox. Moving
+  the last file-backed bundle out of a suggested collection does the same for
+  that collection, including recursively empty nested collections.
+
+- **Flat-directory video artwork pairing.** Grouping heuristic v4 now matches
+  sidecars against a unique normalized full video stem before using the coarse
+  leading-name prefix. Long filenames that share an author/source prefix but
+  differ by subject therefore produce one bundle per video with its matching
+  image, while image-only folders remain split into individual items.
+
 - **Image artwork no longer disables bundle hover scrub.** Static cover artwork
   and current media are resolved separately. A card with an image cover now
   previews the bundle's remembered video from its resume position; an image
