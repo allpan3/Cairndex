@@ -3,10 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 const webPort = Number(process.env.CAIRNDEX_PLAYWRIGHT_PORT ?? 5173)
 const webUrl = `http://127.0.0.1:${webPort}`
 
-// E2E tests boot their own Vite dev server. They do not require the backend to
-// be running: the health probe simply renders the "unreachable" state, which
-// is itself a state worth asserting. Tests that need a live backend will start
-// it explicitly in a later milestone.
+// E2E tests boot their own Vite dev server. Browser-only tests intercept API
+// traffic, while @fullstack tests start an isolated backend explicitly.
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,

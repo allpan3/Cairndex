@@ -121,7 +121,9 @@ async function apiPost<T>(baseUrl: string, path: string, body: unknown): Promise
   return (await response.json()) as T
 }
 
-test('pairs, lists, and revokes a real bearer token from Settings Devices', async ({ page }) => {
+test('pairs, lists, and revokes a real bearer token from Settings Devices @fullstack', async ({
+  page,
+}) => {
   const scratch = await mkdtemp(join(tmpdir(), 'cairndex-device-e2e-'))
   const dataDir = join(scratch, 'data')
   const libraryRoot = join(scratch, 'library')
