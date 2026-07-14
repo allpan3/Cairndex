@@ -124,6 +124,30 @@ def test_wrong_pair_code_is_structured_not_found(
     }
 
 
+def test_unavailable_library_cannot_be_approved_without_bypassing_owner_guard(
+    isolated_client: TestClient,
+    registry_session: Session,
+    tmp_path: Path,
+) -> None:
+    owner_id = _make_library(tmp_path, registry_session, "owner", passphrase="owner")
+    offline_id = _make_library(tmp_path, registry_session, "offline")
+    (tmp_path / "offline").rename(tmp_path / "offline-unmounted")
+    assert isolated_client.get("/api/v1/auth/devices").status_code == 401
+    isolated_client.post(
+        f"/api/v1/libraries/{owner_id}/auth/unlock",
+        json={"passphrase": "owner"},
+    )
+    started = _start(isolated_client)
+
+    response = isolated_client.post(
+        "/api/v1/auth/pair/approve",
+        json={"pair_code": started["pair_code"], "library_ids": [offline_id]},
+    )
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+    assert _poll(isolated_client, started["poll_key"]) == {"status": "pending"}
+
+
 def test_protected_library_requires_cookie_approval_and_bearer_scope(
     isolated_client: TestClient,
     registry_session: Session,
