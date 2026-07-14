@@ -10,6 +10,7 @@ class HealthStatus(BaseModel):
     status: str
     app_name: str
     environment: str
+    api_features: list[str]
 
 
 @router.get("/health", response_model=HealthStatus)
@@ -19,4 +20,5 @@ def get_health() -> HealthStatus:
         status="ok",
         app_name=settings.app_name,
         environment=settings.environment,
+        api_features=["trickplay", "hls", "progress", "pairing"],
     )

@@ -6,7 +6,9 @@ from cairndex.core.errors import (
     AuthRequiredError,
     CapacityError,
     ConflictError,
+    DeviceScopeError,
     DomainError,
+    InvalidDeviceTokenError,
     MediaProcessingError,
     NotFoundError,
     ValidationError,
@@ -15,7 +17,9 @@ from cairndex.core.errors import (
 # Domain error -> HTTP status. Anything not listed falls back to 400.
 _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
     (NotFoundError, 404),
+    (InvalidDeviceTokenError, 401),
     (AuthRequiredError, 401),
+    (DeviceScopeError, 403),
     (CapacityError, 429),
     (MediaProcessingError, 500),
     (ConflictError, 409),

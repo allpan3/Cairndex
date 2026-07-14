@@ -9,9 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from cairndex.auth import SESSION_COOKIE, is_protected, session_store
-from cairndex.core.errors import AuthRequiredError, NotFoundError
+from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.persistence.engine import get_session as _get_session
+from cairndex.registry import device_tokens as token_service
 from cairndex.registry import services as registry_service
 from cairndex.registry.engine import get_registry_session as _get_registry_session
 from cairndex.registry.engine import registry_session_scope
@@ -43,10 +44,39 @@ def get_registry_db() -> Iterator[Session]:
 RegistryDbSession = Annotated[Session, Depends(get_registry_db)]
 
 
+def _bearer_token(authorization: str) -> str:
+    """Parse an Authorization header without accepting tokens in any other channel."""
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        raise InvalidDeviceTokenError("Authorization header must contain a bearer token")
+    return token.strip()
+
+
+def _authorize_library(
+    registry: Session,
+    *,
+    library_id: str,
+    root: Path,
+    session_cookie: str | None,
+    authorization: str | None,
+) -> None:
+    """Authorize one library through an explicit bearer or the ADR-0010 cookie."""
+    if authorization is not None:
+        token_service.authenticate_device_token(
+            registry,
+            token=_bearer_token(authorization),
+            library_id=library_id,
+        )
+        return
+    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
+        raise AuthRequiredError(f"library {library_id!r} is locked")
+
+
 def get_library_session(
     library_id: str,
     registry: RegistryDbSession,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> Iterator[Session]:
     """Yield a content session bound to one library's ``library.db`` (ADR-0008).
 
@@ -66,8 +96,13 @@ def get_library_session(
         raise NotFoundError(f"library {library_id!r} is currently unavailable")
 
     root = Path(library.root_path)
-    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
-        raise AuthRequiredError(f"library {library_id!r} is locked")
+    _authorize_library(
+        registry,
+        library_id=library_id,
+        root=root,
+        session_cookie=session_cookie,
+        authorization=authorization,
+    )
 
     session = get_library_sessionmaker(library)()
     try:
@@ -138,6 +173,7 @@ def get_library_access(
     library_id: str,
     registry_access: RegistryAccessDep,
     session_cookie: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> LibraryAccess:
     """Gate library access for streaming routes without holding a connection.
 
@@ -159,13 +195,15 @@ def get_library_access(
     """
     with registry_access.session() as registry:
         library = registry_service.get_library(registry, library_id)  # 404 if unknown
-    if library.status != LibraryStatus.AVAILABLE:
-        raise NotFoundError(f"library {library_id!r} is currently unavailable")
-
-    root = Path(library.root_path)
-    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
-        raise AuthRequiredError(f"library {library_id!r} is locked")
-
+        if library.status != LibraryStatus.AVAILABLE:
+            raise NotFoundError(f"library {library_id!r} is currently unavailable")
+        _authorize_library(
+            registry,
+            library_id=library_id,
+            root=Path(library.root_path),
+            session_cookie=session_cookie,
+            authorization=authorization,
+        )
     maker = get_library_sessionmaker(library)
 
     @contextmanager

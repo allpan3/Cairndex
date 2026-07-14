@@ -154,6 +154,11 @@ server-side session bound to an opaque HTTP-only cookie and scoped to that one
 library (unlocking one protected library never unlocks another). Sessions are
 in-memory, so a restart re-locks everything.
 
+Paired desktop/TV clients may instead send an ADR-0015 device token in the
+`Authorization: Bearer` header. Tokens are scoped to owner-selected library ids,
+stored only as salted hashes in `registry.db`, and remain valid across restarts
+until revoked from Settings → Devices. Never put a device token in a URL.
+
 This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
 adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains
 unsupported without a separate hardened reverse proxy. Full multi-user accounts
@@ -161,6 +166,6 @@ are out of scope.
 
 ## Health check
 
-`GET /api/v1/health` returns `{"status": "ok", ...}` and backs the image's
+`GET /api/v1/health` returns `{"status": "ok", "api_features": [...], ...}` and backs the image's
 Docker `HEALTHCHECK` (and any NAS container-manager liveness probe). No
 authentication is required for this endpoint.

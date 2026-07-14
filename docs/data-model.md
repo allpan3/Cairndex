@@ -264,6 +264,14 @@ runtime state. It is not portable library metadata and has its own
 `payload` (JSON), `processed`, `total`, `result` (JSON), `error`,
 `cancel_requested`, timestamps, `started_at`, `finished_at`.
 
+### `device_tokens`
+
+Server-issued native-client credentials (ADR-0015): `id`, display `name`,
+salted `token_hash`, JSON `library_ids` scope, `created_at`, nullable
+`last_used_at`, and nullable `revoked_at`. Bearer plaintext is returned only by
+the first approved pairing poll and never stored. Revocation retains the row for
+owner audit. This is registry/runtime state, not portable library metadata.
+
 The in-process worker consumes this registry queue. Each job names a library;
 the worker opens that library's `library.db`, runs scan/probe/thumbnail/storyboard
 handlers against the library root, commits durable content results into the

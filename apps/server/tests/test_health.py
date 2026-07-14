@@ -12,6 +12,7 @@ def test_health_returns_ok() -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["app_name"] == "Cairndex"
+    assert body["api_features"] == ["trickplay", "hls", "progress", "pairing"]
 
 
 def test_health_is_unversioned_outside_v1() -> None:
