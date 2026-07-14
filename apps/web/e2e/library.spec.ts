@@ -162,7 +162,7 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
         phase: done ? null : 'discovering',
         processed: done ? 100 : 42,
         total: 100,
-        result: done ? { grouping_proposal_count: 0 } : null,
+        result: done ? { grouping_proposal_count: 0, missing_total: 2 } : null,
         finished_at: done ? '2026-06-25T00:01:00Z' : null,
       }),
     })
@@ -190,6 +190,27 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await expect(page.getByRole('progressbar')).toBeVisible()
   await expect(page.getByText('Discovering files')).toBeVisible()
   await expect(page.getByText('42/100')).toBeVisible()
+  await expect(page.getByText('Scan complete: 2 linked files are missing.')).toBeVisible()
+})
+
+test('standalone Scan reports the linked missing-file total', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/jobs/scan', (route) =>
+    route.fulfill({
+      json: jobRead({
+        id: 'job-scan',
+        status: 'succeeded',
+        result: { grouping_proposal_count: 0, missing_total: 1 },
+        finished_at: '2026-06-25T00:01:00Z',
+      }),
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Scan new files' }).click()
+
+  await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
 })
 
 test('each Update stage has a standalone maintenance action', async ({ page }) => {

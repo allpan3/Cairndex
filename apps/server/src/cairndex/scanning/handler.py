@@ -33,6 +33,7 @@ def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
         "created": summary.created,
         "updated": summary.updated,
         "missing": summary.missing,
+        "missing_total": summary.missing_total,
         "repaired": summary.repaired,
         "grouping_plan_id": plan.id,
         "grouping_proposal_count": len(plan.proposals),
