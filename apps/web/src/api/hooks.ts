@@ -12,6 +12,7 @@ import {
   type BrowseParams,
   type BundleBrowsePage,
   type BundlePatch,
+  type BundleRead,
   type BundleSummary,
   type CleanupSort,
   type CollectionCreate,
@@ -97,6 +98,7 @@ import {
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
   updateBundle,
+  updateBundleCursor,
   updateFile,
   updateSmartCollection,
 } from './client'
@@ -759,6 +761,25 @@ export function useUpdateBundle(id: string, version?: number) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle', id] })
       qc.invalidateQueries({ queryKey: ['browse'] })
+    },
+  })
+}
+
+// Persist the viewer's selected file without treating navigation as metadata editing
+export function useBundleCursor(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    scope: { id: `bundle-cursor-${id}` },
+    mutationFn: (fileId: string) => updateBundleCursor(id, fileId),
+    onMutate: (fileId) => {
+      qc.setQueryData<BundleRead>(['bundle', id], (previous) =>
+        previous ? { ...previous, resume_file_id: fileId } : previous,
+      )
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['bundle', id] })
+      qc.invalidateQueries({ queryKey: ['browse'] })
+      qc.invalidateQueries({ queryKey: ['continue-watching'] })
     },
   })
 }

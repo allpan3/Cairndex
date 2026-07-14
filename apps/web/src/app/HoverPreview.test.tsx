@@ -18,6 +18,7 @@ import type { ClientCapabilities } from './viewer/player/caps'
 import { parseStoryboardVtt, type StoryboardCue } from './viewer/player/storyboardVtt'
 
 const DIRECT_SOURCE: HoverPreviewSource = {
+  mediaKind: 'video',
   fileId: 'direct-file',
   mimeType: null,
   relativePath: 'clips/direct.mp4',
@@ -186,6 +187,27 @@ test('waits for dwell and cancels before mounting a stream', () => {
   fireEvent.pointerLeave(card)
   act(() => vi.advanceTimersByTime(1_000))
   expect(queryByTestId('hover-preview-video')).toBeNull()
+})
+
+test('shows the cursor image as a still after dwell', async () => {
+  const source: HoverPreviewSource = {
+    mediaKind: 'image',
+    fileId: 'photo-file',
+    imageUrl: '/api/v1/libraries/lib1/bundles/b1/files/photo-file/thumbnail',
+  }
+  const { card, getByTestId, queryByTestId } = renderPreview(source)
+
+  await act(async () => {
+    fireEvent.pointerEnter(card)
+    await Promise.resolve()
+  })
+  act(() => vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS))
+
+  const image = getByTestId('hover-preview-image')
+  expect(image).toHaveAttribute('src', source.imageUrl)
+  expect(card).toHaveAttribute('data-hover-preview-mode', 'image')
+  expect(queryByTestId('hover-preview-video')).toBeNull()
+  expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled()
 })
 
 test('keeps the sprite visible and resumes from its sampled cue time', async () => {
@@ -612,6 +634,9 @@ test('classifies direct, storyboard, and unavailable sources from caps', () => {
   ).toBe('storyboard')
   expect(hoverPreviewMode({ ...DIRECT_SOURCE, audioCodec: 'dts' }, CAPS)).toBe('storyboard')
   expect(hoverPreviewMode({ ...DIRECT_SOURCE, duration: 0 }, CAPS)).toBe('none')
+  expect(hoverPreviewMode({ mediaKind: 'image', fileId: 'photo', imageUrl: '/photo' }, CAPS)).toBe(
+    'image',
+  )
   expect(hoverPreviewMode(null, CAPS)).toBe('none')
   expect(hoverStartTime({ ...DIRECT_SOURCE, startTime: 42 })).toBe(42)
   expect(hoverStartTime({ ...DIRECT_SOURCE, startTime: 120 })).toBe(100)
@@ -647,6 +672,7 @@ test('falls back to a storyboard when direct playback rejects', async () => {
   vi.useRealTimers()
 
   expect(await findByTestId('hover-preview-storyboard')).toBeInTheDocument()
+  await expect.poll(() => card.getAttribute('data-hover-preview-mode')).toBe('storyboard')
   expect(queryByTestId('hover-preview-video')).toBeNull()
 })
 

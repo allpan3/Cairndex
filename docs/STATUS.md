@@ -93,7 +93,37 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
-## Current: bounded missing-file reconciliation
+## Current: ordered bundle media cursor
+
+Cover artwork and playback location are now independent (ADR-0016). Every
+bundle resolves one current supported media file from its persisted
+`bundle_cursors` row, then legacy unfinished video progress, then the first
+ordered available media. The viewer opens that location, writes cursor changes
+without bumping bundle metadata, and uses Files in bundle order for navigation
+and end-of-video advance. Images therefore have a remembered location even
+though only videos store a timestamp.
+
+Bundle-card hover uses the same cursor instead of requiring the effective cover
+to be a video. An image cursor appears as a still; a video cursor keeps the
+existing direct/storyboard scrub and starts at its unfinished saved position,
+even when the static cover is an image. A remembered file that later goes
+missing stays current so the viewer can show the correct missing-file state.
+
+The primary-file API field, inspector icon/action, grouping assignment, and
+cover/playback fallback are removed. Existing databases retain the nullable
+`primary_file_id` column as unread compatibility storage; legacy
+`primary_video` roles display simply as video. The new cursor table is additive
+and source files remain untouched.
+
+Verified on `main`: backend Ruff check and format check, mypy, and all 416
+pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 100 Vitest tests,
+the production build, and all 70 Playwright tests pass. The two new browser
+flows cover image-cover/video-hover and ordered cursor navigation. An additional
+in-app browser inspection was attempted, but that runtime could not initialize
+(`Cannot redefine property: process`); the complete Playwright run is the browser
+proof for this slice.
+
+## Recently completed: bounded missing-file reconciliation
 
 Opening a bundle checks every linked member of that bundle. Entering a File
 Browser directory checks the indexed linked rows whose stored parent is that

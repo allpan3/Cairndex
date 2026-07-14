@@ -50,7 +50,7 @@ export function HoverPreview({
     onTimeUpdate,
     bind,
   } = useHoverPreview(source, videoRef, disabled, storyboardTimeForPosition)
-  const storyboardUrl = source ? fileStoryboardUrl(source.fileId) : null
+  const storyboardUrl = source?.mediaKind === 'video' ? fileStoryboardUrl(source.fileId) : null
   const prefetchedStoryboardUrl = prefetchStoryboard ? storyboardUrl : null
   const { data: cues, isFetched } = useStoryboardCues(prefetchedStoryboardUrl, true, false)
   useLayoutEffect(() => {
@@ -63,6 +63,7 @@ export function HoverPreview({
     giveUpStoryboard()
   }, [active, cues, giveUpStoryboard, isFetched, mode])
   const mountDirect = active && mode === 'direct' && source !== null
+  const showImage = active && mode === 'image' && source?.imageUrl
   const transitionMatchesCue = cue !== null && Math.abs(position - cue.start) < 0.001
   const showStoryboard =
     active &&
@@ -73,17 +74,26 @@ export function HoverPreview({
       (phase === 'transitioning' && transitionMatchesCue))
   const hideDirectForTransition = mountDirect && phase === 'transitioning' && !showStoryboard
   const showChrome = mountDirect || showStoryboard
-  const percent = source ? Math.max(0, Math.min(100, (position / source.duration) * 100)) : 0
+  const duration = source?.duration ?? 0
+  const percent = duration > 0 ? Math.max(0, Math.min(100, (position / duration) * 100)) : 0
 
   return (
     <div
-      className={`${className}${source ? ' hover-preview--video' : ''}`}
+      className={`${className}${source ? ' hover-preview--media' : ''}`}
       style={style}
       data-hover-preview-state={active ? phase : 'inactive'}
       data-hover-preview-mode={mode}
       {...bind}
     >
       {children}
+      {showImage && (
+        <img
+          className="hover-preview__image"
+          data-testid="hover-preview-image"
+          src={source.imageUrl ?? undefined}
+          alt=""
+        />
+      )}
       {mountDirect && (
         <video
           ref={videoRef}

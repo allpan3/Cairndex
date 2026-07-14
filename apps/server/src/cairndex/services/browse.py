@@ -1,7 +1,7 @@
 """Bundle browsing: enriched summaries, system views, sorting, and counts.
 
 Powers the desktop library browser. Returns card-ready ``BundleSummary`` rows
-(cover/primary-derived dimensions, duration, size, file count, missing state)
+(cursor-derived dimensions, duration, size, file count, missing state)
 with server-side filtering by system view or collection, sorting with a stable
 tie-breaker, and offset pagination + a total for virtualization. Counts feed
 the sidebar.
@@ -28,10 +28,10 @@ from cairndex.domain.enums import (
 )
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
-from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.models import (
     AssetBundle,
     AssetFile,
+    BundleCursor,
     Collection,
     PlaybackProgress,
     Tag,
@@ -39,6 +39,7 @@ from cairndex.persistence.models import (
     asset_bundle_tags,
 )
 from cairndex.search import search_predicate, to_match_query
+from cairndex.services.bundle_cursor import is_openable, select_current_file
 from cairndex.services.collections import collection_descendant_ids
 from cairndex.services.hierarchy import descendant_ids
 from cairndex.services.playback_progress import resume_position
@@ -79,14 +80,17 @@ class BundleSummary:
     # the cover selection changes, so the client uses it to bust the browser's
     # image cache on the (otherwise-stable) thumbnail URL.
     cover_key: str | None
-    # Hover preview source when the effective cover itself is a video
-    cover_video_file_id: str | None
-    cover_video_relative_path: str | None
-    cover_video_container: str | None
-    cover_video_codec: str | None
-    cover_video_audio_codec: str | None
-    cover_video_duration: float | None
-    cover_video_resume_position: float | None
+    # Hover/open source resolved from the bundle cursor, independent of its cover
+    resume_file_id: str | None
+    resume_file_updated_at: datetime | None
+    resume_media_kind: str | None
+    resume_relative_path: str | None
+    resume_mime_type: str | None
+    resume_container: str | None
+    resume_video_codec: str | None
+    resume_audio_codec: str | None
+    resume_duration: float | None
+    resume_position: float | None
     media_kind: str | None
     width: int | None
     height: int | None
@@ -374,7 +378,7 @@ def _effective_cover_file(bundle: AssetBundle, files: list[AssetFile]) -> AssetF
     """File the cover thumbnail is derived from, computed from the
     already-loaded ``files`` (no extra queries). Mirrors the precedence in
     ``media.thumbnails.effective_cover_file`` (selected cover → first image →
-    primary video → first video) — keep the two in sync."""
+    first video) — keep the two in sync."""
     thumbnailable = (MediaKind.IMAGE, MediaKind.VIDEO)
 
     if bundle.cover_file_id is not None:
@@ -384,10 +388,6 @@ def _effective_cover_file(bundle: AssetBundle, files: list[AssetFile]) -> AssetF
     image = next((f for f in files if f.media_kind is MediaKind.IMAGE), None)
     if image is not None:
         return image
-    if bundle.primary_file_id is not None:
-        primary = next((f for f in files if f.id == bundle.primary_file_id), None)
-        if primary is not None and primary.media_kind is MediaKind.VIDEO:
-            return primary
     video = next((f for f in files if f.media_kind is MediaKind.VIDEO), None)
     return video
 
@@ -406,15 +406,18 @@ def _cover_key(asset_file: AssetFile | None) -> str | None:
 def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     file_rows = list(
         session.execute(
-            select(AssetFile, PlaybackProgress)
+            select(AssetFile, PlaybackProgress, BundleCursor.file_id)
             .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
+            .outerjoin(BundleCursor, BundleCursor.bundle_id == AssetFile.bundle_id)
             .where(AssetFile.bundle_id == bundle.id)
             .order_by(AssetFile.sequence, AssetFile.id)
         )
     )
-    files = [asset_file for asset_file, _progress in file_rows]
+    files = [asset_file for asset_file, _progress, _cursor_file_id in file_rows]
     progress_by_file = {
-        asset_file.id: progress for asset_file, progress in file_rows if progress is not None
+        asset_file.id: progress
+        for asset_file, progress, _cursor_file_id in file_rows
+        if progress is not None
     }
     total_size = sum(f.size_bytes or 0 for f in files)
     has_missing = any(f.availability == FileAvailability.MISSING for f in files)
@@ -423,28 +426,14 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
     )
     effective_cover = _effective_cover_file(bundle, files)
     cover_key = _cover_key(effective_cover)
-    cover_video = (
-        effective_cover
-        if effective_cover is not None
-        and effective_cover.media_kind is MediaKind.VIDEO
-        and effective_cover.availability is FileAvailability.AVAILABLE
-        else None
-    )
-    cover_video_meta: dict[str, Any] = (cover_video.tech_metadata or {}) if cover_video else {}
-    cover_video_progress = progress_by_file.get(cover_video.id) if cover_video else None
-
-    # The representative file for card stats: chosen primary, else first video,
-    # else first file.
-    primary = next((f for f in files if f.id == bundle.primary_file_id), None)
-    if primary is None:
-        primary = next((f for f in files if f.media_kind == MediaKind.VIDEO), None)
-    if primary is None and files:
-        primary = files[0]
-
-    meta: dict[str, Any] = (primary.tech_metadata or {}) if primary else {}
+    cursor_file_id = file_rows[0][2] if file_rows else None
+    current = select_current_file(files, cursor_file_id, progress_by_file)
+    preview = current if current is not None and is_openable(current) else None
+    current_progress = progress_by_file.get(current.id) if current else None
+    meta: dict[str, Any] = (current.tech_metadata or {}) if current else {}
     extension = None
-    if primary is not None:
-        _, _, ext = primary.relative_path.rpartition(".")
+    if current is not None:
+        _, _, ext = current.relative_path.rpartition(".")
         extension = ext.lower() or None
 
     return BundleSummary(
@@ -455,19 +444,22 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         total_size=total_size,
         has_missing=has_missing,
         has_cover=has_cover,
-        openable=any(is_openable_media(f.media_kind, f.relative_path) for f in files),
+        openable=any(is_openable(asset_file) for asset_file in files),
         cover_key=cover_key,
-        cover_video_file_id=cover_video.id if cover_video else None,
-        cover_video_relative_path=cover_video.relative_path if cover_video else None,
-        cover_video_container=cover_video_meta.get("container"),
-        cover_video_codec=cover_video_meta.get("video_codec"),
-        cover_video_audio_codec=cover_video_meta.get("audio_codec"),
-        cover_video_duration=cover_video_meta.get("duration"),
-        cover_video_resume_position=resume_position(
-            cover_video_progress.position_s if cover_video_progress else None,
-            cover_video_progress.completed if cover_video_progress else None,
+        resume_file_id=current.id if current else None,
+        resume_file_updated_at=preview.updated_at if preview else None,
+        resume_media_kind=str(preview.media_kind) if preview else None,
+        resume_relative_path=preview.relative_path if preview else None,
+        resume_mime_type=preview.mime_type if preview else None,
+        resume_container=meta.get("container") if preview else None,
+        resume_video_codec=meta.get("video_codec") if preview else None,
+        resume_audio_codec=meta.get("audio_codec") if preview else None,
+        resume_duration=meta.get("duration") if preview else None,
+        resume_position=resume_position(
+            current_progress.position_s if preview and current_progress else None,
+            current_progress.completed if preview and current_progress else None,
         ),
-        media_kind=str(primary.media_kind) if primary else None,
+        media_kind=str(current.media_kind) if current else None,
         width=meta.get("width"),
         height=meta.get("height"),
         duration=meta.get("duration"),

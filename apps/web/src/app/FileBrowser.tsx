@@ -598,6 +598,7 @@ function FileCard({
     () =>
       entry.media_kind === 'video' && entry.file_id && entry.duration
         ? {
+            mediaKind: 'video',
             fileId: entry.file_id,
             mimeType: entry.mime_type,
             relativePath: entry.relative_path,

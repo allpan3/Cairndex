@@ -569,6 +569,33 @@
         "title": "BundleCreate",
         "type": "object"
       },
+      "BundleCursorRead": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "BundleCursorRead",
+        "type": "object"
+      },
+      "BundleCursorUpdate": {
+        "properties": {
+          "file_id": {
+            "minLength": 1,
+            "title": "File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id"
+        ],
+        "title": "BundleCursorUpdate",
+        "type": "object"
+      },
       "BundleDraftResponse": {
         "properties": {
           "additional": {
@@ -638,17 +665,6 @@
             "title": "Notes",
             "type": "array"
           },
-          "primary_file_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Primary File Id"
-          },
           "rating": {
             "anyOf": [
               {
@@ -659,6 +675,17 @@
               }
             ],
             "title": "Rating"
+          },
+          "resume_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume File Id"
           },
           "title": {
             "anyOf": [
@@ -686,7 +713,6 @@
           "title",
           "rating",
           "cover_file_id",
-          "primary_file_id",
           "grouping_state",
           "grouping_source",
           "created_at",
@@ -750,83 +776,6 @@
               }
             ],
             "title": "Cover Key"
-          },
-          "cover_video_audio_codec": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Audio Codec"
-          },
-          "cover_video_codec": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Codec"
-          },
-          "cover_video_container": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Container"
-          },
-          "cover_video_duration": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Duration"
-          },
-          "cover_video_file_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video File Id"
-          },
-          "cover_video_relative_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Relative Path"
-          },
-          "cover_video_resume_position": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Resume Position"
           },
           "date_added": {
             "format": "date-time",
@@ -911,6 +860,117 @@
             ],
             "title": "Rating"
           },
+          "resume_audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Audio Codec"
+          },
+          "resume_container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Container"
+          },
+          "resume_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Duration"
+          },
+          "resume_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume File Id"
+          },
+          "resume_file_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume File Updated At"
+          },
+          "resume_media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Media Kind"
+          },
+          "resume_mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Mime Type"
+          },
+          "resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Position"
+          },
+          "resume_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Relative Path"
+          },
+          "resume_video_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Video Codec"
+          },
           "title": {
             "anyOf": [
               {
@@ -948,13 +1008,16 @@
           "has_cover",
           "openable",
           "cover_key",
-          "cover_video_file_id",
-          "cover_video_relative_path",
-          "cover_video_container",
-          "cover_video_codec",
-          "cover_video_audio_codec",
-          "cover_video_duration",
-          "cover_video_resume_position",
+          "resume_file_id",
+          "resume_file_updated_at",
+          "resume_media_kind",
+          "resume_relative_path",
+          "resume_mime_type",
+          "resume_container",
+          "resume_video_codec",
+          "resume_audio_codec",
+          "resume_duration",
+          "resume_position",
           "media_kind",
           "width",
           "height",
@@ -1013,17 +1076,6 @@
               }
             ],
             "title": "Notes"
-          },
-          "primary_file_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Primary File Id"
           },
           "rating": {
             "anyOf": [
@@ -1338,83 +1390,6 @@
             ],
             "title": "Cover Key"
           },
-          "cover_video_audio_codec": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Audio Codec"
-          },
-          "cover_video_codec": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Codec"
-          },
-          "cover_video_container": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Container"
-          },
-          "cover_video_duration": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Duration"
-          },
-          "cover_video_file_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video File Id"
-          },
-          "cover_video_relative_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Relative Path"
-          },
-          "cover_video_resume_position": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Video Resume Position"
-          },
           "date_added": {
             "format": "date-time",
             "title": "Date Added",
@@ -1501,6 +1476,117 @@
             ],
             "title": "Rating"
           },
+          "resume_audio_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Audio Codec"
+          },
+          "resume_container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Container"
+          },
+          "resume_duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Duration"
+          },
+          "resume_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume File Id"
+          },
+          "resume_file_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume File Updated At"
+          },
+          "resume_media_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Media Kind"
+          },
+          "resume_mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Mime Type"
+          },
+          "resume_position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Position"
+          },
+          "resume_relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Relative Path"
+          },
+          "resume_video_codec": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Video Codec"
+          },
           "title": {
             "anyOf": [
               {
@@ -1538,13 +1624,16 @@
           "has_cover",
           "openable",
           "cover_key",
-          "cover_video_file_id",
-          "cover_video_relative_path",
-          "cover_video_container",
-          "cover_video_codec",
-          "cover_video_audio_codec",
-          "cover_video_duration",
-          "cover_video_resume_position",
+          "resume_file_id",
+          "resume_file_updated_at",
+          "resume_media_kind",
+          "resume_relative_path",
+          "resume_mime_type",
+          "resume_container",
+          "resume_video_codec",
+          "resume_audio_codec",
+          "resume_duration",
+          "resume_position",
           "media_kind",
           "width",
           "height",
@@ -6879,6 +6968,83 @@
           }
         },
         "summary": "Set Collections",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/cursor": {
+      "put": {
+        "operationId": "update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleCursorUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleCursorRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Bundle Cursor",
         "tags": [
           "bundles"
         ]

@@ -182,9 +182,7 @@ def _apply_bundle(
     target.confirmed_at = utcnow()
     target.grouping_rule_version = plan.rule_version
     cover = next((r for r in provisional if r.role is FileRole.COVER), None)
-    primary = next((r for r in provisional if r.role is FileRole.PRIMARY_VIDEO), None)
     target.cover_file_id = cover.id if cover is not None else target.cover_file_id
-    target.primary_file_id = primary.id if primary is not None else None
     result.bundles_confirmed += 1
 
     session.flush()

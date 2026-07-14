@@ -1,8 +1,11 @@
 # ADR-0009: Suggestion-based bundle grouping (Option A+)
 
-- Status: **accepted**
+- Status: **accepted**; primary-file selection provisions superseded by ADR-0016
 - Date: 2026-06-29
 - Branch/PR: `docs/adr-0009-bundle-grouping`
+
+> ADR-0016 replaces this ADR's selected-primary-file behavior with ordered media
+> plus one bundle cursor. The grouping/suggestion decision remains accepted.
 
 ## Context
 
@@ -214,8 +217,9 @@ collection.
 
 The apply service/API must enforce at least these invariants:
 
-- Cover and primary file references must point to files in the same bundle.
-- A bundle has at most one selected primary playable file.
+- Cover references must point to files in the same bundle.
+- Media sequence is deterministic; current playback location is governed by
+  ADR-0016 rather than a grouping-selected primary file.
 - External subtitle tracks must point to an external subtitle `AssetFile` and,
   once linked, to a video `AssetFile` in the same bundle.
 - Splitting or merging provisional bundles must preserve `AssetFile.id` values so

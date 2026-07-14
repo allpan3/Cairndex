@@ -37,8 +37,9 @@ storage scope, and `asset_files.relative_path` is relative to the library root.
 ### `asset_bundles`
 
 `id`, `title` (nullable), `notes` (JSON), `rating` (nullable int, CHECK 0-5;
-NULL = unrated), `cover_file_id` / `primary_file_id` (nullable FKs to
-`asset_files`, `SET NULL`, `use_alter` to break the FK cycle), `extra_metadata`
+NULL = unrated), `cover_file_id` (nullable FK to `asset_files`, `SET NULL`,
+`use_alter` to break the FK cycle), `primary_file_id` (unused nullable legacy FK
+retained for existing databases), `extra_metadata`
 (JSON), `manual_order` (int, `server_default 0`), `grouping_state`,
 `grouping_source`, `grouping_rule_version`, `confirmed_at`, `version`,
 `created_at`, `imported_at`, `updated_at`.
@@ -112,7 +113,7 @@ filesystems while preserving exact equality for moved-file repair.
 
 Moved-file repair updates the existing `asset_files` row in place when
 confidence is high, preserving `id`, `bundle_id`, collection memberships, tags,
-rating, cover/primary references, and subtitle links. The normal scan path does
+rating, cover/cursor references, and subtitle links. The normal scan path does
 not full-hash large files; `full_hash` remains lazy for future duplicate
 verification or ambiguous repair workflows.
 
@@ -232,6 +233,21 @@ Indexes:
 - `ix_playback_progress_completed_updated_at` for continue-watching
   (`completed = 0`, newest `updated_at` first).
 
+### `bundle_cursors`
+
+One current ordered-media location per bundle (ADR-0016). Columns:
+
+`bundle_id` (PK, FK to `asset_bundles`, CASCADE), `file_id` (unique FK to
+`asset_files`, CASCADE), and `updated_at`.
+
+The row is intentionally separate from `asset_bundles`: changing the current
+viewer file is owner navigation state and does not bump the bundle's optimistic
+metadata version. The current timestamp for a video remains in
+`playback_progress`; an image needs only this pointer. Re-parenting the current
+file clears the old bundle's cursor in the same ORM hook that syncs progress
+ownership. Existing libraries add the table through the normal metadata
+bootstrap when opened.
+
 ### `grouping_plans` / `grouping_proposals` / `grouping_proposal_files`
 
 Durable, reviewable snapshots of the grouping suggester output.
@@ -250,7 +266,7 @@ Durable, reviewable snapshots of the grouping suggester output.
   `sequence`.
 
 Apply is idempotent and conflict-aware: it merges/splits provisional bundles
-preserving `AssetFile.id`, assigns roles, selects cover/primary, links external
+preserving `AssetFile.id`, assigns roles, selects a cover, links external
 subtitles, creates suggested collections, and never touches the filesystem.
 `POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
 that selected subset is accepted and the plan is marked applied, so unchecked

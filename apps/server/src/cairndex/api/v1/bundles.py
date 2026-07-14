@@ -12,6 +12,8 @@ from cairndex.api.schemas.bundles import (
     BundleCleanupOrder,
     BundleCollections,
     BundleCreate,
+    BundleCursorRead,
+    BundleCursorUpdate,
     BundleRead,
     BundleReorder,
     BundleTags,
@@ -28,6 +30,7 @@ from cairndex.core.errors import NotFoundError
 from cairndex.media import playback, thumbnails
 from cairndex.persistence.models import AssetFile
 from cairndex.services import browse as browse_service
+from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services.browse import BundleSort, SystemView
@@ -59,6 +62,20 @@ def _file_reads(db: LibrarySession, files: list[AssetFile]) -> list[FileRead]:
         )
         for asset_file in files
     ]
+
+
+# Build a bundle response with its effective ordered-media location
+def _bundle_read(
+    db: LibrarySession,
+    bundle: object,
+    current: AssetFile | None = None,
+    *,
+    current_resolved: bool = False,
+) -> BundleRead:
+    row = BundleRead.model_validate(bundle)
+    if not current_resolved:
+        current = cursor_service.current_file(db, row.id)
+    return row.model_copy(update={"resume_file_id": current.id if current else None})
 
 
 # --- Browse (declared before /{bundle_id} so the static paths win) -----------
@@ -161,18 +178,33 @@ def create_bundle(payload: BundleCreate, db: LibrarySession) -> BundleRead:
         notes=payload.notes,
         rating=payload.rating,
     )
-    return BundleRead.model_validate(bundle)
+    return _bundle_read(db, bundle)
 
 
 @router.get("", response_model=Page[BundleRead])
 def list_bundles(db: LibrarySession, page: Pagination) -> Page[BundleRead]:
     rows, next_cursor = service.list_bundles(db, limit=page.limit, cursor=page.cursor)
-    return Page(items=[BundleRead.model_validate(b) for b in rows], next_cursor=next_cursor)
+    current_by_bundle = cursor_service.current_files(db, [bundle.id for bundle in rows])
+    return Page(
+        items=[
+            _bundle_read(
+                db,
+                bundle,
+                current_by_bundle[bundle.id],
+                current_resolved=True,
+            )
+            for bundle in rows
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{bundle_id}", response_model=BundleRead)
 def get_bundle(bundle_id: str, db: LibrarySession) -> BundleRead:
-    return BundleRead.model_validate(service.get_bundle(db, bundle_id))
+    bundle = service.get_bundle(db, bundle_id)
+    files = list(service.list_files(db, bundle_id))
+    playback.reconcile_missing_files(db, files)
+    return _bundle_read(db, bundle)
 
 
 @router.patch("/{bundle_id}", response_model=BundleRead)
@@ -180,14 +212,21 @@ def update_bundle(
     bundle_id: str, payload: BundleUpdate, db: LibrarySession, if_match: IfMatchVersion = None
 ) -> BundleRead:
     changes = payload.model_dump(exclude_unset=True)
-    return BundleRead.model_validate(
-        service.update_bundle(db, bundle_id, changes, expected_version=if_match)
-    )
+    bundle = service.update_bundle(db, bundle_id, changes, expected_version=if_match)
+    return _bundle_read(db, bundle)
 
 
 @router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
     service.delete_bundle(db, bundle_id)
+
+
+@router.put("/{bundle_id}/cursor", response_model=BundleCursorRead)
+def update_bundle_cursor(
+    bundle_id: str, payload: BundleCursorUpdate, db: LibrarySession
+) -> BundleCursorRead:
+    cursor = cursor_service.set_cursor(db, bundle_id, payload.file_id)
+    return BundleCursorRead(file_id=cursor.file_id)
 
 
 # --- Files -------------------------------------------------------------------
