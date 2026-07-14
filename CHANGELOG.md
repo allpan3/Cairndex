@@ -24,14 +24,15 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
-- **Grouping-review file ordering.** Bundle suggestions now expose accessible
-  up/down controls for arranging files before acceptance. The reviewed order is
-  persisted on the open plan through
-  `PUT /grouping/plans/{plan_id}/proposals/{proposal_id}/files/order` and becomes
-  the confirmed bundle playlist sequence. New suggestions default to video,
-  then audio, then image, then remaining files while retaining natural order
-  within each group. Files proposed for an existing bundle append after its
-  current sequence in the reviewed order; source files are never changed.
+- **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
+  position within any bundle suggestion or moved into another suggestion;
+  bundles can be dragged into any suggested collection or back to the top level.
+  The open plan persists these edits through the new file-move and bundle-parent
+  routes, and apply preserves existing bundle identities while realizing an
+  explicit cross-bundle move. Untouched confirmed groupings retain their prior
+  conflict protection. New suggestions still default to video, then audio, then
+  image, then remaining files while retaining natural order within each group.
+  All edits are metadata-only; source files are never changed.
 
 - **One remembered media location per bundle.** A new additive
   `bundle_cursors` table stores the current ordered image/video independently
@@ -39,14 +40,13 @@ grouped under `Unreleased` until the first tagged release.
   version bump. The viewer opens that file, retains per-video timestamps in the
   existing progress table, and persists image positions as file-only cursors.
 
-- **Grouping suggestion inline rename.** Double-clicking a new-bundle title in
-  grouping review now opens an inline field; Enter or blur saves and Escape
-  cancels, with Enter/F2 available from the focused title. Renames persist on
-  the open grouping plan through the new library-scoped
+- **Grouping suggestion inline rename.** Double-clicking a bundle or collection
+  title in grouping review now opens an inline field; Enter or blur saves and
+  Escape cancels, with Enter/F2 available from the focused title. Renames persist
+  on the open grouping plan through the library-scoped
   `PATCH /grouping/plans/{plan_id}/proposals/{proposal_id}` route, and the edited
-  title is used when **Accept selected** confirms the bundle. Collection
-  suggestions and additions to existing bundles remain read-only, and no source
-  file is renamed or otherwise changed.
+  title is used by **Accept selected**. Addition titles remain read-only, and no
+  source file is renamed or otherwise changed.
 
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before

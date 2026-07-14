@@ -1,5 +1,6 @@
 import {
   type InfiniteData,
+  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -24,6 +25,7 @@ import {
   type FileSelection,
   type FilterExpression,
   type GroupingPlan,
+  type GroupingProposal,
   type JobRead,
   type LibraryCreate,
   type LibraryRegister,
@@ -83,7 +85,8 @@ import {
   removeFile,
   revokeDevice,
   renameGroupingProposal,
-  reorderGroupingProposalFiles,
+  moveGroupingProposalFile,
+  reparentGroupingProposal,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -443,6 +446,24 @@ export function useStoryboards(options: { onProgress?: JobProgressFn } = {}) {
 }
 
 // --- Grouping plans (ADR-0009) -----------------------------------------------
+
+/** Replace edited grouping proposals without refetching the whole plan. */
+function updateGroupingProposals(
+  qc: QueryClient,
+  planId: string | null,
+  updated: GroupingProposal[],
+) {
+  const byId = new Map(updated.map((proposal) => [proposal.id, proposal]))
+  qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
+    current
+      ? {
+          ...current,
+          proposals: current.proposals.map((proposal) => byId.get(proposal.id) ?? proposal),
+        }
+      : current,
+  )
+}
+
 export function useGroupingPlans(enabled = true) {
   return useQuery({
     queryKey: ['grouping-plans'],
@@ -489,28 +510,49 @@ export function useRenameGroupingProposal(planId: string | null) {
   })
 }
 
-/** Persist a reviewed proposal file order and update the open plan in-place. */
-export function useReorderGroupingProposalFiles(planId: string | null) {
+/** Move one reviewed file and update every affected proposal in-place. */
+export function useMoveGroupingProposalFile(planId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ proposalId, orderedIds }: { proposalId: string; orderedIds: string[] }) => {
+    mutationFn: ({
+      sourceProposalId,
+      assetFileId,
+      targetProposalId,
+      targetIndex,
+    }: {
+      sourceProposalId: string
+      assetFileId: string
+      targetProposalId: string
+      targetIndex: number
+    }) => {
       if (!planId) throw new Error('no grouping plan selected')
-      return reorderGroupingProposalFiles(planId, proposalId, orderedIds).then((files) => ({
-        proposalId,
-        files,
-      }))
+      return moveGroupingProposalFile(
+        planId,
+        sourceProposalId,
+        assetFileId,
+        targetProposalId,
+        targetIndex,
+      )
     },
-    onSuccess: ({ proposalId, files }) =>
-      qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
-        current
-          ? {
-              ...current,
-              proposals: current.proposals.map((proposal) =>
-                proposal.id === proposalId ? { ...proposal, files } : proposal,
-              ),
-            }
-          : current,
-      ),
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, updated),
+  })
+}
+
+/** Reparent one reviewed bundle and update the open plan in-place. */
+export function useReparentGroupingProposal(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      parentProposalId,
+    }: {
+      proposalId: string
+      parentProposalId: string | null
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return reparentGroupingProposal(planId, proposalId, parentProposalId)
+    },
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
   })
 }
 

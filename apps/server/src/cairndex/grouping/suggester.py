@@ -96,6 +96,9 @@ class GroupingProposal:
     # When set, this is an *addition* proposal (ADR-0009 phase 5): its files
     # join an existing confirmed bundle rather than forming a new one.
     target_bundle_id: str | None = None
+    # Existing bundle whose identity this proposal should preserve if the owner
+    # edits a confirmed grouping before apply
+    base_bundle_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -256,8 +259,9 @@ def _media_first(files: list[FileObservation]) -> list[FileObservation]:
 # --- role assignment ---------------------------------------------------------
 
 
-def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
-    ordered = _media_first(files)
+# Assign cover and media roles without changing an owner-reviewed sequence
+def _roles_in_order(ordered: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles to observations in their current order."""
     videos = [f for f in ordered if f.media_kind is MediaKind.VIDEO]
     multipart = _is_multipart(videos)
     images = [f for f in ordered if f.media_kind is MediaKind.IMAGE]
@@ -267,6 +271,12 @@ def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     for sequence, f in enumerate(ordered):
         proposed.append(ProposedFile(f.asset_file_id, _role_for(f, multipart, cover_id), sequence))
     return tuple(proposed)
+
+
+# Assign default roles after applying the media-first suggestion order
+def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles and the default media-first sequence."""
+    return _roles_in_order(_media_first(files))
 
 
 def _pick_cover(images: list[FileObservation]) -> str | None:
@@ -304,6 +314,8 @@ def _bundle_proposal(
     # A bundle that fills its whole folder takes the folder's name; one of several
     # bundles split out of a container reads better titled by its own file.
     title = _basename(directory) if owns_directory and directory else _stem(files[0].relative_path)
+    source_bundle_ids = {file.bundle_id for file in files}
+    base_bundle_id = next(iter(source_bundle_ids)) if len(source_bundle_ids) == 1 else None
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
@@ -312,6 +324,7 @@ def _bundle_proposal(
         confidence=confidence,
         reason=reason,
         files=_assign_roles(files),
+        base_bundle_id=base_bundle_id,
     )
 
 
@@ -434,12 +447,11 @@ def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, _Owner]:
     return owners
 
 
-def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
-    """Roles for files added to an *existing* bundle: keep it simple — the bundle
-    already has a primary/cover, so an added image is just an image, an added
-    video a part, and a subtitle a subtitle."""
+# Assign addition roles without changing an owner-reviewed sequence
+def _addition_roles_in_order(ordered: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles for files joining an existing confirmed bundle."""
     proposed: list[ProposedFile] = []
-    for sequence, f in enumerate(_media_first(files)):
+    for sequence, f in enumerate(ordered):
         match f.media_kind:
             case MediaKind.SUBTITLE:
                 role = FileRole.SUBTITLE
@@ -451,6 +463,12 @@ def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
                 role = FileRole.ATTACHMENT
         proposed.append(ProposedFile(f.asset_file_id, role, sequence))
     return tuple(proposed)
+
+
+# Assign addition roles after applying the media-first suggestion order
+def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign addition roles and the default media-first sequence."""
+    return _addition_roles_in_order(_media_first(files))
 
 
 def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingProposal:

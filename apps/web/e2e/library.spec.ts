@@ -240,40 +240,72 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await storyboardRequest
 })
 
-test('edits a bundle suggestion before accepting it', async ({ page }) => {
+test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
   await mockApi(page)
-  const proposal = {
-    id: 'proposal1',
-    kind: 'bundle',
-    title: 'SRCV-005 - cut',
-    directory: 'SRCV-005',
-    parent_proposal_id: null,
-    target_bundle_id: null,
-    confidence: 0.95,
-    reason: 'same filename stem',
-    files: [
-      {
-        asset_file_id: 'file1',
-        relative_path: 'SRCV-005/SRCV-005.mp4',
-        proposed_role: 'primary_video',
-        sequence: 0,
-      },
-      {
-        asset_file_id: 'file2',
-        relative_path: 'SRCV-005/SRCV-005.mp3',
-        proposed_role: 'attachment',
-        sequence: 1,
-      },
-      {
-        asset_file_id: 'file3',
-        relative_path: 'SRCV-005/cover.jpg',
-        proposed_role: 'cover',
-        sequence: 2,
-      },
-    ],
-  }
-  let renamedTitle: string | null = null
-  let reorderedIds: string[] | null = null
+  const proposals = [
+    {
+      id: 'collection1',
+      kind: 'container',
+      title: 'Movies',
+      directory: '',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.9,
+      reason: 'shared directory',
+      files: [],
+    },
+    {
+      id: 'proposal1',
+      kind: 'bundle',
+      title: 'SRCV-005 - cut',
+      directory: 'SRCV-005',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.95,
+      reason: 'same filename stem',
+      files: [
+        {
+          asset_file_id: 'file1',
+          relative_path: 'SRCV-005/SRCV-005.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+        {
+          asset_file_id: 'file2',
+          relative_path: 'SRCV-005/SRCV-005.mp3',
+          proposed_role: 'attachment',
+          sequence: 1,
+        },
+        {
+          asset_file_id: 'file3',
+          relative_path: 'SRCV-005/cover.jpg',
+          proposed_role: 'cover',
+          sequence: 2,
+        },
+      ],
+    },
+    {
+      id: 'proposal2',
+      kind: 'bundle',
+      title: 'Extras',
+      directory: 'Extras',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.8,
+      reason: 'same directory',
+      files: [
+        {
+          asset_file_id: 'file4',
+          relative_path: 'Extras/trailer.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+      ],
+    },
+  ]
+  let renamedCollection: string | null = null
+  let fileMove: { source: string; target: string; index: number } | null = null
+  let bundleParent: string | null = null
   await page.route('**/grouping/plans', (route) =>
     route.fulfill({
       json: [
@@ -283,7 +315,7 @@ test('edits a bundle suggestion before accepting it', async ({ page }) => {
           rule_version: 2,
           generated_at: '2026-07-13T00:00:00Z',
           applied_at: null,
-          proposal_count: 1,
+          proposal_count: proposals.length,
         },
       ],
     }),
@@ -297,42 +329,67 @@ test('edits a bundle suggestion before accepting it', async ({ page }) => {
         scan_job_id: 'job1',
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
-        proposals: [proposal],
+        proposals,
       },
     }),
   )
-  await page.route('**/grouping/plans/plan1/proposals/proposal1', (route) => {
-    renamedTitle = (route.request().postDataJSON() as { title: string }).title
-    return route.fulfill({ json: { ...proposal, title: renamedTitle } })
+  await page.route('**/grouping/plans/plan1/proposals/collection1', (route) => {
+    renamedCollection = (route.request().postDataJSON() as { title: string }).title
+    proposals[0].title = renamedCollection
+    return route.fulfill({ json: proposals[0] })
   })
-  await page.route('**/grouping/plans/plan1/proposals/proposal1/files/order', (route) => {
-    reorderedIds = (route.request().postDataJSON() as { ordered_ids: string[] }).ordered_ids
-    const byId = new Map(proposal.files.map((file) => [file.asset_file_id, file]))
-    return route.fulfill({
-      json: reorderedIds.map((id, sequence) => ({ ...byId.get(id)!, sequence })),
-    })
+  await page.route('**/grouping/plans/plan1/proposals/proposal1/files/file1/move', (route) => {
+    const body = route.request().postDataJSON() as {
+      target_proposal_id: string
+      target_index: number
+    }
+    const source = proposals[1]
+    const target = proposals.find((proposal) => proposal.id === body.target_proposal_id)!
+    const sourceIndex = source.files.findIndex((file) => file.asset_file_id === 'file1')
+    const [moved] = source.files.splice(sourceIndex, 1)
+    target.files.splice(body.target_index, 0, moved!)
+    source.files.forEach((file, sequence) => (file.sequence = sequence))
+    target.files.forEach((file, sequence) => (file.sequence = sequence))
+    fileMove = { source: source.id, target: target.id, index: body.target_index }
+    return route.fulfill({ json: [source, target] })
+  })
+  await page.route('**/grouping/plans/plan1/proposals/proposal2/parent', (route) => {
+    bundleParent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
+      .parent_proposal_id
+    proposals[2].parent_proposal_id = bundleParent
+    return route.fulfill({ json: proposals[2] })
   })
 
   await page.goto('/')
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
-  await page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }).dblclick()
-  const input = page.getByRole('textbox', { name: 'Bundle suggestion title' })
-  await input.fill('SRCV-005')
+  await page.getByRole('button', { name: 'Rename collection suggestion Movies' }).dblclick()
+  const input = page.getByRole('textbox', { name: 'Collection suggestion title' })
+  await input.fill('Favorites')
   await input.press('Enter')
 
-  await expect.poll(() => renamedTitle).toBe('SRCV-005')
+  await expect.poll(() => renamedCollection).toBe('Favorites')
   await expect(
-    page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005' }),
+    page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Move SRCV-005.mp4 down' }).click()
-  await expect.poll(() => reorderedIds).toEqual(['file2', 'file1', 'file3'])
-  await expect(page.locator('.grp-file__name')).toHaveText([
-    'SRCV-005.mp3',
-    'SRCV-005.mp4',
-    'cover.jpg',
-  ])
+  const targetFile = page.getByRole('list', { name: 'Files in Extras' }).locator('.grp-file')
+  const targetBox = await targetFile.boundingBox()
+  if (!targetBox) throw new Error('missing file drop target')
+  await page.getByRole('button', { name: 'Drag file SRCV-005.mp4' }).dragTo(targetFile, {
+    targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
+  })
+  await expect.poll(() => fileMove).toEqual({ source: 'proposal1', target: 'proposal2', index: 1 })
+  await expect(
+    page.getByRole('list', { name: 'Files in Extras' }).locator('.grp-file__name'),
+  ).toHaveText(['trailer.mp4', 'SRCV-005.mp4'])
+
+  const collectionRow = page.locator('.grp-row--collection', {
+    has: page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
+  })
+  await page.getByRole('button', { name: 'Drag bundle Extras' }).dragTo(collectionRow)
+  await expect.poll(() => bundleParent).toBe('collection1')
+  await expect(collectionRow.locator('..').getByText('Extras', { exact: true })).toBeVisible()
 })
 
 test('selecting a bundle opens the inspector', async ({ page }) => {

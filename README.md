@@ -48,13 +48,13 @@ model.
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail. Important follow-ups
-include additional edit-before-apply merge/split/reclassify controls, File
-Browser write mode and desktop-client integration, cross-filesystem repair
-candidates, and token rotation/expiry policy. Job progress bars, large-library
-browse indexing, whole-library indexed text search (SQLite FTS5), media
-fallback/transcoding, and pinyin matching in local tag/collection and file
-pickers are implemented. See [docs/STATUS.md](docs/STATUS.md) for the current
-milestone, known gaps, and recommended next tasks.
+include grouping bundle/container reclassification, File Browser write mode and
+desktop-client integration, cross-filesystem repair candidates, and token
+rotation/expiry policy. Job progress bars, large-library browse indexing,
+whole-library indexed text search (SQLite FTS5), media fallback/transcoding,
+and pinyin matching in local tag/collection and file pickers are implemented.
+See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
+recommended next tasks.
 
 ## Repository layout
 

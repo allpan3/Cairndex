@@ -36,9 +36,15 @@ class ProposalUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=1024)
 
 
-# Validate a complete replacement order for one bundle suggestion's files
-class ProposalFileReorder(BaseModel):
-    ordered_ids: list[str] = Field(min_length=1)
+# Validate a stable-id file transfer between bundle suggestions
+class ProposalFileMove(BaseModel):
+    target_proposal_id: str
+    target_index: int = Field(ge=0)
+
+
+# Validate a bundle suggestion's collection parent edit
+class ProposalReparent(BaseModel):
+    parent_proposal_id: str | None
 
 
 class PlanRead(BaseModel):
