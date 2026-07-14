@@ -17,6 +17,7 @@ from cairndex.api.schemas.devices import (
 from cairndex.auth import SESSION_COOKIE, is_protected, session_store
 from cairndex.auth.device_tokens import pairing_store
 from cairndex.core.errors import AuthRequiredError, NotFoundError
+from cairndex.domain.enums import LibraryStatus
 from cairndex.registry import device_tokens as token_service
 from cairndex.registry import services as registry_service
 
@@ -24,16 +25,18 @@ router = APIRouter(prefix="/auth", tags=["auth", "devices"])
 
 
 def _owner_session_authorized(registry: RegistryDbSession, session_cookie: str | None) -> None:
-    """Require one live owner unlock when any registered library is protected."""
-    protected_ids = [
+    """Require a live owner unlock when protection cannot safely be ruled out."""
+    guarded_ids = [
         library.id
         for library in registry_service.list_libraries(registry)
-        if is_protected(Path(library.root_path))
+        if library.status != LibraryStatus.AVAILABLE or is_protected(Path(library.root_path))
     ]
-    if protected_ids and not any(
-        session_store.is_unlocked(session_cookie, library_id) for library_id in protected_ids
+    if guarded_ids and not any(
+        session_store.is_unlocked(session_cookie, library_id) for library_id in guarded_ids
     ):
-        raise AuthRequiredError("Unlock a protected library before managing devices")
+        raise AuthRequiredError(
+            "Restore unavailable libraries or unlock a protected library before managing devices"
+        )
 
 
 def require_owner_session(
@@ -82,6 +85,8 @@ def approve_pairing(
     _owner_session_authorized(registry, session_cookie)
     for library_id in payload.library_ids:
         library = registry_service.get_library(registry, library_id)
+        if library.status != LibraryStatus.AVAILABLE:
+            raise NotFoundError(f"library {library_id!r} is currently unavailable")
         if is_protected(Path(library.root_path)) and not session_store.is_unlocked(
             session_cookie, library_id
         ):

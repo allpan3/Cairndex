@@ -22,6 +22,9 @@ Completed:
   the request. The registry row records name, immutable library scope,
   creation/last-used timestamps, and revocation without portable-library schema
   changes.
+  Unavailable libraries are conservatively treated as protected and cannot be
+  approved while their manifest is unreadable, preventing an offline-mount
+  passphrase bypass.
 - `get_library_session` and the cancellation-safe `LibraryAccess` streaming
   gate accept `Authorization: Bearer` alongside the existing cookie. Explicit
   invalid/revoked bearer credentials return structured 401; valid out-of-scope

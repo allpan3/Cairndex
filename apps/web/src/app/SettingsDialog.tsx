@@ -122,8 +122,10 @@ function DevicesPage({
                   type="checkbox"
                   checked={selectedIds.has(library.id)}
                   onChange={() => toggleLibrary(library.id)}
+                  disabled={library.status !== 'available'}
                 />
                 {library.name}
+                {library.status !== 'available' && ' (unavailable)'}
               </label>
             ))}
           </fieldset>

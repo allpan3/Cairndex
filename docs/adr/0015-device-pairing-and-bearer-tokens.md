@@ -61,8 +61,11 @@ revocation immediate.
    pairing approval require a live unlock for at least one protected library;
    every protected library selected for a new token must itself be unlocked in
    that cookie session. With no protected libraries, the existing anonymous
-   single-owner posture remains. Thus pairing cannot bypass a configured
-   passphrase or broaden a token beyond the ids the owner selected.
+   single-owner posture remains. An unavailable library is conservatively
+   treated as protected for global device management and cannot be selected for
+   a new scope because its portable manifest cannot prove its lock state. Thus
+   pairing cannot bypass a configured passphrase or broaden a token beyond the
+   ids the owner selected.
 
 5. **Cookie coexistence and streaming safety.** An explicit
    `Authorization: Bearer` header is validated first and never falls back to a
