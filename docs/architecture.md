@@ -518,16 +518,20 @@ backend and frontend services. Production uses the Dockerfile/compose stack unde
 run as a non-root user, mount app data at `/data`, and mount media/library paths
 from the host.
 
-Authentication is an **optional per-library owner passphrase lock** (ADR-0010),
-off by default. The passphrase hash (PBKDF2) lives in each library's portable
-manifest; unlocking is an in-process server-side session bound to an opaque
-HTTP-only cookie, scoped to specific library ids (unlocking one library never
-unlocks another). The `get_library_session` dependency is the single content
-gate; the `auth/*` endpoints, registry list, health, and static assets stay
-reachable while locked. This is a private-network guardrail, not multi-user auth
-or public-internet hardening. Production compose still binds locally by default
-and is intended to sit behind a private network/Tailscale or an authenticating
-reverse proxy, not the public internet.
+Authentication combines the **optional per-library owner passphrase lock**
+(ADR-0010) with owner-paired **device bearer tokens** (ADR-0015). Browser
+unlocks remain in-process sessions bound to opaque HTTP-only cookies; native
+clients pair through a six-character code and receive one high-entropy token
+whose salted hash, explicit library-id scope, usage timestamps, and revocation
+state live in the server registry. `get_library_session` and the short-lived
+`LibraryAccess` streaming gate accept either credential without holding a
+registry connection while bytes stream. Passphrase-less libraries remain
+anonymous when no bearer header is supplied. `GET /api/v1/health` advertises
+`api_features` (`trickplay`, `hls`, `progress`, `pairing`) for additive client
+feature detection. This remains a private-network guardrail, not multi-user
+auth or public-internet hardening. Production compose still binds locally by
+default and is intended to sit behind a private network/Tailscale or an
+authenticating reverse proxy, not the public internet.
 
 ## 14. Known architectural debt
 

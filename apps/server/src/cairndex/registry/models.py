@@ -80,3 +80,17 @@ class JobQueueEntry(RegistryBase):
     updated_at: Mapped[UpdatedAt]
     started_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class DeviceToken(RegistryBase):
+    """A revocable bearer credential issued through owner-approved pairing."""
+
+    __tablename__ = "device_tokens"
+
+    id: Mapped[UlidPk]
+    name: Mapped[str] = mapped_column(String(255))
+    token_hash: Mapped[str] = mapped_column(Text)
+    library_ids: Mapped[list[str]] = mapped_column(JSON)
+    created_at: Mapped[CreatedAt]
+    last_used_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

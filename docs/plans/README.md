@@ -102,7 +102,7 @@ These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
 7. **HLS playback sessions** — bounded ffmpeg session manager (remux `-c copy`
    or transcode), on-demand segments, restart-on-far-seek. The single biggest
    server work item.
-8. **Device pairing / bearer tokens** — short-code pairing approved from an
+8. **Device pairing / bearer tokens** ([ADR-0015](../adr/0015-device-pairing-and-bearer-tokens.md)) — short-code pairing approved from an
    unlocked web session; token hashes in the registry DB; `Authorization:
 Bearer` accepted alongside the ADR-0010 cookie. Needed by TV (no cookie/
    typing UX) and cleaner for the desktop shell. Requires an auth ADR when

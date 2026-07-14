@@ -10,6 +10,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Device pairing and scoped bearer tokens (Plan 2 §4 / T0, ADR-0015).**
+  Anonymous clients start a bounded ten-minute six-character pairing request;
+  an ADR-0010-authorized web session approves explicit library scopes, and the
+  first approved poll receives a 256-bit opaque token exactly once. Only salted
+  token/code/poll-key hashes are stored. The additive registry `device_tokens`
+  table records device name, scope, creation/last-used times, and revocation;
+  usage writes are throttled to once per minute. Library content and scoped
+  streaming gates accept `Authorization: Bearer` alongside browser cookies,
+  close registry sessions before streaming, reject revoked/unknown tokens with
+  structured 401 and out-of-scope use with structured 403, and preserve
+  anonymous access for passphrase-less libraries. Settings → Devices lists,
+  approves, and revokes devices. Health now advertises `api_features` including
+  `trickplay`, `hls`, `progress`, and `pairing`.
+
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before
   mounting a muted direct-play preview. Storyboard indexes prefetch after a
