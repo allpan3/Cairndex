@@ -509,6 +509,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   const fileCount = page.getByText('2 new files', { exact: true })
   await expect(additionTitle).toBeVisible()
   await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(destinationButton).not.toHaveClass(/is-active/)
   await expect(destinationButton).toHaveAttribute(
     'data-tip',
     'Create a new bundle from these files',
@@ -544,6 +545,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     name: `Add these files to “${targetTitle}” instead`,
   })
   await expect(addBackButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(addBackButton).not.toHaveClass(/is-active/)
   await expect(page.getByText('2 files', { exact: true })).toBeVisible()
   await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
   await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)

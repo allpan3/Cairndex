@@ -36,7 +36,8 @@ grouped under `Unreleased` until the first tagged release.
   The destination switch is a compact circular-arrows icon beside the title with
   an immediate state-specific tooltip; numeric confidence and manual badges are
   removed, and wrapped metadata stays aligned to the title column. Existing
-  targets read **Add to 🎬 [bundle name]** with tighter drag-handle spacing.
+  targets read **Add to 🎬 [bundle name]** with tighter drag-handle spacing, and
+  the destination icon no longer remains highlighted after activation.
 
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;
