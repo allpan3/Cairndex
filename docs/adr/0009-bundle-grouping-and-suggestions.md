@@ -83,7 +83,10 @@ Concretely:
 5. **User decisions are durable and win over heuristics on re-scan.** A confirmed
    bundle is never silently re-split or merged. Existing confirmed membership
    remains the source of truth; new files appearing later are suggested into
-   existing bundles/containers and not auto-applied.
+   existing bundles/containers and not auto-applied. As amended on 2026-07-14,
+   the owner may convert that addition proposal in place into a separate new
+   bundle, then switch back while the confirmed target still exists. The target
+   remains untouched when new-bundle mode is applied.
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external
@@ -95,10 +98,11 @@ Concretely:
 7. **Explicit review edits are owner decisions.** As amended on 2026-07-14,
    dragging a file within or across bundle proposals, reparenting a bundle into
    a suggested collection, or renaming a proposal marks the affected proposal as
-   owner-edited. Apply may therefore revise membership in a confirmed
-   uncategorized bundle while preserving its snapshotted `base_bundle_id` and
-   every `AssetFile.id`. This does not weaken heuristic safety: an untouched
-   suggestion still cannot silently split, merge, or retitle a confirmed bundle.
+   owner-edited. Apply may therefore revise eligible provisional membership
+   while preserving each snapshotted `base_bundle_id` and every `AssetFile.id`.
+   This does not make a confirmed uncategorized bundle eligible for regrouping:
+   confirmed bundles remain settled regardless of collection membership, and an
+   untouched suggestion still cannot silently split, merge, or retitle one.
 
 ## Provisional bundle model
 
@@ -225,7 +229,8 @@ collection.
 - Confirmed bundles are never silently split, merged, or retitled by heuristics.
 - Genuinely new files are run through the suggester and surfaced as additions
   (for example, "add `cosmos.fr.srt` to bundle **Cosmos**?") — never auto-applied
-  to a confirmed bundle.
+  to a confirmed bundle. Review may instead create a separate bundle from that
+  same proposal; the confirmed target remains the reversible default.
 - Ambiguous moves/copies remain unresolved suggestions rather than automatic
   merges.
 
@@ -279,7 +284,9 @@ Each phase should be a separate PR; none moves or modifies files on disk.
 4. **Review UI.** Surface the plan after scan; support accept-all, merge, split,
    reclassify, rename, and apply. Wire it to the existing job/registry flow.
 5. **Re-scan additions.** Suggest new files into existing confirmed bundles or
-   logical containers without disturbing confirmed groupings.
+   logical containers without disturbing confirmed groupings. The reviewed
+   proposal may reversibly create a separate bundle instead; that explicit
+   destination choice never mutates the suggested confirmed target.
 6. **External subtitle auto-link.** Fold subtitle linking into role assignment so
    the data-model claim in ADR-0003/docs becomes true for scan/grouping flows.
 

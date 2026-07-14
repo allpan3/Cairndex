@@ -1177,12 +1177,9 @@ export interface paths {
          * @description Suggest a grouping for the current library and store it as the active
          *     plan (superseding any earlier open plan).
          *
-         *     This is the manual "Suggest grouping" entrypoint, so it uses the
-         *     ``uncategorized`` scope: every bundle not yet filed into a collection —
-         *     including a previously confirmed one whose collections were later removed —
-         *     is re-proposed for grouping, alongside still-unbundled files. Routine
-         *     scan/Update generation stays on the ``new`` scope (confirmed groupings are
-         *     left untouched).
+         *     Manual and scan-triggered generation share the same durable boundary:
+         *     confirmed bundles stay settled regardless of collection membership, while
+         *     still-unbundled files and new additions remain eligible.
          */
         post: operations["generate_plan_api_v1_libraries__library_id__grouping_plans_post"];
         delete?: never;
@@ -1243,6 +1240,26 @@ export interface paths {
          * @description Rename a bundle or collection suggestion before its open plan is applied.
          */
         patch: operations["update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/destination": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Proposal Destination
+         * @description Switch an addition candidate between its existing target and a new bundle.
+         */
+        put: operations["update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
@@ -2957,6 +2974,11 @@ export interface components {
             /** Value */
             value?: unknown;
         };
+        /** ProposalDestinationUpdate */
+        ProposalDestinationUpdate: {
+            /** Create New Bundle */
+            create_new_bundle: boolean;
+        };
         /** ProposalFileMove */
         ProposalFileMove: {
             /** Target Index */
@@ -2987,6 +3009,8 @@ export interface components {
         ProposalRead: {
             /** Confidence */
             confidence: number;
+            /** Create New Bundle */
+            create_new_bundle: boolean;
             /** Directory */
             directory: string;
             /** Files */
@@ -3000,6 +3024,8 @@ export interface components {
             reason: string | null;
             /** Target Bundle Id */
             target_bundle_id: string | null;
+            /** Target Bundle Title */
+            target_bundle_title: string | null;
             /** Title */
             title: string | null;
         };
@@ -6050,6 +6076,45 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ProposalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDestinationUpdate"];
             };
         };
         responses: {

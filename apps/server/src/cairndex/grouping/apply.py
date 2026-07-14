@@ -89,7 +89,7 @@ def apply_plan(
     for proposal in proposals:
         if proposal.kind is not ProposalKind.BUNDLE:
             continue
-        if proposal.target_bundle_id is not None:
+        if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
             outcome = _apply_addition(session, proposal, result, source_bundles)
         else:
             outcome = _apply_bundle(session, plan, proposal, result, source_bundles)
@@ -181,6 +181,7 @@ def _apply_bundle(
     seq_by_id = {pf.asset_file_id: pf.sequence for pf in proposal.files}
 
     for row in provisional:
+        row.bundle = target
         row.bundle_id = target.id
         row.role = role_by_id.get(row.id, row.role)
         row.sequence = seq_by_id.get(row.id, row.sequence)
@@ -224,6 +225,7 @@ def _apply_owner_edited_bundle(
     was_provisional = target.grouping_state is GroupingState.PROVISIONAL
 
     for row in present:
+        row.bundle = target
         row.bundle_id = target.id
         row.role = role_by_id.get(row.id, row.role)
         row.sequence = seq_by_id.get(row.id, row.sequence)
@@ -280,6 +282,7 @@ def _apply_addition(
             )
             continue
         source_bundles.add(row.bundle)
+        row.bundle = target
         row.bundle_id = target.id
         row.role = role_by_id.get(row.id, row.role)
         row.sequence = base_sequence + offset
@@ -336,4 +339,9 @@ def _add_bundle_to_collection(session: Session, bundle_id: str, collection_id: s
 
 
 def _conflict(proposal: GroupingProposal, reason: str) -> ProposalConflict:
-    return ProposalConflict(proposal_id=proposal.id, title=proposal.title, reason=reason)
+    title = (
+        proposal.target_bundle_title
+        if proposal.target_bundle_id is not None and not proposal.create_new_bundle
+        else proposal.title
+    )
+    return ProposalConflict(proposal_id=proposal.id, title=title, reason=reason)

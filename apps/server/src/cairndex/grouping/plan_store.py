@@ -12,11 +12,12 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
-from cairndex.domain.enums import GroupingPlanStatus, ProposalKind
+from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind
 from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import (
     FileObservation,
     _addition_roles_in_order,
+    _new_bundle_title,
     _roles_in_order,
     suggest_grouping,
 )
@@ -24,6 +25,7 @@ from cairndex.grouping.suggester import (
     GroupingPlan as PlanData,
 )
 from cairndex.persistence.models import (
+    AssetBundle,
     AssetFile,
     GroupingPlan,
     GroupingProposal,
@@ -61,7 +63,7 @@ def rename_proposal(
 ) -> GroupingProposal:
     """Rename a bundle or collection suggestion before apply."""
     proposal = _open_proposal(session, plan_id, proposal_id)
-    if proposal.target_bundle_id is not None:
+    if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
         raise ValidationError("addition suggestion titles cannot be changed")
 
     normalized = title.strip()
@@ -73,13 +75,12 @@ def rename_proposal(
     return proposal
 
 
-# Rewrite dense sequence and derived roles after a proposal file move
-def _write_proposal_files(
+# Build observations for the current proposal-file order
+def _proposal_observations(
     session: Session,
-    proposal: GroupingProposal,
     proposal_files: list[GroupingProposalFile],
-) -> None:
-    """Persist one proposal's exact ordered membership and derived roles."""
+) -> list[FileObservation]:
+    """Resolve stable proposal-file ids into current media observations."""
     observations: list[FileObservation] = []
     for proposal_file in proposal_files:
         asset_file = session.get(AssetFile, proposal_file.asset_file_id)
@@ -93,9 +94,20 @@ def _write_proposal_files(
                 bundle_id=asset_file.bundle_id,
             )
         )
+    return observations
+
+
+# Rewrite dense sequence and derived roles after a proposal edit
+def _write_proposal_files(
+    session: Session,
+    proposal: GroupingProposal,
+    proposal_files: list[GroupingProposalFile],
+) -> None:
+    """Persist one proposal's exact ordered membership and derived roles."""
+    observations = _proposal_observations(session, proposal_files)
     proposed = (
         _addition_roles_in_order(observations)
-        if proposal.target_bundle_id is not None
+        if proposal.target_bundle_id is not None and not proposal.create_new_bundle
         else _roles_in_order(observations)
     )
     role_by_id = {item.asset_file_id: item.role for item in proposed}
@@ -104,6 +116,39 @@ def _write_proposal_files(
         proposal_file.proposed_role = role_by_id.get(
             proposal_file.asset_file_id, proposal_file.proposed_role
         )
+
+
+# Persist the reversible existing-bundle versus new-bundle choice
+def set_proposal_destination(
+    session: Session,
+    plan_id: str,
+    proposal_id: str,
+    create_new_bundle: bool,
+) -> GroupingProposal:
+    """Switch an addition candidate between its suggested target and a new bundle."""
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    if proposal.kind is not ProposalKind.BUNDLE or proposal.target_bundle_id is None:
+        raise ValidationError("only an existing-bundle suggestion has another destination")
+
+    observations = _proposal_observations(session, list(proposal.files))
+    if not observations:
+        raise ValidationError("an empty bundle suggestion has no destination")
+
+    # Old open plans stored the target title in title and gain the new fields on open
+    if proposal.target_bundle_title is None:
+        proposal.target_bundle_title = proposal.title
+        proposal.title = _new_bundle_title(observations, proposal.directory)
+
+    if not create_new_bundle:
+        target = session.get(AssetBundle, proposal.target_bundle_id)
+        if target is None or target.grouping_state is not GroupingState.CONFIRMED:
+            raise ConflictError("the suggested existing bundle is no longer available")
+
+    proposal.create_new_bundle = create_new_bundle
+    proposal.owner_edited = True
+    _write_proposal_files(session, proposal, list(proposal.files))
+    session.flush()
+    return proposal
 
 
 # Move one stable file id within or across bundle proposals
@@ -213,6 +258,8 @@ def persist_plan(
             reason=proposal.reason,
             sort_order=order,
             target_bundle_id=proposal.target_bundle_id,
+            target_bundle_title=proposal.target_bundle_title,
+            create_new_bundle=proposal.create_new_bundle,
             base_bundle_id=proposal.base_bundle_id,
         )
         session.add(row)

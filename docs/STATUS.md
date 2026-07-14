@@ -93,7 +93,27 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
-## Current: grouping-review drag-and-drop editing
+## Current: grouping-review destination and drag-and-drop editing
+
+An addition suggestion now keeps its confirmed bundle as the default while
+offering **Create new bundle instead** on the same row. Switching preserves the
+proposal, checkbox, file list/order, collection parent, and any edited new-bundle
+title; the reverse action restores existing-bundle mode while the target still
+exists. Normal addition roles and fresh-bundle roles are recomputed without
+changing the reviewed sequence. Applying new mode creates a separate confirmed
+bundle and leaves the old target and every stable file id intact.
+
+The additive `target_bundle_title` and `create_new_bundle` proposal fields
+persist that reversible choice. Legacy open plans derive a fresh title and
+snapshot the target title on their first switch. New mode remains applicable if
+the old target later disappears; returning to existing mode requires a live
+confirmed target. The library-scoped destination endpoint and generated frontend
+types are current.
+
+Bundle and collection title editors now use their rendered text as the minimum
+width and grow live while typing, capped by the grouping dialog. Existing
+double-click, Enter/F2, Enter/blur save, Escape cancel, validation, and focus
+selection behavior is retained.
 
 Grouping review now uses native drag-and-drop instead of up/down buttons. Files
 can move to an exact position within any bundle suggestion or into another
@@ -132,15 +152,17 @@ bundle-parent routes and broadens proposal title updates to bundle or collection
 suggestions. OpenAPI and frontend generated types are current. Regression
 coverage checks within/cross-bundle movement, confirmed identity preservation,
 collection rename/reparent, addition order, React interaction, and the
-browser-visible drag flow.
+browser-visible drag flow. It also covers reversible destination persistence,
+role conversion, rename eligibility, legacy backfill, missing-target behavior,
+separate-bundle apply, title-editor growth, and one-row/one-checkbox switching.
 
 Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
-and all 420 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 107
-Vitest tests, the production build, and all 71 Playwright tests pass. The browser
-flow covers repeated suggestion regeneration plus empty bundle/collection
-deselection; the exact long-filename Python fixture covers v4 pairing. The
-in-app browser runtime was also attempted but
-could not initialize (`Cannot redefine property: process`).
+and all 423 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 111
+Vitest tests, the production build, and all 73 Playwright tests pass. Browser
+flows cover title growth, reversible destination switching, repeated suggestion
+regeneration, and empty bundle/collection deselection; the exact long-filename
+Python fixture covers v4 pairing. The in-app browser runtime was also attempted
+but could not initialize (`Cannot redefine property: process`).
 
 ## Current: ordered bundle media cursor
 

@@ -9,6 +9,7 @@ import {
   useMoveGroupingProposalFile,
   useRenameGroupingProposal,
   useReparentGroupingProposal,
+  useSetGroupingProposalDestination,
 } from '../api/hooks'
 
 /**
@@ -52,6 +53,13 @@ interface RenameControls {
   start: (proposal: GroupingProposal) => void
   commit: (proposalId: string, title: string) => void
   cancel: () => void
+}
+
+/** Coordinate one persisted existing-versus-new bundle choice. */
+interface DestinationControls {
+  canEdit: boolean
+  pending: boolean
+  set: (proposal: GroupingProposal, createNewBundle: boolean) => void
 }
 
 type ReviewDragItem =
@@ -123,28 +131,38 @@ function Confidence({ value }: { value: number }) {
   )
 }
 
-/** Render a bundle or collection title with inline double-click rename. */
-function ProposalTitle({
+/** Resolve the stable destination label, including legacy open-plan fallback. */
+function targetTitle(proposal: GroupingProposal): string {
+  return proposal.target_bundle_title || proposal.title || 'bundle'
+}
+
+/** Build the title shown for the proposal's current destination mode. */
+function proposalDisplayTitle(proposal: GroupingProposal): string {
+  return proposal.target_bundle_id && !proposal.create_new_bundle
+    ? `Add to ${targetTitle(proposal)}`
+    : proposal.title || '(untitled)'
+}
+
+/** Edit a title in a field whose rendered width mirrors its live contents. */
+function ProposalTitleEditor({
   proposal,
-  isAddition,
+  inputLabel,
   rename,
 }: {
   proposal: GroupingProposal
-  isAddition: boolean
+  inputLabel: string
   rename: RenameControls
 }) {
-  const displayTitle = proposal.title || '(untitled)'
-  const kindLabel = proposal.kind === 'container' ? 'collection' : 'bundle'
-  const inputLabel = `${kindLabel[0]?.toUpperCase()}${kindLabel.slice(1)} suggestion title`
-  const editable = rename.canEdit && !isAddition
-  if (editable && rename.editingId === proposal.id) {
-    return (
+  const [value, setValue] = useState(proposal.title ?? '')
+  return (
+    <span className="grp-title grp-title-editor" data-value={value || ' '}>
       <input
-        className="grp-title grp-title-input"
+        className="grp-title-input"
         aria-label={inputLabel}
-        defaultValue={proposal.title ?? ''}
+        value={value}
         autoFocus
         disabled={rename.pending}
+        onChange={(event) => setValue(event.currentTarget.value)}
         onFocus={(event) => event.currentTarget.select()}
         onBlur={(event) => rename.commit(proposal.id, event.currentTarget.value)}
         onKeyDown={(event) => {
@@ -157,7 +175,26 @@ function ProposalTitle({
           }
         }}
       />
-    )
+    </span>
+  )
+}
+
+/** Render a bundle or collection title with inline double-click rename. */
+function ProposalTitle({
+  proposal,
+  isAddition,
+  rename,
+}: {
+  proposal: GroupingProposal
+  isAddition: boolean
+  rename: RenameControls
+}) {
+  const displayTitle = proposalDisplayTitle(proposal)
+  const kindLabel = proposal.kind === 'container' ? 'collection' : 'bundle'
+  const inputLabel = `${kindLabel[0]?.toUpperCase()}${kindLabel.slice(1)} suggestion title`
+  const editable = rename.canEdit && !isAddition
+  if (editable && rename.editingId === proposal.id) {
+    return <ProposalTitleEditor proposal={proposal} inputLabel={inputLabel} rename={rename} />
   }
   if (editable) {
     return (
@@ -178,7 +215,7 @@ function ProposalTitle({
       </button>
     )
   }
-  return <span className="grp-title">{isAddition ? `Add to ${displayTitle}` : displayTitle}</span>
+  return <span className="grp-title">{displayTitle}</span>
 }
 
 function ProposalNode({
@@ -187,12 +224,14 @@ function ProposalNode({
   onToggle,
   rename,
   drag,
+  destination,
 }: {
   node: TreeNode
   selectedIds: Set<string>
   onToggle: (node: TreeNode, checked: boolean) => void
   rename: RenameControls
   drag: DragControls
+  destination: DestinationControls
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -240,6 +279,7 @@ function ProposalNode({
                 onToggle={onToggle}
                 rename={rename}
                 drag={drag}
+                destination={destination}
               />
             ))}
           </ul>
@@ -247,9 +287,10 @@ function ProposalNode({
       </li>
     )
   }
-  const isAddition = proposal.target_bundle_id !== null
+  const hasDestinationChoice = proposal.target_bundle_id !== null
+  const isAddition = hasDestinationChoice && !proposal.create_new_bundle
   const fileListDrop = drag.slot?.kind === 'file-list' && drag.slot.proposalId === proposal.id
-  const displayTitle = proposal.title || 'bundle'
+  const displayTitle = proposalDisplayTitle(proposal)
   return (
     <li className="grp-node grp-node--bundle">
       <div className="grp-row">
@@ -277,8 +318,28 @@ function ProposalNode({
         )}
         <span className="grp-kind">{isAddition ? '➕' : '🎬'}</span>
         <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
-        <Confidence value={proposal.confidence} />
-        {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
+        {hasDestinationChoice && proposal.create_new_bundle ? (
+          <span className="grp-manual">manual</span>
+        ) : (
+          <Confidence value={proposal.confidence} />
+        )}
+        <span className="grp-reason">
+          {hasDestinationChoice && proposal.create_new_bundle
+            ? `create ${proposal.files.length} file${proposal.files.length === 1 ? '' : 's'} as a new bundle`
+            : proposal.reason}
+        </span>
+        {hasDestinationChoice && destination.canEdit && (
+          <button
+            type="button"
+            className="grp-destination"
+            disabled={destination.pending || !hasItems}
+            onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
+          >
+            {proposal.create_new_bundle
+              ? `Add to ${targetTitle(proposal)} instead`
+              : 'Create new bundle instead'}
+          </button>
+        )}
       </div>
       <ul
         className={`grp-files${fileListDrop ? ' grp-files--drop' : ''}`}
@@ -401,6 +462,7 @@ export function GroupingReview({
   const rename = useRenameGroupingProposal(planId)
   const moveProposalFile = useMoveGroupingProposalFile(planId)
   const reparentProposal = useReparentGroupingProposal(planId)
+  const destination = useSetGroupingProposalDestination(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -441,6 +503,7 @@ export function GroupingReview({
         setRenameError(null)
         setDragItem(null)
         setDropSlot(null)
+        destination.reset()
         setDeselectedIds(new Set())
         setNotice('Suggestions generated from the current library state.')
       },
@@ -501,6 +564,20 @@ export function GroupingReview({
           },
         },
       )
+  }
+
+  const setDestination = (proposal: GroupingProposal, createNewBundle: boolean) => {
+    destination.mutate(
+      { proposalId: proposal.id, createNewBundle },
+      {
+        onSuccess: () =>
+          setNotice(
+            createNewBundle
+              ? 'The files will create a new bundle.'
+              : `The files will be added to ${targetTitle(proposal)}.`,
+          ),
+      },
+    )
   }
 
   const clearDrag = () => {
@@ -578,11 +655,13 @@ export function GroupingReview({
   const busy =
     generate.isPending ||
     rename.isPending ||
+    destination.isPending ||
     moveProposalFile.isPending ||
     reparentProposal.isPending ||
     apply.isPending
   const actionBlocked = busy || editing !== null
   const error = (generate.error ??
+    destination.error ??
     moveProposalFile.error ??
     reparentProposal.error ??
     apply.error) as Error | null
@@ -597,7 +676,7 @@ export function GroupingReview({
   }
   const dragControls: DragControls = {
     canEdit: status === 'open',
-    pending: moveProposalFile.isPending || reparentProposal.isPending,
+    pending: moveProposalFile.isPending || reparentProposal.isPending || destination.isPending,
     item: dragItem,
     slot: dropSlot,
     startFile: startFileDrag,
@@ -606,6 +685,11 @@ export function GroupingReview({
     dropFile,
     dropBundle,
     end: clearDrag,
+  }
+  const destinationControls: DestinationControls = {
+    canEdit: status === 'open' && editing === null,
+    pending: busy,
+    set: setDestination,
   }
 
   return (
@@ -683,6 +767,7 @@ export function GroupingReview({
                     onToggle={toggleNode}
                     rename={renameControls}
                     drag={dragControls}
+                    destination={destinationControls}
                   />
                 ))}
               </ul>
