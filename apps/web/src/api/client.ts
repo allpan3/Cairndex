@@ -22,6 +22,9 @@ export type LibraryCreate = components['schemas']['LibraryCreate']
 export type LibraryRegister = components['schemas']['LibraryRegister']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
+export type DeviceRead = components['schemas']['DeviceRead']
+export type PairStartResponse = components['schemas']['PairStartResponse']
+export type PairPollResponse = components['schemas']['PairPollResponse']
 export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
@@ -424,6 +427,25 @@ export const unlockLibrary = (libraryId: string, passphrase: string) =>
 
 export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
+
+// --- Device pairing and bearer-token management (ADR-0015) -----------------
+export const startDevicePairing = (deviceName: string) =>
+  send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })
+
+export const pollDevicePairing = (pollKey: string) =>
+  send<PairPollResponse>('/api/v1/auth/pair/poll', 'POST', { poll_key: pollKey })
+
+export const approveDevicePairing = (pairCode: string, libraryIds: string[]) =>
+  send<void>('/api/v1/auth/pair/approve', 'POST', {
+    pair_code: pairCode,
+    library_ids: libraryIds,
+  })
+
+export const fetchDevices = (signal?: AbortSignal) =>
+  getJson<DeviceRead[]>('/api/v1/auth/devices', signal)
+
+export const revokeDevice = (deviceId: string) =>
+  send<void>(`/api/v1/auth/devices/${deviceId}`, 'DELETE')
 
 // --- Grouping plans (ADR-0009) ------------------------------------------------
 export type GroupingPlan = components['schemas']['PlanRead']

@@ -71,6 +71,7 @@ import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
+import { SettingsDialog } from './app/SettingsDialog'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { MediaViewer } from './app/viewer/MediaViewer'
@@ -161,6 +162,7 @@ export default function App() {
   const librariesQuery = useLibraries()
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
   const libraryId = useMemo(() => {
@@ -201,8 +203,18 @@ export default function App() {
     // re-renders into the workspace once the list refreshes.
     return (
       <>
-        <NoLibraryView onManage={() => setManaging(true)} />
+        <NoLibraryView
+          onManage={() => setManaging(true)}
+          onSettings={() => setSettingsOpen(true)}
+        />
         {managing && <LibraryManager onClose={() => setManaging(false)} />}
+        {settingsOpen && (
+          <SettingsDialog
+            libraries={libraries}
+            libraryId={null}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
       </>
     )
   }
@@ -229,10 +241,18 @@ export default function App() {
         libraryId={libraryId}
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
+        onSettings={() => setSettingsOpen(true)}
         canLock={auth.data?.protected === true}
         onLock={() => lock.lock.mutate()}
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          libraries={libraries}
+          libraryId={libraryId}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </>
   )
 }
@@ -242,7 +262,7 @@ export default function App() {
  * (so the "+" to add a library sits where it always does) with no content, and
  * an empty center pane — no content queries run without an active library.
  */
-function NoLibraryView({ onManage }: { onManage: () => void }) {
+function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSettings: () => void }) {
   const noop = () => {}
   return (
     <div className="app">
@@ -253,6 +273,7 @@ function NoLibraryView({ onManage }: { onManage: () => void }) {
         libraryId={null}
         onChangeLibrary={noop}
         onManageLibraries={onManage}
+        onOpenSettings={onSettings}
         onUpdateLibrary={noop}
         onScanFiles={noop}
         onProbe={noop}
@@ -285,6 +306,7 @@ interface WorkspaceProps {
   libraryId: string
   onChangeLibrary: (id: string) => void
   onManage: () => void
+  onSettings: () => void
   canLock: boolean
   onLock: () => void
 }
@@ -294,6 +316,7 @@ function Workspace({
   libraryId,
   onChangeLibrary,
   onManage,
+  onSettings,
   canLock,
   onLock,
 }: WorkspaceProps) {
@@ -1006,6 +1029,7 @@ function Workspace({
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
         onManageLibraries={onManage}
+        onOpenSettings={onSettings}
         canLock={canLock}
         onLock={onLock}
         onUpdateLibrary={() => updateLibrary.mutate()}
