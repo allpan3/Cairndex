@@ -429,6 +429,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await mockApi(page)
   let createNewBundle = false
   let title = 'Sex On The Beach - 4K'
+  const targetTitle = 'Ada Larson - [Hegre.com] - [2023] - Sun, Sand, Sea & Sex - 4K'
   const destinationWrites: boolean[] = []
   const proposal = () => ({
     id: 'addition-ui',
@@ -437,7 +438,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     directory: 'Western/Ada Larson',
     parent_proposal_id: null,
     target_bundle_id: 'existing-ui',
-    target_bundle_title: 'Sun, Sand, Sea & Sex - 4K',
+    target_bundle_title: targetTitle,
     create_new_bundle: createNewBundle,
     confidence: 0.8,
     reason: 'add 2 new file(s) to existing bundle',
@@ -499,11 +500,50 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
   await expect(checkbox).toBeChecked()
-  await expect(page.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeVisible()
-  await page.getByRole('button', { name: 'Create new bundle instead' }).click()
+  const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
+  const destinationButton = page.getByRole('button', {
+    name: 'Create a new bundle from these files',
+  })
+  const rowContent = page.locator('.grp-row__content')
+  const fileCount = page.getByText('2 new files', { exact: true })
+  await expect(additionTitle).toBeVisible()
+  await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(destinationButton).toHaveAttribute(
+    'data-tip',
+    'Create a new bundle from these files',
+  )
+  await expect(page.locator('.grp-conf')).toHaveCount(0)
+  await expect(page.locator('.grp-manual')).toHaveCount(0)
+  await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)
 
-  await expect(page.getByText('manual')).toBeVisible()
-  await expect(page.getByText('create 2 files as a new bundle')).toBeVisible()
+  const titleBox = await additionTitle.boundingBox()
+  const destinationBox = await destinationButton.boundingBox()
+  const contentBox = await rowContent.boundingBox()
+  const countBox = await fileCount.boundingBox()
+  if (!titleBox || !destinationBox || !contentBox || !countBox) {
+    throw new Error('missing grouping destination geometry')
+  }
+  expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
+  expect(
+    Math.abs(destinationBox.y + destinationBox.height / 2 - (titleBox.y + titleBox.height / 2)),
+  ).toBeLessThanOrEqual(3)
+  expect(countBox.x).toBeGreaterThanOrEqual(contentBox.x)
+
+  await destinationButton.hover()
+  await expect
+    .poll(() =>
+      destinationButton.evaluate((element) => getComputedStyle(element, '::after').opacity),
+    )
+    .toBe('1')
+  await destinationButton.click()
+
+  const addBackButton = page.getByRole('button', {
+    name: `Add these files to “${targetTitle}” instead`,
+  })
+  await expect(addBackButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('2 files', { exact: true })).toBeVisible()
+  await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)
   await expect(checkbox).toBeChecked()
   await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
   await expect(page.locator('.grp-files')).toHaveCount(1)
@@ -517,8 +557,8 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
   ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add to Sun, Sand, Sea & Sex - 4K instead' }).click()
-  await expect(page.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeVisible()
+  await addBackButton.click()
+  await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })
 

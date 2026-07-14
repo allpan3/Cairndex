@@ -2156,7 +2156,21 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.grp-row__content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
+}
+.grp-title-cluster {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
 }
 .grp-row--collection {
   border-radius: 5px;
@@ -2174,9 +2188,11 @@ code {
   accent-color: var(--accent);
 }
 .grp-title {
+  min-width: 0;
   font-weight: 600;
   color: var(--text-strong);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .grp-title--editable {
   padding: 0;
@@ -2227,48 +2243,44 @@ code {
   font-size: 11px;
   color: var(--text-muted);
 }
-.grp-conf {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-}
-.grp-conf--high {
-  color: #4ade80;
-  border-color: #2f5d3a;
-}
-.grp-conf--mid {
-  color: var(--warn);
-  border-color: #5a4a1f;
-}
-.grp-conf--low {
-  color: var(--text-muted);
-}
-.grp-manual {
-  padding: 1px 6px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent);
-  font-size: 10px;
-}
 .grp-destination {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
   background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: 11px;
+  color: var(--text-muted);
   cursor: pointer;
 }
-.grp-destination:hover,
+.grp-destination .icon {
+  width: 14px;
+  height: 14px;
+}
+.grp-destination:hover:not(:disabled),
 .grp-destination:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.grp-destination.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.grp-destination.tip::after {
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
 }
 .grp-destination:disabled {
   opacity: 0.5;
   cursor: default;
-  text-decoration: none;
 }
 .grp-files {
   min-height: 25px;
