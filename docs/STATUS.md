@@ -99,7 +99,8 @@ An addition suggestion now keeps its confirmed bundle as the default while
 offering a compact circular-arrows destination switch immediately after the
 title. Existing-target rows read **Add to 🎬 [bundle name]** with the drag handle
 pulled closer to the title. The switch's hover/focus tooltip describes the
-action for the current mode.
+action for the current mode, while the icon returns to its neutral appearance
+after activation rather than remaining highlighted.
 Switching preserves the proposal, checkbox, file list/order, collection parent,
 and any edited new-bundle title; the reverse action restores existing-bundle
 mode while the target still exists. Normal addition roles and fresh-bundle roles

@@ -2273,10 +2273,6 @@ code {
   background: var(--surface-2);
   color: var(--text-strong);
 }
-.grp-destination.is-active {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
 .grp-destination.tip::after {
   width: max-content;
   max-width: min(320px, calc(100vw - 32px));

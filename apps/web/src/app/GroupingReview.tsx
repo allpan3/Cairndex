@@ -155,7 +155,7 @@ function DestinationToggle({
   return (
     <button
       type="button"
-      className={`grp-destination tip${proposal.create_new_bundle ? ' is-active' : ''}`}
+      className="grp-destination tip"
       aria-label={label}
       aria-pressed={proposal.create_new_bundle}
       data-tip={label}
@@ -735,8 +735,9 @@ export function GroupingReview({
           <p className="grp-intro">
             Suggestions cover still-unbundled files and new additions. Review the proposed bundles
             and collections, drag files between bundles or bundles into collections, then accept
-            only the checked items. Double-click either title to rename it. Confirmed bundles stay
-            untouched even when they aren’t in a collection. Nothing on disk changes.
+            only the checked items. Double-click either title to rename it. Newly confirmed bundles
+            join their selected parent collection; existing confirmed bundles stay untouched unless
+            a reviewed addition targets them. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}

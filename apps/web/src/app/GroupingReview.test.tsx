@@ -307,6 +307,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
     name: 'Create a new bundle from these files',
   })
   expect(createNew).toHaveAttribute('aria-pressed', 'false')
+  expect(createNew).not.toHaveClass('is-active')
   expect(createNew).toHaveAttribute('data-tip', 'Create a new bundle from these files')
   fireEvent.click(createNew)
 
@@ -314,6 +315,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
     name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
   })
   expect(addToExisting).toHaveAttribute('aria-pressed', 'true')
+  expect(addToExisting).not.toHaveClass('is-active')
   expect(addToExisting).toHaveAttribute(
     'data-tip',
     'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
