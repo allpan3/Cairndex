@@ -73,3 +73,15 @@ class AuthRequiredError(DomainError):
     """
 
     code = "auth_required"
+
+
+class InvalidDeviceTokenError(DomainError):
+    """A supplied bearer credential is unknown, malformed, or revoked."""
+
+    code = "invalid_device_token"
+
+
+class DeviceScopeError(DomainError):
+    """A valid device token does not include the requested library."""
+
+    code = "device_scope_forbidden"

@@ -45,11 +45,13 @@ import {
   deleteCollection,
   deleteSmartCollection,
   applyGroupingPlan,
+  approveDevicePairing,
   enqueueProbe,
   enqueueScan,
   enqueueStoryboards,
   enqueueThumbnails,
   fetchAuthStatus,
+  fetchDevices,
   fetchJob,
   lockLibrary,
   unlockLibrary,
@@ -77,6 +79,7 @@ import {
   previewFilter,
   registerLibrary,
   removeFile,
+  revokeDevice,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -301,6 +304,34 @@ export function useLibraryLock(libraryId: string | null) {
     }),
     lock: useMutation({
       mutationFn: () => lockLibrary(libraryId!),
+      onSuccess: invalidate,
+    }),
+  }
+}
+
+/** Paired devices refresh locally, with short polling only while awaiting token delivery. */
+export function useDevices(awaitingDevice = false, previousCount: number | null = null) {
+  return useQuery({
+    queryKey: ['devices'],
+    queryFn: ({ signal }) => fetchDevices(signal),
+    refetchInterval: (query) =>
+      awaitingDevice && previousCount !== null && (query.state.data?.length ?? 0) <= previousCount
+        ? 1000
+        : false,
+  })
+}
+
+export function useDeviceMutations() {
+  const qc = useQueryClient()
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['devices'] })
+  return {
+    approve: useMutation({
+      mutationFn: ({ pairCode, libraryIds }: { pairCode: string; libraryIds: string[] }) =>
+        approveDevicePairing(pairCode, libraryIds),
+      onSuccess: invalidate,
+    }),
+    revoke: useMutation({
+      mutationFn: (deviceId: string) => revokeDevice(deviceId),
       onSuccess: invalidate,
     }),
   }

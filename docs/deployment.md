@@ -74,17 +74,17 @@ delete, or rewrite them.
 Configuration is read from the environment (prefix `CAIRNDEX_`); see
 `.env.example` and `apps/server/src/cairndex/core/config.py`.
 
-| Variable | Default (image) | Purpose |
-| --- | --- | --- |
-| `CAIRNDEX_ENVIRONMENT` | `production` | Free-form environment label. |
-| `CAIRNDEX_DATA_DIR` | `/data` | Server-local app-data dir (`registry.db`, backups, runtime state). |
-| `CAIRNDEX_STATIC_DIR` | `/app/web` | Built SPA dir the backend serves. Unset -> backend serves API only (dev). |
-| `CAIRNDEX_WORKER_ENABLED` | `true` | Run the in-process scan/probe/thumbnail worker. |
-| `CAIRNDEX_STORYBOARDS` | `true` | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards. |
-| `CAIRNDEX_STORYBOARD_MIN_DURATION` | `10` | Minimum probed video duration, in seconds, before storyboard generation is attempted. |
-| `CAIRNDEX_TRANSCODE_MAX_SESSIONS` | `2` | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use. |
-| `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT` | `60` | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted. |
-| `CAIRNDEX_FFMPEG_HWACCEL` | _unset_ | Optional ffmpeg hardware-accelerated *decode* for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
+| Variable                           | Default (image) | Purpose                                                                                                                                                            |
+| ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CAIRNDEX_ENVIRONMENT`             | `production`    | Free-form environment label.                                                                                                                                       |
+| `CAIRNDEX_DATA_DIR`                | `/data`         | Server-local app-data dir (`registry.db`, backups, runtime state).                                                                                                 |
+| `CAIRNDEX_STATIC_DIR`              | `/app/web`      | Built SPA dir the backend serves. Unset -> backend serves API only (dev).                                                                                          |
+| `CAIRNDEX_WORKER_ENABLED`          | `true`          | Run the in-process scan/probe/thumbnail worker.                                                                                                                    |
+| `CAIRNDEX_STORYBOARDS`             | `true`          | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards.                                                                         |
+| `CAIRNDEX_STORYBOARD_MIN_DURATION` | `10`            | Minimum probed video duration, in seconds, before storyboard generation is attempted.                                                                              |
+| `CAIRNDEX_TRANSCODE_MAX_SESSIONS`  | `2`             | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use.                     |
+| `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
+| `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before
@@ -152,7 +152,15 @@ uv run python -m cairndex.devtools.set_passphrase --library-root /path/to/librar
 Only a PBKDF2 hash is stored (in the library's portable manifest); unlocking is a
 server-side session bound to an opaque HTTP-only cookie and scoped to that one
 library (unlocking one protected library never unlocks another). Sessions are
-in-memory, so a restart re-locks everything.
+in-memory, so a restart re-locks everything. Setting or replacing a passphrase
+also revokes every existing device token scoped to that library; affected
+devices must pair again after the library is unlocked.
+
+Paired desktop/TV clients may instead send an ADR-0015 device token in the
+`Authorization: Bearer` header. Tokens are scoped to owner-selected library ids,
+stored only as salted hashes in `registry.db`, and remain valid across restarts
+until revoked from Settings → Devices or invalidated by a scoped library's
+passphrase change. Never put a device token in a URL.
 
 This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
 adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains
@@ -161,6 +169,6 @@ are out of scope.
 
 ## Health check
 
-`GET /api/v1/health` returns `{"status": "ok", ...}` and backs the image's
+`GET /api/v1/health` returns `{"status": "ok", "api_features": [...], ...}` and backs the image's
 Docker `HEALTHCHECK` (and any NAS container-manager liveness probe). No
 authentication is required for this endpoint.

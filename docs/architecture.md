@@ -1,13 +1,15 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12 (probe enrichment,
-> the unified custom media viewer, storyboard trickplay, watch progress/resume,
-> image viewer v2 with preview derivatives, the server-side playback decision +
-> HLS remux/transcode session foundation, and the web hls.js/native-HLS engine
-> integration, player polish, and card hover previews; merged through M9 #11,
-> with M12 on `feat/hover-preview`). See `AGENTS.md` for the product brief,
-> `docs/plans/` for the client-platform roadmap, and `docs/STATUS.md` for
-> current gaps, validation state, and recommended next tasks.
+> Status: current through the media-player foundation M1–M12 and plan 2 T0
+> (probe enrichment, the unified custom media viewer, storyboard trickplay,
+> watch progress/resume, image viewer v2 with preview derivatives, the
+> server-side playback decision + HLS remux/transcode session foundation, and
+> the web hls.js/native-HLS engine
+> integration, player polish, card hover previews, and device pairing/scoped
+> bearer tokens; merged through M12 #12, with T0 on `feat/device-pairing`). See
+> `AGENTS.md` for the product brief, `docs/plans/` for the client-platform
+> roadmap, and `docs/STATUS.md` for current gaps, validation state, and
+> recommended next tasks.
 
 ## 1. System overview
 
@@ -518,16 +520,24 @@ backend and frontend services. Production uses the Dockerfile/compose stack unde
 run as a non-root user, mount app data at `/data`, and mount media/library paths
 from the host.
 
-Authentication is an **optional per-library owner passphrase lock** (ADR-0010),
-off by default. The passphrase hash (PBKDF2) lives in each library's portable
-manifest; unlocking is an in-process server-side session bound to an opaque
-HTTP-only cookie, scoped to specific library ids (unlocking one library never
-unlocks another). The `get_library_session` dependency is the single content
-gate; the `auth/*` endpoints, registry list, health, and static assets stay
-reachable while locked. This is a private-network guardrail, not multi-user auth
-or public-internet hardening. Production compose still binds locally by default
-and is intended to sit behind a private network/Tailscale or an authenticating
-reverse proxy, not the public internet.
+Authentication combines the **optional per-library owner passphrase lock**
+(ADR-0010) with owner-paired **device bearer tokens** (ADR-0015). Browser
+unlocks remain in-process sessions bound to opaque HTTP-only cookies; native
+clients pair through a six-character code and receive one high-entropy token
+whose salted hash, explicit library-id scope, usage timestamps, and revocation
+state live in the server registry. `get_library_session` and the short-lived
+`LibraryAccess` streaming gate accept either credential without holding a
+registry connection while bytes stream. Passphrase-less libraries remain
+anonymous when no Bearer-scheme header is supplied; unrelated authorization
+schemes continue through the cookie path. Existing but unreadable manifests
+fail closed, and setting or replacing a library passphrase revokes every live
+device token scoped to that library. Unavailable libraries cannot be selected
+for pairing but do not block emergency token revocation. `GET /api/v1/health` advertises
+`api_features` (`trickplay`, `hls`, `progress`, `pairing`) for additive client
+feature detection. This remains a private-network guardrail, not multi-user
+auth or public-internet hardening. Production compose still binds locally by
+default and is intended to sit behind a private network/Tailscale or an
+authenticating reverse proxy, not the public internet.
 
 ## 14. Known architectural debt
 

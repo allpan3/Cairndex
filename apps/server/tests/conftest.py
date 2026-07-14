@@ -37,8 +37,10 @@ def _dispose_library_engines() -> Iterator[None]:
     yield
     dispose_all_library_engines()
     from cairndex.auth import session_store
+    from cairndex.auth.device_tokens import pairing_store
 
     session_store.clear()
+    pairing_store.clear()
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -1,5 +1,98 @@
 # Project status
 
+## In review: Plan 2 T0 — device pairing and scoped bearer tokens
+
+Branch `feat/device-pairing` (off `main` at `776e0d7`, after M12 merged as
+#12). Implementation commits: `6e4cf5e` (`feat: add device pairing and bearer
+auth`), `cfc754f` (`feat: add Settings Devices page`), and tested implementation
+tip `d07ed2d` (`fix: block offline library pairing bypass`). Review hardening and
+its final full-gate evidence are recorded in `93edc04` (`fix: harden device
+pairing review findings`).
+
+Completed:
+
+- Anonymous `POST /api/v1/auth/pair/start` creates a bounded ten-minute pairing
+  request with a six-character unambiguous code and a high-entropy poll key.
+  The in-process store keeps only digests, caps outstanding requests at 16 and
+  three per source, rejects capacity with structured 429 without evicting
+  another device, and returns the same `pending` poll shape for unknown,
+  expired, unapproved, consuming, and already-consumed requests.
+- An ADR-0010-authorized browser session approves explicit library ids through
+  `pair/approve`; every selected protected library must be unlocked in that
+  cookie session. The first approved `pair/poll` creates a 256-bit
+  `cdx_<device-id>.<secret>` bearer token, persists only its salted hash in the
+  additive registry `device_tokens` table, returns plaintext once, then removes
+  the request. The registry row records name, immutable library scope,
+  creation/last-used timestamps, and revocation without portable-library schema
+  changes.
+  Unavailable libraries cannot be approved while their manifest is unreadable,
+  preventing an offline-mount passphrase bypass without blocking emergency
+  revocation of other devices.
+- Review hardening treats existing but unreadable/corrupt manifests as protected,
+  lets unrelated authorization schemes continue through the cookie path, and
+  centralizes the protected-and-not-unlocked rule. Unavailable libraries still
+  cannot be approved but no longer lock the owner out of listing or revoking a
+  leaked device. Setting or replacing a passphrase revokes all live tokens
+  scoped to that library, so an anonymously minted token cannot survive the
+  transition to protected content.
+- `get_library_session` and the cancellation-safe `LibraryAccess` streaming
+  gate accept `Authorization: Bearer` alongside the existing cookie. Explicit
+  invalid/revoked bearer credentials return structured 401; valid out-of-scope
+  credentials return structured 403. Passphrase-less libraries remain
+  anonymous when no bearer header is supplied. `last_used_at` writes at most
+  once per minute and the streaming gate closes the registry session before
+  returning bytes.
+- Settings now has a Devices page for code approval with multi-library
+  selection, created/last-used/scope audit details, and immediate revocation.
+  A real-browser test drives start/poll from the simulated device side, approves
+  in the web UI, sees the issued device, revokes it, and verifies the bearer is
+  rejected by the real backend.
+  The form excludes unavailable active/scoped libraries, filters input to the
+  unambiguous pairing alphabet, surfaces FastAPI validation details, and clears
+  mutation/code state between approvals. Device data refreshes after local
+  mutations and briefly while an approved device is collecting its token,
+  rather than polling throughout every Settings session.
+- `GET /api/v1/health` advertises `api_features` with `trickplay`, `hls`,
+  `progress`, and `pairing`. OpenAPI and `schema.d.ts` are regenerated. ADR-0015
+  records token format/entropy/hashing, registry placement, scope and owner
+  authorization, code UX/TTL/cap, cookie coexistence, usage throttling, and
+  revocation. Architecture, data-model, deployment, plan cross-links, and
+  CHANGELOG are updated.
+
+Verification (temporary databases/libraries only; no user media):
+
+- Backend: `ruff check`, `ruff format --check`, `mypy src`, and full pytest
+  (**419 passed**, one pre-existing Starlette/httpx deprecation warning).
+- Frontend: Prettier check, ESLint, TypeScript, full Vitest (**100 passed**), and
+  production build. Two development runs hit the unrelated intermittent M12
+  `falls back to a storyboard when direct playback rejects` timing assertion;
+  focused/immediate full reruns passed, and the final required full run passed.
+- Playwright: two full suite runs **unpiped** with seven workers each exited 0
+  (**66 passed** each), including the new real-backend Devices flow. The known
+  pre-existing real-backend flake did not reproduce. A configurable dedicated
+  Playwright frontend port prevents the runner from reusing another checkout's
+  Vite server.
+- PR #13 CI follow-up partitions the same 66 cases into **63 browser-only**
+  tests in the Node-only frontend job and **3 real-backend** tests in a
+  dedicated full-stack job. The latter provisions ffmpeg, `uv`, and the locked
+  server environment for Devices pairing plus the existing storyboard-job and
+  MKV-remux coverage.
+- The review-hardening pass reran both Playwright partitions unpiped: **63
+  browser-only passed** and **3 real-backend passed**. The first real-backend
+  run exposed the missing post-approval refresh after continuous polling was
+  removed; adaptive polling limited to the token-collection window fixed it,
+  and the final rerun passed all three cases.
+
+Known limits: device tokens have no automatic expiry, refresh, or rotation;
+they remain valid until revoked. Scope is immutable, so changing library access
+requires pairing again. Outstanding pairing requests are intentionally lost on
+server restart. Revoked rows remain visible for audit. This is still a
+single-owner private-network guardrail, not public-internet hardening. Desktop
+shell and TV client consumption remain out of scope for T0.
+
+Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
+`docs/plans/README.md`; D2 consumes this pairing/token contract.
+
 ## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 
 Branch `feat/hover-preview` (off `main` at `02cb18b`, after M9 merged as #11).

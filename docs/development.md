@@ -2,12 +2,12 @@
 
 ## Prerequisites
 
-| Tool | Why | Notes |
-| --- | --- | --- |
-| `uv` | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python. |
-| Node.js 20+ | Frontend tooling | `npm` ships with Node; no separate package manager required. |
-| Docker + Compose v2 plugin | Optional, for the containerized dev stack | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`. |
-| `ffmpeg` / `ffprobe` | Media probing, thumbnails, subtitle conversion | Required for full media behavior. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
+| Tool                       | Why                                            | Notes                                                                                                |
+| -------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `uv`                       | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python.                   |
+| Node.js 20+                | Frontend tooling                               | `npm` ships with Node; no separate package manager required.                                         |
+| Docker + Compose v2 plugin | Optional, for the containerized dev stack      | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`.                         |
+| `ffmpeg` / `ffprobe`       | Media probing, thumbnails, subtitle conversion | Required for full media behavior. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
 
 Cairndex is developed on macOS and deployed on Linux; avoid macOS-only or
 Linux-only assumptions in code (path separators, case sensitivity, process
@@ -49,8 +49,13 @@ npm run format:check      # prettier --check
 npm run typecheck         # tsc --noEmit
 npm run test              # vitest run
 npm run test:e2e          # playwright (boots its own dev server)
+npm run test:e2e:frontend # browser-only tests with intercepted APIs
+npm run test:e2e:fullstack # real-backend tests; requires uv sync + ffmpeg
 npm run build             # production SPA build
 ```
+
+CI keeps the frontend job Node-only and runs `@fullstack` Playwright tests in a
+separate job that provisions the locked backend environment and ffmpeg.
 
 ## Databases and local state
 

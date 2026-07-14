@@ -63,6 +63,22 @@ class SessionStore:
                 return False
             return True
 
+    def unlocked_library_ids(self, token: str | None) -> set[str]:
+        """Return this session's live library grants while pruning expired ones."""
+        if not token:
+            return set()
+        with self._lock:
+            session = self._sessions.get(token)
+            if session is None:
+                return set()
+            now = self._now()
+            expired = [
+                library_id for library_id, expiry in session.unlocked.items() if expiry < now
+            ]
+            for library_id in expired:
+                del session.unlocked[library_id]
+            return set(session.unlocked)
+
     def lock(self, token: str | None, library_id: str) -> None:
         """Revoke ``library_id`` from the session (manual Lock action)."""
         if not token:

@@ -11,6 +11,7 @@ from cairndex.auth.library_auth import (
     clear_passphrase,
     is_protected,
     read_auth,
+    requires_unlock,
     set_passphrase,
     verify_passphrase,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "hash_passphrase",
     "is_protected",
     "read_auth",
+    "requires_unlock",
     "session_store",
     "set_passphrase",
     "verify_hash",
