@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 
 import type { DeviceRead, LibraryRead } from '../api/client'
 import { useDeviceMutations, useDevices } from '../api/hooks'
+import { formatDateTime } from '../lib/format'
+
+const PAIR_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 /** Owner settings shell; Devices is the first global settings page. */
 export function SettingsDialog({
@@ -47,18 +50,34 @@ function DevicesPage({
   libraries: LibraryRead[]
   libraryId: string | null
 }) {
-  const devices = useDevices()
-  const mutations = useDeviceMutations()
   const [pairing, setPairing] = useState(false)
   const [pairCode, setPairCode] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(libraryId ? [libraryId] : []),
+    () =>
+      new Set(
+        libraryId &&
+          libraries.some((library) => library.id === libraryId && library.status === 'available')
+          ? [libraryId]
+          : [],
+      ),
   )
   const [approved, setApproved] = useState(false)
+  const [awaitingDevice, setAwaitingDevice] = useState(false)
+  const [deviceCountAtApproval, setDeviceCountAtApproval] = useState<number | null>(null)
+  const devices = useDevices(awaitingDevice, deviceCountAtApproval)
+  const mutations = useDeviceMutations()
   const libraryNames = useMemo(
     () => new Map(libraries.map((library) => [library.id, library.name])),
     [libraries],
   )
+  const availableIds = useMemo(
+    () =>
+      new Set(
+        libraries.filter((library) => library.status === 'available').map((library) => library.id),
+      ),
+    [libraries],
+  )
+  const selectedAvailableIds = [...selectedIds].filter((id) => availableIds.has(id))
 
   const toggleLibrary = (id: string) => {
     setSelectedIds((previous) => {
@@ -72,9 +91,26 @@ function DevicesPage({
   const submitPairing = () => {
     setApproved(false)
     mutations.approve.mutate(
-      { pairCode, libraryIds: [...selectedIds] },
-      { onSuccess: () => setApproved(true) },
+      { pairCode, libraryIds: selectedAvailableIds },
+      {
+        onSuccess: () => {
+          setApproved(true)
+          setPairCode('')
+          setDeviceCountAtApproval(devices.data?.length ?? 0)
+          setAwaitingDevice(true)
+          mutations.approve.reset()
+        },
+      },
     )
+  }
+
+  const togglePairing = () => {
+    mutations.approve.reset()
+    setPairCode('')
+    setApproved(false)
+    setAwaitingDevice(false)
+    setDeviceCountAtApproval(null)
+    setPairing((visible) => !visible)
   }
 
   return (
@@ -84,13 +120,7 @@ function DevicesPage({
           <h3 id="devices-title">Devices</h3>
           <p>Pair desktop and TV clients, choose their libraries, or revoke access.</p>
         </div>
-        <button
-          className="btn btn--primary"
-          onClick={() => {
-            setPairing(!pairing)
-            setApproved(false)
-          }}
-        >
+        <button className="btn btn--primary" onClick={togglePairing}>
           {pairing ? 'Cancel pairing' : 'Pair device'}
         </button>
       </div>
@@ -109,7 +139,13 @@ function DevicesPage({
             spellCheck={false}
             maxLength={6}
             onChange={(event) => {
-              setPairCode(event.target.value.replace(/\s/g, '').toUpperCase().slice(0, 6))
+              setPairCode(
+                [...event.target.value.toUpperCase()]
+                  .filter((character) => PAIR_CODE_ALPHABET.includes(character))
+                  .join('')
+                  .slice(0, 6),
+              )
+              mutations.approve.reset()
               setApproved(false)
             }}
           />
@@ -143,7 +179,9 @@ function DevicesPage({
             className="btn btn--primary pair-device__approve"
             onClick={submitPairing}
             disabled={
-              pairCode.length !== 6 || selectedIds.size === 0 || mutations.approve.isPending
+              pairCode.length !== 6 ||
+              selectedAvailableIds.length === 0 ||
+              mutations.approve.isPending
             }
           >
             {mutations.approve.isPending ? 'Approving…' : 'Approve device'}
@@ -200,8 +238,8 @@ function DeviceRow({
         </div>
         <div className="device-row__libraries">{scopes}</div>
         <div className="device-row__dates">
-          Created {formatDate(device.created_at)} · Last used{' '}
-          {device.last_used_at ? formatDate(device.last_used_at) : 'never'}
+          Created {formatDateTime(device.created_at)} · Last used{' '}
+          {device.last_used_at ? formatDateTime(device.last_used_at) : 'never'}
         </div>
       </div>
       <button
@@ -213,12 +251,5 @@ function DeviceRow({
         {revoking ? 'Revoking…' : 'Revoke'}
       </button>
     </article>
-  )
-}
-
-/** Compact local date used in device audit metadata. */
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
   )
 }

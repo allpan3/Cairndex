@@ -67,3 +67,17 @@ def revoke_device_token(session: Session, device_id: str) -> DeviceToken:
         device.revoked_at = utcnow()
         session.flush()
     return device
+
+
+def revoke_device_tokens_for_library(session: Session, library_id: str) -> int:
+    """Revoke every live credential whose immutable scope includes a library."""
+    devices = session.scalars(select(DeviceToken).where(DeviceToken.revoked_at.is_(None)))
+    now = utcnow()
+    revoked = 0
+    for device in devices:
+        if library_id in device.library_ids:
+            device.revoked_at = now
+            revoked += 1
+    if revoked:
+        session.flush()
+    return revoked

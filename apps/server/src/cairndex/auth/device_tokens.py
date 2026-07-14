@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
+from cairndex.core.errors import CapacityError
 from cairndex.core.ids import new_id
 from cairndex.core.time import utcnow
 
@@ -17,6 +18,7 @@ PAIR_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 PAIR_CODE_LENGTH = 6
 PAIR_TTL_SECONDS = 10 * 60
 MAX_OUTSTANDING_PAIRS = 16
+MAX_OUTSTANDING_PAIRS_PER_SOURCE = 3
 TOKEN_PREFIX = "cdx_"
 _TOKEN_SALT_BYTES = 16
 _TOKEN_SECRET_BYTES = 32
@@ -73,9 +75,11 @@ def device_id_from_token(token: str) -> str | None:
 class _PairRequest:
     pair_code_hash: bytes
     poll_key_hash: bytes
+    source_hash: bytes
     device_name: str
     expires_at: float
     library_ids: list[str] | None = None
+    consuming: bool = False
 
 
 class PairingStore:
@@ -99,12 +103,18 @@ class PairingStore:
         now = self._now()
         self._requests = deque(request for request in self._requests if request.expires_at > now)
 
-    def start(self, device_name: str) -> tuple[str, str]:
-        """Create a pairing request, evicting the oldest request at capacity."""
+    def start(self, device_name: str, *, source: str = "unknown") -> tuple[str, str]:
+        """Create a pairing request without letting anonymous callers evict pending work."""
         with self._lock:
             self._purge_expired()
-            while len(self._requests) >= self._max_outstanding:
-                self._requests.popleft()
+            source_hash = _digest(source)
+            source_count = sum(
+                hmac.compare_digest(source_hash, request.source_hash) for request in self._requests
+            )
+            if source_count >= MAX_OUTSTANDING_PAIRS_PER_SOURCE:
+                raise CapacityError("Too many outstanding pairing requests from this client")
+            if len(self._requests) >= self._max_outstanding:
+                raise CapacityError("Too many outstanding pairing requests")
             existing = [request.pair_code_hash for request in self._requests]
             while True:
                 pair_code = "".join(
@@ -118,6 +128,7 @@ class PairingStore:
                 _PairRequest(
                     pair_code_hash=pair_hash,
                     poll_key_hash=_digest(poll_key),
+                    source_hash=source_hash,
                     device_name=device_name,
                     expires_at=self._now() + self._ttl,
                 )
@@ -139,7 +150,7 @@ class PairingStore:
             return True
 
     def consume_approval(self, poll_key: str, issue: Callable[[str, list[str]], _T]) -> _T | None:
-        """Issue exactly once for an approved poll key, removing state after success."""
+        """Issue outside the store lock and remove state only after a committed success."""
         candidate = _digest(poll_key)
         with self._lock:
             self._purge_expired()
@@ -147,11 +158,22 @@ class PairingStore:
             for request in self._requests:
                 if hmac.compare_digest(candidate, request.poll_key_hash):
                     matched = request
-            if matched is None or matched.library_ids is None:
+            if matched is None or matched.library_ids is None or matched.consuming:
                 return None
-            result = issue(matched.device_name, matched.library_ids)
-            self._requests.remove(matched)
-            return result
+            matched.consuming = True
+            device_name = matched.device_name
+            library_ids = list(matched.library_ids)
+        try:
+            result = issue(device_name, library_ids)
+        except Exception:
+            with self._lock:
+                if matched in self._requests:
+                    matched.consuming = False
+            raise
+        with self._lock:
+            if matched in self._requests:
+                self._requests.remove(matched)
+        return result
 
     def clear(self) -> None:
         """Remove all outstanding requests during test teardown."""

@@ -528,7 +528,11 @@ whose salted hash, explicit library-id scope, usage timestamps, and revocation
 state live in the server registry. `get_library_session` and the short-lived
 `LibraryAccess` streaming gate accept either credential without holding a
 registry connection while bytes stream. Passphrase-less libraries remain
-anonymous when no bearer header is supplied. `GET /api/v1/health` advertises
+anonymous when no Bearer-scheme header is supplied; unrelated authorization
+schemes continue through the cookie path. Existing but unreadable manifests
+fail closed, and setting or replacing a library passphrase revokes every live
+device token scoped to that library. Unavailable libraries cannot be selected
+for pairing but do not block emergency token revocation. `GET /api/v1/health` advertises
 `api_features` (`trickplay`, `hls`, `progress`, `pairing`) for additive client
 feature detection. This remains a private-network guardrail, not multi-user
 auth or public-internet hardening. Production compose still binds locally by

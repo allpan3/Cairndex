@@ -8,7 +8,7 @@ from fastapi import Cookie, Depends, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from cairndex.auth import SESSION_COOKIE, is_protected, session_store
+from cairndex.auth import SESSION_COOKIE, requires_unlock
 from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.persistence.engine import get_session as _get_session
@@ -52,6 +52,11 @@ def _bearer_token(authorization: str) -> str:
     return token.strip()
 
 
+def _is_bearer_authorization(authorization: str | None) -> bool:
+    """Return whether the header explicitly selects the Bearer scheme."""
+    return authorization is not None and authorization.partition(" ")[0].lower() == "bearer"
+
+
 def _authorize_library(
     registry: Session,
     *,
@@ -61,14 +66,15 @@ def _authorize_library(
     authorization: str | None,
 ) -> None:
     """Authorize one library through an explicit bearer or the ADR-0010 cookie."""
-    if authorization is not None:
+    if _is_bearer_authorization(authorization):
+        assert authorization is not None
         token_service.authenticate_device_token(
             registry,
             token=_bearer_token(authorization),
             library_id=library_id,
         )
         return
-    if is_protected(root) and not session_store.is_unlocked(session_cookie, library_id):
+    if requires_unlock(root, session_cookie, library_id):
         raise AuthRequiredError(f"library {library_id!r} is locked")
 
 

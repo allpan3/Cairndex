@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from cairndex.auth import device_tokens as auth_tokens
 from cairndex.auth import set_passphrase
 from cairndex.auth.device_tokens import PairingStore
+from cairndex.core.errors import CapacityError
 from cairndex.registry import device_tokens as token_service
 from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
@@ -29,9 +30,9 @@ def _make_library(
     root = tmp_path / name
     root.mkdir()
     pkg.create_package(root, name)
-    if passphrase is not None:
-        set_passphrase(root, passphrase)
     library = registry_service.register_existing_library(registry, root_path=str(root))
+    if passphrase is not None:
+        set_passphrase(root, passphrase, registry=registry)
     registry.commit()
     return library.id
 
@@ -88,22 +89,68 @@ def test_pairing_round_trip_delivers_token_once_and_stores_only_hash(
     assert allowed.status_code == 200
 
 
-def test_pairing_expiry_and_eviction_have_uniform_pending_shape() -> None:
+def test_pairing_capacity_rejects_without_evicting_pending_requests() -> None:
     now = 1000.0
     store = PairingStore(ttl_seconds=600, max_outstanding=2)
     store._now = lambda: now  # type: ignore[method-assign]  # controlled clock
-    first_code, first_poll = store.start("first")
-    _second_code, second_poll = store.start("second")
-    _third_code, third_poll = store.start("third")
+    first_code, first_poll = store.start("first", source="client-a")
+    second_code, second_poll = store.start("second", source="client-b")
+    assert store.approve(first_code, ["lib"]) is True
 
-    assert store.approve(first_code, ["lib"]) is False  # oldest was evicted
-    assert store.consume_approval(first_poll, lambda _name, _ids: "token") is None
+    with pytest.raises(CapacityError):
+        store.start("third", source="client-c")
+
+    assert store.consume_approval(first_poll, lambda _name, _ids: "token") == "token"
     assert store.consume_approval(second_poll, lambda _name, _ids: "token") is None
-    assert store.consume_approval(third_poll, lambda _name, _ids: "token") is None
 
     now += 601
-    assert store.approve(_second_code, ["lib"]) is False
+    assert store.approve(second_code, ["lib"]) is False
     assert store.consume_approval(second_poll, lambda _name, _ids: "token") is None
+
+
+def test_pairing_start_is_limited_per_source() -> None:
+    store = PairingStore(max_outstanding=16)
+    for index in range(3):
+        store.start(f"same-source-{index}", source="192.0.2.10")
+
+    with pytest.raises(CapacityError):
+        store.start("blocked", source="192.0.2.10")
+
+    store.start("other-client", source="192.0.2.11")
+
+
+def test_pairing_start_limit_returns_structured_429(isolated_client: TestClient) -> None:
+    for index in range(3):
+        assert (
+            isolated_client.post(
+                "/api/v1/auth/pair/start", json={"device_name": f"Device {index}"}
+            ).status_code
+            == 200
+        )
+
+    limited = isolated_client.post("/api/v1/auth/pair/start", json={"device_name": "One too many"})
+
+    assert limited.status_code == 429
+    assert limited.json() == {
+        "code": "capacity_exhausted",
+        "message": "Too many outstanding pairing requests from this client",
+    }
+
+
+def test_failed_token_commit_keeps_approval_and_issues_outside_store_lock() -> None:
+    store = PairingStore()
+    pair_code, poll_key = store.start("TV", source="client")
+    assert store.approve(pair_code, ["lib"]) is True
+
+    def fail_issue(_name: str, _library_ids: list[str]) -> str:
+        assert store._lock.locked() is False  # noqa: SLF001 — lock-boundary regression
+        raise RuntimeError("commit failed")
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        store.consume_approval(poll_key, fail_issue)
+
+    assert store.consume_approval(poll_key, lambda _name, _ids: "token") == "token"
+    assert store.consume_approval(poll_key, lambda _name, _ids: "duplicate") is None
 
 
 def test_wrong_pair_code_is_structured_not_found(
@@ -146,6 +193,58 @@ def test_unavailable_library_cannot_be_approved_without_bypassing_owner_guard(
     assert response.status_code == 404
     assert response.json()["code"] == "not_found"
     assert _poll(isolated_client, started["poll_key"]) == {"status": "pending"}
+
+
+def test_unavailable_library_does_not_block_device_revocation(
+    isolated_client: TestClient,
+    registry_session: Session,
+    tmp_path: Path,
+) -> None:
+    library_id = _make_library(tmp_path, registry_session, "plain-online")
+    _make_library(tmp_path, registry_session, "unrelated-offline")
+    (tmp_path / "unrelated-offline").rename(tmp_path / "unrelated-offline-unmounted")
+    token = token_service.issue_device_token(
+        registry_session, name="Leaked TV", library_ids=[library_id]
+    )
+    registry_session.commit()
+    device_id = registry_session.query(DeviceToken).filter_by(name="Leaked TV").one().id
+
+    assert isolated_client.get("/api/v1/auth/devices").status_code == 200
+    assert isolated_client.delete(f"/api/v1/auth/devices/{device_id}").status_code == 204
+    denied = isolated_client.get(
+        f"/api/v1/libraries/{library_id}/bundles/browse",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert denied.status_code == 401
+
+
+def test_setting_passphrase_revokes_tokens_minted_while_unprotected(
+    isolated_client: TestClient,
+    registry_session: Session,
+    tmp_path: Path,
+) -> None:
+    library_id = _make_library(tmp_path, registry_session, "protect-later")
+    started = _start(isolated_client)
+    _approve(isolated_client, started["pair_code"], [library_id])
+    token = _poll(isolated_client, started["poll_key"])["token"]
+    assert (
+        isolated_client.get(
+            f"/api/v1/libraries/{library_id}/bundles/browse",
+            headers={"Authorization": f"Bearer {token}"},
+        ).status_code
+        == 200
+    )
+
+    assert set_passphrase(tmp_path / "protect-later", "owner", registry=registry_session) == 1
+    registry_session.commit()
+
+    device = registry_session.query(DeviceToken).one()
+    assert device.revoked_at is not None
+    denied = isolated_client.get(
+        f"/api/v1/libraries/{library_id}/bundles/browse",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert denied.status_code == 401
 
 
 def test_protected_library_requires_cookie_approval_and_bearer_scope(
