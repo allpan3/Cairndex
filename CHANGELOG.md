@@ -10,6 +10,20 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Device pairing and scoped bearer tokens (Plan 2 §4 / T0, ADR-0015).**
+  Anonymous clients start a bounded ten-minute six-character pairing request;
+  an ADR-0010-authorized web session approves explicit library scopes, and the
+  first approved poll receives a 256-bit opaque token exactly once. Only salted
+  token/code/poll-key hashes are stored. The additive registry `device_tokens`
+  table records device name, scope, creation/last-used times, and revocation;
+  usage writes are throttled to once per minute. Library content and scoped
+  streaming gates accept `Authorization: Bearer` alongside browser cookies,
+  close registry sessions before streaming, reject revoked/unknown tokens with
+  structured 401 and out-of-scope use with structured 403, and preserve
+  anonymous access for passphrase-less libraries. Settings → Devices lists,
+  approves, and revokes devices. Health now advertises `api_features` including
+  `trickplay`, `hls`, `progress`, and `pairing`.
+
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before
   mounting a muted direct-play preview. Storyboard indexes prefetch after a
@@ -64,6 +78,19 @@ grouped under `Unreleased` until the first tagged release.
   10–60 second backfill above.
 
 ### Fixed
+
+- **Device pairing security and review hardening.** Only Bearer-scheme
+  authorization headers select device-token auth, so upstream Basic credentials
+  no longer suppress a valid browser unlock cookie. Existing but unreadable,
+  corrupt, or malformed manifests fail closed. Pairing starts are capped per
+  source and reject capacity without evicting pending approvals; token rows are
+  committed outside the pairing lock before one-time state is consumed.
+  Unavailable libraries no longer prevent emergency device revocation, while
+  adding or replacing a passphrase revokes every live token scoped to that
+  library. Settings filters unavailable scopes, accepts only the unambiguous
+  code alphabet, surfaces FastAPI validation detail, clears stale approval
+  state, and polls only while waiting for an approved device to collect its
+  token instead of throughout every Settings session.
 
 - **Storyboard-to-video frame alignment.** Resting after a sprite skim now
   uses format-v2 sprites because ffmpeg's prior default `fps` timing could put a
@@ -310,6 +337,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
+- **Full-stack Playwright CI partition.** Browser-only Playwright coverage stays
+  in the Node-only frontend job, while tests tagged `@fullstack` run in a
+  dedicated job with Chromium, ffmpeg, `uv`, and the locked backend environment.
+  This keeps frontend checks independent of Python while ensuring the Devices
+  pairing, real storyboard-job, and real MKV-remux flows execute in CI instead
+  of failing or skipping for missing backend tooling.
 - **Docs reconciliation through media-player M5 (docs).** Marked plan 1 M5
   merged (#5, M6 next), retitled the `docs/STATUS.md` M5 section from "Current
   branch" to "Merged" and recorded the second review fix pass (discrete-tier

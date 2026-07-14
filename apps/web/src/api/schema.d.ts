@@ -4,6 +4,106 @@
  */
 
 export interface paths {
+    "/api/v1/auth/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description List paired devices, including revoked entries for owner audit.
+         */
+        get: operations["list_devices_api_v1_auth_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Device
+         * @description Revoke a device bearer token immediately.
+         */
+        delete: operations["revoke_device_api_v1_auth_devices__device_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/pair/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Pairing
+         * @description Approve explicit library scopes from an authorized browser session.
+         */
+        post: operations["approve_pairing_api_v1_auth_pair_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/pair/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Poll Pairing
+         * @description Return pending uniformly or issue one bearer token after approval.
+         */
+        post: operations["poll_pairing_api_v1_auth_pair_poll_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/pair/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Pairing
+         * @description Start an anonymous, bounded ten-minute pairing request.
+         */
+        post: operations["start_pairing_api_v1_auth_pair_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -2011,6 +2111,24 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** DeviceRead */
+        DeviceRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Library Ids */
+            library_ids: string[];
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+        };
         /**
          * FacetRequest
          * @description Faceted counts over the current browse scope, for the toolbar filter
@@ -2317,6 +2435,8 @@ export interface components {
         };
         /** HealthStatus */
         HealthStatus: {
+            /** Api Features */
+            api_features: string[];
             /** App Name */
             app_name: string;
             /** Environment */
@@ -2526,6 +2646,40 @@ export interface components {
             items: components["schemas"]["TagRead"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PairApproveRequest */
+        PairApproveRequest: {
+            /** Library Ids */
+            library_ids: string[];
+            /** Pair Code */
+            pair_code: string;
+        };
+        /** PairPollRequest */
+        PairPollRequest: {
+            /** Poll Key */
+            poll_key: string;
+        };
+        /** PairPollResponse */
+        PairPollResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved";
+            /** Token */
+            token?: string | null;
+        };
+        /** PairStartRequest */
+        PairStartRequest: {
+            /** Device Name */
+            device_name: string;
+        };
+        /** PairStartResponse */
+        PairStartResponse: {
+            /** Pair Code */
+            pair_code: string;
+            /** Poll Key */
+            poll_key: string;
         };
         /**
          * PathSuggestions
@@ -3011,6 +3165,167 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_devices_api_v1_auth_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_device_api_v1_auth_devices__device_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_pairing_api_v1_auth_pair_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    poll_pairing_api_v1_auth_pair_poll_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairPollRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairPollResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_pairing_api_v1_auth_pair_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PairStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PairStartResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_health_api_v1_health_get: {
         parameters: {
             query?: never;
@@ -3382,7 +3697,9 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3415,7 +3732,9 @@ export interface operations {
     create_bundle_api_v1_libraries__library_id__bundles_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3452,7 +3771,9 @@ export interface operations {
     batch_update_api_v1_libraries__library_id__bundles_batch_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3498,7 +3819,9 @@ export interface operations {
                 limit?: number;
                 q?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3531,7 +3854,9 @@ export interface operations {
     browse_bundles_filtered_api_v1_libraries__library_id__bundles_browse_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3568,7 +3893,9 @@ export interface operations {
     cleanup_bundle_order_api_v1_libraries__library_id__bundles_cleanup_order_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3603,7 +3930,9 @@ export interface operations {
     bundle_view_counts_api_v1_libraries__library_id__bundles_counts_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3636,7 +3965,9 @@ export interface operations {
     reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -3671,7 +4002,9 @@ export interface operations {
     get_bundle_api_v1_libraries__library_id__bundles__bundle_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3705,7 +4038,9 @@ export interface operations {
     delete_bundle_api_v1_libraries__library_id__bundles__bundle_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3740,6 +4075,7 @@ export interface operations {
             header?: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
+                authorization?: string | null;
             };
             path: {
                 bundle_id: string;
@@ -3778,7 +4114,9 @@ export interface operations {
     get_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3812,7 +4150,9 @@ export interface operations {
     set_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3850,7 +4190,9 @@ export interface operations {
     list_files_api_v1_libraries__library_id__bundles__bundle_id__files_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3884,7 +4226,9 @@ export interface operations {
     add_file_api_v1_libraries__library_id__bundles__bundle_id__files_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3922,7 +4266,9 @@ export interface operations {
     reorder_files_api_v1_libraries__library_id__bundles__bundle_id__files_order_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -3960,7 +4306,9 @@ export interface operations {
     remove_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 file_id: string;
@@ -3996,6 +4344,7 @@ export interface operations {
             header?: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
+                authorization?: string | null;
             };
             path: {
                 bundle_id: string;
@@ -4035,7 +4384,9 @@ export interface operations {
     get_file_thumbnail_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__thumbnail_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 file_id: string;
@@ -4070,7 +4421,9 @@ export interface operations {
     playback_manifest_api_v1_libraries__library_id__bundles__bundle_id__playback_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 bundle_id: string;
@@ -4104,7 +4457,9 @@ export interface operations {
     get_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -4138,7 +4493,9 @@ export interface operations {
     set_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -4176,7 +4533,9 @@ export interface operations {
     get_bundle_thumbnail_api_v1_libraries__library_id__bundles__bundle_id__thumbnail_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -4213,7 +4572,9 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4246,7 +4607,9 @@ export interface operations {
     create_collection_api_v1_libraries__library_id__collections_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4283,7 +4646,9 @@ export interface operations {
     cleanup_collection_order_api_v1_libraries__library_id__collections_cleanup_order_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4318,7 +4683,9 @@ export interface operations {
     collection_counts_api_v1_libraries__library_id__collections_counts_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4351,7 +4718,9 @@ export interface operations {
     reorder_collections_api_v1_libraries__library_id__collections_reorder_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4388,7 +4757,9 @@ export interface operations {
     get_collection_api_v1_libraries__library_id__collections__collection_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 collection_id: string;
                 library_id: string;
@@ -4424,7 +4795,9 @@ export interface operations {
             query?: {
                 cascade?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 collection_id: string;
                 library_id: string;
@@ -4459,6 +4832,7 @@ export interface operations {
             header?: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
+                authorization?: string | null;
             };
             path: {
                 collection_id: string;
@@ -4497,7 +4871,9 @@ export interface operations {
     get_collection_stats_api_v1_libraries__library_id__collections__collection_id__stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 collection_id: string;
                 library_id: string;
@@ -4531,7 +4907,9 @@ export interface operations {
     get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 collection_id: string;
                 library_id: string;
@@ -4568,7 +4946,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4601,7 +4981,9 @@ export interface operations {
     fast_add_files_api_v1_libraries__library_id__fast_add_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4640,7 +5022,9 @@ export interface operations {
             query: {
                 path: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4675,7 +5059,9 @@ export interface operations {
             query?: {
                 path?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4711,7 +5097,9 @@ export interface operations {
                 path: string;
                 size?: 640 | 1600 | 2560;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -4744,7 +5132,9 @@ export interface operations {
     file_content_api_v1_libraries__library_id__files__file_id__content_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -4778,7 +5168,9 @@ export interface operations {
     set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -4816,7 +5208,9 @@ export interface operations {
     clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -4850,7 +5244,9 @@ export interface operations {
     playback_decision_api_v1_libraries__library_id__files__file_id__playback_decision_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 file_id: string;
@@ -4888,7 +5284,9 @@ export interface operations {
     create_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 file_id: string;
@@ -4926,7 +5324,9 @@ export interface operations {
     delete_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 file_id: string;
@@ -4959,7 +5359,9 @@ export interface operations {
     beacon_teardown_playback_session_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id__teardown_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 file_id: string;
@@ -4992,7 +5394,9 @@ export interface operations {
     playback_session_artifact_api_v1_libraries__library_id__files__file_id__playback_sessions__session_id___artifact__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
                 file_id: string;
@@ -5030,7 +5434,9 @@ export interface operations {
             query?: {
                 size?: 640 | 1600 | 2560;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -5064,7 +5470,9 @@ export interface operations {
     update_progress_api_v1_libraries__library_id__files__file_id__progress_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -5102,7 +5510,9 @@ export interface operations {
     beacon_progress_api_v1_libraries__library_id__files__file_id__progress_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -5140,7 +5550,9 @@ export interface operations {
     storyboard_vtt_api_v1_libraries__library_id__files__file_id__storyboard_vtt_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -5174,7 +5586,9 @@ export interface operations {
     storyboard_sheet_api_v1_libraries__library_id__files__file_id__storyboard__sheet_name__jpg_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 sheet_name: string;
@@ -5209,7 +5623,9 @@ export interface operations {
     stream_file_api_v1_libraries__library_id__files__file_id__stream_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 file_id: string;
                 library_id: string;
@@ -5243,7 +5659,9 @@ export interface operations {
     facets_api_v1_libraries__library_id__filters_facets_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5280,7 +5698,9 @@ export interface operations {
     preview_api_v1_libraries__library_id__filters_preview_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5317,7 +5737,9 @@ export interface operations {
     list_plans_api_v1_libraries__library_id__grouping_plans_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5350,7 +5772,9 @@ export interface operations {
     generate_plan_api_v1_libraries__library_id__grouping_plans_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5383,7 +5807,9 @@ export interface operations {
     get_plan_api_v1_libraries__library_id__grouping_plans__plan_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 library_id: string;
@@ -5417,7 +5843,9 @@ export interface operations {
     apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 library_id: string;
@@ -5579,7 +6007,9 @@ export interface operations {
     add_files_to_bundle_api_v1_libraries__library_id__manual_bundling_add_files_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5618,7 +6048,9 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -5652,7 +6084,9 @@ export interface operations {
     create_bundle_from_files_api_v1_libraries__library_id__manual_bundling_create_bundle_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5689,7 +6123,9 @@ export interface operations {
     create_empty_bundle_api_v1_libraries__library_id__manual_bundling_create_empty_bundle_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5726,7 +6162,9 @@ export interface operations {
     suggest_bundle_from_files_api_v1_libraries__library_id__manual_bundling_suggest_bundle_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5763,7 +6201,9 @@ export interface operations {
     suggest_targets_api_v1_libraries__library_id__manual_bundling_suggest_targets_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5803,7 +6243,9 @@ export interface operations {
                 offset?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5836,7 +6278,9 @@ export interface operations {
     list_smart_collections_api_v1_libraries__library_id__smart_collections_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5869,7 +6313,9 @@ export interface operations {
     create_smart_collection_api_v1_libraries__library_id__smart_collections_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -5906,7 +6352,9 @@ export interface operations {
     get_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 smart_collection_id: string;
                 library_id: string;
@@ -5940,7 +6388,9 @@ export interface operations {
     delete_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 smart_collection_id: string;
                 library_id: string;
@@ -5975,6 +6425,7 @@ export interface operations {
             header?: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
+                authorization?: string | null;
             };
             path: {
                 smart_collection_id: string;
@@ -6013,7 +6464,9 @@ export interface operations {
     subtitle_vtt_api_v1_libraries__library_id__subtitles__track_id__vtt_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 track_id: string;
                 library_id: string;
@@ -6050,7 +6503,9 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -6083,7 +6538,9 @@ export interface operations {
     create_tag_group_api_v1_libraries__library_id__tag_groups_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -6120,7 +6577,9 @@ export interface operations {
     get_tag_group_api_v1_libraries__library_id__tag_groups__group_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 group_id: string;
                 library_id: string;
@@ -6154,7 +6613,9 @@ export interface operations {
     delete_tag_group_api_v1_libraries__library_id__tag_groups__group_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 group_id: string;
                 library_id: string;
@@ -6186,7 +6647,9 @@ export interface operations {
     update_tag_group_api_v1_libraries__library_id__tag_groups__group_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 group_id: string;
                 library_id: string;
@@ -6224,7 +6687,9 @@ export interface operations {
     get_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 group_id: string;
                 library_id: string;
@@ -6258,7 +6723,9 @@ export interface operations {
     set_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 group_id: string;
                 library_id: string;
@@ -6299,7 +6766,9 @@ export interface operations {
                 limit?: number;
                 cursor?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -6332,7 +6801,9 @@ export interface operations {
     create_tag_api_v1_libraries__library_id__tags_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -6369,7 +6840,9 @@ export interface operations {
     tag_counts_api_v1_libraries__library_id__tags_counts_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };
@@ -6402,7 +6875,9 @@ export interface operations {
     get_tag_api_v1_libraries__library_id__tags__tag_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 tag_id: string;
                 library_id: string;
@@ -6436,7 +6911,9 @@ export interface operations {
     delete_tag_api_v1_libraries__library_id__tags__tag_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 tag_id: string;
                 library_id: string;
@@ -6471,6 +6948,7 @@ export interface operations {
             header?: {
                 /** @description Expected entity version for optimistic concurrency. */
                 "If-Match"?: number | null;
+                authorization?: string | null;
             };
             path: {
                 tag_id: string;

@@ -38,7 +38,7 @@ jobs:
         run: uv run pytest
 
   frontend:
-    name: Frontend (lint, types, unit, build, e2e)
+    name: Frontend (lint, types, unit, build, browser e2e)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -64,7 +64,36 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: End-to-end tests
-        run: npm run test:e2e
+        run: npm run test:e2e:frontend
+
+  fullstack-e2e:
+    name: Full-stack e2e (real backend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Sync backend dependencies
+        run: uv sync --frozen
+        working-directory: apps/server
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Full-stack end-to-end tests
+        run: npm run test:e2e:fullstack
 
   docker:
     name: Docker build

@@ -78,8 +78,8 @@ politely against an older server.
 ## 4. Connection & pairing (server work, shared with desktop)
 
 TVs can't type passphrases pleasantly, and ADR-0010's cookie session is
-browser-shaped. Add a **device pairing flow** (needs its own small ADR at
-implementation time; registry-DB persistence, additive API):
+browser-shaped. Add a **device pairing flow** ([ADR-0015](../adr/0015-device-pairing-and-bearer-tokens.md);
+registry-DB persistence, additive API):
 
 1. TV: `POST /api/v1/auth/pair/start {device_name}` → `{pair_code, poll_key}`
    (6-char code, 10-min TTL). TV shows the code and polls

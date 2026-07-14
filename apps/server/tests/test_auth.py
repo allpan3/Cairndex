@@ -27,9 +27,9 @@ def _make_library(tmp_path: Path, registry: Session, name: str, *, passphrase: s
     root = tmp_path / name
     root.mkdir()
     pkg.create_package(root, name)
-    if passphrase is not None:
-        set_passphrase(root, passphrase)
     library = registry_service.register_existing_library(registry, root_path=str(root))
+    if passphrase is not None:
+        set_passphrase(root, passphrase, registry=registry)
     registry.commit()
     return library.id
 
@@ -72,12 +72,12 @@ def test_session_store_scoping_and_expiry() -> None:
 
 
 # --- manifest-backed config --------------------------------------------------
-def test_set_and_verify_passphrase(tmp_path: Path) -> None:
+def test_set_and_verify_passphrase(tmp_path: Path, registry_session: Session) -> None:
     root = tmp_path / "lib"
     root.mkdir()
     pkg.create_package(root, "L")
     assert is_protected(root) is False
-    set_passphrase(root, "s3cret")
+    set_passphrase(root, "s3cret", registry=registry_session)
     assert is_protected(root) is True
     assert verify_passphrase(root, "s3cret") is True
     assert verify_passphrase(root, "nope") is False
@@ -117,6 +117,33 @@ def test_protected_library_blocks_until_unlocked(
     assert ok.status_code == 200
     assert ok.json() == {"protected": True, "unlocked": True}
     assert _browse(isolated_client, protected) == 200
+
+
+def test_non_bearer_authorization_header_preserves_cookie_unlock(
+    isolated_client: TestClient, registry_session: Session, tmp_path: Path
+) -> None:
+    protected = _make_library(tmp_path, registry_session, "protected-basic", passphrase="owner")
+    isolated_client.post(f"/api/v1/libraries/{protected}/auth/unlock", json={"passphrase": "owner"})
+
+    response = isolated_client.get(
+        f"/api/v1/libraries/{protected}/bundles/browse",
+        headers={"Authorization": "Basic reverse-proxy-credential"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_existing_corrupt_manifest_fails_closed(
+    isolated_client: TestClient, registry_session: Session, tmp_path: Path
+) -> None:
+    library_id = _make_library(tmp_path, registry_session, "corrupt-manifest", passphrase=None)
+    pkg.manifest_path(tmp_path / "corrupt-manifest").write_text("{broken", encoding="utf-8")
+
+    status = isolated_client.get(f"/api/v1/libraries/{library_id}/auth/status")
+
+    assert status.json() == {"protected": True, "unlocked": False}
+    assert _browse(isolated_client, library_id) == 401
+    assert isolated_client.get("/api/v1/auth/devices").status_code == 401
 
 
 def test_unlocking_one_library_does_not_unlock_another(

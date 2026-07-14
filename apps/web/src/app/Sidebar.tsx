@@ -19,6 +19,7 @@ import {
   IconFolderQuestion,
   IconGrid,
   IconLooseStack,
+  IconSettings,
   IconTag,
   IconTagQuestion,
 } from './icons'
@@ -57,6 +58,7 @@ interface SidebarProps {
   libraryId: string | null
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
+  onOpenSettings: () => void
   canLock?: boolean
   onLock?: () => void
   onUpdateLibrary: () => void
@@ -138,6 +140,7 @@ export function Sidebar({
   libraryId,
   onChangeLibrary,
   onManageLibraries,
+  onOpenSettings,
   canLock,
   onLock,
   onUpdateLibrary,
@@ -574,6 +577,13 @@ export function Sidebar({
           </>
         )}
       </div>
+
+      <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
+        <span className="nav-item__icon">
+          <IconSettings />
+        </span>
+        <span className="nav-item__label">Settings</span>
+      </button>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
