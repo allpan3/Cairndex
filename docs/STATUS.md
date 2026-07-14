@@ -97,7 +97,9 @@ Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 
 An addition suggestion now keeps its confirmed bundle as the default while
 offering a compact circular-arrows destination switch immediately after the
-title. Its hover/focus tooltip describes the action for the current mode.
+title. Existing-target rows read **Add to 🎬 [bundle name]** with the drag handle
+pulled closer to the title. The switch's hover/focus tooltip describes the
+action for the current mode.
 Switching preserves the proposal, checkbox, file list/order, collection parent,
 and any edited new-bundle title; the reverse action restores existing-bundle
 mode while the target still exists. Normal addition roles and fresh-bundle roles
