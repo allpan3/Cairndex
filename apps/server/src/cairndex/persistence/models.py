@@ -528,10 +528,11 @@ class GroupingProposal(Base):
         String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
     )
     # Set when this proposal adds its files to an existing confirmed bundle
-    # (ADR-0009 phase 5). A plain id (not an FK) — a snapshot resolved at apply.
+    # by default (ADR-0009 phase 5). A plain id resolved at apply.
     target_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
-    # Preserve this existing bundle's identity when the owner explicitly edits
-    # an uncategorized confirmed grouping
+    target_bundle_title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    create_new_bundle: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Preserve a proposal's original bundle identity through an explicit edit
     base_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     owner_edited: Mapped[bool] = mapped_column(default=False, server_default="0")
     kind: Mapped[ProposalKind] = mapped_column(Enum(ProposalKind, native_enum=False, length=16))

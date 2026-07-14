@@ -156,11 +156,18 @@ def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engi
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN base_bundle_id"))
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN owner_edited"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_bundle_title"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN create_new_bundle"))
 
     ensure_content_indexes(engine)
 
     columns = {c["name"] for c in inspect(engine).get_columns("grouping_proposals")}
-    assert {"base_bundle_id", "owner_edited"} <= columns
+    assert {
+        "base_bundle_id",
+        "owner_edited",
+        "target_bundle_title",
+        "create_new_bundle",
+    } <= columns
 
 
 # Existing libraries gain the additive bundle cursor table on open

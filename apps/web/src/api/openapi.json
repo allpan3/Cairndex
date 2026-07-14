@@ -4081,6 +4081,19 @@
         "title": "PredicateNode",
         "type": "object"
       },
+      "ProposalDestinationUpdate": {
+        "properties": {
+          "create_new_bundle": {
+            "title": "Create New Bundle",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "create_new_bundle"
+        ],
+        "title": "ProposalDestinationUpdate",
+        "type": "object"
+      },
       "ProposalFileMove": {
         "properties": {
           "target_index": {
@@ -4142,6 +4155,10 @@
             "title": "Confidence",
             "type": "number"
           },
+          "create_new_bundle": {
+            "title": "Create New Bundle",
+            "type": "boolean"
+          },
           "directory": {
             "title": "Directory",
             "type": "string"
@@ -4193,6 +4210,17 @@
             ],
             "title": "Target Bundle Id"
           },
+          "target_bundle_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Bundle Title"
+          },
           "title": {
             "anyOf": [
               {
@@ -4212,6 +4240,8 @@
           "directory",
           "parent_proposal_id",
           "target_bundle_id",
+          "target_bundle_title",
+          "create_new_bundle",
           "confidence",
           "reason",
           "files"
@@ -11154,6 +11184,93 @@
           }
         },
         "summary": "Update Proposal",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/destination": {
+      "put": {
+        "description": "Switch an addition candidate between its existing target and a new bundle.",
+        "operationId": "update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalDestinationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Proposal Destination",
         "tags": [
           "grouping"
         ]

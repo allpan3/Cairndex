@@ -115,6 +115,54 @@ def test_regenerate_plan_does_not_reopen_confirmed_bundles(
     assert {file.id for file in bundle.files} == original_file_ids
 
 
+# Persist an addition candidate's reversible destination through the public API
+def test_switch_addition_destination_and_rename_the_new_bundle(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    initial = client.post(f"{base}/plans").json()
+    assert client.post(f"{base}/plans/{initial['id']}/apply").status_code == 200
+    (library_root / "Cosmos" / "sequel.mp4").write_text("v2")
+    (library_root / "Cosmos" / "sequel.jpg").write_text("i2")
+    scan_library(session, library_root)
+    plan = client.post(f"{base}/plans").json()
+    addition = next(proposal for proposal in plan["proposals"] if proposal["target_bundle_id"])
+
+    assert addition["title"] == "sequel"
+    assert addition["target_bundle_title"] == "Cosmos"
+    assert addition["create_new_bundle"] is False
+    switched = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{addition['id']}/destination",
+        json={"create_new_bundle": True},
+    )
+    assert switched.status_code == 200
+    assert switched.json()["create_new_bundle"] is True
+    assert [file["proposed_role"] for file in switched.json()["files"]] == [
+        "primary_video",
+        "cover",
+    ]
+    renamed = client.patch(
+        f"{base}/plans/{plan['id']}/proposals/{addition['id']}",
+        json={"title": "Sequel Cut"},
+    )
+    assert renamed.status_code == 200
+
+    restored = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{addition['id']}/destination",
+        json={"create_new_bundle": False},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["title"] == "Sequel Cut"
+    assert restored.json()["create_new_bundle"] is False
+    fetched = client.get(f"{base}/plans/{plan['id']}").json()
+    persisted = next(
+        proposal for proposal in fetched["proposals"] if proposal["id"] == addition["id"]
+    )
+    assert persisted["title"] == "Sequel Cut"
+    assert persisted["target_bundle_title"] == "Cosmos"
+
+
 # Reject a drag position outside the target bundle suggestion
 def test_file_move_rejects_invalid_target_index(
     client: TestClient, library_id: str, library_root: Path, session: Session

@@ -24,6 +24,16 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
+- **Reversible grouping destinations.** A re-scan addition still recommends its
+  existing confirmed bundle by default, but grouping review can convert the same
+  proposal in place to **Create new bundle instead** and switch back without
+  losing selection, file order, collection placement, or an edited new-bundle
+  title. New mode receives normal bundle roles and remains applicable if the old
+  target disappears; existing mode retains the current addition behavior. The
+  choice and target-title snapshot are additive persisted plan fields exposed by
+  a library-scoped destination endpoint. Bundle and collection rename fields now
+  match their rendered title width and grow live up to the review-dialog edge.
+
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;
   bundles can be dragged into any suggested collection or back to the top level.
@@ -45,8 +55,9 @@ grouped under `Unreleased` until the first tagged release.
   Escape cancels, with Enter/F2 available from the focused title. Renames persist
   on the open grouping plan through the library-scoped
   `PATCH /grouping/plans/{plan_id}/proposals/{proposal_id}` route, and the edited
-  title is used by **Accept selected**. Addition titles remain read-only, and no
-  source file is renamed or otherwise changed.
+  title is used by **Accept selected**. An addition remains read-only while it
+  targets an existing bundle, but becomes renameable when switched to create a
+  separate bundle. No source file is renamed or otherwise changed.
 
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before

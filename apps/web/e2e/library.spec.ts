@@ -332,6 +332,196 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   expect(generated).toBe(true)
 })
 
+test('grouping title editors retain content width and grow while typing', async ({ page }) => {
+  await mockApi(page)
+  const proposals = [
+    {
+      id: 'collection-width',
+      kind: 'container',
+      title: 'A Very Long Collection Suggestion',
+      directory: 'Long Collection',
+      parent_proposal_id: null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      confidence: 0.9,
+      reason: 'holds related bundles',
+      files: [],
+    },
+    {
+      id: 'bundle-width',
+      kind: 'bundle',
+      title: 'A Very Long Bundle Suggestion',
+      directory: 'Long Bundle',
+      parent_proposal_id: 'collection-width',
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      confidence: 0.9,
+      reason: 'same filename stem',
+      files: [
+        {
+          asset_file_id: 'long-file',
+          relative_path: 'Long Bundle/movie.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+      ],
+    },
+  ]
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-width',
+          status: 'open',
+          rule_version: 4,
+          generated_at: '2026-07-14T00:00:00Z',
+          applied_at: null,
+          proposal_count: proposals.length,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-width', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-width',
+        status: 'open',
+        rule_version: 4,
+        scan_job_id: null,
+        generated_at: '2026-07-14T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+
+  for (const [kind, title] of [
+    ['collection', 'A Very Long Collection Suggestion'],
+    ['bundle', 'A Very Long Bundle Suggestion'],
+  ] as const) {
+    const titleButton = page.getByRole('button', {
+      name: `Rename ${kind} suggestion ${title}`,
+    })
+    const titleBox = await titleButton.boundingBox()
+    if (!titleBox) throw new Error(`missing ${kind} title box`)
+    await titleButton.dblclick()
+    const input = page.getByRole('textbox', {
+      name: `${kind[0].toUpperCase()}${kind.slice(1)} suggestion title`,
+    })
+    const initialBox = await input.boundingBox()
+    if (!initialBox) throw new Error(`missing ${kind} editor box`)
+    expect(initialBox.width).toBeGreaterThanOrEqual(titleBox.width)
+    await input.fill(`${title} With A Longer Ending`)
+    await expect
+      .poll(async () => (await input.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(initialBox.width)
+    await input.press('Escape')
+  }
+})
+
+test('switches one addition row between an existing and a new bundle', async ({ page }) => {
+  await mockApi(page)
+  let createNewBundle = false
+  let title = 'Sex On The Beach - 4K'
+  const destinationWrites: boolean[] = []
+  const proposal = () => ({
+    id: 'addition-ui',
+    kind: 'bundle',
+    title,
+    directory: 'Western/Ada Larson',
+    parent_proposal_id: null,
+    target_bundle_id: 'existing-ui',
+    target_bundle_title: 'Sun, Sand, Sea & Sex - 4K',
+    create_new_bundle: createNewBundle,
+    confidence: 0.8,
+    reason: 'add 2 new file(s) to existing bundle',
+    files: [
+      {
+        asset_file_id: 'addition-video',
+        relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.mp4',
+        proposed_role: createNewBundle ? 'primary_video' : 'video_part',
+        sequence: 0,
+      },
+      {
+        asset_file_id: 'addition-cover',
+        relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.jpg',
+        proposed_role: createNewBundle ? 'cover' : 'image',
+        sequence: 1,
+      },
+    ],
+  })
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-destination',
+          status: 'open',
+          rule_version: 4,
+          generated_at: '2026-07-14T00:00:00Z',
+          applied_at: null,
+          proposal_count: 1,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-destination', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-destination',
+        status: 'open',
+        rule_version: 4,
+        scan_job_id: null,
+        generated_at: '2026-07-14T00:00:00Z',
+        applied_at: null,
+        proposals: [proposal()],
+      },
+    }),
+  )
+  await page.route('**/proposals/addition-ui/destination', (route) => {
+    createNewBundle = (route.request().postDataJSON() as { create_new_bundle: boolean })
+      .create_new_bundle
+    destinationWrites.push(createNewBundle)
+    return route.fulfill({ json: proposal() })
+  })
+  await page.route('**/proposals/addition-ui', (route) => {
+    title = (route.request().postDataJSON() as { title: string }).title
+    return route.fulfill({ json: proposal() })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
+  await expect(checkbox).toBeChecked()
+  await expect(page.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeVisible()
+  await page.getByRole('button', { name: 'Create new bundle instead' }).click()
+
+  await expect(page.getByText('manual')).toBeVisible()
+  await expect(page.getByText('create 2 files as a new bundle')).toBeVisible()
+  await expect(checkbox).toBeChecked()
+  await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
+  await expect(page.locator('.grp-files')).toHaveCount(1)
+  await page
+    .getByRole('button', { name: 'Rename bundle suggestion Sex On The Beach - 4K' })
+    .dblclick()
+  const titleInput = page.getByRole('textbox', { name: 'Bundle suggestion title' })
+  await titleInput.fill('Separate Feature')
+  await titleInput.press('Enter')
+  await expect(
+    page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: 'Add to Sun, Sand, Sea & Sex - 4K instead' }).click()
+  await expect(page.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeVisible()
+  expect(destinationWrites).toEqual([true, false])
+})
+
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
   await mockApi(page)
   const proposals = [

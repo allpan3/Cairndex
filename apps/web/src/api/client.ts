@@ -487,6 +487,18 @@ export const renameGroupingProposal = (
     title,
   })
 
+/** Switch an existing-bundle suggestion between that target and a new bundle. */
+export const setGroupingProposalDestination = (
+  planId: string,
+  proposalId: string,
+  createNewBundle: boolean,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/destination`,
+    'PUT',
+    { create_new_bundle: createNewBundle },
+  )
+
 /** Move a file within or across bundle suggestions. */
 export const moveGroupingProposalFile = (
   planId: string,

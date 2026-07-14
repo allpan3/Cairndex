@@ -13,6 +13,8 @@ const PROPOSALS: GroupingProposal[] = [
     directory: 'Movies',
     parent_proposal_id: null,
     target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: false,
     confidence: 0.9,
     reason: 'holds related bundles',
     files: [],
@@ -24,6 +26,8 @@ const PROPOSALS: GroupingProposal[] = [
     directory: 'SRCV-005',
     parent_proposal_id: null,
     target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: false,
     confidence: 0.95,
     reason: 'same filename stem',
     files: [
@@ -54,6 +58,8 @@ const PROPOSALS: GroupingProposal[] = [
     directory: 'Second',
     parent_proposal_id: null,
     target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: false,
     confidence: 0.8,
     reason: 'same folder',
     files: [
@@ -66,6 +72,33 @@ const PROPOSALS: GroupingProposal[] = [
     ],
   },
 ]
+
+const ADDITION: GroupingProposal = {
+  id: 'addition1',
+  kind: 'bundle',
+  title: 'Sex On The Beach - 4K',
+  directory: 'Western/Ada Larson',
+  parent_proposal_id: null,
+  target_bundle_id: 'existing1',
+  target_bundle_title: 'Sun, Sand, Sea & Sex - 4K',
+  create_new_bundle: false,
+  confidence: 0.8,
+  reason: 'add 2 new file(s) to existing bundle',
+  files: [
+    {
+      asset_file_id: 'new-video',
+      relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.mp4',
+      proposed_role: 'video_part',
+      sequence: 0,
+    },
+    {
+      asset_file_id: 'new-cover',
+      relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.jpg',
+      proposed_role: 'image',
+      sequence: 1,
+    },
+  ],
+}
 
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
@@ -106,6 +139,29 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
         applied_at: null,
         proposals,
       }
+    } else if (url.match(/\/proposals\/[^/]+\/destination$/) && init?.method === 'PUT') {
+      const proposalId = url.split('/').at(-2)!
+      const createNewBundle = (JSON.parse(init.body as string) as { create_new_bundle: boolean })
+        .create_new_bundle
+      proposals = proposals.map((proposal) =>
+        proposal.id === proposalId
+          ? {
+              ...proposal,
+              create_new_bundle: createNewBundle,
+              files: proposal.files.map((file) => ({
+                ...file,
+                proposed_role: createNewBundle
+                  ? file.asset_file_id === 'new-cover'
+                    ? ('cover' as const)
+                    : ('primary_video' as const)
+                  : file.asset_file_id === 'new-cover'
+                    ? ('image' as const)
+                    : ('video_part' as const),
+              })),
+            }
+          : proposal,
+      )
+      body = proposals.find((proposal) => proposal.id === proposalId)
     } else if (url.match(/\/proposals\/[^/]+$/) && init?.method === 'PATCH') {
       const proposalId = url.split('/').pop()!
       const title = (JSON.parse(init.body as string) as { title: string }).title
@@ -205,6 +261,97 @@ test('double-click renames a bundle suggestion and persists it', async () => {
     ([url, init]) => url.endsWith('/proposals/proposal1') && init?.method === 'PATCH',
   )
   expect(patchCall?.[1]).toMatchObject({ body: JSON.stringify({ title: 'SRCV-005' }) })
+})
+
+test('title editor mirrors its live text instead of shrinking to a fixed width', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  const review = renderReview()
+
+  fireEvent.doubleClick(
+    await screen.findByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
+  )
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  const mirror = input.closest('.grp-title-editor')
+  expect(mirror).toHaveAttribute('data-value', 'SRCV-005 - cut')
+  fireEvent.change(input, { target: { value: 'SRCV-005 - a substantially longer cut title' } })
+  expect(mirror).toHaveAttribute('data-value', 'SRCV-005 - a substantially longer cut title')
+  expect(review.container.querySelectorAll('.grp-title-input')).toHaveLength(1)
+})
+
+test('switches one addition proposal to a renameable new bundle and back', async () => {
+  const fetchMock = mockGroupingApi([ADDITION])
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const checkbox = await screen.findByRole('checkbox', {
+    name: 'Accept Sex On The Beach - 4K',
+  })
+  expect(checkbox).toBeChecked()
+  expect(screen.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Create new bundle instead' }))
+
+  await screen.findByText('manual')
+  expect(screen.getByText('create 2 files as a new bundle')).toBeInTheDocument()
+  expect(checkbox).toBeChecked()
+  fireEvent.doubleClick(
+    screen.getByRole('button', { name: 'Rename bundle suggestion Sex On The Beach - 4K' }),
+  )
+  const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  fireEvent.change(input, { target: { value: 'Separate Feature' } })
+  fireEvent.keyDown(input, { key: 'Enter' })
+  await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add to Sun, Sand, Sea & Sex - 4K instead' }))
+  await screen.findByText('Add to Sun, Sand, Sea & Sex - 4K')
+  fireEvent.click(screen.getByRole('button', { name: 'Create new bundle instead' }))
+  await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
+
+  const destinationCalls = fetchMock.mock.calls.filter(([url]) => url.endsWith('/destination'))
+  expect(destinationCalls.map(([, init]) => init?.body)).toEqual([
+    JSON.stringify({ create_new_bundle: true }),
+    JSON.stringify({ create_new_bundle: false }),
+    JSON.stringify({ create_new_bundle: true }),
+  ])
+})
+
+test('uses the legacy proposal title when the target snapshot title is absent', async () => {
+  vi.stubGlobal(
+    'fetch',
+    mockGroupingApi([{ ...ADDITION, title: 'Legacy Target', target_bundle_title: null }]),
+  )
+  renderReview()
+
+  expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Create new bundle instead' })).toBeInTheDocument()
+})
+
+test('disables destination actions while saving and surfaces a switch error', async () => {
+  const normalFetch = mockGroupingApi([ADDITION])
+  let finishDestination: (() => void) | undefined
+  const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+    if (url.endsWith('/destination')) {
+      return new Promise<unknown>((resolve) => {
+        finishDestination = () =>
+          resolve({
+            ok: false,
+            status: 409,
+            json: () => Promise.resolve({ message: 'Existing bundle disappeared' }),
+          })
+      })
+    }
+    return normalFetch(url, init)
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const switchButton = await screen.findByRole('button', { name: 'Create new bundle instead' })
+  fireEvent.click(switchButton)
+  await waitFor(() => expect(switchButton).toBeDisabled())
+  finishDestination?.()
+
+  await screen.findByText('Existing bundle disappeared')
+  expect(switchButton).toBeEnabled()
+  expect(screen.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
 })
 
 test('regenerating suggestions replaces the open plan without showing settled bundles', async () => {
