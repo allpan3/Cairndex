@@ -25,7 +25,7 @@ from cairndex.api.schemas.bundles import (
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
-from cairndex.media import thumbnails
+from cairndex.media import playback, thumbnails
 from cairndex.persistence.models import AssetFile
 from cairndex.services import browse as browse_service
 from cairndex.services import bundles as service
@@ -193,7 +193,9 @@ def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
 # --- Files -------------------------------------------------------------------
 @router.get("/{bundle_id}/files", response_model=list[FileRead])
 def list_files(bundle_id: str, db: LibrarySession) -> list[FileRead]:
-    return _file_reads(db, list(service.list_files(db, bundle_id)))
+    files = list(service.list_files(db, bundle_id))
+    playback.reconcile_missing_files(db, files)
+    return _file_reads(db, files)
 
 
 @router.post("/{bundle_id}/files", response_model=FileRead, status_code=status.HTTP_201_CREATED)

@@ -115,6 +115,12 @@ rating, cover/primary references, and subtitle links. The normal scan path does
 not full-hash large files; `full_hash` remains lazy for future duplicate
 verification or ambiguous repair workflows.
 
+`availability` is refreshed by full scan reconciliation and by bounded
+access-time checks. Opening a bundle checks only its linked rows and can change
+`available` to `missing` when the stored path has vanished; it does not change
+the relative path or guess which unlinked filesystem entry is the moved file.
+Only scan reconciliation performs high-confidence moved-file repair.
+
 The scanner ignores hidden paths (`.cairndex`, dotfiles/dot-directories, and a
 small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
 A rescan also deletes scan-created provisional rows that point at now-ignored

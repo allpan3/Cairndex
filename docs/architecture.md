@@ -194,10 +194,17 @@ Path safety rules:
   drive/UNC forms, NUL bytes, and `..` traversal;
 - file access re-resolves the target under the library root and rejects symlink
   escapes;
+- successful bundle file-list and playback-manifest reads check only that
+  bundle's linked paths, persist newly vanished files as `missing`, and let the
+  web client refresh Bundle Browser and sidebar counts;
 - hidden dotfiles/dot-directories and known cruft are excluded from scan, File
   View, and grouping review;
 - sensitive operations such as streaming, thumbnailing, subtitle conversion, and
   File Browser raw-file preview re-check existence at access time.
+
+Access-time checks never search the library or infer a moved file's new path.
+The scanner remains the reconciliation boundary for high-confidence moved-file
+repair that preserves the existing `AssetFile.id` and bundle metadata.
 
 ## 6. Domain model
 
