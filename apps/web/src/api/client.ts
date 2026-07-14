@@ -23,8 +23,6 @@ export type LibraryRegister = components['schemas']['LibraryRegister']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
-export type PairStartResponse = components['schemas']['PairStartResponse']
-export type PairPollResponse = components['schemas']['PairPollResponse']
 export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
@@ -86,6 +84,28 @@ function lib(): string {
   return `/api/v1/libraries/${activeLibraryId}`
 }
 
+/** Extract a useful message from structured API and FastAPI validation errors. */
+function apiErrorDetail(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return ''
+  const error = payload as {
+    message?: unknown
+    detail?: unknown
+  }
+  if (typeof error.message === 'string') return error.message
+  if (typeof error.detail === 'string') return error.detail
+  if (Array.isArray(error.detail)) {
+    return error.detail
+      .map((item) =>
+        item && typeof item === 'object' && typeof (item as { msg?: unknown }).msg === 'string'
+          ? (item as { msg: string }).msg
+          : '',
+      )
+      .filter(Boolean)
+      .join('; ')
+  }
+  return ''
+}
+
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal })
   if (!response.ok) {
@@ -94,7 +114,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     // of a bare HTTP status.
     let detail = ''
     try {
-      detail = ((await response.json()) as { message?: string }).message ?? ''
+      detail = apiErrorDetail(await response.json())
     } catch {
       /* non-JSON body */
     }
@@ -134,7 +154,7 @@ async function send<T>(
   if (!response.ok) {
     let detail = ''
     try {
-      detail = ((await response.json()) as { message?: string }).message ?? ''
+      detail = apiErrorDetail(await response.json())
     } catch {
       /* ignore */
     }
@@ -429,12 +449,6 @@ export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
 
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
-export const startDevicePairing = (deviceName: string) =>
-  send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })
-
-export const pollDevicePairing = (pollKey: string) =>
-  send<PairPollResponse>('/api/v1/auth/pair/poll', 'POST', { poll_key: pollKey })
-
 export const approveDevicePairing = (pairCode: string, libraryIds: string[]) =>
   send<void>('/api/v1/auth/pair/approve', 'POST', {
     pair_code: pairCode,

@@ -52,8 +52,12 @@ def main() -> None:
         raise SystemExit("passphrase must not be empty")
     if passphrase != getpass.getpass("Confirm passphrase: "):
         raise SystemExit("passphrases did not match")
-    set_passphrase(root, passphrase)
-    print(f"Set an owner passphrase lock on {root}. It is now locked until unlocked in the app.")
+    with registry_session_scope() as registry:
+        revoked = set_passphrase(root, passphrase, registry=registry)
+    print(
+        f"Set an owner passphrase lock on {root}. It is now locked until unlocked in the app. "
+        f"Revoked {revoked} scoped device token(s)."
+    )
 
 
 if __name__ == "__main__":

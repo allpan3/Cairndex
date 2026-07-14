@@ -49,39 +49,48 @@ revocation immediate.
 3. **Pairing UX and bounds.** `pair/start` returns an uppercase six-character
    code from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` plus a high-entropy poll key.
    Pairing state is in-process, expires after ten minutes, and is capped at 16
-   outstanding requests; at capacity, the oldest request is evicted. Only
-   digests of codes and poll keys are held. Unknown, evicted, expired,
-   unapproved, and already-consumed poll keys all return the same
-   `{status:"pending"}` response. Approval attaches explicit library ids. The
-   first approved poll creates the database row and returns the token; it then
-   removes the pairing request, so delivery is exactly once.
+   outstanding requests with a further cap of three per source IP. Source IPs,
+   codes, and poll keys are held only as digests. Capacity returns structured
+   429 instead of evicting a legitimate pending or approved request. Unknown,
+   expired, unapproved, concurrently consuming, and already-consumed poll keys
+   all return the same `{status:"pending"}` response. Approval attaches explicit
+   library ids. The first approved poll reserves the request, releases the
+   pairing lock, commits the device row, and only then removes the request. A
+   failed commit releases the reservation so the device can poll again.
 
 4. **Owner authorization.** Approval uses the ADR-0010 browser session. When
-   any registered library is protected, global device listing/revocation and
-   pairing approval require a live unlock for at least one protected library;
-   every protected library selected for a new token must itself be unlocked in
-   that cookie session. With no protected libraries, the existing anonymous
-   single-owner posture remains. An unavailable library is conservatively
-   treated as protected for global device management and cannot be selected for
-   a new scope because its portable manifest cannot prove its lock state. Thus
-   pairing cannot bypass a configured passphrase or broaden a token beyond the
-   ids the owner selected.
+   any registered library root has a readable protected manifest or an existing
+   but unreadable manifest, global device listing/revocation and pairing
+   approval require a live unlock for at least one protected library; every
+   protected library selected for a new token must itself be unlocked in that
+   cookie session. A manifest that exists but cannot be read, parsed, or
+   validated is treated as protected. With no protected libraries, the existing
+   anonymous single-owner posture remains. An offline root whose manifest is
+   absent does not block listing or emergency revocation, but unavailable
+   libraries cannot be selected for a new scope because their portable manifest
+   cannot prove their lock state. Thus pairing cannot bypass a configured
+   passphrase or broaden a token beyond the ids the owner selected.
 
-5. **Cookie coexistence and streaming safety.** An explicit
-   `Authorization: Bearer` header is validated first and never falls back to a
-   cookie or anonymous access when malformed, unknown, revoked, or out of
-   scope. Without that header, ADR-0010 cookie and passphrase-less anonymous
-   behavior are unchanged. Both `get_library_session` and the cancellation-safe
-   `LibraryAccess` streaming gate use the same bearer verifier. Streaming gates
-   close their registry session before returning bytes. `last_used_at` is
-   updated only when absent or more than 60 seconds stale, inside that short
-   registry scope.
+5. **Cookie coexistence and streaming safety.** An explicit Bearer-scheme
+   `Authorization` header is validated first and never falls back to a cookie or
+   anonymous access when malformed, unknown, revoked, or out of scope. Other
+   authorization schemes belong to an upstream proxy or another layer and do
+   not disable the ADR-0010 cookie path. Without a Bearer header, ADR-0010
+   cookie and passphrase-less anonymous behavior are unchanged. Both
+   `get_library_session` and the cancellation-safe `LibraryAccess` streaming
+   gate use the same bearer verifier. Streaming gates close their registry
+   session before returning bytes. `last_used_at` is updated only when absent
+   or more than 60 seconds stale, inside that short registry scope.
 
 6. **Revocation.** Revocation sets `revoked_at`; it does not delete audit
    history. All subsequent uses return structured HTTP 401
    `invalid_device_token`. A valid token outside its scope returns structured
-   HTTP 403 `device_scope_forbidden`. Tokens have no automatic expiry or
-   refresh policy in this slice.
+   HTTP 403 `device_scope_forbidden`. Setting or replacing a library passphrase
+   revokes every live token whose immutable scope contains that library; clearing
+   the passphrase does not restore those credentials. This owner-confirmed
+   transition rule prevents a token minted while the library was anonymous from
+   surviving after the library becomes protected. Tokens otherwise have no
+   automatic expiry or refresh policy in this slice.
 
 ## Alternatives considered
 
@@ -98,6 +107,10 @@ revocation immediate.
 - **Persist pairing requests** — rejected: ten-minute, bounded, restart-droppable
   state is safer and simpler in process; a restart returning all polls to the
   uniform pending shape is acceptable.
+- **Add a separate global owner credential for device management** — deferred:
+  ADR-0010 intentionally has per-library credentials, and a global credential
+  would add new setup, storage, recovery, and re-authentication semantics. The
+  owner selected passphrase-transition revocation for this slice instead.
 - **Token refresh or automatic expiry** — deferred. Revocation is the only
   lifecycle control until external-client operational experience justifies a
   rotation policy.
@@ -113,6 +126,9 @@ revocation immediate.
 - A stolen bearer remains valid until revoked. Token expiry/refresh, device
   scope editing, and recovery UX are open questions for a future ADR or
   additive extension.
+- Adding or replacing a library passphrase invalidates all existing devices
+  scoped to it; those devices must pair again after the owner unlocks the newly
+  protected library.
 - This remains a private-network, single-owner guardrail. It does not make
   direct public-internet exposure supported.
 

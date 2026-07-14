@@ -309,12 +309,15 @@ export function useLibraryLock(libraryId: string | null) {
   }
 }
 
-/** Paired devices are global registry state, refreshed while Settings is open. */
-export function useDevices() {
+/** Paired devices refresh locally, with short polling only while awaiting token delivery. */
+export function useDevices(awaitingDevice = false, previousCount: number | null = null) {
   return useQuery({
     queryKey: ['devices'],
     queryFn: ({ signal }) => fetchDevices(signal),
-    refetchInterval: 2000,
+    refetchInterval: (query) =>
+      awaitingDevice && previousCount !== null && (query.state.data?.length ?? 0) <= previousCount
+        ? 1000
+        : false,
   })
 }
 

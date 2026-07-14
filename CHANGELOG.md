@@ -79,6 +79,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Device pairing security and review hardening.** Only Bearer-scheme
+  authorization headers select device-token auth, so upstream Basic credentials
+  no longer suppress a valid browser unlock cookie. Existing but unreadable,
+  corrupt, or malformed manifests fail closed. Pairing starts are capped per
+  source and reject capacity without evicting pending approvals; token rows are
+  committed outside the pairing lock before one-time state is consumed.
+  Unavailable libraries no longer prevent emergency device revocation, while
+  adding or replacing a passphrase revokes every live token scoped to that
+  library. Settings filters unavailable scopes, accepts only the unambiguous
+  code alphabet, surfaces FastAPI validation detail, clears stale approval
+  state, and polls only while waiting for an approved device to collect its
+  token instead of throughout every Settings session.
+
 - **Storyboard-to-video frame alignment.** Resting after a sprite skim now
   uses format-v2 sprites because ffmpeg's prior default `fps` timing could put a
   neighboring source frame in a tile whose VTT cue named the interval boundary.

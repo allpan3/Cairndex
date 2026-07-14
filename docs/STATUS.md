@@ -11,9 +11,10 @@ Completed:
 
 - Anonymous `POST /api/v1/auth/pair/start` creates a bounded ten-minute pairing
   request with a six-character unambiguous code and a high-entropy poll key.
-  The in-process store keeps only digests, caps outstanding requests at 16,
-  evicts the oldest at capacity, and returns the same `pending` poll shape for
-  unknown, expired, evicted, unapproved, and already-consumed requests.
+  The in-process store keeps only digests, caps outstanding requests at 16 and
+  three per source, rejects capacity with structured 429 without evicting
+  another device, and returns the same `pending` poll shape for unknown,
+  expired, unapproved, consuming, and already-consumed requests.
 - An ADR-0010-authorized browser session approves explicit library ids through
   `pair/approve`; every selected protected library must be unlocked in that
   cookie session. The first approved `pair/poll` creates a 256-bit
@@ -22,9 +23,16 @@ Completed:
   the request. The registry row records name, immutable library scope,
   creation/last-used timestamps, and revocation without portable-library schema
   changes.
-  Unavailable libraries are conservatively treated as protected and cannot be
-  approved while their manifest is unreadable, preventing an offline-mount
-  passphrase bypass.
+  Unavailable libraries cannot be approved while their manifest is unreadable,
+  preventing an offline-mount passphrase bypass without blocking emergency
+  revocation of other devices.
+- Review hardening treats existing but unreadable/corrupt manifests as protected,
+  lets unrelated authorization schemes continue through the cookie path, and
+  centralizes the protected-and-not-unlocked rule. Unavailable libraries still
+  cannot be approved but no longer lock the owner out of listing or revoking a
+  leaked device. Setting or replacing a passphrase revokes all live tokens
+  scoped to that library, so an anonymously minted token cannot survive the
+  transition to protected content.
 - `get_library_session` and the cancellation-safe `LibraryAccess` streaming
   gate accept `Authorization: Bearer` alongside the existing cookie. Explicit
   invalid/revoked bearer credentials return structured 401; valid out-of-scope
@@ -37,6 +45,11 @@ Completed:
   A real-browser test drives start/poll from the simulated device side, approves
   in the web UI, sees the issued device, revokes it, and verifies the bearer is
   rejected by the real backend.
+  The form excludes unavailable active/scoped libraries, filters input to the
+  unambiguous pairing alphabet, surfaces FastAPI validation details, and clears
+  mutation/code state between approvals. Device data refreshes after local
+  mutations and briefly while an approved device is collecting its token,
+  rather than polling throughout every Settings session.
 - `GET /api/v1/health` advertises `api_features` with `trickplay`, `hls`,
   `progress`, and `pairing`. OpenAPI and `schema.d.ts` are regenerated. ADR-0015
   records token format/entropy/hashing, registry placement, scope and owner
@@ -47,8 +60,8 @@ Completed:
 Verification (temporary databases/libraries only; no user media):
 
 - Backend: `ruff check`, `ruff format --check`, `mypy src`, and full pytest
-  (**412 passed**, one pre-existing Starlette/httpx deprecation warning).
-- Frontend: Prettier check, ESLint, TypeScript, full Vitest (**97 passed**), and
+  (**419 passed**, one pre-existing Starlette/httpx deprecation warning).
+- Frontend: Prettier check, ESLint, TypeScript, full Vitest (**100 passed**), and
   production build. Two development runs hit the unrelated intermittent M12
   `falls back to a storyboard when direct playback rejects` timing assertion;
   focused/immediate full reruns passed, and the final required full run passed.
@@ -62,6 +75,11 @@ Verification (temporary databases/libraries only; no user media):
   dedicated full-stack job. The latter provisions ffmpeg, `uv`, and the locked
   server environment for Devices pairing plus the existing storyboard-job and
   MKV-remux coverage.
+- The review-hardening pass reran both Playwright partitions unpiped: **63
+  browser-only passed** and **3 real-backend passed**. The first real-backend
+  run exposed the missing post-approval refresh after continuous polling was
+  removed; adaptive polling limited to the token-collection window fixed it,
+  and the final rerun passed all three cases.
 
 Known limits: device tokens have no automatic expiry, refresh, or rotation;
 they remain valid until revoked. Scope is immutable, so changing library access
