@@ -86,7 +86,7 @@ async function mockApi(page: Page) {
           source_url: null,
           rating: 0,
           cover_file_id: null,
-          primary_file_id: null,
+          resume_file_id: 'f0',
           created_at: '2026-06-25T00:00:00Z',
           imported_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',

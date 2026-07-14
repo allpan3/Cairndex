@@ -463,6 +463,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/cursor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Bundle Cursor */
+        put: operations["update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
         parameters: {
             query?: never;
@@ -1796,6 +1813,16 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** BundleCursorRead */
+        BundleCursorRead: {
+            /** File Id */
+            file_id: string;
+        };
+        /** BundleCursorUpdate */
+        BundleCursorUpdate: {
+            /** File Id */
+            file_id: string;
+        };
         /** BundleDraftResponse */
         BundleDraftResponse: {
             /** Additional */
@@ -1825,10 +1852,10 @@ export interface components {
             imported_at: string;
             /** Notes */
             notes?: string[];
-            /** Primary File Id */
-            primary_file_id: string | null;
             /** Rating */
             rating: number | null;
+            /** Resume File Id */
+            resume_file_id?: string | null;
             /** Title */
             title: string | null;
             /**
@@ -1859,20 +1886,6 @@ export interface components {
         BundleSummary: {
             /** Cover Key */
             cover_key: string | null;
-            /** Cover Video Audio Codec */
-            cover_video_audio_codec: string | null;
-            /** Cover Video Codec */
-            cover_video_codec: string | null;
-            /** Cover Video Container */
-            cover_video_container: string | null;
-            /** Cover Video Duration */
-            cover_video_duration: number | null;
-            /** Cover Video File Id */
-            cover_video_file_id: string | null;
-            /** Cover Video Relative Path */
-            cover_video_relative_path: string | null;
-            /** Cover Video Resume Position */
-            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -1899,6 +1912,26 @@ export interface components {
             openable: boolean;
             /** Rating */
             rating: number | null;
+            /** Resume Audio Codec */
+            resume_audio_codec: string | null;
+            /** Resume Container */
+            resume_container: string | null;
+            /** Resume Duration */
+            resume_duration: number | null;
+            /** Resume File Id */
+            resume_file_id: string | null;
+            /** Resume File Updated At */
+            resume_file_updated_at: string | null;
+            /** Resume Media Kind */
+            resume_media_kind: string | null;
+            /** Resume Mime Type */
+            resume_mime_type: string | null;
+            /** Resume Position */
+            resume_position: number | null;
+            /** Resume Relative Path */
+            resume_relative_path: string | null;
+            /** Resume Video Codec */
+            resume_video_codec: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -1919,8 +1952,6 @@ export interface components {
             cover_file_id?: string | null;
             /** Notes */
             notes?: string[] | null;
-            /** Primary File Id */
-            primary_file_id?: string | null;
             /** Rating */
             rating?: number | null;
             /** Title */
@@ -2027,20 +2058,6 @@ export interface components {
         ContinueWatchingItem: {
             /** Cover Key */
             cover_key: string | null;
-            /** Cover Video Audio Codec */
-            cover_video_audio_codec: string | null;
-            /** Cover Video Codec */
-            cover_video_codec: string | null;
-            /** Cover Video Container */
-            cover_video_container: string | null;
-            /** Cover Video Duration */
-            cover_video_duration: number | null;
-            /** Cover Video File Id */
-            cover_video_file_id: string | null;
-            /** Cover Video Relative Path */
-            cover_video_relative_path: string | null;
-            /** Cover Video Resume Position */
-            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -2068,6 +2085,26 @@ export interface components {
             progress: components["schemas"]["ContinueWatchingProgressRead"];
             /** Rating */
             rating: number | null;
+            /** Resume Audio Codec */
+            resume_audio_codec: string | null;
+            /** Resume Container */
+            resume_container: string | null;
+            /** Resume Duration */
+            resume_duration: number | null;
+            /** Resume File Id */
+            resume_file_id: string | null;
+            /** Resume File Updated At */
+            resume_file_updated_at: string | null;
+            /** Resume Media Kind */
+            resume_media_kind: string | null;
+            /** Resume Mime Type */
+            resume_mime_type: string | null;
+            /** Resume Position */
+            resume_position: number | null;
+            /** Resume Relative Path */
+            resume_relative_path: string | null;
+            /** Resume Video Codec */
+            resume_video_codec: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -4201,6 +4238,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleCollections"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleCursorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleCursorRead"];
                 };
             };
             /** @description Validation Error */

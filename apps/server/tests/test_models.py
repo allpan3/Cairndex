@@ -151,6 +151,16 @@ def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine
     assert columns["cover_previous_file_id"]["nullable"] is True
 
 
+# Existing libraries gain the additive bundle cursor table on open
+def test_ensure_content_indexes_adds_bundle_cursor_table(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE bundle_cursors"))
+
+    ensure_content_indexes(engine)
+
+    assert "bundle_cursors" in inspect(engine).get_table_names()
+
+
 # Existing libraries gain a backfilled, indexed directory key on open
 def test_ensure_content_indexes_adds_and_backfills_directory_path(engine: Engine) -> None:
     with sessionmaker(bind=engine, expire_on_commit=False)() as db:

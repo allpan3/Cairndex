@@ -265,9 +265,7 @@ def create_bundle_from_unbundled(
     target.confirmed_at = utcnow()
     members = [row_by_id[p.asset_file_id] for p in proposed]
     cover = next((m for m in members if m.role is FileRole.COVER), None)
-    primary = next((m for m in members if m.role is FileRole.PRIMARY_VIDEO), None)
     target.cover_file_id = cover.id if cover is not None else None
-    target.primary_file_id = primary.id if primary is not None else None
     session.flush()
 
     removed = reap_source_bundles(session, source_bundles)

@@ -44,6 +44,8 @@ export function useHoverPreview(
   storyboardTimeForPosition?: (time: number) => number | null,
 ) {
   const previewFileId = source?.fileId ?? null
+  const previewMediaKind = source?.mediaKind ?? null
+  const previewImageUrl = source?.imageUrl ?? null
   const previewMimeType = source?.mimeType ?? null
   const previewRelativePath = source?.relativePath ?? null
   const previewContainer = source?.container ?? null
@@ -56,7 +58,9 @@ export function useHoverPreview(
       hoverPreviewMode(
         previewFileId
           ? {
+              mediaKind: previewMediaKind ?? 'video',
               fileId: previewFileId,
+              imageUrl: previewImageUrl,
               mimeType: previewMimeType,
               relativePath: previewRelativePath,
               container: previewContainer,
@@ -71,6 +75,8 @@ export function useHoverPreview(
       previewContainer,
       previewDuration,
       previewFileId,
+      previewImageUrl,
+      previewMediaKind,
       previewMimeType,
       previewRelativePath,
       previewVideoCodec,
@@ -200,13 +206,14 @@ export function useHoverPreview(
     clearTimers()
     setPointerInside(true)
     setPrefetchStoryboard(false)
-    if (canActivate()) {
+    if (canActivate()) startDwell()
+    if (canActivate() && mode !== 'image') {
       prefetchTimer.current = window.setTimeout(() => {
         prefetchTimer.current = null
         setPrefetchStoryboard(true)
       }, HOVER_PREVIEW_PREFETCH_MS)
     }
-  }, [canActivate, clearTimers])
+  }, [canActivate, clearTimers, mode, startDwell])
 
   const fallbackToStoryboard = useCallback(() => {
     if (!previewFileId) {
@@ -414,9 +421,10 @@ export function useHoverPreview(
     const generation = resumeGeneration.current
     const cursorTarget = restPosition.current
     const storyboardTarget = storyboardTimeForPosition?.(cursorTarget) ?? null
+    const duration = source?.duration ?? 0
     const target =
       source && storyboardTarget !== null && Number.isFinite(storyboardTarget)
-        ? Math.max(0, Math.min(source.duration, storyboardTarget))
+        ? Math.max(0, Math.min(duration, storyboardTarget))
         : cursorTarget
     setPosition(target)
     setPhase('transitioning')
@@ -435,11 +443,11 @@ export function useHoverPreview(
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!active || !source) return
+      if (!active || !source || source.mediaKind !== 'video') return
       const time = hoverTimeForPointer(
         event.clientX,
         event.currentTarget.getBoundingClientRect(),
-        source.duration,
+        source.duration ?? 0,
       )
       restPosition.current = time
       setPosition(time)

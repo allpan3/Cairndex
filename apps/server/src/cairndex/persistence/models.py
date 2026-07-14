@@ -28,6 +28,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    delete,
     event,
     update,
 )
@@ -130,14 +131,15 @@ class AssetBundle(Base):
     # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Selected cover/primary files live in this bundle. The FKs form a cycle
-    # with asset_files.bundle_id, so they are created via ALTER and updated
-    # after the file rows exist (post_update).
+    # The selected cover lives in this bundle. The FK forms a cycle with
+    # asset_files.bundle_id, so it is created via ALTER and updated after the
+    # file rows exist (post_update).
     cover_file_id: Mapped[str | None] = mapped_column(
         String(26),
         ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
     )
+    # Legacy compatibility only; ordered playback no longer reads or writes it
     primary_file_id: Mapped[str | None] = mapped_column(
         String(26),
         ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True),
@@ -189,9 +191,6 @@ class AssetBundle(Base):
     )
     cover_file: Mapped[AssetFile | None] = relationship(
         foreign_keys=[cover_file_id], post_update=True
-    )
-    primary_file: Mapped[AssetFile | None] = relationship(
-        foreign_keys=[primary_file_id], post_update=True
     )
     tags: Mapped[list[Tag]] = relationship(secondary=asset_bundle_tags)
     collections: Mapped[list[Collection]] = relationship(secondary=asset_bundle_collections)
@@ -295,7 +294,25 @@ class PlaybackProgress(Base):
     )
 
 
-# Sync denormalized progress bundle ids from the single AssetFile reparent hook
+# One active ordered-media location per bundle, independent of metadata versioning
+class BundleCursor(Base):
+    __tablename__ = "bundle_cursors"
+
+    bundle_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("asset_bundles.id", ondelete="CASCADE"), primary_key=True
+    )
+    file_id: Mapped[str] = mapped_column(
+        String(26),
+        ForeignKey("asset_files.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+
+    file: Mapped[AssetFile] = relationship()
+
+
+# Sync progress ownership and clear a source bundle's cursor after file reparenting
 @event.listens_for(OrmSession, "before_flush")
 def _sync_playback_progress_bundle_id(
     session: OrmSession, _flush_context: object, _instances: object
@@ -310,6 +327,12 @@ def _sync_playback_progress_bundle_id(
             update(PlaybackProgress)
             .where(PlaybackProgress.file_id == obj.id)
             .values(bundle_id=obj.bundle_id)
+        )
+        session.execute(
+            delete(BundleCursor).where(
+                BundleCursor.file_id == obj.id,
+                BundleCursor.bundle_id != obj.bundle_id,
+            )
         )
 
 

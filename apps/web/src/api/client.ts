@@ -27,6 +27,7 @@ export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
+export type BundleCursorRead = components['schemas']['BundleCursorRead']
 export type TagRead = components['schemas']['TagRead']
 export type TagCreate = components['schemas']['TagCreate']
 export type TagGroupRead = components['schemas']['TagGroupRead']
@@ -667,6 +668,9 @@ export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promis
 // --- Mutations ---------------------------------------------------------------
 export const updateBundle = (id: string, patch: BundlePatch, version?: number) =>
   send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch, version)
+
+export const updateBundleCursor = (id: string, fileId: string) =>
+  send<BundleCursorRead>(`${lib()}/bundles/${id}/cursor`, 'PUT', { file_id: fileId })
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })

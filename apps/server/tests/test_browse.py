@@ -11,6 +11,7 @@ from cairndex.domain.enums import (
     MediaKind,
 )
 from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
@@ -65,7 +66,6 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
         "video_codec": "h264",
         "audio_codec": "aac",
     }
-    bundle_service.update_bundle(session, bundle.id, {"primary_file_id": f.id})
     progress_service.upsert_progress(session, f.id, position_s=22.0, duration_s=90.0)
     session.commit()
 
@@ -81,21 +81,22 @@ def test_browse_returns_enriched_summaries(session: Session) -> None:
     assert s.grouping_state == bundle.grouping_state
     # The lone video is the derived cover, so it drives the cache-busting key.
     assert s.cover_key == f.id
-    assert s.cover_video_file_id == f.id
-    assert s.cover_video_relative_path == "m/movie.mp4"
-    assert s.cover_video_container == "mov,mp4,m4a,3gp,3g2,mj2"
-    assert s.cover_video_codec == "h264"
-    assert s.cover_video_audio_codec == "aac"
-    assert s.cover_video_duration == 90.0
-    assert s.cover_video_resume_position == 22.0
+    assert s.resume_file_id == f.id
+    assert s.resume_media_kind == "video"
+    assert s.resume_relative_path == "m/movie.mp4"
+    assert s.resume_container == "mov,mp4,m4a,3gp,3g2,mj2"
+    assert s.resume_video_codec == "h264"
+    assert s.resume_audio_codec == "aac"
+    assert s.resume_duration == 90.0
+    assert s.resume_position == 22.0
 
     progress_service.upsert_progress(session, f.id, position_s=89.0, duration_s=90.0)
     session.commit()
-    assert browse_bundles(session).items[0].cover_video_resume_position is None
+    assert browse_bundles(session).items[0].resume_position is None
 
 
-# Cover hover metadata is absent when the effective cover is not a video
-def test_summary_hover_preview_fields_exclude_image_and_empty_bundles(session: Session) -> None:
+# Hover metadata follows an image cursor and remains absent for an empty bundle
+def test_summary_hover_preview_fields_include_image_cursor(session: Session) -> None:
     image_bundle = bundle_service.create_bundle(session, title="Still")
     image = bundle_service.add_file(
         session,
@@ -109,15 +110,45 @@ def test_summary_hover_preview_fields_exclude_image_and_empty_bundles(session: S
     session.commit()
 
     summaries = {item.id: item for item in browse_bundles(session).items}
-    for bundle_id in (image_bundle.id, empty_bundle.id):
-        summary = summaries[bundle_id]
-        assert summary.cover_video_file_id is None
-        assert summary.cover_video_relative_path is None
-        assert summary.cover_video_container is None
-        assert summary.cover_video_codec is None
-        assert summary.cover_video_audio_codec is None
-        assert summary.cover_video_duration is None
-        assert summary.cover_video_resume_position is None
+    image_summary = summaries[image_bundle.id]
+    assert image_summary.resume_file_id == image.id
+    assert image_summary.resume_media_kind == "image"
+    assert image_summary.resume_mime_type == "image/jpeg"
+    assert image_summary.resume_relative_path == "stills/frame.jpg"
+    assert image_summary.resume_duration is None
+    assert summaries[empty_bundle.id].resume_file_id is None
+
+
+# A static image cover does not replace the bundle's remembered video location
+def test_summary_hover_preview_is_independent_of_image_cover(session: Session) -> None:
+    bundle = bundle_service.create_bundle(session, title="Movie")
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="movie/poster.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+        sequence=0,
+    )
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="movie/feature.mp4",
+        role=FileRole.VIDEO_PART,
+        media_kind=MediaKind.VIDEO,
+        sequence=1,
+    )
+    video.tech_metadata = {"duration": 120.0, "video_codec": "h264"}
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": image.id})
+    cursor_service.set_cursor(session, bundle.id, video.id)
+    progress_service.upsert_progress(session, video.id, position_s=35, duration_s=120)
+    session.commit()
+
+    summary = browse_bundles(session).items[0]
+    assert summary.cover_key == image.id
+    assert summary.resume_file_id == video.id
+    assert summary.resume_media_kind == "video"
+    assert summary.resume_position == 35
 
 
 def test_summary_cover_key_tracks_the_selected_cover(session: Session) -> None:

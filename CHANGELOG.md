@@ -24,6 +24,12 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
+- **One remembered media location per bundle.** A new additive
+  `bundle_cursors` table stores the current ordered image/video independently
+  from bundle metadata; `PUT /bundles/{bundle_id}/cursor` updates it without a
+  version bump. The viewer opens that file, retains per-video timestamps in the
+  existing progress table, and persists image positions as file-only cursors.
+
 - **Grouping suggestion inline rename.** Double-clicking a new-bundle title in
   grouping review now opens an inline field; Enter or blur saves and Escape
   cancels, with Enter/F2 available from the focused title. Renames persist on
@@ -48,7 +54,8 @@ grouped under `Unreleased` until the first tagged release.
   range traffic stops. Non-direct MKV/codec combinations use the same sprite
   path; hover never calls playback-decision or HLS session routes. Touch/coarse
   pointers, drag-select, native DnD, context menus, missing/unprobed files, and
-  image/audio cards preserve the static card.
+  audio cards preserve the static card; an image bundle cursor overlays its
+  still image without starting media playback.
 
 - **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
   play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
@@ -71,6 +78,12 @@ grouped under `Unreleased` until the first tagged release.
   to a decodable frame immediately before EOF.
 
 ### Changed
+
+- **File order is now playback order.** Initial open, previous/next, and
+  end-of-video advance follow the Files in bundle sequence and skip file types
+  without a viewer stage. The primary-file API/inspector control and primary
+  playback/cover fallback are removed; the old database column remains unused
+  for compatibility, and legacy `primary_video` roles display simply as video.
 
 - **Short-clip storyboards.** The default
   `CAIRNDEX_STORYBOARD_MIN_DURATION` is now 10 seconds instead of 60 so hybrid
@@ -100,6 +113,12 @@ grouped under `Unreleased` until the first tagged release.
   code alphabet, surfaces FastAPI validation detail, clears stale approval
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
+
+- **Image artwork no longer disables bundle hover scrub.** Static cover artwork
+  and current media are resolved separately. A card with an image cover now
+  previews the bundle's remembered video from its resume position; an image
+  cursor appears as a still. Double-click uses the same cursor, so hover and
+  opening cannot disagree about which media is current.
 
 - **Missing files reconcile on bundle and directory access.** Bundle file-list
   and playback-manifest reads re-check every linked member of that bundle, while

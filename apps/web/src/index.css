@@ -911,7 +911,7 @@ button {
   position: relative;
   min-height: 0;
 }
-.hover-preview--video {
+.hover-preview--media {
   background-color: #050609;
   background-size: contain;
 }
@@ -969,6 +969,7 @@ button {
   font-size: 22px;
 }
 .hover-preview__video,
+.hover-preview__image,
 .hover-preview__storyboard {
   position: absolute;
   z-index: 2;
@@ -977,7 +978,8 @@ button {
   height: 100%;
   background-color: #050609;
 }
-.hover-preview__video {
+.hover-preview__video,
+.hover-preview__image {
   object-fit: contain;
 }
 .hover-preview__video--sprite-hidden {

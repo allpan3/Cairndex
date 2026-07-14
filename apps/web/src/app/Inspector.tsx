@@ -249,7 +249,6 @@ function BundleEditor({
         bundleId={bundleId}
         bundleVersion={bundle.version}
         coverId={bundle.cover_file_id ?? null}
-        primaryId={bundle.primary_file_id ?? null}
         // Adding unbundled files targets a confirmed bundle only (ADR-0009).
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
       />
@@ -382,13 +381,11 @@ function FileList({
   bundleId,
   bundleVersion,
   coverId,
-  primaryId,
   onAddFiles,
 }: {
   bundleId: string
   bundleVersion: number
   coverId: string | null
-  primaryId: string | null
   onAddFiles?: (bundleId: string) => void
 }) {
   const { data: files = [] } = useBundleFiles(bundleId)
@@ -436,7 +433,6 @@ function FileList({
           >
             <div className="file-row__main">
               <div className="file-row__name">
-                {f.id === primaryId && <span title="Primary">▶</span>}
                 {f.id === coverId && <span title="Cover">★</span>}
                 <span className="file-row__title">{f.display_title}</span>
                 {f.availability !== 'available' && (
@@ -444,7 +440,8 @@ function FileList({
                 )}
               </div>
               <div className="file-row__role">
-                {f.role} · {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
+                {f.role === 'primary_video' ? 'video' : f.role} ·{' '}
+                {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
               </div>
             </div>
             <div className="file-row__actions">
@@ -465,14 +462,6 @@ function FileList({
                 disabled={i === files.length - 1}
               >
                 ↓
-              </button>
-              <button
-                className="tip"
-                data-tip="Set as primary (played first)"
-                aria-label="Set as primary file"
-                onClick={() => update.mutate({ primary_file_id: f.id })}
-              >
-                ▶
               </button>
               {thumbnailable && (
                 <button

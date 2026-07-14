@@ -64,7 +64,7 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("asset_files", "cover_previous_file_id", "VARCHAR(26)"),
 )
 
-_ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress",)
+_ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress", "bundle_cursors")
 
 
 def ensure_content_indexes(engine: Engine) -> None:

@@ -212,8 +212,6 @@ def _drop_ignored_scan_rows(session: Session, files: Iterable[AssetFile]) -> int
             continue
         if bundle.cover_file_id == row.id:
             bundle.cover_file_id = None
-        if bundle.primary_file_id == row.id:
-            bundle.primary_file_id = None
         session.delete(row)
         deleted += 1
     if deleted:

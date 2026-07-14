@@ -22,6 +22,7 @@ from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
 from cairndex.registry.engine import get_registry_engine, get_registry_sessionmaker
 from cairndex.registry.library_engine import get_library_sessionmaker
+from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as bundle_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
@@ -472,6 +473,36 @@ def test_continue_watching_orders_paginates_and_excludes_completed(
 
     second = client.get(f"/api/v1/libraries/{library_id}/continue-watching?limit=2&offset=2").json()
     assert [item["id"] for item in second["items"]] == [old.id]
+
+
+# Continue Watching follows the cursor and disappears while an image is current
+def test_continue_watching_excludes_bundle_with_image_cursor(
+    client: TestClient, library_id: str, session: Session
+) -> None:
+    bundle = bundle_service.create_bundle(session, title="Album")
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="album/clip.mp4",
+        role=FileRole.VIDEO_PART,
+        media_kind=MediaKind.VIDEO,
+        sequence=0,
+    )
+    image = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="album/photo.jpg",
+        role=FileRole.IMAGE,
+        media_kind=MediaKind.IMAGE,
+        sequence=1,
+    )
+    progress_service.upsert_progress(session, video.id, position_s=10, duration_s=100)
+    cursor_service.set_cursor(session, bundle.id, image.id)
+    session.commit()
+
+    page = client.get(f"/api/v1/libraries/{library_id}/continue-watching").json()
+    assert page["total"] == 0
+    assert page["items"] == []
 
 
 def test_progress_cascades_when_file_is_deleted(session: Session, library_root: Path) -> None:

@@ -115,7 +115,7 @@ Bundle-level metadata includes:
 - shared note;
 - shared rating;
 - selected cover file;
-- selected primary playable file;
+- one remembered current media file, independent of the cover;
 - grouping review state (`provisional` or `confirmed`);
 - creation, import, and update timestamps;
 - aggregate media properties where useful;
@@ -145,11 +145,11 @@ Required concepts:
 - extracted technical metadata;
 - import/source metadata.
 
-Suggested roles: `primary_video`, `video_part`, `alternate_version`, `cover`, `image`, `screenshot`, `album_image`, `subtitle`, `attachment`, `generated_derivative`, and `other`.
+Suggested roles: `video_part`, `alternate_version`, `cover`, `image`, `screenshot`, `album_image`, `subtitle`, `attachment`, `generated_derivative`, and `other`. Existing `primary_video` rows are legacy grouping metadata only and display as `video`; they do not override sequence order.
 
 One physical path should normally have one owning bundle. Do not add cross-bundle aliases until a real use case requires them.
 
-When a file is moved and repaired, update the existing `AssetFile.relative_path` rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/primary references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
+When a file is moved and repaired, update the existing `AssetFile.relative_path` rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/cursor references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
 
 ### Covers and thumbnails
 
@@ -157,9 +157,8 @@ Cover/thumbnail source precedence:
 
 1. user-selected cover file, when it is thumbnailable;
 2. first image in the bundle;
-3. selected primary video;
-4. first video in the bundle;
-5. generated placeholder / no thumbnail state.
+3. first video in the bundle;
+4. generated placeholder / no thumbnail state.
 
 Original cover files are Asset Files. Generated thumbnails, preview frames, storyboards, converted subtitles, and future transcodes live in application cache storage under `.cairndex/cache/` and must be reproducible. Scans must ignore `.cairndex/cache/`.
 
@@ -286,7 +285,7 @@ Repair must:
 
 - update the existing `AssetFile.relative_path` rather than creating a new file row;
 - keep the `AssetFile.id` stable;
-- preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, and subtitle links;
+- preserve the owning bundle, collections, tags, notes, rating, cover/cursor selection, and subtitle links;
 - run automatically as part of scan/rescan/reconciliation for high-confidence matches;
 - avoid destructive changes and avoid merging duplicates.
 
@@ -314,6 +313,14 @@ Do not claim universal format support merely because a file can be served. Brows
 
 When opening/streaming/thumbnailing a file, re-check that the resolved path still exists. If it no longer exists, mark the file stale/missing and rely on the scanner to repair it on the next reconciliation when possible.
 
+Bundle open/playback order is the Files in bundle order (`AssetFile.sequence`,
+stable id tie-break). One bundle cursor remembers the current supported media
+file independently of the cover; video time remains per-file watch progress.
+Opening the bundle starts at that cursor, end-of-video advances through ordered
+supported media, and card hover represents the same cursor. An image cursor is
+a still preview; a video cursor uses storyboard/direct preview from its saved
+time. See ADR-0016.
+
 ### Fallback playback
 
 After direct playback is stable, add an FFmpeg-backed fallback:
@@ -330,7 +337,7 @@ Importing from an external Eagle library is out of scope. With the per-library a
 
 Bundles are formed by scanning the library and grouping related files. Grouping heuristics may consider same directory, matching or similar basenames, normalized subject prefixes, numeric part suffixes, language subtitle suffixes, names such as `cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
-Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links external subtitles, and creates the logical collections a CONTAINER suggests, never touching the filesystem.
+Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects a cover, links external subtitles, and creates the logical collections a CONTAINER suggests, never touching the filesystem.
 
 A scan stages each newly discovered file as a *provisional* one-file bundle.
 Until the owner confirms it, that file is treated as **unbundled**
@@ -403,7 +410,7 @@ Plan for directory list/tree navigation scoped to the active library root, file 
 
 ### Bundle cards and inspector
 
-A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, primary duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
+A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, current-media duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
 The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating, aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
 
