@@ -625,11 +625,10 @@ export function GroupingReview({
 
         <div className="modal__body grp-body">
           <p className="grp-intro">
-            Suggestions cover every bundle that isn’t filed into a collection yet — including one
-            whose collections you later removed — plus any still-unbundled files. Review the
-            proposed bundles and collections, drag files between bundles or bundles into
-            collections, then accept only the checked items. Double-click either title to rename it.
-            Bundles already filed into a collection are left untouched. Nothing on disk changes.
+            Suggestions cover still-unbundled files and new additions. Review the proposed bundles
+            and collections, drag files between bundles or bundles into collections, then accept
+            only the checked items. Double-click either title to rename it. Confirmed bundles stay
+            untouched even when they aren’t in a collection. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
@@ -693,7 +692,7 @@ export function GroupingReview({
           {!result && (!plan.data || tree.length === 0) && !plan.isLoading && (
             <div className="grp-empty">
               {planId
-                ? 'Nothing to group — every bundle is already filed into a collection.'
+                ? 'Nothing to group — there are no unbundled files awaiting suggestions.'
                 : 'No suggestions yet. Click “Suggest grouping” to analyze the library.'}
             </div>
           )}

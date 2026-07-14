@@ -277,9 +277,8 @@ Grouping behavior:
   edits before apply; reviewed file sequence becomes playlist order;
 - bundle proposals with no files and collection proposals with no file-backed
   descendants are automatically excluded from the accepted selection;
-- explicitly edited proposals retain their original bundle identity and may
-  revise confirmed uncategorized membership, while untouched proposals retain
-  the normal confirmed-grouping conflict boundary;
+- explicitly edited proposals retain their original bundle identity while
+  confirmed bundles remain outside every grouping-regeneration candidate set;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
 - confirmed bundles are excluded from re-grouping; new files in confirmed-owned
   directories are proposed as additions;

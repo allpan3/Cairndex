@@ -70,12 +70,25 @@ const PROPOSALS: GroupingProposal[] = [
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
   let proposals = structuredClone(initialProposals)
+  let planId = 'plan1'
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
-    if (url.endsWith('/grouping/plans')) {
+    if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
+      planId = 'plan2'
+      proposals = []
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: null,
+        generated_at: '2026-07-13T00:01:00Z',
+        applied_at: null,
+        proposals,
+      }
+    } else if (url.endsWith('/grouping/plans')) {
       body = [
         {
-          id: 'plan1',
+          id: planId,
           status: 'open',
           rule_version: 2,
           generated_at: '2026-07-13T00:00:00Z',
@@ -83,9 +96,9 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
           proposal_count: proposals.length,
         },
       ]
-    } else if (url.endsWith('/grouping/plans/plan1')) {
+    } else if (url.endsWith(`/grouping/plans/${planId}`)) {
       body = {
-        id: 'plan1',
+        id: planId,
         status: 'open',
         rule_version: 2,
         scan_job_id: 'job1',
@@ -192,6 +205,23 @@ test('double-click renames a bundle suggestion and persists it', async () => {
     ([url, init]) => url.endsWith('/proposals/proposal1') && init?.method === 'PATCH',
   )
   expect(patchCall?.[1]).toMatchObject({ body: JSON.stringify({ title: 'SRCV-005' }) })
+})
+
+test('regenerating suggestions replaces the open plan without showing settled bundles', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  await screen.findByText('SRCV-005 - cut')
+  fireEvent.click(screen.getByRole('button', { name: 'Suggest grouping' }))
+
+  await screen.findByText('Nothing to group — there are no unbundled files awaiting suggestions.')
+  expect(screen.queryByText('SRCV-005 - cut')).not.toBeInTheDocument()
+  expect(
+    fetchMock.mock.calls.some(
+      ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+    ),
+  ).toBe(true)
 })
 
 test('Escape cancels a bundle suggestion rename', async () => {

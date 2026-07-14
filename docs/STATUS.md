@@ -116,10 +116,16 @@ remain snapshots; regenerate suggestions to receive the v4 result.
 
 Every edit persists on the open plan. File moves recompute dense sequence and
 derived roles for affected proposals, while apply preserves original bundle IDs
-when an explicit drag revises confirmed uncategorized membership. Untouched
-confirmed suggestions retain conflict protection. The new persisted
+across reviewed provisional membership changes. Confirmed bundles stay settled
+regardless of collection membership. The new persisted
 `base_bundle_id` / `owner_edited` fields are additive, and no operation moves,
 renames, or deletes a source file.
+
+Repeated **Suggest grouping** now uses the same candidate boundary as Update.
+Clicking it inside an already-open review supersedes the old plan without
+reopening confirmed bundles; only still-unbundled files and new additions are
+eligible. The former manual-only `uncategorized` scope was removed so
+collection membership cannot be mistaken for bundling state.
 
 The API replaces complete-order writes with library-scoped file-move and
 bundle-parent routes and broadens proposal title updates to bundle or collection
@@ -129,10 +135,11 @@ collection rename/reparent, addition order, React interaction, and the
 browser-visible drag flow.
 
 Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
-and all 421 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 106
-Vitest tests, the production build, and all 70 Playwright tests pass. The browser
-flow covers empty bundle/collection deselection; the exact long-filename Python
-fixture covers v4 pairing. The in-app browser runtime was also attempted but
+and all 420 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 107
+Vitest tests, the production build, and all 71 Playwright tests pass. The browser
+flow covers repeated suggestion regeneration plus empty bundle/collection
+deselection; the exact long-filename Python fixture covers v4 pairing. The
+in-app browser runtime was also attempted but
 could not initialize (`Cannot redefine property: process`).
 
 ## Current: ordered bundle media cursor
@@ -1526,22 +1533,19 @@ green; Playwright 39 passed. Verified in the browser against the Synthetic Libra
   fires those surfaces' `onDragEnd`).
 - **File Browser directories** now join drag-select + Shift-range select like
   files (bundling targets still filter to files).
-- **"Review grouping" → "Suggest grouping" (ADR-0011):** the manual action now
-  re-proposes grouping for every **uncategorized** bundle (incl. confirmed ones
-  whose collections were removed) + unbundled files; **Update**/scan keeps the
-  narrower `new` scope. Suggestion scope added to `grouping/service.py`
-  `gather_observations(scope=…)` + `plan_store.generate_plan(scope=…)`; the
-  manual `POST …/grouping/plans` selects `uncategorized`. Internal
-  provisional/confirmed state kept (apply still protects confirmed bundles); the
-  user-facing **"Needs review" badge removed**.
+- **"Review grouping" → "Suggest grouping" (ADR-0011):** the user-facing
+  **"Needs review" badge was removed** while internal provisional/confirmed
+  state remains the grouping boundary. The 2026-07-14 amendment removed the
+  manual-only `uncategorized` scope after it caused repeated suggestion
+  generation to reopen confirmed bundles.
 
 Verified: backend `ruff`/`format`/`mypy` clean, **pytest 291 passed** (new
 `tests/test_grouping_scope.py`). Frontend `lint`/`format`/`typecheck`/`vitest`/
 `build` clean. Browser-verified the triangle icon and the "Suggest grouping"
 rename / removed review badge against the Synthetic Library; native DnD and the
-File Browser weren't exercisable there (synthetic files aren't on disk), and the
-manual suggest pass is too heavy to run live over 33k uncategorized bundles —
-covered by unit/service tests instead.
+File Browser weren't exercisable there (synthetic files aren't on disk). The
+former categorization-driven pass was covered by unit/service tests and has
+since been removed by the ADR-0011 amendment above.
 
 **Fourth follow-up round (review feedback):**
 

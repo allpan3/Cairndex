@@ -279,8 +279,8 @@ stable file id to an exact position within any BUNDLE proposal and rewrites dens
 sequence/derived-role values for every affected proposal. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
 into a CONTAINER proposal or back to the top level. These owner edits are marked
-explicitly: apply may revise confirmed uncategorized membership while preserving
-`base_bundle_id`, but untouched suggestions keep conflict protection. Addition
+explicitly so apply can preserve `base_bundle_id` across reviewed provisional
+membership changes. Confirmed bundles remain outside regenerated plans. Addition
 titles remain read-only; their files can participate in review moves.
 
 ## Registry database
