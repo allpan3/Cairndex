@@ -240,6 +240,98 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await storyboardRequest
 })
 
+test('repeated Suggest grouping leaves confirmed bundles out of the new plan', async ({ page }) => {
+  await mockApi(page)
+  const oldProposal = {
+    id: 'settled1',
+    kind: 'bundle',
+    title: 'Already bundled',
+    directory: 'Settled',
+    parent_proposal_id: null,
+    target_bundle_id: null,
+    confidence: 0.9,
+    reason: 'old plan',
+    files: [
+      {
+        asset_file_id: 'settled-file',
+        relative_path: 'Settled/movie.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  let activePlanId = 'plan1'
+  let generated = false
+  await page.route('**/grouping/plans', (route) => {
+    if (route.request().method() === 'POST') {
+      activePlanId = 'plan2'
+      generated = true
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: activePlanId,
+          status: 'open',
+          rule_version: 2,
+          scan_job_id: null,
+          generated_at: '2026-07-13T00:01:00Z',
+          applied_at: null,
+          proposals: [],
+        },
+      })
+    }
+    return route.fulfill({
+      json: [
+        {
+          id: activePlanId,
+          status: 'open',
+          rule_version: 2,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: generated ? 0 : 1,
+        },
+      ],
+    })
+  })
+  await page.route('**/grouping/plans/plan1', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan1',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: 'job1',
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals: [oldProposal],
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan2', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan2',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: null,
+        generated_at: '2026-07-13T00:01:00Z',
+        applied_at: null,
+        proposals: [],
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  await expect(page.getByText('Already bundled')).toBeVisible()
+  await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
+
+  await expect(
+    page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
+  ).toBeVisible()
+  await expect(page.getByText('Already bundled')).toHaveCount(0)
+  expect(generated).toBe(true)
+})
+
 test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
   await mockApi(page)
   const proposals = [

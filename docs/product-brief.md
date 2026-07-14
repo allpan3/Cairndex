@@ -372,6 +372,9 @@ Current workflow details:
 
 - scan jobs persist an open grouping plan without applying it;
 - the primary **Update** flow runs scan/grouping-plan generation, then metadata probe, refreshes affected queries, and opens grouping review when suggestions exist;
+- manual **Suggest grouping** and Update use the same candidate boundary:
+  confirmed bundles stay settled regardless of collection membership, while
+  still-unbundled files and new additions remain eligible;
 - the grouping review UI supports checkbox selection, parent/child cascading,
   Select all / Deselect all, double-click rename for bundle and collection
   suggestions, file drag-and-drop within or across bundle suggestions, bundle
@@ -387,10 +390,8 @@ Current workflow details:
   video stem (including suffix variants such as subtitles/posters), then fall
   back to the leading subject prefix; this separates long filenames with a
   shared author/source prefix without collapsing image-only folders;
-- explicit cross-bundle review edits may revise a confirmed uncategorized
-  bundle, preserve its stable bundle/file identities, and clean up an emptied
-  source bundle; untouched confirmed proposals keep conflict protection and are
-  never changed by the heuristic alone;
+- explicit cross-bundle review edits revise provisional suggestions while
+  preserving stable file identities and cleaning up an emptied source bundle;
 - applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
 - confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered file in its directory is suggested as an addition, not auto-applied;
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;

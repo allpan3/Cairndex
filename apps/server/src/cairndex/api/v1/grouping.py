@@ -42,13 +42,10 @@ def generate_plan(db: LibrarySession) -> PlanRead:
     """Suggest a grouping for the current library and store it as the active
     plan (superseding any earlier open plan).
 
-    This is the manual "Suggest grouping" entrypoint, so it uses the
-    ``uncategorized`` scope: every bundle not yet filed into a collection —
-    including a previously confirmed one whose collections were later removed —
-    is re-proposed for grouping, alongside still-unbundled files. Routine
-    scan/Update generation stays on the ``new`` scope (confirmed groupings are
-    left untouched)."""
-    plan = plan_store.generate_plan(db, scope="uncategorized")
+    Manual and scan-triggered generation share the same durable boundary:
+    confirmed bundles stay settled regardless of collection membership, while
+    still-unbundled files and new additions remain eligible."""
+    plan = plan_store.generate_plan(db)
     return PlanRead.model_validate(plan)
 
 
