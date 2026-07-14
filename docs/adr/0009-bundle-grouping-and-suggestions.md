@@ -86,7 +86,10 @@ Concretely:
    existing bundles/containers and not auto-applied. As amended on 2026-07-14,
    the owner may convert that addition proposal in place into a separate new
    bundle, then switch back while the confirmed target still exists. The target
-   remains untouched when new-bundle mode is applied.
+   remains untouched when new-bundle mode is applied. Relevant existing
+   collection branches remain reviewable context: an addition defaults to its
+   target's collection, and a fresh proposal may reuse a matching collection
+   path, without reopening any confirmed bundle as a grouping candidate.
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external

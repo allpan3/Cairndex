@@ -11,7 +11,7 @@ from cairndex.domain.enums import FileRole, GroupingState
 from cairndex.grouping import ProposalKind, plan_store
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping.service import suggest_for_session
-from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
+from cairndex.persistence.models import AssetBundle, AssetFile, Collection, SubtitleTrack
 from cairndex.scanning.scanner import scan_library
 
 
@@ -152,6 +152,59 @@ def test_addition_can_create_a_new_bundle_without_touching_the_target(
     assert created.cover_file_id == next(
         file.id for file in created.files if file.relative_path == "Cosmos/sequel.jpg"
     )
+
+
+# A new-bundle override keeps the confirmed target's existing collection context
+def test_new_bundle_override_reuses_the_target_collection(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "Movies" / "Cosmos").mkdir(parents=True)
+    (library_root / "Movies" / "Cosmos" / "cosmos.mp4").write_text("v")
+    scan_library(session, library_root)
+    apply_service.apply_plan(session, plan_store.generate_plan(session))
+    movies = session.scalars(select(Collection).where(Collection.name == "Movies")).one()
+    target = session.scalars(select(AssetBundle)).one()
+    assert movies in target.collections
+
+    (library_root / "Movies" / "Cosmos" / "sequel.mp4").write_text("v2")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+    parent = session.get(type(addition), addition.parent_proposal_id)
+    assert parent is not None and parent.title == "Movies"
+
+    plan_store.set_proposal_destination(session, plan.id, addition.id, True)
+    plan_store.rename_proposal(session, plan.id, addition.id, "Sequel")
+    result = apply_service.apply_plan(session, plan)
+
+    assert result.collections_created == 0
+    created = session.scalars(select(AssetBundle).where(AssetBundle.title == "Sequel")).one()
+    assert movies in created.collections
+
+
+# A direct fresh file reuses a matching collection hidden by confirmed siblings
+def test_fresh_bundle_reuses_an_existing_same_path_collection(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "Series").mkdir()
+    (library_root / "Series" / "alpha.mp4").write_text("a")
+    (library_root / "Series" / "beta.mp4").write_text("b")
+    scan_library(session, library_root)
+    apply_service.apply_plan(session, plan_store.generate_plan(session))
+    series = session.scalars(select(Collection).where(Collection.name == "Series")).one()
+
+    (library_root / "Series" / "gamma.mp4").write_text("g")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+    gamma = next(proposal for proposal in plan.proposals if proposal.kind is ProposalKind.BUNDLE)
+    parent = session.get(type(gamma), gamma.parent_proposal_id)
+    assert parent is not None and parent.title == "Series"
+
+    result = apply_service.apply_plan(session, plan)
+
+    assert result.collections_created == 0
+    created = session.scalars(select(AssetBundle).where(AssetBundle.title == "Series")).one()
+    assert series in created.collections
 
 
 # Switching retains the edited title and upgrades legacy open-plan snapshots
