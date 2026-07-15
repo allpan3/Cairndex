@@ -127,7 +127,12 @@ types are current.
 Bundle and collection title editors now use their rendered text as the minimum
 width and grow live while typing, capped by the grouping dialog. Existing
 double-click, Enter/F2, Enter/blur save, Escape cancel, validation, and focus
-selection behavior is retained.
+selection behavior is retained. The editor uses a wrapping text area sized by
+the same live mirror as the rendered title and focuses without scrolling, so
+activating rename preserves multi-line title geometry, surrounding row
+positions, and modal size. Destination switches remain mounted at their normal
+22px size while rename is active and are temporarily disabled instead of being
+removed; rendered title buttons and editors also share the same 18px line box.
 
 Grouping rows no longer show numeric confidence or manual badges. Ordinary
 suggestions retain their human-readable reason, additions use a compact file

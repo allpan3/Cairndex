@@ -332,13 +332,14 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   expect(generated).toBe(true)
 })
 
-test('grouping title editors retain content width and grow while typing', async ({ page }) => {
+test('grouping title editors preserve wrapped geometry and grow while typing', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 900 })
   await mockApi(page)
   const proposals = [
     {
       id: 'collection-width',
       kind: 'container',
-      title: 'A Very Long Collection Suggestion',
+      title: 'A Long Collection Suggestion',
       directory: 'Long Collection',
       parent_proposal_id: null,
       target_bundle_id: null,
@@ -351,7 +352,8 @@ test('grouping title editors retain content width and grow while typing', async 
     {
       id: 'bundle-width',
       kind: 'bundle',
-      title: 'A Very Long Bundle Suggestion',
+      title:
+        'A Very Long Bundle Suggestion That Deliberately Wraps Across Multiple Lines Without Moving Any Other Grouping Review Text When Rename Mode Starts',
       directory: 'Long Bundle',
       parent_proposal_id: 'collection-width',
       target_bundle_id: null,
@@ -402,25 +404,45 @@ test('grouping title editors retain content width and grow while typing', async 
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
 
   for (const [kind, title] of [
-    ['collection', 'A Very Long Collection Suggestion'],
-    ['bundle', 'A Very Long Bundle Suggestion'],
+    ['collection', 'A Long Collection Suggestion'],
+    [
+      'bundle',
+      'A Very Long Bundle Suggestion That Deliberately Wraps Across Multiple Lines Without Moving Any Other Grouping Review Text When Rename Mode Starts',
+    ],
   ] as const) {
     const titleButton = page.getByRole('button', {
       name: `Rename ${kind} suggestion ${title}`,
     })
+    const titleRow = titleButton.locator('xpath=ancestor::*[contains(@class, "grp-row")][1]')
+    const modal = page.locator('.grp-modal')
     const titleBox = await titleButton.boundingBox()
-    if (!titleBox) throw new Error(`missing ${kind} title box`)
+    const rowBox = await titleRow.boundingBox()
+    const modalBox = await modal.boundingBox()
+    if (!titleBox || !rowBox || !modalBox) throw new Error(`missing ${kind} title geometry`)
+    if (kind === 'bundle') expect(titleBox.height).toBeGreaterThan(18)
     await titleButton.dblclick()
     const input = page.getByRole('textbox', {
       name: `${kind[0].toUpperCase()}${kind.slice(1)} suggestion title`,
     })
     const initialBox = await input.boundingBox()
-    if (!initialBox) throw new Error(`missing ${kind} editor box`)
-    expect(initialBox.width).toBeGreaterThanOrEqual(titleBox.width)
-    await input.fill(`${title} With A Longer Ending`)
-    await expect
-      .poll(async () => (await input.boundingBox())?.width ?? 0)
-      .toBeGreaterThan(initialBox.width)
+    const editingRowBox = await titleRow.boundingBox()
+    const editingModalBox = await modal.boundingBox()
+    if (!initialBox || !editingRowBox || !editingModalBox) {
+      throw new Error(`missing ${kind} editor geometry`)
+    }
+    expect(Math.abs(initialBox.width - titleBox.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(initialBox.height - titleBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(initialBox.y - titleBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingRowBox.height - rowBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingRowBox.y - rowBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingModalBox.height - modalBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingModalBox.y - modalBox.y)).toBeLessThanOrEqual(1)
+    if (kind === 'collection') {
+      await input.fill(`${title} With A Longer Ending`)
+      await expect
+        .poll(async () => (await input.boundingBox())?.width ?? 0)
+        .toBeGreaterThan(initialBox.width)
+    }
     await input.press('Escape')
   }
 })
@@ -556,15 +578,34 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(checkbox).toBeChecked()
   await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
   await expect(page.locator('.grp-files')).toHaveCount(1)
-  await page
-    .getByRole('button', { name: 'Rename bundle suggestion Sex On The Beach - 4K' })
-    .dblclick()
+  const renameTitle = page.getByRole('button', {
+    name: 'Rename bundle suggestion Sex On The Beach - 4K',
+  })
+  const bundleRow = page.locator('.grp-row--bundle')
+  const modal = page.locator('.grp-modal')
+  const bundleRowBox = await bundleRow.boundingBox()
+  const modalBox = await modal.boundingBox()
+  if (!bundleRowBox || !modalBox) {
+    throw new Error('missing pre-rename grouping geometry')
+  }
+  await renameTitle.dblclick()
   const titleInput = page.getByRole('textbox', { name: 'Bundle suggestion title' })
+  await expect(addBackButton).toBeDisabled()
+  const editingRowBox = await bundleRow.boundingBox()
+  const editingModalBox = await modal.boundingBox()
+  if (!editingRowBox || !editingModalBox) {
+    throw new Error('missing active-rename grouping geometry')
+  }
+  expect(Math.abs(editingRowBox.y - bundleRowBox.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingRowBox.height - bundleRowBox.height)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingModalBox.y - modalBox.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingModalBox.height - modalBox.height)).toBeLessThanOrEqual(1)
   await titleInput.fill('Separate Feature')
   await titleInput.press('Enter')
   await expect(
     page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
   ).toBeVisible()
+  await expect(addBackButton).toBeEnabled()
 
   await addBackButton.click()
   await expect(page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })).toBeVisible()
