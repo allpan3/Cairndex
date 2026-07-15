@@ -11,10 +11,8 @@ import math
 import mimetypes
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request, status
-from fastapi.exceptions import RequestValidationError
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
-from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.orm import Session
 
 from cairndex.api.deps import LibraryAccessDep, LibrarySession
@@ -31,7 +29,6 @@ from cairndex.api.schemas.playback import (
     PlaybackProgressUpdate,
     SubtitleTrackRead,
 )
-from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
 from cairndex.core.time import utcnow
@@ -56,21 +53,6 @@ def _video_duration(asset_file: AssetFile) -> float | None:
     if isinstance(value, (int, float)) and math.isfinite(value) and value > 0:
         return float(value)
     return None
-
-
-# Rejects cross-site simple requests that CORS middleware cannot preflight
-def _validate_beacon_origin(request: Request) -> None:
-    origin = request.headers.get("origin")
-    if origin is None:
-        return
-    same_origin = f"{request.url.scheme}://{request.url.netloc}"
-    settings = get_settings()
-    if origin not in {
-        same_origin,
-        *PACKAGED_DESKTOP_ORIGINS,
-        *settings.cors_extra_origins,
-    }:
-        raise HTTPException(status_code=403, detail="origin is not allowed")
 
 
 # Convert stored chapter metadata to the public manifest shape
@@ -186,17 +168,9 @@ def update_progress(
     status_code=status.HTTP_200_OK,
 )
 def beacon_progress(
-    file_id: str,
-    payload: Annotated[str, Body(media_type="text/plain")],
-    db: LibrarySession,
-    request: Request,
+    file_id: str, payload: PlaybackProgressUpdate, db: LibrarySession
 ) -> PlaybackProgressRead:
-    _validate_beacon_origin(request)
-    try:
-        progress = PlaybackProgressUpdate.model_validate_json(payload)
-    except PydanticValidationError as exc:
-        raise RequestValidationError(exc.errors()) from exc
-    return update_progress(file_id, progress, db)
+    return update_progress(file_id, payload, db)
 
 
 @router.post("/files/{file_id}/cover-frame", response_model=FileRead)

@@ -107,6 +107,21 @@ test('renders the shell and browses bundles', async ({ page }) => {
   await expect(page.getByText('40 items')).toBeVisible()
 })
 
+test('persisted hidden sidebar leaves the content pane usable', async ({ page }) => {
+  await mockApi(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('cairndex.prefs', JSON.stringify({ sidebarVisible: false }))
+  })
+  await page.goto('/')
+
+  await expect(page.locator('.sidebar')).toHaveCount(0)
+  const contentBounds = await page.locator('.center').boundingBox()
+  expect(contentBounds).not.toBeNull()
+  expect(contentBounds!.width).toBeGreaterThan(500)
+  expect(contentBounds!.x).toBe(0)
+  await expect(page.getByText('Movie 0')).toBeVisible()
+})
+
 function jobRead(over: Record<string, unknown>) {
   return {
     id: 'job',

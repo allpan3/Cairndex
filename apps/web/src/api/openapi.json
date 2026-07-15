@@ -10233,10 +10233,9 @@
         ],
         "requestBody": {
           "content": {
-            "text/plain": {
+            "application/json": {
               "schema": {
-                "title": "Payload",
-                "type": "string"
+                "$ref": "#/components/schemas/PlaybackProgressUpdate"
               }
             }
           },
