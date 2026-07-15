@@ -165,7 +165,8 @@ grouped under `Unreleased` until the first tagged release.
   five-second watchdog, lowercases configured CORS origin authorities, and
   reports desktop chunk/menu bridge failures instead of leaving blank or silent
   UI. Bootstrap keeps Settings useful by selecting the server URL, disables Pair
-  Device until connection succeeds, and restores its availability afterward.
+  Device until connection succeeds, rejects HTTP 200 endpoints without the
+  Cairndex capabilities D1 requires, and restores menu availability afterward.
   Native menu polish uses the physical `=` key for card-size increase and a
   cross-platform macOS-compatible Toggle Full Screen accelerator/label.
 
