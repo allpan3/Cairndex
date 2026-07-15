@@ -296,7 +296,11 @@ Completed:
   and the video seeks once to that same frame. During a cue-backed rest, the
   paused video stays mounted beneath the sprite. The preview waits for both seek
   completion and presentation of the target frame, removes the sprite, then
-  resumes playback on the following animation frame. The cue is resolved when
+  resumes playback in a cancellable post-paint task. Seek readiness also requires
+  `currentTime` to match the requested target, preventing a late prior `seeked`
+  event from revealing time zero. Dwell and rest timers are identity-checked,
+  and activating the current page-wide owner is idempotent, so a queued callback
+  cannot reset a playing preview to `transitioning`. The cue is resolved when
   rest begins rather than at the last pointer move, so a VTT prefetch completing
   during the debounce is included in the target. A transition sprite is shown
   only when that target matches its cue sample. Without a storyboard, rest
