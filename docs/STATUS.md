@@ -1,5 +1,78 @@
 # Project status
 
+## In review: Plan 3 D1 — Tauri 2 shell bootstrap
+
+Branch `feat/desktop-shell` from `origin/main` at `766709b`; tested implementation
+tip `7f8324e`.
+
+Completed:
+
+- `apps/desktop` is a Tauri 2 shell with bundle id `dev.cairndex.app`. Its
+  `build.devUrl` and `frontendDist` use `apps/web` directly, so development and
+  release builds have no desktop SPA fork. First run validates and probes a
+  server URL before persisting it through the Tauri store plugin.
+- The cross-platform single-instance and window-state plugins are registered in
+  Rust. App/File/Edit/View/Window/Help menus emit semantic Tauri events mapped
+  to the SPA's existing Settings, Pair Device, New Bundle, Bundles/Files, zoom,
+  pane-toggle, and player-fullscreen paths. The normal window close path emits
+  `pagehide` before destroying the webview so the existing playback reporter can
+  queue its `sendBeacon` request.
+- Desktop API and media paths resolve against the configured server, including
+  manifest streams, storyboards, subtitles, HLS playlists, thumbnails, and
+  progress/session beacons. Browser mode retains its relative same-origin URLs.
+  FastAPI allows only the packaged Tauri origins plus the exact
+  `http://127.0.0.1:5173` origin used by `tauri dev`; no wildcard CORS was added.
+- Cross-platform posture is enforced from D1: no AppKit/`NSWorkspace` calls,
+  every `#[cfg(target_os = "…")]` is isolated in `src-tauri/src/host.rs`, and CI
+  has macOS Rust/build and Ubuntu Rust-only jobs. `AGENTS.md`, architecture,
+  development, README, the plan milestone table, and CHANGELOG reflect the new
+  monorepo package and gates.
+
+Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
+
+- The first-run screen connected to an isolated FastAPI server, the server URL
+  survived a full `Cmd+Q` restart, a resized window reopened at its saved size,
+  a second launch focused the single existing instance, and native File/App menu
+  items opened the existing New Bundle and Settings dialogs.
+- M12 hover autoplay advanced visibly from **0:01 to 0:09** without a play
+  gesture. The real player opened already playing, advanced normally, and its
+  Fullscreen API control expanded the video stage in WKWebView.
+- The initial native close audit exposed that WKWebView destruction did not fire
+  `pagehide` early enough: only the React cleanup `PUT` reached the server. The
+  cross-platform close guard fixed it; the final close log contained the normal
+  `PUT`, CORS preflight, and a distinct **POST 200** from `sendBeacon` before
+  destruction.
+- `tauri dev` started the shared Vite server and debug binary, then the isolated
+  backend logged health, library, browse, and thumbnail requests from the stored
+  server configuration. The packaged release `.app` and browser-mode Vite host
+  were also inspected directly; both rendered the same workspace.
+
+Verification (temporary databases/libraries only; no user, Demo, or Eagle media):
+
+- Backend: Ruff check/format, mypy, and full pytest (**443 passed**).
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**124 passed**),
+  and the production Vite build.
+- Playwright: full suite run unpiped exited 0 (**74 passed**); the known
+  pre-existing real-backend flake did not reproduce in this run.
+- Desktop: Rust format, Clippy with warnings denied, and **4 unit tests** passed;
+  release `tauri build` produced `Cairndex.app`. The macOS CI job's local gates
+  are green; the Ubuntu job is defined for PR CI and has not been run remotely
+  because this owner handoff does not create a PR.
+- `/code-review medium` found two P1 integration defects: clean CI runners lacked
+  `apps/web/dist` before Rust expanded the Tauri context, and the close guard
+  lacked `core:window:allow-destroy`. Both were fixed before the full gates.
+- No HTTP/OpenAPI contract changed; `openapi.json` and `schema.d.ts` were not
+  regenerated.
+
+Known issues: Tauri warns that the explicitly required identifier
+`dev.cairndex.app` ends in `.app`, which can be confused with the macOS bundle
+extension; the owner-specified identifier is retained. D1 stores only the
+server URL. Device-token pairing/Authorization wiring, path mappings,
+reveal/open, drag-out/in, deep links, updater/signing, and Linux packaging remain
+in their planned D2–D5 slices.
+
+Next recommended task: **Plan 3 D2 — platform seam + desktop device-token auth**.
+
 ## In review: Plan 2 T0 — device pairing and scoped bearer tokens
 
 Branch `feat/device-pairing` (off `main` at `776e0d7`, after M12 merged as
