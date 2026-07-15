@@ -1,0 +1,10 @@
+export type DesktopMenuAction =
+  | 'settings'
+  | 'pair-device'
+  | 'new-bundle'
+  | 'show-bundles'
+  | 'show-files'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'toggle-sidebar'
+  | 'toggle-inspector'

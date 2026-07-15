@@ -10,10 +10,12 @@ const PAIR_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 export function SettingsDialog({
   libraries,
   libraryId,
+  startPairing = false,
   onClose,
 }: {
   libraries: LibraryRead[]
   libraryId: string | null
+  startPairing?: boolean
   onClose: () => void
 }) {
   return (
@@ -35,7 +37,7 @@ export function SettingsDialog({
           <nav className="settings-nav" aria-label="Settings pages">
             <button className="settings-nav__item settings-nav__item--active">Devices</button>
           </nav>
-          <DevicesPage libraries={libraries} libraryId={libraryId} />
+          <DevicesPage libraries={libraries} libraryId={libraryId} startPairing={startPairing} />
         </div>
       </div>
     </div>
@@ -46,11 +48,13 @@ export function SettingsDialog({
 function DevicesPage({
   libraries,
   libraryId,
+  startPairing,
 }: {
   libraries: LibraryRead[]
   libraryId: string | null
+  startPairing: boolean
 }) {
-  const [pairing, setPairing] = useState(false)
+  const [pairing, setPairing] = useState(startPairing)
   const [pairCode, setPairCode] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () =>

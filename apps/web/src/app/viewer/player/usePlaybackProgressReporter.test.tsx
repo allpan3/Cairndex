@@ -3,6 +3,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { usePlaybackProgressReporter } from './usePlaybackProgressReporter'
+import { runDesktopExitTasks } from '../../../desktop/exitTasks'
 
 const { updatePlaybackProgress, beaconPlaybackProgress } = vi.hoisted(() => ({
   updatePlaybackProgress: vi.fn(),
@@ -60,6 +61,7 @@ afterEach(async () => {
   vi.useRealTimers()
   updatePlaybackProgress.mockReset()
   beaconPlaybackProgress.mockReset()
+  vi.unstubAllGlobals()
 })
 
 test('reports playing progress on the throttled cadence', async () => {
@@ -147,6 +149,39 @@ test('sends a beacon on pagehide', () => {
     position_s: 9,
     duration_s: 100,
   })
+})
+
+test('awaits the ordinary progress write during desktop exit', async () => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {})
+  let resolveUpdate!: (value: {
+    position_s: number
+    duration_s: number
+    completed: boolean
+  }) => void
+  updatePlaybackProgress.mockReturnValue(
+    new Promise((resolve) => {
+      resolveUpdate = resolve
+    }),
+  )
+  renderReporter({ status: 'playing', currentTime: 9 })
+
+  let settled = false
+  const exiting = runDesktopExitTasks().then(() => {
+    settled = true
+  })
+  await Promise.resolve()
+
+  expect(updatePlaybackProgress).toHaveBeenCalledWith('f0', {
+    position_s: 9,
+    duration_s: 100,
+  })
+  expect(settled).toBe(false)
+  act(() => window.dispatchEvent(new Event('pagehide')))
+  expect(beaconPlaybackProgress).not.toHaveBeenCalled()
+
+  resolveUpdate({ position_s: 9, duration_s: 100, completed: false })
+  await exiting
+  expect(settled).toBe(true)
 })
 
 test('invalidates continue-watching on unmount flush', async () => {

@@ -70,6 +70,18 @@ export type ManualBundleResult = components['schemas']['ManualBundleResultRead']
 
 // --- Active library (one per tab) --------------------------------------------
 let activeLibraryId: string | null = null
+let apiBaseUrl: string | null = null
+
+// Selects the remote server used by the desktop host while browsers stay same-origin
+export function setApiBaseUrl(value: string | null): void {
+  apiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
+}
+
+// Resolves API and media paths without rewriting already absolute URLs
+export function resolveApiUrl(value: string): string {
+  if (!apiBaseUrl || /^[a-z][a-z\d+.-]*:/i.test(value)) return value
+  return `${apiBaseUrl}/${value.replace(/^\/+/, '')}`
+}
 
 export function setActiveLibraryId(id: string | null): void {
   activeLibraryId = id
@@ -82,7 +94,7 @@ export function getActiveLibraryId(): string | null {
 /** Base path for content endpoints scoped to the active library. */
 function lib(): string {
   if (!activeLibraryId) throw new Error('no active library selected')
-  return `/api/v1/libraries/${activeLibraryId}`
+  return resolveApiUrl(`/api/v1/libraries/${activeLibraryId}`)
 }
 
 /** Extract a useful message from structured API and FastAPI validation errors. */
@@ -108,7 +120,8 @@ function apiErrorDetail(payload: unknown): string {
 }
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, { signal })
+  const resolvedUrl = resolveApiUrl(url)
+  const response = await fetch(resolvedUrl, { signal })
   if (!response.ok) {
     // Surface the server's structured `{message}` when present so callers can
     // show a friendly reason (e.g. "library is currently unavailable") instead
@@ -119,7 +132,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
     } catch {
       /* non-JSON body */
     }
-    throw new Error(detail || `Request failed (HTTP ${response.status}) for ${url}`)
+    throw new Error(detail || `Request failed (HTTP ${response.status}) for ${resolvedUrl}`)
   }
   return (await response.json()) as T
 }
@@ -147,7 +160,7 @@ async function send<T>(
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
-  const response = await fetch(url, {
+  const response = await fetch(resolveApiUrl(url), {
     method,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -173,14 +186,18 @@ async function sendSignal<T>(
   signal: AbortSignal | undefined,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(url, {
+  const resolvedUrl = resolveApiUrl(url)
+  const response = await fetch(resolvedUrl, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   })
   if (!response.ok) {
-    throw new HttpError(response.status, `Request failed (HTTP ${response.status}) for ${url}`)
+    throw new HttpError(
+      response.status,
+      `Request failed (HTTP ${response.status}) for ${resolvedUrl}`,
+    )
   }
   return (await response.json()) as T
 }
@@ -293,8 +310,26 @@ export const updateSmartCollection = (
 export const deleteSmartCollection = (id: string) =>
   send<void>(`${lib()}/smart-collections/${id}`, 'DELETE')
 
+// Resolves every media URL embedded in a playback manifest for the desktop host
+function resolvePlaybackManifest(manifest: PlaybackManifest): PlaybackManifest {
+  return {
+    ...manifest,
+    videos: manifest.videos.map((video) => ({
+      ...video,
+      stream_url: resolveApiUrl(video.stream_url),
+      storyboard_url: video.storyboard_url ? resolveApiUrl(video.storyboard_url) : null,
+      subtitles: video.subtitles.map((track) => ({
+        ...track,
+        src: track.src ? resolveApiUrl(track.src) : null,
+      })),
+    })),
+  }
+}
+
 export const fetchPlaybackManifest = (bundleId: string, signal?: AbortSignal) =>
-  getJson<PlaybackManifest>(`${lib()}/bundles/${bundleId}/playback`, signal)
+  getJson<PlaybackManifest>(`${lib()}/bundles/${bundleId}/playback`, signal).then(
+    resolvePlaybackManifest,
+  )
 
 // --- Playback decisions + HLS sessions (plan 1 §6.3, M7) ---------------------
 // Ask the server how to play one file for this client's capabilities. A direct
@@ -310,7 +345,18 @@ export const requestPlaybackDecision = (
     'POST',
     signal,
     payload,
-  )
+  ).then((decision) => ({
+    ...decision,
+    stream_url: decision.stream_url ? resolveApiUrl(decision.stream_url) : null,
+    storyboard_url: decision.storyboard_url ? resolveApiUrl(decision.storyboard_url) : null,
+    session: decision.session
+      ? { ...decision.session, playlist_url: resolveApiUrl(decision.session.playlist_url) }
+      : null,
+    subtitles: decision.subtitles.map((track) => ({
+      ...track,
+      src: track.src ? resolveApiUrl(track.src) : null,
+    })),
+  }))
 
 /** Tear down an HLS session (player close, file switch, quality/audio switch). */
 export const deletePlaybackSession = (fileId: string, sessionId: string) =>
@@ -322,9 +368,10 @@ export const deletePlaybackSession = (fileId: string, sessionId: string) =>
  */
 function beacon(url: string, body?: unknown): boolean {
   if (!navigator.sendBeacon) return false
-  if (body === undefined) return navigator.sendBeacon(url)
+  const resolvedUrl = resolveApiUrl(url)
+  if (body === undefined) return navigator.sendBeacon(resolvedUrl)
   const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
-  return navigator.sendBeacon(url, blob)
+  return navigator.sendBeacon(resolvedUrl, blob)
 }
 
 /** Best-effort session teardown on pagehide via sendBeacon's POST-only transport. */
