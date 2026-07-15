@@ -17,7 +17,7 @@ grouped under `Unreleased` until the first tagged release.
   single-instance plugins own shell persistence; native App/File/Edit/View/
   Window/Help menus dispatch semantic events onto existing SPA settings,
   pairing, bundle, surface, zoom, pane, and fullscreen handlers. Desktop API,
-  nested playback/media URLs, and close-time progress beacons resolve against
+  nested playback/media URLs, and close-time progress reporting resolve against
   the configured server while browser mode remains same-origin. CI now checks
   Rust formatting, Clippy, and tests on macOS and Ubuntu and builds the macOS
   `.app`; the portable shell contains no target-OS conditionals, AppKit, or
@@ -149,14 +149,15 @@ grouped under `Unreleased` until the first tagged release.
 - **Desktop D1 review hardening.** The Vite development origin is denied unless
   explicitly configured through `CAIRNDEX_CORS_EXTRA_ORIGINS`, and cross-origin
   cookie credentials are no longer advertised. Native fullscreen now toggles
-  the Tauri window without relying on synthetic DOM activation; Cmd+Q and OS
-  application exit share the pagehide flush handshake, with the progress POST
-  declared as a CORS-safelisted text/plain JSON payload and its mutating route
-  enforcing same-origin/configured-origin checks server-side. Desktop modules
-  are lazy chunks outside the browser entry, pane visibility persists with
-  browse preferences, workspace-only menu items disable without a library, and
-  both Rust CI jobs cache their Cargo builds. OpenAPI and TypeScript schemas
-  were regenerated for the progress-beacon request contract.
+  the Tauri window without relying on synthetic DOM activation. Window close,
+  Cmd+Q, and OS application exit now share the Rust `ExitGate`; desktop waits
+  for the ordinary typed progress PUT before flushing synchronous `pagehide`
+  state and completing exit, while browser mode retains its same-origin typed
+  JSON beacon. Explicit grid placement keeps the content pane usable when its
+  persisted sidebar toggle is off. Desktop modules are lazy chunks outside the
+  browser entry, workspace-only menu items disable without a library, both Rust
+  CI jobs cache their Cargo builds, and generated API artifacts retain the typed
+  progress contract.
 
 - **Device pairing security and review hardening.** Only Bearer-scheme
   authorization headers select device-token auth, so upstream Basic credentials

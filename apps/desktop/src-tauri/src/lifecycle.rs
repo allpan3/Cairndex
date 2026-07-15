@@ -47,11 +47,11 @@ pub(crate) fn intercept_exit<R: Runtime>(app: &AppHandle<R>, api: ExitRequestApi
         return;
     }
     api.prevent_exit();
-    request_exit(app);
+    begin_exit(app);
 }
 
 // Starts the shared SPA shutdown handshake from native menu or OS exit paths
-pub(crate) fn request_exit<R: Runtime>(app: &AppHandle<R>) {
+pub(crate) fn begin_exit<R: Runtime>(app: &AppHandle<R>) {
     if !app.state::<ExitGate>().begin() {
         return;
     }
@@ -62,6 +62,12 @@ pub(crate) fn request_exit<R: Runtime>(app: &AppHandle<R>) {
         app.state::<ExitGate>().finish();
         app.exit(0);
     });
+}
+
+// Routes a webview close request through the same native exit gate
+#[tauri::command]
+pub(crate) fn request_exit(app: AppHandle) {
+    begin_exit(&app);
 }
 
 // Completes an application exit after the SPA queues its pagehide work

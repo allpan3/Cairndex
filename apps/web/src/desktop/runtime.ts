@@ -3,11 +3,11 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 
+import { runDesktopExitTasks } from './exitTasks'
 import type { DesktopMenuAction } from './types'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
-const SHUTDOWN_GRACE_MS = 50
 
 // Loads the configured Cairndex server URL from the desktop-owned store
 export async function loadDesktopServerUrl(): Promise<string | null> {
@@ -39,19 +39,17 @@ export function setDesktopLibraryAvailable(enabled: boolean): Promise<void> {
   return invoke('set_library_menu_enabled', { enabled })
 }
 
-// Gives close and application-quit paths the same pagehide persistence signal
+// Routes window close and application quit through one awaitable native handshake
 export async function listenDesktopLifecycle(): Promise<UnlistenFn> {
   const appWindow = getCurrentWindow()
   const stopClose = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault()
-    window.dispatchEvent(new Event('pagehide'))
-    await new Promise((resolve) => window.setTimeout(resolve, SHUTDOWN_GRACE_MS))
-    await appWindow.destroy()
+    await invoke('request_exit')
   })
   try {
     const stopExit = await listen('cairndex://exit-requested', async () => {
+      await runDesktopExitTasks()
       window.dispatchEvent(new Event('pagehide'))
-      await new Promise((resolve) => window.setTimeout(resolve, SHUTDOWN_GRACE_MS))
       await invoke('finish_exit')
     })
     return () => {

@@ -7,6 +7,7 @@ import {
   type PlaybackManifest,
   type PlaybackProgressUpdate,
 } from '../../../api/client'
+import { isDesktopHost, registerDesktopExitTask } from '../../../desktop/exitTasks'
 import type { PlayerStatus } from './usePlayer'
 
 const REPORT_INTERVAL_MS = 10_000
@@ -68,43 +69,45 @@ export function usePlaybackProgressReporter({
   }, [])
 
   const flush = useCallback(
-    (force = false, invalidateAfter = false) => {
+    async (force = false, invalidateAfter = false): Promise<void> => {
       const next = payload(force)
       if (!next) {
         if (invalidateAfter) qc.invalidateQueries({ queryKey: ['continue-watching'] })
         return
       }
       const [nextFileId, body] = next
-      void Promise.resolve(updatePlaybackProgress(nextFileId, body)).then((progress) => {
-        const previousCompleted =
-          lastCompletedRef.current?.fileId === nextFileId
-            ? lastCompletedRef.current.completed
-            : Boolean(stateRef.current.completed)
-        const completedChanged = previousCompleted !== progress.completed
-        lastCompletedRef.current = { fileId: nextFileId, completed: progress.completed }
-        if (bundleId) {
-          qc.setQueryData<PlaybackManifest>(['playback', bundleId], (previous) =>
-            previous
-              ? {
-                  ...previous,
-                  videos: previous.videos.map((video) =>
-                    video.file_id === nextFileId ? { ...video, progress } : video,
-                  ),
-                }
-              : previous,
-          )
-        }
-        if (completedChanged || invalidateAfter) {
-          qc.invalidateQueries({ queryKey: ['continue-watching'] })
-        }
-      })
+      const progress = await updatePlaybackProgress(nextFileId, body)
+      const previousCompleted =
+        lastCompletedRef.current?.fileId === nextFileId
+          ? lastCompletedRef.current.completed
+          : Boolean(stateRef.current.completed)
+      const completedChanged = previousCompleted !== progress.completed
+      lastCompletedRef.current = { fileId: nextFileId, completed: progress.completed }
+      if (bundleId) {
+        qc.setQueryData<PlaybackManifest>(['playback', bundleId], (previous) =>
+          previous
+            ? {
+                ...previous,
+                videos: previous.videos.map((video) =>
+                  video.file_id === nextFileId ? { ...video, progress } : video,
+                ),
+              }
+            : previous,
+        )
+      }
+      if (completedChanged || invalidateAfter) {
+        qc.invalidateQueries({ queryKey: ['continue-watching'] })
+      }
     },
     [bundleId, payload, qc],
   )
 
   useEffect(() => {
     if (!enabled || status !== 'playing') return
-    const interval = window.setInterval(() => flush(false), REPORT_INTERVAL_MS)
+    const interval = window.setInterval(
+      () => void flush(false).catch(() => undefined),
+      REPORT_INTERVAL_MS,
+    )
     return () => window.clearInterval(interval)
   }, [enabled, flush, status])
 
@@ -112,12 +115,18 @@ export function usePlaybackProgressReporter({
     const previous = previousStatusRef.current
     previousStatusRef.current = status
     if (previous === 'playing' && (status === 'paused' || status === 'ended')) {
-      flush(true)
+      void flush(true).catch(() => undefined)
     }
   }, [flush, status])
 
   useEffect(() => {
+    if (!isDesktopHost()) return
+    return registerDesktopExitTask(() => flush(true, true))
+  }, [flush])
+
+  useEffect(() => {
     const onPageHide = () => {
+      if (isDesktopHost()) return
       const next = payload(true)
       if (!next) return
       const [nextFileId, body] = next
@@ -126,7 +135,7 @@ export function usePlaybackProgressReporter({
     window.addEventListener('pagehide', onPageHide)
     return () => {
       window.removeEventListener('pagehide', onPageHide)
-      flush(true, true)
+      void flush(true, true).catch(() => undefined)
     }
   }, [flush, payload])
 }

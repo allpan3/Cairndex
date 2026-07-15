@@ -80,7 +80,7 @@ test('resolves nested playback URLs from the configured server', async () => {
 })
 
 // Pagehide progress beacons target the configured server, not the Tauri origin
-test('resolves sendBeacon destinations', () => {
+test('resolves typed sendBeacon destinations', async () => {
   setApiBaseUrl('http://127.0.0.1:8000')
   setActiveLibraryId('lib1')
   const sendBeacon = vi.fn().mockReturnValue(true)
@@ -89,6 +89,10 @@ test('resolves sendBeacon destinations', () => {
   expect(beaconPlaybackProgress('file1', { position_s: 3 })).toBe(true)
   expect(sendBeacon).toHaveBeenCalledWith(
     'http://127.0.0.1:8000/api/v1/libraries/lib1/files/file1/progress',
-    JSON.stringify({ position_s: 3 }),
+    expect.any(Blob),
   )
+  const body = sendBeacon.mock.calls[0]?.[1]
+  expect(body).toBeInstanceOf(Blob)
+  expect((body as Blob).type).toBe('application/json')
+  expect(await (body as Blob).text()).toBe(JSON.stringify({ position_s: 3 }))
 })

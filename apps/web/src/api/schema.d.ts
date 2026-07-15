@@ -5705,7 +5705,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "text/plain": string;
+                "application/json": components["schemas"]["PlaybackProgressUpdate"];
             };
         };
         responses: {
