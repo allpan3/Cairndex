@@ -3,7 +3,7 @@
 ## In review: Plan 3 D1 — Tauri 2 shell bootstrap
 
 Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested
-implementation tip `740a024`.
+implementation tip `d02b237`.
 
 Completed:
 
@@ -18,7 +18,9 @@ Completed:
   API's user-activation requirement. Workspace-only actions are disabled when
   no unlocked workspace is mounted; pane visibility persists with the other
   browse preferences, and explicit grid-column placement keeps the content pane
-  full-width when the sidebar is hidden across a restart.
+  full-width when the sidebar is hidden across a restart. Settings and Pair
+  Device opened from the native menu still render over a locked-library screen
+  instead of being swallowed by that early-return state.
 - Window close, Cmd+Q, application-menu Quit, and OS-level exit share one native
   shutdown handshake through the Rust `ExitGate`: the SPA awaits its ordinary
   typed JSON progress PUT, dispatches `pagehide` for synchronous persisted UI
@@ -30,16 +32,20 @@ Completed:
   progress/session beacons. Browser mode retains its relative same-origin URLs.
   FastAPI allows packaged Tauri origins by default, removes cross-origin cookie
   credentials, and denies the Vite development origin unless the owner sets
-  `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173` explicitly.
+  `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173` explicitly. The macOS
+  bundle declares local-network use and opts only webview content into cleartext
+  HTTP so an explicitly configured private LAN server works outside localhost.
 - Browser builds detect `window.__TAURI_INTERNALS__` before dynamically importing
-  the desktop bootstrap/runtime. The final browser entry is **500.46 kB / 145.57
+  the desktop bootstrap/runtime. The final browser entry is **500.58 kB / 145.57
   kB gzip** (versus the reviewed eager D1 build's 519.00/150.41); desktop-only
   bootstrap and runtime code are separate **1.18 kB** and **4.43 kB gzip** chunks.
 - Cross-platform posture is enforced from D1: no AppKit/`NSWorkspace` calls,
-  no target-OS conditional code, and only portable Tauri APIs/plugins. CI has
-  cached macOS Rust/build and Ubuntu Rust-only jobs. `AGENTS.md`, architecture,
-  deployment/development docs, README, the checked D1 milestone row, and
-  CHANGELOG reflect the package, gates, and remaining authentication boundary.
+  no target-OS conditional application code, and only portable Tauri APIs/plugins.
+  The only macOS-specific addition is declarative bundle metadata for ATS/local
+  network permission. CI has cached macOS Rust/build and Ubuntu Rust-only jobs.
+  `AGENTS.md`, architecture, deployment/development docs, README, the checked D1
+  milestone row, and CHANGELOG reflect the package, gates, and remaining
+  authentication boundary.
 
 Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
 
@@ -65,11 +71,16 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
   backend logged health, library, browse, and thumbnail requests from the stored
   server configuration. The packaged release `.app` and browser-mode Vite host
   were also inspected directly; both rendered the same workspace.
+- After the final review, the rebuilt packaged app connected to the same isolated
+  synthetic library through the Mac's non-loopback LAN address on port 8011
+  rather than a localhost exemption. The backend logged health, library, browse,
+  and thumbnail requests from that address; the original
+  `http://127.0.0.1:8000` owner setting was restored afterward.
 
 Verification (temporary databases/libraries only; no user, Demo, or Eagle media):
 
 - Backend: Ruff check/format, mypy, and full pytest (**445 passed**).
-- Frontend: Prettier, ESLint, TypeScript, full Vitest (**126 passed**),
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**127 passed**),
   and the production Vite build.
 - Playwright: full suite run unpiped exited 0 (**75 passed**); the known
   pre-existing real-backend flake did not reproduce in this run.
@@ -77,10 +88,12 @@ Verification (temporary databases/libraries only; no user, Demo, or Eagle media)
   release `tauri build` produced `Cairndex.app`. The macOS CI job's local gates
   are green; the Ubuntu job is defined for PR CI and has not been run remotely
   because this owner handoff does not create a PR.
-- The original `/code-review medium` findings (clean-runner `apps/web/dist` and
-  window-destroy capability) remain fixed. A later gap sweep found the persisted
-  hidden-sidebar collapse and the reverse-proxy regression in the text/plain
-  progress workaround; both now have focused regression coverage.
+- The required final `/code-review medium` found two actionable issues: missing
+  macOS ATS/local-network declarations for cleartext LAN servers and native
+  Settings actions swallowed by the locked-library early return. Both are fixed,
+  covered by the rebuilt bundle inspection plus a focused frontend regression,
+  and included in the final gate reruns. Earlier clean-runner, capability,
+  hidden-sidebar, and reverse-proxy findings remain fixed.
 - The progress-beacon POST contract remains the typed `PlaybackProgressUpdate`
   JSON model. `openapi.json` and `schema.d.ts` were regenerated and committed.
 
