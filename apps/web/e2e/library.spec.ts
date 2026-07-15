@@ -425,7 +425,9 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       name: `${kind[0].toUpperCase()}${kind.slice(1)} suggestion title`,
     })
     const initialBox = await input.boundingBox()
-    const editingRowBox = await titleRow.boundingBox()
+    const editingRowBox = await input
+      .locator('xpath=ancestor::*[contains(@class, "grp-row")][1]')
+      .boundingBox()
     const editingModalBox = await modal.boundingBox()
     if (!initialBox || !editingRowBox || !editingModalBox) {
       throw new Error(`missing ${kind} editor geometry`)
@@ -767,7 +769,13 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   const collectionRow = page.locator('.grp-row--collection', {
     has: page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   })
-  await page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }).dragTo(collectionRow)
+  const bundleHandle = page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' })
+  const collectionTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await bundleHandle.dispatchEvent('dragstart', { dataTransfer: collectionTransfer })
+  await collectionRow.dispatchEvent('dragover', { dataTransfer: collectionTransfer })
+  await collectionRow.dispatchEvent('drop', { dataTransfer: collectionTransfer })
+  await bundleHandle.dispatchEvent('dragend', { dataTransfer: collectionTransfer })
+  await collectionTransfer.dispose()
   await expect.poll(() => bundleParents).toEqual(['collection1'])
   const collectionCheckbox = page.getByRole('checkbox', { name: 'Accept Favorites' })
   await expect(collectionCheckbox).toBeChecked()
@@ -775,15 +783,14 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
     collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),
   ).toBeVisible()
 
-  const bundleHandle = page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' })
   const rootTarget = page.locator('.grp-root-drop')
-  const bundleBox = await bundleHandle.boundingBox()
-  const rootBox = await rootTarget.boundingBox()
-  if (!bundleBox || !rootBox) throw new Error('missing bundle drop target')
-  await page.mouse.move(bundleBox.x + bundleBox.width / 2, bundleBox.y + bundleBox.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(rootBox.x + rootBox.width / 2, rootBox.y + rootBox.height / 2, { steps: 5 })
-  await page.mouse.up()
+  const rootTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await bundleHandle.dispatchEvent('dragstart', { dataTransfer: rootTransfer })
+  await expect(rootTarget).toBeVisible()
+  await rootTarget.dispatchEvent('dragover', { dataTransfer: rootTransfer })
+  await rootTarget.dispatchEvent('drop', { dataTransfer: rootTransfer })
+  await bundleHandle.dispatchEvent('dragend', { dataTransfer: rootTransfer })
+  await rootTransfer.dispose()
   await expect.poll(() => bundleParents).toEqual(['collection1', null])
   await expect(collectionCheckbox).not.toBeChecked()
   await expect(collectionCheckbox).toBeDisabled()
