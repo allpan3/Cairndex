@@ -2,8 +2,8 @@
 
 ## In review: Plan 3 D1 — Tauri 2 shell bootstrap
 
-Branch `feat/desktop-shell` from `origin/main` at `766709b`; tested implementation
-tip `7f8324e`.
+Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested
+implementation tip `740a024`.
 
 Completed:
 
@@ -12,21 +12,33 @@ Completed:
   release builds have no desktop SPA fork. First run validates and probes a
   server URL before persisting it through the Tauri store plugin.
 - The cross-platform single-instance and window-state plugins are registered in
-  Rust. App/File/Edit/View/Window/Help menus emit semantic Tauri events mapped
-  to the SPA's existing Settings, Pair Device, New Bundle, Bundles/Files, zoom,
-  pane-toggle, and player-fullscreen paths. The normal window close path emits
-  `pagehide` before destroying the webview so the existing playback reporter can
-  queue its `sendBeacon` request.
+  Rust. App/File/Edit/View/Window/Help menus map to the SPA's existing Settings,
+  Pair Device, New Bundle, Bundles/Files, zoom, and pane handlers. Native Enter
+  Full Screen toggles the Tauri window directly, avoiding the HTML Fullscreen
+  API's user-activation requirement. Workspace-only actions are disabled when
+  no unlocked workspace is mounted; pane visibility now persists with the other
+  browse preferences.
+- Window close, Cmd+Q, application-menu Quit, and OS-level exit share one native
+  shutdown handshake: the SPA receives `pagehide`, queues persistence/beacons,
+  and explicitly completes exit, with a one-second native fallback. The progress
+  beacon uses the CORS-safelisted text/plain wire shape so process exit never
+  waits on a preflight; the mutating endpoint validates browser `Origin`
+  server-side before accepting it.
 - Desktop API and media paths resolve against the configured server, including
   manifest streams, storyboards, subtitles, HLS playlists, thumbnails, and
   progress/session beacons. Browser mode retains its relative same-origin URLs.
-  FastAPI allows only the packaged Tauri origins plus the exact
-  `http://127.0.0.1:5173` origin used by `tauri dev`; no wildcard CORS was added.
+  FastAPI allows packaged Tauri origins by default, removes cross-origin cookie
+  credentials, and denies the Vite development origin unless the owner sets
+  `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173` explicitly.
+- Browser builds detect `window.__TAURI_INTERNALS__` before dynamically importing
+  the desktop bootstrap/runtime. The final browser entry is **500.14 kB / 145.42
+  kB gzip** (versus the reviewed eager D1 build's 519.00/150.41); desktop-only
+  bootstrap and runtime code are separate **1.19 kB** and **4.43 kB gzip** chunks.
 - Cross-platform posture is enforced from D1: no AppKit/`NSWorkspace` calls,
-  every `#[cfg(target_os = "…")]` is isolated in `src-tauri/src/host.rs`, and CI
-  has macOS Rust/build and Ubuntu Rust-only jobs. `AGENTS.md`, architecture,
-  development, README, the plan milestone table, and CHANGELOG reflect the new
-  monorepo package and gates.
+  no target-OS conditional code, and only portable Tauri APIs/plugins. CI has
+  cached macOS Rust/build and Ubuntu Rust-only jobs. `AGENTS.md`, architecture,
+  deployment/development docs, README, the checked D1 milestone row, and
+  CHANGELOG reflect the package, gates, and remaining authentication boundary.
 
 Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
 
@@ -35,13 +47,14 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
   a second launch focused the single existing instance, and native File/App menu
   items opened the existing New Bundle and Settings dialogs.
 - M12 hover autoplay advanced visibly from **0:01 to 0:09** without a play
-  gesture. The real player opened already playing, advanced normally, and its
-  Fullscreen API control expanded the video stage in WKWebView.
+  gesture. The real player opened already playing and advanced normally. Its
+  in-app Fullscreen control expanded the video stage, and the native View →
+  Enter Full Screen item independently entered and exited macOS fullscreen.
 - The initial native close audit exposed that WKWebView destruction did not fire
-  `pagehide` early enough: only the React cleanup `PUT` reached the server. The
-  cross-platform close guard fixed it; the final close log contained the normal
-  `PUT`, CORS preflight, and a distinct **POST 200** from `sendBeacon` before
-  destruction.
+  `pagehide` early enough, and the initial Cmd+Q path bypassed window-close
+  handling. The final packaged-build audit played the synthetic video, pressed
+  Cmd+Q, exited the app, and logged a direct progress **POST 200** with no
+  preflight against the production-default Origin guard.
 - `tauri dev` started the shared Vite server and debug binary, then the isolated
   backend logged health, library, browse, and thumbnail requests from the stored
   server configuration. The packaged release `.app` and browser-mode Vite host
@@ -49,27 +62,32 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
 
 Verification (temporary databases/libraries only; no user, Demo, or Eagle media):
 
-- Backend: Ruff check/format, mypy, and full pytest (**443 passed**).
+- Backend: Ruff check/format, mypy, and full pytest (**445 passed**).
 - Frontend: Prettier, ESLint, TypeScript, full Vitest (**124 passed**),
   and the production Vite build.
 - Playwright: full suite run unpiped exited 0 (**74 passed**); the known
   pre-existing real-backend flake did not reproduce in this run.
-- Desktop: Rust format, Clippy with warnings denied, and **4 unit tests** passed;
+- Desktop: Rust format, Clippy with warnings denied, and **5 unit tests** passed;
   release `tauri build` produced `Cairndex.app`. The macOS CI job's local gates
   are green; the Ubuntu job is defined for PR CI and has not been run remotely
   because this owner handoff does not create a PR.
-- `/code-review medium` found two P1 integration defects: clean CI runners lacked
-  `apps/web/dist` before Rust expanded the Tauri context, and the close guard
-  lacked `core:window:allow-destroy`. Both were fixed before the full gates.
-- No HTTP/OpenAPI contract changed; `openapi.json` and `schema.d.ts` were not
-  regenerated.
+- The original `/code-review medium` findings (clean-runner `apps/web/dist` and
+  window-destroy capability) remain fixed. This review pass additionally found
+  that simple progress POSTs needed a server-side Origin check and locked
+  libraries must keep workspace menus disabled; both were fixed, and the final
+  medium rerun reported no actionable issues.
+- The progress-beacon POST contract now declares text/plain. `openapi.json` and
+  `schema.d.ts` were regenerated and are committed.
 
 Known issues: Tauri warns that the explicitly required identifier
 `dev.cairndex.app` ends in `.app`, which can be confused with the macOS bundle
 extension; the owner-specified identifier is retained. D1 stores only the
-server URL. Device-token pairing/Authorization wiring, path mappings,
-reveal/open, drag-out/in, deep links, updater/signing, and Linux packaging remain
-in their planned D2–D5 slices.
+server URL and sends neither cookie credentials nor bearer tokens. A protected
+library therefore cannot be unlocked in the shell, and Pair Device can approve
+only unprotected library scopes; use the same-origin web app for protected
+administration until D2 wires device-token authentication. Path mappings,
+reveal/open, drag-out/in, deep links, updater/signing, and Linux/Arch packaging
+remain in their planned D2–D5 slices.
 
 Next recommended task: **Plan 3 D2 — platform seam + desktop device-token auth**.
 
