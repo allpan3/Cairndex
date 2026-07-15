@@ -58,7 +58,8 @@ Use the existing stack unless an ADR or explicit owner instruction changes it:
 
 - Backend: Python 3.12+, FastAPI, SQLAlchemy 2.x, SQLite/WAL, ffmpeg/ffprobe, database-backed jobs.
 - Frontend: React, TypeScript strict mode, Vite, TanStack Query, TanStack Virtual, Playwright for e2e tests.
-- Repository layout: keep the current monorepo shape under `apps/server`, `apps/web`, `docs`, and `infra`.
+- Desktop: Tauri 2 with a Rust host over the shared `apps/web` build; use cross-platform plugins and keep target-OS conditionals isolated.
+- Repository layout: keep the current monorepo shape under `apps/server`, `apps/web`, `apps/desktop`, `docs`, and `infra`.
 
 Do not introduce Redis, Celery, Postgres, Elasticsearch, a separate search service, a new frontend state framework, or other major infrastructure without demonstrated need and an ADR.
 
@@ -182,6 +183,18 @@ npm run typecheck
 npm run test
 npm run build
 ```
+
+Desktop gates, from `apps/desktop/src-tauri` unless noted:
+
+```bash
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cd ..
+npm run tauri build
+```
+
+Desktop changes must keep both the macOS build job and Ubuntu Rust-only job green. Do not add direct AppKit, `NSWorkspace`, or other target-native APIs without a new accepted ADR; any required `#[cfg(target_os = "…")]` code belongs in one clearly named host module.
 
 Run Playwright/e2e tests for user-visible flows, routing changes, dialogs, keyboard interactions, context menus, playback, or anything likely to regress in a browser.
 

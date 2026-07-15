@@ -36,6 +36,61 @@ body {
 #root {
   height: 100vh;
 }
+
+/* --- Desktop server bootstrap -------------------------------------------- */
+.desktop-setup {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(134, 59, 255, 0.18), transparent 36%), var(--bg);
+}
+.desktop-setup__card {
+  width: min(460px, 100%);
+  padding: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+.desktop-setup__mark {
+  width: 48px;
+  height: 48px;
+}
+.desktop-setup__eyebrow {
+  margin: 20px 0 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.desktop-setup h1 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 28px;
+}
+.desktop-setup__copy,
+.desktop-setup__hint {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.desktop-setup__copy {
+  margin: 10px 0 28px;
+}
+.desktop-setup__input {
+  width: 100%;
+  margin: 7px 0 14px;
+}
+.desktop-setup__submit {
+  width: 100%;
+  margin-top: 8px;
+}
+.desktop-setup__hint {
+  margin: 16px 0 0;
+  font-size: 12px;
+}
 button {
   font: inherit;
   color: inherit;
