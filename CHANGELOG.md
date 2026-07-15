@@ -41,7 +41,10 @@ grouped under `Unreleased` until the first tagged release.
   existing collection branches now remain visible, letting a new-bundle
   override inherit or change collection placement without reopening confirmed
   bundles. The hidden top-level drop target no longer reserves blank space above
-  the suggestions.
+  the suggestions. Bundle and collection rename editors now wrap through their
+  live sizing mirror and focus without scrolling. Destination switches stay
+  mounted but disabled during rename, and title buttons share the editor's line
+  height, preserving every bundle row and the modal's position on activation.
 
 - **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
   position within any bundle suggestion or moved into another suggestion;

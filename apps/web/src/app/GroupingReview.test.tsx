@@ -264,6 +264,7 @@ test('double-click renames a bundle suggestion and persists it', async () => {
 })
 
 test('title editor mirrors its live text instead of shrinking to a fixed width', async () => {
+  const focus = vi.spyOn(HTMLTextAreaElement.prototype, 'focus')
   vi.stubGlobal('fetch', mockGroupingApi())
   const review = renderReview()
 
@@ -271,6 +272,8 @@ test('title editor mirrors its live text instead of shrinking to a fixed width',
     await screen.findByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
   )
   const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
+  expect(input.tagName).toBe('TEXTAREA')
+  expect(focus).toHaveBeenCalledWith({ preventScroll: true })
   const mirror = input.closest('.grp-title-editor')
   expect(mirror).toHaveAttribute('data-value', 'SRCV-005 - cut')
   fireEvent.change(input, { target: { value: 'SRCV-005 - a substantially longer cut title' } })
@@ -327,10 +330,13 @@ test('switches one addition proposal to a renameable new bundle and back', async
   fireEvent.doubleClick(
     screen.getByRole('button', { name: 'Rename bundle suggestion Surf On The Ridge - 4K' }),
   )
+  expect(addToExisting).toBeInTheDocument()
+  expect(addToExisting).toBeDisabled()
   const input = screen.getByRole('textbox', { name: 'Bundle suggestion title' })
   fireEvent.change(input, { target: { value: 'Separate Feature' } })
   fireEvent.keyDown(input, { key: 'Enter' })
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
+  expect(addToExisting).toBeEnabled()
 
   fireEvent.click(
     screen.getByRole('button', {
