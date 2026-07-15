@@ -21,7 +21,17 @@ vi.mock('./runtime', () => ({
 }))
 
 const okResponse = () =>
-  Promise.resolve(new Response(JSON.stringify({ status: 'ok' }), { status: 200 }))
+  Promise.resolve(
+    new Response(
+      JSON.stringify({
+        status: 'ok',
+        app_name: 'Cairndex',
+        environment: 'test',
+        api_features: ['pairing', 'progress'],
+      }),
+      { status: 200 },
+    ),
+  )
 
 beforeEach(() => {
   vi.mocked(listenDesktopLifecycle)
@@ -69,6 +79,32 @@ test('stores a verified first-run server URL', async () => {
 
   await waitFor(() => expect(saveDesktopServerUrl).toHaveBeenCalledWith('http://nas.local:8000'))
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
+})
+
+// A generic HTTP 200 endpoint is not persisted as a compatible Cairndex server
+test('rejects a server without the required Cairndex capabilities', async () => {
+  vi.mocked(loadDesktopServerUrl).mockResolvedValue(null)
+  vi.mocked(normalizeDesktopServerUrl).mockResolvedValue('http://other.local:8000')
+  vi.mocked(fetch).mockResolvedValue(
+    new Response(JSON.stringify({ status: 'ok', app_name: 'Other', api_features: [] }), {
+      status: 200,
+    }),
+  )
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  fireEvent.change(await screen.findByLabelText('Server URL'), {
+    target: { value: 'http://other.local:8000' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('not a compatible Cairndex server')
+  expect(saveDesktopServerUrl).not.toHaveBeenCalled()
+  expect(screen.queryByText('Shared SPA')).not.toBeInTheDocument()
 })
 
 // An unreachable saved server remains editable and never mounts content queries

@@ -19,13 +19,23 @@ interface SetupState {
   error: string | null
 }
 
+const INCOMPATIBLE_SERVER_ERROR = 'This address is not a compatible Cairndex server.'
+const REQUIRED_API_FEATURES = ['pairing', 'progress']
+
 // Verifies that a normalized server URL reaches a live Cairndex backend
 async function verifyServer(serverUrl: string): Promise<void> {
   setApiBaseUrl(serverUrl)
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 5000)
   try {
-    await fetchHealth(controller.signal)
+    const health = await fetchHealth(controller.signal)
+    const compatible =
+      health.status === 'ok' &&
+      typeof health.app_name === 'string' &&
+      health.app_name.length > 0 &&
+      Array.isArray(health.api_features) &&
+      REQUIRED_API_FEATURES.every((feature) => health.api_features.includes(feature))
+    if (!compatible) throw new Error(INCOMPATIBLE_SERVER_ERROR)
   } finally {
     window.clearTimeout(timeout)
   }
@@ -107,11 +117,14 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
             }
             setReady(true)
           }
-        } catch {
+        } catch (error) {
           if (active) {
             setSetup({
               serverUrl: stored,
-              error: 'Cairndex did not respond at this address. Check that the server is running.',
+              error:
+                error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
+                  ? error.message
+                  : 'Cairndex did not respond at this address. Check that the server is running.',
             })
           }
         }
