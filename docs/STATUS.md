@@ -3,7 +3,7 @@
 ## In review: Plan 3 D1 — Tauri 2 shell bootstrap
 
 Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested
-implementation tip `d02b237`.
+implementation tip `66ac9f8`.
 
 Completed:
 
@@ -13,18 +13,20 @@ Completed:
   server URL before persisting it through the Tauri store plugin.
 - The cross-platform single-instance and window-state plugins are registered in
   Rust. App/File/Edit/View/Window/Help menus map to the SPA's existing Settings,
-  Pair Device, New Bundle, Bundles/Files, zoom, and pane handlers. Native Enter
+  Pair Device, New Bundle, Bundles/Files, zoom, and pane handlers. Native Toggle
   Full Screen toggles the Tauri window directly, avoiding the HTML Fullscreen
   API's user-activation requirement. Workspace-only actions are disabled when
   no unlocked workspace is mounted; pane visibility persists with the other
   browse preferences, and explicit grid-column placement keeps the content pane
   full-width when the sidebar is hidden across a restart. Settings and Pair
   Device opened from the native menu still render over a locked-library screen
-  instead of being swallowed by that early-return state.
+  instead of being swallowed by that early-return state. During first-run or an
+  unreachable server, Settings selects the editable server URL while Pair Device
+  stays disabled until bootstrap verifies the Cairndex health capabilities.
 - Window close, Cmd+Q, application-menu Quit, and OS-level exit share one native
   shutdown handshake through the Rust `ExitGate`: the SPA awaits its ordinary
   typed JSON progress PUT, dispatches `pagehide` for synchronous persisted UI
-  state, and explicitly completes exit, with a one-second native fallback.
+  state, and explicitly completes exit, with a five-second native fallback.
   Browser mode retains the original same-origin typed JSON progress beacon; no
   hand-written Origin check sits behind reverse proxies.
 - Desktop API and media paths resolve against the configured server, including
@@ -36,9 +38,9 @@ Completed:
   bundle declares local-network use and opts only webview content into cleartext
   HTTP so an explicitly configured private LAN server works outside localhost.
 - Browser builds detect `window.__TAURI_INTERNALS__` before dynamically importing
-  the desktop bootstrap/runtime. The final browser entry is **500.58 kB / 145.57
+  the desktop bootstrap/runtime. The final browser entry is **500.89 kB / 145.69
   kB gzip** (versus the reviewed eager D1 build's 519.00/150.41); desktop-only
-  bootstrap and runtime code are separate **1.18 kB** and **4.43 kB gzip** chunks.
+  bootstrap and runtime code are separate **1.51 kB** and **4.44 kB gzip** chunks.
 - Cross-platform posture is enforced from D1: no AppKit/`NSWorkspace` calls,
   no target-OS conditional application code, and only portable Tauri APIs/plugins.
   The only macOS-specific addition is declarative bundle metadata for ATS/local
@@ -56,7 +58,7 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
 - M12 hover autoplay advanced visibly from **0:01 to 0:09** without a play
   gesture. The real player opened already playing and advanced normally. Its
   in-app Fullscreen control expanded the video stage, and the native View →
-  Enter Full Screen item independently entered and exited macOS fullscreen.
+  Toggle Full Screen item independently entered and exited macOS fullscreen.
 - The initial native close audit exposed that WKWebView destruction did not fire
   `pagehide` early enough, and the initial Cmd+Q path bypassed window-close
   handling. A later gap sweep found window close still bypassed the new
@@ -71,29 +73,31 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
   backend logged health, library, browse, and thumbnail requests from the stored
   server configuration. The packaged release `.app` and browser-mode Vite host
   were also inspected directly; both rendered the same workspace.
-- After the final review, the rebuilt packaged app connected to the same isolated
-  synthetic library through the Mac's non-loopback LAN address on port 8011
-  rather than a localhost exemption. The backend logged health, library, browse,
-  and thumbnail requests from that address; the original
-  `http://127.0.0.1:8000` owner setting was restored afterward.
+- After the final review, the rebuilt packaged app used an isolated temporary
+  home and connected to the same synthetic library through the Mac's non-loopback
+  LAN address on port 8011 rather than a localhost exemption. Bootstrap Settings
+  selected the URL, Pair Device changed from disabled to enabled only after
+  connection, and a playing Cmd+Q exit ended with a typed progress **PUT 200**
+  over the LAN path. The owner's stored `http://127.0.0.1:8000` setting was never
+  changed.
 
 Verification (temporary databases/libraries only; no user, Demo, or Eagle media):
 
 - Backend: Ruff check/format, mypy, and full pytest (**445 passed**).
-- Frontend: Prettier, ESLint, TypeScript, full Vitest (**127 passed**),
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**129 passed**),
   and the production Vite build.
 - Playwright: full suite run unpiped exited 0 (**75 passed**); the known
   pre-existing real-backend flake did not reproduce in this run.
-- Desktop: Rust format, Clippy with warnings denied, and **5 unit tests** passed;
-  release `tauri build` produced `Cairndex.app`. The macOS CI job's local gates
-  are green; the Ubuntu job is defined for PR CI and has not been run remotely
-  because this owner handoff does not create a PR.
-- The required final `/code-review medium` found two actionable issues: missing
-  macOS ATS/local-network declarations for cleartext LAN servers and native
-  Settings actions swallowed by the locked-library early return. Both are fixed,
-  covered by the rebuilt bundle inspection plus a focused frontend regression,
-  and included in the final gate reruns. Earlier clean-runner, capability,
-  hidden-sidebar, and reverse-proxy findings remain fixed.
+- Desktop: Rust format, Clippy with warnings denied, and **4 unit tests** passed;
+  release `tauri build` produced `Cairndex.app`. The macOS gates are green
+  locally; the macOS and Ubuntu jobs will be required green on the PR tip before
+  merge.
+- The required final `/code-review medium` found one actionable P2: any HTTP 200
+  JSON response could previously pass bootstrap and hide the only server editor.
+  Bootstrap now requires healthy identity fields plus D1's pairing/progress
+  capabilities, and a regression proves an incompatible endpoint is neither
+  persisted nor allowed to mount the SPA. Earlier ATS/local-network,
+  locked-settings, hidden-sidebar, and reverse-proxy findings remain fixed.
 - The progress-beacon POST contract remains the typed `PlaybackProgressUpdate`
   JSON model. `openapi.json` and `schema.d.ts` were regenerated and committed.
 
@@ -105,7 +109,10 @@ library therefore cannot be unlocked in the shell, and Pair Device can approve
 only unprotected library scopes; use the same-origin web app for protected
 administration until D2 wires device-token authentication. Path mappings,
 reveal/open, drag-out/in, deep links, updater/signing, and Linux/Arch packaging
-remain in their planned D2–D5 slices.
+remain in their planned D2–D5 slices. The five-second shutdown watchdog prevents
+a hung server from blocking quit indefinitely but can still drop the final
+progress write when a server round-trip exceeds that bound; the audit covered a
+responsive LAN path, not a deliberately stalled NAS/VPN path.
 
 Next recommended task: **Plan 3 D2 — platform seam + desktop device-token auth**.
 

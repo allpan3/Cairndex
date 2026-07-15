@@ -77,8 +77,11 @@ npm install
 npm run tauri dev
 ```
 
-The first-run screen stores a verified server URL in the Tauri store. Packaged
-custom-protocol origins are allowed by default; arbitrary HTTP(S) origins are
+The first-run screen stores a verified server URL in the Tauri store. Bootstrap
+also requires the health response to advertise the pairing and
+progress capabilities used by D1, so an unrelated HTTP 200 service remains on
+the editable setup screen. Packaged custom-protocol origins are allowed by
+default; arbitrary HTTP(S) origins are
 denied unless listed exactly in the comma-separated
 `CAIRNDEX_CORS_EXTRA_ORIGINS`. Leave that variable unset outside deliberate
 local development. On macOS, the package declares local-network use and permits
