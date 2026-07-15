@@ -16,6 +16,7 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             app_menu::set_library_menu_enabled,
+            app_menu::set_server_menu_enabled,
             lifecycle::finish_exit,
             lifecycle::request_exit,
             server_url::normalize_server_url_command,
