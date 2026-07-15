@@ -1,11 +1,19 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
+from urllib.parse import urlsplit
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 # Repo-relative default app-data dir for local dev. In Docker/NAS deployments
 # CAIRNDEX_DATA_DIR points at a mounted writable volume (see docs/deployment).
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "var"
+PACKAGED_DESKTOP_ORIGINS = (
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+)
 
 
 class Settings(BaseSettings):
@@ -20,6 +28,9 @@ class Settings(BaseSettings):
 
     app_name: str = "Cairndex"
     environment: str = "development"
+
+    # Exact HTTP(S) origins explicitly trusted for cross-origin API access
+    cors_extra_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # Writable application-data directory (the server-local registry DB). Kept
     # entirely separate from any library (AGENTS.md §11/§12). Per-library content
@@ -77,6 +88,29 @@ class Settings(BaseSettings):
     # (plan 1 §6.2). One of vaapi|qsv|videotoolbox; unset/"none" uses software
     # decode. Encoding stays libx264 for portability in this MVP.
     ffmpeg_hwaccel: str | None = None
+
+    # Parses a comma-separated environment value into validated web origins
+    @field_validator("cors_extra_origins", mode="before")
+    @classmethod
+    def _parse_cors_extra_origins(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+        normalized: list[str] = []
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError(f"invalid CORS origin: {origin!r}")
+            normalized.append(f"{parsed.scheme}://{parsed.netloc}")
+        return normalized
 
     def resolved_database_url(self) -> str:
         if self.database_url is not None:

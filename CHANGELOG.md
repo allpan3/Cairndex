@@ -20,8 +20,8 @@ grouped under `Unreleased` until the first tagged release.
   nested playback/media URLs, and close-time progress beacons resolve against
   the configured server while browser mode remains same-origin. CI now checks
   Rust formatting, Clippy, and tests on macOS and Ubuntu and builds the macOS
-  `.app`; target-OS conditionals are confined to one Rust host module with no
-  direct AppKit or `NSWorkspace` calls.
+  `.app`; the portable shell contains no target-OS conditionals, AppKit, or
+  `NSWorkspace` calls.
 
 - **Device pairing and scoped bearer tokens (Plan 2 §4 / T0, ADR-0015).**
   Anonymous clients start a bounded ten-minute six-character pairing request;
@@ -145,6 +145,18 @@ grouped under `Unreleased` until the first tagged release.
   10–60 second backfill above.
 
 ### Fixed
+
+- **Desktop D1 review hardening.** The Vite development origin is denied unless
+  explicitly configured through `CAIRNDEX_CORS_EXTRA_ORIGINS`, and cross-origin
+  cookie credentials are no longer advertised. Native fullscreen now toggles
+  the Tauri window without relying on synthetic DOM activation; Cmd+Q and OS
+  application exit share the pagehide flush handshake, with the progress POST
+  declared as a CORS-safelisted text/plain JSON payload and its mutating route
+  enforcing same-origin/configured-origin checks server-side. Desktop modules
+  are lazy chunks outside the browser entry, pane visibility persists with
+  browse preferences, workspace-only menu items disable without a library, and
+  both Rust CI jobs cache their Cargo builds. OpenAPI and TypeScript schemas
+  were regenerated for the progress-beacon request contract.
 
 - **Device pairing security and review hardening.** Only Bearer-scheme
   authorization headers select device-token auth, so upstream Basic credentials

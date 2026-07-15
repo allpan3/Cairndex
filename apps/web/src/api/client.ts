@@ -363,15 +363,14 @@ export const deletePlaybackSession = (fileId: string, sessionId: string) =>
   send<void>(`${lib()}/files/${fileId}/playback-sessions/${sessionId}`, 'DELETE')
 
 /**
- * Fire a best-effort `pagehide` POST via `navigator.sendBeacon`. A JSON `body`
- * is sent when given; with no body the beacon is a bare POST (CORS-safelisted).
+ * Fire a best-effort `pagehide` POST via `navigator.sendBeacon`. JSON bodies are
+ * sent as CORS-safelisted text so application exit never waits on a preflight.
  */
 function beacon(url: string, body?: unknown): boolean {
   if (!navigator.sendBeacon) return false
   const resolvedUrl = resolveApiUrl(url)
   if (body === undefined) return navigator.sendBeacon(resolvedUrl)
-  const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
-  return navigator.sendBeacon(resolvedUrl, blob)
+  return navigator.sendBeacon(resolvedUrl, JSON.stringify(body))
 }
 
 /** Best-effort session teardown on pagehide via sendBeacon's POST-only transport. */

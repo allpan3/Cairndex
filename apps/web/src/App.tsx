@@ -76,7 +76,7 @@ import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
-import { useDesktopMenu } from './desktop/useDesktopMenu'
+import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
   SYSTEM_VIEWS,
@@ -199,6 +199,7 @@ export default function App() {
   const auth = useLibraryAuth(libraryId)
   const lock = useLibraryLock(libraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
+  useDesktopMenuAvailability(libraryId !== null && !locked)
 
   if (librariesQuery.isLoading) {
     return <div className="app-loading">Loading…</div>
@@ -356,8 +357,7 @@ function Workspace({
   )
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
-  const [sidebarVisible, setSidebarVisible] = useState(true)
-  const [inspectorVisible, setInspectorVisible] = useState(true)
+  const { sidebarVisible, inspectorVisible } = prefs
 
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   // Ad-hoc toolbar filters (Eagle-style). Local UI state only — not persisted to
@@ -430,13 +430,16 @@ function Workspace({
       setPrefs((previous) => ({ ...previous, zoom: Math.min(ZOOM_MAX, previous.zoom + 10) }))
     } else if (action === 'zoom-out') {
       setPrefs((previous) => ({ ...previous, zoom: Math.max(ZOOM_MIN, previous.zoom - 10) }))
-    } else if (action === 'toggle-sidebar') setSidebarVisible((visible) => !visible)
-    else if (action === 'toggle-inspector') setInspectorVisible((visible) => !visible)
-    else if (action === 'fullscreen') {
-      const viewer = document.querySelector<HTMLElement>('.media-viewer')
-      if (viewer) viewer.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', bubbles: true }))
-      else if (document.fullscreenElement) void document.exitFullscreen()
-      else void document.documentElement.requestFullscreen()
+    } else if (action === 'toggle-sidebar') {
+      setPrefs((previous) => ({
+        ...previous,
+        sidebarVisible: !(previous.sidebarVisible ?? DEFAULT_PREFS.sidebarVisible),
+      }))
+    } else if (action === 'toggle-inspector') {
+      setPrefs((previous) => ({
+        ...previous,
+        inspectorVisible: !(previous.inspectorVisible ?? DEFAULT_PREFS.inspectorVisible),
+      }))
     }
   })
 

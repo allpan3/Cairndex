@@ -1,27 +1,13 @@
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 
-export type DesktopMenuAction =
-  | 'settings'
-  | 'pair-device'
-  | 'new-bundle'
-  | 'show-bundles'
-  | 'show-files'
-  | 'zoom-in'
-  | 'zoom-out'
-  | 'toggle-sidebar'
-  | 'toggle-inspector'
-  | 'fullscreen'
+import type { DesktopMenuAction } from './types'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
-
-// Reports whether the SPA is running inside the Tauri desktop host
-export function isDesktopHost(): boolean {
-  return isTauri()
-}
+const SHUTDOWN_GRACE_MS = 50
 
 // Loads the configured Cairndex server URL from the desktop-owned store
 export async function loadDesktopServerUrl(): Promise<string | null> {
@@ -48,13 +34,32 @@ export function listenDesktopMenu(
   return listen<DesktopMenuAction>('cairndex://menu', (event) => handler(event.payload))
 }
 
-// Gives pagehide reporters time to queue beacons before the native webview is destroyed
-export function listenDesktopClose(): Promise<UnlistenFn> {
+// Keeps workspace-only native commands disabled until a library is active
+export function setDesktopLibraryAvailable(enabled: boolean): Promise<void> {
+  return invoke('set_library_menu_enabled', { enabled })
+}
+
+// Gives close and application-quit paths the same pagehide persistence signal
+export async function listenDesktopLifecycle(): Promise<UnlistenFn> {
   const appWindow = getCurrentWindow()
-  return appWindow.onCloseRequested(async (event) => {
+  const stopClose = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault()
     window.dispatchEvent(new Event('pagehide'))
-    await new Promise((resolve) => window.setTimeout(resolve, 50))
+    await new Promise((resolve) => window.setTimeout(resolve, SHUTDOWN_GRACE_MS))
     await appWindow.destroy()
   })
+  try {
+    const stopExit = await listen('cairndex://exit-requested', async () => {
+      window.dispatchEvent(new Event('pagehide'))
+      await new Promise((resolve) => window.setTimeout(resolve, SHUTDOWN_GRACE_MS))
+      await invoke('finish_exit')
+    })
+    return () => {
+      stopClose()
+      stopExit()
+    }
+  } catch (error) {
+    stopClose()
+    throw error
+  }
 }
