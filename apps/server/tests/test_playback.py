@@ -363,10 +363,25 @@ def test_progress_put_upserts_clamps_and_marks_completion(
     assert session.get(PlaybackProgress, video.id).bundle_id == bundle.id
 
     beacon = client.post(
-        f"{base}/files/{video.id}/progress", json={"position_s": 10, "duration_s": 100}
+        f"{base}/files/{video.id}/progress",
+        json={"position_s": 10, "duration_s": 100},
     )
     assert beacon.status_code == 200
     assert beacon.json()["completed"] is False
+
+    proxied_browser_beacon = client.post(
+        f"{base}/files/{video.id}/progress",
+        json={"position_s": 11, "duration_s": 100},
+        headers={"Origin": "https://media.example.test"},
+    )
+    assert proxied_browser_beacon.status_code == 200
+    assert "access-control-allow-origin" not in proxied_browser_beacon.headers
+
+    invalid_beacon = client.post(
+        f"{base}/files/{video.id}/progress",
+        json={"position_s": "not-a-number", "duration_s": 100},
+    )
+    assert invalid_beacon.status_code == 422
 
     unknown_duration = client.put(
         f"{base}/files/{video.id}/progress", json={"position_s": 999, "duration_s": None}

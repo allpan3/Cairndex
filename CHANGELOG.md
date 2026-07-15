@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Tauri 2 desktop shell bootstrap (Plan 3 D1, ADR-0012).** A new
+  `apps/desktop` package hosts the existing `apps/web` Vite server/build without
+  a frontend fork, bundles as `dev.cairndex.app`, and provides first-run server
+  URL configuration in the Tauri store. Cross-platform store, window-state, and
+  single-instance plugins own shell persistence; native App/File/Edit/View/
+  Window/Help menus dispatch semantic events onto existing SPA settings,
+  pairing, bundle, surface, zoom, pane, and fullscreen handlers. Desktop API,
+  nested playback/media URLs, and close-time progress reporting resolve against
+  the configured server while browser mode remains same-origin. CI now checks
+  Rust formatting, Clippy, and tests on macOS and Ubuntu and builds the macOS
+  `.app`; the portable shell contains no target-OS conditionals, AppKit, or
+  `NSWorkspace` calls.
+
 - **Device pairing and scoped bearer tokens (Plan 2 §4 / T0, ADR-0015).**
   Anonymous clients start a bounded ten-minute six-character pairing request;
   an ADR-0010-authorized web session approves explicit library scopes, and the
@@ -132,6 +145,30 @@ grouped under `Unreleased` until the first tagged release.
   10–60 second backfill above.
 
 ### Fixed
+
+- **Desktop D1 review hardening.** The Vite development origin is denied unless
+  explicitly configured through `CAIRNDEX_CORS_EXTRA_ORIGINS`, and cross-origin
+  cookie credentials are no longer advertised. Native fullscreen now toggles
+  the Tauri window without relying on synthetic DOM activation. Window close,
+  Cmd+Q, and OS application exit now share the Rust `ExitGate`; desktop waits
+  for the ordinary typed progress PUT before flushing synchronous `pagehide`
+  state and completing exit, while browser mode retains its same-origin typed
+  JSON beacon. Explicit grid placement keeps the content pane usable when its
+  persisted sidebar toggle is off. Locked-library screens continue to render
+  Settings opened from the native menu instead of swallowing the action. The
+  macOS bundle opts only webview content into cleartext HTTP and declares local
+  network access so an owner-configured private LAN server works outside the
+  localhost ATS exemption. Desktop modules are lazy chunks outside the browser
+  entry, workspace-only menu items disable without a library, both Rust CI jobs
+  cache their Cargo builds, and generated API artifacts retain the typed progress
+  contract. Final review follow-up gives the network-backed exit flush a
+  five-second watchdog, lowercases configured CORS origin authorities, and
+  reports desktop chunk/menu bridge failures instead of leaving blank or silent
+  UI. Bootstrap keeps Settings useful by selecting the server URL, disables Pair
+  Device until connection succeeds, rejects HTTP 200 endpoints without the
+  Cairndex capabilities D1 requires, and restores menu availability afterward.
+  Native menu polish uses the physical `=` key for card-size increase and a
+  cross-platform macOS-compatible Toggle Full Screen accelerator/label.
 
 - **Device pairing security and review hardening.** Only Bearer-scheme
   authorization headers select device-token auth, so upstream Basic credentials

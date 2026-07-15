@@ -6,6 +6,7 @@
 | -------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `uv`                       | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python.                   |
 | Node.js 20+                | Frontend tooling                               | `npm` ships with Node; no separate package manager required.                                         |
+| Stable Rust + Cargo        | Tauri 2 desktop host                           | Required only for `apps/desktop`; install with rustup and include `clippy` + `rustfmt`.               |
 | Docker + Compose v2 plugin | Optional, for the containerized dev stack      | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`.                         |
 | `ffmpeg` / `ffprobe`       | Media probing, thumbnails, subtitle conversion | Required for full media behavior. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
 
@@ -56,6 +57,56 @@ npm run build             # production SPA build
 
 CI keeps the frontend job Node-only and runs `@fullstack` Playwright tests in a
 separate job that provisions the locked backend environment and ffmpeg.
+
+## Desktop (`apps/desktop`)
+
+The Tauri 2 shell hosts the same `apps/web` Vite development server and
+production `dist`; there is no desktop frontend fork. `tauri dev` loads a page
+whose origin is Vite's `http://127.0.0.1:5173`, so opt that exact development
+origin into the backend before starting the shell:
+
+```bash
+cd apps/server
+CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173 \
+  uv run uvicorn cairndex.main:app --reload --port 8000
+```
+
+```bash
+cd apps/desktop
+npm install
+npm run tauri dev
+```
+
+The first-run screen stores a verified server URL in the Tauri store. Bootstrap
+also requires the health response to advertise the pairing and
+progress capabilities used by D1, so an unrelated HTTP 200 service remains on
+the editable setup screen. Packaged custom-protocol origins are allowed by
+default; arbitrary HTTP(S) origins are
+denied unless listed exactly in the comma-separated
+`CAIRNDEX_CORS_EXTRA_ORIGINS`. Leave that variable unset outside deliberate
+local development. On macOS, the package declares local-network use and permits
+cleartext HTTP only in its WKWebView content so an explicitly configured private
+LAN server works; prefer HTTPS for any server outside a trusted private network.
+D1 does not send browser cookies or device bearer tokens, so a protected library
+cannot be unlocked or selected for pairing approval in the shell until D2 wires
+device-token authentication. Native Settings still opens over the lock screen
+so device status and the expected authorization error remain visible.
+
+Desktop checks:
+
+```bash
+cd apps/desktop/src-tauri
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cd ..
+npm run tauri build
+```
+
+CI runs these Rust checks on both macOS and Ubuntu; only macOS bundles the app.
+Keep native capabilities in cross-platform Tauri plugins, with any unavoidable
+target-OS conditional isolated in one clearly named host module. D1 currently
+contains no target-OS conditional code.
 
 ## Databases and local state
 
@@ -137,10 +188,10 @@ uv run python -m cairndex.devtools.reindex_search --library-id <id>
 
 ## Running both together without Docker
 
-Run the backend and frontend dev commands above in separate terminals. The Vite
+Run the backend and frontend dev commands above in separate terminals. Browser-mode Vite
 dev server proxies `/api/*` to `http://localhost:8000` (see
-`apps/web/vite.config.ts`), so the frontend never needs CORS configuration in
-development.
+`apps/web/vite.config.ts`), so it needs no CORS configuration. The Tauri host
+uses the server URL stored by its first-run screen instead.
 
 ## Running with Docker
 
@@ -166,5 +217,6 @@ production deployment shape — see `docs/deployment.md`.
 ## CI
 
 `.github/workflows/ci.yml` runs on every push/PR: backend lint + type-check +
-tests, frontend lint + type-check + unit tests, and a Docker image build
-validation. PRs should be green before merge.
+tests, frontend lint + type-check + unit tests, macOS and Ubuntu desktop checks,
+a macOS Tauri bundle, and a Docker image build validation. PRs should be green
+before merge.

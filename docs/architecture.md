@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12 and plan 2 T0
+> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D1
 > (probe enrichment, the unified custom media viewer, storyboard trickplay,
 > watch progress/resume, image viewer v2 with preview derivatives, the
 > server-side playback decision + HLS remux/transcode session foundation, and
@@ -13,9 +13,9 @@
 
 ## 1. System overview
 
-Cairndex is a single-owner, self-hosted web application. A FastAPI backend runs
+Cairndex is a single-owner, self-hosted application. A FastAPI backend runs
 on the server/NAS that can see the media library path; a React/Vite frontend runs
-in the browser. Content metadata is **per library**, not server-global: each
+in a browser or inside the Tauri 2 desktop host. Content metadata is **per library**, not server-global: each
 library is a directory with a `.cairndex/` package containing its portable
 manifest, content database, and derived-media cache. A separate server-local
 registry tracks which libraries are known and owns the runtime job queue.
@@ -38,6 +38,17 @@ registry tracks which libraries are known and owns the runtime job queue.
        │                                              │   cache/            │
        │                                              └────────────────────┘
 ```
+
+`apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
+development URL and production build. It owns first-run server configuration,
+native window/menu lifecycle, single-instance behavior, and window-state
+persistence; the SPA resolves its otherwise-relative API and media URLs against
+that stored server only when Tauri is present. Browser builds detect Tauri from
+`window.__TAURI_INTERNALS__` and lazy-load the desktop bootstrap/runtime, keeping
+Tauri IPC and store code out of the browser entry chunk. The backend permits the
+three packaged Tauri custom-protocol origins by default; `tauri dev` requires an
+explicit exact Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No
+source media or library metadata is stored in the shell.
 
 Normal Cairndex operations are metadata-only. The current app does not move,
 rename, delete, or rewrite source files. The only filesystem writes in the
@@ -92,6 +103,7 @@ src/
   api/        typed client over /api/v1 + TanStack Query hooks
   app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
+  desktop/    Tauri store/bootstrap, menu-event bridge, app-exit beacon guard
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```
@@ -103,7 +115,7 @@ Query; the global library registry and library-id-keyed auth queries remain.
 The library-keyed workspace then remounts to reset local UI state. This prevents
 the shared 30-second fresh cache from rendering the previous library under the
 new selection. UI state such as active surface, selection, toolbar search,
-layout, zoom, and pane widths lives in React/localStorage.
+layout, zoom, pane visibility, and pane widths lives in React/localStorage.
 
 Current browsing surfaces:
 
