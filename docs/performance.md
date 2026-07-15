@@ -74,6 +74,11 @@ number of candidate bundles. Applied in both `filters.compiler` (Smart
 Collections / toolbar filters) and `services.browse._apply_view` (collection
 browsing). Semantically identical to the previous `EXISTS` form.
 
+**Collection-count rollup:** sidebar collection counts use one recursive CTE to
+map every collection to its full descendant subtree, then count distinct bundle
+memberships per ancestor. This preserves zero-count collections and avoids
+double-counting a bundle assigned to multiple nested collections.
+
 ## Results
 
 Median ms. **Baseline** = original code, no indexes. **Final** = indexes +
@@ -91,9 +96,13 @@ semijoin. Measured on synthetic libraries (`--files-per-bundle 1-5`).
 | tag_filter                    |  5627.83 |  1.50 | ~3700×  |
 | collection_descendant_filter  |  5719.02 |  9.61 |   ~595× |
 | tag_descendant_filter         |  6064.60 | 20.86 |   ~290× |
-| collection_counts             |     1.13 |  0.37 |    ~3×  |
+| collection_counts†            |      n/a |  7.80 |     n/a |
 | tag_counts                    |     2.64 |  0.87 |    ~3×  |
 | bundle_files_read             |     0.94 |  0.15 |    ~6×  |
+
+† Remeasured after descendant rollup on 5,000 bundles / 15,004 files and 1,000
+collections. The prior 0.37 ms direct-membership query is not semantically
+comparable.
 
 At 100,000 bundles / ~300,000 files (5 iterations) the final code stays
 comfortably interactive:
@@ -108,18 +117,25 @@ comfortably interactive:
 | collection_descendant_filter  |             72.82 |
 | tag_filter                    |              6.34 |
 | tag_descendant_filter         |            132.82 |
-| collection_counts             |              2.94 |
+| collection_counts†            |            267.92 |
 | tag_counts                    |              4.88 |
 | bundle_detail_read            |              0.06 |
 | bundle_files_read             |              0.11 |
 
+† Remeasured after descendant rollup on 100,000 bundles / 300,212 files and
+1,000 collections.
+
 ## Remaining / future work
 
-- **`view_counts` (~275 ms) and browse (~120–165 ms) at 100k** are now the
-  slowest paths; both are dominated by evaluating the visible-file predicate
+- **`view_counts` (~275 ms), descendant-inclusive `collection_counts` (~268 ms),
+  and browse (~120–165 ms) at 100k** are now the slowest paths. View/browse are
+  dominated by evaluating the visible-file predicate
   (one indexed `asset_files` EXISTS per bundle) and, for browse, the
   `ORDER BY created_at` temp-B-tree sort (no `created_at` index). These are
-  acceptable at 100k; if a much larger library shows them dominating, options
-  are an `(created_at, id)` index for the sort and/or denormalizing a
-  "has visible file" flag onto `asset_bundles` to avoid the per-bundle EXISTS.
+  acceptable at 100k; collection counts are dominated by distinct membership
+  rollup across the recursive collection tree. If a much larger library shows
+  these paths dominating, options are an `(created_at, id)` index for the sort,
+  denormalizing a "has visible file" flag onto `asset_bundles` to avoid the
+  per-bundle EXISTS, or revisiting a closure table through a new ADR if recursive
+  collection rollup itself becomes too slow.
 - No external infrastructure was introduced; SQLite remains the store.

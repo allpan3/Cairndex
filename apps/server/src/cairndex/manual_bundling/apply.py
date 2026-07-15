@@ -245,7 +245,7 @@ def create_bundle_from_unbundled(
     role_by_id = _apply_overrides({p.asset_file_id: p.role for p in proposed}, role_overrides)
     row_by_id = {r.id: r for r in rows}
 
-    # Reuse the first (natural-order) file's provisional bundle as the target so
+    # Reuse the first proposed-order file's provisional bundle as the target so
     # its id/thumbnail identity survives, mirroring grouping-apply's merge.
     target = row_by_id[proposed[0].asset_file_id].bundle
     source_bundles: set[AssetBundle] = set()
@@ -265,9 +265,7 @@ def create_bundle_from_unbundled(
     target.confirmed_at = utcnow()
     members = [row_by_id[p.asset_file_id] for p in proposed]
     cover = next((m for m in members if m.role is FileRole.COVER), None)
-    primary = next((m for m in members if m.role is FileRole.PRIMARY_VIDEO), None)
     target.cover_file_id = cover.id if cover is not None else None
-    target.primary_file_id = primary.id if primary is not None else None
     session.flush()
 
     removed = reap_source_bundles(session, source_bundles)

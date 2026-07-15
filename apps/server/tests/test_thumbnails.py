@@ -136,8 +136,8 @@ def test_cover_fallback_prefers_selected_then_image_then_video(
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
 
 
-# Video-only bundles fall back to their primary playable file for cover thumbnails
-def test_cover_fallback_uses_primary_video_when_no_image(session: Session) -> None:
+# Video-only bundles use their first ordered video for cover thumbnails
+def test_cover_fallback_uses_first_video_when_no_image(session: Session) -> None:
     bundle = bundle_service.create_bundle(session, title="b")
     video = bundle_service.add_file(
         session,
@@ -146,7 +146,6 @@ def test_cover_fallback_uses_primary_video_when_no_image(session: Session) -> No
         role=FileRole.PRIMARY_VIDEO,
         media_kind=MediaKind.VIDEO,
     )
-    bundle_service.update_bundle(session, bundle.id, {"primary_file_id": video.id})
     session.commit()
 
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id

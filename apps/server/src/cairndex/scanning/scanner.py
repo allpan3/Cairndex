@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.paths import normalize_relative_path
@@ -65,6 +65,7 @@ class ScanSummary:
     created: int
     updated: int
     missing: int
+    missing_total: int
     repaired: int = 0
 
 
@@ -211,8 +212,6 @@ def _drop_ignored_scan_rows(session: Session, files: Iterable[AssetFile]) -> int
             continue
         if bundle.cover_file_id == row.id:
             bundle.cover_file_id = None
-        if bundle.primary_file_id == row.id:
-            bundle.primary_file_id = None
         session.delete(row)
         deleted += 1
     if deleted:
@@ -243,7 +242,13 @@ def scan_library(
     if not root_path.is_dir():
         missing = _mark_missing(existing.values(), keep=frozenset())
         session.commit()
-        return ScanSummary(0, 0, 0, missing)
+        return ScanSummary(
+            discovered=0,
+            created=0,
+            updated=0,
+            missing=missing,
+            missing_total=_missing_total(session),
+        )
 
     if on_phase is not None:
         on_phase("discovering")
@@ -325,7 +330,14 @@ def scan_library(
     if on_progress is not None:
         on_progress(processed, total)
 
-    return ScanSummary(processed, created, updated, missing, len(repairs))
+    return ScanSummary(
+        discovered=processed,
+        created=created,
+        updated=updated,
+        missing=missing,
+        missing_total=_missing_total(session),
+        repaired=len(repairs),
+    )
 
 
 def _mark_missing(files: Iterable[AssetFile], keep: frozenset[str] | set[str]) -> int:
@@ -336,3 +348,15 @@ def _mark_missing(files: Iterable[AssetFile], keep: frozenset[str] | set[str]) -
             f.availability = FileAvailability.MISSING
             count += 1
     return count
+
+
+# Count every persisted linked file that remains missing after reconciliation
+def _missing_total(session: Session) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(AssetFile)
+            .where(AssetFile.availability == FileAvailability.MISSING)
+        )
+        or 0
+    )

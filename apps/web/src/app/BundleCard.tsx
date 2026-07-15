@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 
 import type { BundleSummary } from '../api/client'
-import { thumbnailUrl } from '../api/client'
+import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -26,30 +26,46 @@ export function BundleCard({
   previewDisabled = false,
 }: BundleCardProps) {
   // Duration only makes sense for a video-backed card; an image bundle whose
-  // primary file happens to carry a stray "duration" in its metadata shouldn't
+  // current file happens to carry a stray "duration" in its metadata shouldn't
   // show a runtime badge next to a JPG type badge.
   const isVideo = item.media_kind === 'video'
   const previewSource = useMemo<HoverPreviewSource | null>(
     () =>
-      item.cover_video_file_id && item.cover_video_duration
+      item.resume_file_id && item.resume_media_kind === 'image'
         ? {
-            fileId: item.cover_video_file_id,
-            relativePath: item.cover_video_relative_path,
-            container: item.cover_video_container,
-            videoCodec: item.cover_video_codec,
-            audioCodec: item.cover_video_audio_codec,
-            duration: item.cover_video_duration,
-            startTime: item.cover_video_resume_position,
+            mediaKind: 'image',
+            fileId: item.resume_file_id,
+            imageUrl: fileThumbnailUrl(
+              item.id,
+              item.resume_file_id,
+              item.resume_file_updated_at ?? undefined,
+            ),
           }
-        : null,
+        : item.resume_file_id && item.resume_media_kind === 'video' && item.resume_duration
+          ? {
+              mediaKind: 'video',
+              fileId: item.resume_file_id,
+              mimeType: item.resume_mime_type,
+              relativePath: item.resume_relative_path,
+              container: item.resume_container,
+              videoCodec: item.resume_video_codec,
+              audioCodec: item.resume_audio_codec,
+              duration: item.resume_duration,
+              startTime: item.resume_position,
+            }
+          : null,
     [
-      item.cover_video_audio_codec,
-      item.cover_video_codec,
-      item.cover_video_container,
-      item.cover_video_duration,
-      item.cover_video_file_id,
-      item.cover_video_relative_path,
-      item.cover_video_resume_position,
+      item.id,
+      item.resume_audio_codec,
+      item.resume_container,
+      item.resume_duration,
+      item.resume_file_id,
+      item.resume_file_updated_at,
+      item.resume_media_kind,
+      item.resume_mime_type,
+      item.resume_position,
+      item.resume_relative_path,
+      item.resume_video_codec,
     ],
   )
   return (

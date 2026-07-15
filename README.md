@@ -28,7 +28,9 @@ keyboard map, speed, PiP, fullscreen, snapshot, MediaSession) with subtitle
 tracks, **seek-bar storyboard trickplay** and chapter ticks, and **watch
 progress / resume** — plus a **zoom/pan image viewer** with progressive
 preview tiers and server-side WebP derivatives that make HEIC/TIFF/BMP
-openable in the browser.
+openable in the browser. Bundle file sequence is the media playlist order, and
+one remembered bundle cursor keeps card hover and double-click open aligned
+without coupling either behavior to the selected cover artwork.
 
 Cairndex is now built around portable, Eagle-like **libraries** (ADR-0008):
 each library is a directory carrying its own `.cairndex/` metadata
@@ -46,7 +48,7 @@ model.
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail. Important follow-ups
-include richer edit-before-apply grouping review, File Browser write mode and
+include grouping bundle/container reclassification, File Browser write mode and
 desktop-client integration, cross-filesystem repair candidates, and token
 rotation/expiry policy. Job progress bars, large-library browse indexing,
 whole-library indexed text search (SQLite FTS5), media fallback/transcoding,

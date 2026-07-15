@@ -116,8 +116,6 @@ def update_bundle(
 
     if "cover_file_id" in changes:
         bundle.cover_file_id = _validate_member_file(session, bundle, changes["cover_file_id"])
-    if "primary_file_id" in changes:
-        bundle.primary_file_id = _validate_member_file(session, bundle, changes["primary_file_id"])
 
     bundle.updated_at = utcnow()
     session.flush()
@@ -283,18 +281,15 @@ def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
     provisional/``scan_suggestion`` one-file bundle (see ``_restage_file``) so it
     falls back into the **Unbundled** view rather than being dropped, mirroring
     what deleting its bundle does. ``AssetFile.id`` is preserved. If the file was
-    the source bundle's cover/primary, those references are cleared (DB SET NULL
+    the source bundle's cover, that reference is cleared (DB SET NULL
     once the FK moves away)."""
     asset_file = session.get(AssetFile, file_id)
     if asset_file is None or asset_file.bundle_id != bundle_id:
         raise NotFoundError(f"file {file_id!r} is not part of bundle {bundle_id!r}")
     source = get_bundle(session, bundle_id)
-    # Clear cover/primary pointers on the source bundle before the FK moves, so a
-    # stale reference to the departed file can't linger.
+    # Clear the cover pointer before the FK moves so it cannot linger
     if source.cover_file_id == file_id:
         source.cover_file_id = None
-    if source.primary_file_id == file_id:
-        source.primary_file_id = None
     session.flush()
     _restage_file(session, asset_file)
     session.flush()

@@ -24,6 +24,53 @@ grouped under `Unreleased` until the first tagged release.
   approves, and revokes devices. Health now advertises `api_features` including
   `trickplay`, `hls`, `progress`, and `pairing`.
 
+- **Reversible grouping destinations.** A re-scan addition still recommends its
+  existing confirmed bundle by default, but grouping review can switch that same
+  proposal in place between the existing target and a new bundle without losing
+  selection, file order, collection placement, or an edited new-bundle title.
+  New mode receives normal bundle roles and remains applicable if the old target
+  disappears; existing mode retains the current addition behavior. The
+  choice and target-title snapshot are additive persisted plan fields exposed by
+  a library-scoped destination endpoint. Bundle and collection rename fields now
+  match their rendered title width and grow live up to the review-dialog edge.
+  The destination switch is a compact circular-arrows icon beside the title with
+  an immediate state-specific tooltip; numeric confidence and manual badges are
+  removed, and wrapped metadata stays aligned to the title column. Existing
+  targets read **Add to 🎬 [bundle name]** with tighter drag-handle spacing, and
+  the destination icon no longer remains highlighted after activation. Relevant
+  existing collection branches now remain visible, letting a new-bundle
+  override inherit or change collection placement without reopening confirmed
+  bundles. The hidden top-level drop target no longer reserves blank space above
+  the suggestions. Bundle and collection rename editors now wrap through their
+  live sizing mirror and focus without scrolling. Destination switches stay
+  mounted but disabled during rename, and title buttons share the editor's line
+  height, preserving every bundle row and the modal's position on activation.
+
+- **Grouping-review drag-and-drop editing.** Files can be dragged to an exact
+  position within any bundle suggestion or moved into another suggestion;
+  bundles can be dragged into any suggested collection or back to the top level.
+  The open plan persists these edits through the new file-move and bundle-parent
+  routes, and apply preserves existing bundle identities while realizing an
+  explicit cross-bundle move. Untouched confirmed groupings retain their prior
+  conflict protection. New suggestions still default to video, then audio, then
+  image, then remaining files while retaining natural order within each group.
+  All edits are metadata-only; source files are never changed.
+
+- **One remembered media location per bundle.** A new additive
+  `bundle_cursors` table stores the current ordered image/video independently
+  from bundle metadata; `PUT /bundles/{bundle_id}/cursor` updates it without a
+  version bump. The viewer opens that file, retains per-video timestamps in the
+  existing progress table, and persists image positions as file-only cursors.
+
+- **Grouping suggestion inline rename.** Double-clicking a bundle or collection
+  title in grouping review now opens an inline field; Enter or blur saves and
+  Escape cancels, with Enter/F2 available from the focused title. Renames persist
+  on the open grouping plan through the library-scoped
+  `PATCH /grouping/plans/{plan_id}/proposals/{proposal_id}` route, and the edited
+  title is used by **Accept selected**. An addition remains read-only while it
+  targets an existing bundle, but becomes renameable when switched to create a
+  separate bundle. No source file is renamed or otherwise changed.
+
 - **Eagle-style thumbnail hover video preview (Plan 1 M12).** Video bundle
   covers and linked video file cards now wait for a ~500 ms mouse dwell before
   mounting a muted direct-play preview. Storyboard indexes prefetch after a
@@ -39,7 +86,8 @@ grouped under `Unreleased` until the first tagged release.
   range traffic stops. Non-direct MKV/codec combinations use the same sprite
   path; hover never calls playback-decision or HLS session routes. Touch/coarse
   pointers, drag-select, native DnD, context menus, missing/unprobed files, and
-  image/audio cards preserve the static card.
+  audio cards preserve the static card; an image bundle cursor overlays its
+  still image without starting media playback.
 
 - **Player interaction polish (Plan 1 M9).** Video-surface right-click toggles
   play/pause; seek step (2/5/10/30 seconds) and pitch preservation are persisted
@@ -62,6 +110,12 @@ grouped under `Unreleased` until the first tagged release.
   to a decodable frame immediately before EOF.
 
 ### Changed
+
+- **File order is now playback order.** Initial open, previous/next, and
+  end-of-video advance follow the Files in bundle sequence and skip file types
+  without a viewer stage. The primary-file API/inspector control and primary
+  playback/cover fallback are removed; the old database column remains unused
+  for compatibility, and legacy `primary_video` roles display simply as video.
 
 - **Short-clip storyboards.** The default
   `CAIRNDEX_STORYBOARD_MIN_DURATION` is now 10 seconds instead of 60 so hybrid
@@ -92,6 +146,52 @@ grouped under `Unreleased` until the first tagged release.
   state, and polls only while waiting for an approved device to collect its
   token instead of throughout every Settings session.
 
+- **Repeated grouping suggestions no longer reopen bundled files.** Manual
+  **Suggest grouping** and Update now share the same durable confirmation
+  boundary: confirmed bundles stay settled even when they do not belong to a
+  collection. Regenerating inside grouping review only proposes still-unbundled
+  files and new additions instead of switching to a broader categorization
+  pass.
+
+- **Empty grouping suggestions deselect after drag.** Moving the final file out
+  of a bundle suggestion now clears and disables its acceptance checkbox. Moving
+  the last file-backed bundle out of a suggested collection does the same for
+  that collection, including recursively empty nested collections.
+
+- **Flat-directory video artwork pairing.** Grouping heuristic v4 now matches
+  sidecars against a unique normalized full video stem before using the coarse
+  leading-name prefix. Long filenames that share an author/source prefix but
+  differ by subject therefore produce one bundle per video with its matching
+  image, while image-only folders remain split into individual items.
+
+- **Image artwork no longer disables bundle hover scrub.** Static cover artwork
+  and current media are resolved separately. A card with an image cover now
+  previews the bundle's remembered video from its resume position; an image
+  cursor appears as a still. Double-click uses the same cursor, so hover and
+  opening cannot disagree about which media is current.
+
+- **Missing files reconcile on bundle and directory access.** Bundle file-list
+  and playback-manifest reads re-check every linked member of that bundle, while
+  each File Browser directory read compares only the linked rows indexed to that
+  directory and persists vanished paths as missing. The latter reports how many
+  rows changed so the web client refreshes Bundle Browser and sidebar counts
+  only when needed. The Missing Files value remains a compact numeric count of
+  affected bundles, and the inspector's Files in bundle section reports its
+  missing-file count and highlights/badges each missing member. The viewer gives
+  missing state precedence over stale codec/container fallbacks. These bounded
+  checks do not guess which unlinked path replaces a missing row; Update/scan
+  remains responsible for high-confidence moved-file repair.
+
+- **Scan reports the linked missing-file total.** Update and standalone Scan now
+  show a completion message with the number of linked files that remain missing
+  after reconciliation. This is the full persisted total, not only files newly
+  marked missing during the latest run.
+
+- **Collection counts include nested bundles.** Sidebar and collection-card
+  counts now roll up distinct bundles from the collection’s entire descendant
+  subtree. A bundle assigned to more than one nested collection is counted once
+  for each ancestor, while empty collections still report zero.
+
 - **Storyboard-to-video frame alignment.** Resting after a sprite skim now
   uses format-v2 sprites because ffmpeg's prior default `fps` timing could put a
   neighboring source frame in a tile whose VTT cue named the interval boundary.
@@ -104,9 +204,13 @@ grouped under `Unreleased` until the first tagged release.
   the cover or storyboard visible until both the seek completes and the browser
   reports that the paused target frame has been presented. Browsers without the
   callback API use seek completion as the best frame-ready signal; an exposed
-  callback that omits its post-seek notification has a bounded fallback. Static
-  video covers, storyboard
-  crops, and live video now share one contained, black-letterboxed viewport, so
+  callback that omits its post-seek notification has a bounded fallback. Stale
+  and late `seeked` events are ignored until `currentTime` reaches the requested
+  target. Revealing the paused frame and resuming playback now occupy separate
+  paint/task turns, while dwell and rest callbacks are identity-checked so stale
+  callbacks or repeated activation cannot reset an already playing preview.
+  Static video covers, storyboard crops, and live video now share one contained,
+  black-letterboxed viewport, so
   portrait media is pillarboxed and transitions no longer stretch or shake the
   card. The card storyboard explicitly clips the 5×5 sprite sheet to the chosen
   cue before letterboxing, preventing adjacent rows from bleeding into the
@@ -628,15 +732,12 @@ duration_s}`, restart explicitly writes position zero, completion requires a
 - **Fold arrows are a slim disclosure triangle** (`IconChevron`) — narrow on
   purpose (width < height) so the caret barely widens a row, sized larger on the
   Collections / Smart Collections section headings.
-- **"Review grouping" is now "Suggest grouping" and is categorization-driven**
-  (ADR-0011). The manual action re-proposes grouping for **every bundle that
-  isn't filed into a collection** — including a previously confirmed one whose
-  collections were later removed — plus still-unbundled files; bundles already in
-  a collection are left untouched. Routine **Update**/scan keeps its narrower
-  scope (only files not yet in a confirmed grouping). The internal
-  provisional/confirmed state is unchanged (it still protects confirmed bundles
-  at apply time and drives re-scan additions) but the user-facing **"Needs
-  review" badge is removed** — there's no "review" state to track.
+- **"Review grouping" is now "Suggest grouping"** (ADR-0011). Manual and
+  Update-triggered suggestions share the confirmed-grouping boundary: they
+  propose still-unbundled files and new additions without reopening confirmed
+  bundles based on collection membership. The internal provisional/confirmed
+  state is unchanged, but the user-facing **"Needs review" badge is removed** —
+  there is no review state to track.
 - **Collections now order by manual `sort_order`** (name as the stable tie-break)
   in both the sidebar and the main browser, instead of always alphabetically.
 - **Folder and bundle card sizes are decoupled** on the shared zoom slider:

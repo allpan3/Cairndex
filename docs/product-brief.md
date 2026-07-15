@@ -115,7 +115,7 @@ Bundle-level metadata includes:
 - shared note;
 - shared rating;
 - selected cover file;
-- selected primary playable file;
+- one remembered current media file, independent of the cover;
 - grouping review state (`provisional` or `confirmed`);
 - creation, import, and update timestamps;
 - aggregate media properties where useful;
@@ -145,11 +145,11 @@ Required concepts:
 - extracted technical metadata;
 - import/source metadata.
 
-Suggested roles: `primary_video`, `video_part`, `alternate_version`, `cover`, `image`, `screenshot`, `album_image`, `subtitle`, `attachment`, `generated_derivative`, and `other`.
+Suggested roles: `video_part`, `alternate_version`, `cover`, `image`, `screenshot`, `album_image`, `subtitle`, `attachment`, `generated_derivative`, and `other`. Existing `primary_video` rows are legacy grouping metadata only and display as `video`; they do not override sequence order.
 
 One physical path should normally have one owning bundle. Do not add cross-bundle aliases until a real use case requires them.
 
-When a file is moved and repaired, update the existing `AssetFile.relative_path` rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/primary references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
+When a file is moved and repaired, update the existing `AssetFile.relative_path` rather than creating a replacement row. Keeping the same `AssetFile.id` preserves bundle membership, cover/cursor references, subtitles, collections, tags, notes, ratings, and generated cache identity where applicable.
 
 ### Covers and thumbnails
 
@@ -157,9 +157,8 @@ Cover/thumbnail source precedence:
 
 1. user-selected cover file, when it is thumbnailable;
 2. first image in the bundle;
-3. selected primary video;
-4. first video in the bundle;
-5. generated placeholder / no thumbnail state.
+3. first video in the bundle;
+4. generated placeholder / no thumbnail state.
 
 Original cover files are Asset Files. Generated thumbnails, preview frames, storyboards, converted subtitles, and future transcodes live in application cache storage under `.cairndex/cache/` and must be reproducible. Scans must ignore `.cairndex/cache/`.
 
@@ -185,7 +184,7 @@ Required behavior:
 - parent-child nesting;
 - many-to-many membership between bundles and collections;
 - zero-collection bundles appear under `Uncategorized` or another clearly named system view;
-- collection counts;
+- collection counts that roll up distinct bundles across the full descendant subtree;
 - `Show subcollection contents` / `Include descendants` toggle;
 - drag-and-drop assignment in a later UI milestone;
 - no file movement when collection membership changes.
@@ -286,7 +285,7 @@ Repair must:
 
 - update the existing `AssetFile.relative_path` rather than creating a new file row;
 - keep the `AssetFile.id` stable;
-- preserve the owning bundle, collections, tags, notes, rating, cover/primary selection, and subtitle links;
+- preserve the owning bundle, collections, tags, notes, rating, cover/cursor selection, and subtitle links;
 - run automatically as part of scan/rescan/reconciliation for high-confidence matches;
 - avoid destructive changes and avoid merging duplicates.
 
@@ -314,6 +313,14 @@ Do not claim universal format support merely because a file can be served. Brows
 
 When opening/streaming/thumbnailing a file, re-check that the resolved path still exists. If it no longer exists, mark the file stale/missing and rely on the scanner to repair it on the next reconciliation when possible.
 
+Bundle open/playback order is the Files in bundle order (`AssetFile.sequence`,
+stable id tie-break). One bundle cursor remembers the current supported media
+file independently of the cover; video time remains per-file watch progress.
+Opening the bundle starts at that cursor, end-of-video advances through ordered
+supported media, and card hover represents the same cursor. An image cursor is
+a still preview; a video cursor uses storyboard/direct preview from its saved
+time. See ADR-0016.
+
 ### Fallback playback
 
 After direct playback is stable, add an FFmpeg-backed fallback:
@@ -330,7 +337,7 @@ Importing from an external Eagle library is out of scope. With the per-library a
 
 Bundles are formed by scanning the library and grouping related files. Grouping heuristics may consider same directory, matching or similar basenames, normalized subject prefixes, numeric part suffixes, language subtitle suffixes, names such as `cover`/`poster`/`thumbnail`/`thumb`, and manual mapping.
 
-Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects cover/primary, links external subtitles, and creates the logical collections a CONTAINER suggests, never touching the filesystem.
+Grouping is a **suggestion, not an automatic decision** (ADR-0009, Option A+). A scan stays discovery/repair-first and stages newly found files in *provisional* bundles; a read-only suggester turns the library into a durable **grouping plan** of BUNDLE / CONTAINER proposals (with roles, confidence, and a reason); the user reviews it and **applies** it. Apply is the only step that creates *confirmed* groupings — it merges/splits provisional bundles (preserving `AssetFile.id`), assigns roles, selects a cover, links external subtitles, and creates or reuses the logical collections a CONTAINER suggests, never touching the filesystem. Relevant existing collection branches remain visible in review so a new bundle can inherit or change its proposed collection placement even though confirmed bundles themselves stay outside regrouping.
 
 A scan stages each newly discovered file as a *provisional* one-file bundle.
 Until the owner confirms it, that file is treated as **unbundled**
@@ -365,13 +372,39 @@ Current workflow details:
 
 - scan jobs persist an open grouping plan without applying it;
 - the primary **Update** flow runs scan/grouping-plan generation, then metadata probe, refreshes affected queries, and opens grouping review when suggestions exist;
-- the grouping review UI supports checkbox selection, parent/child cascading, Select all / Deselect all, and **Accept selected**;
+- manual **Suggest grouping** and Update use the same candidate boundary:
+  confirmed bundles stay settled regardless of collection membership, while
+  still-unbundled files and new additions remain eligible;
+- the grouping review UI supports checkbox selection, parent/child cascading,
+  Select all / Deselect all, double-click rename for bundle and collection
+  suggestions, file drag-and-drop within or across bundle suggestions, bundle
+  drag-and-drop into any suggested collection or back to the top level, and
+  **Accept selected**;
+- a re-scan addition recommends its existing confirmed bundle by default, with
+  a compact, tooltip-described destination icon converting that same proposal
+  in place to a new bundle; the owner can switch back without losing selection,
+  file order, collection parent, or an edited new-bundle title;
+- suggested file order is video first, then audio, then image, then every other
+  file, preserving natural path order within each group; review can override the
+  sequence, which becomes the bundle playlist order on apply;
+- a drag that empties a bundle suggestion auto-deselects it; a collection with
+  no file-backed descendants is likewise auto-deselected and cannot be accepted
+  until it contains an item again;
+- in a flat multi-video directory, sidecars first match a unique normalized full
+  video stem (including suffix variants such as subtitles/posters), then fall
+  back to the leading subject prefix; this separates long filenames with a
+  shared author/source prefix without collapsing image-only folders;
+- explicit cross-bundle review edits revise provisional suggestions while
+  preserving stable file identities and cleaning up an emptied source bundle;
 - applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
 - confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered file in its directory is suggested as an addition, not auto-applied;
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
 - fast-add and manual creation confirm immediately because the user already chose the grouping.
 
-Richer edit-before-apply grouping UI for merge/split/reclassify/rename remains a follow-up.
+Bundle/container reclassification remains a follow-up. An addition proposal is
+not renameable while it targets its existing confirmed bundle. Switching it to
+new-bundle mode enables the same title editor as other new bundles and applies
+without changing the suggested existing bundle.
 
 ## UI and interaction direction
 
@@ -403,7 +436,7 @@ Plan for directory list/tree navigation scoped to the active library root, file 
 
 ### Bundle cards and inspector
 
-A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, primary duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
+A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, current-media duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
 The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating, aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
 
@@ -413,11 +446,11 @@ The tag selector should combine the useful Eagle group picker with the new hiera
 
 ### Bundle Browser
 
-Inside a collection, show breadcrumb/title, direct subcollection selector/count, `Show subcollection contents` toggle, normal filters and views, and collection counts in the sidebar.
+Inside a collection, show breadcrumb/title, direct subcollection selector/count, `Show subcollection contents` toggle, normal filters and views, and descendant-inclusive collection counts in the sidebar.
 
 ### File Browser
 
-Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists.
+Inside File Browser, show library breadcrumbs, directories first, all non-hidden files/directories, support/openable state, linked-to-bundle state when known, missing/stale indicators when a previously linked path is gone, and read-only affordances until explicit write mode exists. Entering a directory may reconcile only the linked direct children expected there; it must not trigger a whole-library scan or guess moved-file identity from an unlinked path.
 
 File Browser is not a replacement for Bundle Browser. It is a filesystem browser and linking/diagnostic surface. Bundle Browser remains the primary organization and browsing surface.
 

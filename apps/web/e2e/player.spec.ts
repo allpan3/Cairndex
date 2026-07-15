@@ -21,13 +21,16 @@ function summary(id: string, title: string) {
     has_cover: true,
     openable: true,
     cover_key: null,
-    cover_video_file_id: 'f0',
-    cover_video_relative_path: 'movie.mp4',
-    cover_video_container: 'mov,mp4,m4a,3gp,3g2,mj2',
-    cover_video_codec: 'h264',
-    cover_video_audio_codec: 'aac',
-    cover_video_duration: 3,
-    cover_video_resume_position: null,
+    resume_file_id: 'f0',
+    resume_file_updated_at: '2026-06-25T00:00:00Z',
+    resume_media_kind: 'video',
+    resume_relative_path: 'movie.mp4',
+    resume_mime_type: 'video/mp4',
+    resume_container: 'mov,mp4,m4a,3gp,3g2,mj2',
+    resume_video_codec: 'h264',
+    resume_audio_codec: 'aac',
+    resume_duration: 3,
+    resume_position: null,
     media_kind: 'video',
     width: 1920,
     height: 1080,
@@ -477,6 +480,10 @@ interface MockApiOptions {
   summaryPatch?: Record<string, unknown>
   summaryCount?: number
   hoverStreamFailure?: boolean
+  missingCurrent?: boolean
+  onViewCounts?: (missing: number) => void
+  resumeFileId?: string
+  onCursor?: (fileId: string) => void
 }
 
 /** Mock enough of the Cairndex API for one bundle with playable and fallback media. */
@@ -499,6 +506,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     f2: null,
   }
   let coverTime: number | null = null
+  let missingReconciled = false
+  let currentCursor = options.resumeFileId ?? 'f0'
   await page.route(/\/api\/v1\/libraries$/, (r) =>
     r.fulfill({
       json: [
@@ -519,18 +528,20 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) =>
-    r.fulfill({
-      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0, unbundled: 0 },
-    }),
-  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) => {
+    const missing = missingReconciled ? 1 : 0
+    options.onViewCounts?.(missing)
+    return r.fulfill({
+      json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing, unbundled: 0 },
+    })
+  })
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({
       json: {
         items: Array.from({ length: options.summaryCount ?? 1 }, (_, index) => ({
           ...summary(index === 0 ? 'b0' : `b${index}`, `Movie ${index}`),
-          cover_video_file_id: index === 0 ? 'f0' : `f${index}`,
-          cover_video_resume_position:
+          resume_file_id: index === 0 ? 'f0' : `f${index}`,
+          resume_position:
             index === 0 && options.progress && !options.progress.completed
               ? options.progress.position_s
               : null,
@@ -749,21 +760,22 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
     })
   }
 
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) =>
-    r.fulfill({
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/files$/, (r) => {
+    if (options.missingCurrent) missingReconciled = true
+    return r.fulfill({
       json: [
         {
           id: 'f0',
           bundle_id: 'b0',
-          relative_path: 'movie.mp4',
-          original_filename: 'movie.mp4',
-          display_title: 'movie.mp4',
+          relative_path: options.missingCurrent ? 'movie.avi' : 'movie.mp4',
+          original_filename: options.missingCurrent ? 'movie.avi' : 'movie.mp4',
+          display_title: options.missingCurrent ? 'movie.avi' : 'movie.mp4',
           role: 'primary_video',
           media_kind: 'video',
-          mime_type: null,
+          mime_type: options.missingCurrent ? 'video/x-msvideo' : null,
           sequence: 0,
           size_bytes: 0,
-          availability: 'available',
+          availability: options.missingCurrent ? 'missing' : 'available',
           quick_fingerprint: 'video-fingerprint',
           cover_time: coverTime,
           resume_position:
@@ -853,23 +865,29 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             ]
           : []),
       ],
-    }),
-  )
+    })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/collections$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', collection_ids: [] } }),
   )
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/tags$/, (r) =>
     r.fulfill({ json: { bundle_id: 'b0', tag_ids: [] } }),
   )
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/cursor$/, async (r) => {
+    const body = JSON.parse(r.request().postData() ?? '{}') as { file_id: string }
+    currentCursor = body.file_id
+    options.onCursor?.(currentCursor)
+    await r.fulfill({ json: { file_id: currentCursor } })
+  })
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0$/, (r) =>
     r.fulfill({
       json: {
         id: 'b0',
         title: 'Movie 0',
-        note: null,
+        notes: [],
         rating: 0,
         cover_file_id: null,
-        primary_file_id: 'f0',
+        resume_file_id: currentCursor,
         extra_metadata: null,
         grouping_state: 'confirmed',
         grouping_source: 'manual',
@@ -882,17 +900,18 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
       },
     }),
   )
-  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) =>
-    r.fulfill({
+  await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/b0\/playback$/, (r) => {
+    if (options.missingCurrent) missingReconciled = true
+    return r.fulfill({
       json: {
         bundle_id: 'b0',
         videos: [
           {
             file_id: 'f0',
-            display_title: 'movie.mp4',
-            playable: true,
-            reason: '',
-            mime_type: null,
+            display_title: options.missingCurrent ? 'movie.avi' : 'movie.mp4',
+            playable: !options.missingCurrent,
+            reason: options.missingCurrent ? "AVI container isn't playable in browsers" : '',
+            mime_type: options.missingCurrent ? 'video/x-msvideo' : null,
             stream_url: '/api/v1/libraries/lib1/files/f0/stream',
             width: 1920,
             height: 1080,
@@ -949,8 +968,8 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
             : []),
         ],
       },
-    }),
-  )
+    })
+  })
 }
 
 /** Hover the custom seek bar at a fraction of its width. */
@@ -1042,24 +1061,26 @@ async function armHoverFrameComparison(page: Page) {
 
     const observer = new MutationObserver(() => {
       if (sprite.isConnected) return
-      const videoCanvas = document.createElement('canvas')
-      videoCanvas.width = reference.width
-      videoCanvas.height = reference.height
-      const videoContext = videoCanvas.getContext('2d')
-      if (!videoContext) return
-      videoContext.drawImage(video, 0, 0, reference.width, reference.height)
-      const videoPixels = videoContext.getImageData(0, 0, reference.width, reference.height).data
-      let difference = 0
-      for (let index = 0; index < reference.pixels.length; index += 4) {
-        difference += Math.abs(reference.pixels[index]! - videoPixels[index]!)
-        difference += Math.abs(reference.pixels[index + 1]! - videoPixels[index + 1]!)
-        difference += Math.abs(reference.pixels[index + 2]! - videoPixels[index + 2]!)
-      }
-      state.__hoverPreviewFrameMatch = {
-        difference: difference / (reference.width * reference.height * 3),
-        time: video.currentTime,
-      }
       observer.disconnect()
+      window.setTimeout(() => {
+        const videoCanvas = document.createElement('canvas')
+        videoCanvas.width = reference.width
+        videoCanvas.height = reference.height
+        const videoContext = videoCanvas.getContext('2d')
+        if (!videoContext) return
+        videoContext.drawImage(video, 0, 0, reference.width, reference.height)
+        const videoPixels = videoContext.getImageData(0, 0, reference.width, reference.height).data
+        let difference = 0
+        for (let index = 0; index < reference.pixels.length; index += 4) {
+          difference += Math.abs(reference.pixels[index]! - videoPixels[index]!)
+          difference += Math.abs(reference.pixels[index + 1]! - videoPixels[index + 1]!)
+          difference += Math.abs(reference.pixels[index + 2]! - videoPixels[index + 2]!)
+        }
+        state.__hoverPreviewFrameMatch = {
+          difference: difference / (reference.width * reference.height * 3),
+          time: video.currentTime,
+        }
+      }, 0)
     })
     observer.observe(container, { childList: true })
   })
@@ -1371,10 +1392,10 @@ test('skims an MKV cover through storyboards without stream or session requests'
   page.on('request', (request) => requests.push(request.url()))
   await mockApi(page, {
     summaryPatch: {
-      cover_video_relative_path: 'movie.mkv',
-      cover_video_container: 'matroska,webm',
-      cover_video_codec: 'h264',
-      cover_video_audio_codec: 'aac',
+      resume_relative_path: 'movie.mkv',
+      resume_container: 'matroska,webm',
+      resume_video_codec: 'h264',
+      resume_audio_codec: 'aac',
     },
   })
   await page.goto('/')
@@ -1501,6 +1522,32 @@ test('opens the unified viewer and drives custom video controls', async ({ page 
   await expect(page.locator('.mv-controls')).toHaveCSS('opacity', '1')
 })
 
+test('uses the resumed video for card preview even when artwork is an image', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page, { summaryPatch: { cover_key: 'img1' } })
+  await page.goto('/')
+
+  const thumb = page.locator('[data-bundle-id="b0"] .card__thumb')
+  await expect(thumb).toHaveCSS('background-image', /bundles\/b0\/thumbnail/)
+  await expect(thumb).toHaveAttribute('data-hover-preview-mode', 'direct')
+})
+
+test('opens and remembers the bundle cursor in ordered file navigation', async ({ page }) => {
+  await mockMedia(page)
+  const cursors: string[] = []
+  await mockApi(page, { resumeFileId: 'img1', onCursor: (fileId) => cursors.push(fileId) })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  await expect(page.getByTestId('image-stage')).toBeVisible()
+  await expect(page.locator('.mv-subtitle')).toContainText('poster.png · 2 / 3')
+  await expect.poll(() => cursors.at(-1)).toBe('img1')
+
+  await page.getByRole('button', { name: /next file/i }).click()
+  await expect(page.locator('.mv-subtitle')).toContainText('movie.mkv · 3 / 3')
+  await expect.poll(() => cursors.at(-1)).toBe('f1')
+})
+
 test('polishes context play, off-track scrub, seek step, and current-frame cover', async ({
   page,
 }) => {
@@ -1618,6 +1665,34 @@ test('navigates files without the inline filmstrip and shows the fallback card',
 
   await page.keyboard.press('ArrowRight')
   await expect(page.locator('.media-fallback')).toContainText("isn't playable")
+})
+
+test('shows a moved unsupported video as missing and refreshes the sidebar count', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  const missingCounts: number[] = []
+  let decisions = 0
+  await mockApi(page, {
+    missingCurrent: true,
+    onViewCounts: (missing) => missingCounts.push(missing),
+    onDecision: () => {
+      decisions += 1
+    },
+  })
+  await page.goto('/')
+
+  const missingView = page.getByRole('button', { name: /Missing Files/ })
+  await expect(missingView.locator('.nav-item__count')).toHaveText('0')
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+
+  const fallback = page.locator('.media-fallback')
+  await expect(fallback).toContainText('Missing file.')
+  await expect(fallback).toContainText('no longer available at its linked path')
+  await expect(fallback).not.toContainText("AVI container isn't playable")
+  await expect(missingView.locator('.nav-item__count')).toHaveText('1')
+  expect(missingCounts).toEqual(expect.arrayContaining([0, 1]))
+  expect(decisions).toBe(0)
 })
 
 test('zooms and pans a non-native image through preview derivatives', async ({ page }) => {
@@ -1867,7 +1942,10 @@ test('shows a storyboard generated by the real backend job @fullstack', async ({
           () =>
             (
               window as unknown as {
-                __hoverPreviewFrameMatch: { difference: number; time: number } | null
+                __hoverPreviewFrameMatch: {
+                  difference: number
+                  time: number
+                } | null
               }
             ).__hoverPreviewFrameMatch,
         ),

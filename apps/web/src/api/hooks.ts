@@ -1,5 +1,6 @@
 import {
   type InfiniteData,
+  type QueryClient,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -12,6 +13,7 @@ import {
   type BrowseParams,
   type BundleBrowsePage,
   type BundlePatch,
+  type BundleRead,
   type BundleSummary,
   type CleanupSort,
   type CollectionCreate,
@@ -22,6 +24,8 @@ import {
   type FileRead,
   type FileSelection,
   type FilterExpression,
+  type GroupingPlan,
+  type GroupingProposal,
   type JobRead,
   type LibraryCreate,
   type LibraryRegister,
@@ -80,6 +84,10 @@ import {
   registerLibrary,
   removeFile,
   revokeDevice,
+  renameGroupingProposal,
+  setGroupingProposalDestination,
+  moveGroupingProposalFile,
+  reparentGroupingProposal,
   renameCollection,
   updateCollection,
   reorderCollections,
@@ -95,6 +103,7 @@ import {
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
   updateBundle,
+  updateBundleCursor,
   updateFile,
   updateSmartCollection,
 } from './client'
@@ -347,8 +356,16 @@ function notifyGroupingPlan(job: JobRead, onGroupingPlan?: (planId: string) => v
   }
 }
 
+// Read the post-reconciliation linked-missing total from a completed scan
+function scanMissingTotal(job: JobRead): number {
+  const result = job.result as Record<string, unknown> | null
+  const count = Number(result?.missing_total ?? 0)
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0
+}
+
 interface MaintenanceOptions {
   onGroupingPlan?: (planId: string) => void
+  onScanComplete?: (missingTotal: number) => void
   // Receives each polled job snapshot (and null when the run settles) so the
   // sidebar can render a live progress bar with phase/message.
   onProgress?: JobProgressFn
@@ -360,6 +377,7 @@ export function useScan(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      options.onScanComplete?.(scanMissingTotal(scanJob))
       return scanJob
     },
     onSuccess: (job) => {
@@ -376,6 +394,7 @@ export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
+      options.onScanComplete?.(scanMissingTotal(scanJob))
       await waitForJob(await enqueueProbe(), options.onProgress)
       return scanJob
     },
@@ -428,6 +447,24 @@ export function useStoryboards(options: { onProgress?: JobProgressFn } = {}) {
 }
 
 // --- Grouping plans (ADR-0009) -----------------------------------------------
+
+/** Replace edited grouping proposals without refetching the whole plan. */
+function updateGroupingProposals(
+  qc: QueryClient,
+  planId: string | null,
+  updated: GroupingProposal[],
+) {
+  const byId = new Map(updated.map((proposal) => [proposal.id, proposal]))
+  qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
+    current
+      ? {
+          ...current,
+          proposals: current.proposals.map((proposal) => byId.get(proposal.id) ?? proposal),
+        }
+      : current,
+  )
+}
+
 export function useGroupingPlans(enabled = true) {
   return useQuery({
     queryKey: ['grouping-plans'],
@@ -449,6 +486,92 @@ export function useGenerateGroupingPlan() {
   return useMutation({
     mutationFn: () => generateGroupingPlan(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['grouping-plans'] }),
+  })
+}
+
+/** Persist an inline rename and update the open plan in-place. */
+export function useRenameGroupingProposal(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proposalId, title }: { proposalId: string; title: string }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return renameGroupingProposal(planId, proposalId, title)
+    },
+    onSuccess: (updated) =>
+      qc.setQueryData<GroupingPlan>(['grouping-plan', planId], (current) =>
+        current
+          ? {
+              ...current,
+              proposals: current.proposals.map((proposal) =>
+                proposal.id === updated.id ? updated : proposal,
+              ),
+            }
+          : current,
+      ),
+  })
+}
+
+/** Persist a reversible existing-versus-new bundle destination. */
+export function useSetGroupingProposalDestination(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      createNewBundle,
+    }: {
+      proposalId: string
+      createNewBundle: boolean
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return setGroupingProposalDestination(planId, proposalId, createNewBundle)
+    },
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
+  })
+}
+
+/** Move one reviewed file and update every affected proposal in-place. */
+export function useMoveGroupingProposalFile(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      sourceProposalId,
+      assetFileId,
+      targetProposalId,
+      targetIndex,
+    }: {
+      sourceProposalId: string
+      assetFileId: string
+      targetProposalId: string
+      targetIndex: number
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return moveGroupingProposalFile(
+        planId,
+        sourceProposalId,
+        assetFileId,
+        targetProposalId,
+        targetIndex,
+      )
+    },
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, updated),
+  })
+}
+
+/** Reparent one reviewed bundle and update the open plan in-place. */
+export function useReparentGroupingProposal(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      parentProposalId,
+    }: {
+      proposalId: string
+      parentProposalId: string | null
+    }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return reparentGroupingProposal(planId, proposalId, parentProposalId)
+    },
+    onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
   })
 }
 
@@ -725,6 +848,25 @@ export function useUpdateBundle(id: string, version?: number) {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle', id] })
       qc.invalidateQueries({ queryKey: ['browse'] })
+    },
+  })
+}
+
+// Persist the viewer's selected file without treating navigation as metadata editing
+export function useBundleCursor(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    scope: { id: `bundle-cursor-${id}` },
+    mutationFn: (fileId: string) => updateBundleCursor(id, fileId),
+    onMutate: (fileId) => {
+      qc.setQueryData<BundleRead>(['bundle', id], (previous) =>
+        previous ? { ...previous, resume_file_id: fileId } : previous,
+      )
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['bundle', id] })
+      qc.invalidateQueries({ queryKey: ['browse'] })
+      qc.invalidateQueries({ queryKey: ['continue-watching'] })
     },
   })
 }

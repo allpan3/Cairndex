@@ -28,13 +28,14 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    delete,
     event,
     update,
 )
 from sqlalchemy import (
     inspect as sa_inspect,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.orm import Session as OrmSession
 
 from cairndex.domain.enums import (
@@ -130,14 +131,15 @@ class AssetBundle(Base):
     # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Selected cover/primary files live in this bundle. The FKs form a cycle
-    # with asset_files.bundle_id, so they are created via ALTER and updated
-    # after the file rows exist (post_update).
+    # The selected cover lives in this bundle. The FK forms a cycle with
+    # asset_files.bundle_id, so it is created via ALTER and updated after the
+    # file rows exist (post_update).
     cover_file_id: Mapped[str | None] = mapped_column(
         String(26),
         ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
     )
+    # Legacy compatibility only; ordered playback no longer reads or writes it
     primary_file_id: Mapped[str | None] = mapped_column(
         String(26),
         ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True),
@@ -190,9 +192,6 @@ class AssetBundle(Base):
     cover_file: Mapped[AssetFile | None] = relationship(
         foreign_keys=[cover_file_id], post_update=True
     )
-    primary_file: Mapped[AssetFile | None] = relationship(
-        foreign_keys=[primary_file_id], post_update=True
-    )
     tags: Mapped[list[Tag]] = relationship(secondary=asset_bundle_tags)
     collections: Mapped[list[Collection]] = relationship(secondary=asset_bundle_collections)
 
@@ -214,6 +213,8 @@ class AssetFile(Base):
     # Normalized path relative to the library root (ADR-0008). The library DB is
     # itself the storage scope, so there is no storage-root reference anymore.
     relative_path: Mapped[str] = mapped_column(Text)
+    # Indexed parent directory for bounded File Browser reconciliation
+    directory_path: Mapped[str] = mapped_column(Text, default="", index=True)
     original_filename: Mapped[str] = mapped_column(String(1024))
     display_title: Mapped[str] = mapped_column(String(1024))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -256,6 +257,12 @@ class AssetFile(Base):
 
     bundle: Mapped[AssetBundle] = relationship(back_populates="files", foreign_keys=[bundle_id])
 
+    # Keep the indexed directory key synchronized with every path create/repair
+    @validates("relative_path")
+    def _sync_directory_path(self, _key: str, value: str) -> str:
+        self.directory_path = value.rpartition("/")[0]
+        return value
+
     __table_args__ = (
         # One physical file (by library-relative path) is linked at most once
         # (AGENTS.md §4.3; ADR-0008 — the library DB is the storage scope).
@@ -287,7 +294,25 @@ class PlaybackProgress(Base):
     )
 
 
-# Sync denormalized progress bundle ids from the single AssetFile reparent hook
+# One active ordered-media location per bundle, independent of metadata versioning
+class BundleCursor(Base):
+    __tablename__ = "bundle_cursors"
+
+    bundle_id: Mapped[str] = mapped_column(
+        String(26), ForeignKey("asset_bundles.id", ondelete="CASCADE"), primary_key=True
+    )
+    file_id: Mapped[str] = mapped_column(
+        String(26),
+        ForeignKey("asset_files.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+
+    file: Mapped[AssetFile] = relationship()
+
+
+# Sync progress ownership and clear a source bundle's cursor after file reparenting
 @event.listens_for(OrmSession, "before_flush")
 def _sync_playback_progress_bundle_id(
     session: OrmSession, _flush_context: object, _instances: object
@@ -302,6 +327,12 @@ def _sync_playback_progress_bundle_id(
             update(PlaybackProgress)
             .where(PlaybackProgress.file_id == obj.id)
             .values(bundle_id=obj.bundle_id)
+        )
+        session.execute(
+            delete(BundleCursor).where(
+                BundleCursor.file_id == obj.id,
+                BundleCursor.bundle_id != obj.bundle_id,
+            )
         )
 
 
@@ -497,8 +528,13 @@ class GroupingProposal(Base):
         String(26), ForeignKey("grouping_proposals.id", ondelete="SET NULL"), nullable=True
     )
     # Set when this proposal adds its files to an existing confirmed bundle
-    # (ADR-0009 phase 5). A plain id (not an FK) — a snapshot resolved at apply.
+    # by default (ADR-0009 phase 5). A plain id resolved at apply.
     target_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    target_bundle_title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    create_new_bundle: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Preserve a proposal's original bundle identity through an explicit edit
+    base_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    owner_edited: Mapped[bool] = mapped_column(default=False, server_default="0")
     kind: Mapped[ProposalKind] = mapped_column(Enum(ProposalKind, native_enum=False, length=16))
     title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     directory: Mapped[str] = mapped_column(Text, default="")

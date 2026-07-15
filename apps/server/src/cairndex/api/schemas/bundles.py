@@ -27,7 +27,6 @@ class BundleUpdate(BaseModel):
     notes: list[str] | None = None
     rating: int | None = Field(default=None, ge=0, le=5)
     cover_file_id: str | None = None
-    primary_file_id: str | None = None
 
 
 class BundleRead(BaseModel):
@@ -40,7 +39,8 @@ class BundleRead(BaseModel):
     notes: list[str] = Field(default_factory=list)
     rating: int | None
     cover_file_id: str | None
-    primary_file_id: str | None
+    # Current ordered-media location; falls back to legacy progress/first openable file
+    resume_file_id: str | None = None
     # Grouping review state (ADR-0009): provisional bundles are scan-staged and
     # await user confirmation; confirmed bundles are durable user decisions.
     grouping_state: GroupingState
@@ -57,6 +57,16 @@ class BundleRead(BaseModel):
         # The ORM column is NULL for rows created before ``notes`` existed;
         # coerce so validation against ``list[str]`` passes.
         return [] if value is None else value
+
+
+# Request to move a bundle's current ordered-media location
+class BundleCursorUpdate(BaseModel):
+    file_id: str = Field(min_length=1)
+
+
+# Persisted current ordered-media location
+class BundleCursorRead(BaseModel):
+    file_id: str
 
 
 # --- Files -------------------------------------------------------------------

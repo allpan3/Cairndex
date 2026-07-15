@@ -1,8 +1,11 @@
 # ADR-0009: Suggestion-based bundle grouping (Option A+)
 
-- Status: **accepted**
+- Status: **accepted**; primary-file selection provisions superseded by ADR-0016
 - Date: 2026-06-29
 - Branch/PR: `docs/adr-0009-bundle-grouping`
+
+> ADR-0016 replaces this ADR's selected-primary-file behavior with ordered media
+> plus one bundle cursor. The grouping/suggestion decision remains accepted.
 
 ## Context
 
@@ -80,13 +83,29 @@ Concretely:
 5. **User decisions are durable and win over heuristics on re-scan.** A confirmed
    bundle is never silently re-split or merged. Existing confirmed membership
    remains the source of truth; new files appearing later are suggested into
-   existing bundles/containers and not auto-applied.
+   existing bundles/containers and not auto-applied. As amended on 2026-07-14,
+   the owner may convert that addition proposal in place into a separate new
+   bundle, then switch back while the confirmed target still exists. The target
+   remains untouched when new-bundle mode is applied. Relevant existing
+   collection branches remain reviewable context: an addition defaults to its
+   target's collection, and a fresh proposal may reuse a matching collection
+   path, without reopening any confirmed bundle as a grouping candidate.
 6. **Role assignment within a bundle** is derived during proposal/apply: primary
    = the single video or dominant media; cover = an image named
    `cover`/`poster`/`thumbnail`/`thumb`, else the first image; external
-   `.srt`/`.vtt` become subtitle tracks linked to the primary video
-   (language/forced parsed from the suffix, per ADR-0003); `sequence` comes from
-   numeric/name order.
+   `.srt`/`.vtt` become subtitle tracks linked to the current video
+   (language/forced parsed from the suffix, per ADR-0003). As amended on
+   2026-07-14, the default `sequence` ranks video, then audio, then image, then
+   remaining files, preserving numeric/name order within each group; grouping
+   review can persist an exact override before apply.
+7. **Explicit review edits are owner decisions.** As amended on 2026-07-14,
+   dragging a file within or across bundle proposals, reparenting a bundle into
+   a suggested collection, or renaming a proposal marks the affected proposal as
+   owner-edited. Apply may therefore revise eligible provisional membership
+   while preserving each snapshotted `base_bundle_id` and every `AssetFile.id`.
+   This does not make a confirmed uncategorized bundle eligible for regrouping:
+   confirmed bundles remain settled regardless of collection membership, and an
+   untouched suggestion still cannot silently split, merge, or retitle one.
 
 ## Provisional bundle model
 
@@ -175,6 +194,13 @@ Lean **CONTAINER** when:
 - it holds subfolders that are themselves bundles, or
 - the name matches a category-ish hint (configurable; secondary to content).
 
+As amended on 2026-07-14, a flat directory with multiple videos pairs sidecars
+by a unique normalized full filename stem first, including full-stem suffixes
+such as language subtitles or `-poster`. Only then does it fall back to a unique
+leading subject prefix. This avoids treating long filenames that share an
+author/source prefix as ambiguous while preserving one-file proposals for
+image-only folders.
+
 Nested folders recurse: a CONTAINER's children are classified independently, so
 `Movies/` (container) can hold `Cosmos/` and `Waves/` (bundles).
 
@@ -206,7 +232,8 @@ collection.
 - Confirmed bundles are never silently split, merged, or retitled by heuristics.
 - Genuinely new files are run through the suggester and surfaced as additions
   (for example, "add `cosmos.fr.srt` to bundle **Cosmos**?") — never auto-applied
-  to a confirmed bundle.
+  to a confirmed bundle. Review may instead create a separate bundle from that
+  same proposal; the confirmed target remains the reversible default.
 - Ambiguous moves/copies remain unresolved suggestions rather than automatic
   merges.
 
@@ -214,8 +241,9 @@ collection.
 
 The apply service/API must enforce at least these invariants:
 
-- Cover and primary file references must point to files in the same bundle.
-- A bundle has at most one selected primary playable file.
+- Cover references must point to files in the same bundle.
+- Media sequence is deterministic; current playback location is governed by
+  ADR-0016 rather than a grouping-selected primary file.
 - External subtitle tracks must point to an external subtitle `AssetFile` and,
   once linked, to a video `AssetFile` in the same bundle.
 - Splitting or merging provisional bundles must preserve `AssetFile.id` values so
@@ -259,7 +287,9 @@ Each phase should be a separate PR; none moves or modifies files on disk.
 4. **Review UI.** Surface the plan after scan; support accept-all, merge, split,
    reclassify, rename, and apply. Wire it to the existing job/registry flow.
 5. **Re-scan additions.** Suggest new files into existing confirmed bundles or
-   logical containers without disturbing confirmed groupings.
+   logical containers without disturbing confirmed groupings. The reviewed
+   proposal may reversibly create a separate bundle instead; that explicit
+   destination choice never mutates the suggested confirmed target.
 6. **External subtitle auto-link.** Fold subtitle linking into role assignment so
    the data-model claim in ADR-0003/docs becomes true for scan/grouping flows.
 

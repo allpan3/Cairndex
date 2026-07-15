@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path, resolve_within_root
 from cairndex.domain.enums import GroupingSource, GroupingState
+from cairndex.media import playback
 from cairndex.media.image_support import is_openable_media
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
@@ -103,6 +104,8 @@ class FileBrowserListing:
     # The relative directory being listed ("" = the library root itself).
     path: str
     entries: list[FileBrowserEntry]
+    # Linked rows newly persisted as missing while listing this directory
+    missing_files_updated: int
 
 
 def list_entries(session: Session, *, path: str | None = None) -> FileBrowserListing:
@@ -136,10 +139,13 @@ def list_entries(session: Session, *, path: str | None = None) -> FileBrowserLis
     root_real = root_path.resolve(strict=False)
     dirs: list[FileBrowserEntry] = []
     files: list[FileBrowserEntry] = []
-    linked = _linked_paths(session, rel_norm)
+    linked, linked_files = _linked_paths(session, rel_norm)
+    observed_paths: set[str] = set()
 
     with os.scandir(target) as it:
         for dirent in it:
+            child_rel = f"{rel_norm}/{dirent.name}" if rel_norm else dirent.name
+            observed_paths.add(child_rel)
             if _is_hidden(dirent.name):
                 continue
             entry = _build_entry(dirent, rel_norm, root_real, linked)
@@ -149,7 +155,19 @@ def list_entries(session: Session, *, path: str | None = None) -> FileBrowserLis
 
     dirs.sort(key=lambda e: e.name.lower())
     files.sort(key=lambda e: e.name.lower())
-    return FileBrowserListing(path=rel_norm, entries=[*dirs, *files])
+    missing_files_updated = playback.reconcile_missing_files(
+        session,
+        (
+            asset_file
+            for asset_file in linked_files
+            if asset_file.relative_path not in observed_paths
+        ),
+    )
+    return FileBrowserListing(
+        path=rel_norm,
+        entries=[*dirs, *files],
+        missing_files_updated=missing_files_updated,
+    )
 
 
 @dataclass(frozen=True)
@@ -357,21 +375,15 @@ def _build_entry(
     )
 
 
-def _linked_paths(session: Session, parent_rel: str) -> dict[str, _Link]:
+def _linked_paths(session: Session, parent_rel: str) -> tuple[dict[str, _Link], list[AssetFile]]:
     """Map ``relative_path -> _Link`` for files already linked directly under
     ``parent_rel`` in this library, so listed entries can show the linked/
     unbundled badges without a per-file query. Joins the owning bundle to know
-    whether the grouping is still provisional (scan-staged) or confirmed."""
-    prefix = f"{parent_rel}/" if parent_rel else ""
+    whether the grouping is still provisional (scan-staged) or confirmed. The
+    indexed directory key keeps the request bounded to this one directory."""
     stmt = (
         select(
-            AssetFile.relative_path,
-            AssetFile.id,
-            AssetFile.bundle_id,
-            func.json_extract(AssetFile.tech_metadata, "$.container"),
-            func.json_extract(AssetFile.tech_metadata, "$.video_codec"),
-            func.json_extract(AssetFile.tech_metadata, "$.audio_codec"),
-            func.json_extract(AssetFile.tech_metadata, "$.duration"),
+            AssetFile,
             PlaybackProgress.position_s,
             PlaybackProgress.completed,
             AssetBundle.grouping_state,
@@ -379,37 +391,31 @@ def _linked_paths(session: Session, parent_rel: str) -> dict[str, _Link]:
         )
         .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
         .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
+        .where(AssetFile.directory_path == parent_rel)
     )
-    if prefix:
-        stmt = stmt.where(AssetFile.relative_path.startswith(prefix))
     out: dict[str, _Link] = {}
+    asset_files: list[AssetFile] = []
     for (
-        rel_path,
-        file_id,
-        bundle_id,
-        container,
-        video_codec,
-        audio_codec,
-        duration,
+        asset_file,
         resume_position,
         progress_completed,
         grouping_state,
         grouping_source,
     ) in session.execute(stmt):
-        remainder = rel_path[len(prefix) :]
-        if "/" not in remainder:  # direct child, not nested nested
-            unbundled = (
-                grouping_state is GroupingState.PROVISIONAL
-                and grouping_source is GroupingSource.SCAN_SUGGESTION
-            )
-            out[rel_path] = _Link(
-                bundle_id=bundle_id,
-                file_id=file_id,
-                container=container,
-                video_codec=video_codec,
-                audio_codec=audio_codec,
-                duration=duration,
-                resume_position=progress_resume_position(resume_position, progress_completed),
-                unbundled=unbundled,
-            )
-    return out
+        meta = asset_file.tech_metadata or {}
+        unbundled = (
+            grouping_state is GroupingState.PROVISIONAL
+            and grouping_source is GroupingSource.SCAN_SUGGESTION
+        )
+        out[asset_file.relative_path] = _Link(
+            bundle_id=asset_file.bundle_id,
+            file_id=asset_file.id,
+            container=meta.get("container"),
+            video_codec=meta.get("video_codec"),
+            audio_codec=meta.get("audio_codec"),
+            duration=meta.get("duration"),
+            resume_position=progress_resume_position(resume_position, progress_completed),
+            unbundled=unbundled,
+        )
+        asset_files.append(asset_file)
+    return out, asset_files

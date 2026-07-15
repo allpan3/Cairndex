@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind
 
@@ -26,9 +26,32 @@ class ProposalRead(BaseModel):
     parent_proposal_id: str | None
     # When set, this proposal adds its files to an existing confirmed bundle.
     target_bundle_id: str | None
+    target_bundle_title: str | None
+    create_new_bundle: bool
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
+
+
+# Validate the editable fields accepted for an open grouping proposal
+class ProposalUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=1024)
+
+
+# Validate an addition proposal's reversible destination choice
+class ProposalDestinationUpdate(BaseModel):
+    create_new_bundle: bool
+
+
+# Validate a stable-id file transfer between bundle suggestions
+class ProposalFileMove(BaseModel):
+    target_proposal_id: str
+    target_index: int = Field(ge=0)
+
+
+# Validate a bundle suggestion's collection parent edit
+class ProposalReparent(BaseModel):
+    parent_proposal_id: str | None
 
 
 class PlanRead(BaseModel):

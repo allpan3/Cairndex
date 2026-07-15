@@ -8,7 +8,13 @@ import {
   thumbnailUrl,
   updatePlaybackProgress,
 } from '../../api/client'
-import { useBundle, useBundleFiles, useFileMutations, usePlaybackManifest } from '../../api/hooks'
+import {
+  useBundle,
+  useBundleCursor,
+  useBundleFiles,
+  useFileMutations,
+  usePlaybackManifest,
+} from '../../api/hooks'
 import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
@@ -57,6 +63,8 @@ export function MediaViewer({
 }: MediaViewerProps) {
   const qc = useQueryClient()
   const fileMutations = useFileMutations(bundleId)
+  const { mutate: rememberCursor } = useBundleCursor(bundleId)
+  const rememberedCursorRef = useRef<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const { data: bundle, isLoading: bundleLoading, error: bundleError } = useBundle(bundleId)
   const { data: files = [], isLoading: filesLoading, error: filesError } = useBundleFiles(bundleId)
@@ -65,6 +73,7 @@ export function MediaViewer({
     isLoading: playbackLoading,
     error: playbackError,
   } = usePlaybackManifest(bundleId)
+  const hasMissingFiles = files.some((file) => file.availability !== 'available')
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [failedFileId, setFailedFileId] = useState<string | null>(null)
@@ -80,19 +89,44 @@ export function MediaViewer({
     null,
   )
 
-  const preferredId =
-    (initialFileId && files.some((file) => file.id === initialFileId) ? initialFileId : null) ??
-    (bundle?.primary_file_id && files.some((file) => file.id === bundle.primary_file_id)
-      ? bundle.primary_file_id
-      : null) ??
-    files.find((file) => file.media_kind === 'video')?.id ??
-    files[0]?.id ??
-    null
-  const selectedId = pickedId && files.some((file) => file.id === pickedId) ? pickedId : preferredId
-  const currentIndex = selectedId ? files.findIndex((file) => file.id === selectedId) : -1
-  const current = currentIndex >= 0 ? files[currentIndex] : null
+  const playlistFiles = useMemo(
+    () =>
+      files.filter(
+        (file) => file.supported && (file.media_kind === 'image' || file.media_kind === 'video'),
+      ),
+    [files],
+  )
+  const preferredId = bundle
+    ? ((initialFileId && playlistFiles.some((file) => file.id === initialFileId)
+        ? initialFileId
+        : null) ??
+      (bundle.resume_file_id && playlistFiles.some((file) => file.id === bundle.resume_file_id)
+        ? bundle.resume_file_id
+        : null) ??
+      playlistFiles.find((file) => file.availability === 'available')?.id ??
+      playlistFiles[0]?.id ??
+      null)
+    : null
+  const selectedId =
+    pickedId && playlistFiles.some((file) => file.id === pickedId) ? pickedId : preferredId
+  const currentIndex = selectedId ? playlistFiles.findIndex((file) => file.id === selectedId) : -1
+  const current = currentIndex >= 0 ? playlistFiles[currentIndex] : null
   const failed = current ? failedFileId === current.id : false
   const currentId = current?.id ?? null
+
+  useEffect(() => {
+    rememberedCursorRef.current = null
+  }, [bundleId])
+  useEffect(() => {
+    if (
+      !currentId ||
+      current?.availability !== 'available' ||
+      rememberedCursorRef.current === currentId
+    )
+      return
+    rememberedCursorRef.current = currentId
+    rememberCursor(currentId)
+  }, [current?.availability, currentId, rememberCursor])
   const playable = useMemo(
     () => manifest?.videos.find((video) => video.file_id === current?.id) ?? null,
     [current?.id, manifest?.videos],
@@ -184,6 +218,13 @@ export function MediaViewer({
   const artworkUrl = thumbnailUrl(bundleId, bundle?.updated_at ?? null)
 
   useEffect(() => rootRef.current?.focus(), [])
+
+  // Bundle reads can persist a newly missing path, so refresh its library views
+  useEffect(() => {
+    if (!hasMissingFiles) return
+    qc.invalidateQueries({ queryKey: ['view-counts'] })
+    qc.invalidateQueries({ queryKey: ['browse'] })
+  }, [hasMissingFiles, qc])
 
   useEffect(() => {
     if (resumeNotice === null) return
@@ -293,9 +334,9 @@ export function MediaViewer({
     (delta: number) => {
       if (currentIndex < 0) return
       const next = currentIndex + delta
-      if (next >= 0 && next < files.length) setPickedId(files[next]?.id ?? null)
+      if (next >= 0 && next < playlistFiles.length) setPickedId(playlistFiles[next]?.id ?? null)
     },
-    [currentIndex, files],
+    [currentIndex, playlistFiles],
   )
 
   useEffect(() => {
@@ -372,7 +413,9 @@ export function MediaViewer({
       <Topbar
         title={title}
         subtitle={
-          current ? `${current.display_title} · ${currentIndex + 1} / ${files.length}` : 'Media'
+          current
+            ? `${current.display_title} · ${currentIndex + 1} / ${playlistFiles.length}`
+            : 'Media'
         }
         infoOpen={infoOpen}
         onToggleInfo={toggleInfo}
@@ -391,7 +434,7 @@ export function MediaViewer({
         className="mv-nav mv-nav--next"
         onClick={() => step(1)}
         aria-label="Next file"
-        disabled={currentIndex < 0 || currentIndex >= files.length - 1}
+        disabled={currentIndex < 0 || currentIndex >= playlistFiles.length - 1}
       >
         ›
       </button>
@@ -406,6 +449,9 @@ export function MediaViewer({
         )}
         {!loading && !error && files.length === 0 && (
           <div className="mv-state">This bundle has no files.</div>
+        )}
+        {!loading && !error && files.length > 0 && playlistFiles.length === 0 && (
+          <div className="mv-state">This bundle has no previewable media.</div>
         )}
         {!loading && !error && current && (
           <Stage
@@ -478,7 +524,13 @@ function Stage({
   onRetryFailed: () => void
 }) {
   if (file.availability !== 'available') {
-    return <FallbackCard file={file} message="This file is missing on disk." />
+    return (
+      <FallbackCard
+        file={file}
+        heading="Missing file."
+        message="This file is no longer available at its linked path."
+      />
+    )
   }
   // A video whose playback errored out (after exhausting auto-recovery) — offer a
   // manual retry that reloads at the current playhead instead of a dead end.
@@ -601,7 +653,7 @@ function InfoPanel({ file, playable }: { file: FileRead; playable: PlayableVideo
         </div>
         <div>
           <dt>Role</dt>
-          <dd>{file.role}</dd>
+          <dd>{fileRoleLabel(file)}</dd>
         </div>
         <div>
           <dt>Size</dt>
@@ -639,8 +691,13 @@ function FallbackCard({
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
   const dur = formatDuration(meta.duration as number)
-  const metaText = `${file.role} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
+  const metaText = `${fileRoleLabel(file)} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
   return <MediaFallback heading={heading} message={message} meta={metaText} action={action} />
+}
+
+// Hide the retired primary-video label while preserving legacy stored roles
+function fileRoleLabel(file: FileRead): string {
+  return file.role === 'primary_video' ? 'video' : file.role
 }
 
 /** Filesystem-safe-ish basename for downloaded PNG snapshots. */
