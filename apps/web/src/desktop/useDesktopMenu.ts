@@ -1,11 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import { isDesktopHost } from './exitTasks'
 import type { DesktopMenuAction } from './types'
-
-// Detects the native host without importing Tauri into browser bundles
-function isDesktopHost(): boolean {
-  return '__TAURI_INTERNALS__' in window
-}
 
 // Routes native menu events to the latest mounted SPA handler
 export function useDesktopMenu(handler: (action: DesktopMenuAction) => void): void {

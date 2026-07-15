@@ -16,14 +16,15 @@ Completed:
   Pair Device, New Bundle, Bundles/Files, zoom, and pane handlers. Native Enter
   Full Screen toggles the Tauri window directly, avoiding the HTML Fullscreen
   API's user-activation requirement. Workspace-only actions are disabled when
-  no unlocked workspace is mounted; pane visibility now persists with the other
-  browse preferences.
+  no unlocked workspace is mounted; pane visibility persists with the other
+  browse preferences, and explicit grid-column placement keeps the content pane
+  full-width when the sidebar is hidden across a restart.
 - Window close, Cmd+Q, application-menu Quit, and OS-level exit share one native
-  shutdown handshake: the SPA receives `pagehide`, queues persistence/beacons,
-  and explicitly completes exit, with a one-second native fallback. The progress
-  beacon uses the CORS-safelisted text/plain wire shape so process exit never
-  waits on a preflight; the mutating endpoint validates browser `Origin`
-  server-side before accepting it.
+  shutdown handshake through the Rust `ExitGate`: the SPA awaits its ordinary
+  typed JSON progress PUT, dispatches `pagehide` for synchronous persisted UI
+  state, and explicitly completes exit, with a one-second native fallback.
+  Browser mode retains the original same-origin typed JSON progress beacon; no
+  hand-written Origin check sits behind reverse proxies.
 - Desktop API and media paths resolve against the configured server, including
   manifest streams, storyboards, subtitles, HLS playlists, thumbnails, and
   progress/session beacons. Browser mode retains its relative same-origin URLs.
@@ -31,9 +32,9 @@ Completed:
   credentials, and denies the Vite development origin unless the owner sets
   `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173` explicitly.
 - Browser builds detect `window.__TAURI_INTERNALS__` before dynamically importing
-  the desktop bootstrap/runtime. The final browser entry is **500.14 kB / 145.42
+  the desktop bootstrap/runtime. The final browser entry is **500.46 kB / 145.57
   kB gzip** (versus the reviewed eager D1 build's 519.00/150.41); desktop-only
-  bootstrap and runtime code are separate **1.19 kB** and **4.43 kB gzip** chunks.
+  bootstrap and runtime code are separate **1.18 kB** and **4.43 kB gzip** chunks.
 - Cross-platform posture is enforced from D1: no AppKit/`NSWorkspace` calls,
   no target-OS conditional code, and only portable Tauri APIs/plugins. CI has
   cached macOS Rust/build and Ubuntu Rust-only jobs. `AGENTS.md`, architecture,
@@ -52,9 +53,14 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
   Enter Full Screen item independently entered and exited macOS fullscreen.
 - The initial native close audit exposed that WKWebView destruction did not fire
   `pagehide` early enough, and the initial Cmd+Q path bypassed window-close
-  handling. The final packaged-build audit played the synthetic video, pressed
-  Cmd+Q, exited the app, and logged a direct progress **POST 200** with no
-  preflight against the production-default Origin guard.
+  handling. A later gap sweep found window close still bypassed the new
+  `ExitGate` and the progress-beacon workaround broke reverse-proxy browser
+  deployments. The final packaged regression audit played a fresh isolated
+  ffmpeg fixture through both Cmd+Q and the red window-close button; each path
+  ended with a typed progress **PUT 200**, exited, and relaunch resumed at 0:12.
+- The same packaged audit hid the sidebar, confirmed the center pane retained
+  its full usable width, closed through the native window button, and relaunched
+  with the hidden state preserved and the content pane still visible.
 - `tauri dev` started the shared Vite server and debug binary, then the isolated
   backend logged health, library, browse, and thumbnail requests from the stored
   server configuration. The packaged release `.app` and browser-mode Vite host
@@ -63,21 +69,20 @@ Native WKWebView audit (ffmpeg-generated 65-second H.264/AAC fixture only):
 Verification (temporary databases/libraries only; no user, Demo, or Eagle media):
 
 - Backend: Ruff check/format, mypy, and full pytest (**445 passed**).
-- Frontend: Prettier, ESLint, TypeScript, full Vitest (**124 passed**),
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**126 passed**),
   and the production Vite build.
-- Playwright: full suite run unpiped exited 0 (**74 passed**); the known
+- Playwright: full suite run unpiped exited 0 (**75 passed**); the known
   pre-existing real-backend flake did not reproduce in this run.
 - Desktop: Rust format, Clippy with warnings denied, and **5 unit tests** passed;
   release `tauri build` produced `Cairndex.app`. The macOS CI job's local gates
   are green; the Ubuntu job is defined for PR CI and has not been run remotely
   because this owner handoff does not create a PR.
 - The original `/code-review medium` findings (clean-runner `apps/web/dist` and
-  window-destroy capability) remain fixed. This review pass additionally found
-  that simple progress POSTs needed a server-side Origin check and locked
-  libraries must keep workspace menus disabled; both were fixed, and the final
-  medium rerun reported no actionable issues.
-- The progress-beacon POST contract now declares text/plain. `openapi.json` and
-  `schema.d.ts` were regenerated and are committed.
+  window-destroy capability) remain fixed. A later gap sweep found the persisted
+  hidden-sidebar collapse and the reverse-proxy regression in the text/plain
+  progress workaround; both now have focused regression coverage.
+- The progress-beacon POST contract remains the typed `PlaybackProgressUpdate`
+  JSON model. `openapi.json` and `schema.d.ts` were regenerated and committed.
 
 Known issues: Tauri warns that the explicitly required identifier
 `dev.cairndex.app` ends in `.app`, which can be confused with the macOS bundle

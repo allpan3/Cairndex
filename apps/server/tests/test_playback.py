@@ -364,34 +364,24 @@ def test_progress_put_upserts_clamps_and_marks_completion(
 
     beacon = client.post(
         f"{base}/files/{video.id}/progress",
-        content='{"position_s":10,"duration_s":100}',
-        headers={"Content-Type": "text/plain;charset=UTF-8"},
+        json={"position_s": 10, "duration_s": 100},
     )
     assert beacon.status_code == 200
     assert beacon.json()["completed"] is False
 
+    proxied_browser_beacon = client.post(
+        f"{base}/files/{video.id}/progress",
+        json={"position_s": 11, "duration_s": 100},
+        headers={"Origin": "https://media.example.test"},
+    )
+    assert proxied_browser_beacon.status_code == 200
+    assert "access-control-allow-origin" not in proxied_browser_beacon.headers
+
     invalid_beacon = client.post(
         f"{base}/files/{video.id}/progress",
-        content="not-json",
-        headers={"Content-Type": "text/plain;charset=UTF-8"},
+        json={"position_s": "not-a-number", "duration_s": 100},
     )
     assert invalid_beacon.status_code == 422
-
-    for origin in ("http://testserver", "tauri://localhost"):
-        allowed_beacon = client.post(
-            f"{base}/files/{video.id}/progress",
-            content='{"position_s":11,"duration_s":100}',
-            headers={"Content-Type": "text/plain", "Origin": origin},
-        )
-        assert allowed_beacon.status_code == 200
-
-    denied_beacon = client.post(
-        f"{base}/files/{video.id}/progress",
-        content='{"position_s":12,"duration_s":100}',
-        headers={"Content-Type": "text/plain", "Origin": "https://example.invalid"},
-    )
-    assert denied_beacon.status_code == 403
-    assert denied_beacon.json()["detail"] == "origin is not allowed"
 
     unknown_duration = client.put(
         f"{base}/files/{video.id}/progress", json={"position_s": 999, "duration_s": None}

@@ -139,7 +139,7 @@ pub(crate) fn install_handler<R: Runtime>(app: &AppHandle<R>) {
         if id == "fullscreen" {
             toggle_main_window_fullscreen(app);
         } else if id == "quit" {
-            crate::lifecycle::request_exit(app);
+            crate::lifecycle::begin_exit(app);
         } else if let Some(action) = action_for_id(id) {
             let _ = app.emit(MENU_EVENT, action);
         }
