@@ -2,7 +2,8 @@
 
 Cairndex is a local-first, Eagle-inspired media asset manager for a personal
 video/image library stored on local disks or NAS-mounted storage. It runs as a
-self-hosted Docker app on a Linux NAS/server and is used from a browser.
+self-hosted Docker app on a Linux NAS/server and is used from a browser or the
+cross-platform Tauri desktop shell.
 
 In **Bundle Browser**, the primary object is an **Asset Bundle** (cover + video
 parts + alternate versions + subtitles + screenshots + attachments), not a
@@ -49,7 +50,7 @@ The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
 tokens provide a private-network, single-owner guardrail. Important follow-ups
 include grouping bundle/container reclassification, File Browser write mode and
-desktop-client integration, cross-filesystem repair candidates, and token
+desktop path mapping/host handoff, cross-filesystem repair candidates, and token
 rotation/expiry policy. Job progress bars, large-library browse indexing,
 whole-library indexed text search (SQLite FTS5), media fallback/transcoding,
 and pinyin matching in local tag/collection and file pickers are implemented.
@@ -62,6 +63,7 @@ recommended next tasks.
 apps/
   server/   # FastAPI backend (Python 3.12+, SQLAlchemy, SQLite, ffmpeg)
   web/      # React + TypeScript frontend (Vite, TanStack Query/Virtual)
+  desktop/  # Tauri 2 host for the shared apps/web frontend (Rust)
 docs/
   adr/                # Architecture Decision Records
   reference/eagle/    # Eagle UI reference screenshots (not committed media)
@@ -71,7 +73,9 @@ infra/
 
 ## Quickstart (local development)
 
-Requirements: uv (manages Python 3.12+ for you) and Node.js 20+. See
+Requirements: uv (manages Python 3.12+ for you) and Node.js 20+. Desktop
+development additionally needs a current stable Rust toolchain and the Tauri 2
+platform prerequisites. See
 [docs/development.md](docs/development.md) for full setup, environment variables,
 and troubleshooting.
 
@@ -85,6 +89,11 @@ uv run uvicorn cairndex.main:app --reload
 cd apps/web
 npm install
 npm run dev
+
+# Desktop — starts the same apps/web Vite server inside the Tauri shell
+cd apps/desktop
+npm install
+npm run tauri dev
 ```
 
 Health check: `curl http://localhost:8000/api/v1/health`

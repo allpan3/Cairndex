@@ -38,6 +38,8 @@ export interface PlayerPrefs {
 export interface BrowsePrefs {
   layout: LayoutMode
   zoom: number // target card width in px (grid/justified)
+  sidebarVisible: boolean
+  inspectorVisible: boolean
   // The global sort (used when sortScope==='global', and as the fallback for a
   // collection with no remembered sort yet).
   sort: BundleSort
@@ -62,6 +64,8 @@ export const DEFAULT_PLAYER_PREFS: PlayerPrefs = {
 export const DEFAULT_PREFS: BrowsePrefs = {
   layout: 'grid',
   zoom: 200,
+  sidebarVisible: true,
+  inspectorVisible: true,
   // Manual is the default order; the persisted pref remembers any later choice.
   sort: 'manual',
   order: 'asc',

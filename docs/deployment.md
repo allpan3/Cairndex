@@ -79,6 +79,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_ENVIRONMENT`             | `production`    | Free-form environment label.                                                                                                                                       |
 | `CAIRNDEX_DATA_DIR`                | `/data`         | Server-local app-data dir (`registry.db`, backups, runtime state).                                                                                                 |
 | `CAIRNDEX_STATIC_DIR`              | `/app/web`      | Built SPA dir the backend serves. Unset -> backend serves API only (dev).                                                                                          |
+| `CAIRNDEX_CORS_EXTRA_ORIGINS`      | _unset_         | Comma-separated exact HTTP(S) origins allowed in addition to packaged Tauri origins. Use `http://127.0.0.1:5173` only while running `tauri dev`; never enable it on a production server. |
 | `CAIRNDEX_WORKER_ENABLED`          | `true`          | Run the in-process scan/probe/thumbnail worker.                                                                                                                    |
 | `CAIRNDEX_STORYBOARDS`             | `true`          | Enable storyboard/trickplay generation and serving. Set to `off` to skip/hide storyboards.                                                                         |
 | `CAIRNDEX_STORYBOARD_MIN_DURATION` | `10`            | Minimum probed video duration, in seconds, before storyboard generation is attempted.                                                                              |
@@ -161,6 +162,11 @@ Paired desktop/TV clients may instead send an ADR-0015 device token in the
 stored only as salted hashes in `registry.db`, and remain valid across restarts
 until revoked from Settings → Devices or invalidated by a scoped library's
 passphrase change. Never put a device token in a URL.
+
+The D1 desktop shell does not yet obtain or send those bearer tokens. Because
+its custom-protocol page also does not use browser cookie sessions, protected
+libraries cannot be unlocked or approved from the shell until D2. Use the
+same-origin web app for protected-library administration in the interim.
 
 This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
 adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains

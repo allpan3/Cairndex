@@ -4332,7 +4332,9 @@ export interface operations {
     update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 bundle_id: string;
                 library_id: string;
@@ -6063,7 +6065,9 @@ export interface operations {
     update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 proposal_id: string;
@@ -6102,7 +6106,9 @@ export interface operations {
     update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 proposal_id: string;
@@ -6141,7 +6147,9 @@ export interface operations {
     move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 proposal_id: string;
@@ -6181,7 +6189,9 @@ export interface operations {
     reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 plan_id: string;
                 proposal_id: string;

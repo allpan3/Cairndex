@@ -21,6 +21,8 @@
   "dependencies": {
     "@tanstack/react-query": "^5.101.1",
     "@tanstack/react-virtual": "^3.14.3",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-store": "^2.4.3",
     "hls.js": "^1.6.16",
     "pinyin-pro": "^3.28.1",
     "react": "^19.2.7",
