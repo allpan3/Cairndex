@@ -51,6 +51,16 @@ export const IconPlus = () => (
   </Svg>
 )
 
+/** Circular arrows for switching between two reversible choices */
+export const IconRefreshCw = () => (
+  <Svg>
+    <path d="M21 12a9 9 0 0 0-15.6-6.1L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M3 12a9 9 0 0 0 15.6 6.1L21 16" />
+    <path d="M16 16h5v5" />
+  </Svg>
+)
+
 export const IconGrid = () => (
   <Svg>
     <rect x="3" y="3" width="7" height="7" rx="1" />

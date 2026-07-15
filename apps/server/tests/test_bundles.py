@@ -2,7 +2,7 @@
 
 Verifies the bundle is metadata-only and non-destructive: linking/unlinking
 files and deleting bundles never touches files on disk, while shared metadata,
-multi-file bundles, hierarchical tags/collections, and cover/primary selection
+multi-file bundles, hierarchical tags/collections, cover selection, and cursor
 all work.
 """
 
@@ -44,7 +44,7 @@ def test_full_bundle_acceptance_flow(
     cover = _link(client, base, bundle_id, "movie/cover.jpg", "cover", "image")
     primary = _link(client, base, bundle_id, "movie/part1.mp4", "primary_video", "video")
     _link(client, base, bundle_id, "movie/part2.mp4", "video_part", "video")
-    _link(client, base, bundle_id, "movie/movie.srt", "subtitle", "subtitle")
+    subtitle = _link(client, base, bundle_id, "movie/movie.srt", "subtitle", "subtitle")
 
     progress = client.put(
         f"{base}/files/{primary['id']}/progress",
@@ -62,14 +62,20 @@ def test_full_bundle_acceptance_flow(
             "notes": ["great"],
             "rating": 4,
             "cover_file_id": cover["id"],
-            "primary_file_id": primary["id"],
         },
     ).json()
     assert patched["title"] == "My Movie"
     assert patched["notes"] == ["great"]
     assert patched["rating"] == 4
     assert patched["cover_file_id"] == cover["id"]
-    assert patched["primary_file_id"] == primary["id"]
+    cursor = client.put(f"{base}/bundles/{bundle_id}/cursor", json={"file_id": cover["id"]})
+    assert cursor.status_code == 200
+    assert cursor.json()["file_id"] == cover["id"]
+    assert client.get(f"{base}/bundles/{bundle_id}").json()["resume_file_id"] == cover["id"]
+    rejected_cursor = client.put(
+        f"{base}/bundles/{bundle_id}/cursor", json={"file_id": subtitle["id"]}
+    )
+    assert rejected_cursor.status_code == 422
 
     genre = client.post(f"{base}/tags", json={"name": "genre"}).json()
     thriller = client.post(

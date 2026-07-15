@@ -3,7 +3,7 @@
 Moving asset files into a bundle and then reaping any provisional source bundle
 the move emptied is common to grouping-plan apply (ADR-0009) and the manual
 bundling assistant. Centralized here so both share one implementation that keeps
-``AssetFile.id`` stable (so subtitles, thumbnails, notes, and cover/primary
+``AssetFile.id`` stable (so subtitles, thumbnails, notes, and cover
 references survive) and never touches the filesystem.
 """
 
@@ -18,9 +18,9 @@ from cairndex.persistence.models import AssetBundle, AssetFile
 
 
 def clear_dangling_refs(session: Session, bundle: AssetBundle) -> None:
-    """Null a bundle's cover/primary references that no longer point at one of
+    """Null a bundle's cover reference when it no longer points at one of
     its own files (e.g. after a split moved that file elsewhere)."""
-    for attr in ("cover_file_id", "primary_file_id"):
+    for attr in ("cover_file_id",):
         ref_id = getattr(bundle, attr)
         if ref_id is not None:
             ref = session.get(AssetFile, ref_id)
@@ -29,7 +29,7 @@ def clear_dangling_refs(session: Session, bundle: AssetBundle) -> None:
 
 
 def reap_source_bundles(session: Session, source_bundles: Iterable[AssetBundle]) -> int:
-    """Delete source bundles a move fully emptied; repair dangling cover/primary
+    """Delete source bundles a move fully emptied; repair dangling cover
     references on any that still hold files (a partial move / split). Returns the
     number of bundles deleted."""
     removed = 0

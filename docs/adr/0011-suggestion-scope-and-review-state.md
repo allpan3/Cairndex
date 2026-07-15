@@ -1,6 +1,6 @@
-# ADR-0011: Categorization-driven grouping suggestions; retire the user-facing "review" state
+# ADR-0011: Confirmed grouping suggestions; retire the user-facing "review" state
 
-- Status: accepted
+- Status: accepted, amended 2026-07-14
 - Date: 2026-07-03
 - Branch/PR: `feat/collection-bundle-ordering`
 
@@ -22,22 +22,17 @@ bundle could silently fall in and out of, which read as noise.
 
 ## Decision
 
-1. **Two suggestion scopes.** Plan generation takes a `scope`:
-   - `new` (routine scan / **Update**): leave every *confirmed* grouping alone;
-     only files not yet in a confirmed grouping get proposals. Unchanged from
-     ADR-0009.
-   - `uncategorized` (manual **Suggest grouping**, renamed from "Review
-     grouping"): treat every bundle **not filed into a collection** as an open
-     candidate again — including a previously confirmed one whose collections
-     were later removed — plus still-unbundled files. Bundles already in a
-     collection are treated as settled owners and are not re-suggested.
+1. **One durable suggestion boundary.** Routine scan/**Update** and manual
+   **Suggest grouping** both leave every confirmed bundle settled. They propose
+   still-unbundled files and new additions to confirmed owners; collection
+   membership does not make a confirmed grouping eligible again. Repeated
+   generation from inside grouping review therefore uses the same candidates as
+   entering the review.
 
-   The scope only changes what the *suggester* reconsiders (via the
-   `grouping_confirmed` flag on each observation). It does **not** change the
-   apply path or the database: applying an `uncategorized`-scope plan over a
-   still-confirmed bundle is a conflict-aware no-op re-confirm (the DB's
-   confirmed state still protects it from being re-split or retitled). This is
-   what keeps the change non-destructive.
+   A new addition remains one proposal with its confirmed owner as the default
+   destination. The owner may explicitly switch that proposal to create a new
+   bundle instead without reintroducing the confirmed bundle as a grouping
+   candidate.
 
 2. **Retire the user-facing "review" state.** The "Needs review" badge is
    removed. Provisional/confirmed remain **internal** (they still drive
@@ -46,13 +41,23 @@ bundle could silently fall in and out of, which read as noise.
 
 ## Consequences
 
-- The owner's mental model becomes "is this bundle filed into a collection?"
-  rather than "is this bundle confirmed?". Uncategorized bundles are always
-  re-offered by manual **Suggest grouping**; **Update** stays narrow so a
-  routine re-scan never re-litigates confirmed groupings.
+- “Uncategorized” describes collection membership, not bundling state. Moving a
+  confirmed bundle into a collection remains a separate collection operation;
+  **Suggest grouping** never re-litigates that bundle.
 - The internal provisional/confirmed model is intentionally **kept** (removing
   it would be destructive and break ADR-0009 phase-5 rescan additions). Only the
-  suggestion *scope* and the UI vocabulary changed.
-- No schema or API-shape change: `scope` is server-internal (the manual
-  `POST …/grouping/plans` endpoint selects `uncategorized`; the scan handler
-  keeps `new`), so no OpenAPI/client regeneration is required.
+  UI vocabulary changed.
+- The candidate-scope amendment itself has no schema or API-shape change. The
+  later reversible addition destination uses additive plan fields and a scoped
+  proposal endpoint; it does not broaden suggestion eligibility.
+
+## Amendment history
+
+The 2026-07-03 decision originally gave manual **Suggest grouping** a broader
+`uncategorized` scope. Product-owner testing found that entering grouping review
+and clicking **Suggest grouping** again changed the candidate set and made
+already-bundled files appear unbundled. The 2026-07-14 amendment removes that
+alternate scope and restores confirmation as the single grouping boundary.
+The same-day addition-destination amendment keeps that boundary while allowing
+the owner to apply newly eligible files as a separate bundle from the existing
+target suggested by the heuristic.

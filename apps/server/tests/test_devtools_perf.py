@@ -49,13 +49,13 @@ def test_generate_creates_requested_counts(tmp_path: Path) -> None:
         assert summary.bundles == 50
         assert session.scalar(select(func.count()).select_from(AssetBundle)) == 50
         assert session.scalar(select(func.count()).select_from(AssetFile)) == summary.files
-        # Every bundle got a representative primary file pointer.
+        # Synthetic bundles use sequence order and leave the legacy pointer empty
         with_primary = session.scalar(
             select(func.count())
             .select_from(AssetBundle)
             .where(AssetBundle.primary_file_id.isnot(None))
         )
-        assert with_primary == 50
+        assert with_primary == 0
     finally:
         session.close()
         engine.dispose()  # type: ignore[attr-defined]

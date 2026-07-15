@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import MediaKind
-from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
+from cairndex.domain.enums import FileAvailability, MediaKind
+from cairndex.persistence.models import AssetBundle, AssetFile, BundleCursor, PlaybackProgress
 
 if TYPE_CHECKING:
     from cairndex.services.browse import BundleSummary
@@ -160,10 +160,13 @@ def continue_watching(session: Session, *, offset: int, limit: int) -> ContinueW
         )
         .join(AssetFile, AssetFile.id == PlaybackProgress.file_id)
         .join(AssetBundle, AssetBundle.id == PlaybackProgress.bundle_id)
+        .outerjoin(BundleCursor, BundleCursor.bundle_id == PlaybackProgress.bundle_id)
         .where(PlaybackProgress.completed == 0)
         .where(PlaybackProgress.position_s > 0)
         .where(AssetFile.media_kind == MediaKind.VIDEO)
+        .where(AssetFile.availability == FileAvailability.AVAILABLE)
         .where(AssetFile.bundle_id == PlaybackProgress.bundle_id)
+        .where(BundleCursor.file_id.is_(None) | (BundleCursor.file_id == PlaybackProgress.file_id))
         .subquery()
     )
     base: Select[tuple[str, str, float, float | None]] = (

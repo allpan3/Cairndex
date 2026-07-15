@@ -59,6 +59,22 @@ async function mockApi(page: Page) {
             created_at: '2026-06-25T00:00:00Z',
             updated_at: '2026-06-25T00:00:00Z',
           },
+          {
+            id: 'f1',
+            bundle_id: 'b0',
+            relative_path: 'poster.jpg',
+            original_filename: 'poster.jpg',
+            display_title: 'poster.jpg',
+            role: 'image',
+            media_kind: 'image',
+            mime_type: 'image/jpeg',
+            sequence: 1,
+            size_bytes: 500,
+            availability: 'missing',
+            tech_metadata: { width: 640, height: 480 },
+            created_at: '2026-06-25T00:00:00Z',
+            updated_at: '2026-06-25T00:00:00Z',
+          },
         ],
       })
     } else {
@@ -70,7 +86,7 @@ async function mockApi(page: Page) {
           source_url: null,
           rating: 0,
           cover_file_id: null,
-          primary_file_id: null,
+          resume_file_id: 'f0',
           created_at: '2026-06-25T00:00:00Z',
           imported_at: '2026-06-25T00:00:00Z',
           updated_at: '2026-06-25T00:00:00Z',
@@ -146,7 +162,7 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
         phase: done ? null : 'discovering',
         processed: done ? 100 : 42,
         total: 100,
-        result: done ? { grouping_proposal_count: 0 } : null,
+        result: done ? { grouping_proposal_count: 0, missing_total: 2 } : null,
         finished_at: done ? '2026-06-25T00:01:00Z' : null,
       }),
     })
@@ -174,6 +190,27 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await expect(page.getByRole('progressbar')).toBeVisible()
   await expect(page.getByText('Discovering files')).toBeVisible()
   await expect(page.getByText('42/100')).toBeVisible()
+  await expect(page.getByText('Scan complete: 2 linked files are missing.')).toBeVisible()
+})
+
+test('standalone Scan reports the linked missing-file total', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/jobs/scan', (route) =>
+    route.fulfill({
+      json: jobRead({
+        id: 'job-scan',
+        status: 'succeeded',
+        result: { grouping_proposal_count: 0, missing_total: 1 },
+        finished_at: '2026-06-25T00:01:00Z',
+      }),
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Scan new files' }).click()
+
+  await expect(page.getByText('Scan complete: 1 linked file is missing.')).toBeVisible()
 })
 
 test('each Update stage has a standalone maintenance action', async ({ page }) => {
@@ -203,6 +240,562 @@ test('each Update stage has a standalone maintenance action', async ({ page }) =
   await storyboardRequest
 })
 
+test('repeated Suggest grouping leaves confirmed bundles out of the new plan', async ({ page }) => {
+  await mockApi(page)
+  const oldProposal = {
+    id: 'settled1',
+    kind: 'bundle',
+    title: 'Already bundled',
+    directory: 'Settled',
+    parent_proposal_id: null,
+    target_bundle_id: null,
+    confidence: 0.9,
+    reason: 'old plan',
+    files: [
+      {
+        asset_file_id: 'settled-file',
+        relative_path: 'Settled/movie.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  let activePlanId = 'plan1'
+  let generated = false
+  await page.route('**/grouping/plans', (route) => {
+    if (route.request().method() === 'POST') {
+      activePlanId = 'plan2'
+      generated = true
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: activePlanId,
+          status: 'open',
+          rule_version: 2,
+          scan_job_id: null,
+          generated_at: '2026-07-13T00:01:00Z',
+          applied_at: null,
+          proposals: [],
+        },
+      })
+    }
+    return route.fulfill({
+      json: [
+        {
+          id: activePlanId,
+          status: 'open',
+          rule_version: 2,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: generated ? 0 : 1,
+        },
+      ],
+    })
+  })
+  await page.route('**/grouping/plans/plan1', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan1',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: 'job1',
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals: [oldProposal],
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan2', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan2',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: null,
+        generated_at: '2026-07-13T00:01:00Z',
+        applied_at: null,
+        proposals: [],
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  await expect(page.getByText('Already bundled')).toBeVisible()
+  await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
+
+  await expect(
+    page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
+  ).toBeVisible()
+  await expect(page.getByText('Already bundled')).toHaveCount(0)
+  expect(generated).toBe(true)
+})
+
+test('grouping title editors preserve wrapped geometry and grow while typing', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 900 })
+  await mockApi(page)
+  const proposals = [
+    {
+      id: 'collection-width',
+      kind: 'container',
+      title: 'A Long Collection Suggestion',
+      directory: 'Long Collection',
+      parent_proposal_id: null,
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      confidence: 0.9,
+      reason: 'holds related bundles',
+      files: [],
+    },
+    {
+      id: 'bundle-width',
+      kind: 'bundle',
+      title:
+        'A Very Long Bundle Suggestion That Deliberately Wraps Across Multiple Lines Without Moving Any Other Grouping Review Text When Rename Mode Starts',
+      directory: 'Long Bundle',
+      parent_proposal_id: 'collection-width',
+      target_bundle_id: null,
+      target_bundle_title: null,
+      create_new_bundle: false,
+      confidence: 0.9,
+      reason: 'same filename stem',
+      files: [
+        {
+          asset_file_id: 'long-file',
+          relative_path: 'Long Bundle/movie.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+      ],
+    },
+  ]
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-width',
+          status: 'open',
+          rule_version: 4,
+          generated_at: '2026-07-14T00:00:00Z',
+          applied_at: null,
+          proposal_count: proposals.length,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-width', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-width',
+        status: 'open',
+        rule_version: 4,
+        scan_job_id: null,
+        generated_at: '2026-07-14T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+
+  for (const [kind, title] of [
+    ['collection', 'A Long Collection Suggestion'],
+    [
+      'bundle',
+      'A Very Long Bundle Suggestion That Deliberately Wraps Across Multiple Lines Without Moving Any Other Grouping Review Text When Rename Mode Starts',
+    ],
+  ] as const) {
+    const titleButton = page.getByRole('button', {
+      name: `Rename ${kind} suggestion ${title}`,
+    })
+    const titleRow = titleButton.locator('xpath=ancestor::*[contains(@class, "grp-row")][1]')
+    const modal = page.locator('.grp-modal')
+    const titleBox = await titleButton.boundingBox()
+    const rowBox = await titleRow.boundingBox()
+    const modalBox = await modal.boundingBox()
+    if (!titleBox || !rowBox || !modalBox) throw new Error(`missing ${kind} title geometry`)
+    if (kind === 'bundle') expect(titleBox.height).toBeGreaterThan(18)
+    await titleButton.dblclick()
+    const input = page.getByRole('textbox', {
+      name: `${kind[0].toUpperCase()}${kind.slice(1)} suggestion title`,
+    })
+    const initialBox = await input.boundingBox()
+    const editingRowBox = await input
+      .locator('xpath=ancestor::*[contains(@class, "grp-row")][1]')
+      .boundingBox()
+    const editingModalBox = await modal.boundingBox()
+    if (!initialBox || !editingRowBox || !editingModalBox) {
+      throw new Error(`missing ${kind} editor geometry`)
+    }
+    expect(Math.abs(initialBox.width - titleBox.width)).toBeLessThanOrEqual(1)
+    expect(Math.abs(initialBox.height - titleBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(initialBox.y - titleBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingRowBox.height - rowBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingRowBox.y - rowBox.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingModalBox.height - modalBox.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(editingModalBox.y - modalBox.y)).toBeLessThanOrEqual(1)
+    if (kind === 'collection') {
+      await input.fill(`${title} With A Longer Ending`)
+      await expect
+        .poll(async () => (await input.boundingBox())?.width ?? 0)
+        .toBeGreaterThan(initialBox.width)
+    }
+    await input.press('Escape')
+  }
+})
+
+test('switches one addition row between an existing and a new bundle', async ({ page }) => {
+  await mockApi(page)
+  let createNewBundle = false
+  let title = 'Sex On The Beach - 4K'
+  const targetTitle = 'Ada Larson - [Hegre.com] - [2023] - Sun, Sand, Sea & Sex - 4K'
+  const destinationWrites: boolean[] = []
+  const proposal = () => ({
+    id: 'addition-ui',
+    kind: 'bundle',
+    title,
+    directory: 'Western/Ada Larson',
+    parent_proposal_id: null,
+    target_bundle_id: 'existing-ui',
+    target_bundle_title: targetTitle,
+    create_new_bundle: createNewBundle,
+    confidence: 0.8,
+    reason: 'add 2 new file(s) to existing bundle',
+    files: [
+      {
+        asset_file_id: 'addition-video',
+        relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.mp4',
+        proposed_role: createNewBundle ? 'primary_video' : 'video_part',
+        sequence: 0,
+      },
+      {
+        asset_file_id: 'addition-cover',
+        relative_path: 'Western/Ada Larson/Sex On The Beach - 4K.jpg',
+        proposed_role: createNewBundle ? 'cover' : 'image',
+        sequence: 1,
+      },
+    ],
+  })
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-destination',
+          status: 'open',
+          rule_version: 4,
+          generated_at: '2026-07-14T00:00:00Z',
+          applied_at: null,
+          proposal_count: 1,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-destination', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-destination',
+        status: 'open',
+        rule_version: 4,
+        scan_job_id: null,
+        generated_at: '2026-07-14T00:00:00Z',
+        applied_at: null,
+        proposals: [proposal()],
+      },
+    }),
+  )
+  await page.route('**/proposals/addition-ui/destination', (route) => {
+    createNewBundle = (route.request().postDataJSON() as { create_new_bundle: boolean })
+      .create_new_bundle
+    destinationWrites.push(createNewBundle)
+    return route.fulfill({ json: proposal() })
+  })
+  await page.route('**/proposals/addition-ui', (route) => {
+    title = (route.request().postDataJSON() as { title: string }).title
+    return route.fulfill({ json: proposal() })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
+  await expect(checkbox).toBeChecked()
+  const additionTitle = page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })
+  const dragHandle = page.getByRole('button', { name: `Drag bundle Add to 🎬 ${targetTitle}` })
+  const destinationButton = page.getByRole('button', {
+    name: 'Create a new bundle from these files',
+  })
+  const rowContent = page.locator('.grp-row__content')
+  const fileCount = page.getByText('2 new files', { exact: true })
+  const selectBar = page.locator('.grp-selectbar')
+  await expect(additionTitle).toBeVisible()
+  await expect(page.locator('.grp-root-drop')).toHaveCount(0)
+  await expect(destinationButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(destinationButton).not.toHaveClass(/is-active/)
+  await expect(destinationButton).toHaveAttribute(
+    'data-tip',
+    'Create a new bundle from these files',
+  )
+  await expect(page.locator('.grp-conf')).toHaveCount(0)
+  await expect(page.locator('.grp-manual')).toHaveCount(0)
+  await expect(page.getByText('Create new bundle instead', { exact: true })).toHaveCount(0)
+
+  const titleBox = await additionTitle.boundingBox()
+  const dragBox = await dragHandle.boundingBox()
+  const destinationBox = await destinationButton.boundingBox()
+  const contentBox = await rowContent.boundingBox()
+  const countBox = await fileCount.boundingBox()
+  const selectBox = await selectBar.boundingBox()
+  if (!titleBox || !dragBox || !destinationBox || !contentBox || !countBox || !selectBox) {
+    throw new Error('missing grouping destination geometry')
+  }
+  expect(titleBox.y - (selectBox.y + selectBox.height)).toBeLessThanOrEqual(28)
+  expect(titleBox.x - (dragBox.x + dragBox.width)).toBeLessThanOrEqual(6)
+  expect(destinationBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width)
+  expect(
+    Math.abs(destinationBox.y + destinationBox.height / 2 - (titleBox.y + titleBox.height / 2)),
+  ).toBeLessThanOrEqual(3)
+  expect(countBox.x).toBeGreaterThanOrEqual(contentBox.x)
+
+  await destinationButton.hover()
+  await expect
+    .poll(() =>
+      destinationButton.evaluate((element) => getComputedStyle(element, '::after').opacity),
+    )
+    .toBe('1')
+  await destinationButton.click()
+
+  const addBackButton = page.getByRole('button', {
+    name: `Add these files to “${targetTitle}” instead`,
+  })
+  await expect(addBackButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(addBackButton).not.toHaveClass(/is-active/)
+  await expect(page.getByText('2 files', { exact: true })).toBeVisible()
+  await expect(page.getByText('manual', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('create 2 files as a new bundle', { exact: true })).toHaveCount(0)
+  await expect(checkbox).toBeChecked()
+  await expect(page.locator('.grp-node--bundle')).toHaveCount(1)
+  await expect(page.locator('.grp-files')).toHaveCount(1)
+  const renameTitle = page.getByRole('button', {
+    name: 'Rename bundle suggestion Sex On The Beach - 4K',
+  })
+  const bundleRow = page.locator('.grp-row--bundle')
+  const modal = page.locator('.grp-modal')
+  const bundleRowBox = await bundleRow.boundingBox()
+  const modalBox = await modal.boundingBox()
+  if (!bundleRowBox || !modalBox) {
+    throw new Error('missing pre-rename grouping geometry')
+  }
+  await renameTitle.dblclick()
+  const titleInput = page.getByRole('textbox', { name: 'Bundle suggestion title' })
+  await expect(addBackButton).toBeDisabled()
+  const editingRowBox = await bundleRow.boundingBox()
+  const editingModalBox = await modal.boundingBox()
+  if (!editingRowBox || !editingModalBox) {
+    throw new Error('missing active-rename grouping geometry')
+  }
+  expect(Math.abs(editingRowBox.y - bundleRowBox.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingRowBox.height - bundleRowBox.height)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingModalBox.y - modalBox.y)).toBeLessThanOrEqual(1)
+  expect(Math.abs(editingModalBox.height - modalBox.height)).toBeLessThanOrEqual(1)
+  await titleInput.fill('Separate Feature')
+  await titleInput.press('Enter')
+  await expect(
+    page.getByRole('button', { name: 'Rename bundle suggestion Separate Feature' }),
+  ).toBeVisible()
+  await expect(addBackButton).toBeEnabled()
+
+  await addBackButton.click()
+  await expect(page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })).toBeVisible()
+  expect(destinationWrites).toEqual([true, false])
+})
+
+test('edits grouping suggestions with drag and drop before accepting them', async ({ page }) => {
+  await mockApi(page)
+  const proposals = [
+    {
+      id: 'collection1',
+      kind: 'container',
+      title: 'Movies',
+      directory: '',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.9,
+      reason: 'shared directory',
+      files: [],
+    },
+    {
+      id: 'proposal1',
+      kind: 'bundle',
+      title: 'SRCV-005 - cut',
+      directory: 'SRCV-005',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.95,
+      reason: 'same filename stem',
+      files: [
+        {
+          asset_file_id: 'file1',
+          relative_path: 'SRCV-005/SRCV-005.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+        {
+          asset_file_id: 'file2',
+          relative_path: 'SRCV-005/SRCV-005.mp3',
+          proposed_role: 'attachment',
+          sequence: 1,
+        },
+        {
+          asset_file_id: 'file3',
+          relative_path: 'SRCV-005/cover.jpg',
+          proposed_role: 'cover',
+          sequence: 2,
+        },
+      ],
+    },
+    {
+      id: 'proposal2',
+      kind: 'bundle',
+      title: 'Extras',
+      directory: 'Extras',
+      parent_proposal_id: null as string | null,
+      target_bundle_id: null,
+      confidence: 0.8,
+      reason: 'same directory',
+      files: [
+        {
+          asset_file_id: 'file4',
+          relative_path: 'Extras/trailer.mp4',
+          proposed_role: 'primary_video',
+          sequence: 0,
+        },
+      ],
+    },
+  ]
+  let renamedCollection: string | null = null
+  let fileMove: { source: string; target: string; index: number } | null = null
+  const bundleParents: Array<string | null> = []
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan1',
+          status: 'open',
+          rule_version: 2,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: proposals.length,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan1', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan1',
+        status: 'open',
+        rule_version: 2,
+        scan_job_id: 'job1',
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      },
+    }),
+  )
+  await page.route('**/grouping/plans/plan1/proposals/collection1', (route) => {
+    renamedCollection = (route.request().postDataJSON() as { title: string }).title
+    proposals[0].title = renamedCollection
+    return route.fulfill({ json: proposals[0] })
+  })
+  await page.route('**/grouping/plans/plan1/proposals/proposal2/files/file4/move', (route) => {
+    const body = route.request().postDataJSON() as {
+      target_proposal_id: string
+      target_index: number
+    }
+    const source = proposals[2]
+    const target = proposals.find((proposal) => proposal.id === body.target_proposal_id)!
+    const sourceIndex = source.files.findIndex((file) => file.asset_file_id === 'file4')
+    const [moved] = source.files.splice(sourceIndex, 1)
+    target.files.splice(body.target_index, 0, moved!)
+    source.files.forEach((file, sequence) => (file.sequence = sequence))
+    target.files.forEach((file, sequence) => (file.sequence = sequence))
+    fileMove = { source: source.id, target: target.id, index: body.target_index }
+    return route.fulfill({ json: [source, target] })
+  })
+  await page.route('**/grouping/plans/plan1/proposals/proposal1/parent', (route) => {
+    const bundleParent = (route.request().postDataJSON() as { parent_proposal_id: string | null })
+      .parent_proposal_id
+    bundleParents.push(bundleParent)
+    proposals[1].parent_proposal_id = bundleParent
+    return route.fulfill({ json: proposals[1] })
+  })
+
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Suggest grouping' }).click()
+  await page.getByRole('button', { name: 'Rename collection suggestion Movies' }).dblclick()
+  const input = page.getByRole('textbox', { name: 'Collection suggestion title' })
+  await input.fill('Favorites')
+  await input.press('Enter')
+
+  await expect.poll(() => renamedCollection).toBe('Favorites')
+  await expect(
+    page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
+  ).toBeVisible()
+
+  const targetList = page.getByRole('list', { name: 'Files in SRCV-005 - cut' })
+  const targetFile = targetList.locator('.grp-file').last()
+  const targetBox = await targetFile.boundingBox()
+  if (!targetBox) throw new Error('missing file drop target')
+  await page.getByRole('button', { name: 'Drag file trailer.mp4' }).dragTo(targetFile, {
+    targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
+  })
+  await expect.poll(() => fileMove).toEqual({ source: 'proposal2', target: 'proposal1', index: 3 })
+  await expect(targetList.locator('.grp-file__name')).toHaveText([
+    'SRCV-005.mp4',
+    'SRCV-005.mp3',
+    'cover.jpg',
+    'trailer.mp4',
+  ])
+  const emptyBundle = page.getByRole('checkbox', { name: 'Accept Extras' })
+  await expect(emptyBundle).not.toBeChecked()
+  await expect(emptyBundle).toBeDisabled()
+
+  const collectionRow = page.locator('.grp-row--collection', {
+    has: page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
+  })
+  const bundleHandle = page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' })
+  const collectionTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await bundleHandle.dispatchEvent('dragstart', { dataTransfer: collectionTransfer })
+  await collectionRow.dispatchEvent('dragover', { dataTransfer: collectionTransfer })
+  await collectionRow.dispatchEvent('drop', { dataTransfer: collectionTransfer })
+  await bundleHandle.dispatchEvent('dragend', { dataTransfer: collectionTransfer })
+  await collectionTransfer.dispose()
+  await expect.poll(() => bundleParents).toEqual(['collection1'])
+  const collectionCheckbox = page.getByRole('checkbox', { name: 'Accept Favorites' })
+  await expect(collectionCheckbox).toBeChecked()
+  await expect(
+    collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),
+  ).toBeVisible()
+
+  const rootTarget = page.locator('.grp-root-drop')
+  const rootTransfer = await page.evaluateHandle(() => new DataTransfer())
+  await bundleHandle.dispatchEvent('dragstart', { dataTransfer: rootTransfer })
+  await expect(rootTarget).toBeVisible()
+  await rootTarget.dispatchEvent('dragover', { dataTransfer: rootTransfer })
+  await rootTarget.dispatchEvent('drop', { dataTransfer: rootTransfer })
+  await bundleHandle.dispatchEvent('dragend', { dataTransfer: rootTransfer })
+  await rootTransfer.dispose()
+  await expect.poll(() => bundleParents).toEqual(['collection1', null])
+  await expect(collectionCheckbox).not.toBeChecked()
+  await expect(collectionCheckbox).toBeDisabled()
+})
+
 test('selecting a bundle opens the inspector', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
@@ -210,6 +803,10 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   // Inspector shows the bundle's (editable) title + its files.
   await expect(page.locator('.inspector input[aria-label="Title"]')).toHaveValue('Movie 0')
   await expect(page.getByText('movie.mp4')).toBeVisible()
+  await expect(page.getByText('Files in bundle (2 · 1 missing)')).toBeVisible()
+  const missingFile = page.locator('.files .file-row', { hasText: 'poster.jpg' })
+  await expect(missingFile).toHaveClass(/file-row--missing/)
+  await expect(missingFile.getByText('missing')).toBeVisible()
 })
 
 test('drag-selects multiple bundles with a marquee', async ({ page }) => {

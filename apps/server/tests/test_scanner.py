@@ -74,10 +74,15 @@ def test_missing_file_is_marked_not_deleted(session: Session, library_root: Path
     summary = scan_library(session, library_root)
 
     assert summary.missing == 1
+    assert summary.missing_total == 1
     assert _file_count(session) == 4  # row preserved, not deleted
     gone = session.scalar(select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv"))
     assert gone is not None
     assert gone.availability == FileAvailability.MISSING
+
+    second = scan_library(session, library_root)
+    assert second.missing == 0  # newly missing this run
+    assert second.missing_total == 1  # still linked and missing overall
 
 
 def test_returning_file_becomes_available_again(session: Session, library_root: Path) -> None:
@@ -87,13 +92,14 @@ def test_returning_file_becomes_available_again(session: Session, library_root: 
     target.unlink()
     scan_library(session, library_root)
     target.write_text("video two again")
-    scan_library(session, library_root)
+    restored = scan_library(session, library_root)
 
     repaired = session.scalar(
         select(AssetFile).where(AssetFile.relative_path == "Show/S01/ep2.mkv")
     )
     assert repaired is not None
     assert repaired.availability == FileAvailability.AVAILABLE
+    assert restored.missing_total == 0
 
 
 def test_unreachable_root_marks_files_missing(
@@ -104,6 +110,7 @@ def test_unreachable_root_marks_files_missing(
     # Scan against a now-missing root (simulate an unmounted NAS).
     summary = scan_library(session, tmp_path / "unmounted")
     assert summary.missing == 4
+    assert summary.missing_total == 4
     assert _file_count(session) == 4  # nothing deleted
 
 
@@ -209,6 +216,7 @@ def test_scan_job_generates_grouping_plan_without_applying(
         result = job_service.get_job(reg, job_id).result
 
     assert result is not None
+    assert result["missing_total"] == 0
     assert result["grouping_plan_id"]
     assert result["grouping_proposal_count"] == 1
 

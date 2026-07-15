@@ -103,6 +103,7 @@ def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> Pl
     get_bundle(db, bundle_id)  # 404 if the bundle doesn't exist
     videos: list[PlayableVideo] = []
     files = list_files(db, bundle_id)
+    playback.reconcile_missing_files(db, files)
     video_files = [f for f in files if f.media_kind == MediaKind.VIDEO]
     progress_by_file = progress_service.progress_for_files(db, [f.id for f in video_files])
     for f in video_files:

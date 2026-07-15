@@ -99,7 +99,7 @@ def test_create_bundle_from_single_file(session: Session) -> None:
     assert bundle.title == "clip"  # derived from the file stem
     reloaded = session.get(AssetFile, clip.id)
     assert reloaded is not None and reloaded.bundle_id == bundle.id
-    assert bundle.primary_file_id == clip.id
+    assert bundle.primary_file_id is None  # ordered files replace the legacy pointer
 
 
 def test_create_bundle_from_multiple_files_merges_and_reaps(session: Session) -> None:
@@ -121,8 +121,8 @@ def test_create_bundle_from_multiple_files_merges_and_reaps(session: Session) ->
     assert result.bundles_removed == 2
     remaining = session.scalars(select(AssetFile.id).where(AssetFile.bundle_id == bundle.id)).all()
     assert set(remaining) == {video.id, cover.id, sub.id}
-    # Role heuristic: cover image → cover, video → primary.
-    assert bundle.primary_file_id == video.id
+    # Role heuristics remain grouping metadata; playback follows file sequence
+    assert bundle.primary_file_id is None
     assert bundle.cover_file_id == cover.id
     # No stray provisional bundles left behind.
     assert (

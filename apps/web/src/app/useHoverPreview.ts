@@ -29,6 +29,7 @@ const SEEK_READY_CHECK_MS = 750
 const METADATA_READY_TIMEOUT_MS = 5_000
 const FRAME_PRESENT_FALLBACK_MS = 250
 const FRAME_TIME_TOLERANCE_S = 0.1
+const SEEK_TIME_TOLERANCE_S = 0.05
 
 // Detect whether this device offers a real mouse-style hover interaction
 function hasFineHover(): boolean {
@@ -44,6 +45,8 @@ export function useHoverPreview(
   storyboardTimeForPosition?: (time: number) => number | null,
 ) {
   const previewFileId = source?.fileId ?? null
+  const previewMediaKind = source?.mediaKind ?? null
+  const previewImageUrl = source?.imageUrl ?? null
   const previewMimeType = source?.mimeType ?? null
   const previewRelativePath = source?.relativePath ?? null
   const previewContainer = source?.container ?? null
@@ -56,7 +59,9 @@ export function useHoverPreview(
       hoverPreviewMode(
         previewFileId
           ? {
+              mediaKind: previewMediaKind ?? 'video',
               fileId: previewFileId,
+              imageUrl: previewImageUrl,
               mimeType: previewMimeType,
               relativePath: previewRelativePath,
               container: previewContainer,
@@ -71,6 +76,8 @@ export function useHoverPreview(
       previewContainer,
       previewDuration,
       previewFileId,
+      previewImageUrl,
+      previewMediaKind,
       previewMimeType,
       previewRelativePath,
       previewVideoCodec,
@@ -94,6 +101,7 @@ export function useHoverPreview(
   const metadataReadyTimer = useRef<number | null>(null)
   const seekReadyTimer = useRef<number | null>(null)
   const frameReadyTimer = useRef<number | null>(null)
+  const playbackTimer = useRef<number | null>(null)
   const seekListenerCleanup = useRef<(() => void) | null>(null)
   const videoFrameWait = useRef<{ element: HTMLVideoElement; id: number } | null>(null)
   const animationFrameWait = useRef<number | null>(null)
@@ -126,6 +134,10 @@ export function useHoverPreview(
     if (animationFrameWait.current !== null) {
       window.cancelAnimationFrame(animationFrameWait.current)
       animationFrameWait.current = null
+    }
+    if (playbackTimer.current !== null) {
+      window.clearTimeout(playbackTimer.current)
+      playbackTimer.current = null
     }
   }, [])
 
@@ -167,7 +179,7 @@ export function useHoverPreview(
 
   const activate = useCallback(() => {
     dwellTimer.current = null
-    if (!canActivate()) return
+    if (!canActivate() || currentOwner?.token === token.current) return
     if (currentOwner?.token !== token.current) currentOwner?.stop()
     currentOwner = { token: token.current, stop: deactivate }
     restPosition.current = previewStartTime
@@ -178,9 +190,13 @@ export function useHoverPreview(
   }, [canActivate, deactivate, mode, previewStartTime])
 
   const startDwell = useCallback(() => {
-    if (!canActivate()) return
+    if (!canActivate() || currentOwner?.token === token.current) return
     if (dwellTimer.current !== null) window.clearTimeout(dwellTimer.current)
-    dwellTimer.current = window.setTimeout(activate, HOVER_PREVIEW_DWELL_MS)
+    const timer = window.setTimeout(() => {
+      if (dwellTimer.current !== timer) return
+      activate()
+    }, HOVER_PREVIEW_DWELL_MS)
+    dwellTimer.current = timer
   }, [activate, canActivate])
 
   useEffect(() => {
@@ -200,13 +216,14 @@ export function useHoverPreview(
     clearTimers()
     setPointerInside(true)
     setPrefetchStoryboard(false)
-    if (canActivate()) {
+    if (canActivate()) startDwell()
+    if (canActivate() && mode !== 'image') {
       prefetchTimer.current = window.setTimeout(() => {
         prefetchTimer.current = null
         setPrefetchStoryboard(true)
       }, HOVER_PREVIEW_PREFETCH_MS)
     }
-  }, [canActivate, clearTimers])
+  }, [canActivate, clearTimers, mode, startDwell])
 
   const fallbackToStoryboard = useCallback(() => {
     if (!previewFileId) {
@@ -281,7 +298,14 @@ export function useHoverPreview(
         if (seekedListener) element.removeEventListener('seeked', seekedListener)
       }
       const markSeekReady = () => {
-        if (seekReady || generation !== resumeGeneration.current || element.seeking) return
+        if (
+          seekReady ||
+          generation !== resumeGeneration.current ||
+          element.seeking ||
+          Math.abs(element.currentTime - target) > SEEK_TIME_TOLERANCE_S
+        ) {
+          return
+        }
         seekReady = true
         clearSeekWait()
         callbacks.onReady()
@@ -293,16 +317,14 @@ export function useHoverPreview(
           window.clearTimeout(metadataReadyTimer.current)
           metadataReadyTimer.current = null
         }
-        const needsSeek = Math.abs(element.currentTime - target) > 0.05
+        const needsSeek = Math.abs(element.currentTime - target) > SEEK_TIME_TOLERANCE_S
         seekedListener = markSeekReady
         element.addEventListener('seeked', seekedListener)
         callbacks.beforeSeek?.(needsSeek)
         const checkReady = () => {
           if (generation !== resumeGeneration.current) return
-          if (!element.seeking) {
-            markSeekReady()
-            return
-          }
+          markSeekReady()
+          if (seekReady) return
           seekReadyTimer.current = window.setTimeout(checkReady, SEEK_READY_CHECK_MS)
         }
         seekReadyTimer.current = window.setTimeout(checkReady, SEEK_READY_CHECK_MS)
@@ -353,8 +375,13 @@ export function useHoverPreview(
         animationFrameWait.current = window.requestAnimationFrame(() => {
           animationFrameWait.current = null
           if (generation !== resumeGeneration.current) return
+          // Paint the paused target before playback can advance it
           flushSync(() => setPhase('playing'))
-          void playVideo(element, generation)
+          playbackTimer.current = window.setTimeout(() => {
+            playbackTimer.current = null
+            if (generation !== resumeGeneration.current) return
+            void playVideo(element, generation)
+          }, 0)
         })
       }
       const markSeekReady = () => {
@@ -414,12 +441,15 @@ export function useHoverPreview(
     const generation = resumeGeneration.current
     const cursorTarget = restPosition.current
     const storyboardTarget = storyboardTimeForPosition?.(cursorTarget) ?? null
+    const duration = source?.duration ?? 0
     const target =
       source && storyboardTarget !== null && Number.isFinite(storyboardTarget)
-        ? Math.max(0, Math.min(source.duration, storyboardTarget))
+        ? Math.max(0, Math.min(duration, storyboardTarget))
         : cursorTarget
-    setPosition(target)
-    setPhase('transitioning')
+    flushSync(() => {
+      setPosition(target)
+      setPhase('transitioning')
+    })
     if (storyboardTarget !== null) seekThenAlignReveal(element, target, generation)
     else seekThenPlayImmediately(element, target, generation)
   }, [
@@ -435,11 +465,11 @@ export function useHoverPreview(
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!active || !source) return
+      if (!active || !source || source.mediaKind !== 'video') return
       const time = hoverTimeForPointer(
         event.clientX,
         event.currentTarget.getBoundingClientRect(),
-        source.duration,
+        source.duration ?? 0,
       )
       restPosition.current = time
       setPosition(time)
@@ -449,7 +479,11 @@ export function useHoverPreview(
         videoRef.current?.pause()
       }
       if (restTimer.current !== null) window.clearTimeout(restTimer.current)
-      restTimer.current = window.setTimeout(resumeAtRest, HOVER_PREVIEW_REST_MS)
+      const timer = window.setTimeout(() => {
+        if (restTimer.current !== timer) return
+        resumeAtRest()
+      }, HOVER_PREVIEW_REST_MS)
+      restTimer.current = timer
     },
     [active, cancelPendingResume, mode, resumeAtRest, source, videoRef],
   )

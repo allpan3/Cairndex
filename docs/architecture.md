@@ -113,10 +113,12 @@ Current browsing surfaces:
 - **File Browser:** read-only filesystem browser over the active library root,
   separate from Bundle Browser selection and bundle inspection.
 
-M12 adds one shared card-hover preview path across video effective-cover bundle
-cards, bundle-album file tiles, and linked File Browser grid cards. A module-level
-owner permits only one active preview. Direct-capable sources use the existing
-range `/stream` URL after a 500 ms dwell. Storyboard indexes prefetch after a
+M12 adds one shared card-hover preview path across bundle cards, bundle-album
+file tiles, and linked File Browser grid cards. Bundle cards source it from the
+ADR-0016 cursor rather than the cover: image cursors show a still, while video
+cursors use the behavior below. A module-level owner permits only one active
+preview. Direct-capable videos use the existing range `/stream` URL after a
+500 ms dwell. Storyboard indexes prefetch after a
 150 ms sub-dwell; motion pauses and hides the still-mounted direct video,
 renders the cursor-time sprite, and performs no video seeks. After 250 ms rest,
 one seek lands on the displayed storyboard cue's sampled timestamp and playback
@@ -194,10 +196,20 @@ Path safety rules:
   drive/UNC forms, NUL bytes, and `..` traversal;
 - file access re-resolves the target under the library root and rejects symlink
   escapes;
+- successful bundle file-list and playback-manifest reads check every linked
+  member of that bundle; File Browser directory reads use the indexed
+  `AssetFile.directory_path` key to check only linked direct children;
 - hidden dotfiles/dot-directories and known cruft are excluded from scan, File
   View, and grouping review;
 - sensitive operations such as streaming, thumbnailing, subtitle conversion, and
   File Browser raw-file preview re-check existence at access time.
+
+Both access paths persist newly vanished files as `missing`. Directory listings
+return the number of changed rows so the client refreshes bundle/count queries
+only after a real availability update. They never search the library or infer a
+moved file's new path. The scanner remains the reconciliation boundary for
+high-confidence moved-file repair that preserves the existing `AssetFile.id`
+and bundle metadata.
 
 ## 6. Domain model
 
@@ -220,6 +232,9 @@ The implemented schema is documented in `docs/data-model.md`. Core objects:
 - `PlaybackProgress` — owner resume state keyed by stable `AssetFile.id`, with a
   denormalized `bundle_id` synced from file re-parenting for continue-watching
   queries. Completion is only computed when a known duration is reported.
+- `BundleCursor` — one current ordered media file per bundle, stored separately
+  from versioned bundle metadata. It also represents images, while video time
+  remains in `PlaybackProgress` (ADR-0016).
 - `GroupingPlan` / `GroupingProposal` / `GroupingProposalFile` — durable,
   reviewable grouping suggestions.
 
@@ -240,7 +255,7 @@ Scanner behavior:
 - appeared paths are matched against disappeared rows for high-confidence
   same-file repair before creating new rows;
 - repair preserves `AssetFile.id`, bundle membership, tags, collections, rating,
-  notes, cover/primary references, subtitles, playback progress, and generated
+  notes, cover/cursor references, subtitles, playback progress, and generated
   cache identity;
 - the scan path reads cheap filesystem identity and quick fingerprint only — no
   full hashing of large files.
@@ -253,12 +268,31 @@ before apply.
 Grouping behavior:
 
 - the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
-  reasons, parent links, and natural ordering;
+  reasons, parent links, and a stable video → audio → image → remaining-files
+  order (natural path order within each group);
+- multi-video directories pair sidecars by unique normalized full video stem or
+  full-stem suffix before falling back to a unique leading subject prefix;
+- grouping review persists file drag-and-drop within or across bundle proposals,
+  bundle reparenting into suggested collections, and bundle/collection title
+  edits before apply; reviewed file sequence becomes playlist order;
+- additions to confirmed bundles retain that bundle as a reversible target while
+  persisting a target-title snapshot, a derived fresh-bundle title, and the
+  owner's existing/new destination choice; switching modes recomputes roles but
+  preserves the reviewed sequence and proposal identity;
+- relevant existing collection branches remain in the review plan even when
+  their confirmed bundles are excluded; additions prefer their target bundle's
+  collection, while fresh top-level proposals reuse the deepest matching
+  collection path, and apply resolves those nodes to existing collections;
+- bundle proposals with no files and collection proposals with no file-backed
+  descendants are automatically excluded from the accepted selection;
+- explicitly edited proposals retain their original bundle identity while
+  confirmed bundles remain outside every grouping-regeneration candidate set;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
 - confirmed bundles are excluded from re-grouping; new files in confirmed-owned
-  directories are proposed as additions;
+  directories are proposed as additions, while an explicit new-bundle override
+  applies those files separately and leaves the confirmed target untouched;
 - applying a plan is the only step that confirms scan-staged bundles, creates
-  suggested collections, assigns roles, selects cover/primary, and links external
+  suggested collections, assigns roles, selects a cover, and links external
   subtitles;
 - the apply API supports selected proposal ids. Applying selected proposals marks
   the plan applied; unchecked proposals are intentionally left unapplied for that
@@ -314,9 +348,8 @@ Thumbnail cover fallback is:
 
 1. explicit `cover_file_id` if it points at a thumbnailable file;
 2. first image in the bundle;
-3. selected primary video;
-4. first video in the bundle;
-5. generated placeholder/no thumbnail state.
+3. first video in the bundle;
+4. generated placeholder/no thumbnail state.
 
 The global sidebar thumbnail button has been removed, but the backend thumbnail
 job endpoint and lazy bundle/file thumbnail endpoints remain.
@@ -337,11 +370,19 @@ timestamps are touched through reverse membership plus ancestor traversal, not
 an all-collection scan. Storyboard parsing removes ANSI control sequences and
 falls back to emitted-sheet capacity with a warning when `showinfo` is absent.
 
-Bundle browse summaries expose nullable effective-cover video file id, relative
-path, ffmpeg container list, video/audio codecs, and duration for M12 without
-another query: the fields are derived beside the existing cover key from the
-already-loaded ordered file list. Image, missing, and empty effective covers
-return null preview fields.
+Bundle browse summaries keep the cover key solely for static artwork and expose
+the effective bundle cursor separately: file id/update time, media kind/path,
+MIME, probe codecs/container/duration, and incomplete video position. The cursor
+is resolved from the persisted row, legacy progress fallback, then ordered
+supported files. Card hover therefore shows a still image or video preview even
+when the chosen cover is different. Missing current files keep their cursor id
+for the viewer's missing state but expose no hover source (ADR-0016).
+
+The media viewer uses the same ordered supported file list for initial open,
+previous/next, and end-of-video advance. Changing the selected media writes the
+bundle cursor without bumping bundle metadata/version. `primary_file_id` remains
+only as an unread legacy column for existing databases; the API and inspector no
+longer expose a primary-file action.
 
 Image preview derivatives are lazy-only in M5 and use this deterministic cache
 layout:
@@ -541,7 +582,7 @@ authenticating reverse proxy, not the public internet.
 
 ## 14. Known architectural debt
 
-- richer grouping review editing before apply (merge/split/reclassify/rename);
+- grouping bundle/container reclassification before apply;
 - browse-summary query optimization and indexes for larger libraries;
 - cross-filesystem moved-file repair and manual repair candidates;
 - scheduled scans and stronger job scheduling;

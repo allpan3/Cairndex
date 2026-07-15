@@ -463,6 +463,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/cursor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Bundle Cursor */
+        put: operations["update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
         parameters: {
             query?: never;
@@ -1160,12 +1177,9 @@ export interface paths {
          * @description Suggest a grouping for the current library and store it as the active
          *     plan (superseding any earlier open plan).
          *
-         *     This is the manual "Suggest grouping" entrypoint, so it uses the
-         *     ``uncategorized`` scope: every bundle not yet filed into a collection —
-         *     including a previously confirmed one whose collections were later removed —
-         *     is re-proposed for grouping, alongside still-unbundled files. Routine
-         *     scan/Update generation stays on the ``new`` scope (confirmed groupings are
-         *     left untouched).
+         *     Manual and scan-triggered generation share the same durable boundary:
+         *     confirmed bundles stay settled regardless of collection membership, while
+         *     still-unbundled files and new additions remain eligible.
          */
         post: operations["generate_plan_api_v1_libraries__library_id__grouping_plans_post"];
         delete?: never;
@@ -1202,6 +1216,86 @@ export interface paths {
         put?: never;
         /** Apply Plan */
         post: operations["apply_plan_api_v1_libraries__library_id__grouping_plans__plan_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Proposal
+         * @description Rename a bundle or collection suggestion before its open plan is applied.
+         */
+        patch: operations["update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/destination": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Proposal Destination
+         * @description Switch an addition candidate between its existing target and a new bundle.
+         */
+        put: operations["update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Move Proposal File
+         * @description Move a file to an exact position in any bundle suggestion.
+         */
+        put: operations["move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reparent Proposal
+         * @description Move a bundle suggestion into a collection suggestion or to top level.
+         */
+        put: operations["reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1776,6 +1870,16 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** BundleCursorRead */
+        BundleCursorRead: {
+            /** File Id */
+            file_id: string;
+        };
+        /** BundleCursorUpdate */
+        BundleCursorUpdate: {
+            /** File Id */
+            file_id: string;
+        };
         /** BundleDraftResponse */
         BundleDraftResponse: {
             /** Additional */
@@ -1805,10 +1909,10 @@ export interface components {
             imported_at: string;
             /** Notes */
             notes?: string[];
-            /** Primary File Id */
-            primary_file_id: string | null;
             /** Rating */
             rating: number | null;
+            /** Resume File Id */
+            resume_file_id?: string | null;
             /** Title */
             title: string | null;
             /**
@@ -1839,20 +1943,6 @@ export interface components {
         BundleSummary: {
             /** Cover Key */
             cover_key: string | null;
-            /** Cover Video Audio Codec */
-            cover_video_audio_codec: string | null;
-            /** Cover Video Codec */
-            cover_video_codec: string | null;
-            /** Cover Video Container */
-            cover_video_container: string | null;
-            /** Cover Video Duration */
-            cover_video_duration: number | null;
-            /** Cover Video File Id */
-            cover_video_file_id: string | null;
-            /** Cover Video Relative Path */
-            cover_video_relative_path: string | null;
-            /** Cover Video Resume Position */
-            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -1879,6 +1969,26 @@ export interface components {
             openable: boolean;
             /** Rating */
             rating: number | null;
+            /** Resume Audio Codec */
+            resume_audio_codec: string | null;
+            /** Resume Container */
+            resume_container: string | null;
+            /** Resume Duration */
+            resume_duration: number | null;
+            /** Resume File Id */
+            resume_file_id: string | null;
+            /** Resume File Updated At */
+            resume_file_updated_at: string | null;
+            /** Resume Media Kind */
+            resume_media_kind: string | null;
+            /** Resume Mime Type */
+            resume_mime_type: string | null;
+            /** Resume Position */
+            resume_position: number | null;
+            /** Resume Relative Path */
+            resume_relative_path: string | null;
+            /** Resume Video Codec */
+            resume_video_codec: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -1899,8 +2009,6 @@ export interface components {
             cover_file_id?: string | null;
             /** Notes */
             notes?: string[] | null;
-            /** Primary File Id */
-            primary_file_id?: string | null;
             /** Rating */
             rating?: number | null;
             /** Title */
@@ -2007,20 +2115,6 @@ export interface components {
         ContinueWatchingItem: {
             /** Cover Key */
             cover_key: string | null;
-            /** Cover Video Audio Codec */
-            cover_video_audio_codec: string | null;
-            /** Cover Video Codec */
-            cover_video_codec: string | null;
-            /** Cover Video Container */
-            cover_video_container: string | null;
-            /** Cover Video Duration */
-            cover_video_duration: number | null;
-            /** Cover Video File Id */
-            cover_video_file_id: string | null;
-            /** Cover Video Relative Path */
-            cover_video_relative_path: string | null;
-            /** Cover Video Resume Position */
-            cover_video_resume_position: number | null;
             /**
              * Date Added
              * Format: date-time
@@ -2048,6 +2142,26 @@ export interface components {
             progress: components["schemas"]["ContinueWatchingProgressRead"];
             /** Rating */
             rating: number | null;
+            /** Resume Audio Codec */
+            resume_audio_codec: string | null;
+            /** Resume Container */
+            resume_container: string | null;
+            /** Resume Duration */
+            resume_duration: number | null;
+            /** Resume File Id */
+            resume_file_id: string | null;
+            /** Resume File Updated At */
+            resume_file_updated_at: string | null;
+            /** Resume Media Kind */
+            resume_media_kind: string | null;
+            /** Resume Mime Type */
+            resume_mime_type: string | null;
+            /** Resume Position */
+            resume_position: number | null;
+            /** Resume Relative Path */
+            resume_relative_path: string | null;
+            /** Resume Video Codec */
+            resume_video_codec: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -2242,6 +2356,8 @@ export interface components {
         FileBrowserListingRead: {
             /** Entries */
             entries: components["schemas"]["FileBrowserEntryRead"][];
+            /** Missing Files Updated */
+            missing_files_updated: number;
             /** Path */
             path: string;
         };
@@ -2858,6 +2974,18 @@ export interface components {
             /** Value */
             value?: unknown;
         };
+        /** ProposalDestinationUpdate */
+        ProposalDestinationUpdate: {
+            /** Create New Bundle */
+            create_new_bundle: boolean;
+        };
+        /** ProposalFileMove */
+        ProposalFileMove: {
+            /** Target Index */
+            target_index: number;
+            /** Target Proposal Id */
+            target_proposal_id: string;
+        };
         /** ProposalFileRead */
         ProposalFileRead: {
             /** Asset File Id */
@@ -2881,6 +3009,8 @@ export interface components {
         ProposalRead: {
             /** Confidence */
             confidence: number;
+            /** Create New Bundle */
+            create_new_bundle: boolean;
             /** Directory */
             directory: string;
             /** Files */
@@ -2894,8 +3024,20 @@ export interface components {
             reason: string | null;
             /** Target Bundle Id */
             target_bundle_id: string | null;
+            /** Target Bundle Title */
+            target_bundle_title: string | null;
             /** Title */
             title: string | null;
+        };
+        /** ProposalReparent */
+        ProposalReparent: {
+            /** Parent Proposal Id */
+            parent_proposal_id: string | null;
+        };
+        /** ProposalUpdate */
+        ProposalUpdate: {
+            /** Title */
+            title: string;
         };
         /** ProposedRoleRead */
         ProposedRoleRead: {
@@ -4174,6 +4316,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleCollections"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_bundle_cursor_api_v1_libraries__library_id__bundles__bundle_id__cursor_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BundleCursorUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BundleCursorRead"];
                 };
             };
             /** @description Validation Error */
@@ -5867,6 +6047,163 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplyResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_proposal_destination_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__destination_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalDestinationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_proposal_file_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__files__asset_file_id__move_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                asset_file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalFileMove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalReparent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalRead"];
                 };
             };
             /** @description Validation Error */

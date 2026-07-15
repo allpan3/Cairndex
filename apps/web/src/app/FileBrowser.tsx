@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import type { FileBrowserEntry, SortOrder } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
@@ -107,8 +108,18 @@ export function FileBrowser(props: FileBrowserProps) {
 
 function BrowseScope(props: FileBrowserProps) {
   const { libraryName, path, onNavigate } = props
+  const qc = useQueryClient()
   const query = useFileBrowser(path)
   const entries = query.data?.entries ?? []
+  const missingFilesUpdated = query.data?.missing_files_updated ?? 0
+
+  // A directory read can persist missing links, so refresh bundle-based views
+  useEffect(() => {
+    if (missingFilesUpdated === 0) return
+    qc.invalidateQueries({ queryKey: ['view-counts'] })
+    qc.invalidateQueries({ queryKey: ['browse'] })
+    qc.invalidateQueries({ queryKey: ['bundle-files'] })
+  }, [missingFilesUpdated, qc, query.dataUpdatedAt])
 
   const header = (
     <nav className="file-browser__crumbs" aria-label="Breadcrumb">
@@ -587,6 +598,7 @@ function FileCard({
     () =>
       entry.media_kind === 'video' && entry.file_id && entry.duration
         ? {
+            mediaKind: 'video',
             fileId: entry.file_id,
             mimeType: entry.mime_type,
             relativePath: entry.relative_path,

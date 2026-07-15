@@ -8,7 +8,7 @@ sets), independent of any service-layer logic.
 import pytest
 from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.domain.enums import FileRole, MediaKind
 from cairndex.persistence.engine import ensure_content_indexes
@@ -91,6 +91,18 @@ def test_same_file_cannot_be_linked_twice(session: Session) -> None:
         _make_file(session, bundle, "movie/a.mp4")
 
 
+# Directory keys follow every create and moved-file repair path assignment
+def test_asset_file_directory_path_tracks_relative_path(session: Session) -> None:
+    bundle = AssetBundle(title="b")
+    session.add(bundle)
+    session.flush()
+    file = _make_file(session, bundle, "movie/a.mp4")
+
+    assert file.directory_path == "movie"
+    file.relative_path = "archive/2026/a.mp4"
+    assert file.directory_path == "archive/2026"
+
+
 def test_tag_adjacency_parent_child(session: Session) -> None:
     parent = Tag(name="genre")
     session.add(parent)
@@ -137,6 +149,63 @@ def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine
     columns = {c["name"]: c for c in inspect(engine).get_columns("asset_files")}
     assert columns["cover_time"]["nullable"] is True
     assert columns["cover_previous_file_id"]["nullable"] is True
+
+
+# Existing libraries gain grouping-review edit metadata on open
+def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN base_bundle_id"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN owner_edited"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_bundle_title"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN create_new_bundle"))
+
+    ensure_content_indexes(engine)
+
+    columns = {c["name"] for c in inspect(engine).get_columns("grouping_proposals")}
+    assert {
+        "base_bundle_id",
+        "owner_edited",
+        "target_bundle_title",
+        "create_new_bundle",
+    } <= columns
+
+
+# Existing libraries gain the additive bundle cursor table on open
+def test_ensure_content_indexes_adds_bundle_cursor_table(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE bundle_cursors"))
+
+    ensure_content_indexes(engine)
+
+    assert "bundle_cursors" in inspect(engine).get_table_names()
+
+
+# Existing libraries gain a backfilled, indexed directory key on open
+def test_ensure_content_indexes_adds_and_backfills_directory_path(engine: Engine) -> None:
+    with sessionmaker(bind=engine, expire_on_commit=False)() as db:
+        bundle = AssetBundle(title="legacy")
+        db.add(bundle)
+        db.flush()
+        file = _make_file(db, bundle, "Show/S01/episode.mp4")
+        file_id = file.id
+        db.commit()
+
+    with engine.begin() as conn:
+        conn.execute(text("DROP INDEX ix_asset_files_directory_path"))
+        conn.execute(text("ALTER TABLE asset_files DROP COLUMN directory_path"))
+
+    ensure_content_indexes(engine)
+
+    inspector = inspect(engine)
+    columns = {c["name"] for c in inspector.get_columns("asset_files")}
+    indexes = {i["name"] for i in inspector.get_indexes("asset_files")}
+    assert "directory_path" in columns
+    assert "ix_asset_files_directory_path" in indexes
+    with engine.connect() as conn:
+        directory = conn.scalar(
+            text("SELECT directory_path FROM asset_files WHERE id = :id"), {"id": file_id}
+        )
+    assert directory == "Show/S01"
 
 
 def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:

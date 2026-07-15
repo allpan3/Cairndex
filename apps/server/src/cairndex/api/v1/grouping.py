@@ -15,6 +15,11 @@ from cairndex.api.schemas.grouping import (
     ApplyResultRead,
     PlanRead,
     PlanSummary,
+    ProposalDestinationUpdate,
+    ProposalFileMove,
+    ProposalRead,
+    ProposalReparent,
+    ProposalUpdate,
 )
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
@@ -38,13 +43,10 @@ def generate_plan(db: LibrarySession) -> PlanRead:
     """Suggest a grouping for the current library and store it as the active
     plan (superseding any earlier open plan).
 
-    This is the manual "Suggest grouping" entrypoint, so it uses the
-    ``uncategorized`` scope: every bundle not yet filed into a collection —
-    including a previously confirmed one whose collections were later removed —
-    is re-proposed for grouping, alongside still-unbundled files. Routine
-    scan/Update generation stays on the ``new`` scope (confirmed groupings are
-    left untouched)."""
-    plan = plan_store.generate_plan(db, scope="uncategorized")
+    Manual and scan-triggered generation share the same durable boundary:
+    confirmed bundles stay settled regardless of collection membership, while
+    still-unbundled files and new additions remain eligible."""
+    plan = plan_store.generate_plan(db)
     return PlanRead.model_validate(plan)
 
 
@@ -57,6 +59,67 @@ def list_plans(db: LibrarySession) -> list[PlanSummary]:
 def get_plan(plan_id: str, db: LibrarySession) -> PlanRead:
     plan = plan_store.get_plan(db, plan_id)  # 404 if unknown
     return PlanRead.model_validate(plan)
+
+
+# Persist an inline bundle/collection title edit before grouping apply
+@router.patch("/plans/{plan_id}/proposals/{proposal_id}", response_model=ProposalRead)
+def update_proposal(
+    plan_id: str, proposal_id: str, payload: ProposalUpdate, db: LibrarySession
+) -> ProposalRead:
+    """Rename a bundle or collection suggestion before its open plan is applied."""
+    proposal = plan_store.rename_proposal(db, plan_id, proposal_id, payload.title)
+    return ProposalRead.model_validate(proposal)
+
+
+# Persist an addition proposal's existing-versus-new destination choice
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/destination", response_model=ProposalRead)
+def update_proposal_destination(
+    plan_id: str,
+    proposal_id: str,
+    payload: ProposalDestinationUpdate,
+    db: LibrarySession,
+) -> ProposalRead:
+    """Switch an addition candidate between its existing target and a new bundle."""
+    proposal = plan_store.set_proposal_destination(
+        db, plan_id, proposal_id, payload.create_new_bundle
+    )
+    return ProposalRead.model_validate(proposal)
+
+
+# Move one reviewed file within or across bundle suggestions
+@router.put(
+    "/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move",
+    response_model=list[ProposalRead],
+)
+def move_proposal_file(
+    plan_id: str,
+    proposal_id: str,
+    asset_file_id: str,
+    payload: ProposalFileMove,
+    db: LibrarySession,
+) -> list[ProposalRead]:
+    """Move a file to an exact position in any bundle suggestion."""
+    proposals = plan_store.move_proposal_file(
+        db,
+        plan_id,
+        proposal_id,
+        asset_file_id,
+        payload.target_proposal_id,
+        payload.target_index,
+    )
+    return [ProposalRead.model_validate(proposal) for proposal in proposals]
+
+
+# Move one reviewed bundle into a collection suggestion
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/parent", response_model=ProposalRead)
+def reparent_proposal(
+    plan_id: str, proposal_id: str, payload: ProposalReparent, db: LibrarySession
+) -> ProposalRead:
+    """Move a bundle suggestion into a collection suggestion or to top level."""
+    proposal = plan_store.reparent_bundle_proposal(
+        db, plan_id, proposal_id, payload.parent_proposal_id
+    )
+    return ProposalRead.model_validate(proposal)
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)

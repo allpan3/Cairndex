@@ -104,7 +104,7 @@ def generate_for_file(session: Session, file_id: str, *, force: bool = False) ->
 def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
     """Resolve the file a bundle's cover should be derived from (AGENTS.md §4.4).
 
-    Precedence: selected cover → first image → selected/first video.
+    Precedence: selected cover → first image → first video.
     """
     bundle = get_bundle(session, bundle_id)
     if bundle.cover_file_id is not None:
@@ -115,10 +115,6 @@ def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
     image = next((f for f in files if f.media_kind is MediaKind.IMAGE and _can_thumbnail(f)), None)
     if image is not None:
         return image
-    if bundle.primary_file_id is not None:
-        primary = session.get(AssetFile, bundle.primary_file_id)
-        if primary is not None and primary.media_kind is MediaKind.VIDEO:
-            return primary
     video = next((f for f in files if f.media_kind is MediaKind.VIDEO), None)
     if video is not None:
         return video
