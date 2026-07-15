@@ -2198,6 +2198,7 @@ code {
   font-weight: 600;
   color: var(--text-strong);
   font-size: 13px;
+  line-height: 18px;
   overflow-wrap: anywhere;
 }
 .grp-title--editable {
@@ -2205,7 +2206,6 @@ code {
   border: 0;
   background: transparent;
   font-family: inherit;
-  line-height: inherit;
   cursor: text;
   text-align: left;
 }
@@ -2217,33 +2217,43 @@ code {
 }
 .grp-title-editor {
   display: inline-grid;
-  max-width: min(100%, 70vw);
+  position: relative;
+  max-width: 100%;
   overflow: hidden;
   vertical-align: middle;
 }
 .grp-title-editor::after {
-  content: attr(data-value) ' ';
+  content: attr(data-value);
   grid-area: 1 / 1;
   min-width: 1ch;
-  padding: 2px 5px;
-  border: 1px solid transparent;
   visibility: hidden;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .grp-title-input {
-  grid-area: 1 / 1;
+  appearance: none;
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 2px 5px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: var(--bg);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: inherit;
   font: inherit;
   font-weight: inherit;
+  line-height: 18px;
   outline: none;
+  box-shadow: inset 0 -1px var(--accent);
+  caret-color: var(--accent);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .grp-reason {
   font-size: 11px;

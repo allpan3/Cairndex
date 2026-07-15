@@ -1,4 +1,4 @@
-import { type DragEvent, useMemo, useRef, useState } from 'react'
+import { type DragEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { GroupingApplyResult, GroupingProposal } from '../api/client'
 import {
@@ -159,7 +159,7 @@ function DestinationToggle({
       aria-label={label}
       aria-pressed={proposal.create_new_bundle}
       data-tip={label}
-      disabled={destination.pending || !hasItems}
+      disabled={!destination.canEdit || destination.pending || !hasItems}
       onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
     >
       <IconRefreshCw />
@@ -185,16 +185,21 @@ function ProposalTitleEditor({
   rename: RenameControls
 }) {
   const [value, setValue] = useState(proposal.title ?? '')
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    inputRef.current?.focus({ preventScroll: true })
+    inputRef.current?.select()
+  }, [])
   return (
     <span className="grp-title grp-title-editor" data-value={value || ' '}>
-      <input
+      <textarea
+        ref={inputRef}
         className="grp-title-input"
         aria-label={inputLabel}
         value={value}
-        autoFocus
+        rows={1}
         disabled={rename.pending}
         onChange={(event) => setValue(event.currentTarget.value)}
-        onFocus={(event) => event.currentTarget.select()}
         onBlur={(event) => rename.commit(proposal.id, event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
@@ -352,7 +357,7 @@ function ProposalNode({
         <span className="grp-row__content">
           <span className="grp-title-cluster">
             <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
-            {hasDestinationChoice && destination.canEdit && (
+            {hasDestinationChoice && (
               <DestinationToggle
                 proposal={proposal}
                 hasItems={hasItems}
