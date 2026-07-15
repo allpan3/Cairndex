@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
   listenDesktopLifecycle,
+  listenDesktopMenu,
   loadDesktopServerUrl,
   normalizeDesktopServerUrl,
   saveDesktopServerUrl,
+  setDesktopServerAvailable,
 } from './runtime'
 
 interface DesktopBootstrapProps {
@@ -29,11 +31,17 @@ async function verifyServer(serverUrl: string): Promise<void> {
   }
 }
 
+// Surfaces recoverable desktop bridge failures without hiding the setup UI
+function reportDesktopBridgeError(message: string, error: unknown): void {
+  console.error(message, error)
+}
+
 // Gates the shared SPA on first-run desktop server configuration
 export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [saving, setSaving] = useState(false)
+  const serverInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let disposed = false
@@ -43,7 +51,9 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         if (disposed) stop()
         else unlisten = stop
       })
-      .catch(() => undefined)
+      .catch((error: unknown) =>
+        reportDesktopBridgeError('Could not start desktop lifecycle handling', error),
+      )
     return () => {
       disposed = true
       unlisten?.()
@@ -51,9 +61,37 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   }, [])
 
   useEffect(() => {
+    if (ready) return
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    void listenDesktopMenu((action) => {
+      if (action !== 'settings') return
+      serverInputRef.current?.focus()
+      serverInputRef.current?.select()
+    })
+      .then((stop) => {
+        if (disposed) stop()
+        else unlisten = stop
+      })
+      .catch((error: unknown) =>
+        reportDesktopBridgeError('Could not start desktop setup menu handling', error),
+      )
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [ready])
+
+  useEffect(() => {
     let active = true
-    void loadDesktopServerUrl()
-      .then(async (stored) => {
+    void (async () => {
+      try {
+        await setDesktopServerAvailable(false)
+      } catch (error) {
+        reportDesktopBridgeError('Could not disable server menu actions during setup', error)
+      }
+      try {
+        const stored = await loadDesktopServerUrl()
         if (!active) return
         if (!stored) {
           setSetup({ serverUrl: 'http://127.0.0.1:8000', error: null })
@@ -61,7 +99,14 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         }
         try {
           await verifyServer(stored)
-          if (active) setReady(true)
+          if (active) {
+            try {
+              await setDesktopServerAvailable(true)
+            } catch (error) {
+              reportDesktopBridgeError('Could not enable server menu actions', error)
+            }
+            setReady(true)
+          }
         } catch {
           if (active) {
             setSetup({
@@ -70,15 +115,15 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
             })
           }
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           setSetup({
             serverUrl: 'http://127.0.0.1:8000',
             error: 'The desktop settings store could not be opened.',
           })
         }
-      })
+      }
+    })()
     return () => {
       active = false
     }
@@ -93,6 +138,11 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
       const normalized = await normalizeDesktopServerUrl(setup.serverUrl)
       await verifyServer(normalized)
       await saveDesktopServerUrl(normalized)
+      try {
+        await setDesktopServerAvailable(true)
+      } catch (error) {
+        reportDesktopBridgeError('Could not enable server menu actions', error)
+      }
       setReady(true)
     } catch (error) {
       const message =
@@ -123,6 +173,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
           Server URL
         </label>
         <input
+          ref={serverInputRef}
           id="desktop-server-url"
           className="edit desktop-setup__input"
           type="url"

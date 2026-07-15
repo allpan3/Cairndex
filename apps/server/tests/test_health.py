@@ -58,7 +58,7 @@ def test_tauri_dev_origin_requires_explicit_configuration(
 ) -> None:
     monkeypatch.setenv(
         "CAIRNDEX_CORS_EXTRA_ORIGINS",
-        "http://127.0.0.1:5173, https://dev.example/",
+        "http://127.0.0.1:5173, https://Dev.Example/",
     )
     get_settings.cache_clear()
     try:

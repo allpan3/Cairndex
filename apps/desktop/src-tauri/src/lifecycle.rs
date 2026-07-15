@@ -7,7 +7,8 @@ use std::{
 use tauri::{AppHandle, Emitter, ExitRequestApi, Manager, Runtime};
 
 pub(crate) const EXIT_REQUESTED_EVENT: &str = "cairndex://exit-requested";
-const EXIT_FALLBACK_DELAY: Duration = Duration::from_secs(1);
+// Bounds shutdown preparation when the SPA cannot complete its server round-trip
+const EXIT_FALLBACK_DELAY: Duration = Duration::from_secs(5);
 const EXIT_IDLE: u8 = 0;
 const EXIT_PREPARING: u8 = 1;
 const EXIT_READY: u8 = 2;

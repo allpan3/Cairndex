@@ -39,6 +39,11 @@ export function setDesktopLibraryAvailable(enabled: boolean): Promise<void> {
   return invoke('set_library_menu_enabled', { enabled })
 }
 
+// Keeps server-backed native commands disabled until bootstrap reaches the SPA
+export function setDesktopServerAvailable(enabled: boolean): Promise<void> {
+  return invoke('set_server_menu_enabled', { enabled })
+}
+
 // Routes window close and application quit through one awaitable native handshake
 export async function listenDesktopLifecycle(): Promise<UnlistenFn> {
   const appWindow = getCurrentWindow()

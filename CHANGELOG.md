@@ -161,7 +161,13 @@ grouped under `Unreleased` until the first tagged release.
   localhost ATS exemption. Desktop modules are lazy chunks outside the browser
   entry, workspace-only menu items disable without a library, both Rust CI jobs
   cache their Cargo builds, and generated API artifacts retain the typed progress
-  contract.
+  contract. Final review follow-up gives the network-backed exit flush a
+  five-second watchdog, lowercases configured CORS origin authorities, and
+  reports desktop chunk/menu bridge failures instead of leaving blank or silent
+  UI. Bootstrap keeps Settings useful by selecting the server URL, disables Pair
+  Device until connection succeeds, and restores its availability afterward.
+  Native menu polish uses the physical `=` key for card-size increase and a
+  cross-platform macOS-compatible Toggle Full Screen accelerator/label.
 
 - **Device pairing security and review hardening.** Only Bearer-scheme
   authorization headers select device-token auth, so upstream Basic credentials
