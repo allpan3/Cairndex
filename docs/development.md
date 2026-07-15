@@ -61,8 +61,15 @@ separate job that provisions the locked backend environment and ffmpeg.
 ## Desktop (`apps/desktop`)
 
 The Tauri 2 shell hosts the same `apps/web` Vite development server and
-production `dist`; there is no desktop frontend fork. Start the backend first,
-then run:
+production `dist`; there is no desktop frontend fork. `tauri dev` loads a page
+whose origin is Vite's `http://127.0.0.1:5173`, so opt that exact development
+origin into the backend before starting the shell:
+
+```bash
+cd apps/server
+CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173 \
+  uv run uvicorn cairndex.main:app --reload --port 8000
+```
 
 ```bash
 cd apps/desktop
@@ -70,10 +77,13 @@ npm install
 npm run tauri dev
 ```
 
-The first-run screen stores a verified server URL in the Tauri store. The
-packaged custom-protocol origins and the exact `http://127.0.0.1:5173` Tauri
-development origin are the only cross-origin desktop callers allowed by the
-backend.
+The first-run screen stores a verified server URL in the Tauri store. Packaged
+custom-protocol origins are allowed by default; arbitrary HTTP(S) origins are
+denied unless listed exactly in the comma-separated
+`CAIRNDEX_CORS_EXTRA_ORIGINS`. Leave that variable unset outside deliberate
+local development. D1 does not send browser cookies or device bearer tokens,
+so a protected library cannot be unlocked or selected for pairing approval in
+the shell until D2 wires device-token authentication.
 
 Desktop checks:
 
@@ -88,7 +98,8 @@ npm run tauri build
 
 CI runs these Rust checks on both macOS and Ubuntu; only macOS bundles the app.
 Keep native capabilities in cross-platform Tauri plugins, with any unavoidable
-target-OS conditional isolated in `src-tauri/src/host.rs`.
+target-OS conditional isolated in one clearly named host module. D1 currently
+contains no target-OS conditional code.
 
 ## Databases and local state
 

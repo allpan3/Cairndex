@@ -5,8 +5,7 @@ import { DesktopBootstrap } from './DesktopBootstrap'
 import { loadDesktopServerUrl, normalizeDesktopServerUrl, saveDesktopServerUrl } from './runtime'
 
 vi.mock('./runtime', () => ({
-  isDesktopHost: () => true,
-  listenDesktopClose: vi.fn().mockResolvedValue(() => undefined),
+  listenDesktopLifecycle: vi.fn().mockResolvedValue(() => undefined),
   loadDesktopServerUrl: vi.fn(),
   normalizeDesktopServerUrl: vi.fn(),
   saveDesktopServerUrl: vi.fn(),

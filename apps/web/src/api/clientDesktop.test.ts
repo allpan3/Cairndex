@@ -89,6 +89,6 @@ test('resolves sendBeacon destinations', () => {
   expect(beaconPlaybackProgress('file1', { position_s: 3 })).toBe(true)
   expect(sendBeacon).toHaveBeenCalledWith(
     'http://127.0.0.1:8000/api/v1/libraries/lib1/files/file1/progress',
-    expect.any(Blob),
+    JSON.stringify({ position_s: 3 }),
   )
 })
