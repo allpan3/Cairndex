@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.domain.enums import (
+    FileAvailability,
     FileRole,
     GroupingSource,
     GroupingState,
@@ -128,6 +129,49 @@ def test_linked_file_is_flagged(session: Session, library_root: Path) -> None:
     assert by_name["notes.txt"].unbundled is False
 
 
+# Directory reads reconcile every linked direct child while leaving other dirs alone
+def test_directory_listing_marks_all_vanished_linked_files_missing(
+    session: Session, library_root: Path
+) -> None:
+    _make_media(library_root)
+    bundle = bundle_service.create_bundle(session, title="show")
+    cover = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="Show/cover.jpg",
+        role=FileRole.COVER,
+        media_kind=MediaKind.IMAGE,
+    )
+    notes = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="Show/notes.txt",
+        role=FileRole.ATTACHMENT,
+        media_kind=MediaKind.OTHER,
+    )
+    other_bundle = bundle_service.create_bundle(session, title="root")
+    root_file = bundle_service.add_file(
+        session,
+        other_bundle.id,
+        relative_path="top.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    session.commit()
+    (library_root / "Show" / "cover.jpg").rename(library_root / "Show" / "new-cover.jpg")
+    (library_root / "Show" / "notes.txt").rename(library_root / "Show" / "new-notes.txt")
+
+    listing = service.list_entries(session, path="Show")
+
+    by_name = {entry.name: entry for entry in listing.entries}
+    assert listing.missing_files_updated == 2
+    assert by_name["new-cover.jpg"].linked is False
+    assert by_name["new-notes.txt"].linked is False
+    assert cover.availability is FileAvailability.MISSING
+    assert notes.availability is FileAvailability.MISSING
+    assert root_file.availability is FileAvailability.AVAILABLE
+
+
 def test_unbundled_flag_tracks_provisional_bundles(session: Session, library_root: Path) -> None:
     _make_media(library_root)
     # ep1.mkv staged as a provisional (unbundled) file; cover.jpg confirmed.
@@ -234,6 +278,34 @@ def test_entries_endpoint(client: TestClient, library_id: str, library_root: Pat
 
     bad = client.get(f"{base}/file-browser/entries", params={"path": "../x"})
     assert bad.status_code in (400, 422)
+
+
+def test_entries_endpoint_updates_missing_bundle_count(
+    client: TestClient, library_id: str, session: Session, library_root: Path
+) -> None:
+    _make_media(library_root)
+    bundle = bundle_service.create_bundle(session, title="show")
+    for relative_path, role, kind in (
+        ("Show/cover.jpg", FileRole.COVER, MediaKind.IMAGE),
+        ("Show/notes.txt", FileRole.ATTACHMENT, MediaKind.OTHER),
+    ):
+        bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=relative_path,
+            role=role,
+            media_kind=kind,
+        )
+    session.commit()
+    (library_root / "Show" / "cover.jpg").rename(library_root / "Show" / "new-cover.jpg")
+    (library_root / "Show" / "notes.txt").rename(library_root / "Show" / "new-notes.txt")
+    base = f"/api/v1/libraries/{library_id}"
+
+    response = client.get(f"{base}/file-browser/entries", params={"path": "Show"})
+
+    assert response.status_code == 200
+    assert response.json()["missing_files_updated"] == 2
+    assert client.get(f"{base}/bundles/counts").json()["missing"] == 1
 
 
 def test_resolve_entry_path(session: Session, library_root: Path) -> None:

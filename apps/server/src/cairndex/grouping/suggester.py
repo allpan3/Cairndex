@@ -30,7 +30,7 @@ from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 2
+SUGGESTER_RULE_VERSION = 4
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -40,6 +40,12 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
 _SUBJECT_DELIMITER = re.compile(r"[._\-\s]+")
+
+_MEDIA_SEQUENCE_RANK = {
+    MediaKind.VIDEO: 0,
+    MediaKind.AUDIO: 1,
+    MediaKind.IMAGE: 2,
+}
 
 
 @dataclass(frozen=True)
@@ -88,8 +94,15 @@ class GroupingProposal:
     reason: str
     files: tuple[ProposedFile, ...] = ()
     # When set, this is an *addition* proposal (ADR-0009 phase 5): its files
-    # join an existing confirmed bundle rather than forming a new one.
+    # default to joining an existing confirmed bundle.
     target_bundle_id: str | None = None
+    # Snapshot title for the reversible existing-bundle destination
+    target_bundle_title: str | None = None
+    # Owner override that turns an addition candidate into a fresh bundle
+    create_new_bundle: bool = False
+    # Existing bundle whose identity this proposal should preserve if the owner
+    # edits a confirmed grouping before apply
+    base_bundle_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +141,12 @@ def _subject_prefix(name: str) -> str:
     """Return the leading filename subject before sidecar delimiters."""
     stem = _stem(name).lower()
     return _SUBJECT_DELIMITER.split(stem, maxsplit=1)[0]
+
+
+# Normalize separators while retaining the complete filename subject
+def _normalized_stem(name: str) -> str:
+    """Return a comparable full stem across spaces, dots, dashes, and underscores."""
+    return " ".join(part for part in _SUBJECT_DELIMITER.split(_stem(name).casefold()) if part)
 
 
 def _natural_key(name: str) -> list[object]:
@@ -223,9 +242,27 @@ def _bundle_groups(media: list[FileObservation]) -> list[list[FileObservation]]:
         for video, group in zip(videos, groups, strict=True)
         if prefix_counts[_subject_prefix(video.relative_path)] == 1
     }
+    video_stems = [_normalized_stem(video.relative_path) for video in videos]
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
-        group = group_by_prefix.get(_subject_prefix(f.relative_path))
+        stem = _normalized_stem(f.relative_path)
+        exact_matches = [
+            group
+            for video_stem, group in zip(video_stems, groups, strict=True)
+            if stem == video_stem
+        ]
+        suffix_matches = [
+            group
+            for video_stem, group in zip(video_stems, groups, strict=True)
+            if stem.startswith(f"{video_stem} ")
+        ]
+        group = (
+            exact_matches[0]
+            if len(exact_matches) == 1
+            else suffix_matches[0]
+            if not exact_matches and len(suffix_matches) == 1
+            else group_by_prefix.get(_subject_prefix(f.relative_path))
+        )
         if group is None:
             unassigned.append(f)
         else:
@@ -240,11 +277,19 @@ def _obs_sort_key(f: FileObservation) -> list[object]:
     return _natural_key(f.relative_path)
 
 
+# Put playable media first without disturbing natural order within each group
+def _media_first(files: list[FileObservation]) -> list[FileObservation]:
+    """Order video, audio, and image first; preserve natural order otherwise."""
+    naturally_ordered = sorted(files, key=_obs_sort_key)
+    return sorted(naturally_ordered, key=lambda f: _MEDIA_SEQUENCE_RANK.get(f.media_kind, 3))
+
+
 # --- role assignment ---------------------------------------------------------
 
 
-def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
-    ordered = sorted(files, key=lambda f: _natural_key(f.relative_path))
+# Assign cover and media roles without changing an owner-reviewed sequence
+def _roles_in_order(ordered: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles to observations in their current order."""
     videos = [f for f in ordered if f.media_kind is MediaKind.VIDEO]
     multipart = _is_multipart(videos)
     images = [f for f in ordered if f.media_kind is MediaKind.IMAGE]
@@ -254,6 +299,12 @@ def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     for sequence, f in enumerate(ordered):
         proposed.append(ProposedFile(f.asset_file_id, _role_for(f, multipart, cover_id), sequence))
     return tuple(proposed)
+
+
+# Assign default roles after applying the media-first suggestion order
+def _assign_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles and the default media-first sequence."""
+    return _roles_in_order(_media_first(files))
 
 
 def _pick_cover(images: list[FileObservation]) -> str | None:
@@ -291,6 +342,8 @@ def _bundle_proposal(
     # A bundle that fills its whole folder takes the folder's name; one of several
     # bundles split out of a container reads better titled by its own file.
     title = _basename(directory) if owns_directory and directory else _stem(files[0].relative_path)
+    source_bundle_ids = {file.bundle_id for file in files}
+    base_bundle_id = next(iter(source_bundle_ids)) if len(source_bundle_ids) == 1 else None
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
@@ -299,7 +352,14 @@ def _bundle_proposal(
         confidence=confidence,
         reason=reason,
         files=_assign_roles(files),
+        base_bundle_id=base_bundle_id,
     )
+
+
+# Derive the title an addition candidate would use as a fresh bundle
+def _new_bundle_title(files: list[FileObservation], directory: str) -> str:
+    """Use the normal fresh-bundle naming rule without claiming the directory."""
+    return _bundle_proposal(_media_first(files), directory, None, owns_directory=False).title
 
 
 def _container_proposal(
@@ -370,12 +430,17 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
         return proposals
     # A container of unrelated items: one child bundle per subject or file
     groups = _bundle_groups(media)
+    grouped_count = sum(len(group) > 1 for group in groups)
     proposals.append(
         _container_proposal(
             node.path,
             parent,
             child_count=len(groups),
-            reason=f"{len(media)} unrelated files",
+            reason=(
+                f"{len(groups)} filename-matched bundle(s) from {len(media)} files"
+                if grouped_count
+                else f"{len(media)} unrelated files"
+            ),
         )
     )
     proposals.extend(_direct_media_proposals(media, node.path, parent_for_children=node.path))
@@ -421,12 +486,11 @@ def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, _Owner]:
     return owners
 
 
-def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
-    """Roles for files added to an *existing* bundle: keep it simple — the bundle
-    already has a primary/cover, so an added image is just an image, an added
-    video a part, and a subtitle a subtitle."""
+# Assign addition roles without changing an owner-reviewed sequence
+def _addition_roles_in_order(ordered: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign roles for files joining an existing confirmed bundle."""
     proposed: list[ProposedFile] = []
-    for sequence, f in enumerate(sorted(files, key=lambda x: _natural_key(x.relative_path))):
+    for sequence, f in enumerate(ordered):
         match f.media_kind:
             case MediaKind.SUBTITLE:
                 role = FileRole.SUBTITLE
@@ -440,17 +504,24 @@ def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     return tuple(proposed)
 
 
+# Assign addition roles after applying the media-first suggestion order
+def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
+    """Assign addition roles and the default media-first sequence."""
+    return _addition_roles_in_order(_media_first(files))
+
+
 def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingProposal:
     directory = _dirname(files[0].relative_path)
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
         parent_directory=None,
-        title=owner.title or _basename(directory),
+        title=_new_bundle_title(files, directory),
         confidence=0.8,
         reason=f"add {len(files)} new file(s) to existing bundle",
         files=_addition_roles(files),
         target_bundle_id=owner.bundle_id,
+        target_bundle_title=owner.title or _basename(directory),
     )
 
 

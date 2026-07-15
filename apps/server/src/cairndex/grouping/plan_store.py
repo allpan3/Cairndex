@@ -11,12 +11,20 @@ from __future__ import annotations
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import NotFoundError
-from cairndex.domain.enums import GroupingPlanStatus, ProposalKind
-from cairndex.grouping.service import SuggestScope, gather_observations
-from cairndex.grouping.suggester import GroupingPlan as PlanData
-from cairndex.grouping.suggester import suggest_grouping
+from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
+from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind
+from cairndex.grouping.service import suggest_for_session
+from cairndex.grouping.suggester import (
+    FileObservation,
+    _addition_roles_in_order,
+    _new_bundle_title,
+    _roles_in_order,
+)
+from cairndex.grouping.suggester import (
+    GroupingPlan as PlanData,
+)
 from cairndex.persistence.models import (
+    AssetBundle,
     AssetFile,
     GroupingPlan,
     GroupingProposal,
@@ -33,6 +41,182 @@ def get_plan(session: Session, plan_id: str) -> GroupingPlan:
 
 def list_plans(session: Session) -> list[GroupingPlan]:
     return list(session.scalars(select(GroupingPlan).order_by(GroupingPlan.generated_at.desc())))
+
+
+# Resolve one editable proposal and enforce the open-plan boundary
+def _open_proposal(session: Session, plan_id: str, proposal_id: str) -> GroupingProposal:
+    """Load a proposal only when it belongs to the requested open plan."""
+    plan = get_plan(session, plan_id)
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be edited")
+
+    proposal = session.get(GroupingProposal, proposal_id)
+    if proposal is None or proposal.plan_id != plan.id:
+        raise NotFoundError(f"grouping proposal {proposal_id!r} not found")
+    return proposal
+
+
+# Persist an edited title for a bundle or collection suggestion
+def rename_proposal(
+    session: Session, plan_id: str, proposal_id: str, title: str
+) -> GroupingProposal:
+    """Rename a bundle or collection suggestion before apply."""
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    if proposal.target_bundle_id is not None and not proposal.create_new_bundle:
+        raise ValidationError("addition suggestion titles cannot be changed")
+
+    normalized = title.strip()
+    if not normalized:
+        raise ValidationError("suggestion title cannot be empty")
+    proposal.title = normalized
+    proposal.owner_edited = True
+    session.flush()
+    return proposal
+
+
+# Build observations for the current proposal-file order
+def _proposal_observations(
+    session: Session,
+    proposal_files: list[GroupingProposalFile],
+) -> list[FileObservation]:
+    """Resolve stable proposal-file ids into current media observations."""
+    observations: list[FileObservation] = []
+    for proposal_file in proposal_files:
+        asset_file = session.get(AssetFile, proposal_file.asset_file_id)
+        if asset_file is None:
+            continue
+        observations.append(
+            FileObservation(
+                asset_file_id=asset_file.id,
+                relative_path=asset_file.relative_path,
+                media_kind=asset_file.media_kind,
+                bundle_id=asset_file.bundle_id,
+            )
+        )
+    return observations
+
+
+# Rewrite dense sequence and derived roles after a proposal edit
+def _write_proposal_files(
+    session: Session,
+    proposal: GroupingProposal,
+    proposal_files: list[GroupingProposalFile],
+) -> None:
+    """Persist one proposal's exact ordered membership and derived roles."""
+    observations = _proposal_observations(session, proposal_files)
+    proposed = (
+        _addition_roles_in_order(observations)
+        if proposal.target_bundle_id is not None and not proposal.create_new_bundle
+        else _roles_in_order(observations)
+    )
+    role_by_id = {item.asset_file_id: item.role for item in proposed}
+    for sequence, proposal_file in enumerate(proposal_files):
+        proposal_file.sequence = sequence
+        proposal_file.proposed_role = role_by_id.get(
+            proposal_file.asset_file_id, proposal_file.proposed_role
+        )
+
+
+# Persist the reversible existing-bundle versus new-bundle choice
+def set_proposal_destination(
+    session: Session,
+    plan_id: str,
+    proposal_id: str,
+    create_new_bundle: bool,
+) -> GroupingProposal:
+    """Switch an addition candidate between its suggested target and a new bundle."""
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    if proposal.kind is not ProposalKind.BUNDLE or proposal.target_bundle_id is None:
+        raise ValidationError("only an existing-bundle suggestion has another destination")
+
+    observations = _proposal_observations(session, list(proposal.files))
+    if not observations:
+        raise ValidationError("an empty bundle suggestion has no destination")
+
+    # Old open plans stored the target title in title and gain the new fields on open
+    if proposal.target_bundle_title is None:
+        proposal.target_bundle_title = proposal.title
+        proposal.title = _new_bundle_title(observations, proposal.directory)
+
+    if not create_new_bundle:
+        target = session.get(AssetBundle, proposal.target_bundle_id)
+        if target is None or target.grouping_state is not GroupingState.CONFIRMED:
+            raise ConflictError("the suggested existing bundle is no longer available")
+
+    proposal.create_new_bundle = create_new_bundle
+    proposal.owner_edited = True
+    _write_proposal_files(session, proposal, list(proposal.files))
+    session.flush()
+    return proposal
+
+
+# Move one stable file id within or across bundle proposals
+def move_proposal_file(
+    session: Session,
+    plan_id: str,
+    source_proposal_id: str,
+    asset_file_id: str,
+    target_proposal_id: str,
+    target_index: int,
+) -> list[GroupingProposal]:
+    """Move a proposal file to an exact insertion point before apply."""
+    source = _open_proposal(session, plan_id, source_proposal_id)
+    target = _open_proposal(session, plan_id, target_proposal_id)
+    if source.kind is not ProposalKind.BUNDLE or target.kind is not ProposalKind.BUNDLE:
+        raise ValidationError("proposal files can move only between bundle suggestions")
+
+    source_files = list(source.files)
+    source_index = next(
+        (index for index, item in enumerate(source_files) if item.asset_file_id == asset_file_id),
+        None,
+    )
+    if source_index is None:
+        raise NotFoundError(f"proposal file {asset_file_id!r} not found")
+    target_files = source_files if source.id == target.id else list(target.files)
+    if target_index < 0 or target_index > len(target_files):
+        raise ValidationError("target index is outside the target bundle suggestion")
+    if source.id != target.id and any(item.asset_file_id == asset_file_id for item in target_files):
+        raise ValidationError("target bundle suggestion already contains this file")
+
+    moving = source_files.pop(source_index)
+    if source.id == target.id:
+        insertion_index = target_index - (1 if source_index < target_index else 0)
+        source_files.insert(insertion_index, moving)
+        _write_proposal_files(session, source, source_files)
+    else:
+        target_files.insert(target_index, moving)
+        moving.proposal_id = target.id
+        _write_proposal_files(session, source, source_files)
+        _write_proposal_files(session, target, target_files)
+
+    source.owner_edited = True
+    target.owner_edited = True
+    session.flush()
+    session.expire(source, ["files"])
+    if target.id != source.id:
+        session.expire(target, ["files"])
+    return [source] if source.id == target.id else [source, target]
+
+
+# Reparent a bundle proposal into a collection proposal or back to top level
+def reparent_bundle_proposal(
+    session: Session,
+    plan_id: str,
+    proposal_id: str,
+    parent_proposal_id: str | None,
+) -> GroupingProposal:
+    """Set a bundle suggestion's proposed collection parent before apply."""
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    if proposal.kind is not ProposalKind.BUNDLE:
+        raise ValidationError("only bundle suggestions can move into collections")
+    if parent_proposal_id is not None:
+        parent = _open_proposal(session, plan_id, parent_proposal_id)
+        if parent.kind is not ProposalKind.CONTAINER:
+            raise ValidationError("bundle suggestions can move only into collection suggestions")
+    proposal.parent_proposal_id = parent_proposal_id
+    proposal.owner_edited = True
+    session.flush()
+    return proposal
 
 
 def supersede_open_plans(session: Session) -> None:
@@ -73,6 +257,9 @@ def persist_plan(
             reason=proposal.reason,
             sort_order=order,
             target_bundle_id=proposal.target_bundle_id,
+            target_bundle_title=proposal.target_bundle_title,
+            create_new_bundle=proposal.create_new_bundle,
+            base_bundle_id=proposal.base_bundle_id,
         )
         session.add(row)
         session.flush()
@@ -100,15 +287,9 @@ def persist_plan(
     return plan
 
 
-def generate_plan(
-    session: Session, *, scope: SuggestScope = "new", scan_job_id: str | None = None
-) -> GroupingPlan:
-    """Suggest a grouping for the current library and persist it (read→write).
-
-    ``scope`` selects what is reconsidered: ``new`` (scan/Update — only files not
-    yet in a confirmed grouping) or ``uncategorized`` (manual Suggest grouping —
-    every bundle not filed into a collection, including confirmed ones)."""
-    data = suggest_grouping(gather_observations(session, scope=scope))
+def generate_plan(session: Session, *, scan_job_id: str | None = None) -> GroupingPlan:
+    """Persist grouping suggestions without reopening confirmed bundles."""
+    data = suggest_for_session(session)
     return persist_plan(session, data, scan_job_id=scan_job_id)
 
 

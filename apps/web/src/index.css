@@ -911,7 +911,7 @@ button {
   position: relative;
   min-height: 0;
 }
-.hover-preview--video {
+.hover-preview--media {
   background-color: #050609;
   background-size: contain;
 }
@@ -969,6 +969,7 @@ button {
   font-size: 22px;
 }
 .hover-preview__video,
+.hover-preview__image,
 .hover-preview__storyboard {
   position: absolute;
   z-index: 2;
@@ -977,7 +978,8 @@ button {
   height: 100%;
   background-color: #050609;
 }
-.hover-preview__video {
+.hover-preview__video,
+.hover-preview__image {
   object-fit: contain;
 }
 .hover-preview__video--sprite-hidden {
@@ -1157,6 +1159,22 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.files .file-row--missing {
+  margin-inline: -6px;
+  padding-inline: 6px;
+  border-radius: 4px;
+  background: rgba(248, 113, 113, 0.1);
+}
+.files .file-row__name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.files .file-row__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .file-row__role {
   color: var(--text-muted);
@@ -2083,7 +2101,7 @@ code {
 
 /* --- Grouping review (ADR-0009 phase 4) ----------------------------------- */
 .grp-modal {
-  width: min(720px, 94vw);
+  width: min(780px, 94vw);
 }
 .grp-body {
   overflow: auto;
@@ -2138,7 +2156,35 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.grp-row--bundle {
+  gap: 4px;
+}
+.grp-row--bundle .grp-check {
+  margin-right: 4px;
+}
+.grp-row__content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
+}
+.grp-title-cluster {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+}
+.grp-row--collection {
+  border-radius: 5px;
+  padding: 2px 4px;
+}
+.grp-row--drop {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .grp-kind {
   font-size: 13px;
@@ -2148,40 +2194,149 @@ code {
   accent-color: var(--accent);
 }
 .grp-title {
+  min-width: 0;
   font-weight: 600;
   color: var(--text-strong);
   font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.grp-title--editable {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: text;
+  text-align: left;
+}
+.grp-title--editable:hover,
+.grp-title--editable:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+  text-underline-offset: 3px;
+}
+.grp-title-editor {
+  display: inline-grid;
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.grp-title-editor::after {
+  content: attr(data-value);
+  grid-area: 1 / 1;
+  min-width: 1ch;
+  visibility: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.grp-title-input {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  line-height: 18px;
+  outline: none;
+  box-shadow: inset 0 -1px var(--accent);
+  caret-color: var(--accent);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .grp-reason {
   font-size: 11px;
   color: var(--text-muted);
 }
-.grp-conf {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-}
-.grp-conf--high {
-  color: #4ade80;
-  border-color: #2f5d3a;
-}
-.grp-conf--mid {
-  color: var(--warn);
-  border-color: #5a4a1f;
-}
-.grp-conf--low {
+.grp-destination {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
   color: var(--text-muted);
+  cursor: pointer;
+}
+.grp-destination .icon {
+  width: 14px;
+  height: 14px;
+}
+.grp-destination:hover:not(:disabled),
+.grp-destination:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-strong);
+}
+.grp-destination.tip::after {
+  width: max-content;
+  max-width: min(320px, calc(100vw - 32px));
+  white-space: normal;
+  text-align: left;
+  line-height: 1.35;
+}
+.grp-destination:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .grp-files {
+  min-height: 25px;
   margin: 4px 0 6px 24px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.grp-files--drop {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .grp-file {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   padding: 1px 0;
+}
+.grp-file[data-drop]::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.grp-file[data-drop='before']::after {
+  top: -1px;
+}
+.grp-file[data-drop='after']::after {
+  bottom: -1px;
+}
+.grp-file--dragging {
+  opacity: 0.45;
+}
+.grp-file-empty {
+  padding: 3px 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
 }
 .grp-file__name {
   color: var(--text);
@@ -2192,6 +2347,44 @@ code {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0 5px;
+}
+.grp-drag-handle {
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  font-size: 14px;
+  line-height: 20px;
+}
+.grp-drag-handle:hover,
+.grp-drag-handle:focus-visible {
+  color: var(--text-strong);
+}
+.grp-drag-handle:active {
+  cursor: grabbing;
+}
+.grp-drag-handle:disabled {
+  cursor: default;
+}
+.grp-drag-handle--file {
+  margin-left: -2px;
+}
+.grp-root-drop {
+  margin: 2px 0;
+  padding: 7px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+.grp-root-drop--over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
 }
 .grp-foot {
   display: flex;
@@ -3571,6 +3764,10 @@ code {
 .badge--link {
   background: rgba(120, 200, 120, 0.18);
   color: #79c879;
+}
+.badge--missing {
+  background: rgba(248, 113, 113, 0.18);
+  color: var(--error);
 }
 
 /* --- File inspector ------------------------------------------------------- */

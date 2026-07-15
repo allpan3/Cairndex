@@ -210,6 +210,7 @@ function AlbumTile({
     () =>
       file.availability === 'available' && file.media_kind === 'video' && duration > 0
         ? {
+            mediaKind: 'video',
             fileId: file.id,
             mimeType: file.mime_type,
             relativePath: file.relative_path,

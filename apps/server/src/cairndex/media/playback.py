@@ -281,6 +281,23 @@ def decide_playback(
     return PlaybackDecision("direct", "Source container and codecs are directly playable")
 
 
+# Persist vanished linked paths without attempting moved-file repair
+def reconcile_missing_files(session: Session, asset_files: Iterable[AssetFile]) -> int:
+    """Mark available files missing after bounded on-access path checks."""
+    root = library_root_for_session(session)
+    changed = 0
+    for asset_file in asset_files:
+        if asset_file.availability != FileAvailability.AVAILABLE:
+            continue
+        if Path(resolve_within_root(root, asset_file.relative_path)).is_file():
+            continue
+        asset_file.availability = FileAvailability.MISSING
+        changed += 1
+    if changed:
+        session.flush()
+    return changed
+
+
 def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
     """Path-safe absolute path of an available AssetFile, for serving.
 
@@ -292,12 +309,9 @@ def resolve_file_path(session: Session, file_id: str) -> tuple[Path, AssetFile]:
         raise NotFoundError(f"file {file_id!r} not found")
     if asset_file.availability != FileAvailability.AVAILABLE:
         raise NotFoundError("file is missing on disk")
-    abs_path = resolve_within_root(library_root_for_session(session), asset_file.relative_path)
-    path = Path(abs_path)
-    if not path.exists():
-        asset_file.availability = FileAvailability.MISSING
-        session.flush()
+    if reconcile_missing_files(session, [asset_file]):
         raise NotFoundError("file is missing on disk")
+    path = Path(resolve_within_root(library_root_for_session(session), asset_file.relative_path))
     return path, asset_file
 
 

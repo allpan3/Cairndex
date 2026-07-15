@@ -365,7 +365,7 @@ export function Sidebar({
                   setJobsMenuOpen(false)
                   onReviewGrouping()
                 }}
-                title="Suggest grouping for every uncategorized bundle and unbundled file"
+                title="Suggest grouping for unbundled files and new additions"
               >
                 Suggest grouping
               </button>
@@ -421,6 +421,7 @@ export function Sidebar({
           // Unbundled and Missing Files are "needs attention" queues: highlight a
           // non-zero count (zero stays neutral).
           const hinted = isUnbundled || v.view === 'missing'
+          const count = counts?.[v.view]
           const active = isUnbundled
             ? mode === 'file' && fileScope === 'unbundled'
             : mode === 'collection' && selection.collectionId === null && selection.view === v.view
@@ -428,19 +429,22 @@ export function Sidebar({
             <Fragment key={v.view}>
               <button
                 className={`nav-item${active ? ' nav-item--active' : ''}`}
+                title={
+                  v.view === 'missing' ? 'Bundles containing one or more missing files' : undefined
+                }
                 onClick={() =>
                   isUnbundled ? onOpenUnbundled?.() : onSelect({ view: v.view, collectionId: null })
                 }
               >
                 <span className="nav-item__icon">{viewIcon(v.view)}</span>
                 <span className="nav-item__label">{v.label}</span>
-                {counts && (
+                {count !== undefined && (
                   <span
                     className={`nav-item__count${
-                      hinted && counts[v.view] > 0 ? ' nav-item__count--hint' : ''
+                      hinted && count > 0 ? ' nav-item__count--hint' : ''
                     }`}
                   >
-                    {counts[v.view]}
+                    {count}
                   </span>
                 )}
               </button>

@@ -37,8 +37,9 @@ storage scope, and `asset_files.relative_path` is relative to the library root.
 ### `asset_bundles`
 
 `id`, `title` (nullable), `notes` (JSON), `rating` (nullable int, CHECK 0-5;
-NULL = unrated), `cover_file_id` / `primary_file_id` (nullable FKs to
-`asset_files`, `SET NULL`, `use_alter` to break the FK cycle), `extra_metadata`
+NULL = unrated), `cover_file_id` (nullable FK to `asset_files`, `SET NULL`,
+`use_alter` to break the FK cycle), `primary_file_id` (unused nullable legacy FK
+retained for existing databases), `extra_metadata`
 (JSON), `manual_order` (int, `server_default 0`), `grouping_state`,
 `grouping_source`, `grouping_rule_version`, `confirmed_at`, `version`,
 `created_at`, `imported_at`, `updated_at`.
@@ -99,8 +100,9 @@ link table rather than hiding it in `extra_metadata`.
 
 `id`, `bundle_id` (FK to `asset_bundles`, **CASCADE** — metadata-only bundle
 deletion removes file rows, never the physical file), `relative_path` (library
-root relative), `original_filename`, `display_title`, `note`, `source`, `role`,
-`media_kind`, `mime_type`, `sequence`, `size_bytes`, `mtime`,
+root relative), indexed derived `directory_path`, `original_filename`,
+`display_title`, `note`, `source`, `role`, `media_kind`, `mime_type`, `sequence`,
+`size_bytes`, `mtime`,
 `quick_fingerprint`, `full_hash`, `tech_metadata`, `filesystem_device`,
 `filesystem_inode`, `identity_available`, `availability`, `version`, timestamps.
 `relative_path` is unique within a library.
@@ -111,9 +113,19 @@ filesystems while preserving exact equality for moved-file repair.
 
 Moved-file repair updates the existing `asset_files` row in place when
 confidence is high, preserving `id`, `bundle_id`, collection memberships, tags,
-rating, cover/primary references, and subtitle links. The normal scan path does
+rating, cover/cursor references, and subtitle links. The normal scan path does
 not full-hash large files; `full_hash` remains lazy for future duplicate
 verification or ambiguous repair workflows.
+
+`directory_path` is synchronized from `relative_path` on create and moved-file
+repair, additively backfilled for existing libraries, and indexed so File
+Browser access can retrieve only one directory's linked rows. `availability` is
+refreshed by full scan reconciliation and bounded access-time checks. Opening a
+bundle checks all of its linked rows; entering a directory checks its linked
+direct children. These checks can change `available` to `missing` when the
+stored path has vanished, but do not change the relative path or guess which
+unlinked filesystem entry is the moved file. Only scan reconciliation performs
+high-confidence moved-file repair.
 
 The scanner ignores hidden paths (`.cairndex`, dotfiles/dot-directories, and a
 small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
@@ -221,6 +233,21 @@ Indexes:
 - `ix_playback_progress_completed_updated_at` for continue-watching
   (`completed = 0`, newest `updated_at` first).
 
+### `bundle_cursors`
+
+One current ordered-media location per bundle (ADR-0016). Columns:
+
+`bundle_id` (PK, FK to `asset_bundles`, CASCADE), `file_id` (unique FK to
+`asset_files`, CASCADE), and `updated_at`.
+
+The row is intentionally separate from `asset_bundles`: changing the current
+viewer file is owner navigation state and does not bump the bundle's optimistic
+metadata version. The current timestamp for a video remains in
+`playback_progress`; an image needs only this pointer. Re-parenting the current
+file clears the old bundle's cursor in the same ORM hook that syncs progress
+ownership. Existing libraries add the table through the normal metadata
+bootstrap when opened.
+
 ### `grouping_plans` / `grouping_proposals` / `grouping_proposal_files`
 
 Durable, reviewable snapshots of the grouping suggester output.
@@ -231,19 +258,38 @@ Durable, reviewable snapshots of the grouping suggester output.
   a new plan supersedes the prior open one. Scan jobs generate an open plan and
   return its id/proposal count without applying it.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (self
-  FK, SET NULL), `target_bundle_id` (plain id for addition proposals), `kind`
-  (`bundle` | `container`), `title`, `directory`, `confidence`, `reason`,
-  `sort_order`.
+  FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
+  `target_bundle_title` (nullable display snapshot), `create_new_bundle`
+  (additive destination override, default false),
+  `base_bundle_id` (the stable original identity used by explicitly edited
+  bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
+  `directory`, `confidence`, `reason`, `sort_order`.
 - `grouping_proposal_files`: `id`, `proposal_id` (FK, CASCADE), `asset_file_id`
   (snapshot id, not an FK), `relative_path` (display snapshot), `proposed_role`,
   `sequence`.
 
 Apply is idempotent and conflict-aware: it merges/splits provisional bundles
-preserving `AssetFile.id`, assigns roles, selects cover/primary, links external
+preserving `AssetFile.id`, assigns roles, selects a cover, links external
 subtitles, creates suggested collections, and never touches the filesystem.
 `POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
 that selected subset is accepted and the plan is marked applied, so unchecked
 proposals are not retained as pending work for the same plan.
+`PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
+CONTAINER proposal while the plan is open. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/destination` switches an addition
+between its existing target and a separate new bundle while retaining the target
+id as a reversible alternative. Existing mode uses addition roles; new mode uses
+normal bundle roles without changing reviewed sequence and permits proposal
+rename. A missing target blocks switching back to existing mode but does not
+block applying new mode. Legacy open plans backfill the target-title snapshot
+and derive their fresh-bundle title on first switch. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
+stable file id to an exact position within any BUNDLE proposal and rewrites dense
+sequence/derived-role values for every affected proposal. `PUT
+/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
+into a CONTAINER proposal or back to the top level. These owner edits are marked
+explicitly so apply can preserve `base_bundle_id` across reviewed provisional
+membership changes. Confirmed bundles remain outside regenerated plans.
 
 ## Registry database
 

@@ -39,6 +39,8 @@ class FileBrowserListingRead(BaseModel):
     # The relative directory listed ("" = the library root itself).
     path: str
     entries: list[FileBrowserEntryRead]
+    # Linked file rows newly marked missing during this bounded directory read
+    missing_files_updated: int
 
 
 class UnbundledFilesPage(BaseModel):

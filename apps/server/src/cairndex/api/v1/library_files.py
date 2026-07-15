@@ -38,9 +38,12 @@ def list_file_browser_entries(
     paths, traversal, NUL bytes, and symlink escapes are rejected.
     """
     listing = file_browser_service.list_entries(db, path=path)
+    if listing.missing_files_updated:
+        db.commit()  # make the immediate sidebar-count refresh observe the update
     return FileBrowserListingRead(
         path=listing.path,
         entries=[FileBrowserEntryRead(**vars(e)) for e in listing.entries],
+        missing_files_updated=listing.missing_files_updated,
     )
 
 

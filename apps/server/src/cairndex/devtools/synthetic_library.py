@@ -135,7 +135,7 @@ def generate_synthetic_library(
 
     Deterministic for a given ``seed``. Inserts taxonomy, then bundles+files in
     batches, then random membership rows; finally points each bundle's
-    primary/cover at its files via set-based UPDATEs (avoids the FK-cycle dance
+    cover at its files via set-based UPDATEs (avoids the FK-cycle dance
     per row)."""
     rng = random.Random(seed)
     now = utcnow()
@@ -190,7 +190,7 @@ def generate_synthetic_library(
     file_batch: list[dict[str, object]] = []
     bc_batch: list[dict[str, object]] = []
     bt_batch: list[dict[str, object]] = []
-    # Bundle primary/cover selections, tracked in Python and applied by primary
+    # Bundle cover selections, tracked in Python and applied by primary
     # key — never via a correlated subquery over asset_files (which would depend
     # on the very bundle_id index this milestone measures).
     # Core table UPDATE (not ORM) keyed by primary key: executemany-friendly and
@@ -199,7 +199,7 @@ def generate_synthetic_library(
     cover_update = (
         update(bundles_table)
         .where(bundles_table.c.id == bindparam("b_pk"))
-        .values(primary_file_id=bindparam("primary"), cover_file_id=bindparam("cover"))
+        .values(cover_file_id=bindparam("cover"))
     )
     update_batch: list[dict[str, object]] = []
 
@@ -243,7 +243,6 @@ def generate_synthetic_library(
 
         n_files = rng.randint(lo, hi)
         shard = i % 256
-        primary_id: str | None = None
         cover_id: str | None = None
         for j in range(n_files):
             if j == 0:
@@ -255,8 +254,6 @@ def generate_synthetic_library(
             else:
                 role, kind, ext = FileRole.IMAGE, MediaKind.IMAGE, "jpg"
             file_id = new_id()
-            if j == 0:
-                primary_id = file_id  # first file is the representative primary
             if cover_id is None and kind is MediaKind.IMAGE:
                 cover_id = file_id
             missing = rng.random() < _MISSING_FRACTION
@@ -284,7 +281,7 @@ def generate_synthetic_library(
             )
             total_files += 1
 
-        update_batch.append({"b_pk": bundle_id, "primary": primary_id, "cover": cover_id})
+        update_batch.append({"b_pk": bundle_id, "cover": cover_id})
 
         for cid in rng.sample(coll_ids, k=min(len(coll_ids), rng.randint(0, 2))):
             bc_batch.append({"bundle_id": bundle_id, "collection_id": cid})

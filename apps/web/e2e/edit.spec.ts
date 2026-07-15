@@ -29,7 +29,7 @@ function bundleDetail(id: string, title: string) {
     source_url: null as string | null,
     rating: 0 as number | null,
     cover_file_id: null,
-    primary_file_id: null,
+    resume_file_id: null,
     created_at: '2026-06-25T00:00:00Z',
     imported_at: '2026-06-25T00:00:00Z',
     updated_at: '2026-06-25T00:00:00Z',

@@ -17,15 +17,17 @@ class BundleSummary(BaseModel):
     # Cache-busting key for the thumbnail URL: the id of the file the cover is
     # derived from. Changes when the cover changes so the client re-fetches.
     cover_key: str | None
-    # Probe-backed hover preview metadata for a video effective cover. Null
-    # together when the effective cover is an image or the bundle has no cover
-    cover_video_file_id: str | None
-    cover_video_relative_path: str | None
-    cover_video_container: str | None
-    cover_video_codec: str | None
-    cover_video_audio_codec: str | None
-    cover_video_duration: float | None
-    cover_video_resume_position: float | None
+    # Hover/open source resolved from the bundle cursor, independent of its cover
+    resume_file_id: str | None
+    resume_file_updated_at: datetime | None
+    resume_media_kind: str | None
+    resume_relative_path: str | None
+    resume_mime_type: str | None
+    resume_container: str | None
+    resume_video_codec: str | None
+    resume_audio_codec: str | None
+    resume_duration: float | None
+    resume_position: float | None
     media_kind: str | None
     width: int | None
     height: int | None

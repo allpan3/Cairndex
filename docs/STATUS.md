@@ -93,6 +93,166 @@ shell and TV client consumption remain out of scope for T0.
 Next recommended task: **cross-platform-first desktop shell D1** (plan 3) per
 `docs/plans/README.md`; D2 consumes this pairing/token contract.
 
+## Current: grouping-review destination and drag-and-drop editing
+
+An addition suggestion now keeps its confirmed bundle as the default while
+offering a compact circular-arrows destination switch immediately after the
+title. Existing-target rows read **Add to 🎬 [bundle name]** with the drag handle
+pulled closer to the title. The switch's hover/focus tooltip describes the
+action for the current mode, while the icon returns to its neutral appearance
+after activation rather than remaining highlighted.
+Switching preserves the proposal, checkbox, file list/order, collection parent,
+and any edited new-bundle title; the reverse action restores existing-bundle
+mode while the target still exists. Normal addition roles and fresh-bundle roles
+are recomputed without changing the reviewed sequence. Applying new mode creates
+a separate confirmed bundle and leaves the old target and every stable file id
+intact.
+
+Grouping regeneration now keeps the relevant branches of the existing logical
+collection tree in the review plan. Additions default under their confirmed
+target's collection, while fresh top-level proposals reuse the deepest
+collection hierarchy matching their library-relative directory. Apply reuses
+those collections instead of creating duplicates, so switching to a new bundle
+does not silently leave it uncollected. The top-level drop target is rendered
+only during a bundle drag and no longer leaves a blank block above the review
+tree.
+
+The additive `target_bundle_title` and `create_new_bundle` proposal fields
+persist that reversible choice. Legacy open plans derive a fresh title and
+snapshot the target title on their first switch. New mode remains applicable if
+the old target later disappears; returning to existing mode requires a live
+confirmed target. The library-scoped destination endpoint and generated frontend
+types are current.
+
+Bundle and collection title editors now use their rendered text as the minimum
+width and grow live while typing, capped by the grouping dialog. Existing
+double-click, Enter/F2, Enter/blur save, Escape cancel, validation, and focus
+selection behavior is retained. The editor uses a wrapping text area sized by
+the same live mirror as the rendered title and focuses without scrolling, so
+activating rename preserves multi-line title geometry, surrounding row
+positions, and modal size. Destination switches remain mounted at their normal
+22px size while rename is active and are temporarily disabled instead of being
+removed; rendered title buttons and editors also share the same 18px line box.
+
+Grouping rows no longer show numeric confidence or manual badges. Ordinary
+suggestions retain their human-readable reason, additions use a compact file
+count, and title/switch/metadata share a nested content column so wrapped text
+cannot fall back under the checkbox or drag handle.
+
+Grouping review now uses native drag-and-drop instead of up/down buttons. Files
+can move to an exact position within any bundle suggestion or into another
+bundle; bundles can move into any suggested collection or back to the top
+level. Double-click rename now applies to collection titles as well as bundle
+titles. The generated default remains video, audio, image, then other files with
+natural order inside each group.
+
+An empty bundle suggestion now auto-deselects and disables its acceptance
+checkbox. Collection selection is content-aware recursively: moving out its last
+file-backed bundle also auto-deselects/disables the collection, while adding an
+item makes it selectable again.
+
+Suggester rule v4 improves flat multi-video directories. Sidecars first match a
+unique normalized full video stem or a full-stem suffix, then fall back to the
+coarser leading subject prefix. The screenshot case with two long `Nora Vance`
+video/image pairs now yields two bundles instead of four single-file bundles;
+image-only directories retain their item-per-file behavior. Existing open plans
+remain snapshots; regenerate suggestions to receive the v4 result.
+
+Every edit persists on the open plan. File moves recompute dense sequence and
+derived roles for affected proposals, while apply preserves original bundle IDs
+across reviewed provisional membership changes. Confirmed bundles stay settled
+regardless of collection membership. The new persisted
+`base_bundle_id` / `owner_edited` fields are additive, and no operation moves,
+renames, or deletes a source file.
+
+Repeated **Suggest grouping** now uses the same candidate boundary as Update.
+Clicking it inside an already-open review supersedes the old plan without
+reopening confirmed bundles; only still-unbundled files and new additions are
+eligible. The former manual-only `uncategorized` scope was removed so
+collection membership cannot be mistaken for bundling state.
+
+The API replaces complete-order writes with library-scoped file-move and
+bundle-parent routes and broadens proposal title updates to bundle or collection
+suggestions. OpenAPI and frontend generated types are current. Regression
+coverage checks within/cross-bundle movement, confirmed identity preservation,
+collection rename/reparent, addition order, React interaction, and the
+browser-visible drag flow. It also covers reversible destination persistence,
+role conversion, rename eligibility, legacy backfill, missing-target behavior,
+separate-bundle apply, title-editor growth, and one-row/one-checkbox switching.
+
+Verified on `codex/grouping-review-drag-drop`: backend Ruff check/format, mypy,
+and all 425 pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 112
+Vitest tests, the production build, and all 73 Playwright tests pass. Browser
+flows cover title growth, destination-icon geometry and tooltip visibility,
+reversible switching, repeated suggestion regeneration, and empty
+bundle/collection deselection; the exact long-filename Python fixture covers v4
+pairing. The in-app browser runtime was also attempted but could not initialize
+(`Cannot redefine property: process`).
+
+## Current: ordered bundle media cursor
+
+Cover artwork and playback location are now independent (ADR-0016). Every
+bundle resolves one current supported media file from its persisted
+`bundle_cursors` row, then legacy unfinished video progress, then the first
+ordered available media. The viewer opens that location, writes cursor changes
+without bumping bundle metadata, and uses Files in bundle order for navigation
+and end-of-video advance. Images therefore have a remembered location even
+though only videos store a timestamp.
+
+Bundle-card hover uses the same cursor instead of requiring the effective cover
+to be a video. An image cursor appears as a still; a video cursor keeps the
+existing direct/storyboard scrub and starts at its unfinished saved position,
+even when the static cover is an image. A remembered file that later goes
+missing stays current so the viewer can show the correct missing-file state.
+
+The primary-file API field, inspector icon/action, grouping assignment, and
+cover/playback fallback are removed. Existing databases retain the nullable
+`primary_file_id` column as unread compatibility storage; legacy
+`primary_video` roles display simply as video. The new cursor table is additive
+and source files remain untouched.
+
+Verified on `main`: backend Ruff check and format check, mypy, and all 416
+pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 100 Vitest tests,
+the production build, and all 70 Playwright tests pass. The two new browser
+flows cover image-cover/video-hover and ordered cursor navigation. An additional
+in-app browser inspection was attempted, but that runtime could not initialize
+(`Cannot redefine property: process`); the complete Playwright run is the browser
+proof for this slice.
+
+## Recently completed: bounded missing-file reconciliation
+
+Opening a bundle checks every linked member of that bundle. Entering a File
+Browser directory checks the indexed linked rows whose stored parent is that
+directory, without walking unrelated database rows. Vanished paths are
+persisted as `missing`; the directory response reports the number changed so
+the web client refreshes bundle/count queries only when necessary.
+
+The Missing Files sidebar value remains a compact numeric count of affected
+bundles, so it renders `1` when one bundle contains two missing files. The
+inspector's Files in bundle heading reports both total and missing counts, and
+each missing row is highlighted and badged. The viewer continues to give the
+selected file's missing state precedence over a stale unsupported-container
+message.
+
+Access-time checks do not infer that an unlinked path is a particular moved
+file. Update/scan continues to own high-confidence moved-file repair and
+stable-ID relinking.
+
+Update and standalone Scan now report the total number of linked files that
+remain missing after scan reconciliation. The message uses the persisted total,
+so repeated scans continue to report an unresolved missing file rather than
+dropping to zero when no additional path disappeared during that run.
+
+Regression coverage moves multiple linked paths while leaving another bundle
+member present, verifies bundle and directory reads persist every relevant
+missing row, confirms directory scope leaves another directory untouched, and
+exercises the sidebar/inspector/viewer behavior with two unlinked files and an
+unsupported AVI reason present.
+
+Verified on `main`: backend Ruff check and format check, mypy, and all 410
+pytest tests pass. Frontend ESLint, Prettier, TypeScript, all 99 Vitest tests,
+the production build, and all 68 Playwright tests pass.
+
 ## In review: Plan 1 M12 — Eagle-style thumbnail hover video preview
 
 Branch `feat/hover-preview` (off `main` at `02cb18b`, after M9 merged as #11).
@@ -136,7 +296,11 @@ Completed:
   and the video seeks once to that same frame. During a cue-backed rest, the
   paused video stays mounted beneath the sprite. The preview waits for both seek
   completion and presentation of the target frame, removes the sprite, then
-  resumes playback on the following animation frame. The cue is resolved when
+  resumes playback in a cancellable post-paint task. Seek readiness also requires
+  `currentTime` to match the requested target, preventing a late prior `seeked`
+  event from revealing time zero. Dwell and rest timers are identity-checked,
+  and activating the current page-wide owner is idempotent, so a queued callback
+  cannot reset a playing preview to `transitioning`. The cue is resolved when
   rest begins rather than at the last pointer move, so a VTT prefetch completing
   during the debounce is included in the target. A transition sprite is shown
   only when that target matches its cue sample. Without a storyboard, rest
@@ -1420,22 +1584,19 @@ green; Playwright 39 passed. Verified in the browser against the Synthetic Libra
   fires those surfaces' `onDragEnd`).
 - **File Browser directories** now join drag-select + Shift-range select like
   files (bundling targets still filter to files).
-- **"Review grouping" → "Suggest grouping" (ADR-0011):** the manual action now
-  re-proposes grouping for every **uncategorized** bundle (incl. confirmed ones
-  whose collections were removed) + unbundled files; **Update**/scan keeps the
-  narrower `new` scope. Suggestion scope added to `grouping/service.py`
-  `gather_observations(scope=…)` + `plan_store.generate_plan(scope=…)`; the
-  manual `POST …/grouping/plans` selects `uncategorized`. Internal
-  provisional/confirmed state kept (apply still protects confirmed bundles); the
-  user-facing **"Needs review" badge removed**.
+- **"Review grouping" → "Suggest grouping" (ADR-0011):** the user-facing
+  **"Needs review" badge was removed** while internal provisional/confirmed
+  state remains the grouping boundary. The 2026-07-14 amendment removed the
+  manual-only `uncategorized` scope after it caused repeated suggestion
+  generation to reopen confirmed bundles.
 
 Verified: backend `ruff`/`format`/`mypy` clean, **pytest 291 passed** (new
 `tests/test_grouping_scope.py`). Frontend `lint`/`format`/`typecheck`/`vitest`/
 `build` clean. Browser-verified the triangle icon and the "Suggest grouping"
 rename / removed review badge against the Synthetic Library; native DnD and the
-File Browser weren't exercisable there (synthetic files aren't on disk), and the
-manual suggest pass is too heavy to run live over 33k uncategorized bundles —
-covered by unit/service tests instead.
+File Browser weren't exercisable there (synthetic files aren't on disk). The
+former categorization-driven pass was covered by unit/service tests and has
+since been removed by the ADR-0011 amendment above.
 
 **Fourth follow-up round (review feedback):**
 
@@ -1804,6 +1965,11 @@ original files.
   open grouping plans; Update is the primary maintenance flow; hidden/cache paths
   are excluded; grouping review supports selected accept; the global thumbnail
   action is removed from the sidebar.
+- **Follow-up — bundle suggestion inline rename.** New-bundle titles can be
+  edited in grouping review by double-click (or Enter/F2 while focused), persist
+  on the open plan, and become the confirmed bundle title on apply. Collection
+  suggestions and additions to existing bundles remain read-only; source files
+  are unchanged.
 
 ## Completed in ADR-0008
 
@@ -1858,8 +2024,9 @@ dialogs).
   (determinate/indeterminate) progress bar under Update plus redacted error
   text. Branch `feat/job-progress-observability`. Cancellation is wired but has
   no dedicated UI button yet.
-- Grouping review can select/deselect proposals but does not yet provide rich
-  edit-before-apply controls for merge/split/reclassify/rename.
+- Grouping review can select/deselect proposals, rename new-bundle suggestions,
+  and reorder proposed bundle files, but does not yet provide edit-before-apply
+  merge/split/reclassify controls.
 - Whole-library indexed metadata search (SQLite FTS5) is implemented: the toolbar
   search box queries a per-library `bundle_search` FTS5 index (kept fresh by
   triggers; rebuildable via `cairndex.devtools.reindex_search`) over
@@ -1891,8 +2058,8 @@ dialogs).
    `docs/plans/01-web-media-player-and-viewer.md`. M6 needs the HLS session
    model / transcode-cache location ADR recorded at implementation time
    (flagged in plan 1 §12 and ADR-0012).
-2. Add richer grouping review editing: merge/split/reclassify/rename before
-   apply, while preserving the current safe apply/conflict model.
+2. Add richer grouping review editing: merge/split/reclassify before apply,
+   while preserving the current safe apply/conflict model.
 3. Continue File Browser planning toward guarded write mode and safe desktop-native
    handoff. _(Planning now done: `docs/plans/04-library-write-mode.md` +
    proposed ADR-0013; desktop handoff in `docs/plans/03-macos-desktop-app.md`.)_

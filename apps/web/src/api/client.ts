@@ -27,6 +27,7 @@ export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
 export type BundleRead = components['schemas']['BundleRead']
+export type BundleCursorRead = components['schemas']['BundleCursorRead']
 export type TagRead = components['schemas']['TagRead']
 export type TagCreate = components['schemas']['TagCreate']
 export type TagGroupRead = components['schemas']['TagGroupRead']
@@ -464,7 +465,6 @@ export const revokeDevice = (deviceId: string) =>
 // --- Grouping plans (ADR-0009) ------------------------------------------------
 export type GroupingPlan = components['schemas']['PlanRead']
 export type GroupingProposal = components['schemas']['ProposalRead']
-export type GroupingProposalFile = components['schemas']['ProposalFileRead']
 export type GroupingPlanSummary = components['schemas']['PlanSummary']
 export type GroupingApplyResult = components['schemas']['ApplyResultRead']
 
@@ -476,6 +476,54 @@ export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSu
 
 export const fetchGroupingPlan = (id: string, signal?: AbortSignal): Promise<GroupingPlan> =>
   getJson<GroupingPlan>(`${lib()}/grouping/plans/${id}`, signal)
+
+/** Rename a bundle or collection suggestion while its grouping plan is open. */
+export const renameGroupingProposal = (
+  planId: string,
+  proposalId: string,
+  title: string,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(`${lib()}/grouping/plans/${planId}/proposals/${proposalId}`, 'PATCH', {
+    title,
+  })
+
+/** Switch an existing-bundle suggestion between that target and a new bundle. */
+export const setGroupingProposalDestination = (
+  planId: string,
+  proposalId: string,
+  createNewBundle: boolean,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/destination`,
+    'PUT',
+    { create_new_bundle: createNewBundle },
+  )
+
+/** Move a file within or across bundle suggestions. */
+export const moveGroupingProposalFile = (
+  planId: string,
+  sourceProposalId: string,
+  assetFileId: string,
+  targetProposalId: string,
+  targetIndex: number,
+): Promise<GroupingProposal[]> =>
+  send<GroupingProposal[]>(
+    `${lib()}/grouping/plans/${planId}/proposals/${sourceProposalId}/files/${assetFileId}/move`,
+    'PUT',
+    { target_proposal_id: targetProposalId, target_index: targetIndex },
+  )
+
+/** Move a bundle suggestion into a collection suggestion or to top level. */
+export const reparentGroupingProposal = (
+  planId: string,
+  proposalId: string,
+  parentProposalId: string | null,
+): Promise<GroupingProposal> =>
+  send<GroupingProposal>(
+    `${lib()}/grouping/plans/${planId}/proposals/${proposalId}/parent`,
+    'PUT',
+    { parent_proposal_id: parentProposalId },
+  )
 
 /** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */
 export const applyGroupingPlan = (
@@ -657,6 +705,9 @@ export function fetchTagGroupTags(groupId: string, signal?: AbortSignal): Promis
 // --- Mutations ---------------------------------------------------------------
 export const updateBundle = (id: string, patch: BundlePatch, version?: number) =>
   send<BundleRead>(`${lib()}/bundles/${id}`, 'PATCH', patch, version)
+
+export const updateBundleCursor = (id: string, fileId: string) =>
+  send<BundleCursorRead>(`${lib()}/bundles/${id}/cursor`, 'PUT', { file_id: fileId })
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })

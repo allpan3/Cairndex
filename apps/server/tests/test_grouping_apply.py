@@ -58,7 +58,7 @@ def test_apply_merges_scan_fragments_into_one_confirmed_bundle(
     files = {f.relative_path: f for f in bundle.files}
     assert files["Cosmos/cosmos.mp4"].role is FileRole.PRIMARY_VIDEO
     assert files["Cosmos/poster.jpg"].role is FileRole.COVER
-    assert bundle.primary_file_id == files["Cosmos/cosmos.mp4"].id
+    assert bundle.primary_file_id is None  # legacy column is no longer assigned
     assert bundle.cover_file_id == files["Cosmos/poster.jpg"].id
 
     track = session.scalars(select(SubtitleTrack)).one()
