@@ -1,8 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import App from './App'
+
+const desktopMenu = vi.hoisted(() => ({
+  handler: null as ((action: string) => void) | null,
+}))
+
+vi.mock('./desktop/useDesktopMenu', () => ({
+  useDesktopMenu: (handler: (action: string) => void) => {
+    desktopMenu.handler ??= handler
+  },
+  useDesktopMenuAvailability: vi.fn(),
+}))
 
 // jsdom has no layout, so the virtualized grid (which needs a measured width)
 // renders nothing here — card/grid rendering is covered by the Playwright e2e.
@@ -22,7 +33,7 @@ const LIBRARY = {
 
 function mockApi(
   libraries: unknown[] = [LIBRARY],
-  options: { storyboardStatus?: 'succeeded' | 'failed' } = {},
+  options: { storyboardStatus?: 'succeeded' | 'failed'; locked?: boolean } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
   vi.stubGlobal(
@@ -30,6 +41,9 @@ function mockApi(
     vi.fn((url: string, init?: RequestInit) => {
       let body: unknown = {}
       if (url.endsWith('/api/v1/libraries')) body = libraries
+      else if (url.endsWith('/auth/status'))
+        body = { protected: Boolean(options.locked), unlocked: !options.locked }
+      else if (url.endsWith('/api/v1/auth/devices')) body = []
       else if (url.includes('/bundles/browse'))
         body = { items: [], total: 0, offset: 0, limit: 100 }
       else if (url.includes('/bundles/counts'))
@@ -159,7 +173,10 @@ function mockApi(
   )
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  desktopMenu.handler = null
+  vi.restoreAllMocks()
+})
 
 function renderApp() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -218,6 +235,18 @@ test('shows the empty shell (not a forced dialog) when no library exists', async
   // Empty shell with a hint, not the forced "Libraries" manager modal.
   await waitFor(() => expect(screen.getByText(/No library yet/i)).toBeInTheDocument())
   expect(screen.queryByRole('heading', { name: 'Libraries' })).not.toBeInTheDocument()
+})
+
+test('opens native settings over a locked library', async () => {
+  mockApi([LIBRARY], { locked: true })
+  renderApp()
+
+  await screen.findByText(/Test Library is locked/)
+  act(() => desktopMenu.handler?.('settings'))
+
+  expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Devices' })).toBeInTheDocument()
+  expect(screen.getByText(/Test Library is locked/)).toBeInTheDocument()
 })
 
 test('opens grouping review after a successful library update with suggestions', async () => {

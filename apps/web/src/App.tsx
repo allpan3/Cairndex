@@ -231,15 +231,26 @@ export default function App() {
 
   if (locked) {
     return (
-      <LockScreen
-        key={libraryId}
-        libraries={libraries}
-        libraryId={libraryId}
-        onChangeLibrary={changeLibrary}
-        onUnlock={(passphrase) => lock.unlock.mutate(passphrase)}
-        unlocking={lock.unlock.isPending}
-        error={lock.unlock.error?.message ?? null}
-      />
+      <>
+        <LockScreen
+          key={libraryId}
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={changeLibrary}
+          onUnlock={(passphrase) => lock.unlock.mutate(passphrase)}
+          unlocking={lock.unlock.isPending}
+          error={lock.unlock.error?.message ?? null}
+        />
+        {settingsPage && (
+          <SettingsDialog
+            key={settingsPage}
+            libraries={libraries}
+            libraryId={libraryId}
+            startPairing={settingsPage === 'pair'}
+            onClose={() => setSettingsPage(null)}
+          />
+        )}
+      </>
     )
   }
 
