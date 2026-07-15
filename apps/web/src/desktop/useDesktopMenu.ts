@@ -21,7 +21,7 @@ export function useDesktopMenu(handler: (action: DesktopMenuAction) => void): vo
         if (disposed) stop()
         else unlisten = stop
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => console.error('Could not start desktop menu handling', error))
     return () => {
       disposed = true
       unlisten?.()
@@ -35,6 +35,6 @@ export function useDesktopMenuAvailability(enabled: boolean): void {
     if (!isDesktopHost()) return
     void import('./runtime')
       .then(({ setDesktopLibraryAvailable }) => setDesktopLibraryAvailable(enabled))
-      .catch(() => undefined)
+      .catch((error: unknown) => console.error('Could not update desktop menu availability', error))
   }, [enabled])
 }

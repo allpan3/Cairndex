@@ -13,6 +13,7 @@ const LIBRARY_MENU_IDS: &[(&str, &str)] = &[
     ("view-menu", "toggle-sidebar"),
     ("view-menu", "toggle-inspector"),
 ];
+const SERVER_MENU_IDS: &[(&str, &str)] = &[("file-menu", "pair-device")];
 
 // Maps native menu identifiers to the shared SPA's semantic actions
 pub(crate) fn action_for_id(id: &str) -> Option<&str> {
@@ -21,11 +22,6 @@ pub(crate) fn action_for_id(id: &str) -> Option<&str> {
         | "zoom-out" | "toggle-sidebar" | "toggle-inspector" => Some(id),
         _ => None,
     }
-}
-
-// Reports whether a semantic action requires an active library workspace
-fn requires_library(id: &str) -> bool {
-    LIBRARY_MENU_IDS.iter().any(|(_, item_id)| *item_id == id)
 }
 
 // Builds the common App/File/Edit/View/Window/Help menu skeleton
@@ -52,7 +48,11 @@ pub(crate) fn build(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
                 .enabled(false)
                 .build(app)?,
         )
-        .item(&MenuItemBuilder::with_id("pair-device", "Pair Device…").build(app)?)
+        .item(
+            &MenuItemBuilder::with_id("pair-device", "Pair Device…")
+                .enabled(false)
+                .build(app)?,
+        )
         .separator()
         .close_window()
         .build()?;
@@ -81,7 +81,7 @@ pub(crate) fn build(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
         .separator()
         .item(
             &MenuItemBuilder::with_id("zoom-in", "Increase Card Size")
-                .accelerator("CmdOrCtrl++")
+                .accelerator("CmdOrCtrl+=")
                 .enabled(false)
                 .build(app)?,
         )
@@ -106,8 +106,8 @@ pub(crate) fn build(app: &App) -> tauri::Result<Menu<tauri::Wry>> {
         )
         .separator()
         .item(
-            &MenuItemBuilder::with_id("fullscreen", "Enter Full Screen")
-                .accelerator("F11")
+            &MenuItemBuilder::with_id("fullscreen", "Toggle Full Screen")
+                .accelerator("CmdOrCtrl+Control+F")
                 .build(app)?,
         )
         .build()?;
@@ -155,14 +155,16 @@ fn toggle_main_window_fullscreen<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-// Enables workspace-only native menu items once the SPA has an active library
-#[tauri::command]
-pub(crate) fn set_library_menu_enabled(app: AppHandle, enabled: bool) {
+// Applies one availability state to a fixed group of native menu items
+fn set_menu_items_enabled<R: Runtime>(
+    app: &AppHandle<R>,
+    items: &[(&str, &str)],
+    enabled: bool,
+) -> Result<(), String> {
     let Some(menu) = app.menu() else {
-        return;
+        return Ok(());
     };
-    for (submenu_id, item_id) in LIBRARY_MENU_IDS {
-        debug_assert!(requires_library(item_id));
+    for (submenu_id, item_id) in items {
         let Some(submenu) = menu
             .get(*submenu_id)
             .and_then(|item| item.as_submenu().cloned())
@@ -173,9 +175,23 @@ pub(crate) fn set_library_menu_enabled(app: AppHandle, enabled: bool) {
             .get(*item_id)
             .and_then(|item| item.as_menuitem().cloned())
         {
-            let _ = item.set_enabled(enabled);
+            item.set_enabled(enabled)
+                .map_err(|error| error.to_string())?;
         }
     }
+    Ok(())
+}
+
+// Enables workspace-only native menu items once the SPA has an active library
+#[tauri::command]
+pub(crate) fn set_library_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    set_menu_items_enabled(&app, LIBRARY_MENU_IDS, enabled)
+}
+
+// Enables server-backed menu items after desktop bootstrap reaches the SPA
+#[tauri::command]
+pub(crate) fn set_server_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    set_menu_items_enabled(&app, SERVER_MENU_IDS, enabled)
 }
 
 // Restores the primary window when a second process launches
@@ -198,14 +214,5 @@ mod tests {
         assert_eq!(action_for_id("fullscreen"), None);
         assert_eq!(action_for_id("quit"), None);
         assert_eq!(action_for_id("help-placeholder"), None);
-    }
-
-    // Keeps unavailable-workspace menu state scoped to content actions
-    #[test]
-    fn identifies_library_actions() {
-        assert!(requires_library("new-bundle"));
-        assert!(requires_library("toggle-sidebar"));
-        assert!(!requires_library("settings"));
-        assert!(!requires_library("fullscreen"));
     }
 }

@@ -21,14 +21,26 @@ function renderApp(content: ReactNode): void {
   )
 }
 
+// Replaces a blank webview with an actionable shell-load failure
+function renderDesktopLoadError(error: unknown): void {
+  console.error('Desktop shell failed to load', error)
+  renderApp(
+    <main className="app-loading" role="alert">
+      The desktop shell could not load. Quit and reopen Cairndex.
+    </main>,
+  )
+}
+
 if ('__TAURI_INTERNALS__' in window) {
-  void import('./desktop/DesktopBootstrap').then(({ DesktopBootstrap }) => {
-    renderApp(
-      <DesktopBootstrap>
-        <App />
-      </DesktopBootstrap>,
-    )
-  })
+  void import('./desktop/DesktopBootstrap')
+    .then(({ DesktopBootstrap }) => {
+      renderApp(
+        <DesktopBootstrap>
+          <App />
+        </DesktopBootstrap>,
+      )
+    })
+    .catch(renderDesktopLoadError)
 } else {
   renderApp(<App />)
 }

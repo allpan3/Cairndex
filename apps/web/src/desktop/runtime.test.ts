@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { registerDesktopExitTask } from './exitTasks'
-import { listenDesktopLifecycle } from './runtime'
+import { listenDesktopLifecycle, setDesktopServerAvailable } from './runtime'
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -21,6 +21,14 @@ vi.mock('@tauri-apps/plugin-store', () => ({ load: vi.fn() }))
 afterEach(() => {
   vi.restoreAllMocks()
   for (const mock of Object.values(mocks)) mock.mockReset()
+})
+
+test('synchronizes server-backed native menu availability', async () => {
+  mocks.invoke.mockResolvedValue(undefined)
+
+  await setDesktopServerAvailable(true)
+
+  expect(mocks.invoke).toHaveBeenCalledWith('set_server_menu_enabled', { enabled: true })
 })
 
 test('routes window close through ExitGate and awaits SPA exit tasks', async () => {

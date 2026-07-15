@@ -109,7 +109,7 @@ class Settings(BaseSettings):
                 or parsed.fragment
             ):
                 raise ValueError(f"invalid CORS origin: {origin!r}")
-            normalized.append(f"{parsed.scheme}://{parsed.netloc}")
+            normalized.append(f"{parsed.scheme}://{parsed.netloc.lower()}")
         return normalized
 
     def resolved_database_url(self) -> str:
