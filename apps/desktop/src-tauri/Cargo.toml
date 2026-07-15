@@ -1,0 +1,16 @@
+[package]
+name = "cairndex-desktop"
+version = "0.1.0"
+description = "Cross-platform desktop shell for Cairndex"
+authors = ["Cairndex contributors"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-store = "2"
+tauri-plugin-window-state = "2"
+url = "2"

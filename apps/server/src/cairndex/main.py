@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from cairndex.api.errors import register_exception_handlers
 from cairndex.api.static_site import mount_static_site
@@ -11,6 +12,13 @@ from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.registry.engine import get_registry_sessionmaker
+
+DESKTOP_ORIGINS = [
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "http://127.0.0.1:5173",
+]
 
 
 @asynccontextmanager
@@ -36,6 +44,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    # Tauri's custom-protocol webview must reach a separately hosted server
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=DESKTOP_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     register_exception_handlers(app)
     app.include_router(api_v1_router)
     # Mounted last so the explicit /api/v1 routes always win; only present in

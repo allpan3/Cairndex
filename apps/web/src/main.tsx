@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { DesktopBootstrap } from './desktop/DesktopBootstrap.tsx'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,7 +14,9 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <DesktopBootstrap>
+        <App />
+      </DesktopBootstrap>
     </QueryClientProvider>
   </StrictMode>,
 )
