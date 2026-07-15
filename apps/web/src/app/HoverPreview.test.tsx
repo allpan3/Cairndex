@@ -113,6 +113,39 @@ function holdSeek(video: HTMLVideoElement) {
   }
 }
 
+// Hold current time behind its requested target to simulate an unrelated seeked event
+function holdDeferredSeek(video: HTMLVideoElement) {
+  let currentTime = video.currentTime
+  let target = currentTime
+  let seeking = false
+  const targets: number[] = []
+  Object.defineProperty(video, 'currentTime', {
+    configurable: true,
+    get: () => currentTime,
+    set: (value: number) => {
+      target = value
+      seeking = true
+      targets.push(value)
+    },
+  })
+  Object.defineProperty(video, 'seeking', {
+    configurable: true,
+    get: () => seeking,
+  })
+  return {
+    targets,
+    stale: () => {
+      seeking = false
+      fireEvent(video, new Event('seeked'))
+    },
+    finish: () => {
+      currentTime = target
+      seeking = false
+      fireEvent(video, new Event('seeked'))
+    },
+  }
+}
+
 // Hold the compositor-frame signal so visibility can be asserted before paint
 function holdPresentedFrame(video: HTMLVideoElement) {
   let callback: VideoFrameRequestCallback | null = null
@@ -187,6 +220,27 @@ test('waits for dwell and cancels before mounting a stream', () => {
   fireEvent.pointerLeave(card)
   act(() => vi.advanceTimersByTime(1_000))
   expect(queryByTestId('hover-preview-video')).toBeNull()
+})
+
+test('does not reactivate the current preview on a repeated pointer enter', async () => {
+  const { card, getByTestId } = renderPreview()
+
+  fireEvent.pointerEnter(card)
+  await act(async () => {
+    vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS)
+    await Promise.resolve()
+  })
+  expect(getByTestId('hover-preview-video')).toBeVisible()
+  expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+  fireEvent.pointerEnter(card)
+  await act(async () => {
+    vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS)
+    await Promise.resolve()
+  })
+  expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
 })
 
 test('shows the cursor image as a still after dwell', async () => {
@@ -265,13 +319,20 @@ test('keeps the sprite visible and resumes from its sampled cue time', async () 
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
 
   await act(async () => {
-    vi.advanceTimersByTime(20)
+    vi.advanceTimersToNextTimer()
     await Promise.resolve()
   })
 
   expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
   expect(video).not.toHaveClass('hover-preview__video--sprite-hidden')
   expect(queryByTestId('hover-preview-storyboard')).toBeNull()
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
   expect(hoverTimeForPointer(-10, card.getBoundingClientRect(), 100)).toBe(0)
   expect(hoverTimeForPointer(120, card.getBoundingClientRect(), 100)).toBe(100)
@@ -300,11 +361,19 @@ test('tears down when pointer leave races the aligned-frame reveal', async () =>
   expect(card).toHaveAttribute('data-hover-preview-state', 'transitioning')
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
 
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+  expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
+  expect(queryByTestId('hover-preview-storyboard')).toBeNull()
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
   fireEvent.pointerLeave(card)
   expect(queryByTestId('hover-preview-video')).toBeNull()
 
   await act(async () => {
-    vi.advanceTimersByTime(20)
+    vi.advanceTimersToNextTimer()
     await Promise.resolve()
   })
   expect(queryByTestId('hover-preview-video')).toBeNull()
@@ -343,11 +412,18 @@ test('bounds a missing post-seek frame callback before resuming', async () => {
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
 
   await act(async () => {
-    vi.advanceTimersByTime(20)
+    vi.advanceTimersToNextTimer()
     await Promise.resolve()
   })
   expect(queryByTestId('hover-preview-storyboard')).toBeNull()
   expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
 })
 
@@ -486,12 +562,85 @@ test('resumes through the readiness check when seeked is omitted', async () => {
     await Promise.resolve()
   })
   await act(async () => {
-    vi.advanceTimersByTime(20)
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+
+  expect(card).toHaveAttribute('data-hover-preview-state', 'playing')
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
     await Promise.resolve()
   })
 
   expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
   expect(video).not.toHaveClass('hover-preview__video--sprite-hidden')
+})
+
+test('ignores a stale rest callback after a newer pointer position replaces it', async () => {
+  const { card, getByTestId } = renderPreview(DIRECT_SOURCE, CUES)
+  fireEvent.pointerEnter(card)
+  await act(async () => {
+    vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS)
+    await Promise.resolve()
+  })
+  const video = getByTestId('hover-preview-video') as HTMLVideoElement
+  const seek = holdSeek(video)
+
+  fireEvent.pointerMove(card, { clientX: 25 })
+  act(() => vi.advanceTimersByTime(HOVER_PREVIEW_REST_MS - 10))
+  vi.spyOn(window, 'clearTimeout').mockImplementationOnce(() => undefined)
+  fireEvent.pointerMove(card, { clientX: 75 })
+
+  act(() => vi.advanceTimersByTime(10))
+  expect(card).toHaveAttribute('data-hover-preview-state', 'skimming')
+  expect(seek.targets).toEqual([])
+
+  act(() => vi.advanceTimersByTime(HOVER_PREVIEW_REST_MS - 10))
+  expect(card).toHaveAttribute('data-hover-preview-state', 'transitioning')
+  expect(seek.targets).toEqual([50])
+})
+
+test('ignores seeked until current time reaches the requested target', async () => {
+  const { card, getByTestId, queryByTestId } = renderPreview(DIRECT_SOURCE, CUES)
+  fireEvent.pointerEnter(card)
+  await act(async () => {
+    vi.advanceTimersByTime(HOVER_PREVIEW_DWELL_MS)
+    await Promise.resolve()
+  })
+  const video = getByTestId('hover-preview-video') as HTMLVideoElement
+  const seek = holdDeferredSeek(video)
+  const frame = holdPresentedFrame(video)
+
+  fireEvent.pointerMove(card, { clientX: 75 })
+  act(() => vi.advanceTimersByTime(HOVER_PREVIEW_REST_MS))
+  expect(seek.targets).toEqual([50])
+
+  act(() => {
+    seek.stale()
+    frame.present(0)
+    vi.advanceTimersByTime(1_000)
+  })
+  expect(card).toHaveAttribute('data-hover-preview-state', 'transitioning')
+  expect(getByTestId('hover-preview-storyboard')).toBeVisible()
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+  act(() => {
+    seek.finish()
+    frame.present(50)
+  })
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+  expect(queryByTestId('hover-preview-storyboard')).toBeNull()
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+  await act(async () => {
+    vi.advanceTimersToNextTimer()
+    await Promise.resolve()
+  })
+  expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
 })
 
 test('keeps direct mode when motion intentionally aborts the initial play promise', async () => {
