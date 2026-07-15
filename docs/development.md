@@ -81,9 +81,13 @@ The first-run screen stores a verified server URL in the Tauri store. Packaged
 custom-protocol origins are allowed by default; arbitrary HTTP(S) origins are
 denied unless listed exactly in the comma-separated
 `CAIRNDEX_CORS_EXTRA_ORIGINS`. Leave that variable unset outside deliberate
-local development. D1 does not send browser cookies or device bearer tokens,
-so a protected library cannot be unlocked or selected for pairing approval in
-the shell until D2 wires device-token authentication.
+local development. On macOS, the package declares local-network use and permits
+cleartext HTTP only in its WKWebView content so an explicitly configured private
+LAN server works; prefer HTTPS for any server outside a trusted private network.
+D1 does not send browser cookies or device bearer tokens, so a protected library
+cannot be unlocked or selected for pairing approval in the shell until D2 wires
+device-token authentication. Native Settings still opens over the lock screen
+so device status and the expected authorization error remain visible.
 
 Desktop checks:
 
