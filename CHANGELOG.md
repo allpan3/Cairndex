@@ -154,10 +154,14 @@ grouped under `Unreleased` until the first tagged release.
   for the ordinary typed progress PUT before flushing synchronous `pagehide`
   state and completing exit, while browser mode retains its same-origin typed
   JSON beacon. Explicit grid placement keeps the content pane usable when its
-  persisted sidebar toggle is off. Desktop modules are lazy chunks outside the
-  browser entry, workspace-only menu items disable without a library, both Rust
-  CI jobs cache their Cargo builds, and generated API artifacts retain the typed
-  progress contract.
+  persisted sidebar toggle is off. Locked-library screens continue to render
+  Settings opened from the native menu instead of swallowing the action. The
+  macOS bundle opts only webview content into cleartext HTTP and declares local
+  network access so an owner-configured private LAN server works outside the
+  localhost ATS exemption. Desktop modules are lazy chunks outside the browser
+  entry, workspace-only menu items disable without a library, both Rust CI jobs
+  cache their Cargo builds, and generated API artifacts retain the typed progress
+  contract.
 
 - **Device pairing security and review hardening.** Only Bearer-scheme
   authorization headers select device-token auth, so upstream Basic credentials

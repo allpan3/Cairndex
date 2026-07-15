@@ -24,6 +24,9 @@ The Vite server and production bundle are both built from `apps/web` through
 `tauri.conf.json`. Do not configure the Vite origin on a production server;
 packaged builds use Tauri's custom-protocol origins. Protected libraries require
 the planned D2 device-token authentication and cannot yet be unlocked in D1.
+The macOS bundle declares local-network access and permits cleartext HTTP for
+WKWebView content so an owner-configured private LAN server can be used; prefer
+HTTPS beyond a trusted private network.
 
 ## Rust gates
 
