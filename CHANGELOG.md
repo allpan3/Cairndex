@@ -204,9 +204,13 @@ grouped under `Unreleased` until the first tagged release.
   the cover or storyboard visible until both the seek completes and the browser
   reports that the paused target frame has been presented. Browsers without the
   callback API use seek completion as the best frame-ready signal; an exposed
-  callback that omits its post-seek notification has a bounded fallback. Static
-  video covers, storyboard
-  crops, and live video now share one contained, black-letterboxed viewport, so
+  callback that omits its post-seek notification has a bounded fallback. Stale
+  and late `seeked` events are ignored until `currentTime` reaches the requested
+  target. Revealing the paused frame and resuming playback now occupy separate
+  paint/task turns, while dwell and rest callbacks are identity-checked so stale
+  callbacks or repeated activation cannot reset an already playing preview.
+  Static video covers, storyboard crops, and live video now share one contained,
+  black-letterboxed viewport, so
   portrait media is pillarboxed and transitions no longer stretch or shake the
   card. The card storyboard explicitly clips the 5×5 sprite sheet to the chosen
   cue before letterboxing, preventing adjacent rows from bleeding into the
