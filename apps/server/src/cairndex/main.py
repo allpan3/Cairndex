@@ -7,18 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from cairndex.api.errors import register_exception_handlers
 from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
-from cairndex.core.config import get_settings
+from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.registry.engine import get_registry_sessionmaker
-
-DESKTOP_ORIGINS = [
-    "tauri://localhost",
-    "http://tauri.localhost",
-    "https://tauri.localhost",
-    "http://127.0.0.1:5173",
-]
 
 
 @asynccontextmanager
@@ -44,11 +37,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-    # Tauri's custom-protocol webview must reach a separately hosted server
+    # Packaged Tauri origins are trusted; development origins require explicit opt-in
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=DESKTOP_ORIGINS,
-        allow_credentials=True,
+        allow_origins=[*PACKAGED_DESKTOP_ORIGINS, *settings.cors_extra_origins],
         allow_methods=["*"],
         allow_headers=["*"],
     )

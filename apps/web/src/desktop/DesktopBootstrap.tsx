@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
-  isDesktopHost,
-  listenDesktopClose,
+  listenDesktopLifecycle,
   loadDesktopServerUrl,
   normalizeDesktopServerUrl,
   saveDesktopServerUrl,
@@ -32,16 +31,14 @@ async function verifyServer(serverUrl: string): Promise<void> {
 
 // Gates the shared SPA on first-run desktop server configuration
 export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
-  const desktop = isDesktopHost()
-  const [ready, setReady] = useState(!desktop)
+  const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!desktop) return
     let disposed = false
     let unlisten: (() => void) | undefined
-    void listenDesktopClose()
+    void listenDesktopLifecycle()
       .then((stop) => {
         if (disposed) stop()
         else unlisten = stop
@@ -51,10 +48,9 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
       disposed = true
       unlisten?.()
     }
-  }, [desktop])
+  }, [])
 
   useEffect(() => {
-    if (!desktop) return
     let active = true
     void loadDesktopServerUrl()
       .then(async (stored) => {
@@ -86,7 +82,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     return () => {
       active = false
     }
-  }, [desktop])
+  }, [])
 
   const connect = async (event: React.FormEvent) => {
     event.preventDefault()

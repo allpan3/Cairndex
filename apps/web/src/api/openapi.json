@@ -7065,6 +7065,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
             "in": "cookie",
             "name": "cairndex_session",
             "required": false,
@@ -10217,9 +10233,10 @@
         ],
         "requestBody": {
           "content": {
-            "application/json": {
+            "text/plain": {
               "schema": {
-                "$ref": "#/components/schemas/PlaybackProgressUpdate"
+                "title": "Payload",
+                "type": "string"
               }
             }
           },
@@ -11135,6 +11152,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
             "in": "cookie",
             "name": "cairndex_session",
             "required": false,
@@ -11219,6 +11252,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           },
           {
@@ -11318,6 +11367,22 @@
             }
           },
           {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
             "in": "cookie",
             "name": "cairndex_session",
             "required": false,
@@ -11406,6 +11471,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           },
           {
