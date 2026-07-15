@@ -1,9 +1,9 @@
 # Project status
 
-## In review: Plan 3 D1 — Tauri 2 shell bootstrap
+## Completed: Plan 3 D1 — Tauri 2 shell bootstrap
 
 Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested
-implementation tip `66ac9f8`.
+implementation tip `66ac9f8`; first fully green PR #15 tip `76eff40`.
 
 Completed:
 
@@ -89,9 +89,11 @@ Verification (temporary databases/libraries only; no user, Demo, or Eagle media)
 - Playwright: full suite run unpiped exited 0 (**75 passed**); the known
   pre-existing real-backend flake did not reproduce in this run.
 - Desktop: Rust format, Clippy with warnings denied, and **4 unit tests** passed;
-  release `tauri build` produced `Cairndex.app`. The macOS gates are green
-  locally; the macOS and Ubuntu jobs will be required green on the PR tip before
-  merge.
+  release `tauri build` produced `Cairndex.app`.
+- PR #15 ran all six CI jobs green on `76eff40`: macOS desktop Clippy/tests/build
+  (**11m54s**), Ubuntu desktop Clippy/tests (**6m30s**), backend, frontend,
+  full-stack real-backend e2e, and Docker. The final documentation-only receipt
+  commit is required to repeat that same CI set before merge.
 - The required final `/code-review medium` found one actionable P2: any HTTP 200
   JSON response could previously pass bootstrap and hide the only server editor.
   Bootstrap now requires healthy identity fields plus D1's pairing/progress
