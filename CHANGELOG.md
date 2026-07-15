@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Tauri 2 desktop shell bootstrap (Plan 3 D1, ADR-0012).** A new
+  `apps/desktop` package hosts the existing `apps/web` Vite server/build without
+  a frontend fork, bundles as `dev.cairndex.app`, and provides first-run server
+  URL configuration in the Tauri store. Cross-platform store, window-state, and
+  single-instance plugins own shell persistence; native App/File/Edit/View/
+  Window/Help menus dispatch semantic events onto existing SPA settings,
+  pairing, bundle, surface, zoom, pane, and fullscreen handlers. Desktop API,
+  nested playback/media URLs, and close-time progress beacons resolve against
+  the configured server while browser mode remains same-origin. CI now checks
+  Rust formatting, Clippy, and tests on macOS and Ubuntu and builds the macOS
+  `.app`; target-OS conditionals are confined to one Rust host module with no
+  direct AppKit or `NSWorkspace` calls.
+
 - **Device pairing and scoped bearer tokens (Plan 2 §4 / T0, ADR-0015).**
   Anonymous clients start a bounded ten-minute six-character pairing request;
   an ADR-0010-authorized web session approves explicit library scopes, and the

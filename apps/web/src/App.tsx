@@ -74,7 +74,9 @@ import { Sidebar } from './app/Sidebar'
 import { SettingsDialog } from './app/SettingsDialog'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
+import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
+import { useDesktopMenu } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
   SYSTEM_VIEWS,
@@ -162,7 +164,12 @@ export default function App() {
   const librariesQuery = useLibraries()
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
+
+  useDesktopMenu((action) => {
+    if (action === 'settings') setSettingsPage('devices')
+    else if (action === 'pair-device') setSettingsPage('pair')
+  })
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
   const libraryId = useMemo(() => {
@@ -205,14 +212,16 @@ export default function App() {
       <>
         <NoLibraryView
           onManage={() => setManaging(true)}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() => setSettingsPage('devices')}
         />
         {managing && <LibraryManager onClose={() => setManaging(false)} />}
-        {settingsOpen && (
+        {settingsPage && (
           <SettingsDialog
+            key={settingsPage}
             libraries={libraries}
             libraryId={null}
-            onClose={() => setSettingsOpen(false)}
+            startPairing={settingsPage === 'pair'}
+            onClose={() => setSettingsPage(null)}
           />
         )}
       </>
@@ -241,16 +250,18 @@ export default function App() {
         libraryId={libraryId}
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
-        onSettings={() => setSettingsOpen(true)}
+        onSettings={() => setSettingsPage('devices')}
         canLock={auth.data?.protected === true}
         onLock={() => lock.lock.mutate()}
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
-      {settingsOpen && (
+      {settingsPage && (
         <SettingsDialog
+          key={settingsPage}
           libraries={libraries}
           libraryId={libraryId}
-          onClose={() => setSettingsOpen(false)}
+          startPairing={settingsPage === 'pair'}
+          onClose={() => setSettingsPage(null)}
         />
       )}
     </>
@@ -345,6 +356,8 @@ function Workspace({
   )
   const [sidebarW, setSidebarW] = usePersistentState('cairndex.sidebarW', 240)
   const [inspectorW, setInspectorW] = usePersistentState('cairndex.inspectorW', 300)
+  const [sidebarVisible, setSidebarVisible] = useState(true)
+  const [inspectorVisible, setInspectorVisible] = useState(true)
 
   const [selection, setSelection] = useState<Selection>({ view: 'all', collectionId: null })
   // Ad-hoc toolbar filters (Eagle-style). Local UI state only — not persisted to
@@ -406,6 +419,26 @@ function Workspace({
   // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
+
+  useDesktopMenu((action) => {
+    if (action === 'new-bundle') setCreatingEmpty(true)
+    else if (action === 'show-bundles') setMode('collection')
+    else if (action === 'show-files') {
+      setMode('file')
+      setFileScope('browse')
+    } else if (action === 'zoom-in') {
+      setPrefs((previous) => ({ ...previous, zoom: Math.min(ZOOM_MAX, previous.zoom + 10) }))
+    } else if (action === 'zoom-out') {
+      setPrefs((previous) => ({ ...previous, zoom: Math.max(ZOOM_MIN, previous.zoom - 10) }))
+    } else if (action === 'toggle-sidebar') setSidebarVisible((visible) => !visible)
+    else if (action === 'toggle-inspector') setInspectorVisible((visible) => !visible)
+    else if (action === 'fullscreen') {
+      const viewer = document.querySelector<HTMLElement>('.media-viewer')
+      if (viewer) viewer.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', bubbles: true }))
+      else if (document.fullscreenElement) void document.exitFullscreen()
+      else void document.documentElement.requestFullscreen()
+    }
+  })
 
   const collections = useCollections()
   const smartCollections = useSmartCollections()
@@ -1007,89 +1040,91 @@ function Workspace({
 
   return (
     <div
-      className={`app${mode === 'tags' ? ' app--no-inspector' : ''}`}
+      className={`app${mode === 'tags' || !inspectorVisible ? ' app--no-inspector' : ''}`}
       style={
         {
-          ['--sidebar-w']: `${sidebarW}px`,
+          ['--sidebar-w']: sidebarVisible ? `${sidebarW}px` : '0px',
           ['--inspector-w']: `${inspectorW}px`,
         } as React.CSSProperties
       }
     >
-      <Sidebar
-        mode={mode}
-        onMode={(m) => {
-          setMode(m)
-          if (m === 'file') setFileScope('browse')
-        }}
-        fileScope={fileScope}
-        onOpenUnbundled={() => {
-          setMode('file')
-          setFileScope('unbundled')
-          setFileEntry(null)
-        }}
-        onOpenAllTags={() => {
-          setMode('tags')
-          clearSelection()
-          setSelectedCollectionIds(new Set())
-          setOpenBundleId(null)
-        }}
-        libraries={libraries}
-        libraryId={libraryId}
-        onChangeLibrary={onChangeLibrary}
-        onManageLibraries={onManage}
-        onOpenSettings={onSettings}
-        canLock={canLock}
-        onLock={onLock}
-        onUpdateLibrary={() => updateLibrary.mutate()}
-        updating={updateLibrary.isPending}
-        onScanFiles={() => scanFiles.mutate()}
-        scanningFiles={scanFiles.isPending}
-        onProbe={() => probe.mutate()}
-        probing={probe.isPending}
-        onGenerateStoryboards={() => storyboards.mutate()}
-        generatingStoryboards={storyboards.isPending}
-        activeJob={activeJob}
-        maintenanceError={
-          updateLibrary.error?.message ??
-          scanFiles.error?.message ??
-          probe.error?.message ??
-          storyboards.error?.message ??
-          null
-        }
-        onReviewGrouping={() => {
-          setReviewPlanId(null)
-          setReviewingGrouping(true)
-        }}
-        selection={selection}
-        onSelect={(s) => {
-          setMode('collection')
-          setSelection(s)
-          clearSelection()
-          setSelectedCollectionIds(new Set())
-          setOpenBundleId(null)
-        }}
-        counts={counts.data}
-        collections={collections.data ?? []}
-        collectionCounts={collectionCounts.data}
-        onDeleteCollection={removeCollection}
-        onCreateCollection={(payload, callbacks) => createCollection.mutate(payload, callbacks)}
-        onRenameCollection={(id, name, callbacks) =>
-          renameCollection.mutate({ id, name }, callbacks)
-        }
-        onReorderCollections={(parentId, orderedIds) =>
-          reorderCollections.mutate({ parentId, orderedIds })
-        }
-        onMoveCollection={moveCollection}
-        onCleanupCollections={() => setCleaningCollections(true)}
-        dragItem={dragItem}
-        onDragItem={setDragItem}
-        onReparentCollection={reparentCollection}
-        onMoveBundlesInto={moveBundlesToCollection}
-        smartCollections={smartCollections.data ?? []}
-        onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
-        onEditSmartCollection={(sc) => setEditor({ existing: sc })}
-        onDeleteSmartCollection={removeSmartCollection}
-      />
+      {sidebarVisible && (
+        <Sidebar
+          mode={mode}
+          onMode={(m) => {
+            setMode(m)
+            if (m === 'file') setFileScope('browse')
+          }}
+          fileScope={fileScope}
+          onOpenUnbundled={() => {
+            setMode('file')
+            setFileScope('unbundled')
+            setFileEntry(null)
+          }}
+          onOpenAllTags={() => {
+            setMode('tags')
+            clearSelection()
+            setSelectedCollectionIds(new Set())
+            setOpenBundleId(null)
+          }}
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={onChangeLibrary}
+          onManageLibraries={onManage}
+          onOpenSettings={onSettings}
+          canLock={canLock}
+          onLock={onLock}
+          onUpdateLibrary={() => updateLibrary.mutate()}
+          updating={updateLibrary.isPending}
+          onScanFiles={() => scanFiles.mutate()}
+          scanningFiles={scanFiles.isPending}
+          onProbe={() => probe.mutate()}
+          probing={probe.isPending}
+          onGenerateStoryboards={() => storyboards.mutate()}
+          generatingStoryboards={storyboards.isPending}
+          activeJob={activeJob}
+          maintenanceError={
+            updateLibrary.error?.message ??
+            scanFiles.error?.message ??
+            probe.error?.message ??
+            storyboards.error?.message ??
+            null
+          }
+          onReviewGrouping={() => {
+            setReviewPlanId(null)
+            setReviewingGrouping(true)
+          }}
+          selection={selection}
+          onSelect={(s) => {
+            setMode('collection')
+            setSelection(s)
+            clearSelection()
+            setSelectedCollectionIds(new Set())
+            setOpenBundleId(null)
+          }}
+          counts={counts.data}
+          collections={collections.data ?? []}
+          collectionCounts={collectionCounts.data}
+          onDeleteCollection={removeCollection}
+          onCreateCollection={(payload, callbacks) => createCollection.mutate(payload, callbacks)}
+          onRenameCollection={(id, name, callbacks) =>
+            renameCollection.mutate({ id, name }, callbacks)
+          }
+          onReorderCollections={(parentId, orderedIds) =>
+            reorderCollections.mutate({ parentId, orderedIds })
+          }
+          onMoveCollection={moveCollection}
+          onCleanupCollections={() => setCleaningCollections(true)}
+          dragItem={dragItem}
+          onDragItem={setDragItem}
+          onReparentCollection={reparentCollection}
+          onMoveBundlesInto={moveBundlesToCollection}
+          smartCollections={smartCollections.data ?? []}
+          onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
+          onEditSmartCollection={(sc) => setEditor({ existing: sc })}
+          onDeleteSmartCollection={removeSmartCollection}
+        />
+      )}
 
       <div className="center">
         {mode === 'tags' ? (
@@ -1257,7 +1292,7 @@ function Workspace({
         )}
       </div>
 
-      {mode === 'tags' ? null : mode === 'file' ? (
+      {mode === 'tags' || !inspectorVisible ? null : mode === 'file' ? (
         <FileInspector entry={fileEntry} />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
@@ -1280,8 +1315,12 @@ function Workspace({
         />
       )}
 
-      <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
-      <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+      {sidebarVisible && (
+        <Resizer side="left" width={sidebarW} setWidth={setSidebarW} min={180} max={400} />
+      )}
+      {mode !== 'tags' && inspectorVisible && (
+        <Resizer side="right" width={inspectorW} setWidth={setInspectorW} min={220} max={480} />
+      )}
 
       <ContextMenu state={menu.state} onClose={menu.close} />
 
