@@ -2,13 +2,17 @@
 mod app_menu;
 // Flushes webview state before every application-level exit path
 mod lifecycle;
+// Streams server media through the shell-owned bearer transport
+mod media_proxy;
 // Owns validation for the persisted Cairndex server URL
 mod server_url;
 
 // Configures the portable Tauri host and launches the shared Cairndex SPA
 fn main() {
+    let media_proxy = media_proxy::MediaProxy::start().expect("failed to start media proxy");
     let app = tauri::Builder::default()
         .manage(lifecycle::ExitGate::default())
+        .manage(media_proxy)
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             app_menu::focus_main_window(app);
         }))
@@ -19,6 +23,7 @@ fn main() {
             app_menu::set_server_menu_enabled,
             lifecycle::finish_exit,
             lifecycle::request_exit,
+            media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
         ])
         .setup(|app| {

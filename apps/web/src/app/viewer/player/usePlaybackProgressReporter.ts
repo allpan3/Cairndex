@@ -7,7 +7,8 @@ import {
   type PlaybackManifest,
   type PlaybackProgressUpdate,
 } from '../../../api/client'
-import { isDesktopHost, registerDesktopExitTask } from '../../../desktop/exitTasks'
+import { registerDesktopExitTask } from '../../../desktop/exitTasks'
+import { isDesktopHost } from '../../../platform'
 import type { PlayerStatus } from './usePlayer'
 
 const REPORT_INTERVAL_MS = 10_000
