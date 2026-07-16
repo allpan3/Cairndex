@@ -27,8 +27,8 @@ Settings → Pair this device to display a short code; approve it and select the
 library scope from an unlocked same-origin web session. The delivered bearer is
 stored in the Tauri store only for its issuing server. API calls use the shared
 platform transport, while a loopback-only fixed-target relay streams media and
-range requests without placing the token in a URL. Browser mode continues to
-use same-origin cookies.
+range requests through bounded concurrent workers without placing the token in
+a URL. Browser mode continues to use same-origin cookies.
 The macOS bundle declares local-network access and permits cleartext HTTP for
 WKWebView content so an owner-configured private LAN server can be used; prefer
 HTTPS beyond a trusted private network.
