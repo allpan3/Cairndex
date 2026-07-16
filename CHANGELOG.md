@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Desktop platform seam and pairing auth (Plan 3 D2).** The shared SPA now
+  exposes one OS-neutral `HostPlatform` boundary with web no-ops, Tauri-backed
+  desktop calls, capability flags, per-OS labels, and host keymaps that reserve
+  native-only browser combinations such as Cmd+L and Cmd+W. Shell Settings can
+  start and poll ADR-0015 pairing, bind the one-time device token to its issuing
+  server in the Tauri store, and attach it only to requests for that server.
+  Programmatic API calls use the platform fetch transport; media elements, HLS
+  segments, thumbnails, subtitles, and close-time beacons use a fixed-target,
+  secret-routed loopback relay that injects the bearer while streaming byte
+  ranges. The browser path retains same-origin URLs, cookies, and false native
+  capabilities. Bearer-authenticated library status now reports a valid scoped
+  device as unlocked, while invalid and out-of-scope tokens still fail closed.
+
 - **Tauri 2 desktop shell bootstrap (Plan 3 D1, ADR-0012).** A new
   `apps/desktop` package hosts the existing `apps/web` Vite server/build without
   a frontend fork, bundles as `dev.cairndex.app`, and provides first-run server

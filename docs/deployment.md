@@ -163,10 +163,14 @@ stored only as salted hashes in `registry.db`, and remain valid across restarts
 until revoked from Settings → Devices or invalidated by a scoped library's
 passphrase change. Never put a device token in a URL.
 
-The D1 desktop shell does not yet obtain or send those bearer tokens. Because
-its custom-protocol page also does not use browser cookie sessions, protected
-libraries cannot be unlocked or approved from the shell until D2. Use the
-same-origin web app for protected-library administration in the interim.
+The D2 desktop shell starts the device side of pairing from Settings and stores
+the delivered token in its Tauri store, bound to the normalized server URL that
+issued it. A separate unlocked same-origin browser session remains the owner
+approval surface. The shell sends the bearer only to that server; its
+loopback-only, secret-routed media relay streams authenticated media and byte
+ranges without putting the credential in URLs. Revocation or a scoped
+passphrase change invalidates the server credential immediately; pair the shell
+again and revoke superseded device rows from the web Settings → Devices page.
 
 This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
 adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains

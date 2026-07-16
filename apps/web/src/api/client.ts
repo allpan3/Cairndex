@@ -8,6 +8,7 @@
 // `/api/v1/libraries/{id}/…`. Registry endpoints (libraries, jobs, health)
 // stay global.
 
+import { hostFetch, resolveHostAssetUrl } from '../platform'
 import type { components } from './schema'
 
 export type HealthStatus = components['schemas']['HealthStatus']
@@ -23,6 +24,8 @@ export type LibraryRegister = components['schemas']['LibraryRegister']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
+export type PairStartResponse = components['schemas']['PairStartResponse']
+export type PairPollResponse = components['schemas']['PairPollResponse']
 export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
@@ -83,6 +86,11 @@ export function resolveApiUrl(value: string): string {
   return `${apiBaseUrl}/${value.replace(/^\/+/, '')}`
 }
 
+// Resolves server-owned media through the desktop bearer relay when active
+export function resolveAssetUrl(value: string): string {
+  return resolveHostAssetUrl(resolveApiUrl(value))
+}
+
 export function setActiveLibraryId(id: string | null): void {
   activeLibraryId = id
 }
@@ -94,7 +102,7 @@ export function getActiveLibraryId(): string | null {
 /** Base path for content endpoints scoped to the active library. */
 function lib(): string {
   if (!activeLibraryId) throw new Error('no active library selected')
-  return resolveApiUrl(`/api/v1/libraries/${activeLibraryId}`)
+  return `/api/v1/libraries/${activeLibraryId}`
 }
 
 /** Extract a useful message from structured API and FastAPI validation errors. */
@@ -121,7 +129,7 @@ function apiErrorDetail(payload: unknown): string {
 
 async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
-  const response = await fetch(resolvedUrl, { signal })
+  const response = await hostFetch(resolvedUrl, { signal })
   if (!response.ok) {
     // Surface the server's structured `{message}` when present so callers can
     // show a friendly reason (e.g. "library is currently unavailable") instead
@@ -160,7 +168,7 @@ async function send<T>(
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (ifMatch !== undefined) headers['If-Match'] = String(ifMatch)
-  const response = await fetch(resolveApiUrl(url), {
+  const response = await hostFetch(resolveApiUrl(url), {
     method,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -187,7 +195,7 @@ async function sendSignal<T>(
   body: unknown,
 ): Promise<T> {
   const resolvedUrl = resolveApiUrl(url)
-  const response = await fetch(resolvedUrl, {
+  const response = await hostFetch(resolvedUrl, {
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -316,11 +324,11 @@ function resolvePlaybackManifest(manifest: PlaybackManifest): PlaybackManifest {
     ...manifest,
     videos: manifest.videos.map((video) => ({
       ...video,
-      stream_url: resolveApiUrl(video.stream_url),
-      storyboard_url: video.storyboard_url ? resolveApiUrl(video.storyboard_url) : null,
+      stream_url: resolveAssetUrl(video.stream_url),
+      storyboard_url: video.storyboard_url ? resolveAssetUrl(video.storyboard_url) : null,
       subtitles: video.subtitles.map((track) => ({
         ...track,
-        src: track.src ? resolveApiUrl(track.src) : null,
+        src: track.src ? resolveAssetUrl(track.src) : null,
       })),
     })),
   }
@@ -347,14 +355,14 @@ export const requestPlaybackDecision = (
     payload,
   ).then((decision) => ({
     ...decision,
-    stream_url: decision.stream_url ? resolveApiUrl(decision.stream_url) : null,
-    storyboard_url: decision.storyboard_url ? resolveApiUrl(decision.storyboard_url) : null,
+    stream_url: decision.stream_url ? resolveAssetUrl(decision.stream_url) : null,
+    storyboard_url: decision.storyboard_url ? resolveAssetUrl(decision.storyboard_url) : null,
     session: decision.session
-      ? { ...decision.session, playlist_url: resolveApiUrl(decision.session.playlist_url) }
+      ? { ...decision.session, playlist_url: resolveAssetUrl(decision.session.playlist_url) }
       : null,
     subtitles: decision.subtitles.map((track) => ({
       ...track,
-      src: track.src ? resolveApiUrl(track.src) : null,
+      src: track.src ? resolveAssetUrl(track.src) : null,
     })),
   }))
 
@@ -368,7 +376,7 @@ export const deletePlaybackSession = (fileId: string, sessionId: string) =>
  */
 function beacon(url: string, body?: unknown): boolean {
   if (!navigator.sendBeacon) return false
-  const resolvedUrl = resolveApiUrl(url)
+  const resolvedUrl = resolveAssetUrl(url)
   if (body === undefined) return navigator.sendBeacon(resolvedUrl)
   const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
   return navigator.sendBeacon(resolvedUrl, blob)
@@ -497,6 +505,14 @@ export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
 
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
+export const startDevicePairing = (deviceName: string) =>
+  send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })
+
+export const pollDevicePairing = (pollKey: string, signal?: AbortSignal) =>
+  sendSignal<PairPollResponse>('/api/v1/auth/pair/poll', 'POST', signal, {
+    poll_key: pollKey,
+  })
+
 export const approveDevicePairing = (pairCode: string, libraryIds: string[]) =>
   send<void>('/api/v1/auth/pair/approve', 'POST', {
     pair_code: pairCode,
@@ -661,12 +677,12 @@ export function fetchBundleFiles(id: string, signal?: AbortSignal): Promise<File
  */
 export function thumbnailUrl(bundleId: string, coverKey?: string | null): string {
   const base = `${lib()}/bundles/${bundleId}/thumbnail`
-  return coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base
+  return resolveAssetUrl(coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base)
 }
 
 export function fileThumbnailUrl(bundleId: string, fileId: string, version?: string): string {
   const base = `${lib()}/bundles/${bundleId}/files/${fileId}/thumbnail`
-  return version ? `${base}?v=${encodeURIComponent(version)}` : base
+  return resolveAssetUrl(version ? `${base}?v=${encodeURIComponent(version)}` : base)
 }
 
 export function setCoverFrame(fileId: string, time: number): Promise<FileRead> {
@@ -684,11 +700,11 @@ export function clearCoverFrame(fileId: string): Promise<FileRead> {
  */
 export function collectionThumbnailUrl(collectionId: string, coverKey?: string | null): string {
   const base = `${lib()}/collections/${collectionId}/thumbnail`
-  return coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base
+  return resolveAssetUrl(coverKey ? `${base}?c=${encodeURIComponent(coverKey)}` : base)
 }
 
 export function fileContentUrl(fileId: string): string {
-  return `${lib()}/files/${fileId}/content`
+  return resolveAssetUrl(`${lib()}/files/${fileId}/content`)
 }
 
 export type PreviewSize = 640 | 1600 | 2560
@@ -697,27 +713,29 @@ export type PreviewSize = 640 | 1600 | 2560
 export function filePreviewUrl(file: FileRead, size: PreviewSize): string {
   const q = new URLSearchParams({ size: String(size) })
   if (file.quick_fingerprint) q.set('v', file.quick_fingerprint)
-  return `${lib()}/files/${file.id}/preview?${q.toString()}`
+  return resolveAssetUrl(`${lib()}/files/${file.id}/preview?${q.toString()}`)
 }
 
 /** WebP preview of a File Browser entry addressed by library-relative path */
 export function fileBrowserPreviewUrl(path: string, size: PreviewSize = 1600): string {
   const q = new URLSearchParams({ path, size: String(size) })
-  return `${lib()}/file/preview?${q.toString()}`
+  return resolveAssetUrl(`${lib()}/file/preview?${q.toString()}`)
 }
 
 /** Raw bytes of a File Browser entry (library-relative path, read-only). */
 export function fileBrowserContentUrl(path: string): string {
-  return `${lib()}/file?path=${encodeURIComponent(path)}`
+  return resolveAssetUrl(`${lib()}/file?path=${encodeURIComponent(path)}`)
 }
 
 export function fileStreamUrl(fileId: string): string {
-  return `${lib()}/files/${fileId}/stream`
+  return resolveAssetUrl(`${lib()}/files/${fileId}/stream`)
 }
 
 // The version bypasses legacy immutable VTTs; current indexes revalidate via no-cache
 export function fileStoryboardUrl(fileId: string): string {
-  return `${lib()}/files/${fileId}/storyboard.vtt?v=${STORYBOARD_INDEX_CACHE_VERSION}`
+  return resolveAssetUrl(
+    `${lib()}/files/${fileId}/storyboard.vtt?v=${STORYBOARD_INDEX_CACHE_VERSION}`,
+  )
 }
 
 // --- Taxonomy (for the tag editor) ------------------------------------------

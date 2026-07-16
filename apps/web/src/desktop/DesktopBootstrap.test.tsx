@@ -3,21 +3,27 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 import { DesktopBootstrap } from './DesktopBootstrap'
 import {
-  listenDesktopLifecycle,
-  listenDesktopMenu,
-  loadDesktopServerUrl,
-  normalizeDesktopServerUrl,
-  saveDesktopServerUrl,
-  setDesktopServerAvailable,
-} from './runtime'
+  configureHostServer,
+  initializeHostPlatform,
+  listenHostLifecycle,
+  listenHostMenu,
+  loadHostServerUrl,
+  normalizeHostServerUrl,
+  saveHostServerUrl,
+  setHostServerAvailable,
+} from '../platform'
 
-vi.mock('./runtime', () => ({
-  listenDesktopLifecycle: vi.fn().mockResolvedValue(() => undefined),
-  listenDesktopMenu: vi.fn().mockResolvedValue(() => undefined),
-  loadDesktopServerUrl: vi.fn(),
-  normalizeDesktopServerUrl: vi.fn(),
-  saveDesktopServerUrl: vi.fn(),
-  setDesktopServerAvailable: vi.fn().mockResolvedValue(undefined),
+vi.mock('../platform', () => ({
+  configureHostServer: vi.fn().mockResolvedValue(undefined),
+  hostFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
+  initializeHostPlatform: vi.fn().mockResolvedValue({ kind: 'desktop' }),
+  listenHostLifecycle: vi.fn().mockResolvedValue(() => undefined),
+  listenHostMenu: vi.fn().mockResolvedValue(() => undefined),
+  loadHostServerUrl: vi.fn(),
+  normalizeHostServerUrl: vi.fn(),
+  resolveHostAssetUrl: (value: string) => value,
+  saveHostServerUrl: vi.fn(),
+  setHostServerAvailable: vi.fn().mockResolvedValue(undefined),
 }))
 
 const okResponse = () =>
@@ -34,22 +40,26 @@ const okResponse = () =>
   )
 
 beforeEach(() => {
-  vi.mocked(listenDesktopLifecycle)
+  vi.mocked(configureHostServer).mockReset().mockResolvedValue(undefined)
+  vi.mocked(initializeHostPlatform)
+    .mockReset()
+    .mockResolvedValue({ kind: 'desktop' } as never)
+  vi.mocked(listenHostLifecycle)
     .mockReset()
     .mockResolvedValue(() => undefined)
-  vi.mocked(listenDesktopMenu)
+  vi.mocked(listenHostMenu)
     .mockReset()
     .mockResolvedValue(() => undefined)
-  vi.mocked(loadDesktopServerUrl).mockReset()
-  vi.mocked(normalizeDesktopServerUrl).mockReset()
-  vi.mocked(saveDesktopServerUrl).mockReset()
-  vi.mocked(setDesktopServerAvailable).mockReset().mockResolvedValue(undefined)
+  vi.mocked(loadHostServerUrl).mockReset()
+  vi.mocked(normalizeHostServerUrl).mockReset()
+  vi.mocked(saveHostServerUrl).mockReset()
+  vi.mocked(setHostServerAvailable).mockReset().mockResolvedValue(undefined)
   vi.stubGlobal('fetch', vi.fn(okResponse))
 })
 
 // A verified stored URL bypasses first-run without forking the SPA
 test('mounts the shared app with a reachable stored server', async () => {
-  vi.mocked(loadDesktopServerUrl).mockResolvedValue('http://127.0.0.1:8000')
+  vi.mocked(loadHostServerUrl).mockResolvedValue('http://127.0.0.1:8000')
 
   render(
     <DesktopBootstrap>
@@ -59,13 +69,14 @@ test('mounts the shared app with a reachable stored server', async () => {
 
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
   expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8000/api/v1/health', expect.anything())
-  expect(setDesktopServerAvailable).toHaveBeenLastCalledWith(true)
+  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:8000')
+  expect(setHostServerAvailable).toHaveBeenLastCalledWith(true)
 })
 
 // First run validates, probes, and persists before revealing the shared SPA
 test('stores a verified first-run server URL', async () => {
-  vi.mocked(loadDesktopServerUrl).mockResolvedValue(null)
-  vi.mocked(normalizeDesktopServerUrl).mockResolvedValue('http://nas.local:8000')
+  vi.mocked(loadHostServerUrl).mockResolvedValue(null)
+  vi.mocked(normalizeHostServerUrl).mockResolvedValue('http://nas.local:8000')
 
   render(
     <DesktopBootstrap>
@@ -77,14 +88,14 @@ test('stores a verified first-run server URL', async () => {
   fireEvent.change(input, { target: { value: 'http://nas.local:8000/' } })
   fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
 
-  await waitFor(() => expect(saveDesktopServerUrl).toHaveBeenCalledWith('http://nas.local:8000'))
+  await waitFor(() => expect(saveHostServerUrl).toHaveBeenCalledWith('http://nas.local:8000'))
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
 })
 
 // A generic HTTP 200 endpoint is not persisted as a compatible Cairndex server
 test('rejects a server without the required Cairndex capabilities', async () => {
-  vi.mocked(loadDesktopServerUrl).mockResolvedValue(null)
-  vi.mocked(normalizeDesktopServerUrl).mockResolvedValue('http://other.local:8000')
+  vi.mocked(loadHostServerUrl).mockResolvedValue(null)
+  vi.mocked(normalizeHostServerUrl).mockResolvedValue('http://other.local:8000')
   vi.mocked(fetch).mockResolvedValue(
     new Response(JSON.stringify({ status: 'ok', app_name: 'Other', api_features: [] }), {
       status: 200,
@@ -103,18 +114,18 @@ test('rejects a server without the required Cairndex capabilities', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
 
   expect(await screen.findByRole('alert')).toHaveTextContent('not a compatible Cairndex server')
-  expect(saveDesktopServerUrl).not.toHaveBeenCalled()
+  expect(saveHostServerUrl).not.toHaveBeenCalled()
   expect(screen.queryByText('Shared SPA')).not.toBeInTheDocument()
 })
 
 // An unreachable saved server remains editable and never mounts content queries
 test('keeps server settings actionable when the stored server is unavailable', async () => {
   let menuHandler: ((action: 'settings') => void) | undefined
-  vi.mocked(listenDesktopMenu).mockImplementation(async (handler) => {
+  vi.mocked(listenHostMenu).mockImplementation(async (handler) => {
     menuHandler = handler
     return () => undefined
   })
-  vi.mocked(loadDesktopServerUrl).mockResolvedValue('http://offline.local:8000')
+  vi.mocked(loadHostServerUrl).mockResolvedValue('http://offline.local:8000')
   vi.mocked(fetch).mockRejectedValue(new TypeError('failed'))
 
   render(
@@ -127,7 +138,7 @@ test('keeps server settings actionable when the stored server is unavailable', a
   const input = screen.getByLabelText('Server URL')
   expect(input).toHaveValue('http://offline.local:8000')
   expect(screen.queryByText('Shared SPA')).not.toBeInTheDocument()
-  expect(setDesktopServerAvailable).toHaveBeenLastCalledWith(false)
+  expect(setHostServerAvailable).toHaveBeenLastCalledWith(false)
 
   input.blur()
   act(() => menuHandler?.('settings'))

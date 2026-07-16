@@ -286,6 +286,53 @@ def test_protected_library_requires_cookie_approval_and_bearer_scope(
     assert denied.json()["code"] == "device_scope_forbidden"
 
 
+def test_auth_status_accepts_valid_scoped_bearer_for_protected_library(
+    isolated_client: TestClient,
+    registry_session: Session,
+    tmp_path: Path,
+) -> None:
+    library_id = _make_library(tmp_path, registry_session, "protected", passphrase="owner")
+    token = token_service.issue_device_token(
+        registry_session, name="Cairndex Desktop", library_ids=[library_id]
+    )
+    registry_session.commit()
+
+    status_response = isolated_client.get(
+        f"/api/v1/libraries/{library_id}/auth/status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert status_response.status_code == 200
+    assert status_response.json() == {"protected": True, "unlocked": True}
+
+
+def test_auth_status_rejects_invalid_or_out_of_scope_bearer(
+    isolated_client: TestClient,
+    registry_session: Session,
+    tmp_path: Path,
+) -> None:
+    allowed_id = _make_library(tmp_path, registry_session, "status-allowed", passphrase="owner")
+    denied_id = _make_library(tmp_path, registry_session, "status-denied", passphrase="other")
+    token = token_service.issue_device_token(
+        registry_session, name="Cairndex Desktop", library_ids=[allowed_id]
+    )
+    registry_session.commit()
+
+    out_of_scope = isolated_client.get(
+        f"/api/v1/libraries/{denied_id}/auth/status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    invalid = isolated_client.get(
+        f"/api/v1/libraries/{allowed_id}/auth/status",
+        headers={"Authorization": "Bearer invalid"},
+    )
+
+    assert out_of_scope.status_code == 403
+    assert out_of_scope.json()["code"] == "device_scope_forbidden"
+    assert invalid.status_code == 401
+    assert invalid.json()["code"] == "invalid_device_token"
+
+
 def test_revoked_and_unknown_tokens_return_structured_401(
     isolated_client: TestClient,
     registry_session: Session,

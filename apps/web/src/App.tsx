@@ -87,6 +87,7 @@ import {
   type SortPref,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
+import { getHostPlatform } from './platform'
 
 interface EditorState {
   existing?: SmartCollectionRead | null
@@ -263,7 +264,7 @@ export default function App() {
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
-        canLock={auth.data?.protected === true}
+        canLock={auth.data?.protected === true && getHostPlatform().kind === 'web'}
         onLock={() => lock.lock.mutate()}
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}

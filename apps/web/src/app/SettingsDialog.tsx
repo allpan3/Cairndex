@@ -1,8 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { DeviceRead, LibraryRead } from '../api/client'
+import {
+  pollDevicePairing,
+  startDevicePairing,
+  type DeviceRead,
+  type LibraryRead,
+} from '../api/client'
 import { useDeviceMutations, useDevices } from '../api/hooks'
 import { formatDateTime } from '../lib/format'
+import {
+  getHostLabels,
+  getHostPlatform,
+  hasHostDeviceToken,
+  saveHostDeviceToken,
+} from '../platform'
 
 const PAIR_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
@@ -18,6 +30,7 @@ export function SettingsDialog({
   startPairing?: boolean
   onClose: () => void
 }) {
+  const desktop = getHostPlatform().kind === 'desktop'
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -37,10 +50,143 @@ export function SettingsDialog({
           <nav className="settings-nav" aria-label="Settings pages">
             <button className="settings-nav__item settings-nav__item--active">Devices</button>
           </nav>
-          <DevicesPage libraries={libraries} libraryId={libraryId} startPairing={startPairing} />
+          {desktop ? (
+            <PairThisDevice startPairing={startPairing} />
+          ) : (
+            <DevicesPage libraries={libraries} libraryId={libraryId} startPairing={startPairing} />
+          )}
         </div>
       </div>
     </div>
+  )
+}
+
+// Tracks one short-lived anonymous pairing request in the shell UI
+interface PendingPairing {
+  pairCode: string
+  pollKey: string
+  expiresAt: number
+}
+
+// Drives the anonymous device side of ADR-0015 pairing inside the shell
+function PairThisDevice({ startPairing }: { startPairing: boolean }) {
+  const queryClient = useQueryClient()
+  const [paired, setPaired] = useState(hasHostDeviceToken)
+  const [pending, setPending] = useState<PendingPairing | null>(null)
+  const [phase, setPhase] = useState<'idle' | 'starting' | 'pending' | 'paired' | 'error'>(
+    paired ? 'paired' : 'idle',
+  )
+  const [error, setError] = useState<string | null>(null)
+  const autoStarted = useRef(false)
+
+  const beginPairing = useCallback(async () => {
+    setError(null)
+    setPending(null)
+    setPhase('starting')
+    try {
+      const started = await startDevicePairing(getHostLabels().deviceName)
+      setPending({
+        pairCode: started.pair_code,
+        pollKey: started.poll_key,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      })
+      setPhase('pending')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not start device pairing.')
+      setPhase('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!startPairing || autoStarted.current) return
+    autoStarted.current = true
+    void beginPairing()
+  }, [beginPairing, startPairing])
+
+  useEffect(() => {
+    if (phase !== 'pending' || !pending) return
+    const controller = new AbortController()
+    let timeout = 0
+
+    const poll = async () => {
+      if (Date.now() >= pending.expiresAt) {
+        setError('This pairing code expired. Start again to get a new code.')
+        setPhase('error')
+        return
+      }
+      try {
+        const result = await pollDevicePairing(pending.pollKey, controller.signal)
+        if (result.status === 'approved') {
+          if (!result.token) throw new Error('The server approved pairing without a token.')
+          await saveHostDeviceToken(result.token)
+          setPaired(true)
+          setPending(null)
+          setPhase('paired')
+          await queryClient.invalidateQueries()
+          return
+        }
+        timeout = window.setTimeout(poll, 1000)
+      } catch (caught) {
+        if (controller.signal.aborted) return
+        setError(caught instanceof Error ? caught.message : 'Could not finish device pairing.')
+        setPhase('error')
+      }
+    }
+
+    timeout = window.setTimeout(poll, 1000)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [pending, phase, queryClient])
+
+  const cancel = () => {
+    setPending(null)
+    setError(null)
+    setPhase(paired ? 'paired' : 'idle')
+  }
+
+  return (
+    <section className="devices-page" aria-labelledby="devices-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="devices-title">This device</h3>
+          <p>Pair this desktop shell with an owner-approved set of libraries.</p>
+        </div>
+        {(phase === 'idle' || phase === 'paired' || phase === 'error') && (
+          <button className="btn btn--primary" onClick={() => void beginPairing()}>
+            {paired ? 'Pair again' : 'Pair this device'}
+          </button>
+        )}
+      </div>
+
+      {phase === 'starting' && <div className="inspector__empty">Starting pairing…</div>}
+
+      {phase === 'pending' && pending && (
+        <div className="pair-this-device" aria-live="polite">
+          <p>On an unlocked Cairndex web session, open Settings → Devices and enter:</p>
+          <output className="pair-this-device__code" aria-label="Pairing code">
+            {pending.pairCode}
+          </output>
+          <p>Waiting for approval. This code expires after ten minutes.</p>
+          <button className="btn btn--compact" onClick={cancel}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {phase === 'paired' && (
+        <div className="pair-device__success" role="status">
+          This device is paired. Cairndex server requests use its stored bearer token.
+        </div>
+      )}
+
+      {error && (
+        <div className="modal__error" role="alert">
+          {error}
+        </div>
+      )}
+    </section>
   )
 }
 
