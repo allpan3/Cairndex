@@ -1,5 +1,76 @@
 # Project status
 
+## Completed: Plan 3 D2 — platform seam + desktop pairing auth
+
+Branch `feat/desktop-platform-auth` from `main` at `9ccc34b`. Implementation
+commit `a3faad9`; medium-review hardening commit `7d6b374`.
+
+Completed:
+
+- `apps/web/src/platform/index.ts` owns the exact OS-neutral `HostPlatform`
+  contract, host runtime, OS labels, and keymap seam. Browser mode supplies
+  false capabilities and no-op native actions; desktop mode is marker-selected,
+  lazily loaded, and invokes Tauri only inside `apps/web/src/platform`.
+- Shell Settings → Pair this device starts and polls the ADR-0015/T0 flow. The
+  issued token is bound to its normalized server URL in the Tauri store, restored
+  across launches, and attached only to programmatic requests under that server
+  base. Explicit bearer credentials now reach library auth status, so a valid
+  scoped device reports a protected library as unlocked while invalid and
+  out-of-scope credentials fail closed.
+- API calls use the platform fetch transport. Media elements, HLS playlists and
+  segments, thumbnails, storyboards, subtitles, and progress beacons resolve
+  through a loopback-only relay with a random 256-bit capability route. The relay
+  fixes its upstream to the configured server, injects the stored bearer, honors
+  byte ranges/status/headers, bounds request bodies, strips caller and upstream
+  credentials, and uses eight workers plus a bounded queue so a long stream does
+  not block concurrent assets or progress. Browser behavior remains same-origin
+  with its existing cookie path.
+- The OpenAPI contract was regenerated, frontend schema output was checked, D2
+  is checked in the plan, and README, architecture, development, deployment,
+  desktop operation, changelog, and status documentation reflect the delivered
+  boundary. D3/D4 capability flags remain false.
+
+Native packaged-app acceptance (generated fixtures only; no user media):
+
+- An isolated server on port 8137 mounted a scratch Cairndex package containing
+  one ffmpeg-generated 15-second H.264/AAC MP4 behind an ADR-0010 passphrase.
+  The packaged app connected from a clean temporary home, showed the locked
+  state, displayed a short pairing code, and mounted the protected library only
+  after approval from an unlocked same-origin browser session.
+- The stored server record was inspected with the token value redacted: the URL
+  matched, a token was present, and its opaque value was 74 characters. A full
+  quit and relaunch skipped the lock screen, proving retained bearer use.
+- The generated bundle opened and played from 0:00 to 0:08 of 0:15. Server logs
+  recorded authenticated protected-library requests, two media `206 Partial
+  Content` responses, and a typed progress `PUT 200`. The app and isolated
+  server were stopped and all scratch state was removed afterward.
+
+Verification:
+
+- Backend: Ruff check/format, mypy, and full pytest (**447 passed**).
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**135 passed**), and the
+  production Vite build.
+- Playwright: the full unpiped suite passed (**75 passed**); the initial sandbox
+  bind denial was rerun with loopback permission, and the known real-backend
+  flake did not reproduce.
+- Desktop: Rust format, Clippy with warnings denied, and **8 unit tests** passed;
+  final `tauri build` after review hardening produced `Cairndex.app`.
+- The required `/code-review medium` found one P1: the original relay accepted
+  requests serially, so a long stream could block subtitles, thumbnails, HLS,
+  and progress. Commit `7d6b374` replaces that loop with bounded concurrent
+  workers and adds a regression proving a second request finishes while the
+  first response body remains open. No review findings remain unaddressed.
+
+Known issues: the native audit exercised authenticated MP4 range playback and
+progress with one generated fixture; HLS, subtitle, storyboard, and thumbnail
+URL routing are covered by automated tests rather than separate native fixtures.
+Token revocation remains in the same-origin owner Devices UI. Path mappings,
+reveal/open, drag-out/in, deep links, updater/signing, and Linux/Arch packaging
+remain in D3–D5. Tauri still warns about the owner-required
+`dev.cairndex.app` identifier suffix.
+
+Next recommended task: **Plan 3 D3 — library path mappings plus reveal/open**.
+
 ## Completed: Plan 3 D1 — Tauri 2 shell bootstrap
 
 Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested
