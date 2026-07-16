@@ -18,10 +18,11 @@ grouped under `Unreleased` until the first tagged release.
   server in the Tauri store, and attach it only to requests for that server.
   Programmatic API calls use the platform fetch transport; media elements, HLS
   segments, thumbnails, subtitles, and close-time beacons use a fixed-target,
-  secret-routed loopback relay that injects the bearer while streaming byte
-  ranges. The browser path retains same-origin URLs, cookies, and false native
-  capabilities. Bearer-authenticated library status now reports a valid scoped
-  device as unlocked, while invalid and out-of-scope tokens still fail closed.
+  secret-routed loopback relay that injects the bearer while a bounded worker
+  pool streams concurrent byte ranges. The browser path retains same-origin
+  URLs, cookies, and false native capabilities. Bearer-authenticated library
+  status now reports a valid scoped device as unlocked, while invalid and
+  out-of-scope tokens still fail closed.
 
 - **Tauri 2 desktop shell bootstrap (Plan 3 D1, ADR-0012).** A new
   `apps/desktop` package hosts the existing `apps/web` Vite server/build without

@@ -1,6 +1,6 @@
 use std::{
     io::{Cursor, Read},
-    sync::{Arc, RwLock},
+    sync::{mpsc, Arc, Mutex, RwLock},
     thread,
     time::Duration,
 };
@@ -15,6 +15,8 @@ use url::Url;
 
 const MAX_REQUEST_BODY: u64 = 1024 * 1024;
 const PROXY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const PROXY_WORKERS: usize = 8;
+const PROXY_QUEUE_DEPTH: usize = 32;
 
 // Fixes the relay to one server and the bearer issued by that server
 #[derive(Clone)]
@@ -84,8 +86,41 @@ fn serve(server: Server, secret: String, config: Arc<RwLock<Option<ProxyConfig>>
         Ok(client) => client,
         Err(_) => return,
     };
+    let (sender, receiver) = mpsc::sync_channel(PROXY_QUEUE_DEPTH);
+    let receiver = Arc::new(Mutex::new(receiver));
+    for index in 0..PROXY_WORKERS {
+        let client = client.clone();
+        let config = Arc::clone(&config);
+        let receiver = Arc::clone(&receiver);
+        let secret = secret.clone();
+        let _ = thread::Builder::new()
+            .name(format!("cairndex-media-proxy-{index}"))
+            .spawn(move || proxy_worker(receiver, client, secret, config));
+    }
+    drop(receiver);
     for request in server.incoming_requests() {
-        handle_request(request, &client, &secret, &config);
+        if sender.send(request).is_err() {
+            return;
+        }
+    }
+}
+
+// Serves queued requests with fixed concurrency so long media streams cannot block metadata
+fn proxy_worker(
+    receiver: Arc<Mutex<mpsc::Receiver<Request>>>,
+    client: Client,
+    secret: String,
+    config: Arc<RwLock<Option<ProxyConfig>>>,
+) {
+    loop {
+        let request = match receiver.lock() {
+            Ok(receiver) => receiver.recv(),
+            Err(_) => return,
+        };
+        match request {
+            Ok(request) => handle_request(request, &client, &secret, &config),
+            Err(_) => return,
+        }
     }
 }
 
@@ -293,6 +328,25 @@ pub(crate) fn configure_media_proxy(
 mod tests {
     use super::*;
 
+    // Holds a response body open until its test releases the stream
+    struct GateReader {
+        release: mpsc::Receiver<()>,
+        complete: bool,
+    }
+
+    impl Read for GateReader {
+        // Blocks the first body read so another request must use a different relay worker
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if self.complete || buffer.is_empty() {
+                return Ok(0);
+            }
+            self.release.recv().map_err(std::io::Error::other)?;
+            buffer[0] = b's';
+            self.complete = true;
+            Ok(1)
+        }
+    }
+
     // Keeps reverse-proxy base paths while refusing a route without the secret
     #[test]
     fn maps_only_secret_scoped_paths_to_the_configured_server() {
@@ -357,5 +411,68 @@ mod tests {
         assert_eq!(response.headers()["content-range"], "bytes 2-4/6");
         assert_eq!(response.text().unwrap(), "cde");
         worker.join().unwrap();
+    }
+
+    // Keeps short asset requests responsive while a media response is still streaming
+    #[test]
+    fn serves_requests_concurrently_while_a_stream_is_open() {
+        let upstream = Server::http("127.0.0.1:0").unwrap();
+        let upstream_address = upstream.server_addr().to_ip().unwrap();
+        let (slow_seen_sender, slow_seen_receiver) = mpsc::channel();
+        let (release_sender, release_receiver) = mpsc::channel();
+        let upstream_worker = thread::spawn(move || {
+            let slow_request = upstream.recv().unwrap();
+            assert_eq!(slow_request.url(), "/slow");
+            slow_seen_sender.send(()).unwrap();
+            let slow_responder = thread::spawn(move || {
+                slow_request
+                    .respond(Response::new(
+                        StatusCode(200),
+                        Vec::new(),
+                        GateReader {
+                            release: release_receiver,
+                            complete: false,
+                        },
+                        Some(1),
+                        None,
+                    ))
+                    .unwrap();
+            });
+            let fast_request = upstream.recv().unwrap();
+            assert_eq!(fast_request.url(), "/fast");
+            fast_request.respond(Response::from_string("fast")).unwrap();
+            slow_responder.join().unwrap();
+        });
+        let proxy = MediaProxy::start().unwrap();
+        let proxy_base = proxy
+            .configure(&format!("http://{upstream_address}"), None)
+            .unwrap();
+        let slow_base = proxy_base.clone();
+        let slow_client = thread::spawn(move || {
+            Client::new()
+                .get(format!("{slow_base}/slow"))
+                .send()
+                .unwrap()
+                .text()
+                .unwrap()
+        });
+        slow_seen_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap();
+        let (fast_sender, fast_receiver) = mpsc::channel();
+        let fast_client = thread::spawn(move || {
+            let result = Client::new()
+                .get(format!("{proxy_base}/fast"))
+                .send()
+                .and_then(|response| response.text());
+            fast_sender.send(result).unwrap();
+        });
+        let fast_result = fast_receiver.recv_timeout(Duration::from_secs(2));
+        release_sender.send(()).unwrap();
+
+        assert_eq!(fast_result.unwrap().unwrap(), "fast");
+        assert_eq!(slow_client.join().unwrap(), "s");
+        fast_client.join().unwrap();
+        upstream_worker.join().unwrap();
     }
 }

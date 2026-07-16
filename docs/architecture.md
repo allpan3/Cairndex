@@ -50,9 +50,10 @@ The token is paired to its normalized issuing server and is attached only to
 requests under that server base. Programmatic requests use the platform fetch
 transport. Media-element, HLS, subtitle, thumbnail, and beacon URLs use a
 loopback-only Rust relay with an unguessable per-process route; the relay fixes
-its upstream to the configured server, injects the bearer, streams byte ranges,
-and never places a token in a URL. Plain web keeps its relative same-origin URLs
-and cookie behavior. The backend permits the three packaged Tauri
+its upstream to the configured server, injects the bearer, and uses bounded
+concurrent workers to stream byte ranges without placing a token in a URL.
+Plain web keeps its relative same-origin URLs and cookie behavior. The backend
+permits the three packaged Tauri
 custom-protocol origins by default; `tauri dev` requires an explicit exact
 Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
 library metadata is stored in the shell.
