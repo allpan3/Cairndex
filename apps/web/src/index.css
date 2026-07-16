@@ -2073,6 +2073,32 @@ code {
   color: #67d391;
   font-size: 12px;
 }
+.pair-this-device {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.pair-this-device p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pair-this-device__code {
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
 .pair-device__approve {
   grid-column: 2;
   justify-self: end;

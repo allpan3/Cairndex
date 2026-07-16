@@ -219,7 +219,7 @@ handoff:
 | # | Slice | Contents |
 |---|-------|----------|
 | D1 ✅ | Shell bootstrap | `apps/desktop`, window/menu skeleton, server-URL first-run, loads the SPA, CI job |
-| D2 | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
+| D2 ✅ | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
 | D3 | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 | Drag-out / drag-in | §6 |
 | D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |

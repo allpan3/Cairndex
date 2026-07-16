@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D1
+> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D2
 > (probe enrichment, the unified custom media viewer, storyboard trickplay,
 > watch progress/resume, image viewer v2 with preview derivatives, the
 > server-side playback decision + HLS remux/transcode session foundation, and
@@ -41,14 +41,21 @@ registry tracks which libraries are known and owns the runtime job queue.
 
 `apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
 development URL and production build. It owns first-run server configuration,
-native window/menu lifecycle, single-instance behavior, and window-state
-persistence; the SPA resolves its otherwise-relative API and media URLs against
-that stored server only when Tauri is present. Browser builds detect Tauri from
-`window.__TAURI_INTERNALS__` and lazy-load the desktop bootstrap/runtime, keeping
-Tauri IPC and store code out of the browser entry chunk. The backend permits the
-three packaged Tauri custom-protocol origins by default; `tauri dev` requires an
-explicit exact Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No
-source media or library metadata is stored in the shell.
+native window/menu lifecycle, single-instance behavior, window-state
+persistence, and device-token storage. `apps/web/src/platform` is the only
+Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
+capabilities, per-OS labels/keymaps, a browser pass-through implementation, and
+a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
+The token is paired to its normalized issuing server and is attached only to
+requests under that server base. Programmatic requests use the platform fetch
+transport. Media-element, HLS, subtitle, thumbnail, and beacon URLs use a
+loopback-only Rust relay with an unguessable per-process route; the relay fixes
+its upstream to the configured server, injects the bearer, streams byte ranges,
+and never places a token in a URL. Plain web keeps its relative same-origin URLs
+and cookie behavior. The backend permits the three packaged Tauri
+custom-protocol origins by default; `tauri dev` requires an explicit exact
+Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
+library metadata is stored in the shell.
 
 Normal Cairndex operations are metadata-only. The current app does not move,
 rename, delete, or rewrite source files. The only filesystem writes in the
@@ -103,7 +110,8 @@ src/
   api/        typed client over /api/v1 + TanStack Query hooks
   app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
-  desktop/    Tauri store/bootstrap, menu-event bridge, app-exit beacon guard
+  desktop/    shell bootstrap, menu-event bridge, app-exit task guard
+  platform/   OS-neutral host capabilities, labels/keymaps, auth transport
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```
@@ -580,7 +588,11 @@ clients pair through a six-character code and receive one high-entropy token
 whose salted hash, explicit library-id scope, usage timestamps, and revocation
 state live in the server registry. `get_library_session` and the short-lived
 `LibraryAccess` streaming gate accept either credential without holding a
-registry connection while bytes stream. Passphrase-less libraries remain
+registry connection while bytes stream. The desktop shell starts and polls the
+anonymous pairing side while an unlocked same-origin browser approves scope;
+its stored bearer covers JSON and relayed media requests. Library auth status
+validates explicit bearer credentials so a scoped protected library mounts
+without a browser cookie. Passphrase-less libraries remain
 anonymous when no Bearer-scheme header is supplied; unrelated authorization
 schemes continue through the cookie path. Existing but unreadable manifests
 fail closed, and setting or replacing a library passphrase revokes every live

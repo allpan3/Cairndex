@@ -48,7 +48,9 @@ model.
 
 The app is still pre-1.0 and should not be exposed directly to the public
 internet. Optional passphrase/cookie auth and owner-approved device bearer
-tokens provide a private-network, single-owner guardrail. Important follow-ups
+tokens provide a private-network, single-owner guardrail; the desktop shell can
+pair, retain its server-bound token, and browse/play a protected scoped library
+without a browser cookie. Important follow-ups
 include grouping bundle/container reclassification, File Browser write mode and
 desktop path mapping/host handoff, cross-filesystem repair candidates, and token
 rotation/expiry policy. Job progress bars, large-library browse indexing,

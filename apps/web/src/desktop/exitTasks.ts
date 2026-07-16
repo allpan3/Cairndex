@@ -3,11 +3,6 @@ type DesktopExitTask = () => Promise<unknown>
 
 const exitTasks = new Set<DesktopExitTask>()
 
-// Detects the native host without importing Tauri into browser bundles
-export function isDesktopHost(): boolean {
-  return '__TAURI_INTERNALS__' in window
-}
-
 // Registers one async operation that must settle before desktop exit completes
 export function registerDesktopExitTask(task: DesktopExitTask): () => void {
   exitTasks.add(task)

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-import { isDesktopHost } from './exitTasks'
+import { isDesktopHost, listenHostMenu, setHostLibraryAvailable } from '../platform'
 import type { DesktopMenuAction } from './types'
 
 // Routes native menu events to the latest mounted SPA handler
@@ -15,8 +15,7 @@ export function useDesktopMenu(handler: (action: DesktopMenuAction) => void): vo
     if (!isDesktopHost()) return
     let disposed = false
     let unlisten: (() => void) | undefined
-    void import('./runtime')
-      .then(({ listenDesktopMenu }) => listenDesktopMenu((action) => handlerRef.current(action)))
+    void listenHostMenu((action) => handlerRef.current(action))
       .then((stop) => {
         if (disposed) stop()
         else unlisten = stop
@@ -33,8 +32,8 @@ export function useDesktopMenu(handler: (action: DesktopMenuAction) => void): vo
 export function useDesktopMenuAvailability(enabled: boolean): void {
   useEffect(() => {
     if (!isDesktopHost()) return
-    void import('./runtime')
-      .then(({ setDesktopLibraryAvailable }) => setDesktopLibraryAvailable(enabled))
-      .catch((error: unknown) => console.error('Could not update desktop menu availability', error))
+    void setHostLibraryAvailable(enabled).catch((error: unknown) =>
+      console.error('Could not update desktop menu availability', error),
+    )
   }, [enabled])
 }
