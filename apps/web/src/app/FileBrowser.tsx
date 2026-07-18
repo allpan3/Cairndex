@@ -8,6 +8,7 @@ import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { FileEntryViewer } from './FileEntryViewer'
+import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
@@ -310,15 +311,13 @@ function FileList({
         onClick: () => onCreateBundle(targets),
       },
     ]
-    if (n === 1 && (onRevealFile || onOpenFile)) {
-      items.push(null)
-      if (onOpenFile)
-        items.push({ label: hostLabels.openFile, onClick: () => onOpenFile(targets[0] as string) })
-      if (onRevealFile)
-        items.push({
-          label: hostLabels.revealFile,
-          onClick: () => onRevealFile(targets[0] as string),
-        })
+    if (n === 1) {
+      const hostItems = hostFileMenuEntries(
+        hostLabels,
+        { onOpenFile, onRevealFile },
+        targets[0] as string,
+      )
+      if (hostItems.length > 0) items.push(null, ...hostItems)
     }
     menu.open(e, items)
   }

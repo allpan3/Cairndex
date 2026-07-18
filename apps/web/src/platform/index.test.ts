@@ -12,12 +12,17 @@ import {
 } from './index'
 
 test('formats structured native host failures without assuming Error instances', () => {
+  // A known code wins over the shell-authored message: copy is web-owned
   expect(
     hostOperationErrorMessage({
       code: 'volume_not_mounted',
-      message: 'Volume not mounted. Reconnect it and try again.',
+      message: 'rust-side wording that should not surface',
     }),
   ).toBe('Volume not mounted. Reconnect it and try again.')
+  // Unknown codes fall back to the shell message, then to the generic copy
+  expect(
+    hostOperationErrorMessage({ code: 'future_code', message: 'A newer shell said this.' }),
+  ).toBe('A newer shell said this.')
   expect(hostOperationErrorMessage(null)).toBe('The desktop action could not be completed.')
 })
 

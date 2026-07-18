@@ -5,6 +5,7 @@ import { useBundle, useBundleFiles } from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { ContextMenu } from './ContextMenu'
+import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
@@ -89,11 +90,11 @@ export function BundleAlbum({
 
   const contextTile = (file: FileRead, e: React.MouseEvent) => {
     if (!selected.has(file.id)) setSelected(new Set([file.id]))
-    const items: MenuEntry[] = []
-    if (onOpenFile)
-      items.push({ label: hostLabels.openFile, onClick: () => onOpenFile(file.relative_path) })
-    if (onRevealFile)
-      items.push({ label: hostLabels.revealFile, onClick: () => onRevealFile(file.relative_path) })
+    const items: MenuEntry[] = hostFileMenuEntries(
+      hostLabels,
+      { onOpenFile, onRevealFile },
+      file.relative_path,
+    )
     if (onLocateFile) {
       if (items.length > 0) items.push(null)
       items.push({
