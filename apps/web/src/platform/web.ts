@@ -10,5 +10,6 @@ export const webPlatform: HostPlatform = {
   openFile: async () => undefined,
   startFileDrag: async () => undefined,
   getLibraryMapping: async () => null,
-  setLibraryMapping: async () => undefined,
+  locateLibrary: async () => null,
+  clearLibraryMapping: async () => undefined,
 }

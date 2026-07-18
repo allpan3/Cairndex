@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D2
+> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D3
 > (probe enrichment, the unified custom media viewer, storyboard trickplay,
 > watch progress/resume, image viewer v2 with preview derivatives, the
 > server-side playback decision + HLS remux/transcode session foundation, and
@@ -42,7 +42,8 @@ registry tracks which libraries are known and owns the runtime job queue.
 `apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
 development URL and production build. It owns first-run server configuration,
 native window/menu lifecycle, single-instance behavior, window-state
-persistence, and device-token storage. `apps/web/src/platform` is the only
+persistence, device-token storage, and per-library local path mappings.
+`apps/web/src/platform` is the only
 Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
 capabilities, per-OS labels, a browser pass-through implementation, and
 a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
@@ -50,6 +51,17 @@ The paired token is stored with its normalized issuing server and immutable
 approved library ids. Programmatic requests attach it only to those
 library-scoped URLs; global and unscoped requests stay anonymous. An unscoped
 protected library offers pairing rather than the browser-only cookie form.
+
+Settings → Libraries maps a server registry id to a local or SMB-mounted root.
+The native folder picker and all absolute paths stay inside Rust; a mapping is
+stored only after `<root>/.cairndex/manifest.json` parses and its portable
+`library_uuid` matches the server library. Reveal/default-app commands receive
+only `{library_id, relative_path}`. `mappings.rs` rejects empty, absolute,
+current-directory, and parent-traversal paths, canonicalizes the configured root
+and target, requires containment/existence, and reports an unavailable root as a
+structured `volume_not_mounted` error. Only then does `host.rs` call the
+cross-platform Tauri opener plugin. Plain web and unmapped libraries expose no
+host action.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
@@ -118,7 +130,7 @@ src/
   app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
   desktop/    shell bootstrap, menu-event bridge, app-exit task guard
-  platform/   OS-neutral host capabilities, labels, auth transport
+  platform/   OS-neutral host capabilities, labels, auth transport, path handoff
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```

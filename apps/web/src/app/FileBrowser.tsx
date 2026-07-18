@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FileBrowserEntry, SortOrder } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
+import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { FileEntryViewer } from './FileEntryViewer'
@@ -49,6 +50,9 @@ interface FileBrowserProps {
   // Manual bundling actions on selected file paths (unlinked ones auto-linked).
   onAddToBundle: (relativePaths: string[]) => void
   onCreateBundle: (relativePaths: string[]) => void
+  hostLabels: HostLabels
+  onRevealFile?: (relativePath: string) => void
+  onOpenFile?: (relativePath: string) => void
 }
 
 /** Breadcrumb segments for a library-root-relative POSIX path. */
@@ -209,6 +213,9 @@ function FileList({
   onSelectEntry,
   onAddToBundle,
   onCreateBundle,
+  hostLabels,
+  onRevealFile,
+  onOpenFile,
 }: FileListProps) {
   const menu = useContextMenu()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -303,6 +310,16 @@ function FileList({
         onClick: () => onCreateBundle(targets),
       },
     ]
+    if (n === 1 && (onRevealFile || onOpenFile)) {
+      items.push(null)
+      if (onOpenFile)
+        items.push({ label: hostLabels.openFile, onClick: () => onOpenFile(targets[0] as string) })
+      if (onRevealFile)
+        items.push({
+          label: hostLabels.revealFile,
+          onClick: () => onRevealFile(targets[0] as string),
+        })
+    }
     menu.open(e, items)
   }
 

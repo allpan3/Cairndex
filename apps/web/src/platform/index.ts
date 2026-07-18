@@ -17,7 +17,8 @@ export interface HostPlatform {
   openFile(libraryId: string, relativePath: string): Promise<void>
   startFileDrag(items: DragOutItem[]): Promise<void>
   getLibraryMapping(libraryId: string): Promise<string | null>
-  setLibraryMapping(libraryId: string, localRoot: string): Promise<void>
+  locateLibrary(libraryId: string, libraryUuid: string): Promise<string | null>
+  clearLibraryMapping(libraryId: string): Promise<void>
 }
 
 export type HostOs = 'macos' | 'windows' | 'linux' | 'unknown'
@@ -127,6 +128,16 @@ export function getHostLabels(): HostLabels {
 // Resolves the label table for one detected desktop OS
 export function hostLabelsFor(os: HostOs): HostLabels {
   return LABELS[os]
+}
+
+// Extracts a safe user-facing message from a structured native command error
+export function hostOperationErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message) return message
+  }
+  if (typeof error === 'string' && error) return error
+  return 'The desktop action could not be completed.'
 }
 
 // Routes every programmatic server request through the active platform transport

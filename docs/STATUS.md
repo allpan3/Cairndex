@@ -1,5 +1,53 @@
 # Project status
 
+## Completed: Plan 3 D3 — library mappings plus reveal/open
+
+Branch `codex/plan3-d3-path-mappings` from `main` at `da92096`.
+
+Implementation:
+
+- Desktop Settings now has a Libraries page. **Locate on This Mac** opens a
+  native folder picker; Rust canonicalizes the selection, reads
+  `.cairndex/manifest.json`, requires its portable `library_uuid` to match the
+  selected server library, and stores the canonical root by server registry id
+  in shell-local configuration. Cancel is a no-op, and Remove changes only the
+  local mapping.
+- The Rust mapping boundary rejects missing library ids plus empty, absolute,
+  current-directory, and parent-traversal relative paths. It canonicalizes the
+  root and target, requires the root to be a directory, the target to exist, and
+  the target to remain under the root after symlink resolution. An unavailable
+  root returns the structured `volume_not_mounted` rejection. Error messages do
+  not expose local paths.
+- Only after validation does the shell call the cross-platform Tauri opener
+  plugin to reveal the file in its directory or open it with the default app.
+  No server endpoint or arbitrary command-execution surface was added.
+- The File Browser file context menu, Bundle Album file context menu, current
+  bundle context menu, and FileInspector expose the D2 per-OS host labels only
+  when the active desktop library has a local mapping. Browser mode and unmapped
+  libraries expose no host actions. Calls carry only the server registry id and
+  a server-provided library-relative path; the native picker is the sole source
+  of an absolute root.
+- README, architecture, development, deployment, plan 3, changelog, and this
+  status receipt now document the D3 behavior and safety boundary.
+
+Automated verification:
+
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**150 passed**), and the
+  production Vite build.
+- Playwright: full browser regression suite (**75 passed**).
+- Desktop: Rust format, Clippy with warnings denied, and **22 unit tests** after
+  adding manifest, registry-id, traversal, absolute/empty path, symlink escape,
+  missing-mount, and missing-target coverage. Release `tauri build` produced
+  `Cairndex.app`.
+
+Known issues: this checkout had no disposable live SMB mount, so Finder/default-
+app behavior on an actual SMB volume was not manually exercised. The filesystem
+logic is mount-type agnostic and tested with real temporary files and symlinks;
+the packaged shell compiles the actual dialog/opener integrations. The existing
+Tauri bundle-identifier and Vite large-chunk warnings remain unchanged.
+
+Next recommended task: **Plan 3 D4 — drag-out / drag-in**.
+
 ## Completed: Plan 3 D2 — platform seam + desktop pairing auth
 
 Branch `feat/desktop-platform-auth` from `main` at `9ccc34b`. The first D2

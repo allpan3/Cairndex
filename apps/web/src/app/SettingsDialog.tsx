@@ -14,6 +14,7 @@ import {
   getHostLabels,
   getHostPlatform,
   hasHostDeviceToken,
+  hostOperationErrorMessage,
   saveHostDeviceToken,
 } from '../platform'
 
@@ -24,14 +25,17 @@ export function SettingsDialog({
   libraries,
   libraryId,
   startPairing = false,
+  onMappingChanged,
   onClose,
 }: {
   libraries: LibraryRead[]
   libraryId: string | null
   startPairing?: boolean
+  onMappingChanged?: () => void
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
+  const [page, setPage] = useState<'devices' | 'libraries'>('devices')
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -49,9 +53,24 @@ export function SettingsDialog({
         </div>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="Settings pages">
-            <button className="settings-nav__item settings-nav__item--active">Devices</button>
+            <button
+              className={`settings-nav__item${page === 'devices' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('devices')}
+            >
+              Devices
+            </button>
+            {desktop && (
+              <button
+                className={`settings-nav__item${page === 'libraries' ? ' settings-nav__item--active' : ''}`}
+                onClick={() => setPage('libraries')}
+              >
+                Libraries
+              </button>
+            )}
           </nav>
-          {desktop ? (
+          {desktop && page === 'libraries' ? (
+            <LibraryMappingsPage libraries={libraries} onMappingChanged={onMappingChanged} />
+          ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
           ) : (
             <DevicesPage libraries={libraries} libraryId={libraryId} startPairing={startPairing} />
@@ -59,6 +78,138 @@ export function SettingsDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Maps server libraries to manifest-verified folders visible to this desktop. */
+function LibraryMappingsPage({
+  libraries,
+  onMappingChanged,
+}: {
+  libraries: LibraryRead[]
+  onMappingChanged?: () => void
+}) {
+  const { clearLibraryMapping, getLibraryMapping, locateLibrary } = getHostPlatform()
+  const labels = getHostLabels()
+  const [mappings, setMappings] = useState<Record<string, string | null>>({})
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void Promise.all(
+      libraries.map(async (library) => [library.id, await getLibraryMapping(library.id)]),
+    )
+      .then((entries) => {
+        if (!cancelled) setMappings(Object.fromEntries(entries))
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setErrors({ page: hostOperationErrorMessage(error) })
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getLibraryMapping, libraries])
+
+  const locate = async (library: LibraryRead) => {
+    setBusyId(library.id)
+    setErrors((previous) => ({ ...previous, [library.id]: '' }))
+    try {
+      const localRoot = await locateLibrary(library.id, library.library_uuid)
+      if (localRoot === null) return
+      setMappings((previous) => ({ ...previous, [library.id]: localRoot }))
+      onMappingChanged?.()
+    } catch (error) {
+      setErrors((previous) => ({
+        ...previous,
+        [library.id]: hostOperationErrorMessage(error),
+      }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const clear = async (libraryId: string) => {
+    setBusyId(libraryId)
+    setErrors((previous) => ({ ...previous, [libraryId]: '' }))
+    try {
+      await clearLibraryMapping(libraryId)
+      setMappings((previous) => ({ ...previous, [libraryId]: null }))
+      onMappingChanged?.()
+    } catch (error) {
+      setErrors((previous) => ({
+        ...previous,
+        [libraryId]: hostOperationErrorMessage(error),
+      }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="devices-page" aria-labelledby="libraries-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="libraries-title">Libraries</h3>
+          <p>Locate each server library at its local or mounted path on this computer.</p>
+        </div>
+      </div>
+      {errors.page && (
+        <div className="modal__error" role="alert">
+          {errors.page}
+        </div>
+      )}
+      {loading && <div className="inspector__empty">Loading library mappings…</div>}
+      {!loading && libraries.length === 0 && (
+        <div className="inspector__empty">No server libraries are registered.</div>
+      )}
+      {!loading && (
+        <div className="library-mapping-list">
+          {libraries.map((library) => {
+            const localRoot = mappings[library.id] ?? null
+            const busy = busyId === library.id
+            return (
+              <article className="library-mapping" key={library.id}>
+                <div className="library-mapping__main">
+                  <div className="library-mapping__name">{library.name}</div>
+                  <div className="library-mapping__path">
+                    {localRoot ?? 'Not located on this computer'}
+                  </div>
+                  {errors[library.id] && (
+                    <div className="modal__error" role="alert">
+                      {errors[library.id]}
+                    </div>
+                  )}
+                </div>
+                <div className="library-mapping__actions">
+                  {localRoot && (
+                    <button
+                      className="btn btn--compact"
+                      disabled={busy}
+                      onClick={() => void clear(library.id)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    className="btn btn--primary btn--compact"
+                    disabled={busy}
+                    onClick={() => void locate(library)}
+                  >
+                    {busy ? 'Locating…' : labels.locateLibrary}
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
