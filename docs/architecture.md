@@ -55,13 +55,16 @@ protected library offers pairing rather than the browser-only cookie form.
 Settings → Libraries maps a server registry id to a local or SMB-mounted root.
 The native folder picker and all absolute paths stay inside Rust; a mapping is
 stored only after `<root>/.cairndex/manifest.json` parses and its portable
-`library_uuid` matches the server library. Reveal/default-app commands receive
-only `{library_id, relative_path}`. `mappings.rs` rejects empty, absolute,
-current-directory, and parent-traversal paths, canonicalizes the configured root
-and target, requires containment/existence, and reports an unavailable root as a
-structured `volume_not_mounted` error. Only then does `host.rs` call the
-cross-platform Tauri opener plugin. Plain web and unmapped libraries expose no
-host action.
+`library_uuid` matches the server library, and the proven UUID is persisted
+with the root. Reveal/default-app commands receive only
+`{library_id, relative_path}` and run their mount-touching work off the IPC
+thread. `mappings.rs` rejects empty, absolute, current-directory, and
+parent-traversal paths, re-reads the manifest and requires the stored UUID to
+still match (rejecting a remounted different volume as `library_mismatch`),
+canonicalizes the configured root and target, requires
+containment/existence, and reports an unavailable root as a structured
+`volume_not_mounted` error. Only then does `host.rs` call the cross-platform
+Tauri opener plugin. Plain web and unmapped libraries expose no host action.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
