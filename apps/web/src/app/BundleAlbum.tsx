@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { type FileRead, fileThumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles } from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
+import type { HostLabels } from '../platform'
 import { ContextMenu } from './ContextMenu'
+import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
-import { useContextMenu } from './useContextMenu'
+import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
 import type { PlayerPrefs } from './types'
@@ -25,6 +27,9 @@ export function BundleAlbum({
   onPlayerPrefs,
   onBack,
   onLocateFile,
+  hostLabels,
+  onRevealFile,
+  onOpenFile,
 }: {
   bundleId: string
   playerPrefs: PlayerPrefs
@@ -32,6 +37,9 @@ export function BundleAlbum({
   onBack: () => void
   // Jump to the File Browser at this file's directory, selecting it.
   onLocateFile?: (relativePath: string) => void
+  hostLabels: HostLabels
+  onRevealFile?: (relativePath: string) => void
+  onOpenFile?: (relativePath: string) => void
 }) {
   const { data: bundle } = useBundle(bundleId)
   const { data: files = [], isLoading } = useBundleFiles(bundleId)
@@ -82,9 +90,18 @@ export function BundleAlbum({
 
   const contextTile = (file: FileRead, e: React.MouseEvent) => {
     if (!selected.has(file.id)) setSelected(new Set([file.id]))
-    const items = onLocateFile
-      ? [{ label: 'Locate in File Browser', onClick: () => onLocateFile(file.relative_path) }]
-      : []
+    const items: MenuEntry[] = hostFileMenuEntries(
+      hostLabels,
+      { onOpenFile, onRevealFile },
+      file.relative_path,
+    )
+    if (onLocateFile) {
+      if (items.length > 0) items.push(null)
+      items.push({
+        label: 'Locate in File Browser',
+        onClick: () => onLocateFile(file.relative_path),
+      })
+    }
     menu.open(e, items)
   }
 

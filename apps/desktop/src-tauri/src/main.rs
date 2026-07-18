@@ -2,10 +2,14 @@
 mod app_menu;
 // Flushes webview state before every application-level exit path
 mod lifecycle;
+// Owns shell-local library mappings and path containment validation
+mod mappings;
 // Streams server media through the shell-owned bearer transport
 mod media_proxy;
 // Owns validation for the persisted Cairndex server URL
 mod server_url;
+// Performs validated native file handoffs through the opener plugin
+mod host;
 
 use tauri::Manager;
 
@@ -18,11 +22,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,
+            host::open_file,
+            host::reveal_file,
             lifecycle::finish_exit,
             lifecycle::request_exit,
+            mappings::clear_library_mapping,
+            mappings::get_library_mapping,
+            mappings::locate_library_mapping,
             media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
         ])

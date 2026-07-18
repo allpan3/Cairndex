@@ -1,5 +1,91 @@
 # Project status
 
+## Completed: Plan 3 D3 review pass — handoff hardening and seam cleanup
+
+Branch `codex/plan3-d3-path-mappings` (continues below the D3 receipt); an
+eight-angle code review of D3 produced one confirmed defect, two accepted
+hardening/UX findings, and seven cleanup findings. Applied:
+
+- **Async host commands.** `reveal_file`, `open_file`, and the mapping store
+  commands were synchronous Tauri commands, which execute on the webview IPC
+  (main) thread; their `fs::canonicalize` against an offline SMB mount could
+  freeze the whole UI for the mount timeout. All now run the mount-touching
+  work via `async_runtime::spawn_blocking`.
+- **Identity re-proof at handoff.** Mappings persist the manifest UUID proven
+  at locate time, and every reveal/open re-reads `.cairndex/manifest.json`
+  under the mapped root and requires a match (`library_mismatch` otherwise),
+  closing the remounted-different-volume window. Pre-release root-only mapping
+  entries deserialize as unmapped and need one re-locate.
+- **One mapping source of truth.** Workspace mapped-state and the Settings
+  Libraries page now share react-query entries keyed
+  `['library-mapping', libraryId]`; the `mappingRevision` counter and
+  `onMappingChanged` threading are gone. A shared `hostFileMenuEntries`
+  helper builds the Open/Reveal menu pair for all three context-menu
+  surfaces. `hostOperationErrorMessage` maps the shell's structured error
+  codes to web-owned copy (plan 3 §2.1). Host-action tests pin labels to
+  `hostLabelsFor('macos')` and share one `FileBrowserEntry` fixture.
+
+Verification: desktop `cargo fmt --check`, Clippy `-D warnings`, and **23
+unit tests** (adds a swapped-library handoff rejection); web Prettier,
+ESLint, `tsc -b`, and full Vitest (**150 passed**). `tauri build` and
+Playwright were not re-run this session; the prior D3 receipt covers them and
+no bundling or browser-visible flow changed beyond the refactors above.
+
+Known deferred finding: the bundle-card context menu offers host actions only
+when `resume_relative_path` is set, so audio-only/document/non-preview
+bundles expose none there (the opened Bundle Album still offers per-file
+actions). A proper fix wants a server-side always-present primary-file field
+— decide alongside D4 drag-out, which needs the same "bundle → files on
+disk" resolution.
+
+## Completed: Plan 3 D3 — library mappings plus reveal/open
+
+Branch `codex/plan3-d3-path-mappings` from `main` at `da92096`.
+
+Implementation:
+
+- Desktop Settings now has a Libraries page. **Locate on This Mac** opens a
+  native folder picker; Rust canonicalizes the selection, reads
+  `.cairndex/manifest.json`, requires its portable `library_uuid` to match the
+  selected server library, and stores the canonical root by server registry id
+  in shell-local configuration. Cancel is a no-op, and Remove changes only the
+  local mapping.
+- The Rust mapping boundary rejects missing library ids plus empty, absolute,
+  current-directory, and parent-traversal relative paths. It canonicalizes the
+  root and target, requires the root to be a directory, the target to exist, and
+  the target to remain under the root after symlink resolution. An unavailable
+  root returns the structured `volume_not_mounted` rejection. Error messages do
+  not expose local paths.
+- Only after validation does the shell call the cross-platform Tauri opener
+  plugin to reveal the file in its directory or open it with the default app.
+  No server endpoint or arbitrary command-execution surface was added.
+- The File Browser file context menu, Bundle Album file context menu, current
+  bundle context menu, and FileInspector expose the D2 per-OS host labels only
+  when the active desktop library has a local mapping. Browser mode and unmapped
+  libraries expose no host actions. Calls carry only the server registry id and
+  a server-provided library-relative path; the native picker is the sole source
+  of an absolute root.
+- README, architecture, development, deployment, plan 3, changelog, and this
+  status receipt now document the D3 behavior and safety boundary.
+
+Automated verification:
+
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**150 passed**), and the
+  production Vite build.
+- Playwright: full browser regression suite (**75 passed**).
+- Desktop: Rust format, Clippy with warnings denied, and **22 unit tests** after
+  adding manifest, registry-id, traversal, absolute/empty path, symlink escape,
+  missing-mount, and missing-target coverage. Release `tauri build` produced
+  `Cairndex.app`.
+
+Known issues: this checkout had no disposable live SMB mount, so Finder/default-
+app behavior on an actual SMB volume was not manually exercised. The filesystem
+logic is mount-type agnostic and tested with real temporary files and symlinks;
+the packaged shell compiles the actual dialog/opener integrations. The existing
+Tauri bundle-identifier and Vite large-chunk warnings remain unchanged.
+
+Next recommended task: **Plan 3 D4 — drag-out / drag-in**.
+
 ## Completed: Plan 3 D2 — platform seam + desktop pairing auth
 
 Branch `feat/desktop-platform-auth` from `main` at `9ccc34b`. The first D2

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   BundleSort,
@@ -47,6 +47,7 @@ import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
+import { hostFileMenuEntries } from './app/hostActions'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
@@ -87,7 +88,13 @@ import {
   type SortPref,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
-import { getHostPlatform, hasHostDeviceAccess, hasHostDeviceToken } from './platform'
+import {
+  getHostLabels,
+  getHostPlatform,
+  hasHostDeviceAccess,
+  hasHostDeviceToken,
+  hostOperationErrorMessage,
+} from './platform'
 
 interface EditorState {
   existing?: SmartCollectionRead | null
@@ -531,6 +538,37 @@ function Workspace({
   // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
+  const platform = getHostPlatform()
+  const hostLabels = getHostLabels()
+  // Shares the Settings Libraries page's cache entry, so locate/clear there
+  // flow through here without bespoke revision plumbing.
+  const mappingQuery = useQuery({
+    queryKey: ['library-mapping', libraryId],
+    queryFn: () => platform.getLibraryMapping(libraryId),
+    enabled: platform.canRevealInFinder || platform.canOpenWithDefaultApp,
+  })
+  const libraryMapped = mappingQuery.data != null
+
+  const revealMappedFile = useCallback(
+    (relativePath: string) => {
+      void platform
+        .revealFile(libraryId, relativePath)
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const openMappedFile = useCallback(
+    (relativePath: string) => {
+      void platform
+        .openFile(libraryId, relativePath)
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const onRevealHostFile =
+    libraryMapped && platform.canRevealInFinder ? revealMappedFile : undefined
+  const onOpenHostFile =
+    libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
@@ -892,6 +930,16 @@ function Workspace({
           disabled: n > 1,
         },
       ]
+      const hostPath =
+        n === 1 ? filtered.find((item) => item.id === id)?.resume_relative_path : null
+      if (hostPath) {
+        const hostItems = hostFileMenuEntries(
+          hostLabels,
+          { onOpenFile: onOpenHostFile, onRevealFile: onRevealHostFile },
+          hostPath,
+        )
+        if (hostItems.length > 0) items.push(null, ...hostItems)
+      }
       if (selection.collectionId) {
         const collectionId = selection.collectionId
         items.push({
@@ -913,7 +961,18 @@ function Workspace({
       })
       menu.open(e, items)
     },
-    [selectedIds, selection.collectionId, open, batch, menu, updateCollection],
+    [
+      selectedIds,
+      selection.collectionId,
+      open,
+      batch,
+      menu,
+      updateCollection,
+      filtered,
+      hostLabels,
+      onOpenHostFile,
+      onRevealHostFile,
+    ],
   )
 
   // Files-surface context actions (Unbundled list or the directory tree) operate
@@ -1262,6 +1321,9 @@ function Workspace({
             }}
             onAddToBundle={bundleFilePaths}
             onCreateBundle={createBundleFromPaths}
+            hostLabels={hostLabels}
+            onRevealFile={onRevealHostFile}
+            onOpenFile={onOpenHostFile}
           />
         ) : (
           <>
@@ -1289,6 +1351,9 @@ function Workspace({
                 playerPrefs={prefs.player}
                 onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
+                hostLabels={hostLabels}
+                onRevealFile={onRevealHostFile}
+                onOpenFile={onOpenHostFile}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
                     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
@@ -1408,7 +1473,12 @@ function Workspace({
       </div>
 
       {mode === 'tags' || !inspectorVisible ? null : mode === 'file' ? (
-        <FileInspector entry={fileEntry} />
+        <FileInspector
+          entry={fileEntry}
+          hostLabels={hostLabels}
+          onRevealFile={onRevealHostFile}
+          onOpenFile={onOpenHostFile}
+        />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
       ) : selectedCollectionIds.size > 1 ? (
