@@ -23,6 +23,23 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Desktop drag-out and drag-in (Plan 3 D4 / §6).** A mapped desktop library
+  can drag its real files out to Finder and other apps from the File Browser
+  cards/rows, the opened bundle album tiles, the File inspector, and the bundle
+  inspector — whose cover drags the whole bundle (all its files) and whose
+  "Files in bundle" rows each drag that file. The shell resolves and validates
+  every path exactly as reveal/open do; the web layer never handles an absolute
+  path. Files dropped from Finder that resolve inside the mapped library are
+  reverse-mapped to relative paths and seed the existing Create Bundle fast-add
+  flow; files outside every library are told that Cairndex links files in place
+  (move them into the library first), and an unmapped library is told to locate
+  itself. The outside-files branch is the explicit seam for the plan 4 W5
+  copy-into-library flow. Plain web keeps every drag capability inert. Internal:
+  the shell adds the cross-platform `drag` crate (the engine behind
+  `tauri-plugin-drag`) and depends on it directly rather than the plugin, so
+  drag-out path resolution stays in Rust instead of passing absolute paths to
+  the web layer; drag-in uses Tauri's built-in `dragDropEnabled` webview event.
+
 - **Desktop library mappings and safe host handoff (Plan 3 D3 / ADR-0007).**
   Settings → Libraries can locate each server library on the desktop through a
   native folder picker. Rust reads the picked `.cairndex/manifest.json`, requires

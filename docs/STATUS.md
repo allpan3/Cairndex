@@ -1,5 +1,77 @@
 # Project status
 
+## Completed: Plan 3 D4 — drag-out to Finder plus drag-in reverse-mapping
+
+Branch `codex/plan3-d4-drag` from `main` at `8ca5547`; tip `91f1921`. Delivers
+plan 3 §6 on top of the D3 mapping/validation boundary.
+
+Implementation:
+
+- **Drag-out.** A mapped desktop library can drag its real files out to Finder
+  and other apps from the File Browser cards/rows, the opened bundle album tiles,
+  the File inspector, and the bundle inspector — whose cover drags the whole
+  bundle (all its files) and whose "Files in bundle" rows each drag that file.
+  A shared `fileDragProps` helper resolves the selection-aware, library-relative
+  paths lazily at drag time, hands them to the `start_file_drag` Rust command,
+  and cancels the browser's own HTML5 drag so only the OS drag runs. The command
+  resolves + validates each `{library_id, relative_path}` through `mappings.rs`
+  off the IPC thread (skipping any missing member so a partially-available bundle
+  still drags the rest), then starts the native drag on the main thread. Bundle
+  grid cards keep their existing in-window reorder / move-to-collection drag and
+  are deliberately not drag-out sources; existing marquee selection already tears
+  down on `dragstart`, so the new draggable rows/cards coexist unchanged.
+- **Drag-out engine.** The shell depends on the cross-platform `drag` crate
+  (2.1.1) directly rather than `tauri-plugin-drag`, because the plugin's only
+  surface is a JS command that takes absolute paths — which would break the §5
+  rule that the web layer passes only ids + relative paths. `dragout.rs` mirrors
+  the plugin's `run_on_main_thread` + GTK/raw-window-handle `#[cfg]` edge in one
+  clearly-named module (§2.1). `§10`'s NSDraggingSession fallback still applies
+  if the crate ever stalls.
+- **Drag-in.** Tauri's `dragDropEnabled` webview event delivers dropped absolute
+  paths; `reverse_map_paths` canonicalizes each against the active library's
+  identity-verified root and returns the in-library relative paths plus an
+  outside count (no absolute path returns to the web). `handleFileDrop` routes
+  in-library files into the existing Create Bundle fast-add flow, tells an
+  unmapped library to locate itself, and explains in-place linking for outside
+  files. Its `onCopyIntoLibrary` hook is the explicit seam where plan 4 W5's
+  copy-into-library flow attaches without reworking the drop handler.
+- The `HostPlatform` seam gains `canDragOutFiles` (true on desktop), and the
+  runtime gains `reverseMapPaths` + a `listenFileDrop` subscription; plain web
+  and unmapped libraries keep every drag capability inert.
+
+Verification (temporary scratch dirs only; no user media):
+
+- Desktop: `cargo fmt --check`, Clippy `-D warnings`, and **31 unit tests** (was
+  23; +8 reverse-map cases covering exact-case preservation, a macOS
+  case-insensitive alias, a symlink escape counted outside, a symlink-into-root
+  mapped to its real relative path, a trailing-slash directory drop, the root
+  itself, and a mixed inside/outside/missing/relative partition). Release
+  `npm run tauri build` produced `Cairndex.app` with `drag v2.1.1` linked.
+- Web: Prettier, ESLint, `tsc -b`, full Vitest (**163 passed**, +13: platform
+  drag surface, `fileDragProps`, `handleFileDrop`, FileInspector drag-out), and
+  the production Vite build. The desktop-only runtime chunk grew (~5.9 kB gzip);
+  the browser entry keeps the same lazy split.
+- Playwright: the browser-only partition (`test:e2e:frontend`) ran **72 passed**.
+  The `@fullstack` partition (Python backend + ffmpeg) was not run this session;
+  CI covers it and no browser-visible flow changed (all drag surfaces are inert
+  on the web platform, so the suite exercises them as no-ops).
+
+Known issues: the **native drag gesture itself was not exercised** here — macOS
+NSDraggingSession drag-out and Finder drag-in cannot be scripted in this
+environment, and there was no packaged live run. The path-resolution and
+reverse-mapping logic is unit-tested with real temp files and symlinks, and the
+packaged app compiles the actual `drag` integration, but a manual owner pass on
+a real build (and on an SMB-mounted library) remains the final acceptance step,
+as with D1–D3. Drag-out starts the native session after an off-thread
+canonicalize; on a healthy local/mounted volume that is sub-millisecond, but a
+very slow mount adds latency before the OS drag attaches. Bundle grid cards do
+not offer drag-out (they own the in-window collection/reorder drag); the bundle
+inspector cover and album cover that goal instead.
+
+Next recommended task: **Plan 3 D5 — shell polish** (menu/shortcut audit, window
+state, deep links, job notifications, native save dialog for media exports,
+updater + signing).
+
 ## Completed: Plan 3 D3 review pass — handoff hardening and seam cleanup
 
 Branch `codex/plan3-d3-path-mappings` (continues below the D3 receipt); an
