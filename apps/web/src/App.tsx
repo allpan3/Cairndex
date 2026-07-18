@@ -87,7 +87,13 @@ import {
   type SortPref,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
-import { getHostPlatform, hasHostDeviceAccess, hasHostDeviceToken } from './platform'
+import {
+  getHostLabels,
+  getHostPlatform,
+  hasHostDeviceAccess,
+  hasHostDeviceToken,
+  hostOperationErrorMessage,
+} from './platform'
 
 interface EditorState {
   existing?: SmartCollectionRead | null
@@ -166,6 +172,7 @@ export default function App() {
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
+  const [mappingRevision, setMappingRevision] = useState(0)
 
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
@@ -225,6 +232,7 @@ export default function App() {
             libraries={libraries}
             libraryId={null}
             startPairing={settingsPage === 'pair'}
+            onMappingChanged={() => setMappingRevision((revision) => revision + 1)}
             onClose={() => setSettingsPage(null)}
           />
         )}
@@ -238,6 +246,7 @@ export default function App() {
       libraries={libraries}
       libraryId={libraryId}
       startPairing={settingsPage === 'pair'}
+      onMappingChanged={() => setMappingRevision((revision) => revision + 1)}
       onClose={() => setSettingsPage(null)}
     />
   )
@@ -328,6 +337,7 @@ export default function App() {
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
+        mappingRevision={mappingRevision}
         canLock={auth.data?.protected === true && getHostPlatform().kind === 'web'}
         onLock={() => lock.lock.mutate()}
       />
@@ -431,6 +441,7 @@ interface WorkspaceProps {
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings: () => void
+  mappingRevision: number
   canLock: boolean
   onLock: () => void
 }
@@ -441,6 +452,7 @@ function Workspace({
   onChangeLibrary,
   onManage,
   onSettings,
+  mappingRevision,
   canLock,
   onLock,
 }: WorkspaceProps) {
@@ -531,6 +543,58 @@ function Workspace({
   // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
+  const platform = getHostPlatform()
+  const hostLabels = getHostLabels()
+  const [mappingState, setMappingState] = useState({
+    libraryId: '',
+    revision: -1,
+    mapped: false,
+  })
+  const libraryMapped =
+    mappingState.libraryId === libraryId &&
+    mappingState.revision === mappingRevision &&
+    mappingState.mapped
+
+  useEffect(() => {
+    if (!platform.canRevealInFinder && !platform.canOpenWithDefaultApp) {
+      return
+    }
+    let cancelled = false
+    void platform
+      .getLibraryMapping(libraryId)
+      .then((localRoot) => {
+        if (!cancelled) {
+          setMappingState({ libraryId, revision: mappingRevision, mapped: localRoot !== null })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setMappingState({ libraryId, revision: mappingRevision, mapped: false })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [libraryId, mappingRevision, platform])
+
+  const revealMappedFile = useCallback(
+    (relativePath: string) => {
+      void platform
+        .revealFile(libraryId, relativePath)
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const openMappedFile = useCallback(
+    (relativePath: string) => {
+      void platform
+        .openFile(libraryId, relativePath)
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const onRevealHostFile =
+    libraryMapped && platform.canRevealInFinder ? revealMappedFile : undefined
+  const onOpenHostFile =
+    libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
@@ -892,6 +956,15 @@ function Workspace({
           disabled: n > 1,
         },
       ]
+      const hostPath =
+        n === 1 ? filtered.find((item) => item.id === id)?.resume_relative_path : null
+      if (hostPath && (onRevealHostFile || onOpenHostFile)) {
+        items.push(null)
+        if (onOpenHostFile)
+          items.push({ label: hostLabels.openFile, onClick: () => onOpenHostFile(hostPath) })
+        if (onRevealHostFile)
+          items.push({ label: hostLabels.revealFile, onClick: () => onRevealHostFile(hostPath) })
+      }
       if (selection.collectionId) {
         const collectionId = selection.collectionId
         items.push({
@@ -913,7 +986,18 @@ function Workspace({
       })
       menu.open(e, items)
     },
-    [selectedIds, selection.collectionId, open, batch, menu, updateCollection],
+    [
+      selectedIds,
+      selection.collectionId,
+      open,
+      batch,
+      menu,
+      updateCollection,
+      filtered,
+      hostLabels,
+      onOpenHostFile,
+      onRevealHostFile,
+    ],
   )
 
   // Files-surface context actions (Unbundled list or the directory tree) operate
@@ -1262,6 +1346,9 @@ function Workspace({
             }}
             onAddToBundle={bundleFilePaths}
             onCreateBundle={createBundleFromPaths}
+            hostLabels={hostLabels}
+            onRevealFile={onRevealHostFile}
+            onOpenFile={onOpenHostFile}
           />
         ) : (
           <>
@@ -1289,6 +1376,9 @@ function Workspace({
                 playerPrefs={prefs.player}
                 onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
+                hostLabels={hostLabels}
+                onRevealFile={onRevealHostFile}
+                onOpenFile={onOpenHostFile}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
                     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
@@ -1408,7 +1498,12 @@ function Workspace({
       </div>
 
       {mode === 'tags' || !inspectorVisible ? null : mode === 'file' ? (
-        <FileInspector entry={fileEntry} />
+        <FileInspector
+          entry={fileEntry}
+          hostLabels={hostLabels}
+          onRevealFile={onRevealHostFile}
+          onOpenFile={onOpenHostFile}
+        />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
       ) : selectedCollectionIds.size > 1 ? (

@@ -124,11 +124,11 @@ function desktopAssetUrl(value: string): string {
   return `${mediaProxyBaseUrl}${suffix}${target.search}${target.hash}`
 }
 
-// Implements the plan-3 host surface while D3/D4 capabilities remain disabled
+// Implements the plan-3 host surface with D3 handoff and D4 drag disabled
 const desktopPlatform: HostPlatform = {
   kind: 'desktop',
-  canRevealInFinder: false,
-  canOpenWithDefaultApp: false,
+  canRevealInFinder: true,
+  canOpenWithDefaultApp: true,
   canDragOutFiles: false,
   revealFile: (libraryId: string, relativePath: string) =>
     invoke('reveal_file', { libraryId, relativePath }),
@@ -137,8 +137,9 @@ const desktopPlatform: HostPlatform = {
   startFileDrag: (items: DragOutItem[]) => invoke('start_file_drag', { items }),
   getLibraryMapping: (libraryId: string) =>
     invoke<string | null>('get_library_mapping', { libraryId }),
-  setLibraryMapping: (libraryId: string, localRoot: string) =>
-    invoke('set_library_mapping', { libraryId, localRoot }),
+  locateLibrary: (libraryId: string, libraryUuid: string) =>
+    invoke<string | null>('locate_library_mapping', { libraryId, libraryUuid }),
+  clearLibraryMapping: (libraryId: string) => invoke('clear_library_mapping', { libraryId }),
 }
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam

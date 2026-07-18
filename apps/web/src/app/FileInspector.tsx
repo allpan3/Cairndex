@@ -1,5 +1,6 @@
 import type { FileBrowserEntry } from '../api/client'
 import { formatBytes, formatDateTime } from '../lib/format'
+import type { HostLabels } from '../platform'
 
 /** Tri-state bundle membership shown in the File inspector / Files surface. */
 function bundleStatus(entry: FileBrowserEntry): string {
@@ -13,7 +14,17 @@ function bundleStatus(entry: FileBrowserEntry): string {
  * inspector: a filesystem entry is a path, not a bundle, so this shows only
  * file/path facts plus its bundle status.
  */
-export function FileInspector({ entry }: { entry: FileBrowserEntry | null }) {
+export function FileInspector({
+  entry,
+  hostLabels,
+  onRevealFile,
+  onOpenFile,
+}: {
+  entry: FileBrowserEntry | null
+  hostLabels: HostLabels
+  onRevealFile?: (relativePath: string) => void
+  onOpenFile?: (relativePath: string) => void
+}) {
   if (entry === null) {
     return (
       <aside className="inspector">
@@ -38,6 +49,20 @@ export function FileInspector({ entry }: { entry: FileBrowserEntry | null }) {
   return (
     <aside className="inspector">
       <div className="inspector__title">{entry.name}</div>
+      {entry.kind === 'file' && (onRevealFile || onOpenFile) && (
+        <div className="file-inspector__actions">
+          {onOpenFile && (
+            <button className="btn" onClick={() => onOpenFile(entry.relative_path)}>
+              {hostLabels.openFile}
+            </button>
+          )}
+          {onRevealFile && (
+            <button className="btn" onClick={() => onRevealFile(entry.relative_path)}>
+              {hostLabels.revealFile}
+            </button>
+          )}
+        </div>
+      )}
       <dl className="file-meta">
         {rows.map(([k, v]) => (
           <div className="file-meta__row" key={k}>

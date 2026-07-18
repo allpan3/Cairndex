@@ -178,6 +178,14 @@ passphrase change invalidates the server credential immediately. Forget the
 local token in desktop Settings, then pair again and revoke superseded device
 rows from the web Settings → Devices page.
 
+Desktop library mappings are client-local configuration, not server registry
+paths. For a NAS library, mount the same portable library over SMB/NFS on the
+desktop, then use Settings → Libraries to locate that mounted root. Cairndex
+requires the mounted `.cairndex/manifest.json` UUID to match the server library
+before saving the mapping. Reveal/default-app actions remain hidden for unmapped
+libraries and return **Volume not mounted** if the saved mount disappears. No
+absolute desktop path or host-launch command is sent to the server.
+
 This is a **private LAN/Tailscale guardrail, not public-internet hardening**: it
 adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains
 unsupported without a separate hardened reverse proxy. Full multi-user accounts

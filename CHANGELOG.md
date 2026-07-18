@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Desktop library mappings and safe host handoff (Plan 3 D3 / ADR-0007).**
+  Settings → Libraries can locate each server library on the desktop through a
+  native folder picker. Rust reads the picked `.cairndex/manifest.json`, requires
+  its portable UUID to match the server library, and stores the canonical root
+  by registry id in shell configuration. Mapped File Browser entries, bundle
+  files/current bundle media, and FileInspector expose per-OS reveal/default-app
+  actions; plain web and unmapped libraries expose none. Every action carries
+  only an id plus a server-provided relative path. Pure-Rust validation rejects
+  empty, absolute, current/parent-traversal, missing, and symlink-escaping paths,
+  reports offline roots as `volume_not_mounted`, and invokes the cross-platform
+  opener plugin only after canonical containment and existence checks pass.
+
 - **Desktop platform seam and pairing auth (Plan 3 D2).** The shared SPA now
   exposes one OS-neutral `HostPlatform` boundary with web no-ops, Tauri-backed
   desktop calls, capability flags, and per-OS labels. Shell Settings can
