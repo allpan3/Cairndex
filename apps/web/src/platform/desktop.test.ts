@@ -44,12 +44,16 @@ test('synchronizes server-backed native menu availability', async () => {
   expect(mocks.invoke).toHaveBeenCalledWith('set_server_menu_enabled', { enabled: true })
 })
 
-test('attaches bearer auth only to the configured server and relays media URLs', async () => {
+test('attaches bearer auth and media relay only to approved library scopes', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', fetchMock)
   mocks.storeGet.mockImplementation((key: string) => {
     if (key === 'deviceAuth')
-      return Promise.resolve({ serverUrl: 'http://nas.local:8000/cairndex', token: 'cdx_secret' })
+      return Promise.resolve({
+        serverUrl: 'http://nas.local:8000/cairndex',
+        token: 'cdx_secret',
+        libraryIds: ['lib-one'],
+      })
     return Promise.resolve(null)
   })
   mocks.invoke.mockImplementation((command: string) => {
@@ -61,14 +65,60 @@ test('attaches bearer auth only to the configured server and relays media URLs',
   await runtime.configureServer('http://nas.local:8000/cairndex')
 
   await runtime.fetch('http://nas.local:8000/cairndex/api/v1/libraries')
-  const init = fetchMock.mock.calls[0]?.[1] as RequestInit
-  expect(new Headers(init.headers).get('Authorization')).toBe('Bearer cdx_secret')
+  expect(fetchMock.mock.calls[0]?.[1]).toBeUndefined()
+
+  await runtime.fetch('http://nas.local:8000/cairndex/api/v1/libraries/lib-one/bundles/browse')
+  const scopedInit = fetchMock.mock.calls[1]?.[1] as RequestInit
+  expect(new Headers(scopedInit.headers).get('Authorization')).toBe('Bearer cdx_secret')
+
+  await runtime.fetch('http://nas.local:8000/cairndex/api/v1/libraries/lib-two/bundles/browse')
+  expect(fetchMock.mock.calls[2]?.[1]).toBeUndefined()
 
   await runtime.fetch('https://cdn.example/media.mp4')
-  expect(fetchMock.mock.calls[1]?.[1]).toBeUndefined()
+  expect(fetchMock.mock.calls[3]?.[1]).toBeUndefined()
   expect(
-    runtime.assetUrl('http://nas.local:8000/cairndex/api/v1/libraries/lib/files/file/stream'),
-  ).toBe('http://127.0.0.1:49152/relay-secret/api/v1/libraries/lib/files/file/stream')
+    runtime.assetUrl('http://nas.local:8000/cairndex/api/v1/libraries/lib-one/files/file/stream'),
+  ).toBe('http://127.0.0.1:49152/relay-secret/api/v1/libraries/lib-one/files/file/stream')
+  expect(
+    runtime.assetUrl('http://nas.local:8000/cairndex/api/v1/libraries/lib-two/files/file/stream'),
+  ).toBe('http://nas.local:8000/cairndex/api/v1/libraries/lib-two/files/file/stream')
+  expect(runtime.hasDeviceAccess('lib-one')).toBe(true)
+  expect(runtime.hasDeviceAccess('lib-two')).toBe(false)
+  expect(mocks.invoke).toHaveBeenCalledWith('configure_media_proxy', {
+    serverUrl: 'http://nas.local:8000/cairndex',
+    token: 'cdx_secret',
+    libraryIds: ['lib-one'],
+  })
+})
+
+test('stores and clears one complete server-bound device grant', async () => {
+  mocks.storeGet.mockResolvedValue(null)
+  mocks.invoke.mockImplementation((command: string) => {
+    if (command === 'configure_media_proxy')
+      return Promise.resolve('http://127.0.0.1:49152/relay-secret')
+    return Promise.resolve(undefined)
+  })
+  const runtime = await createDesktopRuntime()
+  await runtime.configureServer('http://nas.local:8000')
+
+  await runtime.saveDeviceToken('cdx_secret', ['lib-one', 'lib-one'])
+
+  expect(mocks.storeSet).toHaveBeenCalledWith('deviceAuth', {
+    serverUrl: 'http://nas.local:8000',
+    token: 'cdx_secret',
+    libraryIds: ['lib-one'],
+  })
+  expect(runtime.hasDeviceAccess('lib-one')).toBe(true)
+
+  await runtime.clearDeviceToken()
+
+  expect(mocks.storeDelete).toHaveBeenCalledWith('deviceAuth')
+  expect(runtime.hasDeviceAccess('lib-one')).toBe(false)
+  expect(mocks.invoke).toHaveBeenLastCalledWith('configure_media_proxy', {
+    serverUrl: 'http://nas.local:8000',
+    token: null,
+    libraryIds: [],
+  })
 })
 
 test('routes window close through ExitGate and awaits SPA exit tasks', async () => {

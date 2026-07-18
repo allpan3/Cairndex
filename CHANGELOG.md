@@ -12,17 +12,17 @@ grouped under `Unreleased` until the first tagged release.
 
 - **Desktop platform seam and pairing auth (Plan 3 D2).** The shared SPA now
   exposes one OS-neutral `HostPlatform` boundary with web no-ops, Tauri-backed
-  desktop calls, capability flags, per-OS labels, and host keymaps that reserve
-  native-only browser combinations such as Cmd+L and Cmd+W. Shell Settings can
-  start and poll ADR-0015 pairing, bind the one-time device token to its issuing
-  server in the Tauri store, and attach it only to requests for that server.
-  Programmatic API calls use the platform fetch transport; media elements, HLS
-  segments, thumbnails, subtitles, and close-time beacons use a fixed-target,
-  secret-routed loopback relay that injects the bearer while a bounded worker
-  pool streams concurrent byte ranges. The browser path retains same-origin
-  URLs, cookies, and false native capabilities. Bearer-authenticated library
-  status now reports a valid scoped device as unlocked, while invalid and
-  out-of-scope tokens still fail closed.
+  desktop calls, capability flags, and per-OS labels. Shell Settings can
+  start and poll ADR-0015 pairing, bind the one-time token plus approved library
+  ids to its issuing server, forget that local pairing, and attach the bearer
+  only to granted library paths. Unscoped unprotected libraries stay anonymous;
+  unscoped protected libraries offer pairing instead of the browser cookie form.
+  Programmatic calls use platform fetch; ADR-0017's fixed-target loopback relay
+  supplies media/HLS/thumbnail/preview/storyboard/subtitle URLs with rotating
+  capability paths, exact origins, read-only route and scope checks, no
+  redirects, bounded stalls/concurrency, and non-chunked known-length 206
+  responses. Plain web retains same-origin URLs, cookies, and false native
+  capabilities.
 
 - **Tauri 2 desktop shell bootstrap (Plan 3 D1, ADR-0012).** A new
   `apps/desktop` package hosts the existing `apps/web` Vite server/build without
@@ -159,6 +159,20 @@ grouped under `Unreleased` until the first tagged release.
   10–60 second backfill above.
 
 ### Fixed
+
+- **Desktop D2 auth and relay review hardening.** Desktop no longer sends one
+  scoped bearer to every library on its server, mounts a workspace after auth
+  status fails, or presents a nonfunctional passphrase form in WKWebView.
+  Pairing poll now returns the immutable grant used by both JSON and media
+  transports. The relay no longer exposes write methods or general API paths,
+  follows redirects, reflects arbitrary origins, leaves stalled reads unbounded,
+  chunks large known-length ranges, or panics directly on startup failure. The
+  previously stale generated TypeScript contract now includes the auth-status
+  Authorization header and pairing scopes. Unused D2 keymap scaffolding was
+  removed until D5 has real shortcut consumers. Desktop exit now awaits HLS
+  session DELETE through the scoped fetch transport instead of sending a POST
+  beacon into the read-only media relay; browsers retain the existing pagehide
+  beacon. A failed re-pair also leaves the still-valid paired state visible.
 
 - **Desktop D1 review hardening.** The Vite development origin is denied unless
   explicitly configured through `CAIRNDEX_CORS_EXTRA_ORIGINS`, and cross-origin

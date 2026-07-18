@@ -44,14 +44,20 @@ development URL and production build. It owns first-run server configuration,
 native window/menu lifecycle, single-instance behavior, window-state
 persistence, and device-token storage. `apps/web/src/platform` is the only
 Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
-capabilities, per-OS labels/keymaps, a browser pass-through implementation, and
+capabilities, per-OS labels, a browser pass-through implementation, and
 a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
-The token is paired to its normalized issuing server and is attached only to
-requests under that server base. Programmatic requests use the platform fetch
-transport. Media-element, HLS, subtitle, thumbnail, and beacon URLs use a
-loopback-only Rust relay with an unguessable per-process route; the relay fixes
-its upstream to the configured server, injects the bearer, and uses bounded
-concurrent workers to stream byte ranges without placing a token in a URL.
+The paired token is stored with its normalized issuing server and immutable
+approved library ids. Programmatic requests attach it only to those
+library-scoped URLs; global and unscoped requests stay anonymous. An unscoped
+protected library offers pairing rather than the browser-only cookie form.
+
+Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
+use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
+path on configuration, fixes its upstream, permits only scoped read-only media
+routes and exact shell origins, rejects redirects, bounds read stalls and
+concurrency, and preserves known lengths for large range responses. Tauri 2.11
+custom protocols were rejected here because their owned byte response buffers a
+whole range instead of streaming it. No bearer is placed in a URL.
 Plain web keeps its relative same-origin URLs and cookie behavior. The backend
 permits the three packaged Tauri
 custom-protocol origins by default; `tauri dev` requires an explicit exact
@@ -112,7 +118,7 @@ src/
   app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
   desktop/    shell bootstrap, menu-event bridge, app-exit task guard
-  platform/   OS-neutral host capabilities, labels/keymaps, auth transport
+  platform/   OS-neutral host capabilities, labels, auth transport
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```
@@ -479,8 +485,10 @@ Clients declare a capability profile (containers, video/audio codecs,
   Optional `CAIRNDEX_FFMPEG_HWACCEL` adds a decode-only hwaccel prefix for
   transcode sessions.
 - A POST `.../playback-sessions/{session_id}/teardown` alias mirrors the DELETE
-  route so `navigator.sendBeacon` (POST-only) can reap a session on `pagehide`
-  (same pattern as the M4 progress beacon).
+  route so browser `navigator.sendBeacon` (POST-only) can reap a session on
+  `pagehide` (same pattern as the M4 progress beacon). Desktop app exit instead
+  registers an awaitable task that uses the ordinary authenticated DELETE through
+  `hostFetch`; the GET/HEAD-only media relay never accepts teardown writes.
 
 **Web engine integration (M7, `apps/web/src/app/viewer/player/`).** The custom
 player drives delivery through the `PlaybackEngine` seam. A memoized capability
@@ -490,11 +498,12 @@ and only advertises probe-confirmed formats. When a video starts, `MediaViewer`
 (progressive `video.src`), `native_hls` uses `NativeEngine` with the m3u8, and
 otherwise `HlsEngine` lazy-loads **hls.js** (a separate build chunk) and attaches
 over MediaSource. The hook owns the session lifecycle — teardown on close/switch/
-unmount, a `sendBeacon` teardown on `pagehide`, and transparent re-attach at the
-current playhead when a session idles out (segment/playlist 404 or an hls.js fatal
-error). Quality (`max_height` ladder), audio-track, and subtitle burn-in choices
-re-decide and start a new session at the current position rather than switching
-in-stream; resume/watch-progress works unchanged over the 1:1 VOD timeline.
+unmount, a browser `sendBeacon` on `pagehide`, an awaitable DELETE during desktop
+exit, and transparent re-attach at the current playhead when a session idles out
+(segment/playlist 404 or an hls.js fatal error). Quality (`max_height` ladder),
+audio-track, and subtitle burn-in choices re-decide and start a new session at
+the current position rather than switching in-stream; resume/watch-progress
+works unchanged over the 1:1 VOD timeline.
 
 ## 9. Filtering and Smart Collections
 

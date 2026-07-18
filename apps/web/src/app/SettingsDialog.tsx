@@ -10,6 +10,7 @@ import {
 import { useDeviceMutations, useDevices } from '../api/hooks'
 import { formatDateTime } from '../lib/format'
 import {
+  clearHostDeviceToken,
   getHostLabels,
   getHostPlatform,
   hasHostDeviceToken,
@@ -76,6 +77,7 @@ function PairThisDevice({ startPairing }: { startPairing: boolean }) {
   const [phase, setPhase] = useState<'idle' | 'starting' | 'pending' | 'paired' | 'error'>(
     paired ? 'paired' : 'idle',
   )
+  const [forgetting, setForgetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const autoStarted = useRef(false)
 
@@ -118,7 +120,9 @@ function PairThisDevice({ startPairing }: { startPairing: boolean }) {
         const result = await pollDevicePairing(pending.pollKey, controller.signal)
         if (result.status === 'approved') {
           if (!result.token) throw new Error('The server approved pairing without a token.')
-          await saveHostDeviceToken(result.token)
+          if (!result.library_ids?.length)
+            throw new Error('The server approved pairing without a library scope.')
+          await saveHostDeviceToken(result.token, result.library_ids)
           setPaired(true)
           setPending(null)
           setPhase('paired')
@@ -146,6 +150,23 @@ function PairThisDevice({ startPairing }: { startPairing: boolean }) {
     setPhase(paired ? 'paired' : 'idle')
   }
 
+  const forgetPairing = async () => {
+    setForgetting(true)
+    setError(null)
+    try {
+      await clearHostDeviceToken()
+      setPaired(false)
+      setPending(null)
+      setPhase('idle')
+      await queryClient.invalidateQueries()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not forget this pairing.')
+      setPhase('error')
+    } finally {
+      setForgetting(false)
+    }
+  }
+
   return (
     <section className="devices-page" aria-labelledby="devices-title">
       <div className="devices-page__head">
@@ -154,9 +175,16 @@ function PairThisDevice({ startPairing }: { startPairing: boolean }) {
           <p>Pair this desktop shell with an owner-approved set of libraries.</p>
         </div>
         {(phase === 'idle' || phase === 'paired' || phase === 'error') && (
-          <button className="btn btn--primary" onClick={() => void beginPairing()}>
-            {paired ? 'Pair again' : 'Pair this device'}
-          </button>
+          <div className="devices-page__actions">
+            {paired && (
+              <button className="btn" onClick={() => void forgetPairing()} disabled={forgetting}>
+                {forgetting ? 'Forgetting…' : 'Forget pairing'}
+              </button>
+            )}
+            <button className="btn btn--primary" onClick={() => void beginPairing()}>
+              {paired ? 'Pair again' : 'Pair this device'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -175,9 +203,10 @@ function PairThisDevice({ startPairing }: { startPairing: boolean }) {
         </div>
       )}
 
-      {phase === 'paired' && (
+      {paired && (phase === 'paired' || phase === 'error') && (
         <div className="pair-device__success" role="status">
-          This device is paired. Cairndex server requests use its stored bearer token.
+          This device is paired for its approved libraries. Forgetting removes the local token;
+          revoke the device from an owner web session to invalidate it on the server.
         </div>
       )}
 
