@@ -53,6 +53,14 @@ impl MappingError {
         )
     }
 
+    // Reports a drag-out request in which none of the requested files resolved
+    pub(crate) fn no_files_available() -> Self {
+        Self::new(
+            MappingErrorCode::PathNotFound,
+            "None of these files are available to drag.",
+        )
+    }
+
     // Rejects a canonical path the string-only opener interface cannot preserve
     pub(crate) fn unsupported_path_encoding() -> Self {
         Self::new(
@@ -387,6 +395,93 @@ pub(crate) fn resolve_library_path<R: Runtime>(
     )
 }
 
+// Reports the drag-in reverse-mapping outcome for one library. `inside` holds the
+// library-relative paths of dropped files that resolve within the mapped root
+// (offered to the fast-add flow); `outside_count` is how many fell outside it
+// (explained, and the seam where plan 4 W5 copy-in attaches). No absolute path
+// crosses back to the web layer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ReverseMapResult {
+    inside: Vec<String>,
+    outside_count: usize,
+}
+
+// Reverse-maps absolute Finder paths against one library's local root (plan 3
+// §6 drag-in). Paths whose real location is inside the mapped, identity-verified
+// root become library-relative paths; everything else is counted as outside.
+#[tauri::command]
+pub(crate) async fn reverse_map_paths<R: Runtime>(
+    app: AppHandle<R>,
+    library_id: String,
+    paths: Vec<String>,
+) -> Result<ReverseMapResult, MappingError> {
+    validate_library_id(&library_id)?;
+    // Canonicalizing dropped paths touches the mount; keep it off the IPC thread.
+    async_runtime::spawn_blocking(move || {
+        let mappings = load_mappings(&app)?;
+        let Some(record) = mappings.get(&library_id) else {
+            // An un-located library has no local root, so nothing can be inside it.
+            return Ok(ReverseMapResult {
+                inside: Vec::new(),
+                outside_count: paths.len(),
+            });
+        };
+        // Re-prove identity + availability before attributing any file to this
+        // library (mirrors the handoff re-proof; offline roots surface as
+        // volume_not_mounted rather than silently mapping nothing).
+        let root = validate_library_root(Path::new(&record.local_root), &record.library_uuid)?;
+        Ok(reverse_map_under_root(&root, &paths))
+    })
+    .await
+    .map_err(|_| MappingError::store_task_failed())?
+}
+
+// Partitions dropped absolute paths into library-relative paths under the given
+// canonical root versus a count of paths that fall outside it.
+fn reverse_map_under_root(root: &Path, paths: &[String]) -> ReverseMapResult {
+    let mut inside = Vec::new();
+    let mut outside_count = 0;
+    for raw in paths {
+        match relative_within_root(root, raw) {
+            Some(relative) => inside.push(relative),
+            None => outside_count += 1,
+        }
+    }
+    ReverseMapResult {
+        inside,
+        outside_count,
+    }
+}
+
+// Returns the forward-slash library-relative path for one dropped absolute path
+// when its real (symlink-resolved) location is strictly inside `root`, else None.
+// Canonicalizing both sides makes containment correct across case-insensitive
+// volumes, symlinked mounts (e.g. /tmp -> /private/tmp), trailing slashes, and
+// `..` segments; a symlink whose target escapes the root resolves outside and is
+// therefore not mapped in.
+fn relative_within_root(root: &Path, absolute: &str) -> Option<String> {
+    let path = Path::new(absolute);
+    if !path.is_absolute() {
+        return None;
+    }
+    let canonical = fs::canonicalize(path).ok()?;
+    let relative = canonical.strip_prefix(root).ok()?;
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        match component {
+            Component::Normal(segment) => parts.push(segment.to_str()?.to_owned()),
+            // A canonical path under the root yields only normal components; an
+            // empty result means the root itself was dropped, which we skip.
+            _ => return None,
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(parts.join("/"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -396,8 +491,19 @@ mod tests {
     };
 
     use super::{
-        resolve_verified_path, validate_library_id, validate_library_root, MappingErrorCode,
+        resolve_verified_path, reverse_map_under_root, validate_library_id, validate_library_root,
+        MappingErrorCode,
     };
+
+    // Canonicalizes a scratch root the way the command does before reverse-mapping
+    fn canonical(path: &Path) -> PathBuf {
+        fs::canonicalize(path).expect("canonical root")
+    }
+
+    // Renders one absolute path as the string the drop event delivers
+    fn dropped(path: &Path) -> String {
+        path.to_str().expect("utf-8 path").to_owned()
+    }
 
     static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -572,5 +678,162 @@ mod tests {
             .expect_err("swapped library");
 
         assert_eq!(error.code, MappingErrorCode::LibraryMismatch);
+    }
+
+    // --- drag-in reverse mapping (plan 3 §6) --------------------------------
+
+    #[test]
+    fn reverse_maps_a_contained_file_to_its_relative_path() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("dir")).expect("create dir");
+        fs::write(root.path().join("dir/clip.mp4"), b"fixture").expect("write file");
+        let canonical_root = canonical(root.path());
+
+        let result = reverse_map_under_root(
+            &canonical_root,
+            &[dropped(&canonical_root.join("dir/clip.mp4"))],
+        );
+
+        assert_eq!(result.inside, vec!["dir/clip.mp4".to_string()]);
+        assert_eq!(result.outside_count, 0);
+    }
+
+    #[test]
+    fn reverse_map_preserves_exact_case_and_uses_forward_slashes() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("MixedCase/Sub")).expect("create dirs");
+        fs::write(root.path().join("MixedCase/Sub/Clip.MP4"), b"fixture").expect("write file");
+        let canonical_root = canonical(root.path());
+
+        let result = reverse_map_under_root(
+            &canonical_root,
+            &[dropped(&canonical_root.join("MixedCase/Sub/Clip.MP4"))],
+        );
+
+        // Real on-disk case is preserved; separators are always '/'.
+        assert_eq!(result.inside, vec!["MixedCase/Sub/Clip.MP4".to_string()]);
+    }
+
+    // A case-insensitive volume (the macOS default) must still recognize a dropped
+    // path whose casing differs from disk, and return the real on-disk casing.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reverse_map_is_case_insensitive_on_macos() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("Alpha")).expect("create dir");
+        fs::write(root.path().join("Alpha/Beta.mp4"), b"fixture").expect("write file");
+        let canonical_root = canonical(root.path());
+        let wrong_case = root.path().join("ALPHA/beta.mp4");
+        // Skip on the rare case-sensitive macOS volume where the alias won't resolve.
+        if fs::canonicalize(&wrong_case).is_err() {
+            return;
+        }
+
+        let result = reverse_map_under_root(&canonical_root, &[dropped(&wrong_case)]);
+
+        assert_eq!(result.inside, vec!["Alpha/Beta.mp4".to_string()]);
+        assert_eq!(result.outside_count, 0);
+    }
+
+    #[test]
+    fn reverse_map_normalizes_a_trailing_slash_directory_drop() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("folder")).expect("create dir");
+        let canonical_root = canonical(root.path());
+        let trailing = format!("{}/", dropped(&canonical_root.join("folder")));
+
+        let result = reverse_map_under_root(&canonical_root, &[trailing]);
+
+        assert_eq!(result.inside, vec!["folder".to_string()]);
+        assert_eq!(result.outside_count, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reverse_map_resolves_a_symlink_that_leads_into_the_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("real")).expect("create dir");
+        fs::write(root.path().join("real/clip.mp4"), b"fixture").expect("write file");
+        // An access path outside the root that symlinks back into it must map to
+        // the file's real relative location, not be treated as an outside file.
+        let alias = TestDir::new();
+        let link = alias.path().join("alias");
+        symlink(root.path().join("real"), &link).expect("create symlink");
+        let canonical_root = canonical(root.path());
+
+        let result = reverse_map_under_root(&canonical_root, &[dropped(&link.join("clip.mp4"))]);
+
+        assert_eq!(result.inside, vec!["real/clip.mp4".to_string()]);
+        assert_eq!(result.outside_count, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reverse_map_counts_a_symlink_escape_as_outside() {
+        use std::os::unix::fs::symlink;
+
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        let outside = TestDir::new();
+        fs::write(outside.path().join("secret.mp4"), b"fixture").expect("write outside file");
+        // A link that lives inside the root but points outside it must not be mapped
+        // in — its real target escapes the library.
+        symlink(
+            outside.path().join("secret.mp4"),
+            root.path().join("link.mp4"),
+        )
+        .expect("create symlink");
+        let canonical_root = canonical(root.path());
+
+        let result =
+            reverse_map_under_root(&canonical_root, &[dropped(&root.path().join("link.mp4"))]);
+
+        assert!(result.inside.is_empty());
+        assert_eq!(result.outside_count, 1);
+    }
+
+    #[test]
+    fn reverse_map_counts_the_root_itself_as_outside() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        let canonical_root = canonical(root.path());
+
+        let result = reverse_map_under_root(&canonical_root, &[dropped(&canonical_root)]);
+
+        assert!(result.inside.is_empty());
+        assert_eq!(result.outside_count, 1);
+    }
+
+    #[test]
+    fn reverse_map_partitions_inside_outside_missing_and_relative() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::create_dir_all(root.path().join("dir")).expect("create dir");
+        fs::write(root.path().join("dir/in.mp4"), b"fixture").expect("write file");
+        let sibling = TestDir::new();
+        fs::write(sibling.path().join("out.mp4"), b"fixture").expect("write sibling file");
+        let canonical_root = canonical(root.path());
+
+        let result = reverse_map_under_root(
+            &canonical_root,
+            &[
+                dropped(&canonical_root.join("dir/in.mp4")),
+                dropped(&sibling.path().join("out.mp4")),
+                // A path that no longer exists cannot be canonicalized.
+                dropped(&canonical_root.join("dir/missing.mp4")),
+                // A non-absolute path never came from a real Finder drop.
+                "relative/not/absolute.mp4".to_string(),
+            ],
+        );
+
+        assert_eq!(result.inside, vec!["dir/in.mp4".to_string()]);
+        assert_eq!(result.outside_count, 3);
     }
 }
