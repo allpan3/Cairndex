@@ -65,15 +65,16 @@ def start_pairing(payload: PairStartRequest, request: Request) -> PairStartRespo
 def poll_pairing(payload: PairPollRequest, registry: RegistryDbSession) -> PairPollResponse:
     """Return pending uniformly or issue one bearer token after approval."""
 
-    def _issue(name: str, library_ids: list[str]) -> str:
+    def _issue(name: str, library_ids: list[str]) -> tuple[str, list[str]]:
         token = token_service.issue_device_token(registry, name=name, library_ids=library_ids)
         registry.commit()
-        return token
+        return token, list(library_ids)
 
-    token = pairing_store.consume_approval(payload.poll_key, _issue)
-    if token is None:
+    issued = pairing_store.consume_approval(payload.poll_key, _issue)
+    if issued is None:
         return PairPollResponse(status="pending")
-    return PairPollResponse(status="approved", token=token)
+    token, library_ids = issued
+    return PairPollResponse(status="approved", token=token, library_ids=library_ids)
 
 
 @router.post("/pair/approve", status_code=status.HTTP_204_NO_CONTENT)

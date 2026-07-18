@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D1
+> Status: current through the media-player foundation M1–M12, plan 2 T0, and plan 3 D2
 > (probe enrichment, the unified custom media viewer, storyboard trickplay,
 > watch progress/resume, image viewer v2 with preview derivatives, the
 > server-side playback decision + HLS remux/transcode session foundation, and
@@ -41,14 +41,28 @@ registry tracks which libraries are known and owns the runtime job queue.
 
 `apps/desktop` is a thin cross-platform Rust shell over the same `apps/web`
 development URL and production build. It owns first-run server configuration,
-native window/menu lifecycle, single-instance behavior, and window-state
-persistence; the SPA resolves its otherwise-relative API and media URLs against
-that stored server only when Tauri is present. Browser builds detect Tauri from
-`window.__TAURI_INTERNALS__` and lazy-load the desktop bootstrap/runtime, keeping
-Tauri IPC and store code out of the browser entry chunk. The backend permits the
-three packaged Tauri custom-protocol origins by default; `tauri dev` requires an
-explicit exact Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No
-source media or library metadata is stored in the shell.
+native window/menu lifecycle, single-instance behavior, window-state
+persistence, and device-token storage. `apps/web/src/platform` is the only
+Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
+capabilities, per-OS labels, a browser pass-through implementation, and
+a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
+The paired token is stored with its normalized issuing server and immutable
+approved library ids. Programmatic requests attach it only to those
+library-scoped URLs; global and unscoped requests stay anonymous. An unscoped
+protected library offers pairing rather than the browser-only cookie form.
+
+Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
+use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
+path on configuration, fixes its upstream, permits only scoped read-only media
+routes and exact shell origins, rejects redirects, bounds read stalls and
+concurrency, and preserves known lengths for large range responses. Tauri 2.11
+custom protocols were rejected here because their owned byte response buffers a
+whole range instead of streaming it. No bearer is placed in a URL.
+Plain web keeps its relative same-origin URLs and cookie behavior. The backend
+permits the three packaged Tauri
+custom-protocol origins by default; `tauri dev` requires an explicit exact
+Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
+library metadata is stored in the shell.
 
 Normal Cairndex operations are metadata-only. The current app does not move,
 rename, delete, or rewrite source files. The only filesystem writes in the
@@ -103,7 +117,8 @@ src/
   api/        typed client over /api/v1 + TanStack Query hooks
   app/        Sidebar, Toolbar, Browser, Inspector, BundleAlbum, FileBrowser,
               GroupingReview, LibraryManager, SmartCollectionEditor, layouts
-  desktop/    Tauri store/bootstrap, menu-event bridge, app-exit beacon guard
+  desktop/    shell bootstrap, menu-event bridge, app-exit task guard
+  platform/   OS-neutral host capabilities, labels, auth transport
   state/      localStorage-backed persistent UI preferences
   lib/        formatting helpers
 ```
@@ -470,8 +485,10 @@ Clients declare a capability profile (containers, video/audio codecs,
   Optional `CAIRNDEX_FFMPEG_HWACCEL` adds a decode-only hwaccel prefix for
   transcode sessions.
 - A POST `.../playback-sessions/{session_id}/teardown` alias mirrors the DELETE
-  route so `navigator.sendBeacon` (POST-only) can reap a session on `pagehide`
-  (same pattern as the M4 progress beacon).
+  route so browser `navigator.sendBeacon` (POST-only) can reap a session on
+  `pagehide` (same pattern as the M4 progress beacon). Desktop app exit instead
+  registers an awaitable task that uses the ordinary authenticated DELETE through
+  `hostFetch`; the GET/HEAD-only media relay never accepts teardown writes.
 
 **Web engine integration (M7, `apps/web/src/app/viewer/player/`).** The custom
 player drives delivery through the `PlaybackEngine` seam. A memoized capability
@@ -481,11 +498,12 @@ and only advertises probe-confirmed formats. When a video starts, `MediaViewer`
 (progressive `video.src`), `native_hls` uses `NativeEngine` with the m3u8, and
 otherwise `HlsEngine` lazy-loads **hls.js** (a separate build chunk) and attaches
 over MediaSource. The hook owns the session lifecycle — teardown on close/switch/
-unmount, a `sendBeacon` teardown on `pagehide`, and transparent re-attach at the
-current playhead when a session idles out (segment/playlist 404 or an hls.js fatal
-error). Quality (`max_height` ladder), audio-track, and subtitle burn-in choices
-re-decide and start a new session at the current position rather than switching
-in-stream; resume/watch-progress works unchanged over the 1:1 VOD timeline.
+unmount, a browser `sendBeacon` on `pagehide`, an awaitable DELETE during desktop
+exit, and transparent re-attach at the current playhead when a session idles out
+(segment/playlist 404 or an hls.js fatal error). Quality (`max_height` ladder),
+audio-track, and subtitle burn-in choices re-decide and start a new session at
+the current position rather than switching in-stream; resume/watch-progress
+works unchanged over the 1:1 VOD timeline.
 
 ## 9. Filtering and Smart Collections
 
@@ -580,7 +598,11 @@ clients pair through a six-character code and receive one high-entropy token
 whose salted hash, explicit library-id scope, usage timestamps, and revocation
 state live in the server registry. `get_library_session` and the short-lived
 `LibraryAccess` streaming gate accept either credential without holding a
-registry connection while bytes stream. Passphrase-less libraries remain
+registry connection while bytes stream. The desktop shell starts and polls the
+anonymous pairing side while an unlocked same-origin browser approves scope;
+its stored bearer covers JSON and relayed media requests. Library auth status
+validates explicit bearer credentials so a scoped protected library mounts
+without a browser cookie. Passphrase-less libraries remain
 anonymous when no Bearer-scheme header is supplied; unrelated authorization
 schemes continue through the cookie path. Existing but unreadable manifests
 fail closed, and setting or replacing a library passphrase revokes every live

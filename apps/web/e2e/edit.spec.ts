@@ -48,6 +48,9 @@ async function mockApi(page: Page) {
       json: [{ id: 'lib1', name: 'Test Library', root_path: '/srv/lib', status: 'available' }],
     }),
   )
+  await page.route('**/auth/status', (r) =>
+    r.fulfill({ json: { protected: false, unlocked: true } }),
+  )
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 } }),
   )

@@ -1,5 +1,96 @@
 # Project status
 
+## Completed: Plan 3 D2 — platform seam + desktop pairing auth
+
+Branch `feat/desktop-platform-auth` from `main` at `9ccc34b`. The first D2
+completion receipt was invalidated after review found a cross-library auth
+correctness gap and an under-specified relay security boundary. The correction
+keeps the accepted ADR-0015 fail-closed bearer behavior and fixes the desktop
+caller rather than weakening server authorization.
+
+Corrected implementation:
+
+- Pair approval now returns the granted library ids with the one-time token.
+  Desktop persists that complete server-bound grant and sends the bearer only
+  to URLs under an approved library id. Global and out-of-scope library requests
+  remain anonymous, so an unprotected library retains browser-equivalent access.
+  Older token records without explicit scope are ignored and require re-pairing.
+- Library auth status is an explicit mount gate. A pending check shows a loading
+  state; an error fails closed with retry/Settings recovery instead of mounting a
+  query storm. An unscoped protected desktop library offers pairing rather than
+  the browser-only passphrase form. Settings can forget the local grant so a
+  revoked or incorrectly scoped device has a recovery path.
+- The unused HostKeymap surface was removed until D5 has a real consumer. The
+  exact OS-neutral `HostPlatform` seam, consolidated desktop detection, lazy
+  runtime loading, and unchanged browser-mode URL/fetch behavior remain intact.
+- Proposed ADR-0017 records the loopback media relay as infrastructure. A Tauri
+  custom URI protocol was considered but rejected for D2 because Tauri 2.11's
+  asynchronous responder requires an owned full response body, which would
+  buffer multi-gigabyte ranges instead of streaming them.
+- The relay now accepts only `GET`/`HEAD` for an allowlist of scoped media routes,
+  fixes the upstream origin/base, disables redirects, allows only exact packaged
+  and development shell origins, rotates its 256-bit route on reconfiguration,
+  strips credentials and unsafe response headers, bounds connection and stalled
+  body reads, and preserves known `206` lengths. Eight workers plus a bounded
+  queue retain concurrent subtitle/thumbnail/progress service during a stream;
+  startup failure returns a clean application error instead of panicking.
+- OpenAPI and `schema.d.ts` were actually regenerated. The generated client now
+  includes the auth-status `Authorization` header and pairing `library_ids`.
+  README, architecture, development, deployment, desktop operation, plan, ADR
+  index, changelog, and this status receipt describe the corrected boundary.
+
+Automated verification after correction:
+
+- Backend: Ruff check/format, mypy, and full pytest (**447 passed**).
+- Frontend: Prettier, ESLint, TypeScript, full Vitest (**142 passed**), and the
+  production Vite build.
+- Playwright: full suite (**75 passed**), including real-backend device pairing
+  and media fixtures. Existing hermetic scenarios now declare auth status
+  explicitly so the production fail-closed gate is exercised honestly.
+- Desktop: Rust format, Clippy with warnings denied, and **12 unit tests**. Relay
+  coverage includes a 64 KiB `206` with `Content-Length`, stalled-body timeout,
+  concurrent open stream, origin/method/route/scope denial, secret rotation, and
+  redirect rejection. Final `tauri build` produced `Cairndex.app`.
+
+Native packaged-app acceptance after correction (generated fixtures only; no
+user media):
+
+- An isolated server exposed three scratch libraries: one protected library in
+  the device grant, one unprotected library outside it, and one protected
+  library outside it. Before pairing, the protected out-of-scope library showed
+  the pairing-only state with no passphrase input. After approval for only the
+  first library, it explicitly offered re-pairing for the missing scope.
+- The final packaged app mounted the scoped protected library and played an
+  ffmpeg-generated 18 MB, 20-second H.264 MP4 from 0:00 through completion.
+  Server logs recorded two authenticated `206 Partial Content` responses and
+  typed progress `PUT 200` writes. Together with the 64 KiB framing regression,
+  this proves the final known-length range response works in WKWebView.
+- With that same stored token, switching to the unprotected out-of-scope library
+  mounted its workspace without an auth error and played its generated five-
+  second MP4 to completion. Its anonymous API and media requests returned 200/
+  206; an incorrectly attached scoped bearer would have failed closed with 403.
+  The app/server were stopped and all synthetic state was removed afterward.
+
+The owner-supplied external medium review verified all 13 original findings: 12
+were fully resolved and one re-pair state was initially only cosmetically
+mitigated. Its follow-up found that desktop `pagehide` still sent the HLS teardown
+POST into the now-read-only relay, leaving sessions to the idle reaper. D2 now
+registers an awaitable desktop exit task that sends the ordinary authenticated
+DELETE through `hostFetch`; web retains the POST beacon. Targeted tests prove
+desktop exit waits for DELETE and emits no beacon, web still emits the beacon,
+and a failed re-pair keeps the valid paired notice visible. No external review
+findings remain open.
+
+Known issues: ADR-0017 remains proposed pending owner review. The device token
+remains plaintext in the Tauri store as specified by D2; server-side revocation
+remains in the same-origin owner Devices UI. HLS, subtitle, storyboard, and
+thumbnail routes have automated rather than separate native fixtures. Path
+mappings, reveal/open, drag-out/in, deep links, updater/signing, and Linux/Arch
+packaging remain in D3–D5. Tauri still warns about the owner-required
+`dev.cairndex.app` identifier suffix.
+
+Next recommended task: **Plan 3 D3 — library path mappings plus reveal/open**.
+
 ## Completed: Plan 3 D1 — Tauri 2 shell bootstrap
 
 Branch `feat/desktop-shell` from `origin/main` at `766709b`; reviewed and tested

@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 
 import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
-  listenDesktopLifecycle,
-  listenDesktopMenu,
-  loadDesktopServerUrl,
-  normalizeDesktopServerUrl,
-  saveDesktopServerUrl,
-  setDesktopServerAvailable,
-} from './runtime'
+  configureHostServer,
+  initializeHostPlatform,
+  listenHostLifecycle,
+  listenHostMenu,
+  loadHostServerUrl,
+  normalizeHostServerUrl,
+  saveHostServerUrl,
+  setHostServerAvailable,
+} from '../platform'
 
 interface DesktopBootstrapProps {
   children: React.ReactNode
@@ -56,7 +58,8 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   useEffect(() => {
     let disposed = false
     let unlisten: (() => void) | undefined
-    void listenDesktopLifecycle()
+    void initializeHostPlatform()
+      .then(() => listenHostLifecycle())
       .then((stop) => {
         if (disposed) stop()
         else unlisten = stop
@@ -74,11 +77,14 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     if (ready) return
     let disposed = false
     let unlisten: (() => void) | undefined
-    void listenDesktopMenu((action) => {
-      if (action !== 'settings') return
-      serverInputRef.current?.focus()
-      serverInputRef.current?.select()
-    })
+    void initializeHostPlatform()
+      .then(() =>
+        listenHostMenu((action) => {
+          if (action !== 'settings') return
+          serverInputRef.current?.focus()
+          serverInputRef.current?.select()
+        }),
+      )
       .then((stop) => {
         if (disposed) stop()
         else unlisten = stop
@@ -96,22 +102,24 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     let active = true
     void (async () => {
       try {
-        await setDesktopServerAvailable(false)
+        await initializeHostPlatform()
+        await setHostServerAvailable(false)
       } catch (error) {
         reportDesktopBridgeError('Could not disable server menu actions during setup', error)
       }
       try {
-        const stored = await loadDesktopServerUrl()
+        const stored = await loadHostServerUrl()
         if (!active) return
         if (!stored) {
           setSetup({ serverUrl: 'http://127.0.0.1:8000', error: null })
           return
         }
         try {
+          await configureHostServer(stored)
           await verifyServer(stored)
           if (active) {
             try {
-              await setDesktopServerAvailable(true)
+              await setHostServerAvailable(true)
             } catch (error) {
               reportDesktopBridgeError('Could not enable server menu actions', error)
             }
@@ -148,11 +156,12 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     setSaving(true)
     setSetup({ ...setup, error: null })
     try {
-      const normalized = await normalizeDesktopServerUrl(setup.serverUrl)
+      const normalized = await normalizeHostServerUrl(setup.serverUrl)
+      await configureHostServer(normalized)
       await verifyServer(normalized)
-      await saveDesktopServerUrl(normalized)
+      await saveHostServerUrl(normalized)
       try {
-        await setDesktopServerAvailable(true)
+        await setHostServerAvailable(true)
       } catch (error) {
         reportDesktopBridgeError('Could not enable server menu actions', error)
       }
