@@ -7,6 +7,15 @@ export interface DragOutItem {
   relativePath: string
 }
 
+// Outcome of reverse-mapping Finder-dropped absolute paths against one library:
+// `inside` holds library-relative paths for files under the mapped root (offered
+// to the fast-add flow); `outsideCount` is how many fell outside it. Absolute
+// paths never cross back to the web layer (plan 3 §6).
+export interface ReverseMapResult {
+  inside: string[]
+  outsideCount: number
+}
+
 // Defines the complete web-versus-native host boundary from plan 3 section 4
 export interface HostPlatform {
   kind: 'web' | 'desktop'
@@ -49,6 +58,8 @@ interface PlatformRuntime {
   setLibraryAvailable(enabled: boolean): Promise<void>
   setServerAvailable(enabled: boolean): Promise<void>
   listenLifecycle(): Promise<() => void>
+  reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
+  listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
 }
 
 const LABELS: Record<HostOs, HostLabels> = {
@@ -95,6 +106,8 @@ const webRuntime: PlatformRuntime = {
   setLibraryAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
   listenLifecycle: async () => () => undefined,
+  reverseMapPaths: async () => ({ inside: [], outsideCount: 0 }),
+  listenFileDrop: async () => () => undefined,
 }
 
 let runtime = webRuntime
@@ -205,6 +218,16 @@ export const setHostLibraryAvailable = (enabled: boolean): Promise<void> =>
 export const setHostServerAvailable = (enabled: boolean): Promise<void> =>
   runtime.setServerAvailable(enabled)
 export const listenHostLifecycle = (): Promise<() => void> => runtime.listenLifecycle()
+
+// Reverse-maps Finder-dropped absolute paths against one library's local mapping
+export const reverseMapHostPaths = (
+  libraryId: string,
+  paths: string[],
+): Promise<ReverseMapResult> => runtime.reverseMapPaths(libraryId, paths)
+
+// Subscribes to OS file drops onto the shell window (no-op in the browser)
+export const listenHostFileDrop = (handler: (paths: string[]) => void): Promise<() => void> =>
+  runtime.listenFileDrop(handler)
 
 // Test-only reset for singleton isolation across desktop/browser seam cases
 export function resetHostPlatformForTests(): void {
