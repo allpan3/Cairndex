@@ -130,10 +130,28 @@ export function hostLabelsFor(os: HostOs): HostLabels {
   return LABELS[os]
 }
 
+// Web-owned copy for the shell's structured error codes, so user-facing
+// wording stays in this layer (§2.1) and codes can gain distinct treatment
+const HOST_ERROR_MESSAGES: Record<string, string> = {
+  host_action_failed: 'The operating system could not open this file.',
+  invalid_library_id: 'The server library identity is missing.',
+  invalid_library_root: 'The mapped library folder is unavailable.',
+  invalid_manifest: 'The selected folder is not a Cairndex library.',
+  invalid_relative_path: 'The file path is not a safe library-relative path.',
+  library_mismatch: 'This folder belongs to a different Cairndex library.',
+  library_unmapped: 'This library is not located on this computer.',
+  mapping_store_unavailable: 'Library mappings are unavailable.',
+  path_not_found: 'The file does not exist at its mapped location.',
+  path_outside_library: 'The file path escapes the mapped library folder.',
+  volume_not_mounted: 'Volume not mounted. Reconnect it and try again.',
+}
+
 // Extracts a safe user-facing message from a structured native command error
 export function hostOperationErrorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    const message = (error as { message?: unknown }).message
+  if (typeof error === 'object' && error !== null) {
+    const { code, message } = error as { code?: unknown; message?: unknown }
+    if (typeof code === 'string' && code in HOST_ERROR_MESSAGES)
+      return HOST_ERROR_MESSAGES[code] as string
     if (typeof message === 'string' && message) return message
   }
   if (typeof error === 'string' && error) return error

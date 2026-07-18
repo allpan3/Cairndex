@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
   BundleSort,
@@ -47,6 +47,7 @@ import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
+import { hostFileMenuEntries } from './app/hostActions'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
@@ -172,7 +173,6 @@ export default function App() {
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
-  const [mappingRevision, setMappingRevision] = useState(0)
 
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
@@ -232,7 +232,6 @@ export default function App() {
             libraries={libraries}
             libraryId={null}
             startPairing={settingsPage === 'pair'}
-            onMappingChanged={() => setMappingRevision((revision) => revision + 1)}
             onClose={() => setSettingsPage(null)}
           />
         )}
@@ -246,7 +245,6 @@ export default function App() {
       libraries={libraries}
       libraryId={libraryId}
       startPairing={settingsPage === 'pair'}
-      onMappingChanged={() => setMappingRevision((revision) => revision + 1)}
       onClose={() => setSettingsPage(null)}
     />
   )
@@ -337,7 +335,6 @@ export default function App() {
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
-        mappingRevision={mappingRevision}
         canLock={auth.data?.protected === true && getHostPlatform().kind === 'web'}
         onLock={() => lock.lock.mutate()}
       />
@@ -441,7 +438,6 @@ interface WorkspaceProps {
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings: () => void
-  mappingRevision: number
   canLock: boolean
   onLock: () => void
 }
@@ -452,7 +448,6 @@ function Workspace({
   onChangeLibrary,
   onManage,
   onSettings,
-  mappingRevision,
   canLock,
   onLock,
 }: WorkspaceProps) {
@@ -545,35 +540,14 @@ function Workspace({
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
   const platform = getHostPlatform()
   const hostLabels = getHostLabels()
-  const [mappingState, setMappingState] = useState({
-    libraryId: '',
-    revision: -1,
-    mapped: false,
+  // Shares the Settings Libraries page's cache entry, so locate/clear there
+  // flow through here without bespoke revision plumbing.
+  const mappingQuery = useQuery({
+    queryKey: ['library-mapping', libraryId],
+    queryFn: () => platform.getLibraryMapping(libraryId),
+    enabled: platform.canRevealInFinder || platform.canOpenWithDefaultApp,
   })
-  const libraryMapped =
-    mappingState.libraryId === libraryId &&
-    mappingState.revision === mappingRevision &&
-    mappingState.mapped
-
-  useEffect(() => {
-    if (!platform.canRevealInFinder && !platform.canOpenWithDefaultApp) {
-      return
-    }
-    let cancelled = false
-    void platform
-      .getLibraryMapping(libraryId)
-      .then((localRoot) => {
-        if (!cancelled) {
-          setMappingState({ libraryId, revision: mappingRevision, mapped: localRoot !== null })
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setMappingState({ libraryId, revision: mappingRevision, mapped: false })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [libraryId, mappingRevision, platform])
+  const libraryMapped = mappingQuery.data != null
 
   const revealMappedFile = useCallback(
     (relativePath: string) => {
@@ -958,12 +932,13 @@ function Workspace({
       ]
       const hostPath =
         n === 1 ? filtered.find((item) => item.id === id)?.resume_relative_path : null
-      if (hostPath && (onRevealHostFile || onOpenHostFile)) {
-        items.push(null)
-        if (onOpenHostFile)
-          items.push({ label: hostLabels.openFile, onClick: () => onOpenHostFile(hostPath) })
-        if (onRevealHostFile)
-          items.push({ label: hostLabels.revealFile, onClick: () => onRevealHostFile(hostPath) })
+      if (hostPath) {
+        const hostItems = hostFileMenuEntries(
+          hostLabels,
+          { onOpenFile: onOpenHostFile, onRevealFile: onRevealHostFile },
+          hostPath,
+        )
+        if (hostItems.length > 0) items.push(null, ...hostItems)
       }
       if (selection.collectionId) {
         const collectionId = selection.collectionId

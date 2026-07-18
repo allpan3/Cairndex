@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -25,13 +25,11 @@ export function SettingsDialog({
   libraries,
   libraryId,
   startPairing = false,
-  onMappingChanged,
   onClose,
 }: {
   libraries: LibraryRead[]
   libraryId: string | null
   startPairing?: boolean
-  onMappingChanged?: () => void
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
@@ -69,7 +67,7 @@ export function SettingsDialog({
             )}
           </nav>
           {desktop && page === 'libraries' ? (
-            <LibraryMappingsPage libraries={libraries} onMappingChanged={onMappingChanged} />
+            <LibraryMappingsPage libraries={libraries} />
           ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
           ) : (
@@ -82,74 +80,48 @@ export function SettingsDialog({
 }
 
 /** Maps server libraries to manifest-verified folders visible to this desktop. */
-function LibraryMappingsPage({
-  libraries,
-  onMappingChanged,
-}: {
-  libraries: LibraryRead[]
-  onMappingChanged?: () => void
-}) {
+function LibraryMappingsPage({ libraries }: { libraries: LibraryRead[] }) {
   const { clearLibraryMapping, getLibraryMapping, locateLibrary } = getHostPlatform()
   const labels = getHostLabels()
-  const [mappings, setMappings] = useState<Record<string, string | null>>({})
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  // One cache entry per library, shared with the workspace's mapped-state
+  // query, so locate/clear results flow to every host-action surface.
+  const mappingQueries = useQueries({
+    queries: libraries.map((library) => ({
+      queryKey: ['library-mapping', library.id],
+      queryFn: () => getLibraryMapping(library.id),
+    })),
+  })
+  const loading = mappingQueries.some((query) => query.isPending)
+  const loadError = mappingQueries.find((query) => query.error)?.error
   const [busyId, setBusyId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    void Promise.all(
-      libraries.map(async (library) => [library.id, await getLibraryMapping(library.id)]),
-    )
-      .then((entries) => {
-        if (!cancelled) setMappings(Object.fromEntries(entries))
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setErrors({ page: hostOperationErrorMessage(error) })
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [getLibraryMapping, libraries])
-
-  const locate = async (library: LibraryRead) => {
-    setBusyId(library.id)
-    setErrors((previous) => ({ ...previous, [library.id]: '' }))
-    try {
-      const localRoot = await locateLibrary(library.id, library.library_uuid)
-      if (localRoot === null) return
-      setMappings((previous) => ({ ...previous, [library.id]: localRoot }))
-      onMappingChanged?.()
-    } catch (error) {
-      setErrors((previous) => ({
-        ...previous,
-        [library.id]: hostOperationErrorMessage(error),
-      }))
-    } finally {
-      setBusyId(null)
-    }
-  }
-
-  const clear = async (libraryId: string) => {
+  // Shares the busy/error lifecycle between the locate and clear actions
+  const runMappingAction = async (libraryId: string, action: () => Promise<void>) => {
     setBusyId(libraryId)
     setErrors((previous) => ({ ...previous, [libraryId]: '' }))
     try {
-      await clearLibraryMapping(libraryId)
-      setMappings((previous) => ({ ...previous, [libraryId]: null }))
-      onMappingChanged?.()
+      await action()
     } catch (error) {
-      setErrors((previous) => ({
-        ...previous,
-        [libraryId]: hostOperationErrorMessage(error),
-      }))
+      setErrors((previous) => ({ ...previous, [libraryId]: hostOperationErrorMessage(error) }))
     } finally {
       setBusyId(null)
     }
   }
+
+  const locate = (library: LibraryRead) =>
+    runMappingAction(library.id, async () => {
+      const localRoot = await locateLibrary(library.id, library.library_uuid)
+      if (localRoot === null) return
+      queryClient.setQueryData(['library-mapping', library.id], localRoot)
+    })
+
+  const clear = (library: LibraryRead) =>
+    runMappingAction(library.id, async () => {
+      await clearLibraryMapping(library.id)
+      queryClient.setQueryData(['library-mapping', library.id], null)
+    })
 
   return (
     <section className="devices-page" aria-labelledby="libraries-title">
@@ -159,9 +131,9 @@ function LibraryMappingsPage({
           <p>Locate each server library at its local or mounted path on this computer.</p>
         </div>
       </div>
-      {errors.page && (
+      {loadError != null && (
         <div className="modal__error" role="alert">
-          {errors.page}
+          {hostOperationErrorMessage(loadError)}
         </div>
       )}
       {loading && <div className="inspector__empty">Loading library mappings…</div>}
@@ -170,8 +142,8 @@ function LibraryMappingsPage({
       )}
       {!loading && (
         <div className="library-mapping-list">
-          {libraries.map((library) => {
-            const localRoot = mappings[library.id] ?? null
+          {libraries.map((library, index) => {
+            const localRoot = mappingQueries[index]?.data ?? null
             const busy = busyId === library.id
             return (
               <article className="library-mapping" key={library.id}>
@@ -191,7 +163,7 @@ function LibraryMappingsPage({
                     <button
                       className="btn btn--compact"
                       disabled={busy}
-                      onClick={() => void clear(library.id)}
+                      onClick={() => void clear(library)}
                     >
                       Remove
                     </button>
