@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 
+import { hostFetch } from '../../../platform'
 import { parseStoryboardVtt } from './storyboardVtt'
 
 // Fetch and parse a storyboard index, treating absence as an optional feature
 async function fetchStoryboard(url: string, signal?: AbortSignal) {
-  const response = await fetch(url, { signal })
+  const response = await hostFetch(url, { signal })
   if (response.status === 404) return null
   if (!response.ok) throw new Error(`Storyboard request failed (${response.status})`)
   const cues = parseStoryboardVtt(await response.text())

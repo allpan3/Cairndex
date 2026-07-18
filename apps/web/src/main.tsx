@@ -3,6 +3,7 @@ import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { isDesktopHost } from './platform'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +32,7 @@ function renderDesktopLoadError(error: unknown): void {
   )
 }
 
-if ('__TAURI_INTERNALS__' in window) {
+if (isDesktopHost()) {
   void import('./desktop/DesktopBootstrap')
     .then(({ DesktopBootstrap }) => {
       renderApp(

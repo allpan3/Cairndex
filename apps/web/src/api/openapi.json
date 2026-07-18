@@ -3411,6 +3411,20 @@
       },
       "PairPollResponse": {
         "properties": {
+          "library_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Ids"
+          },
           "status": {
             "enum": [
               "pending",
@@ -5738,6 +5752,22 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           },
           {

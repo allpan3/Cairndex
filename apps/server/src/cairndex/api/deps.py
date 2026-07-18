@@ -52,12 +52,12 @@ def _bearer_token(authorization: str) -> str:
     return token.strip()
 
 
-def _is_bearer_authorization(authorization: str | None) -> bool:
+def is_bearer_authorization(authorization: str | None) -> bool:
     """Return whether the header explicitly selects the Bearer scheme."""
     return authorization is not None and authorization.partition(" ")[0].lower() == "bearer"
 
 
-def _authorize_library(
+def authorize_library(
     registry: Session,
     *,
     library_id: str,
@@ -66,7 +66,7 @@ def _authorize_library(
     authorization: str | None,
 ) -> None:
     """Authorize one library through an explicit bearer or the ADR-0010 cookie."""
-    if _is_bearer_authorization(authorization):
+    if is_bearer_authorization(authorization):
         assert authorization is not None
         token_service.authenticate_device_token(
             registry,
@@ -102,7 +102,7 @@ def get_library_session(
         raise NotFoundError(f"library {library_id!r} is currently unavailable")
 
     root = Path(library.root_path)
-    _authorize_library(
+    authorize_library(
         registry,
         library_id=library_id,
         root=root,
@@ -203,7 +203,7 @@ def get_library_access(
         library = registry_service.get_library(registry, library_id)  # 404 if unknown
         if library.status != LibraryStatus.AVAILABLE:
             raise NotFoundError(f"library {library_id!r} is currently unavailable")
-        _authorize_library(
+        authorize_library(
             registry,
             library_id=library_id,
             root=Path(library.root_path),
