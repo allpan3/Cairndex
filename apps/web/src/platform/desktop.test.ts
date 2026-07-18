@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn(),
   onCloseRequested: vi.fn(),
+  onDragDropEvent: vi.fn(),
   stopClose: vi.fn(),
   stopExit: vi.fn(),
+  stopDrop: vi.fn(),
   storeGet: vi.fn(),
   storeSet: vi.fn(),
   storeDelete: vi.fn(),
@@ -17,6 +19,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
 vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen }))
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: mocks.onDragDropEvent }),
+}))
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({ onCloseRequested: mocks.onCloseRequested }),
 }))
@@ -77,6 +82,46 @@ test('exposes validated D3 mapping and host commands through the desktop seam', 
   expect(mocks.invoke).toHaveBeenCalledWith('clear_library_mapping', {
     libraryId: 'registry-id',
   })
+})
+
+test('drives D4 drag-out, reverse mapping, and file-drop subscription', async () => {
+  mocks.invoke.mockImplementation((command: string) => {
+    if (command === 'reverse_map_paths')
+      return Promise.resolve({ inside: ['Movies/in.mp4'], outsideCount: 1 })
+    return Promise.resolve(undefined)
+  })
+  let deliver!: (event: { payload: { type: string; paths?: string[] } }) => void
+  mocks.onDragDropEvent.mockImplementation(async (handler) => {
+    deliver = handler
+    return mocks.stopDrop
+  })
+  const runtime = await createDesktopRuntime()
+
+  // Drag-out is enabled and carries ids + relative paths, never absolute paths.
+  expect(runtime.platform.canDragOutFiles).toBe(true)
+  await runtime.platform.startFileDrag([
+    { libraryId: 'registry-id', relativePath: 'Movies/movie.mp4' },
+  ])
+  expect(mocks.invoke).toHaveBeenCalledWith('start_file_drag', {
+    items: [{ libraryId: 'registry-id', relativePath: 'Movies/movie.mp4' }],
+  })
+
+  await expect(
+    runtime.reverseMapPaths('registry-id', ['/Volumes/Media/Movies/in.mp4', '/tmp/out.mp4']),
+  ).resolves.toEqual({ inside: ['Movies/in.mp4'], outsideCount: 1 })
+  expect(mocks.invoke).toHaveBeenCalledWith('reverse_map_paths', {
+    libraryId: 'registry-id',
+    paths: ['/Volumes/Media/Movies/in.mp4', '/tmp/out.mp4'],
+  })
+
+  const dropped: string[][] = []
+  const stop = await runtime.listenFileDrop((paths) => dropped.push(paths))
+  // Only the terminal 'drop' payload delivers paths; enter/over/leave are ignored.
+  deliver({ payload: { type: 'over', paths: ['/ignored'] } })
+  deliver({ payload: { type: 'drop', paths: ['/Volumes/Media/Movies/in.mp4'] } })
+  expect(dropped).toEqual([['/Volumes/Media/Movies/in.mp4']])
+  stop()
+  expect(mocks.stopDrop).toHaveBeenCalledOnce()
 })
 
 test('attaches bearer auth and media relay only to approved library scopes', async () => {

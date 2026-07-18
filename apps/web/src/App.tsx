@@ -570,6 +570,22 @@ function Workspace({
   const onOpenHostFile =
     libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
 
+  // Drag-out (plan 3 §6): a mapped desktop library can put its real files on the
+  // OS pasteboard. The shell resolves + validates each server-provided relative
+  // path; the web layer never handles an absolute path. Undefined disables every
+  // drag-out source (plain web, or a library not located on this computer).
+  const startFilesDrag = useCallback(
+    (relativePaths: string[]) => {
+      if (relativePaths.length === 0) return
+      void platform
+        .startFileDrag(relativePaths.map((relativePath) => ({ libraryId, relativePath })))
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const onStartFileDrag =
+    platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
+
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
     else if (action === 'show-bundles') setMode('collection')
@@ -1324,6 +1340,7 @@ function Workspace({
             hostLabels={hostLabels}
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
+            onStartFileDrag={onStartFileDrag}
           />
         ) : (
           <>
@@ -1354,6 +1371,7 @@ function Workspace({
                 hostLabels={hostLabels}
                 onRevealFile={onRevealHostFile}
                 onOpenFile={onOpenHostFile}
+                onStartFileDrag={onStartFileDrag}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
                     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
@@ -1478,6 +1496,7 @@ function Workspace({
           hostLabels={hostLabels}
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
+          onStartFileDrag={onStartFileDrag}
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
@@ -1497,6 +1516,7 @@ function Workspace({
           bundleId={activeId}
           onAddFiles={(id) => setAddFilesBundleId(id)}
           onPlayBundle={(id) => setViewerBundleId(id)}
+          onStartFileDrag={onStartFileDrag}
         />
       )}
 
