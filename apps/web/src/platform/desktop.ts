@@ -1,11 +1,18 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
-import type { DragOutItem, HostOs, HostPlatform, PlatformRuntime } from './index'
+import type {
+  DragOutItem,
+  HostOs,
+  HostPlatform,
+  PlatformRuntime,
+  ReverseMapResult,
+} from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
@@ -124,12 +131,12 @@ function desktopAssetUrl(value: string): string {
   return `${mediaProxyBaseUrl}${suffix}${target.search}${target.hash}`
 }
 
-// Implements the plan-3 host surface with D3 handoff and D4 drag disabled
+// Implements the plan-3 host surface with D3 handoff and D4 drag-out enabled
 const desktopPlatform: HostPlatform = {
   kind: 'desktop',
   canRevealInFinder: true,
   canOpenWithDefaultApp: true,
-  canDragOutFiles: false,
+  canDragOutFiles: true,
   revealFile: (libraryId: string, relativePath: string) =>
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
@@ -218,5 +225,13 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
         throw error
       }
     },
+    reverseMapPaths: (libraryId, paths) =>
+      invoke<ReverseMapResult>('reverse_map_paths', { libraryId, paths }),
+    listenFileDrop: (handler) =>
+      // Tauri delivers OS file drops as a native webview event (dragDropEnabled),
+      // carrying the real absolute paths; internal DOM drag-and-drop is untouched.
+      getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === 'drop') handler(event.payload.paths)
+      }),
   }
 }

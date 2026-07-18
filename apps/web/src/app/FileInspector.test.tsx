@@ -32,3 +32,22 @@ test('hides FileInspector host actions for an unmapped library', () => {
   expect(screen.queryByRole('button', { name: 'Open in Default App' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
 })
+
+test('drags the selected file out by its relative path when drag-out is enabled', () => {
+  const onStartFileDrag = vi.fn()
+  const { container } = render(
+    <FileInspector entry={entry} hostLabels={labels} onStartFileDrag={onStartFileDrag} />,
+  )
+
+  const title = container.querySelector('.inspector__title') as HTMLElement
+  expect(title).toHaveAttribute('draggable', 'true')
+  fireEvent.dragStart(title)
+
+  expect(onStartFileDrag).toHaveBeenCalledWith(['Movies/movie.mp4'])
+})
+
+test('leaves the FileInspector title inert without drag-out', () => {
+  const { container } = render(<FileInspector entry={entry} hostLabels={labels} />)
+
+  expect(container.querySelector('.inspector__title')).toHaveAttribute('draggable', 'false')
+})

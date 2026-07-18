@@ -5,6 +5,7 @@ import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '..
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
+import { fileDragProps } from './dragOut'
 import { IconPlus } from './icons'
 import { TagEditor } from './TagEditor'
 
@@ -42,12 +43,15 @@ export function Inspector({
   bundleId,
   onAddFiles,
   onPlayBundle,
+  onStartFileDrag,
 }: {
   bundleId: string | null
   /** Open the "Add files" manual bundling dialog for this bundle. */
   onAddFiles?: (bundleId: string) => void
   /** Open the unified media viewer for this bundle. */
   onPlayBundle?: (bundleId: string) => void
+  /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
+  onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const { data: bundle } = useBundle(bundleId)
 
@@ -73,6 +77,7 @@ export function Inspector({
       bundle={bundle}
       onAddFiles={onAddFiles}
       onPlayBundle={onPlayBundle}
+      onStartFileDrag={onStartFileDrag}
     />
   )
 }
@@ -81,10 +86,12 @@ function BundleEditor({
   bundle,
   onAddFiles,
   onPlayBundle,
+  onStartFileDrag,
 }: {
   bundle: BundleRead
   onAddFiles?: (bundleId: string) => void
   onPlayBundle?: (bundleId: string) => void
+  onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
@@ -163,11 +170,17 @@ function BundleEditor({
     })
   }
 
+  // Dragging the cover drags the whole bundle out (= all its files). The shell
+  // skips any missing member, so a partially-available bundle still drags the rest.
+  const coverDrag = fileDragProps(onStartFileDrag, () => files.map((f) => f.relative_path))
+
   return (
     <aside className="inspector">
       <div
         className="inspector__cover"
         style={{ backgroundImage: `url(${thumbnailUrl(bundleId, bundle.updated_at)})` }}
+        {...coverDrag}
+        title={coverDrag.draggable ? 'Drag to copy this bundle’s files out' : undefined}
       >
         {hasVideo && (
           <button
@@ -251,6 +264,7 @@ function BundleEditor({
         coverId={bundle.cover_file_id ?? null}
         // Adding unbundled files targets a confirmed bundle only (ADR-0009).
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
+        onStartFileDrag={onStartFileDrag}
       />
     </aside>
   )
@@ -382,11 +396,13 @@ function FileList({
   bundleVersion,
   coverId,
   onAddFiles,
+  onStartFileDrag,
 }: {
   bundleId: string
   bundleVersion: number
   coverId: string | null
   onAddFiles?: (bundleId: string) => void
+  onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
@@ -431,7 +447,11 @@ function FileList({
             className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}`}
             key={f.id}
           >
-            <div className="file-row__main">
+            <div
+              className="file-row__main"
+              {...fileDragProps(onStartFileDrag, () => [f.relative_path])}
+              title={onStartFileDrag ? 'Drag to copy this file out' : undefined}
+            >
               <div className="file-row__name">
                 {f.id === coverId && <span title="Cover">★</span>}
                 <span className="file-row__title">{f.display_title}</span>

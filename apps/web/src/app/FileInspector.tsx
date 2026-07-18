@@ -1,6 +1,7 @@
 import type { FileBrowserEntry } from '../api/client'
 import { formatBytes, formatDateTime } from '../lib/format'
 import type { HostLabels } from '../platform'
+import { fileDragProps } from './dragOut'
 
 /** Tri-state bundle membership shown in the File inspector / Files surface. */
 function bundleStatus(entry: FileBrowserEntry): string {
@@ -19,11 +20,14 @@ export function FileInspector({
   hostLabels,
   onRevealFile,
   onOpenFile,
+  onStartFileDrag,
 }: {
   entry: FileBrowserEntry | null
   hostLabels: HostLabels
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
+  // Drag this file out to Finder/other apps (plan 3 §6); undefined disables it.
+  onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   if (entry === null) {
     return (
@@ -46,9 +50,21 @@ export function FileInspector({
     ['Status', bundleStatus(entry)],
   ]
 
+  // Only real files can be dragged out; directories are not draggable.
+  const drag =
+    entry.kind === 'file'
+      ? fileDragProps(onStartFileDrag, () => [entry.relative_path])
+      : { draggable: false, onDragStart: undefined }
+
   return (
     <aside className="inspector">
-      <div className="inspector__title">{entry.name}</div>
+      <div
+        className="inspector__title"
+        {...drag}
+        title={drag.draggable ? 'Drag to copy this file out' : undefined}
+      >
+        {entry.name}
+      </div>
       {entry.kind === 'file' && (onRevealFile || onOpenFile) && (
         <div className="file-inspector__actions">
           {onOpenFile && (
