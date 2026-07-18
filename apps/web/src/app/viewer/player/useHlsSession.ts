@@ -8,6 +8,8 @@ import {
   type AudioStreamRead,
   type ClientCapabilities,
 } from '../../../api/client'
+import { registerDesktopExitTask } from '../../../desktop/exitTasks'
+import { isDesktopHost } from '../../../platform'
 import type { PlaybackSource } from './engine'
 
 const HLS_MIME = 'application/vnd.apple.mpegurl'
@@ -88,12 +90,13 @@ export interface HlsSessionState {
  * When a video starts, POSTs a playback decision for this client's caps. Direct
  * decisions become a native progressive source; remux/transcode decisions start
  * a server HLS session whose playlist becomes an hls.js / native-HLS source.
- * Sessions are torn down on file switch, quality/audio switch, unmount, and
- * pagehide (beacon) — including a session the server started for a request the
- * client had already abandoned. A playlist/segment error (e.g. an idled-out
- * session) or an hls.js fatal transparently re-requests a fresh session at the
- * current playhead instead of failing. If the decision request itself fails, a
- * directly-playable file falls back to its native stream so playback still works.
+ * Sessions are torn down on file switch, quality/audio switch, and unmount.
+ * Browser pagehide uses a beacon; desktop exit awaits the ordinary authenticated
+ * DELETE. This also reaps a session the server started for a request the client
+ * already abandoned. A playlist/segment error (e.g. an idled-out session) or an
+ * hls.js fatal transparently re-requests a fresh session at the current playhead
+ * instead of failing. If the decision request itself fails, a directly-playable
+ * file falls back to its native stream so playback still works.
  */
 export function useHlsSession({
   fileId,
@@ -127,11 +130,12 @@ export function useHlsSession({
     getCurrentTimeRef.current = getCurrentTime
   }, [getCurrentTime])
 
-  const teardownLive = useCallback(() => {
+  // Claims and deletes the tracked session so desktop exit can await completion
+  const teardownLive = useCallback(async () => {
     const live = liveSessionRef.current
     if (live) {
-      void deletePlaybackSession(live.fileId, live.sessionId).catch(() => {})
       liveSessionRef.current = null
+      await deletePlaybackSession(live.fileId, live.sessionId).catch(() => {})
     }
   }, [])
 
@@ -146,7 +150,7 @@ export function useHlsSession({
       reattachCountRef.current = 0
       reattachAtRef.current = Number.NEGATIVE_INFINITY
       reattachingRef.current = false
-      teardownLive()
+      void teardownLive()
       // Clear the previous file's video immediately; a switch keeps the current
       // stream visible until the new decision resolves.
       setSource(null)
@@ -155,7 +159,7 @@ export function useHlsSession({
     }
 
     if (!enabled || !fileId) {
-      teardownLive()
+      void teardownLive()
       setStatus('idle')
       setSource(null)
       return
@@ -261,7 +265,7 @@ export function useHlsSession({
         // (torn down on close/switch/idle) rather than orphaning a working stream
         // on a transient blip.
         if (directPlayable && directStreamUrl) {
-          teardownLive()
+          void teardownLive()
           setSource(nativeSource(directStreamUrl))
           setStatus('ready')
         } else if (timedOut || (err instanceof HttpError && err.status >= 500)) {
@@ -284,16 +288,23 @@ export function useHlsSession({
     }
   }, [fileId, enabled, epoch, directPlayable, directStreamUrl, directMimeType, caps, teardownLive])
 
-  // Tear down the live session on unmount; beacon it on pagehide (POST-only).
+  // Awaits ordinary authenticated teardown before the desktop host exits
+  useEffect(() => {
+    if (!isDesktopHost()) return
+    return registerDesktopExitTask(teardownLive)
+  }, [teardownLive])
+
+  // Tear down on unmount; web pagehide retains its POST-only beacon fallback
   useEffect(() => {
     const onPageHide = () => {
+      if (isDesktopHost()) return
       const live = liveSessionRef.current
       if (live) beaconTeardownSession(live.fileId, live.sessionId)
     }
     window.addEventListener('pagehide', onPageHide)
     return () => {
       window.removeEventListener('pagehide', onPageHide)
-      teardownLive()
+      void teardownLive()
     }
   }, [teardownLive])
 

@@ -16,6 +16,9 @@ async function mockApi(page: Page) {
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
+  await page.route('**/auth/status', (r) =>
+    r.fulfill({ json: { protected: false, unlocked: true } }),
+  )
 
   // Directory autocomplete.
   await page.route('**/path-suggestions**', (r) =>

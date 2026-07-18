@@ -31,6 +31,7 @@ class PairPollRequest(BaseModel):
 class PairPollResponse(BaseModel):
     status: Literal["pending", "approved"]
     token: str | None = None
+    library_ids: list[str] | None = None
 
 
 class PairApproveRequest(BaseModel):

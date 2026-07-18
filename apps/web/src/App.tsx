@@ -87,6 +87,7 @@ import {
   type SortPref,
 } from './app/types'
 import { usePersistentState } from './state/usePersistentState'
+import { getHostPlatform, hasHostDeviceAccess, hasHostDeviceToken } from './platform'
 
 interface EditorState {
   existing?: SmartCollectionRead | null
@@ -199,7 +200,9 @@ export default function App() {
   const auth = useLibraryAuth(libraryId)
   const lock = useLibraryLock(libraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
-  useDesktopMenuAvailability(libraryId !== null && !locked)
+  const desktop = getHostPlatform().kind === 'desktop'
+  const deviceHasAccess = libraryId ? hasHostDeviceAccess(libraryId) : false
+  useDesktopMenuAvailability(libraryId !== null && auth.isSuccess && !locked)
 
   if (librariesQuery.isLoading) {
     return <div className="app-loading">Loading…</div>
@@ -229,7 +232,77 @@ export default function App() {
     )
   }
 
+  const settingsDialog = settingsPage && (
+    <SettingsDialog
+      key={settingsPage}
+      libraries={libraries}
+      libraryId={libraryId}
+      startPairing={settingsPage === 'pair'}
+      onClose={() => setSettingsPage(null)}
+    />
+  )
+
+  if (auth.isPending) {
+    return (
+      <>
+        <div className="app-loading">Checking library access…</div>
+        {settingsDialog}
+      </>
+    )
+  }
+
+  if (auth.isError) {
+    return (
+      <>
+        <LibraryAccessNotice
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={changeLibrary}
+          title="Could not verify library access"
+          message={
+            desktop && deviceHasAccess
+              ? 'The stored device credential may be invalid or revoked. Forget it in Settings, then pair again.'
+              : auth.error.message
+          }
+        >
+          <button className="lockscreen__submit" onClick={() => void auth.refetch()}>
+            Try again
+          </button>
+          <button className="btn" onClick={() => setSettingsPage('devices')}>
+            Open Settings
+          </button>
+        </LibraryAccessNotice>
+        {settingsDialog}
+      </>
+    )
+  }
+
   if (locked) {
+    if (desktop) {
+      return (
+        <>
+          <LibraryAccessNotice
+            libraries={libraries}
+            libraryId={libraryId}
+            onChangeLibrary={changeLibrary}
+            title={`${libraries.find((library) => library.id === libraryId)?.name ?? 'Library'} needs device access`}
+            message={
+              hasHostDeviceToken()
+                ? 'This device is paired, but not for this protected library. Pair again and include it in the approved scope.'
+                : 'Protected libraries use owner-approved device pairing in the desktop app.'
+            }
+          >
+            <button className="lockscreen__submit" onClick={() => setSettingsPage('pair')}>
+              {hasHostDeviceToken() ? 'Pair again' : 'Pair this device'}
+            </button>
+            <span className="lockscreen__hint">
+              Passphrase unlock remains available in the same-origin web app.
+            </span>
+          </LibraryAccessNotice>
+          {settingsDialog}
+        </>
+      )
+    }
     return (
       <>
         <LockScreen
@@ -241,15 +314,7 @@ export default function App() {
           unlocking={lock.unlock.isPending}
           error={lock.unlock.error?.message ?? null}
         />
-        {settingsPage && (
-          <SettingsDialog
-            key={settingsPage}
-            libraries={libraries}
-            libraryId={libraryId}
-            startPairing={settingsPage === 'pair'}
-            onClose={() => setSettingsPage(null)}
-          />
-        )}
+        {settingsDialog}
       </>
     )
   }
@@ -263,20 +328,56 @@ export default function App() {
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
-        canLock={auth.data?.protected === true}
+        canLock={auth.data?.protected === true && getHostPlatform().kind === 'web'}
         onLock={() => lock.lock.mutate()}
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
-      {settingsPage && (
-        <SettingsDialog
-          key={settingsPage}
-          libraries={libraries}
-          libraryId={libraryId}
-          startPairing={settingsPage === 'pair'}
-          onClose={() => setSettingsPage(null)}
-        />
-      )}
+      {settingsDialog}
     </>
+  )
+}
+
+// Fails closed while preserving library switching and desktop recovery actions
+function LibraryAccessNotice({
+  libraries,
+  libraryId,
+  onChangeLibrary,
+  title,
+  message,
+  children,
+}: {
+  libraries: LibraryRead[]
+  libraryId: string
+  onChangeLibrary: (id: string) => void
+  title: string
+  message: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="lockscreen">
+      <section className="lockscreen__card">
+        <div className="lockscreen__brand">
+          <span>🍃</span> Cairndex
+        </div>
+        {libraries.length > 1 && (
+          <select
+            className="edit"
+            value={libraryId}
+            onChange={(event) => onChangeLibrary(event.target.value)}
+            aria-label="Library"
+          >
+            {libraries.map((library) => (
+              <option key={library.id} value={library.id}>
+                {library.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="lockscreen__title">{title}</div>
+        <p className="lockscreen__message">{message}</p>
+        {children}
+      </section>
+    </div>
   )
 }
 

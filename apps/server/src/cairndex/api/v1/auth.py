@@ -7,11 +7,12 @@ unlock in the server-side session bound to the ``cairndex_session`` cookie.
 """
 
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Response, status
+from fastapi import APIRouter, Cookie, Header, Response, status
 from fastapi.responses import JSONResponse
 
-from cairndex.api.deps import RegistryDbSession
+from cairndex.api.deps import RegistryDbSession, authorize_library, is_bearer_authorization
 from cairndex.api.schemas.auth import AuthStatus, UnlockRequest
 from cairndex.auth import (
     SESSION_COOKIE,
@@ -46,10 +47,21 @@ def auth_status(
     library_id: str,
     registry: RegistryDbSession,
     session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: Annotated[str | None, Header()] = None,
 ) -> AuthStatus:
     root = _library_root(registry, library_id)
     protected = is_protected(root)
-    unlocked = (not protected) or session_store.is_unlocked(session, library_id)
+    if is_bearer_authorization(authorization):
+        authorize_library(
+            registry,
+            library_id=library_id,
+            root=root,
+            session_cookie=session,
+            authorization=authorization,
+        )
+        unlocked = True
+    else:
+        unlocked = (not protected) or session_store.is_unlocked(session, library_id)
     return AuthStatus(protected=protected, unlocked=unlocked)
 
 

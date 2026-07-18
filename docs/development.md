@@ -78,19 +78,32 @@ npm run tauri dev
 ```
 
 The first-run screen stores a verified server URL in the Tauri store. Bootstrap
-also requires the health response to advertise the pairing and
-progress capabilities used by D1, so an unrelated HTTP 200 service remains on
-the editable setup screen. Packaged custom-protocol origins are allowed by
-default; arbitrary HTTP(S) origins are
+also requires the health response to advertise the pairing and progress
+capabilities used by the shell, so an unrelated HTTP 200 service remains on the
+editable setup screen. Packaged custom-protocol origins are allowed by default;
+arbitrary HTTP(S) origins are
 denied unless listed exactly in the comma-separated
 `CAIRNDEX_CORS_EXTRA_ORIGINS`. Leave that variable unset outside deliberate
 local development. On macOS, the package declares local-network use and permits
 cleartext HTTP only in its WKWebView content so an explicitly configured private
 LAN server works; prefer HTTPS for any server outside a trusted private network.
-D1 does not send browser cookies or device bearer tokens, so a protected library
-cannot be unlocked or selected for pairing approval in the shell until D2 wires
-device-token authentication. Native Settings still opens over the lock screen
-so device status and the expected authorization error remain visible.
+
+Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
+an unlocked same-origin web session approves the displayed code and explicit
+library scope. The shell stores the one-time token beside its issuing server in
+the Tauri store, including the approved library ids. Its platform fetch
+transport adds `Authorization: Bearer` only to approved library-scoped URLs.
+Unscoped unprotected libraries remain anonymous; unscoped protected libraries
+show the pairing path because the browser passphrase cookie cannot unlock a
+cross-origin shell. Settings can forget the local token, while server revocation
+remains in the owner web Devices page. Changing the configured server drops an
+unrelated retained token.
+
+ADR-0017 defines the separate loopback media transport. It accepts only scoped
+read-only stream/HLS/thumbnail/preview/storyboard/subtitle/File Browser routes,
+uses exact shell origins, rejects redirects, rotates its capability path, bounds
+workers/queue/read stalls, and preserves known range lengths. Plain web keeps
+same-origin relative URLs and cookie unlocks.
 
 Desktop checks:
 
@@ -105,8 +118,10 @@ npm run tauri build
 
 CI runs these Rust checks on both macOS and Ubuntu; only macOS bundles the app.
 Keep native capabilities in cross-platform Tauri plugins, with any unavoidable
-target-OS conditional isolated in one clearly named host module. D1 currently
-contains no target-OS conditional code.
+target-OS conditional isolated in one clearly named host module. D2 currently
+contains no target-OS conditional code. Keep all Tauri imports in
+`apps/web/src/platform/desktop.ts`; shared SPA modules consume only the platform
+surface and capability flags.
 
 ## Databases and local state
 
