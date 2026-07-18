@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -14,6 +14,7 @@ import {
   getHostLabels,
   getHostPlatform,
   hasHostDeviceToken,
+  hostOperationErrorMessage,
   saveHostDeviceToken,
 } from '../platform'
 
@@ -32,6 +33,7 @@ export function SettingsDialog({
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
+  const [page, setPage] = useState<'devices' | 'libraries'>('devices')
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -49,9 +51,24 @@ export function SettingsDialog({
         </div>
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="Settings pages">
-            <button className="settings-nav__item settings-nav__item--active">Devices</button>
+            <button
+              className={`settings-nav__item${page === 'devices' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('devices')}
+            >
+              Devices
+            </button>
+            {desktop && (
+              <button
+                className={`settings-nav__item${page === 'libraries' ? ' settings-nav__item--active' : ''}`}
+                onClick={() => setPage('libraries')}
+              >
+                Libraries
+              </button>
+            )}
           </nav>
-          {desktop ? (
+          {desktop && page === 'libraries' ? (
+            <LibraryMappingsPage libraries={libraries} />
+          ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
           ) : (
             <DevicesPage libraries={libraries} libraryId={libraryId} startPairing={startPairing} />
@@ -59,6 +76,112 @@ export function SettingsDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Maps server libraries to manifest-verified folders visible to this desktop. */
+function LibraryMappingsPage({ libraries }: { libraries: LibraryRead[] }) {
+  const { clearLibraryMapping, getLibraryMapping, locateLibrary } = getHostPlatform()
+  const labels = getHostLabels()
+  const queryClient = useQueryClient()
+  // One cache entry per library, shared with the workspace's mapped-state
+  // query, so locate/clear results flow to every host-action surface.
+  const mappingQueries = useQueries({
+    queries: libraries.map((library) => ({
+      queryKey: ['library-mapping', library.id],
+      queryFn: () => getLibraryMapping(library.id),
+    })),
+  })
+  const loading = mappingQueries.some((query) => query.isPending)
+  const loadError = mappingQueries.find((query) => query.error)?.error
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Shares the busy/error lifecycle between the locate and clear actions
+  const runMappingAction = async (libraryId: string, action: () => Promise<void>) => {
+    setBusyId(libraryId)
+    setErrors((previous) => ({ ...previous, [libraryId]: '' }))
+    try {
+      await action()
+    } catch (error) {
+      setErrors((previous) => ({ ...previous, [libraryId]: hostOperationErrorMessage(error) }))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const locate = (library: LibraryRead) =>
+    runMappingAction(library.id, async () => {
+      const localRoot = await locateLibrary(library.id, library.library_uuid)
+      if (localRoot === null) return
+      queryClient.setQueryData(['library-mapping', library.id], localRoot)
+    })
+
+  const clear = (library: LibraryRead) =>
+    runMappingAction(library.id, async () => {
+      await clearLibraryMapping(library.id)
+      queryClient.setQueryData(['library-mapping', library.id], null)
+    })
+
+  return (
+    <section className="devices-page" aria-labelledby="libraries-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="libraries-title">Libraries</h3>
+          <p>Locate each server library at its local or mounted path on this computer.</p>
+        </div>
+      </div>
+      {loadError != null && (
+        <div className="modal__error" role="alert">
+          {hostOperationErrorMessage(loadError)}
+        </div>
+      )}
+      {loading && <div className="inspector__empty">Loading library mappings…</div>}
+      {!loading && libraries.length === 0 && (
+        <div className="inspector__empty">No server libraries are registered.</div>
+      )}
+      {!loading && (
+        <div className="library-mapping-list">
+          {libraries.map((library, index) => {
+            const localRoot = mappingQueries[index]?.data ?? null
+            const busy = busyId === library.id
+            return (
+              <article className="library-mapping" key={library.id}>
+                <div className="library-mapping__main">
+                  <div className="library-mapping__name">{library.name}</div>
+                  <div className="library-mapping__path">
+                    {localRoot ?? 'Not located on this computer'}
+                  </div>
+                  {errors[library.id] && (
+                    <div className="modal__error" role="alert">
+                      {errors[library.id]}
+                    </div>
+                  )}
+                </div>
+                <div className="library-mapping__actions">
+                  {localRoot && (
+                    <button
+                      className="btn btn--compact"
+                      disabled={busy}
+                      onClick={() => void clear(library)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <button
+                    className="btn btn--primary btn--compact"
+                    disabled={busy}
+                    onClick={() => void locate(library)}
+                  >
+                    {busy ? 'Locating…' : labels.locateLibrary}
+                  </button>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 

@@ -2145,6 +2145,41 @@ code {
   color: var(--text-muted);
   font-size: 11px;
 }
+.library-mapping-list {
+  display: grid;
+  gap: 8px;
+}
+.library-mapping {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.library-mapping__main {
+  min-width: 0;
+  flex: 1;
+}
+.library-mapping__name {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+.library-mapping__path {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-mapping__actions {
+  display: flex;
+  gap: 8px;
+}
 @media (max-width: 640px) {
   .settings-layout {
     grid-template-columns: 1fr;
@@ -3867,6 +3902,11 @@ code {
 .file-meta {
   margin: 0;
   padding: 12px 16px;
+}
+.file-inspector__actions {
+  display: grid;
+  gap: 7px;
+  padding: 0 16px 10px;
 }
 .file-meta__row {
   display: flex;

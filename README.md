@@ -52,11 +52,14 @@ tokens provide a private-network, single-owner guardrail; the desktop shell can
 pair, retain its server-bound token, and browse/play a protected scoped library
 without a browser cookie. Its bearer is sent only for libraries in that grant;
 unscoped unprotected libraries retain anonymous access, while unscoped protected
-libraries offer pairing instead of an unusable cross-origin passphrase form.
+libraries offer pairing instead of an unusable cross-origin passphrase form. A
+desktop-only Settings page maps each server library to its local/SMB mount after
+matching the portable manifest UUID; mapped files gain safe reveal/default-app
+actions while browser and unmapped-library behavior remain unchanged.
 Important follow-ups
 include grouping bundle/container reclassification, File Browser write mode and
-desktop path mapping/host handoff, cross-filesystem repair candidates, and token
-rotation/expiry policy. Job progress bars, large-library browse indexing,
+desktop drag-in/out, cross-filesystem repair candidates, and token rotation/
+expiry policy. Job progress bars, large-library browse indexing,
 whole-library indexed text search (SQLite FTS5), media fallback/transcoding,
 and pinyin matching in local tag/collection and file pickers are implemented.
 See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and

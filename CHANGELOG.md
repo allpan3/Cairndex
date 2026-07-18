@@ -8,7 +8,32 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **D3 review hardening (Plan 3).** Host handoff commands
+  (`reveal_file`/`open_file` and the mapping store commands) are now async and
+  run mount-touching filesystem work off the webview IPC thread, so an offline
+  or slow SMB mount can no longer freeze the desktop UI. Mappings persist the
+  manifest UUID proven at locate time and every reveal/open re-reads
+  `.cairndex/manifest.json` and requires a match, so a volume remounted with
+  different content is rejected as `library_mismatch` instead of handing off
+  another library's files (pre-release root-only mapping entries surface as
+  unmapped and need one re-locate). The web layer now owns the user-facing
+  copy for the shell's structured error codes.
+
 ### Added
+
+- **Desktop library mappings and safe host handoff (Plan 3 D3 / ADR-0007).**
+  Settings → Libraries can locate each server library on the desktop through a
+  native folder picker. Rust reads the picked `.cairndex/manifest.json`, requires
+  its portable UUID to match the server library, and stores the canonical root
+  by registry id in shell configuration. Mapped File Browser entries, bundle
+  files/current bundle media, and FileInspector expose per-OS reveal/default-app
+  actions; plain web and unmapped libraries expose none. Every action carries
+  only an id plus a server-provided relative path. Pure-Rust validation rejects
+  empty, absolute, current/parent-traversal, missing, and symlink-escaping paths,
+  reports offline roots as `volume_not_mounted`, and invokes the cross-platform
+  opener plugin only after canonical containment and existence checks pass.
 
 - **Desktop platform seam and pairing auth (Plan 3 D2).** The shared SPA now
   exposes one OS-neutral `HostPlatform` boundary with web no-ops, Tauri-backed

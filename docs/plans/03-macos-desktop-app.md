@@ -122,7 +122,8 @@ export interface HostPlatform {
   openFile(libraryId: string, relativePath: string): Promise<void>
   startFileDrag(items: DragOutItem[]): Promise<void>
   getLibraryMapping(libraryId: string): Promise<string | null>
-  setLibraryMapping(libraryId: string, localRoot: string): Promise<void>
+  locateLibrary(libraryId: string, libraryUuid: string): Promise<string | null>
+  clearLibraryMapping(libraryId: string): Promise<void>
 }
 ```
 
@@ -222,12 +223,12 @@ handoff:
 |---|-------|----------|
 | D1 ✅ | Shell bootstrap | `apps/desktop`, window/menu skeleton, server-URL first-run, loads the SPA, CI job |
 | D2 ✅ | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
-| D3 | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
+| D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 | Drag-out / drag-in | §6 |
 | D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |
 
-D1–D2 already deliver a real "app" with every plan-1 player gain; D3–D4 are
-the features a browser can never have.
+D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
+handoff; D4 adds the remaining drag interaction a browser cannot provide.
 
 ## 10. Risks & open decisions
 

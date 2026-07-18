@@ -105,6 +105,17 @@ uses exact shell origins, rejects redirects, rotates its capability path, bounds
 workers/queue/read stalls, and preserves known range lengths. Plain web keeps
 same-origin relative URLs and cookie unlocks.
 
+Settings → Libraries → **Locate on This Mac** runs the folder picker in the
+native command layer. The selected root must contain a readable
+`.cairndex/manifest.json` whose `library_uuid` equals the selected server
+library's portable UUID. The shell stores the canonical local root under that
+server registry id in `cairndex-settings.json`; removing a mapping changes only
+shell configuration. File/bundle context menus and FileInspector offer native
+open/reveal only while the active library has a mapping. Handoffs send the Rust
+layer only the registry id plus a server-provided relative path. An offline
+mapped root returns **Volume not mounted**; it never falls back to a server-side
+command or an unchecked opener call.
+
 Desktop checks:
 
 ```bash
@@ -118,8 +129,9 @@ npm run tauri build
 
 CI runs these Rust checks on both macOS and Ubuntu; only macOS bundles the app.
 Keep native capabilities in cross-platform Tauri plugins, with any unavoidable
-target-OS conditional isolated in one clearly named host module. D2 currently
-contains no target-OS conditional code. Keep all Tauri imports in
+target-OS conditional isolated in one clearly named host module. D2 contains no
+target-OS conditional code, and D3 uses only the cross-platform dialog/opener
+plugins plus pure `std::path` validation. Keep all Tauri imports in
 `apps/web/src/platform/desktop.ts`; shared SPA modules consume only the platform
 surface and capability flags.
 
