@@ -1,5 +1,43 @@
 # Project status
 
+## Completed: Plan 3 D3 review pass — handoff hardening and seam cleanup
+
+Branch `codex/plan3-d3-path-mappings` (continues below the D3 receipt); an
+eight-angle code review of D3 produced one confirmed defect, two accepted
+hardening/UX findings, and seven cleanup findings. Applied:
+
+- **Async host commands.** `reveal_file`, `open_file`, and the mapping store
+  commands were synchronous Tauri commands, which execute on the webview IPC
+  (main) thread; their `fs::canonicalize` against an offline SMB mount could
+  freeze the whole UI for the mount timeout. All now run the mount-touching
+  work via `async_runtime::spawn_blocking`.
+- **Identity re-proof at handoff.** Mappings persist the manifest UUID proven
+  at locate time, and every reveal/open re-reads `.cairndex/manifest.json`
+  under the mapped root and requires a match (`library_mismatch` otherwise),
+  closing the remounted-different-volume window. Pre-release root-only mapping
+  entries deserialize as unmapped and need one re-locate.
+- **One mapping source of truth.** Workspace mapped-state and the Settings
+  Libraries page now share react-query entries keyed
+  `['library-mapping', libraryId]`; the `mappingRevision` counter and
+  `onMappingChanged` threading are gone. A shared `hostFileMenuEntries`
+  helper builds the Open/Reveal menu pair for all three context-menu
+  surfaces. `hostOperationErrorMessage` maps the shell's structured error
+  codes to web-owned copy (plan 3 §2.1). Host-action tests pin labels to
+  `hostLabelsFor('macos')` and share one `FileBrowserEntry` fixture.
+
+Verification: desktop `cargo fmt --check`, Clippy `-D warnings`, and **23
+unit tests** (adds a swapped-library handoff rejection); web Prettier,
+ESLint, `tsc -b`, and full Vitest (**150 passed**). `tauri build` and
+Playwright were not re-run this session; the prior D3 receipt covers them and
+no bundling or browser-visible flow changed beyond the refactors above.
+
+Known deferred finding: the bundle-card context menu offers host actions only
+when `resume_relative_path` is set, so audio-only/document/non-preview
+bundles expose none there (the opened Bundle Album still offers per-file
+actions). A proper fix wants a server-side always-present primary-file field
+— decide alongside D4 drag-out, which needs the same "bundle → files on
+disk" resolution.
+
 ## Completed: Plan 3 D3 — library mappings plus reveal/open
 
 Branch `codex/plan3-d3-path-mappings` from `main` at `da92096`.

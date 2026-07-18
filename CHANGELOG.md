@@ -8,6 +8,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **D3 review hardening (Plan 3).** Host handoff commands
+  (`reveal_file`/`open_file` and the mapping store commands) are now async and
+  run mount-touching filesystem work off the webview IPC thread, so an offline
+  or slow SMB mount can no longer freeze the desktop UI. Mappings persist the
+  manifest UUID proven at locate time and every reveal/open re-reads
+  `.cairndex/manifest.json` and requires a match, so a volume remounted with
+  different content is rejected as `library_mismatch` instead of handing off
+  another library's files (pre-release root-only mapping entries surface as
+  unmapped and need one re-locate). The web layer now owns the user-facing
+  copy for the shell's structured error codes.
+
 ### Added
 
 - **Desktop library mappings and safe host handoff (Plan 3 D3 / ADR-0007).**
