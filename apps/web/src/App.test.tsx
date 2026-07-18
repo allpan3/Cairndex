@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import App from './App'
+import * as platform from './platform'
 
 const desktopMenu = vi.hoisted(() => ({
   handler: null as ((action: string) => void) | null,
@@ -33,7 +34,11 @@ const LIBRARY = {
 
 function mockApi(
   libraries: unknown[] = [LIBRARY],
-  options: { storyboardStatus?: 'succeeded' | 'failed'; locked?: boolean } = {},
+  options: {
+    storyboardStatus?: 'succeeded' | 'failed'
+    locked?: boolean
+    authError?: number
+  } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
   vi.stubGlobal(
@@ -41,6 +46,12 @@ function mockApi(
     vi.fn((url: string, init?: RequestInit) => {
       let body: unknown = {}
       if (url.endsWith('/api/v1/libraries')) body = libraries
+      else if (url.endsWith('/auth/status') && options.authError)
+        return Promise.resolve({
+          ok: false,
+          status: options.authError,
+          json: () => Promise.resolve({ message: 'Device token is not authorized' }),
+        })
       else if (url.endsWith('/auth/status'))
         body = { protected: Boolean(options.locked), unlocked: !options.locked }
       else if (url.endsWith('/api/v1/auth/devices')) body = []
@@ -173,6 +184,16 @@ function mockApi(
   )
 }
 
+// Presents the shared App through the desktop capability surface
+function mockDesktopPlatform({ paired = true, access = false } = {}) {
+  vi.spyOn(platform, 'getHostPlatform').mockReturnValue({
+    ...platform.getHostPlatform(),
+    kind: 'desktop',
+  })
+  vi.spyOn(platform, 'hasHostDeviceToken').mockReturnValue(paired)
+  vi.spyOn(platform, 'hasHostDeviceAccess').mockReturnValue(access)
+}
+
 afterEach(() => {
   desktopMenu.handler = null
   vi.restoreAllMocks()
@@ -247,6 +268,38 @@ test('opens native settings over a locked library', async () => {
   expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Devices' })).toBeInTheDocument()
   expect(screen.getByText(/Test Library is locked/)).toBeInTheDocument()
+})
+
+test('offers pairing instead of a dead passphrase form for protected desktop libraries', async () => {
+  mockDesktopPlatform({ paired: true, access: false })
+  mockApi([LIBRARY], { locked: true })
+  renderApp()
+
+  expect(await screen.findByText(/Test Library needs device access/)).toBeInTheDocument()
+  expect(screen.queryByLabelText('Owner passphrase')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Pair again' })).toBeInTheDocument()
+})
+
+test('keeps an unscoped unprotected library available anonymously on desktop', async () => {
+  mockDesktopPlatform({ paired: true, access: false })
+  mockApi()
+  renderApp()
+
+  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+  expect(screen.queryByText(/needs device access/)).not.toBeInTheDocument()
+})
+
+test('fails closed when library authorization cannot be verified', async () => {
+  mockDesktopPlatform({ paired: true, access: true })
+  mockApi([LIBRARY], { authError: 403 })
+  renderApp()
+
+  expect(await screen.findByText('Could not verify library access')).toBeInTheDocument()
+  expect(screen.getByText(/credential may be invalid or revoked/)).toBeInTheDocument()
+  expect(screen.queryByText('Nothing here yet.')).not.toBeInTheDocument()
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
+    false,
+  )
 })
 
 test('opens grouping review after a successful library update with suggestions', async () => {

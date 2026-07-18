@@ -15,13 +15,15 @@ const DEVICE_AUTH_KEY = 'deviceAuth'
 interface DeviceAuthRecord {
   serverUrl: string
   token: string
+  libraryIds: string[]
 }
 
 let configuredServerUrl: string | null = null
 let deviceToken: string | null = null
+let deviceLibraryIds = new Set<string>()
 let mediaProxyBaseUrl: string | null = null
 
-// Maps the browser-reported desktop OS onto the shared label/keymap vocabulary
+// Maps the browser-reported desktop OS onto the shared label vocabulary
 function detectHostOs(): HostOs {
   const source = `${navigator.platform} ${navigator.userAgent}`.toLowerCase()
   if (source.includes('mac')) return 'macos'
@@ -35,18 +37,21 @@ async function settingsStore() {
   return load(STORE_PATH, { autoSave: false, defaults: {} })
 }
 
-// Loads a token only when it belongs to the currently configured server
-async function loadDeviceToken(serverUrl: string): Promise<string | null> {
+// Loads a complete token grant only when it belongs to the configured server
+async function loadDeviceAuth(serverUrl: string): Promise<DeviceAuthRecord | null> {
   const store = await settingsStore()
   const record = await store.get<DeviceAuthRecord>(DEVICE_AUTH_KEY)
   if (
     !record ||
     record.serverUrl !== serverUrl ||
     typeof record.token !== 'string' ||
-    !record.token
+    !record.token ||
+    !Array.isArray(record.libraryIds) ||
+    record.libraryIds.length === 0 ||
+    record.libraryIds.some((libraryId) => typeof libraryId !== 'string' || !libraryId)
   )
     return null
-  return record.token
+  return { ...record, libraryIds: [...new Set(record.libraryIds)] }
 }
 
 // Refreshes the native streaming relay after a server or token change
@@ -58,6 +63,7 @@ async function configureMediaProxy(): Promise<void> {
   mediaProxyBaseUrl = await invoke<string>('configure_media_proxy', {
     serverUrl: configuredServerUrl,
     token: deviceToken,
+    libraryIds: [...deviceLibraryIds],
   })
 }
 
@@ -77,10 +83,29 @@ function isServerUrl(value: string): boolean {
   }
 }
 
-// Attaches the retained bearer only to the configured Cairndex server
+// Extracts a library scope only from the configured server's versioned API
+function serverLibraryId(value: string): string | null {
+  if (!configuredServerUrl || !isServerUrl(value)) return null
+  const server = new URL(configuredServerUrl)
+  const target = new URL(value, configuredServerUrl)
+  const basePath = server.pathname.replace(/\/+$/, '')
+  const relativePath = target.pathname.slice(basePath.length)
+  const match = /^\/api\/v1\/libraries\/([^/]+)(?:\/|$)/.exec(relativePath)
+  const encodedLibraryId = match?.[1]
+  if (!encodedLibraryId) return null
+  try {
+    return decodeURIComponent(encodedLibraryId)
+  } catch {
+    return null
+  }
+}
+
+// Attaches the retained bearer only to explicitly approved library requests
 async function desktopFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const value = input instanceof Request ? input.url : String(input)
-  if (!deviceToken || !isServerUrl(value)) return globalThis.fetch(input, init)
+  const libraryId = serverLibraryId(value)
+  if (!deviceToken || !libraryId || !deviceLibraryIds.has(libraryId))
+    return globalThis.fetch(input, init)
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   new Headers(init?.headers).forEach((headerValue, name) => headers.set(name, headerValue))
   headers.set('Authorization', `Bearer ${deviceToken}`)
@@ -89,7 +114,9 @@ async function desktopFetch(input: RequestInfo | URL, init?: RequestInit): Promi
 
 // Converts a server media URL to the fixed-target loopback relay
 function desktopAssetUrl(value: string): string {
-  if (!configuredServerUrl || !mediaProxyBaseUrl || !isServerUrl(value)) return value
+  const libraryId = serverLibraryId(value)
+  if (!configuredServerUrl || !mediaProxyBaseUrl || !libraryId || !deviceLibraryIds.has(libraryId))
+    return value
   const server = new URL(configuredServerUrl)
   const target = new URL(value, configuredServerUrl)
   const basePath = server.pathname.replace(/\/+$/, '')
@@ -123,16 +150,26 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     assetUrl: desktopAssetUrl,
     configureServer: async (serverUrl) => {
       configuredServerUrl = serverUrl
-      deviceToken = await loadDeviceToken(serverUrl)
+      const auth = await loadDeviceAuth(serverUrl)
+      deviceToken = auth?.token ?? null
+      deviceLibraryIds = new Set(auth?.libraryIds ?? [])
       await configureMediaProxy()
     },
     hasDeviceToken: () => deviceToken !== null,
-    saveDeviceToken: async (token) => {
+    hasDeviceAccess: (libraryId) => deviceToken !== null && deviceLibraryIds.has(libraryId),
+    saveDeviceToken: async (token, libraryIds) => {
       if (!configuredServerUrl) throw new Error('No Cairndex server is configured.')
+      const scopes = [...new Set(libraryIds.filter(Boolean))]
+      if (scopes.length === 0) throw new Error('Device pairing did not approve any libraries.')
       const store = await settingsStore()
-      await store.set(DEVICE_AUTH_KEY, { serverUrl: configuredServerUrl, token })
+      await store.set(DEVICE_AUTH_KEY, {
+        serverUrl: configuredServerUrl,
+        token,
+        libraryIds: scopes,
+      })
       await store.save()
       deviceToken = token
+      deviceLibraryIds = new Set(scopes)
       await configureMediaProxy()
     },
     clearDeviceToken: async () => {
@@ -140,6 +177,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       await store.delete(DEVICE_AUTH_KEY)
       await store.save()
       deviceToken = null
+      deviceLibraryIds = new Set()
       await configureMediaProxy()
     },
     loadServerUrl: async () => {

@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import type { ClientCapabilities, PlaybackDecisionResponse } from '../../../api/client'
+import { runDesktopExitTasks } from '../../../desktop/exitTasks'
 import { useHlsSession, type UseHlsSessionOptions } from './useHlsSession'
 
 const mocks = vi.hoisted(() => {
@@ -90,12 +91,14 @@ beforeEach(() => {
   mocks.requestPlaybackDecision.mockImplementation(() =>
     Promise.resolve(remuxDecision(`s${++seq}`)),
   )
-  mocks.deletePlaybackSession.mockClear()
+  mocks.deletePlaybackSession.mockReset()
+  mocks.deletePlaybackSession.mockResolvedValue(undefined)
   mocks.beaconTeardownSession.mockClear()
 })
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -107,6 +110,43 @@ test('a remux decision starts an HLS source and tears the session down on unmoun
 
   unmount()
   expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1')
+})
+
+test('beacons the live session on web pagehide', async () => {
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
+
+  act(() => window.dispatchEvent(new Event('pagehide')))
+
+  expect(mocks.beaconTeardownSession).toHaveBeenCalledWith('f1', 's1')
+})
+
+test('awaits ordinary session teardown during desktop exit', async () => {
+  vi.stubGlobal('__TAURI_INTERNALS__', {})
+  let resolveDelete!: () => void
+  mocks.deletePlaybackSession.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        resolveDelete = resolve
+      }),
+  )
+  const { result } = render('f1')
+  await waitFor(() => expect(result.current.source?.kind).toBe('hls'))
+
+  let settled = false
+  const exiting = runDesktopExitTasks().then(() => {
+    settled = true
+  })
+  await Promise.resolve()
+
+  expect(mocks.deletePlaybackSession).toHaveBeenCalledWith('f1', 's1')
+  expect(settled).toBe(false)
+  act(() => window.dispatchEvent(new Event('pagehide')))
+  expect(mocks.beaconTeardownSession).not.toHaveBeenCalled()
+
+  resolveDelete()
+  await exiting
+  expect(settled).toBe(true)
 })
 
 test('switching files tears down the previous file session', async () => {

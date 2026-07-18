@@ -30,15 +30,6 @@ export interface HostLabels {
   deviceName: string
 }
 
-// Reserves accelerators the native shell can own but a browser must retain
-export interface HostKeymap {
-  focusLocation: string | null
-  closeWindow: string | null
-  showBundles: string | null
-  showFiles: string | null
-  settings: string | null
-}
-
 // Extends public capabilities with shell bootstrap and transport services
 interface PlatformRuntime {
   platform: HostPlatform
@@ -47,7 +38,8 @@ interface PlatformRuntime {
   assetUrl(value: string): string
   configureServer(serverUrl: string): Promise<void>
   hasDeviceToken(): boolean
-  saveDeviceToken(token: string): Promise<void>
+  hasDeviceAccess(libraryId: string): boolean
+  saveDeviceToken(token: string, libraryIds: string[]): Promise<void>
   clearDeviceToken(): Promise<void>
   loadServerUrl(): Promise<string | null>
   saveServerUrl(serverUrl: string): Promise<void>
@@ -85,45 +77,6 @@ const LABELS: Record<HostOs, HostLabels> = {
   },
 }
 
-const WEB_KEYMAP: HostKeymap = {
-  focusLocation: null,
-  closeWindow: null,
-  showBundles: null,
-  showFiles: null,
-  settings: null,
-}
-
-const DESKTOP_KEYMAPS: Record<HostOs, HostKeymap> = {
-  macos: {
-    focusLocation: 'Meta+L',
-    closeWindow: 'Meta+W',
-    showBundles: 'Meta+1',
-    showFiles: 'Meta+2',
-    settings: 'Meta+,',
-  },
-  windows: {
-    focusLocation: 'Control+L',
-    closeWindow: 'Control+W',
-    showBundles: 'Control+1',
-    showFiles: 'Control+2',
-    settings: 'Control+,',
-  },
-  linux: {
-    focusLocation: 'Control+L',
-    closeWindow: 'Control+W',
-    showBundles: 'Control+1',
-    showFiles: 'Control+2',
-    settings: 'Control+,',
-  },
-  unknown: {
-    focusLocation: 'Control+L',
-    closeWindow: 'Control+W',
-    showBundles: 'Control+1',
-    showFiles: 'Control+2',
-    settings: 'Control+,',
-  },
-}
-
 const webRuntime: PlatformRuntime = {
   platform: webPlatform,
   os: 'unknown',
@@ -131,6 +84,7 @@ const webRuntime: PlatformRuntime = {
   assetUrl: (value) => value,
   configureServer: async () => undefined,
   hasDeviceToken: () => false,
+  hasDeviceAccess: () => false,
   saveDeviceToken: async () => undefined,
   clearDeviceToken: async () => undefined,
   loadServerUrl: async () => null,
@@ -175,16 +129,6 @@ export function hostLabelsFor(os: HostOs): HostLabels {
   return LABELS[os]
 }
 
-// Keeps browser-reserved accelerators disabled on web and available in desktop
-export function getHostKeymap(): HostKeymap {
-  return hostKeymapFor(runtime.platform.kind, runtime.os)
-}
-
-// Resolves reserved key ownership for a web or desktop host
-export function hostKeymapFor(kind: HostPlatform['kind'], os: HostOs): HostKeymap {
-  return kind === 'desktop' ? DESKTOP_KEYMAPS[os] : WEB_KEYMAP
-}
-
 // Routes every programmatic server request through the active platform transport
 export function hostFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return runtime.fetch(input, init)
@@ -205,9 +149,14 @@ export function hasHostDeviceToken(): boolean {
   return runtime.hasDeviceToken()
 }
 
+// Reports whether the retained bearer explicitly grants one library
+export function hasHostDeviceAccess(libraryId: string): boolean {
+  return runtime.hasDeviceAccess(libraryId)
+}
+
 // Persists a one-time pairing token without exposing it to web storage
-export function saveHostDeviceToken(token: string): Promise<void> {
-  return runtime.saveDeviceToken(token)
+export function saveHostDeviceToken(token: string, libraryIds: string[]): Promise<void> {
+  return runtime.saveDeviceToken(token, libraryIds)
 }
 
 // Removes the locally retained device token

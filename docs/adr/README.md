@@ -35,3 +35,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0014](0014-hls-session-model.md) | HLS playback session model and transcode-cache location | proposed |
 | [0015](0015-device-pairing-and-bearer-tokens.md) | Device pairing and scoped bearer tokens | proposed (accepted-pending-owner-review) |
 | [0016](0016-ordered-bundle-media-cursor.md) | Ordered bundle media cursor | accepted |
+| [0017](0017-desktop-bearer-media-relay.md) | Desktop bearer media relay | proposed (accepted-pending-owner-review) |

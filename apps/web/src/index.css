@@ -2033,6 +2033,10 @@ code {
   font-size: 12px;
   line-height: 1.45;
 }
+.devices-page__actions {
+  display: flex;
+  gap: 8px;
+}
 .pair-device {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
@@ -4003,6 +4007,13 @@ code {
 .lockscreen__title {
   font-size: 13px;
   color: var(--text-muted);
+}
+.lockscreen__message,
+.lockscreen__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .lockscreen__error {
   font-size: 12px;
