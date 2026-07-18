@@ -2,12 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import type { LibraryRead } from '../api/client'
 import { SettingsDialog } from './SettingsDialog'
 
 const platformMocks = vi.hoisted(() => ({
   saveDeviceToken: vi.fn(),
   clearDeviceToken: vi.fn(),
   hasDeviceToken: vi.fn(() => false),
+  getLibraryMapping: vi.fn(),
+  locateLibrary: vi.fn(),
+  clearLibraryMapping: vi.fn(),
 }))
 
 vi.mock('../platform', () => ({
@@ -17,7 +21,16 @@ vi.mock('../platform', () => ({
     locateLibrary: 'Locate on This Mac',
     deviceName: 'Cairndex Desktop for Mac',
   }),
-  getHostPlatform: () => ({ kind: 'desktop' }),
+  hostOperationErrorMessage: (error: unknown) =>
+    typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : 'The desktop action could not be completed.',
+  getHostPlatform: () => ({
+    kind: 'desktop',
+    getLibraryMapping: platformMocks.getLibraryMapping,
+    locateLibrary: platformMocks.locateLibrary,
+    clearLibraryMapping: platformMocks.clearLibraryMapping,
+  }),
   hasHostDeviceToken: platformMocks.hasDeviceToken,
   hostFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
   resolveHostAssetUrl: (value: string) => value,
@@ -31,18 +44,33 @@ afterEach(() => {
   platformMocks.clearDeviceToken.mockReset()
   platformMocks.hasDeviceToken.mockReset()
   platformMocks.hasDeviceToken.mockReturnValue(false)
+  platformMocks.getLibraryMapping.mockReset()
+  platformMocks.locateLibrary.mockReset()
+  platformMocks.clearLibraryMapping.mockReset()
 })
 
 // Renders shell Settings with isolated TanStack state
-function renderDesktopSettings() {
+function renderDesktopSettings(libraries: LibraryRead[] = []) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsDialog libraries={[]} libraryId={null} onClose={() => undefined} />
+      <SettingsDialog libraries={libraries} libraryId={null} onClose={() => undefined} />
     </QueryClientProvider>,
   )
+}
+
+const library: LibraryRead = {
+  id: 'registry-id',
+  library_uuid: 'portable-uuid',
+  name: 'Media',
+  root_path: '/server/media',
+  status: 'available',
+  schema_version: 1,
+  created_at: '2026-07-18T00:00:00Z',
+  updated_at: '2026-07-18T00:00:00Z',
+  last_opened_at: null,
 }
 
 // Returns a minimal response for the pairing client
@@ -110,4 +138,34 @@ test('keeps the valid paired state visible after re-pairing fails', async () => 
   expect(await screen.findByRole('alert')).toHaveTextContent('server unavailable')
   expect(screen.getByText(/This device is paired/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Forget pairing' })).toBeInTheDocument()
+})
+
+test('locates a desktop library through the manifest-validated platform command', async () => {
+  platformMocks.getLibraryMapping.mockResolvedValue(null)
+  platformMocks.locateLibrary.mockResolvedValue('/Volumes/Media')
+  renderDesktopSettings([library])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Libraries' }))
+  expect(await screen.findByText('Not located on this computer')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Locate on This Mac' }))
+
+  expect(platformMocks.locateLibrary).toHaveBeenCalledWith('registry-id', 'portable-uuid')
+  expect(await screen.findByText('/Volumes/Media')).toBeInTheDocument()
+})
+
+test('surfaces a rejected library identity without recording a mapping', async () => {
+  platformMocks.getLibraryMapping.mockResolvedValue(null)
+  platformMocks.locateLibrary.mockRejectedValue({
+    code: 'library_mismatch',
+    message: 'The selected folder belongs to a different Cairndex library.',
+  })
+  renderDesktopSettings([library])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Libraries' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Locate on This Mac' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The selected folder belongs to a different Cairndex library.',
+  )
+  expect(screen.getByText('Not located on this computer')).toBeInTheDocument()
 })

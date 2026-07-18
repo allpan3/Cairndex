@@ -44,6 +44,41 @@ test('synchronizes server-backed native menu availability', async () => {
   expect(mocks.invoke).toHaveBeenCalledWith('set_server_menu_enabled', { enabled: true })
 })
 
+test('exposes validated D3 mapping and host commands through the desktop seam', async () => {
+  mocks.invoke.mockImplementation((command: string) => {
+    if (command === 'get_library_mapping') return Promise.resolve('/Volumes/Media')
+    if (command === 'locate_library_mapping') return Promise.resolve('/Volumes/Media')
+    return Promise.resolve(undefined)
+  })
+  const runtime = await createDesktopRuntime()
+
+  expect(runtime.platform.canRevealInFinder).toBe(true)
+  expect(runtime.platform.canOpenWithDefaultApp).toBe(true)
+  await expect(runtime.platform.getLibraryMapping('registry-id')).resolves.toBe('/Volumes/Media')
+  await expect(runtime.platform.locateLibrary('registry-id', 'portable-uuid')).resolves.toBe(
+    '/Volumes/Media',
+  )
+  await runtime.platform.revealFile('registry-id', 'Movies/movie.mp4')
+  await runtime.platform.openFile('registry-id', 'Movies/movie.mp4')
+  await runtime.platform.clearLibraryMapping('registry-id')
+
+  expect(mocks.invoke).toHaveBeenCalledWith('locate_library_mapping', {
+    libraryId: 'registry-id',
+    libraryUuid: 'portable-uuid',
+  })
+  expect(mocks.invoke).toHaveBeenCalledWith('reveal_file', {
+    libraryId: 'registry-id',
+    relativePath: 'Movies/movie.mp4',
+  })
+  expect(mocks.invoke).toHaveBeenCalledWith('open_file', {
+    libraryId: 'registry-id',
+    relativePath: 'Movies/movie.mp4',
+  })
+  expect(mocks.invoke).toHaveBeenCalledWith('clear_library_mapping', {
+    libraryId: 'registry-id',
+  })
+})
+
 test('attaches bearer auth and media relay only to approved library scopes', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
   vi.stubGlobal('fetch', fetchMock)

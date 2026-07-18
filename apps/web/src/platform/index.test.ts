@@ -5,10 +5,21 @@ import {
   getHostPlatform,
   hostFetch,
   hostLabelsFor,
+  hostOperationErrorMessage,
   isDesktopHost,
   resetHostPlatformForTests,
   resolveHostAssetUrl,
 } from './index'
+
+test('formats structured native host failures without assuming Error instances', () => {
+  expect(
+    hostOperationErrorMessage({
+      code: 'volume_not_mounted',
+      message: 'Volume not mounted. Reconnect it and try again.',
+    }),
+  ).toBe('Volume not mounted. Reconnect it and try again.')
+  expect(hostOperationErrorMessage(null)).toBe('The desktop action could not be completed.')
+})
 
 afterEach(() => {
   resetHostPlatformForTests()
