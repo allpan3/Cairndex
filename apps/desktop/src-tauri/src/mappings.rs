@@ -76,6 +76,14 @@ struct LibraryManifest {
     library_uuid: String,
 }
 
+// Couples one stored local root to the portable identity proven at locate time
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MappingRecord {
+    local_root: String,
+    library_uuid: String,
+}
+
 // Requires the server-owned registry key used to select a local mapping
 fn validate_library_id(library_id: &str) -> Result<(), MappingError> {
     if library_id.is_empty() {
@@ -138,17 +146,23 @@ fn canonicalize_root(local_root: &Path) -> Result<PathBuf, MappingError> {
     Ok(root)
 }
 
+// Requires the portable manifest identity a mapping is proven against
+fn validate_library_uuid(library_uuid: &str) -> Result<(), MappingError> {
+    if library_uuid.is_empty() {
+        return Err(MappingError::new(
+            MappingErrorCode::InvalidLibraryId,
+            "The server library's portable identity is missing.",
+        ));
+    }
+    Ok(())
+}
+
 // Proves that a picked folder is the portable library the server described
 fn validate_library_root(
     local_root: &Path,
     expected_library_uuid: &str,
 ) -> Result<PathBuf, MappingError> {
-    if expected_library_uuid.is_empty() {
-        return Err(MappingError::new(
-            MappingErrorCode::InvalidLibraryId,
-            "The server library identity is missing.",
-        ));
-    }
+    validate_library_uuid(expected_library_uuid)?;
     let root = canonicalize_root(local_root)?;
     let manifest_path = root.join(".cairndex").join("manifest.json");
     let bytes = fs::read(manifest_path).map_err(|error| {
@@ -182,13 +196,14 @@ fn validate_library_root(
     Ok(root)
 }
 
-// Resolves one mapped path and proves canonical containment plus existence
-pub(crate) fn resolve_mapped_path(
+// Re-proves library identity at handoff time, then containment plus existence
+pub(crate) fn resolve_verified_path(
     local_root: &Path,
+    expected_library_uuid: &str,
     relative_path: &str,
 ) -> Result<PathBuf, MappingError> {
     let relative = validate_relative_path(relative_path)?;
-    let root = canonicalize_root(local_root)?;
+    let root = validate_library_root(local_root, expected_library_uuid)?;
     let candidate = fs::canonicalize(root.join(relative)).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
             MappingError::new(
@@ -211,8 +226,10 @@ pub(crate) fn resolve_mapped_path(
     Ok(candidate)
 }
 
-// Loads the complete shell-owned library-id to local-root map
-fn load_mappings<R: Runtime>(app: &AppHandle<R>) -> Result<BTreeMap<String, String>, MappingError> {
+// Loads the complete shell-owned library-id to mapping-record map
+fn load_mappings<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<BTreeMap<String, MappingRecord>, MappingError> {
     let store = app.store(STORE_PATH).map_err(|_| {
         MappingError::new(
             MappingErrorCode::MappingStoreUnavailable,
@@ -220,12 +237,25 @@ fn load_mappings<R: Runtime>(app: &AppHandle<R>) -> Result<BTreeMap<String, Stri
         )
     })?;
     match store.get(MAPPINGS_KEY) {
-        Some(value) => serde_json::from_value(value).map_err(|_| {
-            MappingError::new(
-                MappingErrorCode::MappingStoreUnavailable,
-                "Library mappings are invalid.",
-            )
-        }),
+        Some(value) => {
+            let raw: BTreeMap<String, serde_json::Value> =
+                serde_json::from_value(value).map_err(|_| {
+                    MappingError::new(
+                        MappingErrorCode::MappingStoreUnavailable,
+                        "Library mappings are invalid.",
+                    )
+                })?;
+            // Entries without a proven identity (pre-release root-only strings)
+            // surface as unmapped so the owner re-locates them once
+            Ok(raw
+                .into_iter()
+                .filter_map(|(library_id, value)| {
+                    serde_json::from_value::<MappingRecord>(value)
+                        .ok()
+                        .map(|record| (library_id, record))
+                })
+                .collect())
+        }
         None => Ok(BTreeMap::new()),
     }
 }
@@ -233,7 +263,7 @@ fn load_mappings<R: Runtime>(app: &AppHandle<R>) -> Result<BTreeMap<String, Stri
 // Persists all mappings atomically through the existing shell settings store
 fn save_mappings<R: Runtime>(
     app: &AppHandle<R>,
-    mappings: &BTreeMap<String, String>,
+    mappings: &BTreeMap<String, MappingRecord>,
 ) -> Result<(), MappingError> {
     let store = app.store(STORE_PATH).map_err(|_| {
         MappingError::new(
@@ -266,9 +296,13 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
 ) -> Result<Option<String>, MappingError> {
     validate_library_id(&library_id)?;
     // First store access reads the settings file; keep that off the IPC thread
-    async_runtime::spawn_blocking(move || Ok(load_mappings(&app)?.get(&library_id).cloned()))
-        .await
-        .map_err(|_| MappingError::store_task_failed())?
+    async_runtime::spawn_blocking(move || {
+        Ok(load_mappings(&app)?
+            .get(&library_id)
+            .map(|record| record.local_root.clone()))
+    })
+    .await
+    .map_err(|_| MappingError::store_task_failed())?
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map
@@ -304,7 +338,13 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
         })?
         .to_owned();
     let mut mappings = load_mappings(&app)?;
-    mappings.insert(library_id, root_text.clone());
+    mappings.insert(
+        library_id,
+        MappingRecord {
+            local_root: root_text.clone(),
+            library_uuid,
+        },
+    );
     save_mappings(&app, &mappings)?;
     Ok(Some(root_text))
 }
@@ -334,13 +374,17 @@ pub(crate) fn resolve_library_path<R: Runtime>(
 ) -> Result<PathBuf, MappingError> {
     validate_library_id(library_id)?;
     let mappings = load_mappings(app)?;
-    let local_root = mappings.get(library_id).ok_or_else(|| {
+    let record = mappings.get(library_id).ok_or_else(|| {
         MappingError::new(
             MappingErrorCode::LibraryUnmapped,
             "This library is not located on this computer.",
         )
     })?;
-    resolve_mapped_path(Path::new(local_root), relative_path)
+    resolve_verified_path(
+        Path::new(&record.local_root),
+        &record.library_uuid,
+        relative_path,
+    )
 }
 
 #[cfg(test)]
@@ -352,7 +396,7 @@ mod tests {
     };
 
     use super::{
-        resolve_mapped_path, validate_library_id, validate_library_root, MappingErrorCode,
+        resolve_verified_path, validate_library_id, validate_library_root, MappingErrorCode,
     };
 
     static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -448,10 +492,12 @@ mod tests {
     #[test]
     fn resolves_an_existing_contained_file() {
         let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
         fs::create_dir_all(root.path().join("folder")).expect("create folder");
         fs::write(root.path().join("folder/movie.mp4"), b"fixture").expect("write file");
 
-        let resolved = resolve_mapped_path(root.path(), "folder/movie.mp4").expect("safe path");
+        let resolved = resolve_verified_path(root.path(), "library-one", "folder/movie.mp4")
+            .expect("safe path");
 
         assert_eq!(
             resolved,
@@ -463,12 +509,17 @@ mod tests {
     fn rejects_empty_absolute_and_parent_paths() {
         let root = TestDir::new();
         for relative in ["", ".", "../movie.mp4", "folder/../movie.mp4"] {
-            let error = resolve_mapped_path(root.path(), relative).expect_err("unsafe path");
+            let error = resolve_verified_path(root.path(), "library-one", relative)
+                .expect_err("unsafe path");
             assert_eq!(error.code, MappingErrorCode::InvalidRelativePath);
         }
         let absolute = root.path().join("movie.mp4");
-        let error = resolve_mapped_path(root.path(), absolute.to_str().expect("utf-8 path"))
-            .expect_err("absolute path");
+        let error = resolve_verified_path(
+            root.path(),
+            "library-one",
+            absolute.to_str().expect("utf-8 path"),
+        )
+        .expect_err("absolute path");
         assert_eq!(error.code, MappingErrorCode::InvalidRelativePath);
     }
 
@@ -478,11 +529,13 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
         let outside = TestDir::new();
         fs::write(outside.path().join("secret.mp4"), b"fixture").expect("write outside file");
         symlink(outside.path(), root.path().join("escape")).expect("create symlink");
 
-        let error = resolve_mapped_path(root.path(), "escape/secret.mp4").expect_err("escape");
+        let error = resolve_verified_path(root.path(), "library-one", "escape/secret.mp4")
+            .expect_err("escape");
 
         assert_eq!(error.code, MappingErrorCode::PathOutsideLibrary);
     }
@@ -492,7 +545,8 @@ mod tests {
         let root = TestDir::new();
         let missing_root = root.path().join("offline-volume");
 
-        let error = resolve_mapped_path(&missing_root, "movie.mp4").expect_err("offline mount");
+        let error = resolve_verified_path(&missing_root, "library-one", "movie.mp4")
+            .expect_err("offline mount");
 
         assert_eq!(error.code, MappingErrorCode::VolumeNotMounted);
     }
@@ -500,9 +554,23 @@ mod tests {
     #[test]
     fn rejects_a_missing_file() {
         let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
 
-        let error = resolve_mapped_path(root.path(), "missing.mp4").expect_err("missing file");
+        let error = resolve_verified_path(root.path(), "library-one", "missing.mp4")
+            .expect_err("missing file");
 
         assert_eq!(error.code, MappingErrorCode::PathNotFound);
+    }
+
+    #[test]
+    fn handoff_rejects_a_root_that_now_holds_a_different_library() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-two");
+        fs::write(root.path().join("movie.mp4"), b"fixture").expect("write file");
+
+        let error = resolve_verified_path(root.path(), "library-one", "movie.mp4")
+            .expect_err("swapped library");
+
+        assert_eq!(error.code, MappingErrorCode::LibraryMismatch);
     }
 }
