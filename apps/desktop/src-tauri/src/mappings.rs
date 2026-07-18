@@ -5,7 +5,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Runtime};
+use tauri::{async_runtime, AppHandle, Runtime};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_store::StoreExt;
 
@@ -58,6 +58,14 @@ impl MappingError {
         Self::new(
             MappingErrorCode::InvalidRelativePath,
             "The mapped file uses an unsupported path encoding.",
+        )
+    }
+
+    // Reports a failed background store task without exposing runtime details
+    fn store_task_failed() -> Self {
+        Self::new(
+            MappingErrorCode::MappingStoreUnavailable,
+            "Library mappings could not be loaded.",
         )
     }
 }
@@ -252,12 +260,15 @@ fn save_mappings<R: Runtime>(
 
 // Returns the configured local root without resolving any media path
 #[tauri::command]
-pub(crate) fn get_library_mapping<R: Runtime>(
+pub(crate) async fn get_library_mapping<R: Runtime>(
     app: AppHandle<R>,
     library_id: String,
 ) -> Result<Option<String>, MappingError> {
     validate_library_id(&library_id)?;
-    Ok(load_mappings(&app)?.get(&library_id).cloned())
+    // First store access reads the settings file; keep that off the IPC thread
+    async_runtime::spawn_blocking(move || Ok(load_mappings(&app)?.get(&library_id).cloned()))
+        .await
+        .map_err(|_| MappingError::store_task_failed())?
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map
@@ -300,14 +311,19 @@ pub(crate) async fn locate_library_mapping<R: Runtime>(
 
 // Removes one local mapping without touching the server library or its files
 #[tauri::command]
-pub(crate) fn clear_library_mapping<R: Runtime>(
+pub(crate) async fn clear_library_mapping<R: Runtime>(
     app: AppHandle<R>,
     library_id: String,
 ) -> Result<(), MappingError> {
     validate_library_id(&library_id)?;
-    let mut mappings = load_mappings(&app)?;
-    mappings.remove(&library_id);
-    save_mappings(&app, &mappings)
+    // Persisting the trimmed map writes the settings file; keep it off the IPC thread
+    async_runtime::spawn_blocking(move || {
+        let mut mappings = load_mappings(&app)?;
+        mappings.remove(&library_id);
+        save_mappings(&app, &mappings)
+    })
+    .await
+    .map_err(|_| MappingError::store_task_failed())?
 }
 
 // Resolves one command request from its persisted mapping
