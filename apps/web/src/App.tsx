@@ -77,6 +77,7 @@ import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
+import { useDesktopFileDrop } from './desktop/fileDrop'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
@@ -94,6 +95,7 @@ import {
   hasHostDeviceAccess,
   hasHostDeviceToken,
   hostOperationErrorMessage,
+  reverseMapHostPaths,
 } from './platform'
 
 interface EditorState {
@@ -583,8 +585,7 @@ function Workspace({
     },
     [libraryId, platform],
   )
-  const onStartFileDrag =
-    platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
+  const onStartFileDrag = platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
@@ -1001,6 +1002,18 @@ function Workspace({
     (paths: string[]) => setCreatingBundle({ relativePaths: paths }),
     [],
   )
+
+  // Drag-in (plan 3 §6): files dropped from Finder that resolve inside this
+  // mapped library land in the fast-add flow (Create Bundle); files outside every
+  // root get the "move it in first" explanation. The W5 copy-in flow plugs into
+  // the outside branch (see fileDrop.ts) without reworking this handler.
+  useDesktopFileDrop({
+    libraryId,
+    libraryMapped,
+    reverseMap: reverseMapHostPaths,
+    onFastAdd: createBundleFromPaths,
+    onFlash: setFlash,
+  })
 
   // Right-click empty browser space → create a bundle, or clean up the bundle
   // manual order for the current scope.

@@ -6,13 +6,7 @@ import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
-import type {
-  DragOutItem,
-  HostOs,
-  HostPlatform,
-  PlatformRuntime,
-  ReverseMapResult,
-} from './index'
+import type { DragOutItem, HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
