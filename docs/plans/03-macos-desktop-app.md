@@ -64,8 +64,8 @@ keep a future Linux app cheap (packaging + a polish pass, not a port):
   one clearly-named module (`commands/host.rs` edges), never scattered.
 - **The web seam stays OS-neutral.** `HostPlatform.kind` is `'desktop'`, not
   `'macos'`; user-facing strings ("Reveal in Finder" vs "Show in file
-  manager") come from a per-OS label map beside the keymap table, which
-  already plans per-platform bindings (§7).
+  manager") come from a per-OS label map. The D5 shortcut audit will add a
+  keymap only where a real action consumes it (§7).
 - **CI keeps Linux honest from day one:** alongside the macOS build job, a
   cheap Ubuntu `cargo clippy && cargo test` job (no bundling) so the Rust
   layer never silently grows a macOS-only dependency.
@@ -131,8 +131,10 @@ export interface HostPlatform {
   to show/hide "Reveal in Finder" / "Open in Default App" in the existing
   context menus and `FileInspector`/File Browser surfaces.
 - Auth: the shell talks to the same remote server; reuse the plan-2 device
-  token (Settings → pair this device) stored via the Tauri store plugin, sent
-  as `Authorization: Bearer`. Web client behavior unchanged.
+  token (Settings → pair this device) stored with its approved library ids via
+  the Tauri store plugin. Send `Authorization: Bearer` only for those library
+  paths. ADR-0017 defines the separate read-only media relay required because
+  media elements cannot set headers. Web client behavior remains unchanged.
 - Server URL config lives in the shell (first-run screen), so the same build
   works against any NAS.
 

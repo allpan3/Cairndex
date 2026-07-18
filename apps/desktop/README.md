@@ -25,10 +25,17 @@ The Vite server and production bundle are both built from `apps/web` through
 packaged builds use Tauri's custom-protocol origins. Protected libraries require
 Settings → Pair this device to display a short code; approve it and select the
 library scope from an unlocked same-origin web session. The delivered bearer is
-stored in the Tauri store only for its issuing server. API calls use the shared
-platform transport, while a loopback-only fixed-target relay streams media and
-range requests through bounded concurrent workers without placing the token in
-a URL. Browser mode continues to use same-origin cookies.
+stored with that scope in the Tauri store only for its issuing server. API calls
+attach it only to approved library paths. Unscoped unprotected libraries remain
+anonymous; an unscoped protected library asks the owner to pair again rather
+than showing the browser-only passphrase form. Settings can forget the local
+credential; revoke it from an owner web session to invalidate it on the server.
+
+ADR-0017 narrows the loopback media relay to approved libraries plus read-only
+stream, HLS, thumbnail, preview, storyboard, subtitle, and File Browser routes.
+It rotates its capability path on configuration, rejects redirects and unknown
+origins, bounds stalls/concurrency, and preserves known `Content-Length` values
+for large 206 ranges. Browser mode continues to use same-origin cookies.
 The macOS bundle declares local-network access and permits cleartext HTTP for
 WKWebView content so an owner-configured private LAN server can be used; prefer
 HTTPS beyond a trusted private network.

@@ -91,11 +91,19 @@ LAN server works; prefer HTTPS for any server outside a trusted private network.
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit
 library scope. The shell stores the one-time token beside its issuing server in
-the Tauri store. Its platform fetch transport adds `Authorization: Bearer` only
-for that server; a loopback-only fixed-target relay supplies the same credential
-to streaming media, HLS, thumbnails, subtitles, and beacons without putting the
-token in a URL. Changing the configured server drops an unrelated retained
-token. Plain web continues to use same-origin relative URLs and cookie unlocks.
+the Tauri store, including the approved library ids. Its platform fetch
+transport adds `Authorization: Bearer` only to approved library-scoped URLs.
+Unscoped unprotected libraries remain anonymous; unscoped protected libraries
+show the pairing path because the browser passphrase cookie cannot unlock a
+cross-origin shell. Settings can forget the local token, while server revocation
+remains in the owner web Devices page. Changing the configured server drops an
+unrelated retained token.
+
+ADR-0017 defines the separate loopback media transport. It accepts only scoped
+read-only stream/HLS/thumbnail/preview/storyboard/subtitle/File Browser routes,
+uses exact shell origins, rejects redirects, rotates its capability path, bounds
+workers/queue/read stalls, and preserves known range lengths. Plain web keeps
+same-origin relative URLs and cookie unlocks.
 
 Desktop checks:
 

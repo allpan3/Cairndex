@@ -6,6 +6,8 @@ import { SettingsDialog } from './SettingsDialog'
 
 const platformMocks = vi.hoisted(() => ({
   saveDeviceToken: vi.fn(),
+  clearDeviceToken: vi.fn(),
+  hasDeviceToken: vi.fn(() => false),
 }))
 
 vi.mock('../platform', () => ({
@@ -16,15 +18,19 @@ vi.mock('../platform', () => ({
     deviceName: 'Cairndex Desktop for Mac',
   }),
   getHostPlatform: () => ({ kind: 'desktop' }),
-  hasHostDeviceToken: () => false,
+  hasHostDeviceToken: platformMocks.hasDeviceToken,
   hostFetch: (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init),
   resolveHostAssetUrl: (value: string) => value,
   saveHostDeviceToken: platformMocks.saveDeviceToken,
+  clearHostDeviceToken: platformMocks.clearDeviceToken,
 }))
 
 afterEach(() => {
   vi.unstubAllGlobals()
   platformMocks.saveDeviceToken.mockReset()
+  platformMocks.clearDeviceToken.mockReset()
+  platformMocks.hasDeviceToken.mockReset()
+  platformMocks.hasDeviceToken.mockReturnValue(false)
 })
 
 // Renders shell Settings with isolated TanStack state
@@ -65,7 +71,13 @@ test('starts, polls, and stores a shell pairing token', async () => {
       }
       if (url === '/api/v1/auth/pair/poll') {
         expect(JSON.parse(String(init?.body))).toEqual({ poll_key: 'poll-key' })
-        return Promise.resolve(response(200, { status: 'approved', token: 'cdx_device-token' }))
+        return Promise.resolve(
+          response(200, {
+            status: 'approved',
+            token: 'cdx_device-token',
+            library_ids: ['lib-one'],
+          }),
+        )
       }
       throw new Error(`unexpected request: ${url}`)
     }),
@@ -80,5 +92,22 @@ test('starts, polls, and stores a shell pairing token', async () => {
   expect(
     await screen.findByText(/This device is paired/, {}, { timeout: 2500 }),
   ).toBeInTheDocument()
-  expect(platformMocks.saveDeviceToken).toHaveBeenCalledWith('cdx_device-token')
+  expect(platformMocks.saveDeviceToken).toHaveBeenCalledWith('cdx_device-token', ['lib-one'])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Forget pairing' }))
+  expect(platformMocks.clearDeviceToken).toHaveBeenCalledOnce()
+  expect(await screen.findByRole('button', { name: 'Pair this device' })).toBeInTheDocument()
+})
+
+test('keeps the valid paired state visible after re-pairing fails', async () => {
+  platformMocks.hasDeviceToken.mockReturnValue(true)
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('server unavailable')))
+  renderDesktopSettings()
+
+  expect(screen.getByText(/This device is paired/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Pair again' }))
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('server unavailable')
+  expect(screen.getByText(/This device is paired/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Forget pairing' })).toBeInTheDocument()
 })

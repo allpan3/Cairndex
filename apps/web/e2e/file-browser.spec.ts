@@ -31,6 +31,9 @@ async function mockApi(page: Page) {
       json: [{ id: 'lib1', name: 'NAS Media', root_path: '/mnt/media', status: 'available' }],
     }),
   )
+  await page.route('**/auth/status', (r) =>
+    r.fulfill({ json: { protected: false, unlocked: true } }),
+  )
   // Collection-View endpoints the shell loads on mount.
   await page.route('**/bundles/counts**', (r) =>
     r.fulfill({

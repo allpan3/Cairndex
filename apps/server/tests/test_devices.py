@@ -53,7 +53,7 @@ def _approve(client: TestClient, pair_code: str, library_ids: list[str]) -> None
     assert response.status_code == 204
 
 
-def _poll(client: TestClient, poll_key: str) -> dict[str, str]:
+def _poll(client: TestClient, poll_key: str) -> dict[str, object]:
     """Poll a device-side pairing key."""
     response = client.post("/api/v1/auth/pair/poll", json={"poll_key": poll_key})
     assert response.status_code == 200
@@ -76,6 +76,8 @@ def test_pairing_round_trip_delivers_token_once_and_stores_only_hash(
     delivered = _poll(isolated_client, started["poll_key"])
     assert delivered["status"] == "approved"
     token = delivered["token"]
+    assert delivered["library_ids"] == [library_id]
+    assert isinstance(token, str)
     assert token.startswith("cdx_")
     assert _poll(isolated_client, started["poll_key"]) == {"status": "pending"}
 

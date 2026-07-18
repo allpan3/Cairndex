@@ -2777,6 +2777,8 @@ export interface components {
         };
         /** PairPollResponse */
         PairPollResponse: {
+            /** Library Ids */
+            library_ids?: string[] | null;
             /**
              * Status
              * @enum {string}
@@ -3766,7 +3768,9 @@ export interface operations {
     auth_status_api_v1_libraries__library_id__auth_status_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 library_id: string;
             };

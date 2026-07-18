@@ -382,7 +382,7 @@ function beacon(url: string, body?: unknown): boolean {
   return navigator.sendBeacon(resolvedUrl, blob)
 }
 
-/** Best-effort session teardown on pagehide via sendBeacon's POST-only transport. */
+/** Best-effort browser teardown on pagehide via sendBeacon's POST-only transport. */
 export function beaconTeardownSession(fileId: string, sessionId: string): boolean {
   // The teardown alias takes no body — a bodyless beacon keeps it CORS-safelisted.
   return beacon(`${lib()}/files/${fileId}/playback-sessions/${sessionId}/teardown`)
