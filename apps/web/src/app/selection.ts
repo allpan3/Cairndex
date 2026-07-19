@@ -4,5 +4,11 @@
  * `id` itself. Callers apply any further filtering (e.g. files-only) themselves.
  */
 export function selectionTargets<T>(id: T, selected: ReadonlySet<T>): T[] {
-  return selected.has(id) && selected.size > 1 ? [...selected] : [id]
+  return isMultiSelection(selected) && selected.has(id) ? [...selected] : [id]
+}
+
+/** Whether more than one item is selected — the "act on the whole selection"
+ * condition, shared by the target rule above and multi-selection UI. */
+export function isMultiSelection<T>(selected: ReadonlySet<T>): boolean {
+  return selected.size > 1
 }

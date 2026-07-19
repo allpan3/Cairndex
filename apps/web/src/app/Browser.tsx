@@ -7,6 +7,7 @@ import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import { moveTo } from './reorder'
+import { selectionTargets } from './selection'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -90,7 +91,7 @@ export function Browser(props: BrowserProps) {
         e.dataTransfer.effectAllowed = 'copyMove'
         setDragId(id)
         // Carry the whole selection when dragging a selected card, else just this.
-        onBundleDragStart?.(selectedIds.has(id) ? [...selectedIds] : [id])
+        onBundleDragStart?.(selectionTargets(id, selectedIds))
       },
       onDragEnd: clearDrag,
       onDragOver: (e: React.DragEvent) => {

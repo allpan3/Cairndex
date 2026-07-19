@@ -48,7 +48,7 @@ import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { hostFileMenuEntries } from './app/hostActions'
-import { selectionTargets } from './app/selection'
+import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
@@ -1085,10 +1085,7 @@ function Workspace({
   // otherwise target (and select) just this one. Mirrors bundleContextMenu.
   const collectionContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
-      const targetIds =
-        selectedCollectionIds.has(id) && selectedCollectionIds.size > 1
-          ? [...selectedCollectionIds]
-          : [id]
+      const targetIds = selectionTargets(id, selectedCollectionIds)
       if (targetIds.length === 1) {
         setSelectedCollectionIds(new Set([id]))
         setSelectedIds(new Set())
@@ -1523,11 +1520,11 @@ function Workspace({
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
-      ) : selectedCollectionIds.size > 1 ? (
+      ) : isMultiSelection(selectedCollectionIds) ? (
         <aside className="inspector">
           <div className="state">{selectedCollectionIds.size} collections selected</div>
         </aside>
-      ) : selectedIds.size > 1 ? (
+      ) : isMultiSelection(selectedIds) ? (
         <MultiBundleInspector
           key={[...selectedIds].sort().join(',')}
           ids={[...selectedIds]}
