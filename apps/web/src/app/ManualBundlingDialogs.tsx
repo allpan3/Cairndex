@@ -10,6 +10,7 @@ import {
   useTargetSuggestions,
   useUnbundledFileSuggestions,
 } from '../api/hooks'
+import { withSkipNote } from './manualBundlingSkipNote'
 import { usePinyinSearch } from './pinyin'
 
 /**
@@ -136,13 +137,6 @@ function SelectedFilesNote({ count }: { count: number }) {
 
 const selCount = (s: FileSelection) => (s.fileIds?.length ?? 0) + (s.relativePaths?.length ?? 0)
 
-/** Appends a note about non-media items the server skipped (a folder's stray
- * sidecars dragged in alongside real media), if any. */
-function withSkipNote(message: string, skipped: number): string {
-  if (skipped <= 0) return message
-  return `${message} ${skipped} non-media item${skipped === 1 ? '' : 's'} skipped.`
-}
-
 // --- Add to existing bundle --------------------------------------------------
 export function AddToBundleDialog({
   selection,
@@ -188,7 +182,7 @@ export function AddToBundleDialog({
           onApplied(
             withSkipNote(
               `Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`,
-              r.files_skipped,
+              r,
             ),
           ),
       },
@@ -303,7 +297,7 @@ export function CreateBundleDialog({
           onApplied(
             withSkipNote(
               `Created a bundle from ${r.files_added} file${r.files_added === 1 ? '' : 's'}.`,
-              r.files_skipped,
+              r,
             ),
           ),
       },
@@ -312,6 +306,11 @@ export function CreateBundleDialog({
 
   const additional = draft.data?.additional ?? []
   const seedCount = selCount(selection)
+  // The preview mirrors apply's filtering, so an empty `roles` (with a non-empty
+  // selection and no extra picked) means every selected file is non-media: there
+  // is nothing to bundle, so explain instead of offering a dead-end submit (P1-5).
+  const nothingToBundle =
+    draft.isSuccess && seedCount > 0 && (draft.data?.roles.length ?? 0) === 0 && extra.size === 0
 
   return (
     <Modal
@@ -328,13 +327,19 @@ export function CreateBundleDialog({
           <button
             className="btn btn--primary"
             onClick={apply}
-            disabled={seedCount === 0 || createFromFiles.isPending}
+            disabled={seedCount === 0 || nothingToBundle || createFromFiles.isPending}
           >
             {createFromFiles.isPending ? 'Creating…' : 'Create bundle'}
           </button>
         </>
       }
     >
+      {nothingToBundle && (
+        <div className="mb-state mb-state--error">
+          None of the selected files are linkable media, so there’s nothing to bundle. Drop media
+          files (not folders or sidecars) that already live in this library.
+        </div>
+      )}
       <label className="mb-label" htmlFor="mb-create-title">
         Title
       </label>
@@ -418,7 +423,7 @@ export function AddFilesToBundleDialog({
           onApplied(
             withSkipNote(
               `Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`,
-              r.files_skipped,
+              r,
             ),
           ),
       },
