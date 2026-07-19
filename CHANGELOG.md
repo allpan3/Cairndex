@@ -23,7 +23,16 @@ grouped under `Unreleased` until the first tagged release.
   error codes; a file-less bundle cover is no longer a drag source; and a File
   Browser list row becomes a drag-out source only once selected, preserving
   rubber-band selection from a row. The W5 copy-in seam is offered the un-addable
-  remainder of every drop (including mixed drops).
+  remainder of every drop (including mixed drops). A second review round then:
+  reports manual-bundling skips by reason (`skipped_non_media` / `skipped_missing`
+  / `skipped_already_bundled`) and skips confirmed-bundle members instead of
+  aborting; aligns the Create Bundle preview with apply's media filter (an
+  all-non-media selection previews empty and the dialog explains it); categorizes
+  the reverse-map into inside / outside-absolute-paths / directories, so the W5
+  seam gets exactly the outside files and an in-library folder gets its own
+  message; tags each drag-out with an id so a stale ended event can't clear a
+  later drag's self-drop guard (with a grace window, a drop-lands-on-us belt, and
+  a timeout); and ignores drops behind an open context menu or toolbar popover too.
 
 - **D3 review hardening (Plan 3).** Host handoff commands
   (`reveal_file`/`open_file` and the mapping store commands) are now async and

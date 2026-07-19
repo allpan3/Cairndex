@@ -1,10 +1,61 @@
 # Project status
 
+## Completed: Plan 3 D4 second review round — drag hardening
+
+Branch `codex/plan3-d4-drag`; tip `329cec1` (docs receipt follows). A second
+external review of the D4 hardening produced two unifying data-model changes,
+one more P0, and P1/P2 items — all applied.
+
+- **Per-reason skip reporting (change A, findings 1–3, 5).** `resolve_or_stage_paths`
+  now *skips* a confirmed-bundle member instead of raising mid-loop (a folder of
+  partly-organized media still adds the rest), and the single skip counter is
+  split into `skipped_non_media` / `skipped_missing` / `skipped_already_bundled`
+  (plus a derived `files_skipped` total) so a missing movie is no longer reported
+  as non-media. The additive fields flow through the result/schema (OpenAPI +
+  `schema.d.ts` regenerated) into a per-reason dialog note guarded with `> 0`
+  (a partial payload can't render "undefined skipped"); the e2e apply fixtures
+  carry them. **Decision:** counts only, no per-reason path lists (leaner
+  response). The Create preview applies the same `classify()` filter as apply, so
+  it can't propose a file apply would skip; an all-non-media selection previews
+  empty and the dialog explains it and disables submit.
+- **Categorized reverse-map (change B, findings 6, 8).** `reverse_map_paths`
+  returns `{inside, outside, directories}`: `outside` echoes the dropped absolute
+  paths (the caller's own strings — no new leak), so the W5 seam receives exactly
+  the outside subset it would copy without re-running reverse-map, and an
+  in-library folder gets its own "folders can't be dragged in yet" message rather
+  than the misleading "move it into the library" one.
+- **Self-drop guard (P0-4, finding 4).** Each drag is tagged with an id echoed in
+  the ended event; the guard (a testable `dragGuard` module living on the runtime,
+  so `resetHostPlatformForTests` drops it) clears only the current drag's id via
+  `listen`+unlisten, with a ~300 ms grace, a drop-lands-on-us belt, and a
+  last-resort timeout. `handleFileDrop`'s block reason is `'modal' | 'self-drag' |
+  null`; a self-drag is a silent ignore, not the "close the dialog" flash.
+- **Popover/menu drop hole (P1-6, finding 6).** `isBlockingSurfaceOpen` also
+  matches an open context menu (`role="menu"`) and toolbar popovers
+  (`.picker__panel`).
+- **P2.** `selectionTargets` now also covers the collection context menu and the
+  bundle-drag handler; a co-located `isMultiSelection` replaces the two `.size > 1`
+  render guards; the `resolve_file_in_root` passthrough is gone
+  (`resolve_within_verified_root` is `pub(crate)`).
+
+Verification at `329cec1`: desktop `cargo fmt --check`, Clippy `-D warnings`,
+**33 unit tests** (categorized reverse-map + echoed-absolutes cases); backend
+Ruff, `ruff format --check`, mypy, full pytest (**452 passed**, +confirmed-skip,
+per-reason, and preview==apply cases); web Prettier, ESLint, `tsc -b`, full
+Vitest (**183 passed**, +dragGuard id/grace/timeout, categorized routing,
+self-drag, empty-preview, isMultiSelection cases), the Vite build, and the
+browser-only Playwright partition (**72 passed**, with the suggest-bundle fixture
+made realistic). Release `tauri build` produced `Cairndex.app`. The native drag
+gesture itself still needs the owner's manual pass on a packaged build.
+
 ## Completed: Plan 3 D4 review pass — drag hardening
 
-Branch `codex/plan3-d4-drag` continues below the D4 receipt; tip `6757b4a`. An
+Branch `codex/plan3-d4-drag` continues below the D4 receipt; tips `6757b4a`
+(the fixes) then `e1f14c5` (a guard self-clearing follow-up and a comment). An
 external code review of D4 produced three P0s, seven P1s, and two P2 cleanups —
-all applied.
+all applied. (The gate counts below are from the `6757b4a` full-suite run; the
+`e1f14c5` follow-up re-ran only the platform Vitest. A second review round then
+carried this further — see the round-2 receipt above.)
 
 - **Drag-in batch tolerance (P0-1).** A dropped directory or a non-media sidecar
   no longer poisons the fast-add batch. `relative_within_root` maps only regular
@@ -30,7 +81,9 @@ all applied.
   result over an async mpsc rather than blocking a worker; drag failures carry
   `drag_action_failed` / `no_draggable_files` instead of the reveal/open text; a
   file-less bundle cover is inert; and a shared `selectionTargets` helper replaces
-  the hand-rolled selection rule across the file browser, album, and context menu.
+  the hand-rolled selection rule in the file browser, opened album, and bundle
+  context menu (the remaining sites — collection menu, bundle-drag, multi-select
+  render guards — were finished in the round-2 pass above).
 
 Verification: desktop `cargo fmt`, Clippy `-D warnings`, **33 unit tests**
 (+ reverse-map directory + verified-root cases); backend Ruff, mypy, full pytest
