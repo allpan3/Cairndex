@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   hostOperationErrorMessage,
   isDesktopHost,
+  isHostDragOutActive,
   listenHostFileDrop,
   type ReverseMapResult,
 } from '../platform'
@@ -116,9 +117,7 @@ export async function handleFileDrop(
   if (result.outsideCount > 0) {
     if (routing.onCopyIntoLibrary?.(paths, result)) return
     routing.onFlash(
-      result.inside.length > 0
-        ? droppedPartialMessage(result.outsideCount)
-        : DROP_OUTSIDE_MESSAGE,
+      result.inside.length > 0 ? droppedPartialMessage(result.outsideCount) : DROP_OUTSIDE_MESSAGE,
     )
   }
 }
@@ -139,7 +138,13 @@ export function useDesktopFileDrop(routing: FileDropRouting): void {
     let disposed = false
     let unlisten: (() => void) | undefined
     void listenHostFileDrop((paths) => {
-      void handleFileDrop(paths, routingRef.current, isBlockingSurfaceOpen())
+      // Ignore drops while a modal/viewer is open (P0-3) or while the app's own
+      // drag-out is still on the pasteboard (P1-4, self-drop re-entry).
+      void handleFileDrop(
+        paths,
+        routingRef.current,
+        isBlockingSurfaceOpen() || isHostDragOutActive(),
+      )
     })
       .then((stop) => {
         if (disposed) stop()

@@ -24,10 +24,12 @@ export function fileDragProps(
   return {
     draggable: true,
     onDragStart: (event: DragEvent) => {
-      const paths = resolvePaths()
-      if (paths.length === 0) return
+      // Always cancel the browser's own HTML5 drag, even when nothing resolves
+      // (e.g. an empty selection), so it never runs a pointless ghost drag; only a
+      // non-empty set is handed to the shell to place on the OS pasteboard.
       event.preventDefault()
-      onStartFileDrag(paths)
+      const paths = resolvePaths()
+      if (paths.length > 0) onStartFileDrag(paths)
     },
   }
 }

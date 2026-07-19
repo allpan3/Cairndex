@@ -29,7 +29,7 @@ vi.mock('../api/hooks', async () => {
 const labels = hostLabelsFor('macos')
 
 // Renders the file surface with isolated query state
-function renderFileBrowser(hostActions: boolean) {
+function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: string[]) => void) {
   const onRevealFile = vi.fn()
   const onOpenFile = vi.fn()
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -47,6 +47,7 @@ function renderFileBrowser(hostActions: boolean) {
         hostLabels={labels}
         onRevealFile={hostActions ? onRevealFile : undefined}
         onOpenFile={hostActions ? onOpenFile : undefined}
+        onStartFileDrag={onStartFileDrag}
       />
     </QueryClientProvider>,
   )
@@ -63,6 +64,21 @@ test('shows mapped file context actions and passes only the relative path', asyn
   fireEvent.contextMenu(screen.getByText('movie.mp4').closest('[role="row"]') as HTMLElement)
   fireEvent.click(await screen.findByRole('menuitem', { name: 'Reveal in Finder' }))
   expect(actions.onRevealFile).toHaveBeenCalledWith('Movies/movie.mp4')
+})
+
+test('makes a list row a drag-out source only once it is selected (keeps marquee)', () => {
+  const onStartFileDrag = vi.fn()
+  renderFileBrowser(true, onStartFileDrag)
+  const row = () => screen.getByText('movie.mp4').closest('[role="row"]') as HTMLElement
+
+  // Unselected: not draggable, so a press-drag on the row still starts the marquee.
+  expect(row()).toHaveAttribute('draggable', 'false')
+
+  // Selecting the row (selection-first) makes it a drag-out source.
+  fireEvent.click(row())
+  expect(row()).toHaveAttribute('draggable', 'true')
+  fireEvent.dragStart(row())
+  expect(onStartFileDrag).toHaveBeenCalledWith(['Movies/movie.mp4'])
 })
 
 test('hides file context host actions without a mapping', () => {
