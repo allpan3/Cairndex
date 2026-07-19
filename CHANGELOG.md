@@ -10,6 +10,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **D4 review hardening (Plan 3).** Dragging a folder or a non-media sidecar in
+  from Finder alongside media no longer aborts the whole add: the reverse-map maps
+  only regular files (directories count outside) and the manual-bundling apply
+  skips and reports non-linkable paths (`files_skipped`, surfaced in the dialog
+  message). A drop is now ignored while any modal/viewer is open (so it can't
+  silently re-seed an open Create Bundle dialog), while the mapping is still
+  resolving (deferred, not mis-reported unmapped), and while the app's own
+  drag-out is in flight (self-drop guard). A bundle drag validates each library's
+  mount once instead of per file; `start_file_drag` awaits its result over an
+  async channel instead of blocking a worker; drag failures carry drag-specific
+  error codes; a file-less bundle cover is no longer a drag source; and a File
+  Browser list row becomes a drag-out source only once selected, preserving
+  rubber-band selection from a row. The W5 copy-in seam is offered the un-addable
+  remainder of every drop (including mixed drops).
+
 - **D3 review hardening (Plan 3).** Host handoff commands
   (`reveal_file`/`open_file` and the mapping store commands) are now async and
   run mount-touching filesystem work off the webview IPC thread, so an offline

@@ -1,5 +1,46 @@
 # Project status
 
+## Completed: Plan 3 D4 review pass — drag hardening
+
+Branch `codex/plan3-d4-drag` continues below the D4 receipt; tip `6757b4a`. An
+external code review of D4 produced three P0s, seven P1s, and two P2 cleanups —
+all applied.
+
+- **Drag-in batch tolerance (P0-1).** A dropped directory or a non-media sidecar
+  no longer poisons the fast-add batch. `relative_within_root` maps only regular
+  files (directories count outside), and the server's `resolve_or_stage_paths`
+  now skips and *reports* non-linkable paths instead of raising. The additive
+  `files_skipped` flows through `ManualBundleResult` /`ManualBundleResultRead`
+  (OpenAPI + `schema.d.ts` regenerated) into every manual-bundling success
+  message; an all-non-media selection fails with a clear "not linkable media"
+  message. **Decision:** classification stays server-side (single source of
+  truth) rather than duplicating the extension list into Rust/web.
+- **Drop gating (P0-3, P1-4, P1-8).** The drop hook ignores drops while any
+  modal/viewer is open (detected via `aria-modal`, so Settings and both viewers
+  are covered without threading their state), while the app's own drag-out is in
+  flight (the shell emits `cairndex://drag-out-ended`; the SPA guards from invoke
+  until then), and while the mapping is still resolving (tri-state defers instead
+  of mis-reporting unmapped). The W5 seam (P1-6) is offered the un-addable
+  remainder of *every* drop, mixed or all-outside.
+- **List-layout marquee (P0-2).** A File Browser list row is a drag-out source
+  only once selected, so a press-drag on an unselected row still starts the
+  rubber-band marquee; grid cards are unaffected.
+- **Drag-out internals (P1-5/7/9/10, P2).** A bundle drag validates each
+  library's mount once (not per file); `start_file_drag` awaits its main-thread
+  result over an async mpsc rather than blocking a worker; drag failures carry
+  `drag_action_failed` / `no_draggable_files` instead of the reveal/open text; a
+  file-less bundle cover is inert; and a shared `selectionTargets` helper replaces
+  the hand-rolled selection rule across the file browser, album, and context menu.
+
+Verification: desktop `cargo fmt`, Clippy `-D warnings`, **33 unit tests**
+(+ reverse-map directory + verified-root cases); backend Ruff, mypy, full pytest
+(**450 passed**, +3 skip-tolerance cases); web Prettier, ESLint, `tsc -b`, full
+Vitest (**170 passed**, +blocked/pending/mixed-seam/self-drop/list-selection/
+selectionTargets cases), the Vite build, and the browser-only Playwright
+partition (**72 passed**). Release `tauri build` produced `Cairndex.app`. The
+native drag gesture itself still needs the owner's manual pass on a packaged
+build (unchanged from the D4 receipt below).
+
 ## Completed: Plan 3 D4 — drag-out to Finder plus drag-in reverse-mapping
 
 Branch `codex/plan3-d4-drag` from `main` at `8ca5547`; tip `91f1921`. Delivers
