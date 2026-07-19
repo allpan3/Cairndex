@@ -7,13 +7,17 @@ export interface DragOutItem {
   relativePath: string
 }
 
-// Outcome of reverse-mapping Finder-dropped absolute paths against one library:
-// `inside` holds library-relative paths for files under the mapped root (offered
-// to the fast-add flow); `outsideCount` is how many fell outside it. Absolute
-// paths never cross back to the web layer (plan 3 §6).
+// Outcome of reverse-mapping Finder-dropped absolute paths against one library,
+// categorized per dropped path (plan 3 §6). `inside` holds library-relative paths
+// for regular files under the mapped root (offered to the fast-add flow).
+// `outside` echoes the dropped ABSOLUTE paths of regular files outside the root, so
+// the W5 copy-in seam can act on exactly that subset — these are the caller's own
+// input strings, not new library-internal paths, so echoing them leaks nothing.
+// `directories` counts dropped folders (folders aren't recursed yet).
 export interface ReverseMapResult {
   inside: string[]
-  outsideCount: number
+  outside: string[]
+  directories: number
 }
 
 // Defines the complete web-versus-native host boundary from plan 3 section 4
@@ -63,6 +67,8 @@ interface PlatformRuntime {
   // True while a shell-initiated drag-out is still on the pasteboard, so the drop
   // listener ignores the app's own files dragged back onto the window (P1-4).
   isDragOutActive(): boolean
+  // Clears the drag-out guard (a drop landing on us means the session ended, P0-4).
+  releaseDragOut(): void
 }
 
 const LABELS: Record<HostOs, HostLabels> = {
@@ -109,9 +115,10 @@ const webRuntime: PlatformRuntime = {
   setLibraryAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
   listenLifecycle: async () => () => undefined,
-  reverseMapPaths: async () => ({ inside: [], outsideCount: 0 }),
+  reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
   isDragOutActive: () => false,
+  releaseDragOut: () => undefined,
 }
 
 let runtime = webRuntime
@@ -237,6 +244,9 @@ export const listenHostFileDrop = (handler: (paths: string[]) => void): Promise<
 
 // Reports whether a shell-initiated drag-out is still in flight (always false on web)
 export const isHostDragOutActive = (): boolean => runtime.isDragOutActive()
+
+// Clears the drag-out guard once a drop lands on us (the native session ended)
+export const releaseHostDragOut = (): void => runtime.releaseDragOut()
 
 // Test-only reset for singleton isolation across desktop/browser seam cases
 export function resetHostPlatformForTests(): void {

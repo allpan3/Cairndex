@@ -229,8 +229,11 @@ pub(crate) fn resolve_verified_path(
 
 // Resolves one relative path against a root whose identity/availability was
 // already proven — used when validating many files against one library (drag-out)
-// so the mount is canonicalized and re-proven once, not once per file.
-fn resolve_within_verified_root(root: &Path, relative_path: &str) -> Result<PathBuf, MappingError> {
+// so the mount is canonicalized and re-proven once, not once per file (drag-out).
+pub(crate) fn resolve_within_verified_root(
+    root: &Path,
+    relative_path: &str,
+) -> Result<PathBuf, MappingError> {
     let relative = validate_relative_path(relative_path)?;
     finish_resolve(root, relative)
 }
@@ -273,14 +276,6 @@ pub(crate) fn verified_root_for(
         )
     })?;
     validate_library_root(Path::new(&record.local_root), &record.library_uuid)
-}
-
-// Resolves one file within an already-verified root (public for the drag module)
-pub(crate) fn resolve_file_in_root(
-    root: &Path,
-    relative_path: &str,
-) -> Result<PathBuf, MappingError> {
-    resolve_within_verified_root(root, relative_path)
 }
 
 // Loads the complete shell-owned library-id to mapping-record map
@@ -444,16 +439,22 @@ pub(crate) fn resolve_library_path<R: Runtime>(
     )
 }
 
-// Reports the drag-in reverse-mapping outcome for one library. `inside` holds the
-// library-relative paths of dropped files that resolve within the mapped root
-// (offered to the fast-add flow); `outside_count` is how many fell outside it
-// (explained, and the seam where plan 4 W5 copy-in attaches). No absolute path
-// crosses back to the web layer.
+// Reports the drag-in reverse-mapping outcome for one library, categorized per
+// dropped path (plan 3 §6). `inside` holds the library-relative paths of dropped
+// regular files within the mapped root (offered to the fast-add flow). `outside`
+// echoes the dropped ABSOLUTE paths of regular files that fell outside the root,
+// so the plan 4 W5 copy-in seam can act on exactly that subset without re-running
+// reverse-map; echoing them is not a new absolute-path leak, since the web layer
+// supplied those exact strings from the OS drop event — only *library-internal*
+// paths must stay relative. `directories` counts dropped folders (in or out of the
+// root): folders aren't recursed yet, so they get their own message rather than the
+// "move it into the library" one.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ReverseMapResult {
     inside: Vec<String>,
-    outside_count: usize,
+    outside: Vec<String>,
+    directories: usize,
 }
 
 // Reverse-maps absolute Finder paths against one library's local root (plan 3
@@ -470,10 +471,13 @@ pub(crate) async fn reverse_map_paths<R: Runtime>(
     async_runtime::spawn_blocking(move || {
         let mappings = load_mappings(&app)?;
         let Some(record) = mappings.get(&library_id) else {
-            // An un-located library has no local root, so nothing can be inside it.
+            // An un-located library has no local root, so nothing can be inside it;
+            // echo every dropped path as outside (the web short-circuits unmapped
+            // libraries before calling this, so this is only defensive).
             return Ok(ReverseMapResult {
                 inside: Vec::new(),
-                outside_count: paths.len(),
+                outside: paths.clone(),
+                directories: 0,
             });
         };
         // Re-prove identity + availability before attributing any file to this
@@ -486,44 +490,71 @@ pub(crate) async fn reverse_map_paths<R: Runtime>(
     .map_err(|_| MappingError::store_task_failed())?
 }
 
-// Partitions dropped absolute paths into library-relative paths under the given
-// canonical root versus a count of paths that fall outside it.
+// Categorizes each dropped absolute path against the given canonical root: an
+// in-library regular file (→ relative path), an out-of-library regular file (→ the
+// dropped absolute echoed back), or a directory (→ counted).
 fn reverse_map_under_root(root: &Path, paths: &[String]) -> ReverseMapResult {
     let mut inside = Vec::new();
-    let mut outside_count = 0;
+    let mut outside = Vec::new();
+    let mut directories = 0;
     for raw in paths {
-        match relative_within_root(root, raw) {
-            Some(relative) => inside.push(relative),
-            None => outside_count += 1,
+        match categorize_drop(root, raw) {
+            DropCategory::Inside(relative) => inside.push(relative),
+            DropCategory::Outside => outside.push(raw.clone()),
+            DropCategory::Directory => directories += 1,
         }
     }
     ReverseMapResult {
         inside,
-        outside_count,
+        outside,
+        directories,
     }
 }
 
-// Returns the forward-slash library-relative path for one dropped absolute path
-// when its real (symlink-resolved) location is strictly inside `root`, else None.
-// Canonicalizing both sides makes containment correct across case-insensitive
-// volumes, symlinked mounts (e.g. /tmp -> /private/tmp), trailing slashes, and
-// `..` segments; a symlink whose target escapes the root resolves outside and is
-// therefore not mapped in.
-fn relative_within_root(root: &Path, absolute: &str) -> Option<String> {
+// One dropped path's category relative to a library root.
+enum DropCategory {
+    // A regular file inside the root, as its forward-slash library-relative path.
+    Inside(String),
+    // A regular file outside the root, a non-existent path, or one that can't be
+    // expressed as a UTF-8 relative path (the caller echoes the dropped absolute).
+    Outside,
+    // Any directory (in or out of the root): folders aren't recursed in D4.
+    Directory,
+}
+
+// Categorizes one dropped absolute path. Canonicalizing resolves symlinks and
+// makes containment correct across case-insensitive volumes, symlinked mounts
+// (e.g. /tmp -> /private/tmp), trailing slashes, and `..`; a symlink whose target
+// escapes the root therefore resolves outside and is not mapped in.
+fn categorize_drop(root: &Path, absolute: &str) -> DropCategory {
     let path = Path::new(absolute);
     if !path.is_absolute() {
-        return None;
+        return DropCategory::Outside;
     }
-    let canonical = fs::canonicalize(path).ok()?;
-    // Only regular files are linkable. A dropped directory resolves inside the
-    // root but cannot be bundled (no recursion in this milestone), and seeding it
-    // into the fast-add flow would abort the whole batch server-side — so it is
-    // counted outside rather than mapped in. `canonical` is already symlink-
-    // resolved, so this is the real target inode.
+    let Ok(canonical) = fs::canonicalize(path) else {
+        // A path that no longer exists can't be linked; treat as outside.
+        return DropCategory::Outside;
+    };
+    if canonical.is_dir() {
+        return DropCategory::Directory;
+    }
     if !canonical.is_file() {
-        return None;
+        // Sockets/FIFOs and the like are not linkable files.
+        return DropCategory::Outside;
     }
-    let relative = canonical.strip_prefix(root).ok()?;
+    match canonical
+        .strip_prefix(root)
+        .ok()
+        .and_then(relative_segments)
+    {
+        Some(relative) => DropCategory::Inside(relative),
+        None => DropCategory::Outside,
+    }
+}
+
+// Joins a canonical relative path's components into a forward-slash string, or None
+// if it is empty (the root itself) or has a non-UTF-8 / non-normal segment.
+fn relative_segments(relative: &Path) -> Option<String> {
     let mut parts = Vec::new();
     for component in relative.components() {
         match component {
@@ -532,15 +563,15 @@ fn relative_within_root(root: &Path, absolute: &str) -> Option<String> {
             // could not be linked anyway; revisit only if a real Linux/other-locale
             // library needs it.
             Component::Normal(segment) => parts.push(segment.to_str()?.to_owned()),
-            // A canonical path under the root yields only normal components; an
-            // empty result means the root itself was dropped, which we skip.
+            // A canonical path under the root yields only normal components.
             _ => return None,
         }
     }
     if parts.is_empty() {
-        return None;
+        None
+    } else {
+        Some(parts.join("/"))
     }
-    Some(parts.join("/"))
 }
 
 #[cfg(test)]
@@ -552,8 +583,8 @@ mod tests {
     };
 
     use super::{
-        resolve_file_in_root, resolve_verified_path, reverse_map_under_root, validate_library_id,
-        validate_library_root, MappingErrorCode,
+        resolve_verified_path, resolve_within_verified_root, reverse_map_under_root,
+        validate_library_id, validate_library_root, MappingErrorCode,
     };
 
     // Canonicalizes a scratch root the way the command does before reverse-mapping
@@ -738,7 +769,7 @@ mod tests {
         fs::write(root.path().join("clip.mp4"), b"fixture").expect("write file");
         let verified_root = fs::canonicalize(root.path()).expect("canonical root");
 
-        let resolved = resolve_file_in_root(&verified_root, "clip.mp4").expect("safe path");
+        let resolved = resolve_within_verified_root(&verified_root, "clip.mp4").expect("safe path");
 
         assert_eq!(
             resolved,
@@ -752,9 +783,11 @@ mod tests {
         write_manifest(root.path(), "library-one");
         let verified_root = fs::canonicalize(root.path()).expect("canonical root");
 
-        let traversal = resolve_file_in_root(&verified_root, "../x.mp4").expect_err("traversal");
+        let traversal =
+            resolve_within_verified_root(&verified_root, "../x.mp4").expect_err("traversal");
         assert_eq!(traversal.code, MappingErrorCode::InvalidRelativePath);
-        let missing = resolve_file_in_root(&verified_root, "missing.mp4").expect_err("missing");
+        let missing =
+            resolve_within_verified_root(&verified_root, "missing.mp4").expect_err("missing");
         assert_eq!(missing.code, MappingErrorCode::PathNotFound);
     }
 
@@ -786,7 +819,8 @@ mod tests {
         );
 
         assert_eq!(result.inside, vec!["dir/clip.mp4".to_string()]);
-        assert_eq!(result.outside_count, 0);
+        assert!(result.outside.is_empty());
+        assert_eq!(result.directories, 0);
     }
 
     #[test]
@@ -825,14 +859,16 @@ mod tests {
         let result = reverse_map_under_root(&canonical_root, &[dropped(&wrong_case)]);
 
         assert_eq!(result.inside, vec!["Alpha/Beta.mp4".to_string()]);
-        assert_eq!(result.outside_count, 0);
+        assert!(result.outside.is_empty());
+        assert_eq!(result.directories, 0);
     }
 
     #[test]
-    fn reverse_map_counts_a_directory_drop_as_outside() {
+    fn reverse_map_counts_a_directory_drop_as_a_directory() {
         // A dropped directory (even inside the root, with a normalized trailing
-        // slash) is not a linkable file: it must not be seeded into fast-add,
-        // which would abort the batch server-side. It counts outside instead.
+        // slash) is not a linkable file and can't be recursed yet, so it lands in
+        // its own `directories` bucket — not `outside`, which would wrongly tell the
+        // user to move an in-library folder into the library.
         let root = TestDir::new();
         write_manifest(root.path(), "library-one");
         fs::create_dir_all(root.path().join("folder")).expect("create dir");
@@ -842,7 +878,8 @@ mod tests {
         let result = reverse_map_under_root(&canonical_root, &[trailing]);
 
         assert!(result.inside.is_empty());
-        assert_eq!(result.outside_count, 1);
+        assert!(result.outside.is_empty());
+        assert_eq!(result.directories, 1);
     }
 
     #[cfg(unix)]
@@ -864,7 +901,8 @@ mod tests {
         let result = reverse_map_under_root(&canonical_root, &[dropped(&link.join("clip.mp4"))]);
 
         assert_eq!(result.inside, vec!["real/clip.mp4".to_string()]);
-        assert_eq!(result.outside_count, 0);
+        assert!(result.outside.is_empty());
+        assert_eq!(result.directories, 0);
     }
 
     #[cfg(unix)]
@@ -885,15 +923,18 @@ mod tests {
         .expect("create symlink");
         let canonical_root = canonical(root.path());
 
-        let result =
-            reverse_map_under_root(&canonical_root, &[dropped(&root.path().join("link.mp4"))]);
+        // The dropped path (the link itself) is echoed back verbatim as outside,
+        // since its real target escapes the library.
+        let dropped_link = dropped(&root.path().join("link.mp4"));
+        let result = reverse_map_under_root(&canonical_root, std::slice::from_ref(&dropped_link));
 
         assert!(result.inside.is_empty());
-        assert_eq!(result.outside_count, 1);
+        assert_eq!(result.outside, vec![dropped_link]);
+        assert_eq!(result.directories, 0);
     }
 
     #[test]
-    fn reverse_map_counts_the_root_itself_as_outside() {
+    fn reverse_map_counts_the_root_itself_as_a_directory() {
         let root = TestDir::new();
         write_manifest(root.path(), "library-one");
         let canonical_root = canonical(root.path());
@@ -901,32 +942,47 @@ mod tests {
         let result = reverse_map_under_root(&canonical_root, &[dropped(&canonical_root)]);
 
         assert!(result.inside.is_empty());
-        assert_eq!(result.outside_count, 1);
+        assert!(result.outside.is_empty());
+        assert_eq!(result.directories, 1);
     }
 
     #[test]
-    fn reverse_map_partitions_inside_outside_missing_and_relative() {
+    fn reverse_map_categorizes_inside_outside_directory_and_echoes_absolutes() {
         let root = TestDir::new();
         write_manifest(root.path(), "library-one");
         fs::create_dir_all(root.path().join("dir")).expect("create dir");
         fs::write(root.path().join("dir/in.mp4"), b"fixture").expect("write file");
+        fs::create_dir_all(root.path().join("sub")).expect("create in-root dir");
         let sibling = TestDir::new();
         fs::write(sibling.path().join("out.mp4"), b"fixture").expect("write sibling file");
         let canonical_root = canonical(root.path());
 
+        let out_abs = dropped(&sibling.path().join("out.mp4"));
+        let missing_abs = dropped(&canonical_root.join("dir/missing.mp4"));
         let result = reverse_map_under_root(
             &canonical_root,
             &[
                 dropped(&canonical_root.join("dir/in.mp4")),
-                dropped(&sibling.path().join("out.mp4")),
-                // A path that no longer exists cannot be canonicalized.
-                dropped(&canonical_root.join("dir/missing.mp4")),
-                // A non-absolute path never came from a real Finder drop.
+                out_abs.clone(),
+                // A path that no longer exists cannot be canonicalized → echoed out.
+                missing_abs.clone(),
+                // A non-absolute path never came from a real Finder drop → outside.
                 "relative/not/absolute.mp4".to_string(),
+                // An in-library directory → its own bucket, not "outside".
+                dropped(&canonical_root.join("sub")),
             ],
         );
 
         assert_eq!(result.inside, vec!["dir/in.mp4".to_string()]);
-        assert_eq!(result.outside_count, 3);
+        // `outside` echoes exactly the dropped absolute strings the seam will copy.
+        assert_eq!(
+            result.outside,
+            vec![
+                out_abs,
+                missing_abs,
+                "relative/not/absolute.mp4".to_string()
+            ]
+        );
+        assert_eq!(result.directories, 1);
     }
 }
