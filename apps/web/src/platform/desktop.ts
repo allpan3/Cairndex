@@ -1,12 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
-import { listen, once } from '@tauri-apps/api/event'
+import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
-import type { DragOutItem, HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
+import { createDragGuard } from './dragGuard'
+import type { HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
@@ -19,36 +20,10 @@ interface DeviceAuthRecord {
   libraryIds: string[]
 }
 
-const DRAG_ENDED_EVENT = 'cairndex://drag-out-ended'
-
 let configuredServerUrl: string | null = null
 let deviceToken: string | null = null
 let deviceLibraryIds = new Set<string>()
 let mediaProxyBaseUrl: string | null = null
-// True from the moment a shell drag-out is invoked until the shell reports (via
-// DRAG_ENDED_EVENT) that the native session ended, so the drop listener ignores
-// the app's own files dragged back onto the window (P1-4).
-let dragOutActive = false
-
-// Puts the requested files on the OS pasteboard and guards against self-drop:
-// the native drag emits no web `dragend`, so the shell's end event clears the flag.
-async function startFileDrag(items: DragOutItem[]): Promise<void> {
-  dragOutActive = true
-  let stopEnded: (() => void) | undefined
-  try {
-    // `once` auto-unlistens after the drag-ended event fires.
-    stopEnded = await once(DRAG_ENDED_EVENT, () => {
-      dragOutActive = false
-    })
-    await invoke('start_file_drag', { items })
-  } catch (error) {
-    // The drag never started (or the listener failed to register), so the end
-    // event will never fire: release the guard now so drag-in is not wedged.
-    dragOutActive = false
-    stopEnded?.()
-    throw error
-  }
-}
 
 // Maps the browser-reported desktop OS onto the shared label vocabulary
 function detectHostOs(): HostOs {
@@ -151,8 +126,10 @@ function desktopAssetUrl(value: string): string {
   return `${mediaProxyBaseUrl}${suffix}${target.search}${target.hash}`
 }
 
-// Implements the plan-3 host surface with D3 handoff and D4 drag-out enabled
-const desktopPlatform: HostPlatform = {
+// The stateless part of the plan-3 host surface (D3 handoff + D4 drag-out enabled).
+// `startFileDrag` is added per-runtime below so the self-drop guard state lives on
+// the runtime object the tests replace (P2-9), not in module scope.
+const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   kind: 'desktop',
   canRevealInFinder: true,
   canOpenWithDefaultApp: true,
@@ -161,7 +138,6 @@ const desktopPlatform: HostPlatform = {
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
     invoke('open_file', { libraryId, relativePath }),
-  startFileDrag,
   getLibraryMapping: (libraryId: string) =>
     invoke<string | null>('get_library_mapping', { libraryId }),
   locateLibrary: (libraryId: string, libraryUuid: string) =>
@@ -171,8 +147,11 @@ const desktopPlatform: HostPlatform = {
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam
 export async function createDesktopRuntime(): Promise<PlatformRuntime> {
+  // Per-runtime so resetHostPlatformForTests (which swaps the runtime) drops the
+  // guard, and each created runtime starts with fresh drag state (P0-4/P2-9).
+  const dragGuard = createDragGuard({ invoke, listen })
   return {
-    platform: desktopPlatform,
+    platform: { ...desktopPlatformBase, startFileDrag: dragGuard.startFileDrag },
     os: detectHostOs(),
     fetch: desktopFetch,
     assetUrl: desktopAssetUrl,
@@ -253,6 +232,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),
-    isDragOutActive: () => dragOutActive,
+    isDragOutActive: dragGuard.isActive,
+    releaseDragOut: dragGuard.release,
   }
 }

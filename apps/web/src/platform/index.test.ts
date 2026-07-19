@@ -9,6 +9,7 @@ import {
   isDesktopHost,
   isHostDragOutActive,
   listenHostFileDrop,
+  releaseHostDragOut,
   resetHostPlatformForTests,
   resolveHostAssetUrl,
   reverseMapHostPaths,
@@ -48,10 +49,12 @@ test('uses byte-compatible browser request and URL fallbacks', async () => {
   // Drag-in reverse-mapping and file-drop subscription are inert in the browser.
   await expect(reverseMapHostPaths('lib', ['/abs/path.mp4'])).resolves.toEqual({
     inside: [],
-    outsideCount: 0,
+    outside: [],
+    directories: 0,
   })
   await expect(listenHostFileDrop(() => undefined)).resolves.toBeInstanceOf(Function)
   expect(isHostDragOutActive()).toBe(false)
+  expect(() => releaseHostDragOut()).not.toThrow()
 })
 
 test('detects the Tauri host only from its runtime marker', () => {
