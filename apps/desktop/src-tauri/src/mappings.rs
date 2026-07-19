@@ -527,6 +527,10 @@ fn relative_within_root(root: &Path, absolute: &str) -> Option<String> {
     let mut parts = Vec::new();
     for component in relative.components() {
         match component {
+            // A non-UTF-8 segment (`to_str()` → None) makes the whole path count
+            // outside. The server API is UTF-8 relative paths, so a non-UTF-8 name
+            // could not be linked anyway; revisit only if a real Linux/other-locale
+            // library needs it.
             Component::Normal(segment) => parts.push(segment.to_str()?.to_owned()),
             // A canonical path under the root yields only normal components; an
             // empty result means the root itself was dropped, which we skip.
