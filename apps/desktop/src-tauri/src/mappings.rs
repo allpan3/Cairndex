@@ -466,6 +466,14 @@ fn relative_within_root(root: &Path, absolute: &str) -> Option<String> {
         return None;
     }
     let canonical = fs::canonicalize(path).ok()?;
+    // Only regular files are linkable. A dropped directory resolves inside the
+    // root but cannot be bundled (no recursion in this milestone), and seeding it
+    // into the fast-add flow would abort the whole batch server-side — so it is
+    // counted outside rather than mapped in. `canonical` is already symlink-
+    // resolved, so this is the real target inode.
+    if !canonical.is_file() {
+        return None;
+    }
     let relative = canonical.strip_prefix(root).ok()?;
     let mut parts = Vec::new();
     for component in relative.components() {
@@ -739,7 +747,10 @@ mod tests {
     }
 
     #[test]
-    fn reverse_map_normalizes_a_trailing_slash_directory_drop() {
+    fn reverse_map_counts_a_directory_drop_as_outside() {
+        // A dropped directory (even inside the root, with a normalized trailing
+        // slash) is not a linkable file: it must not be seeded into fast-add,
+        // which would abort the batch server-side. It counts outside instead.
         let root = TestDir::new();
         write_manifest(root.path(), "library-one");
         fs::create_dir_all(root.path().join("folder")).expect("create dir");
@@ -748,8 +759,8 @@ mod tests {
 
         let result = reverse_map_under_root(&canonical_root, &[trailing]);
 
-        assert_eq!(result.inside, vec!["folder".to_string()]);
-        assert_eq!(result.outside_count, 0);
+        assert!(result.inside.is_empty());
+        assert_eq!(result.outside_count, 1);
     }
 
     #[cfg(unix)]
