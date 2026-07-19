@@ -51,10 +51,9 @@ export function FileInspector({
   ]
 
   // Only real files can be dragged out; directories are not draggable.
-  const drag =
-    entry.kind === 'file'
-      ? fileDragProps(onStartFileDrag, () => [entry.relative_path])
-      : { draggable: false, onDragStart: undefined }
+  const drag = fileDragProps(entry.kind === 'file' ? onStartFileDrag : undefined, () => [
+    entry.relative_path,
+  ])
 
   return (
     <aside className="inspector">

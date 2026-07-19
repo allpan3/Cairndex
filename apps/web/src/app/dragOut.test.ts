@@ -18,12 +18,14 @@ test('cancels the HTML5 drag and forwards resolved paths on dragstart', () => {
   expect(start).toHaveBeenCalledWith(['dir/a.mp4', 'dir/b.mp4'])
 })
 
-test('does nothing when no paths resolve (e.g. a directory or empty selection)', () => {
+test('cancels the ghost drag but starts nothing when no paths resolve', () => {
   const start = vi.fn()
   const props = fileDragProps(start, () => [])
   const preventDefault = vi.fn()
   props.onDragStart?.({ preventDefault } as unknown as React.DragEvent<HTMLElement>)
 
-  expect(preventDefault).not.toHaveBeenCalled()
+  // The browser's own drag is still cancelled (no pointless ghost drag)…
+  expect(preventDefault).toHaveBeenCalledOnce()
+  // …but with nothing to place on the pasteboard, the shell isn't invoked.
   expect(start).not.toHaveBeenCalled()
 })
