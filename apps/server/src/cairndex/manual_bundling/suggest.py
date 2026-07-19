@@ -274,8 +274,11 @@ def _seeds(
             seeds.append(_Seed(existing.id, rel, existing.media_kind, existing.original_filename))
         else:
             classification = classify(name)
-            kind = classification[0] if classification else MediaKind.OTHER
-            seeds.append(_Seed(rel, rel, kind, name))
+            if classification is None:
+                # Not linkable media: skip it so the preview matches what apply would
+                # actually bundle (apply skips non-media too — D4 review P1-5).
+                continue
+            seeds.append(_Seed(rel, rel, classification[0], name))
     return seeds
 
 
