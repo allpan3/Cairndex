@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { selectionTargets } from './selection'
+import { isMultiSelection, selectionTargets } from './selection'
 
 test('acts on just the clicked item when it is not part of a multi-selection', () => {
   expect(selectionTargets('a', new Set())).toEqual(['a'])
@@ -11,4 +11,10 @@ test('acts on just the clicked item when it is not part of a multi-selection', (
 
 test('acts on the whole selection when the clicked item is part of it', () => {
   expect(selectionTargets('a', new Set(['a', 'b'])).sort()).toEqual(['a', 'b'])
+})
+
+test('isMultiSelection is true only above one item', () => {
+  expect(isMultiSelection(new Set())).toBe(false)
+  expect(isMultiSelection(new Set(['a']))).toBe(false)
+  expect(isMultiSelection(new Set(['a', 'b']))).toBe(true)
 })
