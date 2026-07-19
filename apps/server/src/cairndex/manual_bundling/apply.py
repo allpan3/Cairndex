@@ -43,6 +43,30 @@ from cairndex.services.subtitles import auto_link_external_subtitles
 
 
 @dataclass(frozen=True)
+class SkippedCounts:
+    """Per-reason tally of supplied paths that could not be bundled.
+
+    Reported (rather than raised) so a Finder drag-in of a folder mixing new
+    media, already-bundled media, and stray sidecars adds the new media and
+    explains the rest accurately, instead of one bad path aborting the whole
+    batch (plan 3 D4 review). Counts only — the dialogs word each reason from the
+    tallies; naming individual skipped files was judged not worth the extra
+    per-request payload for this milestone.
+    """
+
+    non_media: int = 0  # a directory or a non-media file (e.g. .nfo/.DS_Store)
+    missing: int = 0  # the path no longer exists on disk
+    already_bundled: int = 0  # already a member of a confirmed bundle
+
+    @property
+    def total(self) -> int:
+        return self.non_media + self.missing + self.already_bundled
+
+    def __bool__(self) -> bool:
+        return self.total > 0
+
+
+@dataclass(frozen=True)
 class ManualBundleResult:
     """Outcome of a manual bundling mutation, for cache invalidation + a summary."""
 
@@ -51,11 +75,14 @@ class ManualBundleResult:
     bundles_removed: int = 0
     subtitles_linked: int = 0
     created: bool = False
-    # Dropped/selected paths that were skipped because they are not linkable media
-    # (a directory or a non-media file). Reported so a Finder drag-in of a folder
-    # of media plus stray sidecars adds the media and notes the rest, instead of
-    # one non-media path aborting the whole batch (plan 3 D4 review).
-    files_skipped: int = 0
+    skipped_non_media: int = 0
+    skipped_missing: int = 0
+    skipped_already_bundled: int = 0
+
+    @property
+    def files_skipped(self) -> int:
+        """Total skipped across all reasons (convenience for summary consumers)."""
+        return self.skipped_non_media + self.skipped_missing + self.skipped_already_bundled
 
 
 def _observation(row: AssetFile) -> FileObservation:
@@ -66,29 +93,33 @@ def _observation(row: AssetFile) -> FileObservation:
     )
 
 
-def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> tuple[list[str], int]:
+def resolve_or_stage_paths(
+    session: Session, relative_paths: list[str]
+) -> tuple[list[str], SkippedCounts]:
     """Turn File-View file paths into unbundled ``AssetFile`` ids, staging any
     not-yet-linked path first.
 
     For each library-relative path: if it is already linked into a provisional
     ``scan_suggestion`` bundle, its existing file id is used; if it is **unlinked**
     (no row), it is staged into a fresh provisional one-file bundle — exactly as a
-    scan would — reusing the fast-add linking. A path already in a **confirmed**
-    bundle is rejected (moving out of a confirmed bundle is unsupported). A path
-    that is not a linkable media file (a directory, or a non-media sidecar such as
-    ``.nfo``/``.DS_Store``) is **skipped and counted** rather than raising, so a
-    Finder drag-in of a folder of media plus stray files adds the media instead of
-    aborting the whole batch (plan 3 D4 review). All metadata-only; the file on
-    disk is never touched. Order/dedup is preserved.
+    scan would — reusing the fast-add linking. Paths that can't be bundled are
+    **skipped and counted by reason** rather than raising, so a Finder drag-in of a
+    folder mixing new media, already-confirmed media, and stray files adds the new
+    media instead of aborting the whole batch (plan 3 D4 review): a member of a
+    confirmed bundle, a path missing on disk, and a non-media file (a directory or
+    a sidecar such as ``.nfo``) each fall into their own bucket. All metadata-only;
+    the file on disk is never touched. Order/dedup is preserved.
 
-    Returns ``(unbundled_file_ids, skipped_count)``.
+    Returns ``(unbundled_file_ids, skipped_counts)``.
     """
     if not relative_paths:
-        return [], 0
+        return [], SkippedCounts()
     root = library_root_for_session(session)
     file_ids: list[str] = []
     seen: set[str] = set()
-    skipped = 0
+    non_media = 0
+    missing = 0
+    already_bundled = 0
     for raw in relative_paths:
         try:
             rel = normalize_relative_path(raw)
@@ -107,12 +138,20 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> tuple
                 and bundle.grouping_source is GroupingSource.SCAN_SUGGESTION
             )
             if not unbundled:
-                raise ValidationError(f"{rel!r} is already in a confirmed bundle")
+                # Already a confirmed-bundle member: skip it (moving out of a
+                # confirmed bundle is unsupported) instead of failing the batch.
+                already_bundled += 1
+                continue
             file_ids.append(existing.id)
             continue
 
+        # Unlinked path: separate "gone from disk" from "not media" so the summary
+        # is accurate rather than calling a missing movie a non-media item.
+        if not resolved.exists():
+            missing += 1
+            continue
         if not resolved.is_file() or classify(resolved.name) is None:
-            skipped += 1
+            non_media += 1
             continue
         staged = AssetBundle(
             title=Path(resolved.name).stem or resolved.name,
@@ -125,16 +164,18 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> tuple
         linked_row = session.scalar(select(AssetFile).where(AssetFile.relative_path == rel))
         assert linked_row is not None
         file_ids.append(linked_row.id)
-    return file_ids, skipped
+    return file_ids, SkippedCounts(
+        non_media=non_media, missing=missing, already_bundled=already_bundled
+    )
 
 
 def _combine(
     session: Session, file_ids: list[str] | None, relative_paths: list[str] | None
-) -> tuple[list[str], int]:
+) -> tuple[list[str], SkippedCounts]:
     """Merge explicit unbundled file ids with paths (staged/resolved), deduped.
 
-    Returns ``(file_ids, skipped_count)`` where ``skipped_count`` is the number of
-    supplied paths that were not linkable media (see :func:`resolve_or_stage_paths`).
+    Returns ``(file_ids, skipped_counts)`` — the per-reason tally of supplied paths
+    that could not be bundled (see :func:`resolve_or_stage_paths`).
     """
     ids = list(file_ids or [])
     resolved, skipped = resolve_or_stage_paths(session, relative_paths or [])
@@ -238,7 +279,9 @@ def add_unbundled_files_to_bundle(
         files_added=len(rows),
         bundles_removed=removed,
         subtitles_linked=subtitles,
-        files_skipped=skipped,
+        skipped_non_media=skipped.non_media,
+        skipped_missing=skipped.missing,
+        skipped_already_bundled=skipped.already_bundled,
     )
 
 
@@ -302,7 +345,9 @@ def create_bundle_from_unbundled(
         bundles_removed=removed,
         subtitles_linked=subtitles,
         created=True,
-        files_skipped=skipped,
+        skipped_non_media=skipped.non_media,
+        skipped_missing=skipped.missing,
+        skipped_already_bundled=skipped.already_bundled,
     )
 
 

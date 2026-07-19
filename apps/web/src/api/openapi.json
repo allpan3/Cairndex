@@ -3077,6 +3077,21 @@
             "title": "Files Skipped",
             "type": "integer"
           },
+          "skipped_already_bundled": {
+            "default": 0,
+            "title": "Skipped Already Bundled",
+            "type": "integer"
+          },
+          "skipped_missing": {
+            "default": 0,
+            "title": "Skipped Missing",
+            "type": "integer"
+          },
+          "skipped_non_media": {
+            "default": 0,
+            "title": "Skipped Non Media",
+            "type": "integer"
+          },
           "subtitles_linked": {
             "title": "Subtitles Linked",
             "type": "integer"
