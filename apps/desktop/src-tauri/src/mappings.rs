@@ -27,6 +27,8 @@ pub(crate) enum MappingErrorCode {
     PathOutsideLibrary,
     MappingStoreUnavailable,
     HostActionFailed,
+    DragActionFailed,
+    NoDraggableFiles,
 }
 
 // Returns structured, path-free failures across the Tauri command boundary
@@ -56,8 +58,16 @@ impl MappingError {
     // Reports a drag-out request in which none of the requested files resolved
     pub(crate) fn no_files_available() -> Self {
         Self::new(
-            MappingErrorCode::PathNotFound,
+            MappingErrorCode::NoDraggableFiles,
             "None of these files are available to drag.",
+        )
+    }
+
+    // Wraps a failure to start the native drag session (distinct from reveal/open)
+    pub(crate) fn drag_action_failed() -> Self {
+        Self::new(
+            MappingErrorCode::DragActionFailed,
+            "The file drag could not be started.",
         )
     }
 
@@ -87,7 +97,7 @@ struct LibraryManifest {
 // Couples one stored local root to the portable identity proven at locate time
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MappingRecord {
+pub(crate) struct MappingRecord {
     local_root: String,
     library_uuid: String,
 }
@@ -204,7 +214,9 @@ fn validate_library_root(
     Ok(root)
 }
 
-// Re-proves library identity at handoff time, then containment plus existence
+// Re-proves library identity at handoff time, then containment plus existence.
+// Relative-path validation runs before the manifest re-proof so a malformed client
+// path is rejected as such regardless of mount state.
 pub(crate) fn resolve_verified_path(
     local_root: &Path,
     expected_library_uuid: &str,
@@ -212,6 +224,19 @@ pub(crate) fn resolve_verified_path(
 ) -> Result<PathBuf, MappingError> {
     let relative = validate_relative_path(relative_path)?;
     let root = validate_library_root(local_root, expected_library_uuid)?;
+    finish_resolve(&root, relative)
+}
+
+// Resolves one relative path against a root whose identity/availability was
+// already proven — used when validating many files against one library (drag-out)
+// so the mount is canonicalized and re-proven once, not once per file.
+fn resolve_within_verified_root(root: &Path, relative_path: &str) -> Result<PathBuf, MappingError> {
+    let relative = validate_relative_path(relative_path)?;
+    finish_resolve(root, relative)
+}
+
+// Canonicalizes root+relative and enforces containment (the symlink-escape check)
+fn finish_resolve(root: &Path, relative: &Path) -> Result<PathBuf, MappingError> {
     let candidate = fs::canonicalize(root.join(relative)).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
             MappingError::new(
@@ -225,7 +250,7 @@ pub(crate) fn resolve_verified_path(
             )
         }
     })?;
-    if !candidate.starts_with(&root) {
+    if !candidate.starts_with(root) {
         return Err(MappingError::new(
             MappingErrorCode::PathOutsideLibrary,
             "The mapped file escapes the library root.",
@@ -234,8 +259,32 @@ pub(crate) fn resolve_verified_path(
     Ok(candidate)
 }
 
+// Identity-verifies one library's canonical root from already-loaded mappings,
+// without resolving any file — the once-per-library step for a multi-file drag-out.
+pub(crate) fn verified_root_for(
+    mappings: &BTreeMap<String, MappingRecord>,
+    library_id: &str,
+) -> Result<PathBuf, MappingError> {
+    validate_library_id(library_id)?;
+    let record = mappings.get(library_id).ok_or_else(|| {
+        MappingError::new(
+            MappingErrorCode::LibraryUnmapped,
+            "This library is not located on this computer.",
+        )
+    })?;
+    validate_library_root(Path::new(&record.local_root), &record.library_uuid)
+}
+
+// Resolves one file within an already-verified root (public for the drag module)
+pub(crate) fn resolve_file_in_root(
+    root: &Path,
+    relative_path: &str,
+) -> Result<PathBuf, MappingError> {
+    resolve_within_verified_root(root, relative_path)
+}
+
 // Loads the complete shell-owned library-id to mapping-record map
-fn load_mappings<R: Runtime>(
+pub(crate) fn load_mappings<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<BTreeMap<String, MappingRecord>, MappingError> {
     let store = app.store(STORE_PATH).map_err(|_| {
@@ -499,8 +548,8 @@ mod tests {
     };
 
     use super::{
-        resolve_verified_path, reverse_map_under_root, validate_library_id, validate_library_root,
-        MappingErrorCode,
+        resolve_file_in_root, resolve_verified_path, reverse_map_under_root, validate_library_id,
+        validate_library_root, MappingErrorCode,
     };
 
     // Canonicalizes a scratch root the way the command does before reverse-mapping
@@ -674,6 +723,35 @@ mod tests {
             .expect_err("missing file");
 
         assert_eq!(error.code, MappingErrorCode::PathNotFound);
+    }
+
+    #[test]
+    fn resolves_a_file_within_an_already_verified_root() {
+        // The drag-out batch verifies the mount once, then resolves each file this
+        // way against the pre-canonicalized root.
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        fs::write(root.path().join("clip.mp4"), b"fixture").expect("write file");
+        let verified_root = fs::canonicalize(root.path()).expect("canonical root");
+
+        let resolved = resolve_file_in_root(&verified_root, "clip.mp4").expect("safe path");
+
+        assert_eq!(
+            resolved,
+            fs::canonicalize(root.path().join("clip.mp4")).expect("canonical file")
+        );
+    }
+
+    #[test]
+    fn resolve_within_root_rejects_traversal_and_missing() {
+        let root = TestDir::new();
+        write_manifest(root.path(), "library-one");
+        let verified_root = fs::canonicalize(root.path()).expect("canonical root");
+
+        let traversal = resolve_file_in_root(&verified_root, "../x.mp4").expect_err("traversal");
+        assert_eq!(traversal.code, MappingErrorCode::InvalidRelativePath);
+        let missing = resolve_file_in_root(&verified_root, "missing.mp4").expect_err("missing");
+        assert_eq!(missing.code, MappingErrorCode::PathNotFound);
     }
 
     #[test]

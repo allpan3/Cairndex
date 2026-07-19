@@ -172,7 +172,10 @@ function BundleEditor({
 
   // Dragging the cover drags the whole bundle out (= all its files). The shell
   // skips any missing member, so a partially-available bundle still drags the rest.
-  const coverDrag = fileDragProps(onStartFileDrag, () => files.map((f) => f.relative_path))
+  // A file-less bundle is not a drag source (no ghost drag, no misleading tooltip).
+  const coverDrag = fileDragProps(files.length > 0 ? onStartFileDrag : undefined, () =>
+    files.map((f) => f.relative_path),
+  )
 
   return (
     <aside className="inspector">

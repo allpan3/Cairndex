@@ -60,6 +60,9 @@ interface PlatformRuntime {
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
+  // True while a shell-initiated drag-out is still on the pasteboard, so the drop
+  // listener ignores the app's own files dragged back onto the window (P1-4).
+  isDragOutActive(): boolean
 }
 
 const LABELS: Record<HostOs, HostLabels> = {
@@ -108,6 +111,7 @@ const webRuntime: PlatformRuntime = {
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outsideCount: 0 }),
   listenFileDrop: async () => () => undefined,
+  isDragOutActive: () => false,
 }
 
 let runtime = webRuntime
@@ -147,6 +151,8 @@ export function hostLabelsFor(os: HostOs): HostLabels {
 // wording stays in this layer (§2.1) and codes can gain distinct treatment
 const HOST_ERROR_MESSAGES: Record<string, string> = {
   host_action_failed: 'The operating system could not open this file.',
+  drag_action_failed: 'The file drag could not be started.',
+  no_draggable_files: 'None of these files are available to drag.',
   invalid_library_id: 'The server library identity is missing.',
   invalid_library_root: 'The mapped library folder is unavailable.',
   invalid_manifest: 'The selected folder is not a Cairndex library.',
@@ -228,6 +234,9 @@ export const reverseMapHostPaths = (
 // Subscribes to OS file drops onto the shell window (no-op in the browser)
 export const listenHostFileDrop = (handler: (paths: string[]) => void): Promise<() => void> =>
   runtime.listenFileDrop(handler)
+
+// Reports whether a shell-initiated drag-out is still in flight (always false on web)
+export const isHostDragOutActive = (): boolean => runtime.isDragOutActive()
 
 // Test-only reset for singleton isolation across desktop/browser seam cases
 export function resetHostPlatformForTests(): void {

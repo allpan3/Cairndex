@@ -7,6 +7,7 @@ import {
   hostLabelsFor,
   hostOperationErrorMessage,
   isDesktopHost,
+  isHostDragOutActive,
   listenHostFileDrop,
   resetHostPlatformForTests,
   resolveHostAssetUrl,
@@ -50,6 +51,7 @@ test('uses byte-compatible browser request and URL fallbacks', async () => {
     outsideCount: 0,
   })
   await expect(listenHostFileDrop(() => undefined)).resolves.toBeInstanceOf(Function)
+  expect(isHostDragOutActive()).toBe(false)
 })
 
 test('detects the Tauri host only from its runtime marker', () => {

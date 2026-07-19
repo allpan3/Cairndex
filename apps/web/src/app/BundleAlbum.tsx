@@ -9,6 +9,7 @@ import { type FileDragProps, fileDragProps } from './dragOut'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { selectionTargets } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
@@ -95,10 +96,8 @@ export function BundleAlbum({
   // Drag-out targets: the whole selection when dragging a selected tile within a
   // multi-selection, otherwise just this file (mirrors the context-menu rule).
   const dragTargets = (file: FileRead): string[] => {
-    if (selected.has(file.id) && selected.size > 1) {
-      return files.filter((f) => selected.has(f.id)).map((f) => f.relative_path)
-    }
-    return [file.relative_path]
+    const ids = new Set(selectionTargets(file.id, selected))
+    return files.filter((f) => ids.has(f.id)).map((f) => f.relative_path)
   }
 
   const contextTile = (file: FileRead, e: React.MouseEvent) => {

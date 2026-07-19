@@ -15,6 +15,7 @@ import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
+import { selectionTargets } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -297,9 +298,7 @@ function FileList({
     // The selection can now include directories (drag/shift-select), so restrict
     // the bundling targets to files.
     const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
-    const targets = (
-      inSelection && selected.size > 1 ? [...selected] : [entry.relative_path]
-    ).filter((p) => filePaths.has(p))
+    const targets = selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
     if (!inSelection) {
       setSelected(new Set([entry.relative_path]))
       onSelectEntry(entry)
@@ -331,14 +330,18 @@ function FileList({
   // any selected directory is filtered out (mirrors the context-menu rule).
   const dragTargets = (entry: FileBrowserEntry): string[] => {
     const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
-    const base =
-      selected.has(entry.relative_path) && selected.size > 1 ? [...selected] : [entry.relative_path]
-    return base.filter((p) => filePaths.has(p))
+    return selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
   }
-  const entryDragProps = (entry: FileBrowserEntry): FileDragProps =>
-    entry.kind === 'file'
-      ? fileDragProps(onStartFileDrag, () => dragTargets(entry))
-      : { draggable: false, onDragStart: undefined }
+  const entryDragProps = (entry: FileBrowserEntry): FileDragProps => {
+    // Directories are never drag sources. In list layout a row also starts the
+    // rubber-band marquee (rows fill the width), so only an *already-selected* row
+    // is a drag-out source there — a press-drag on an unselected row keeps starting
+    // the marquee (selection-first, P0-2). Grid cards never start the marquee, so
+    // they always drag.
+    const canDrag =
+      entry.kind === 'file' && (prefs.layout !== 'list' || selected.has(entry.relative_path))
+    return fileDragProps(canDrag ? onStartFileDrag : undefined, () => dragTargets(entry))
+  }
 
   // Rectangle-intersect against the live DOM rects of every selectable entry
   // (only files carry `data-relpath`) — simpler than Browser.tsx's row-math

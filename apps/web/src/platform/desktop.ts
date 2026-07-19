@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { listen, once } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
@@ -19,10 +19,34 @@ interface DeviceAuthRecord {
   libraryIds: string[]
 }
 
+const DRAG_ENDED_EVENT = 'cairndex://drag-out-ended'
+
 let configuredServerUrl: string | null = null
 let deviceToken: string | null = null
 let deviceLibraryIds = new Set<string>()
 let mediaProxyBaseUrl: string | null = null
+// True from the moment a shell drag-out is invoked until the shell reports (via
+// DRAG_ENDED_EVENT) that the native session ended, so the drop listener ignores
+// the app's own files dragged back onto the window (P1-4).
+let dragOutActive = false
+
+// Puts the requested files on the OS pasteboard and guards against self-drop:
+// the native drag emits no web `dragend`, so the shell's end event clears the flag.
+async function startFileDrag(items: DragOutItem[]): Promise<void> {
+  dragOutActive = true
+  // `once` auto-unlistens after the drag-ended event fires.
+  const stopEnded = await once(DRAG_ENDED_EVENT, () => {
+    dragOutActive = false
+  })
+  try {
+    await invoke('start_file_drag', { items })
+  } catch (error) {
+    // The drag never started, so it will never emit its end event: release now.
+    dragOutActive = false
+    stopEnded()
+    throw error
+  }
+}
 
 // Maps the browser-reported desktop OS onto the shared label vocabulary
 function detectHostOs(): HostOs {
@@ -135,7 +159,7 @@ const desktopPlatform: HostPlatform = {
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
     invoke('open_file', { libraryId, relativePath }),
-  startFileDrag: (items: DragOutItem[]) => invoke('start_file_drag', { items }),
+  startFileDrag,
   getLibraryMapping: (libraryId: string) =>
     invoke<string | null>('get_library_mapping', { libraryId }),
   locateLibrary: (libraryId: string, libraryUuid: string) =>
@@ -227,5 +251,6 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),
+    isDragOutActive: () => dragOutActive,
   }
 }

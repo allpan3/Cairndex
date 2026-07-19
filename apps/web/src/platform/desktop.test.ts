@@ -6,11 +6,13 @@ import { createDesktopRuntime } from './desktop'
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn(),
+  once: vi.fn(),
   onCloseRequested: vi.fn(),
   onDragDropEvent: vi.fn(),
   stopClose: vi.fn(),
   stopExit: vi.fn(),
   stopDrop: vi.fn(),
+  stopEnded: vi.fn(),
   storeGet: vi.fn(),
   storeSet: vi.fn(),
   storeDelete: vi.fn(),
@@ -18,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }))
-vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: mocks.listen, once: mocks.once }))
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: mocks.onDragDropEvent }),
 }))
@@ -95,16 +97,27 @@ test('drives D4 drag-out, reverse mapping, and file-drop subscription', async ()
     deliver = handler
     return mocks.stopDrop
   })
+  let signalDragEnded!: () => void
+  mocks.once.mockImplementation(async (_event: string, handler: () => void) => {
+    signalDragEnded = handler
+    return mocks.stopEnded
+  })
   const runtime = await createDesktopRuntime()
 
   // Drag-out is enabled and carries ids + relative paths, never absolute paths.
   expect(runtime.platform.canDragOutFiles).toBe(true)
+  expect(runtime.isDragOutActive()).toBe(false)
   await runtime.platform.startFileDrag([
     { libraryId: 'registry-id', relativePath: 'Movies/movie.mp4' },
   ])
   expect(mocks.invoke).toHaveBeenCalledWith('start_file_drag', {
     items: [{ libraryId: 'registry-id', relativePath: 'Movies/movie.mp4' }],
   })
+  // The drag-out guard is active until the shell reports the session ended, so a
+  // self-drop during the drag is ignored by the drop listener (P1-4).
+  expect(runtime.isDragOutActive()).toBe(true)
+  signalDragEnded()
+  expect(runtime.isDragOutActive()).toBe(false)
 
   await expect(
     runtime.reverseMapPaths('registry-id', ['/Volumes/Media/Movies/in.mp4', '/tmp/out.mp4']),

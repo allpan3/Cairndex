@@ -48,6 +48,7 @@ import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { hostFileMenuEntries } from './app/hostActions'
+import { selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
@@ -938,7 +939,7 @@ function Workspace({
   // target (and select) just this one. Deletion is confirmed in a dialog.
   const bundleContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
-      const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
+      const targets = selectionTargets(id, selectedIds)
       const n = targets.length
       if (n === 1) {
         setSelectedIds(new Set([id]))
