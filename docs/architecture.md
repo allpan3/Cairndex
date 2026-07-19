@@ -74,10 +74,13 @@ thread through the cross-platform `drag` crate — the engine behind
 (the plugin's only surface is a JS command that takes them); the sole OS edge is
 the window handle. Drag-in relies on Tauri's `dragDropEnabled` webview event for
 the dropped absolute paths, which `reverse_map_paths` canonicalizes against the
-active library's identity-verified root to return in-library relative paths (fed
-to Create Bundle) plus an outside count; no absolute path returns to the web.
-Files outside every library get an in-place-linking explanation, the seam where
-plan 4 W5 copy-into-library attaches.
+active library's identity-verified root and categorizes into in-library relative
+files (fed to Create Bundle), out-of-library files (echoed back as the dropped
+absolutes the web itself supplied), and a directory count. In-library media seeds
+Create Bundle; the server tolerates and reports by reason any path it can't bundle
+in that batch. Outside files get an in-place-linking explanation — the seam where
+plan 4 W5 copy-into-library attaches, handed exactly those outside absolutes — and
+a dropped folder gets its own message.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability

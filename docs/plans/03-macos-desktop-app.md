@@ -191,23 +191,26 @@ handoff:
   copy/import in this milestone. **Implemented (D4):** Tauri delivers OS drops
   as a native webview event (`dragDropEnabled`) carrying real absolute paths;
   the `reverse_map_paths` Rust command canonicalizes each against the active
-  library's identity-verified root and returns the in-library relative *files*
-  plus an outside count (no absolute path returns to the web; a dropped directory
-  is not a linkable file, so it counts outside). In-library media seeds Create
-  Bundle — the server tolerates and *reports* any non-media file in that batch
-  (`files_skipped`), so a folder of media plus a stray `.nfo` no longer aborts the
-  whole add. An unmapped library is told to locate itself first (a still-resolving
-  mapping defers the drop); a drop is ignored while any modal/viewer is open or
-  while the app's own drag-out is in flight; outside/un-addable items get the
-  explanation. Once plan 4 W5 (import-external upload) lands, the un-addable branch
-  upgrades into an optional **"Copy into library…"** flow: the shell streams the
-  local file to the server, which writes it through the journaled write-mode path.
+  library's identity-verified root and categorizes it: in-library relative *files*,
+  out-of-library *files* (echoed back as the dropped absolute paths, which the web
+  supplied — no new library-internal path leaks), and a count of dropped
+  *directories*. In-library media seeds Create Bundle — the server tolerates and
+  *reports by reason* any path it can't bundle in that batch (non-media / missing /
+  already in a confirmed bundle), so a folder of media plus a stray `.nfo` or an
+  already-bundled file no longer aborts the whole add. An unmapped library is told
+  to locate itself first (a still-resolving mapping defers the drop); a drop is
+  ignored while any modal, context menu, popover, or viewer is open, or while the
+  app's own drag-out is in flight (an id-tagged guard); a dropped folder gets its
+  own "drop the files inside" message; outside files get the explanation. Once plan
+  4 W5 (import-external upload) lands, the outside-files branch upgrades into an
+  optional **"Copy into library…"** flow: the shell streams the local file to the
+  server, which writes it through the journaled write-mode path.
   **Drag-and-drop media into the app is the owner's stated reason for write mode**
   (2026-07-10), so plan 4 is sequenced immediately after this shell with W5
   promoted (W0 → W1 → W5) — D4 lands with the reverse-map flow *and* the seam for
-  the copy flow (`handleFileDrop`'s `onCopyIntoLibrary`, offered the un-addable
-  remainder of *every* drop — all-outside or the outside part of a mixed drop) so
-  W5 plugs in without reworking the drop handler.
+  the copy flow (`handleFileDrop`'s `onCopyIntoLibrary`, handed exactly the outside
+  absolute paths of *every* drop — all-outside or the outside part of a mixed drop;
+  folders are never offered) so W5 plugs in without reworking the drop handler.
 
 ## 7. Native shell niceties
 
