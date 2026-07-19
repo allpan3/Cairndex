@@ -94,3 +94,6 @@ class ManualBundleResultRead(BaseModel):
     bundles_removed: int
     subtitles_linked: int
     created: bool
+    # Supplied paths skipped because they were not linkable media (a directory or
+    # a non-media file); the media in the same batch is still bundled.
+    files_skipped: int = 0

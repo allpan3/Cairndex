@@ -136,6 +136,13 @@ function SelectedFilesNote({ count }: { count: number }) {
 
 const selCount = (s: FileSelection) => (s.fileIds?.length ?? 0) + (s.relativePaths?.length ?? 0)
 
+/** Appends a note about non-media items the server skipped (a folder's stray
+ * sidecars dragged in alongside real media), if any. */
+function withSkipNote(message: string, skipped: number): string {
+  if (skipped <= 0) return message
+  return `${message} ${skipped} non-media item${skipped === 1 ? '' : 's'} skipped.`
+}
+
 // --- Add to existing bundle --------------------------------------------------
 export function AddToBundleDialog({
   selection,
@@ -178,7 +185,12 @@ export function AddToBundleDialog({
       { bundleId: targetId, sel: selection },
       {
         onSuccess: (r) =>
-          onApplied(`Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`),
+          onApplied(
+            withSkipNote(
+              `Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`,
+              r.files_skipped,
+            ),
+          ),
       },
     )
   }
@@ -289,7 +301,10 @@ export function CreateBundleDialog({
       {
         onSuccess: (r) =>
           onApplied(
-            `Created a bundle from ${r.files_added} file${r.files_added === 1 ? '' : 's'}.`,
+            withSkipNote(
+              `Created a bundle from ${r.files_added} file${r.files_added === 1 ? '' : 's'}.`,
+              r.files_skipped,
+            ),
           ),
       },
     )
@@ -400,7 +415,12 @@ export function AddFilesToBundleDialog({
       { bundleId, sel: { fileIds: [...checked] } },
       {
         onSuccess: (r) =>
-          onApplied(`Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`),
+          onApplied(
+            withSkipNote(
+              `Added ${r.files_added} file${r.files_added === 1 ? '' : 's'} to the bundle.`,
+              r.files_skipped,
+            ),
+          ),
       },
     )
   }

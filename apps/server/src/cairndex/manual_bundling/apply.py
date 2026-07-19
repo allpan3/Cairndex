@@ -51,6 +51,11 @@ class ManualBundleResult:
     bundles_removed: int = 0
     subtitles_linked: int = 0
     created: bool = False
+    # Dropped/selected paths that were skipped because they are not linkable media
+    # (a directory or a non-media file). Reported so a Finder drag-in of a folder
+    # of media plus stray sidecars adds the media and notes the rest, instead of
+    # one non-media path aborting the whole batch (plan 3 D4 review).
+    files_skipped: int = 0
 
 
 def _observation(row: AssetFile) -> FileObservation:
@@ -61,7 +66,7 @@ def _observation(row: AssetFile) -> FileObservation:
     )
 
 
-def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[str]:
+def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> tuple[list[str], int]:
     """Turn File-View file paths into unbundled ``AssetFile`` ids, staging any
     not-yet-linked path first.
 
@@ -69,14 +74,21 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[
     ``scan_suggestion`` bundle, its existing file id is used; if it is **unlinked**
     (no row), it is staged into a fresh provisional one-file bundle — exactly as a
     scan would — reusing the fast-add linking. A path already in a **confirmed**
-    bundle is rejected (moving out of a confirmed bundle is unsupported). All
-    metadata-only; the file on disk is never touched. Order/dedup is preserved.
+    bundle is rejected (moving out of a confirmed bundle is unsupported). A path
+    that is not a linkable media file (a directory, or a non-media sidecar such as
+    ``.nfo``/``.DS_Store``) is **skipped and counted** rather than raising, so a
+    Finder drag-in of a folder of media plus stray files adds the media instead of
+    aborting the whole batch (plan 3 D4 review). All metadata-only; the file on
+    disk is never touched. Order/dedup is preserved.
+
+    Returns ``(unbundled_file_ids, skipped_count)``.
     """
     if not relative_paths:
-        return []
+        return [], 0
     root = library_root_for_session(session)
     file_ids: list[str] = []
     seen: set[str] = set()
+    skipped = 0
     for raw in relative_paths:
         try:
             rel = normalize_relative_path(raw)
@@ -100,7 +112,8 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[
             continue
 
         if not resolved.is_file() or classify(resolved.name) is None:
-            raise ValidationError(f"{rel!r} is not a linkable media file")
+            skipped += 1
+            continue
         staged = AssetBundle(
             title=Path(resolved.name).stem or resolved.name,
             grouping_state=GroupingState.PROVISIONAL,
@@ -112,16 +125,21 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[
         linked_row = session.scalar(select(AssetFile).where(AssetFile.relative_path == rel))
         assert linked_row is not None
         file_ids.append(linked_row.id)
-    return file_ids
+    return file_ids, skipped
 
 
 def _combine(
     session: Session, file_ids: list[str] | None, relative_paths: list[str] | None
-) -> list[str]:
-    """Merge explicit unbundled file ids with paths (staged/resolved), deduped."""
+) -> tuple[list[str], int]:
+    """Merge explicit unbundled file ids with paths (staged/resolved), deduped.
+
+    Returns ``(file_ids, skipped_count)`` where ``skipped_count`` is the number of
+    supplied paths that were not linkable media (see :func:`resolve_or_stage_paths`).
+    """
     ids = list(file_ids or [])
-    ids.extend(resolve_or_stage_paths(session, relative_paths or []))
-    return list(dict.fromkeys(ids))
+    resolved, skipped = resolve_or_stage_paths(session, relative_paths or [])
+    ids.extend(resolved)
+    return list(dict.fromkeys(ids)), skipped
 
 
 def _load_unbundled_files(session: Session, file_ids: list[str]) -> list[AssetFile]:
@@ -191,8 +209,11 @@ def add_unbundled_files_to_bundle(
     if target.grouping_state is not GroupingState.CONFIRMED:
         raise ValidationError("target bundle must be a confirmed bundle")
 
-    rows = _load_unbundled_files(session, _combine(session, file_ids, relative_paths))
+    combined_ids, skipped = _combine(session, file_ids, relative_paths)
+    rows = _load_unbundled_files(session, combined_ids)
     if not rows:
+        if skipped:
+            raise ValidationError("none of the selected items are linkable media files")
         raise ValidationError("select at least one unbundled file to add")
 
     proposed = _addition_roles([_observation(r) for r in rows])
@@ -217,6 +238,7 @@ def add_unbundled_files_to_bundle(
         files_added=len(rows),
         bundles_removed=removed,
         subtitles_linked=subtitles,
+        files_skipped=skipped,
     )
 
 
@@ -237,8 +259,11 @@ def create_bundle_from_unbundled(
     provisional bundles are reaped. Roles follow the grouping heuristic
     (cover/primary aware), overridable per file.
     """
-    rows = _load_unbundled_files(session, _combine(session, file_ids, relative_paths))
+    combined_ids, skipped = _combine(session, file_ids, relative_paths)
+    rows = _load_unbundled_files(session, combined_ids)
     if not rows:
+        if skipped:
+            raise ValidationError("none of the selected items are linkable media files")
         raise ValidationError("select at least one unbundled file to bundle")
 
     proposed = _assign_roles([_observation(r) for r in rows])
@@ -277,6 +302,7 @@ def create_bundle_from_unbundled(
         bundles_removed=removed,
         subtitles_linked=subtitles,
         created=True,
+        files_skipped=skipped,
     )
 
 
