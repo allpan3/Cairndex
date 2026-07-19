@@ -43,6 +43,30 @@ from cairndex.services.subtitles import auto_link_external_subtitles
 
 
 @dataclass(frozen=True)
+class SkippedCounts:
+    """Per-reason tally of supplied paths that could not be bundled.
+
+    Reported (rather than raised) so a Finder drag-in of a folder mixing new
+    media, already-bundled media, and stray sidecars adds the new media and
+    explains the rest accurately, instead of one bad path aborting the whole
+    batch (plan 3 D4 review). Counts only — the dialogs word each reason from the
+    tallies; naming individual skipped files was judged not worth the extra
+    per-request payload for this milestone.
+    """
+
+    non_media: int = 0  # a directory or a non-media file (e.g. .nfo/.DS_Store)
+    missing: int = 0  # the path no longer exists on disk
+    already_bundled: int = 0  # already a member of a confirmed bundle
+
+    @property
+    def total(self) -> int:
+        return self.non_media + self.missing + self.already_bundled
+
+    def __bool__(self) -> bool:
+        return self.total > 0
+
+
+@dataclass(frozen=True)
 class ManualBundleResult:
     """Outcome of a manual bundling mutation, for cache invalidation + a summary."""
 
@@ -51,6 +75,14 @@ class ManualBundleResult:
     bundles_removed: int = 0
     subtitles_linked: int = 0
     created: bool = False
+    skipped_non_media: int = 0
+    skipped_missing: int = 0
+    skipped_already_bundled: int = 0
+
+    @property
+    def files_skipped(self) -> int:
+        """Total skipped across all reasons (convenience for summary consumers)."""
+        return self.skipped_non_media + self.skipped_missing + self.skipped_already_bundled
 
 
 def _observation(row: AssetFile) -> FileObservation:
@@ -61,22 +93,33 @@ def _observation(row: AssetFile) -> FileObservation:
     )
 
 
-def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[str]:
+def resolve_or_stage_paths(
+    session: Session, relative_paths: list[str]
+) -> tuple[list[str], SkippedCounts]:
     """Turn File-View file paths into unbundled ``AssetFile`` ids, staging any
     not-yet-linked path first.
 
     For each library-relative path: if it is already linked into a provisional
     ``scan_suggestion`` bundle, its existing file id is used; if it is **unlinked**
     (no row), it is staged into a fresh provisional one-file bundle — exactly as a
-    scan would — reusing the fast-add linking. A path already in a **confirmed**
-    bundle is rejected (moving out of a confirmed bundle is unsupported). All
-    metadata-only; the file on disk is never touched. Order/dedup is preserved.
+    scan would — reusing the fast-add linking. Paths that can't be bundled are
+    **skipped and counted by reason** rather than raising, so a Finder drag-in of a
+    folder mixing new media, already-confirmed media, and stray files adds the new
+    media instead of aborting the whole batch (plan 3 D4 review): a member of a
+    confirmed bundle, a path missing on disk, and a non-media file (a directory or
+    a sidecar such as ``.nfo``) each fall into their own bucket. All metadata-only;
+    the file on disk is never touched. Order/dedup is preserved.
+
+    Returns ``(unbundled_file_ids, skipped_counts)``.
     """
     if not relative_paths:
-        return []
+        return [], SkippedCounts()
     root = library_root_for_session(session)
     file_ids: list[str] = []
     seen: set[str] = set()
+    non_media = 0
+    missing = 0
+    already_bundled = 0
     for raw in relative_paths:
         try:
             rel = normalize_relative_path(raw)
@@ -95,12 +138,21 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[
                 and bundle.grouping_source is GroupingSource.SCAN_SUGGESTION
             )
             if not unbundled:
-                raise ValidationError(f"{rel!r} is already in a confirmed bundle")
+                # Already a confirmed-bundle member: skip it (moving out of a
+                # confirmed bundle is unsupported) instead of failing the batch.
+                already_bundled += 1
+                continue
             file_ids.append(existing.id)
             continue
 
+        # Unlinked path: separate "gone from disk" from "not media" so the summary
+        # is accurate rather than calling a missing movie a non-media item.
+        if not resolved.exists():
+            missing += 1
+            continue
         if not resolved.is_file() or classify(resolved.name) is None:
-            raise ValidationError(f"{rel!r} is not a linkable media file")
+            non_media += 1
+            continue
         staged = AssetBundle(
             title=Path(resolved.name).stem or resolved.name,
             grouping_state=GroupingState.PROVISIONAL,
@@ -112,16 +164,23 @@ def resolve_or_stage_paths(session: Session, relative_paths: list[str]) -> list[
         linked_row = session.scalar(select(AssetFile).where(AssetFile.relative_path == rel))
         assert linked_row is not None
         file_ids.append(linked_row.id)
-    return file_ids
+    return file_ids, SkippedCounts(
+        non_media=non_media, missing=missing, already_bundled=already_bundled
+    )
 
 
 def _combine(
     session: Session, file_ids: list[str] | None, relative_paths: list[str] | None
-) -> list[str]:
-    """Merge explicit unbundled file ids with paths (staged/resolved), deduped."""
+) -> tuple[list[str], SkippedCounts]:
+    """Merge explicit unbundled file ids with paths (staged/resolved), deduped.
+
+    Returns ``(file_ids, skipped_counts)`` — the per-reason tally of supplied paths
+    that could not be bundled (see :func:`resolve_or_stage_paths`).
+    """
     ids = list(file_ids or [])
-    ids.extend(resolve_or_stage_paths(session, relative_paths or []))
-    return list(dict.fromkeys(ids))
+    resolved, skipped = resolve_or_stage_paths(session, relative_paths or [])
+    ids.extend(resolved)
+    return list(dict.fromkeys(ids)), skipped
 
 
 def _load_unbundled_files(session: Session, file_ids: list[str]) -> list[AssetFile]:
@@ -191,8 +250,11 @@ def add_unbundled_files_to_bundle(
     if target.grouping_state is not GroupingState.CONFIRMED:
         raise ValidationError("target bundle must be a confirmed bundle")
 
-    rows = _load_unbundled_files(session, _combine(session, file_ids, relative_paths))
+    combined_ids, skipped = _combine(session, file_ids, relative_paths)
+    rows = _load_unbundled_files(session, combined_ids)
     if not rows:
+        if skipped:
+            raise ValidationError("none of the selected items are linkable media files")
         raise ValidationError("select at least one unbundled file to add")
 
     proposed = _addition_roles([_observation(r) for r in rows])
@@ -217,6 +279,9 @@ def add_unbundled_files_to_bundle(
         files_added=len(rows),
         bundles_removed=removed,
         subtitles_linked=subtitles,
+        skipped_non_media=skipped.non_media,
+        skipped_missing=skipped.missing,
+        skipped_already_bundled=skipped.already_bundled,
     )
 
 
@@ -237,8 +302,11 @@ def create_bundle_from_unbundled(
     provisional bundles are reaped. Roles follow the grouping heuristic
     (cover/primary aware), overridable per file.
     """
-    rows = _load_unbundled_files(session, _combine(session, file_ids, relative_paths))
+    combined_ids, skipped = _combine(session, file_ids, relative_paths)
+    rows = _load_unbundled_files(session, combined_ids)
     if not rows:
+        if skipped:
+            raise ValidationError("none of the selected items are linkable media files")
         raise ValidationError("select at least one unbundled file to bundle")
 
     proposed = _assign_roles([_observation(r) for r in rows])
@@ -277,6 +345,9 @@ def create_bundle_from_unbundled(
         bundles_removed=removed,
         subtitles_linked=subtitles,
         created=True,
+        skipped_non_media=skipped.non_media,
+        skipped_missing=skipped.missing,
+        skipped_already_bundled=skipped.already_bundled,
     )
 
 

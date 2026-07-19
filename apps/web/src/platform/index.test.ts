@@ -7,8 +7,12 @@ import {
   hostLabelsFor,
   hostOperationErrorMessage,
   isDesktopHost,
+  isHostDragOutActive,
+  listenHostFileDrop,
+  releaseHostDragOut,
   resetHostPlatformForTests,
   resolveHostAssetUrl,
+  reverseMapHostPaths,
 } from './index'
 
 test('formats structured native host failures without assuming Error instances', () => {
@@ -41,6 +45,16 @@ test('uses byte-compatible browser request and URL fallbacks', async () => {
   expect(resolveHostAssetUrl('/api/v1/file')).toBe('/api/v1/file')
   await expect(hostFetch('/api/v1/health')).resolves.toBe(response)
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/health', undefined)
+
+  // Drag-in reverse-mapping and file-drop subscription are inert in the browser.
+  await expect(reverseMapHostPaths('lib', ['/abs/path.mp4'])).resolves.toEqual({
+    inside: [],
+    outside: [],
+    directories: 0,
+  })
+  await expect(listenHostFileDrop(() => undefined)).resolves.toBeInstanceOf(Function)
+  expect(isHostDragOutActive()).toBe(false)
+  expect(() => releaseHostDragOut()).not.toThrow()
 })
 
 test('detects the Tauri host only from its runtime marker', () => {

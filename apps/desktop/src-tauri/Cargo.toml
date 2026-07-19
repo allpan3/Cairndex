@@ -9,6 +9,11 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# `drag` is the cross-platform engine behind `tauri-plugin-drag`. We depend on it
+# directly (rather than the plugin) so drag-out paths are resolved and validated
+# entirely in Rust via `mappings.rs`; the plugin only exposes a JS command that
+# would require handing absolute filesystem paths to the web layer (plan 3 §6/§10).
+drag = "2.1.1"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

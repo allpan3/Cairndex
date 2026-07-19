@@ -116,6 +116,15 @@ layer only the registry id plus a server-provided relative path. An offline
 mapped root returns **Volume not mounted**; it never falls back to a server-side
 command or an unchecked opener call.
 
+The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
+tile, the File inspector, or the bundle inspector — its cover drags the whole
+bundle, its file rows drag one file — out to Finder while the library is mapped;
+`dragout.rs` validates each path exactly like reveal/open and starts the native
+drag through the `drag` crate. Dropping files from Finder that land inside the
+mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are
+explained ("move them into the library first"); an unmapped library is told to
+locate itself. No absolute path ever crosses into the web layer.
+
 Desktop checks:
 
 ```bash
@@ -130,10 +139,11 @@ npm run tauri build
 CI runs these Rust checks on both macOS and Ubuntu; only macOS bundles the app.
 Keep native capabilities in cross-platform Tauri plugins, with any unavoidable
 target-OS conditional isolated in one clearly named host module. D2 contains no
-target-OS conditional code, and D3 uses only the cross-platform dialog/opener
-plugins plus pure `std::path` validation. Keep all Tauri imports in
-`apps/web/src/platform/desktop.ts`; shared SPA modules consume only the platform
-surface and capability flags.
+target-OS conditional code, D3 uses only the cross-platform dialog/opener
+plugins plus pure `std::path` validation, and D4's drag-out isolates its one
+target-OS edge (the GTK-vs-raw window handle) inside `dragout.rs`. Keep all
+Tauri imports in `apps/web/src/platform/desktop.ts`; shared SPA modules consume
+only the platform surface and capability flags.
 
 ## Databases and local state
 

@@ -168,23 +168,49 @@ handoff:
 
 - **Drag-out (Eagle's killer interaction):** dragging a file card / inspector
   file / bundle (= its files) out of the window puts real file paths on the
-  drag pasteboard so Finder/other apps receive them. Implementation: the
-  `tauri-plugin-drag` native drag with the mapped absolute paths (validated
-  exactly as §5). Only offered when the library is mapped and files are
-  available. Web-platform fallback: nothing (browser drag-out of server files
-  isn't a thing beyond downloads).
+  drag pasteboard so Finder/other apps receive them. **Implemented (D4)** on
+  the File Browser cards/rows, the opened bundle album tiles, the File
+  inspector, and the bundle inspector — where the cover drags the whole bundle
+  and each "Files in bundle" row drags that file. Only offered when the library
+  is mapped and files are available; bundle grid cards keep their existing
+  in-window reorder / move-to-collection drag and are not drag-out sources.
+  Implementation note: the shell depends on the **`drag` crate directly** (the
+  engine behind `tauri-plugin-drag`) rather than the plugin, because the
+  plugin's only surface is a JS command that takes absolute paths — which would
+  break the §5 rule that the web layer passes only ids + relative paths. The
+  `start_file_drag` Rust command resolves + validates each path exactly as §5
+  (off the IPC thread), then starts the native drag on the main thread; the sole
+  OS-conditional edge is the window handle (§2.1). If `drag`/`tauri-plugin-drag`
+  ever stalls, §10's direct `NSDraggingSession` fallback still applies.
+  Web-platform fallback: nothing (browser drag-out of server files isn't a
+  thing beyond downloads).
 - **Drag-in:** files dropped from Finder that resolve *inside* a mapped
   library root → reverse-map to relative paths → offer the existing
   fast-add/manual-bundling flows. Files outside every mapped root → explain
   ("Cairndex links files in place; move it into a library first") — no
-  copy/import in this milestone. Once plan 4 W5 (import-external upload)
-  lands, this upgrades into an optional **"Copy into library…"** flow: the
-  shell streams the local file to the server, which writes it through the
-  journaled write-mode path. **Drag-and-drop media into the app is the
-  owner's stated reason for write mode** (2026-07-10), so plan 4 is
-  sequenced immediately after this shell with W5 promoted (W0 → W1 → W5) —
-  D4 should land with the reverse-map flow *and* the seam for the copy flow
-  so W5 plugs in without reworking the drop handler.
+  copy/import in this milestone. **Implemented (D4):** Tauri delivers OS drops
+  as a native webview event (`dragDropEnabled`) carrying real absolute paths;
+  the `reverse_map_paths` Rust command canonicalizes each against the active
+  library's identity-verified root and categorizes it: in-library relative *files*,
+  out-of-library *files* (echoed back as the dropped absolute paths, which the web
+  supplied — no new library-internal path leaks), and a count of dropped
+  *directories*. In-library media seeds Create Bundle — the server tolerates and
+  *reports by reason* any path it can't bundle in that batch (non-media / missing /
+  already in a confirmed bundle), so a folder of media plus a stray `.nfo` or an
+  already-bundled file no longer aborts the whole add. An unmapped library is told
+  to locate itself first (a still-resolving mapping defers the drop); a drop is
+  ignored while any modal, context menu, popover, or viewer is open, or while the
+  app's own drag-out is in flight (an id-tagged guard); a dropped folder gets its
+  own "drop the files inside" message; outside files get the explanation. Once plan
+  4 W5 (import-external upload) lands, the outside-files branch upgrades into an
+  optional **"Copy into library…"** flow: the shell streams the local file to the
+  server, which writes it through the journaled write-mode path.
+  **Drag-and-drop media into the app is the owner's stated reason for write mode**
+  (2026-07-10), so plan 4 is sequenced immediately after this shell with W5
+  promoted (W0 → W1 → W5) — D4 lands with the reverse-map flow *and* the seam for
+  the copy flow (`handleFileDrop`'s `onCopyIntoLibrary`, handed exactly the outside
+  absolute paths of *every* drop — all-outside or the outside part of a mixed drop;
+  folders are never offered) so W5 plugs in without reworking the drop handler.
 
 ## 7. Native shell niceties
 
@@ -224,7 +250,7 @@ handoff:
 | D1 ✅ | Shell bootstrap | `apps/desktop`, window/menu skeleton, server-URL first-run, loads the SPA, CI job |
 | D2 ✅ | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
 | D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
-| D4 | Drag-out / drag-in | §6 |
+| D4 ✅ | Drag-out / drag-in | §6 |
 | D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file

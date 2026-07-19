@@ -10,6 +10,30 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **D4 review hardening (Plan 3).** Dragging a folder or a non-media sidecar in
+  from Finder alongside media no longer aborts the whole add: the reverse-map maps
+  only regular files (directories count outside) and the manual-bundling apply
+  skips and reports non-linkable paths (`files_skipped`, surfaced in the dialog
+  message). A drop is now ignored while any modal/viewer is open (so it can't
+  silently re-seed an open Create Bundle dialog), while the mapping is still
+  resolving (deferred, not mis-reported unmapped), and while the app's own
+  drag-out is in flight (self-drop guard). A bundle drag validates each library's
+  mount once instead of per file; `start_file_drag` awaits its result over an
+  async channel instead of blocking a worker; drag failures carry drag-specific
+  error codes; a file-less bundle cover is no longer a drag source; and a File
+  Browser list row becomes a drag-out source only once selected, preserving
+  rubber-band selection from a row. The W5 copy-in seam is offered the un-addable
+  remainder of every drop (including mixed drops). A second review round then:
+  reports manual-bundling skips by reason (`skipped_non_media` / `skipped_missing`
+  / `skipped_already_bundled`) and skips confirmed-bundle members instead of
+  aborting; aligns the Create Bundle preview with apply's media filter (an
+  all-non-media selection previews empty and the dialog explains it); categorizes
+  the reverse-map into inside / outside-absolute-paths / directories, so the W5
+  seam gets exactly the outside files and an in-library folder gets its own
+  message; tags each drag-out with an id so a stale ended event can't clear a
+  later drag's self-drop guard (with a grace window, a drop-lands-on-us belt, and
+  a timeout); and ignores drops behind an open context menu or toolbar popover too.
+
 - **D3 review hardening (Plan 3).** Host handoff commands
   (`reveal_file`/`open_file` and the mapping store commands) are now async and
   run mount-touching filesystem work off the webview IPC thread, so an offline
@@ -22,6 +46,23 @@ grouped under `Unreleased` until the first tagged release.
   copy for the shell's structured error codes.
 
 ### Added
+
+- **Desktop drag-out and drag-in (Plan 3 D4 / §6).** A mapped desktop library
+  can drag its real files out to Finder and other apps from the File Browser
+  cards/rows, the opened bundle album tiles, the File inspector, and the bundle
+  inspector — whose cover drags the whole bundle (all its files) and whose
+  "Files in bundle" rows each drag that file. The shell resolves and validates
+  every path exactly as reveal/open do; the web layer never handles an absolute
+  path. Files dropped from Finder that resolve inside the mapped library are
+  reverse-mapped to relative paths and seed the existing Create Bundle fast-add
+  flow; files outside every library are told that Cairndex links files in place
+  (move them into the library first), and an unmapped library is told to locate
+  itself. The outside-files branch is the explicit seam for the plan 4 W5
+  copy-into-library flow. Plain web keeps every drag capability inert. Internal:
+  the shell adds the cross-platform `drag` crate (the engine behind
+  `tauri-plugin-drag`) and depends on it directly rather than the plugin, so
+  drag-out path resolution stays in Rust instead of passing absolute paths to
+  the web layer; drag-in uses Tauri's built-in `dragDropEnabled` webview event.
 
 - **Desktop library mappings and safe host handoff (Plan 3 D3 / ADR-0007).**
   Settings → Libraries can locate each server library on the desktop through a
