@@ -69,7 +69,17 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
   let draftPaths: string[] = []
   await page.route('**/manual-bundling/suggest-bundle', (r) => {
     draftPaths = r.request().postDataJSON().relative_paths
-    r.fulfill({ json: { proposed_title: 'feature', roles: [], additional: [] } })
+    // A media seed previews with a role per bundleable file (empty roles now means
+    // "nothing to bundle", which disables Create — so the fixture must be realistic).
+    r.fulfill({
+      json: {
+        proposed_title: 'feature',
+        roles: [
+          { file_id: 'f-feature', relative_path: 'movie/feature.mp4', role: 'cover', sequence: 0 },
+        ],
+        additional: [],
+      },
+    })
   })
   let createBody: { relative_paths: string[]; title: string | null } | null = null
   await page.route('**/manual-bundling/create-bundle', (r) => {
@@ -81,6 +91,10 @@ test('Unbundled opens the Files surface as a file list and creates a bundle', as
         bundles_removed: 0,
         subtitles_linked: 0,
         created: true,
+        skipped_non_media: 0,
+        skipped_missing: 0,
+        skipped_already_bundled: 0,
+        files_skipped: 0,
       },
     })
   })
@@ -153,6 +167,10 @@ test('File tree: an unlinked file is badged and can be added to a bundle', async
         bundles_removed: 0,
         subtitles_linked: 0,
         created: false,
+        skipped_non_media: 0,
+        skipped_missing: 0,
+        skipped_already_bundled: 0,
+        files_skipped: 0,
       },
     })
   })

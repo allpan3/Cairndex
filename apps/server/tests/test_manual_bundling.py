@@ -234,6 +234,88 @@ def test_create_bundle_from_relative_paths_autolinks_unlinked(
     assert paths == {"clips/a.mp4", "clips/b.mp4"}
 
 
+def test_create_bundle_skips_non_media_paths_without_aborting(
+    session: Session, library_root: Path
+) -> None:
+    """A drag-in of a folder of media plus a stray sidecar bundles the media and
+    reports the skip, instead of one non-media path aborting the whole batch."""
+    (library_root / "clips").mkdir()
+    (library_root / "clips" / "a.mp4").write_text("v")
+    (library_root / "clips" / "a.nfo").write_text("meta")
+    session.commit()
+
+    result = apply_service.create_bundle_from_unbundled(
+        session,
+        # A directory, a media file, and a non-media sidecar — as a folder drop
+        # would deliver after reverse-mapping (the directory itself is filtered in
+        # the shell, but the apply path must also tolerate non-media files).
+        relative_paths=["clips/a.mp4", "clips/a.nfo"],
+        title="Clips",
+    )
+
+    assert result.files_added == 1
+    assert result.skipped_non_media == 1
+    assert result.files_skipped == 1
+    paths = {
+        f.relative_path
+        for f in session.scalars(select(AssetFile).where(AssetFile.bundle_id == result.bundle_id))
+    }
+    assert paths == {"clips/a.mp4"}
+
+
+def test_create_bundle_reports_skip_reasons_separately(
+    session: Session, library_root: Path
+) -> None:
+    """A folder mixing new media, already-confirmed media, and a sidecar adds the
+    new media and tallies the other two by their own reason (not lumped)."""
+    (library_root / "m").mkdir()
+    (library_root / "m" / "new.mp4").write_text("v")
+    (library_root / "m" / "already.mp4").write_text("v")
+    (library_root / "m" / "trailer.nfo").write_text("meta")
+    _confirmed_with_video(session, "Existing", "m/already.mp4")
+    session.commit()
+
+    result = apply_service.create_bundle_from_unbundled(
+        session,
+        relative_paths=["m/new.mp4", "m/already.mp4", "m/trailer.nfo", "m/gone.mp4"],
+    )
+
+    assert result.files_added == 1  # only new.mp4
+    assert result.skipped_already_bundled == 1  # already.mp4
+    assert result.skipped_non_media == 1  # trailer.nfo
+    assert result.skipped_missing == 1  # m/gone.mp4 never existed on disk
+    assert result.files_skipped == 3
+
+
+def test_create_bundle_from_only_non_media_reports_clearly(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "clips").mkdir()
+    (library_root / "clips" / "notes.nfo").write_text("meta")
+    session.commit()
+
+    with pytest.raises(ValidationError, match="linkable media"):
+        apply_service.create_bundle_from_unbundled(session, relative_paths=["clips/notes.nfo"])
+
+
+def test_add_files_skips_non_media_paths_without_aborting(
+    session: Session, library_root: Path
+) -> None:
+    (library_root / "s").mkdir()
+    (library_root / "s" / "ep.mp4").write_text("v")
+    (library_root / "s" / "cover.nfo").write_text("meta")
+    target = _confirmed_with_video(session, "Show", "s/existing.mp4")
+    session.commit()
+
+    result = apply_service.add_unbundled_files_to_bundle(
+        session, target.id, relative_paths=["s/ep.mp4", "s/cover.nfo"]
+    )
+
+    assert result.files_added == 1
+    assert result.skipped_non_media == 1
+    assert result.files_skipped == 1
+
+
 def test_add_files_from_paths_mixes_linked_and_unlinked(
     session: Session, library_root: Path
 ) -> None:
@@ -253,12 +335,17 @@ def test_add_files_from_paths_mixes_linked_and_unlinked(
     assert linked is not None and linked.bundle_id == target.id
 
 
-def test_paths_in_rejects_confirmed_file(session: Session, library_root: Path) -> None:
+def test_paths_in_skips_confirmed_and_fails_clearly_when_all_skipped(
+    session: Session, library_root: Path
+) -> None:
     (library_root / "m").mkdir()
     (library_root / "m" / "movie.mp4").write_text("v")
     _confirmed_with_video(session, "Movie", "m/movie.mp4")
     session.commit()
-    with pytest.raises(ValidationError, match="confirmed"):
+    # A path already in a confirmed bundle is skipped, not rejected mid-batch (so a
+    # partly-organized folder still adds the rest); a selection of only such paths
+    # fails with the clear all-unaddable message.
+    with pytest.raises(ValidationError, match="linkable media"):
         apply_service.create_bundle_from_unbundled(session, relative_paths=["m/movie.mp4"])
 
 
@@ -275,6 +362,29 @@ def test_suggest_bundle_from_paths_without_staging(session: Session, library_roo
     assert draft.proposed_title == "song"
     # Still nothing linked — suggesting must not write.
     assert session.scalar(select(AssetFile.id)) is None
+
+
+def test_suggest_bundle_preview_matches_apply_filtering(
+    session: Session, library_root: Path
+) -> None:
+    """The Create Bundle preview drops non-media seed paths just like apply, so it
+    can't propose bundling a file that apply would skip (D4 review P1-5)."""
+    (library_root / "d").mkdir()
+    (library_root / "d" / "movie.mp4").write_text("v")
+    (library_root / "d" / "movie.nfo").write_text("meta")
+    session.commit()
+
+    draft = suggest_service.suggest_bundle_from_files(
+        session, relative_paths=["d/movie.mp4", "d/movie.nfo"]
+    )
+
+    assert [r.relative_path for r in draft.roles] == ["d/movie.mp4"]
+
+    # An all-non-media selection previews as empty (roles/title), so the dialog can
+    # explain instead of offering a dead-end submit.
+    empty = suggest_service.suggest_bundle_from_files(session, relative_paths=["d/movie.nfo"])
+    assert empty.roles == []
+    assert empty.proposed_title == ""
 
 
 # --- stale grouping plan vs. manual bundling ---------------------------------

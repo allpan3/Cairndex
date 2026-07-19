@@ -48,6 +48,7 @@ import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { hostFileMenuEntries } from './app/hostActions'
+import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
 import { LockScreen } from './app/LockScreen'
 import { type FilterDraft, emptyDraft } from './app/filterModel'
@@ -77,6 +78,7 @@ import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
+import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
@@ -94,6 +96,7 @@ import {
   hasHostDeviceAccess,
   hasHostDeviceToken,
   hostOperationErrorMessage,
+  reverseMapHostPaths,
 } from './platform'
 
 interface EditorState {
@@ -545,9 +548,17 @@ function Workspace({
   const mappingQuery = useQuery({
     queryKey: ['library-mapping', libraryId],
     queryFn: () => platform.getLibraryMapping(libraryId),
-    enabled: platform.canRevealInFinder || platform.canOpenWithDefaultApp,
+    enabled:
+      platform.canRevealInFinder || platform.canOpenWithDefaultApp || platform.canDragOutFiles,
   })
   const libraryMapped = mappingQuery.data != null
+  // Tri-state for drag-in: 'pending' while the mapping resolves (e.g. right after
+  // switching libraries) so a drop is deferred rather than mis-reported unmapped.
+  const mappingState: DropMappingState = libraryMapped
+    ? 'mapped'
+    : mappingQuery.isLoading
+      ? 'pending'
+      : 'unmapped'
 
   const revealMappedFile = useCallback(
     (relativePath: string) => {
@@ -569,6 +580,21 @@ function Workspace({
     libraryMapped && platform.canRevealInFinder ? revealMappedFile : undefined
   const onOpenHostFile =
     libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
+
+  // Drag-out (plan 3 §6): a mapped desktop library can put its real files on the
+  // OS pasteboard. The shell resolves + validates each server-provided relative
+  // path; the web layer never handles an absolute path. Undefined disables every
+  // drag-out source (plain web, or a library not located on this computer).
+  const startFilesDrag = useCallback(
+    (relativePaths: string[]) => {
+      if (relativePaths.length === 0) return
+      void platform
+        .startFileDrag(relativePaths.map((relativePath) => ({ libraryId, relativePath })))
+        .catch((error: unknown) => setFlash(hostOperationErrorMessage(error)))
+    },
+    [libraryId, platform],
+  )
+  const onStartFileDrag = platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
@@ -913,7 +939,7 @@ function Workspace({
   // target (and select) just this one. Deletion is confirmed in a dialog.
   const bundleContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
-      const targets = selectedIds.has(id) && selectedIds.size > 1 ? [...selectedIds] : [id]
+      const targets = selectionTargets(id, selectedIds)
       const n = targets.length
       if (n === 1) {
         setSelectedIds(new Set([id]))
@@ -986,6 +1012,19 @@ function Workspace({
     [],
   )
 
+  // Drag-in (plan 3 §6): files dropped from Finder that resolve inside this
+  // mapped library land in the fast-add flow (Create Bundle); files outside every
+  // root get the "move it in first" explanation. The hook itself ignores drops
+  // while any modal/viewer is open (P0-3). The W5 copy-in flow plugs into the
+  // outside branch (see fileDrop.ts) without reworking this handler.
+  useDesktopFileDrop({
+    libraryId,
+    mappingState,
+    reverseMap: reverseMapHostPaths,
+    onFastAdd: createBundleFromPaths,
+    onFlash: setFlash,
+  })
+
   // Right-click empty browser space → create a bundle, or clean up the bundle
   // manual order for the current scope.
   const emptyContextMenu = useCallback(
@@ -1046,10 +1085,7 @@ function Workspace({
   // otherwise target (and select) just this one. Mirrors bundleContextMenu.
   const collectionContextMenu = useCallback(
     (id: string, e: React.MouseEvent) => {
-      const targetIds =
-        selectedCollectionIds.has(id) && selectedCollectionIds.size > 1
-          ? [...selectedCollectionIds]
-          : [id]
+      const targetIds = selectionTargets(id, selectedCollectionIds)
       if (targetIds.length === 1) {
         setSelectedCollectionIds(new Set([id]))
         setSelectedIds(new Set())
@@ -1324,6 +1360,7 @@ function Workspace({
             hostLabels={hostLabels}
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
+            onStartFileDrag={onStartFileDrag}
           />
         ) : (
           <>
@@ -1354,6 +1391,7 @@ function Workspace({
                 hostLabels={hostLabels}
                 onRevealFile={onRevealHostFile}
                 onOpenFile={onOpenHostFile}
+                onStartFileDrag={onStartFileDrag}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
                     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
@@ -1478,14 +1516,15 @@ function Workspace({
           hostLabels={hostLabels}
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
+          onStartFileDrag={onStartFileDrag}
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
-      ) : selectedCollectionIds.size > 1 ? (
+      ) : isMultiSelection(selectedCollectionIds) ? (
         <aside className="inspector">
           <div className="state">{selectedCollectionIds.size} collections selected</div>
         </aside>
-      ) : selectedIds.size > 1 ? (
+      ) : isMultiSelection(selectedIds) ? (
         <MultiBundleInspector
           key={[...selectedIds].sort().join(',')}
           ids={[...selectedIds]}
@@ -1497,6 +1536,7 @@ function Workspace({
           bundleId={activeId}
           onAddFiles={(id) => setAddFilesBundleId(id)}
           onPlayBundle={(id) => setViewerBundleId(id)}
+          onStartFileDrag={onStartFileDrag}
         />
       )}
 
