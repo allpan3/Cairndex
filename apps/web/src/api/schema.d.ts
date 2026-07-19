@@ -2679,6 +2679,11 @@ export interface components {
             created: boolean;
             /** Files Added */
             files_added: number;
+            /**
+             * Files Skipped
+             * @default 0
+             */
+            files_skipped: number;
             /** Subtitles Linked */
             subtitles_linked: number;
         };

@@ -163,4 +163,5 @@ def _result_read(result: apply_service.ManualBundleResult) -> ManualBundleResult
         bundles_removed=result.bundles_removed,
         subtitles_linked=result.subtitles_linked,
         created=result.created,
+        files_skipped=result.files_skipped,
     )

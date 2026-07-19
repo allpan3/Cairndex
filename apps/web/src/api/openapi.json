@@ -3072,6 +3072,11 @@
             "title": "Files Added",
             "type": "integer"
           },
+          "files_skipped": {
+            "default": 0,
+            "title": "Files Skipped",
+            "type": "integer"
+          },
           "subtitles_linked": {
             "title": "Subtitles Linked",
             "type": "integer"

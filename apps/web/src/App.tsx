@@ -77,7 +77,7 @@ import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
-import { useDesktopFileDrop } from './desktop/fileDrop'
+import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
@@ -547,9 +547,17 @@ function Workspace({
   const mappingQuery = useQuery({
     queryKey: ['library-mapping', libraryId],
     queryFn: () => platform.getLibraryMapping(libraryId),
-    enabled: platform.canRevealInFinder || platform.canOpenWithDefaultApp,
+    enabled:
+      platform.canRevealInFinder || platform.canOpenWithDefaultApp || platform.canDragOutFiles,
   })
   const libraryMapped = mappingQuery.data != null
+  // Tri-state for drag-in: 'pending' while the mapping resolves (e.g. right after
+  // switching libraries) so a drop is deferred rather than mis-reported unmapped.
+  const mappingState: DropMappingState = libraryMapped
+    ? 'mapped'
+    : mappingQuery.isLoading
+      ? 'pending'
+      : 'unmapped'
 
   const revealMappedFile = useCallback(
     (relativePath: string) => {
@@ -1005,11 +1013,12 @@ function Workspace({
 
   // Drag-in (plan 3 §6): files dropped from Finder that resolve inside this
   // mapped library land in the fast-add flow (Create Bundle); files outside every
-  // root get the "move it in first" explanation. The W5 copy-in flow plugs into
-  // the outside branch (see fileDrop.ts) without reworking this handler.
+  // root get the "move it in first" explanation. The hook itself ignores drops
+  // while any modal/viewer is open (P0-3). The W5 copy-in flow plugs into the
+  // outside branch (see fileDrop.ts) without reworking this handler.
   useDesktopFileDrop({
     libraryId,
-    libraryMapped,
+    mappingState,
     reverseMap: reverseMapHostPaths,
     onFastAdd: createBundleFromPaths,
     onFlash: setFlash,
