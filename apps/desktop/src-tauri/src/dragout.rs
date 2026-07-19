@@ -32,6 +32,9 @@ pub(crate) async fn start_file_drag<R: Runtime>(
     app: AppHandle<R>,
     window: Window<R>,
     items: Vec<DragOutItem>,
+    // Caller-assigned id echoed back in DRAG_ENDED_EVENT, so the SPA clears the
+    // guard only for the drag it started and ignores a stale event (D4 review P0-4).
+    drag_id: u64,
 ) -> Result<(), MappingError> {
     let resolver = app.clone();
     // Resolve + validate off the IPC thread: canonicalizing a path on an offline
@@ -44,7 +47,7 @@ pub(crate) async fn start_file_drag<R: Runtime>(
     // synchronous result back to this async command without blocking a worker.
     let (tx, mut rx) = async_runtime::channel(1);
     app.run_on_main_thread(move || {
-        let _ = tx.try_send(begin_native_drag(&window, paths));
+        let _ = tx.try_send(begin_native_drag(&window, paths, drag_id));
     })
     .map_err(|_| MappingError::drag_action_failed())?;
     rx.recv()
@@ -83,7 +86,7 @@ fn resolve_drag_paths<R: Runtime>(
         let Some(root) = roots.get(item.library_id.as_str()).and_then(Clone::clone) else {
             continue;
         };
-        match mappings::resolve_file_in_root(&root, &item.relative_path) {
+        match mappings::resolve_within_verified_root(&root, &item.relative_path) {
             Ok(path) => resolved.push(path),
             Err(error) => capture(&mut first_error, error),
         }
@@ -109,13 +112,15 @@ fn capture(slot: &mut Option<MappingError>, error: MappingError) {
 fn begin_native_drag<R: Runtime>(
     window: &Window<R>,
     paths: Vec<PathBuf>,
+    drag_id: u64,
 ) -> Result<(), MappingError> {
     let item = drag::DragItem::Files(paths);
     let image = drag::Image::Raw(DRAG_PREVIEW_ICON.to_vec());
-    // Notify the SPA when the drag ends so it stops ignoring its own drops (P1-4).
+    // Notify the SPA when this drag ends so it stops ignoring its own drops (P1-4),
+    // echoing the caller's id so a stale event can't clear a later drag (P0-4).
     let emitter = window.clone();
     let on_drop = move |_result: drag::DragResult, _cursor: drag::CursorPosition| {
-        let _ = emitter.emit(DRAG_ENDED_EVENT, ());
+        let _ = emitter.emit(DRAG_ENDED_EVENT, drag_id);
     };
 
     #[cfg(target_os = "linux")]
