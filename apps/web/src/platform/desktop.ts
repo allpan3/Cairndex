@@ -34,16 +34,18 @@ let dragOutActive = false
 // the native drag emits no web `dragend`, so the shell's end event clears the flag.
 async function startFileDrag(items: DragOutItem[]): Promise<void> {
   dragOutActive = true
-  // `once` auto-unlistens after the drag-ended event fires.
-  const stopEnded = await once(DRAG_ENDED_EVENT, () => {
-    dragOutActive = false
-  })
+  let stopEnded: (() => void) | undefined
   try {
+    // `once` auto-unlistens after the drag-ended event fires.
+    stopEnded = await once(DRAG_ENDED_EVENT, () => {
+      dragOutActive = false
+    })
     await invoke('start_file_drag', { items })
   } catch (error) {
-    // The drag never started, so it will never emit its end event: release now.
+    // The drag never started (or the listener failed to register), so the end
+    // event will never fire: release the guard now so drag-in is not wedged.
     dragOutActive = false
-    stopEnded()
+    stopEnded?.()
     throw error
   }
 }
