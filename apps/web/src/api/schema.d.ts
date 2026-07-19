@@ -2679,6 +2679,26 @@ export interface components {
             created: boolean;
             /** Files Added */
             files_added: number;
+            /**
+             * Files Skipped
+             * @default 0
+             */
+            files_skipped: number;
+            /**
+             * Skipped Already Bundled
+             * @default 0
+             */
+            skipped_already_bundled: number;
+            /**
+             * Skipped Missing
+             * @default 0
+             */
+            skipped_missing: number;
+            /**
+             * Skipped Non Media
+             * @default 0
+             */
+            skipped_non_media: number;
             /** Subtitles Linked */
             subtitles_linked: number;
         };

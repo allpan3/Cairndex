@@ -5,9 +5,11 @@ import { useBundle, useBundleFiles } from '../api/hooks'
 import { formatBytes, formatDimensions, formatDuration } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { ContextMenu } from './ContextMenu'
+import { type FileDragProps, fileDragProps } from './dragOut'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { selectionTargets } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
@@ -30,6 +32,7 @@ export function BundleAlbum({
   hostLabels,
   onRevealFile,
   onOpenFile,
+  onStartFileDrag,
 }: {
   bundleId: string
   playerPrefs: PlayerPrefs
@@ -40,6 +43,8 @@ export function BundleAlbum({
   hostLabels: HostLabels
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
+  // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
+  onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const { data: bundle } = useBundle(bundleId)
   const { data: files = [], isLoading } = useBundleFiles(bundleId)
@@ -87,6 +92,13 @@ export function BundleAlbum({
   }
 
   const openFile = (index: number) => setViewing(index)
+
+  // Drag-out targets: the whole selection when dragging a selected tile within a
+  // multi-selection, otherwise just this file (mirrors the context-menu rule).
+  const dragTargets = (file: FileRead): string[] => {
+    const ids = new Set(selectionTargets(file.id, selected))
+    return files.filter((f) => ids.has(f.id)).map((f) => f.relative_path)
+  }
 
   const contextTile = (file: FileRead, e: React.MouseEvent) => {
     if (!selected.has(file.id)) setSelected(new Set([file.id]))
@@ -178,6 +190,7 @@ export function BundleAlbum({
               onOpen={() => openFile(i)}
               onContextMenu={(e) => contextTile(f, e)}
               previewDisabled={marqueeRect !== null || menu.state !== null}
+              dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
             />
           ))}
         </div>
@@ -205,6 +218,7 @@ function AlbumTile({
   onOpen,
   onContextMenu,
   previewDisabled,
+  dragProps,
 }: {
   file: FileRead
   selected: boolean
@@ -212,6 +226,7 @@ function AlbumTile({
   onOpen: () => void
   onContextMenu: (e: React.MouseEvent) => void
   previewDisabled: boolean
+  dragProps: FileDragProps
 }) {
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
@@ -268,6 +283,7 @@ function AlbumTile({
       tabIndex={0}
       title={file.display_title}
       data-file-id={file.id}
+      {...dragProps}
     >
       <HoverPreview
         source={previewSource}

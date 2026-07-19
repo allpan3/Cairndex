@@ -1,11 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
-import type { DragOutItem, HostOs, HostPlatform, PlatformRuntime } from './index'
+import { createDragGuard } from './dragGuard'
+import type { HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
@@ -124,17 +126,18 @@ function desktopAssetUrl(value: string): string {
   return `${mediaProxyBaseUrl}${suffix}${target.search}${target.hash}`
 }
 
-// Implements the plan-3 host surface with D3 handoff and D4 drag disabled
-const desktopPlatform: HostPlatform = {
+// The stateless part of the plan-3 host surface (D3 handoff + D4 drag-out enabled).
+// `startFileDrag` is added per-runtime below so the self-drop guard state lives on
+// the runtime object the tests replace (P2-9), not in module scope.
+const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   kind: 'desktop',
   canRevealInFinder: true,
   canOpenWithDefaultApp: true,
-  canDragOutFiles: false,
+  canDragOutFiles: true,
   revealFile: (libraryId: string, relativePath: string) =>
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
     invoke('open_file', { libraryId, relativePath }),
-  startFileDrag: (items: DragOutItem[]) => invoke('start_file_drag', { items }),
   getLibraryMapping: (libraryId: string) =>
     invoke<string | null>('get_library_mapping', { libraryId }),
   locateLibrary: (libraryId: string, libraryUuid: string) =>
@@ -144,8 +147,11 @@ const desktopPlatform: HostPlatform = {
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam
 export async function createDesktopRuntime(): Promise<PlatformRuntime> {
+  // Per-runtime so resetHostPlatformForTests (which swaps the runtime) drops the
+  // guard, and each created runtime starts with fresh drag state (P0-4/P2-9).
+  const dragGuard = createDragGuard({ invoke, listen })
   return {
-    platform: desktopPlatform,
+    platform: { ...desktopPlatformBase, startFileDrag: dragGuard.startFileDrag },
     os: detectHostOs(),
     fetch: desktopFetch,
     assetUrl: desktopAssetUrl,
@@ -218,5 +224,15 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
         throw error
       }
     },
+    reverseMapPaths: (libraryId, paths) =>
+      invoke<ReverseMapResult>('reverse_map_paths', { libraryId, paths }),
+    listenFileDrop: (handler) =>
+      // Tauri delivers OS file drops as a native webview event (dragDropEnabled),
+      // carrying the real absolute paths; internal DOM drag-and-drop is untouched.
+      getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === 'drop') handler(event.payload.paths)
+      }),
+    isDragOutActive: dragGuard.isActive,
+    releaseDragOut: dragGuard.release,
   }
 }

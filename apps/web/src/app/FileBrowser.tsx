@@ -7,6 +7,7 @@ import { formatBytes, formatDate } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
+import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -14,6 +15,7 @@ import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
+import { selectionTargets } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -54,6 +56,8 @@ interface FileBrowserProps {
   hostLabels: HostLabels
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
+  // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
+  onStartFileDrag?: (relativePaths: string[]) => void
 }
 
 /** Breadcrumb segments for a library-root-relative POSIX path. */
@@ -217,6 +221,7 @@ function FileList({
   hostLabels,
   onRevealFile,
   onOpenFile,
+  onStartFileDrag,
 }: FileListProps) {
   const menu = useContextMenu()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -293,9 +298,7 @@ function FileList({
     // The selection can now include directories (drag/shift-select), so restrict
     // the bundling targets to files.
     const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
-    const targets = (
-      inSelection && selected.size > 1 ? [...selected] : [entry.relative_path]
-    ).filter((p) => filePaths.has(p))
+    const targets = selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
     if (!inSelection) {
       setSelected(new Set([entry.relative_path]))
       onSelectEntry(entry)
@@ -320,6 +323,24 @@ function FileList({
       if (hostItems.length > 0) items.push(null, ...hostItems)
     }
     menu.open(e, items)
+  }
+
+  // Drag-out targets: the whole file selection when dragging a selected file in a
+  // multi-selection, else just this file. Directories are never drag sources, and
+  // any selected directory is filtered out (mirrors the context-menu rule).
+  const dragTargets = (entry: FileBrowserEntry): string[] => {
+    const filePaths = new Set(visible.filter((v) => v.kind === 'file').map((v) => v.relative_path))
+    return selectionTargets(entry.relative_path, selected).filter((p) => filePaths.has(p))
+  }
+  const entryDragProps = (entry: FileBrowserEntry): FileDragProps => {
+    // Directories are never drag sources. In list layout a row also starts the
+    // rubber-band marquee (rows fill the width), so only an *already-selected* row
+    // is a drag-out source there — a press-drag on an unselected row keeps starting
+    // the marquee (selection-first, P0-2). Grid cards never start the marquee, so
+    // they always drag.
+    const canDrag =
+      entry.kind === 'file' && (prefs.layout !== 'list' || selected.has(entry.relative_path))
+    return fileDragProps(canDrag ? onStartFileDrag : undefined, () => dragTargets(entry))
   }
 
   // Rectangle-intersect against the live DOM rects of every selectable entry
@@ -499,6 +520,7 @@ function FileList({
                       onClick={(e) => clickEntry(entry, e)}
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
+                      dragProps={entryDragProps(entry)}
                     />
                   ))}
                 </div>
@@ -515,6 +537,7 @@ function FileList({
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
                       previewDisabled={marqueeRect !== null || menu.state !== null}
+                      dragProps={entryDragProps(entry)}
                     />
                   ))}
                 </div>
@@ -553,12 +576,14 @@ function FileRow({
   onClick,
   onDoubleClick,
   onContextMenu,
+  dragProps,
 }: {
   entry: FileBrowserEntry
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
+  dragProps: FileDragProps
 }) {
   const isDir = entry.kind === 'directory'
   return (
@@ -570,6 +595,7 @@ function FileRow({
       role="row"
       aria-selected={selected}
       data-relpath={entry.relative_path}
+      {...dragProps}
     >
       <span className="file-row__name">
         <span className="file-row__icon">{entryIcon(entry)}</span>
@@ -601,6 +627,7 @@ function FileCard({
   onDoubleClick,
   onContextMenu,
   previewDisabled,
+  dragProps,
 }: {
   entry: FileBrowserEntry
   selected: boolean
@@ -608,6 +635,7 @@ function FileCard({
   onDoubleClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
   previewDisabled: boolean
+  dragProps: FileDragProps
 }) {
   const isDir = entry.kind === 'directory'
   const previewSource = useMemo<HoverPreviewSource | null>(
@@ -646,6 +674,7 @@ function FileCard({
       role="gridcell"
       aria-selected={selected}
       data-relpath={entry.relative_path}
+      {...dragProps}
     >
       <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
         <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
