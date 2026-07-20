@@ -96,10 +96,10 @@ export function VideoStage({
         crossOrigin="anonymous"
         onError={onError}
         data-testid="media-video"
-        onContextMenu={(event) => {
-          event.preventDefault()
-          player.playPause()
-        }}
+        // Left click is the primary play/pause gesture, matching every other
+        // video player. Right click is deliberately NOT handled here so it stays
+        // available for viewer context-menu actions (plan 3 §7, owner 2026-07-19).
+        onClick={player.playPause}
       >
         {withSrc.map((track, index) => (
           <track

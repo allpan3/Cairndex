@@ -1548,7 +1548,7 @@ test('opens and remembers the bundle cursor in ordered file navigation', async (
   await expect.poll(() => cursors.at(-1)).toBe('f1')
 })
 
-test('polishes context play, off-track scrub, seek step, and current-frame cover', async ({
+test('polishes click play, off-track scrub, seek step, and current-frame cover', async ({
   page,
 }) => {
   await mockMedia(page)
@@ -1558,11 +1558,21 @@ test('polishes context play, off-track scrub, seek step, and current-frame cover
 
   const video = await openMovie(page)
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
+
+  // Left click is the play/pause gesture (plan 3 §7); right click no longer
+  // toggles playback and is left uncancelled for context-menu actions.
   const nativeMenuAllowed = await video.evaluate((element) => {
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 })
     return element.dispatchEvent(event)
   })
-  expect(nativeMenuAllowed).toBe(false)
+  expect(nativeMenuAllowed).toBe(true)
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
+
+  await video.click()
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
+  await video.click()
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
+  await video.click()
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(true)
 
   const settings = page.getByRole('button', { name: 'Playback settings' })

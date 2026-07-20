@@ -8,6 +8,42 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **D5a menus and shortcuts (Plan 3).** The desktop menu bar is now built from a
+  single shared table, `apps/web/src/platform/keymap.json`: the shell embeds it at
+  compile time and constructs the menu from it, while the SPA reads the same file
+  for action typing and its shortcut reference, so labels and accelerators cannot
+  drift apart. A new **Playback** menu drives the open media viewer (play/pause,
+  previous/next file, ±10 s, speed, mute, subtitles, snapshot) through the same
+  dispatcher the key bindings use, and stays enabled only while a viewer is
+  mounted. The shortcut audit enables combos a browser reserves and the shell can
+  now own: ⌘1/⌘2, ⌘N, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I. All accelerators are
+  modifier-based by construction, so none can swallow a keystroke meant for a
+  text field. Playback items carry an accelerator only where no bare viewer key
+  already covers the command — just Previous/Next File (⌘[ / ⌘]), which have no
+  key binding at all once a video loads, since the arrows then mean seek.
+
+### Changed
+
+- **Viewer fullscreen is real window fullscreen in the shell (Plan 3 D5a).** The
+  viewer is already a full-window overlay, so the shell now toggles the native
+  window instead of the HTML Fullscreen API, which WKWebView gates behind user
+  activation that a native menu item cannot supply. Fullscreen state is tracked
+  from the window itself — a resize watcher reads the real state and broadcasts
+  `cairndex://fullscreen` on change — so transitions the app never requested (the
+  green zoom button, Mission Control) are picked up too, and a read taken
+  mid-animation self-corrects. Escape leaves fullscreen before closing the viewer,
+  including on image bundles, which have no player. Browser behavior is
+  unchanged.
+- **Left click toggles playback (Plan 3 D5a).** Clicking the video plays/pauses
+  it, matching every other player. Right click no longer hijacks play/pause and
+  is left available for viewer context-menu actions.
+- **Window state no longer restores fullscreen or visibility (Plan 3 D5a).**
+  Size, position, and maximized state still persist. Restoring fullscreen would
+  relaunch into an empty fullscreen window after quitting from a fullscreen
+  viewer, and restoring visibility could relaunch the app with no window at all.
+
 ### Fixed
 
 - **D4 review hardening (Plan 3).** Dragging a folder or a non-media sidecar in

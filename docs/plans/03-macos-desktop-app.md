@@ -103,8 +103,16 @@ apps/desktop/
   `tauri build`, plus the Ubuntu check job from §2.1; web gates already cover
   the UI. Linux/Windows shells stay out of scope for v1 but are kept cheap by
   the §2.1 rules (owner wants Linux eventually).
-- Distribution: Developer ID signing + notarization; auto-update via the
-  Tauri updater plugin against GitHub Releases. Dev builds unsigned.
+- Distribution: Developer ID signing + notarization (D5c). Dev builds unsigned.
+  Auto-update via the Tauri updater plugin against GitHub Releases was the
+  original intent, but the owner **deferred the updater** on 2026-07-19: the
+  repository is private with no releases, and Tauri's updater fetches release
+  assets over plain HTTPS, so a private repo would require embedding a token in
+  the shipped app. Revisit once a public release channel exists (public release
+  assets, a separate public releases repo, or a self-hosted `latest.json`).
+  Signing itself requires the paid Apple Developer Program ($99/yr); a free
+  Apple ID only yields a Personal Team certificate that fails Gatekeeper
+  elsewhere.
 
 ## 4. Platform abstraction in `apps/web`
 
@@ -218,13 +226,39 @@ handoff:
   Bundle…, Pair Device…), Edit (standard clipboard so text fields behave),
   View (Bundles/Files surface, zoom slider steps, toggle inspector/sidebar),
   Playback (player commands routed to the viewer when open), Window, Help.
-  Menu events dispatch to the SPA via Tauri events; the SPA maps them onto
-  the same handlers its shortcuts use.
+  **Implemented (D5a).** The menu is *built from* the SPA-owned keymap table
+  (`apps/web/src/platform/keymap.json`), which the shell embeds with
+  `include_str!` — the two cannot drift because there is only one table, not a
+  mirrored pair. Menu events dispatch to the SPA via Tauri events, and
+  `runViewerCommand` is one dispatcher shared by the Playback menu and the key
+  bindings. The Playback group is enabled only while a viewer is mounted.
 - Shortcut audit: browser-reserved combos (⌘L, ⌘number, ⌘W…) become safe to
   use; keep one keymap table in the web app with per-platform bindings.
+  **Implemented (D5a):** ⌘1/⌘2, ⌘N, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are marked
+  `browserReserved` and live only in the shell. Every accelerator is
+  modifier-based by construction (test-enforced), so none can swallow a
+  keystroke meant for a text field; bare-key viewer bindings stay web-side and
+  behave identically in both hosts. **Owner rule (2026-07-19):** an item gets an
+  accelerator only when no bare viewer key already covers it — an accelerator is
+  reserved application-wide, so duplicating a viewer key spends a global combo on
+  a command reachable only with the viewer open. Playback therefore keeps
+  accelerators solely on Previous/Next File, which lose their arrow-key binding
+  to seek once a video loads; that freed ⌘K, ⌘J, ⌘L, ⌘T, ⇧⌘M, ⇧⌘P, ⇧⌘, and ⇧⌘.
+  for future library-wide actions.
 - Window state persistence (size/position), proper fullscreen for the viewer,
   optional second window for the viewer later (needs a small router seam —
-  defer unless wanted).
+  defer unless wanted). **Implemented (D5a):** size/position/maximized persist,
+  while fullscreen and visibility deliberately do not (restoring either
+  relaunches into an empty fullscreen or window-less app; the plugin already
+  declines to restore a position no current monitor intersects). Viewer
+  fullscreen is *real window fullscreen* — the viewer is already a full-window
+  overlay, and this avoids WKWebView gating `requestFullscreen` behind user
+  activation a menu item cannot supply. State is tracked from the window itself
+  rather than from the commands the app issues: a `WindowEvent::Resized` watcher
+  reads the real state and broadcasts `cairndex://fullscreen` on change, so
+  OS-initiated transitions the app never requested (green zoom button, Mission
+  Control) are folded in too, and a mid-animation read self-corrects. The second
+  viewer window remains deferred.
 - Single instance + `cairndex://` deep links (open bundle/collection);
   dock badge / user notification when a long job (scan/probe) finishes —
   subscribes to the existing job progress API.
@@ -253,7 +287,9 @@ handoff:
 | D2 ✅ | Platform seam + auth | `HostPlatform` interface in `apps/web`, device-token pairing UI in shell, bearer wiring |
 | D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 ✅ | Drag-out / drag-in | §6 |
-| D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |
+| D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
+| D5b | Deep links, notifications, export seam | `cairndex://` deep links via single-instance handoff, dock badge / user notification when a long job finishes, native save dialog + notification seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
+| D5c | Distribution | Developer ID signing + notarization pipeline documented in `docs/deployment.md` (dev builds unsigned). **Updater deferred** by the owner (2026-07-19): the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app to read private release assets |
 | D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) has landed |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
