@@ -232,9 +232,10 @@ Harder / follow-up:
   one-active-machine sync semantics.
 - Registry-audit gate: nothing authoritative may land in `registry.db`
   (decision 1) — reviewers should check this on future schema changes.
-- Milestone placement: after plan 3 D5 shell polish, alongside/before write
-  mode per the owner's platform ordering; the lease lands server-side first
-  (it hardens the NAS deployment on its own), the sidecar second.
+- Milestone placement (owner-ratified 2026-07-19): phase E2 in
+  `docs/plans/README.md` — after plan 3 D5 shell polish, alongside/before
+  write mode. The lease lands server-side first (it hardens the NAS
+  deployment on its own); the sidecar follows as plan 3 milestone D6.
 
 ## References
 
