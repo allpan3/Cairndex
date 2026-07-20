@@ -482,6 +482,37 @@ running scan must not queue-block a ten-second export:
   shipping export.
 - TV: not exposed.
 
+## 10.1 Viewer chrome and fit — owner feedback 2026-07-20
+
+Owner-reported after the D5 owner pass; **explicitly deferred to its own branch
+after D5 merged**, not part of D5.
+
+Observed: entering fullscreen leaves black frames on *all* sides. Expected
+behavior, in the owner's words — the video should always fit/maximize to use the
+whole screen, leaving black only in the one direction where the aspect ratio
+genuinely does not match. The chrome should overlay the video rather than
+reserving layout space beside it:
+
+- **Fit.** The video fills the available area on the constrained axis; letterbox
+  or pillarbox appears in one direction only, never both. This is a layout fix in
+  the viewer stage, not a `object-fit` toggle — the current stage reserves space
+  for surrounding chrome, which is what produces frames on every side.
+- **Overlay + autohide.** Control bar *and* title bar draw on top of the video and
+  hide when idle, sharing the existing `useIdleHide` timing rather than adding a
+  second idle model.
+- **Top bar treatment.** Half-transparent with a gradient falling off into the
+  video, not a solid black bar — a solid bar reads as a letterbox band and blocks
+  the frame. The control bar already sits over the video; the title bar is the
+  piece that currently does not.
+- **Applies to windowed view too.** The owner's preference is that this is simply
+  the viewer's behavior, not a fullscreen-only mode. Treat fullscreen as the same
+  layout at a different size.
+
+Note for whoever picks this up: in the shell, "fullscreen" is now **native window
+fullscreen** (plan 3 D5a), so the viewer is laid out against the whole window in
+both cases. That is what makes "same behavior windowed and fullscreen" cheap —
+there is one layout, not two.
+
 ## 11. Milestones (each = one reviewable branch/PR)
 
 | #   | Slice                                                                               | Contents                                                                                                                                                                                                                                                                                                           |
