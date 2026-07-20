@@ -81,6 +81,7 @@ import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
+import { useJobNotifications } from './desktop/useJobNotifications'
 import {
   DEFAULT_PREFS,
   SYSTEM_VIEWS,
@@ -601,6 +602,9 @@ function Workspace({
   // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
+  // Reuses the snapshots the sidebar progress bar already polls, so a long
+  // scan/probe/storyboard run can tell the owner it is done while they are away.
+  useJobNotifications(activeJob)
   const platform = getHostPlatform()
   const hostLabels = getHostLabels()
   // Shares the Settings Libraries page's cache entry, so locate/clear there

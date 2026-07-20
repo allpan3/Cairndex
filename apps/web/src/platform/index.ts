@@ -75,6 +75,9 @@ interface PlatformRuntime {
   listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
   listenDeepLink(handler: (target: DeepLinkTarget) => void): Promise<() => void>
   takePendingDeepLink(): Promise<DeepLinkTarget | null>
+  ensureNotificationPermission(): Promise<boolean>
+  notify(title: string, body: string): Promise<void>
+  setBadgeCount(count: number | null): Promise<void>
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
@@ -136,6 +139,12 @@ const webRuntime: PlatformRuntime = {
   listenFullscreen: async () => () => undefined,
   listenDeepLink: async () => () => undefined,
   takePendingDeepLink: async () => null,
+  // The browser build deliberately does not ask for the Notification API: a web
+  // page prompting for notifications is exactly the pattern users distrust, and
+  // the tab is visible anyway when the owner triggers a job.
+  ensureNotificationPermission: async () => false,
+  notify: async () => undefined,
+  setBadgeCount: async () => undefined,
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
@@ -273,6 +282,18 @@ export const listenHostDeepLink = (
 // Drains a deep link that arrived before the SPA could listen (cold start)
 export const takeHostPendingDeepLink = (): Promise<DeepLinkTarget | null> =>
   runtime.takePendingDeepLink()
+
+// Asks for notification permission once, returning whether it is granted
+export const ensureHostNotificationPermission = (): Promise<boolean> =>
+  runtime.ensureNotificationPermission()
+
+// Posts a user notification through the OS notification centre
+export const notifyHost = (title: string, body: string): Promise<void> =>
+  runtime.notify(title, body)
+
+// Sets or clears the dock/taskbar badge (null clears it)
+export const setHostBadgeCount = (count: number | null): Promise<void> =>
+  runtime.setBadgeCount(count)
 
 // Observes native fullscreen changes made outside the viewer (the View menu)
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>
