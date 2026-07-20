@@ -22,6 +22,14 @@ MARKER_DIR = ".cairndex"
 MANIFEST_NAME = "manifest.json"
 DB_NAME = "library.db"
 CACHE_DIR = "cache"
+# Ownership-lease directory (ADR-0018). Reserved by ADR-0008 decision 9 and
+# implemented by ``cairndex.ownership``: a server may serve a library only while
+# it holds ``locks/active-owner.json`` inside that library. The directory lives
+# in the portable package rather than the registry precisely because the two
+# servers in a conflict cannot see each other's registries — the folder is the
+# only thing both can observe.
+LOCKS_DIR = "locks"
+LEASE_NAME = "active-owner.json"
 # Portable derived-cache categories. Writers resolve their target under
 # ``cache_dir(root)/<category>`` (ADR-0008 phase 8): thumbnails and converted
 # WebVTT subtitles land here; storyboards are reserved for later.
@@ -57,6 +65,14 @@ def db_path(root: Path) -> Path:
 
 def cache_dir(root: Path) -> Path:
     return marker_dir(root) / CACHE_DIR
+
+
+def locks_dir(root: Path) -> Path:
+    return marker_dir(root) / LOCKS_DIR
+
+
+def lease_path(root: Path) -> Path:
+    return locks_dir(root) / LEASE_NAME
 
 
 def _parse_manifest(raw: str) -> LibraryManifest:
