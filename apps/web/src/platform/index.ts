@@ -34,6 +34,14 @@ export interface HostPlatform {
   clearLibraryMapping(libraryId: string): Promise<void>
 }
 
+// One resolved `cairndex://` deep link (plan 3 §7). `libraryId` is optional; when
+// absent the target opens in whatever library is already active.
+export interface DeepLinkTarget {
+  kind: 'bundle' | 'collection'
+  id: string
+  libraryId?: string | null
+}
+
 export type HostOs = 'macos' | 'windows' | 'linux' | 'unknown'
 
 // Supplies host-specific wording without leaking OS tests into the SPA
@@ -65,6 +73,8 @@ interface PlatformRuntime {
   toggleWindowFullscreen(): Promise<boolean>
   isWindowFullscreen(): Promise<boolean>
   listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
+  listenDeepLink(handler: (target: DeepLinkTarget) => void): Promise<() => void>
+  takePendingDeepLink(): Promise<DeepLinkTarget | null>
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
@@ -124,6 +134,8 @@ const webRuntime: PlatformRuntime = {
   toggleWindowFullscreen: async () => false,
   isWindowFullscreen: async () => false,
   listenFullscreen: async () => () => undefined,
+  listenDeepLink: async () => () => undefined,
+  takePendingDeepLink: async () => null,
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
@@ -252,6 +264,15 @@ export const setHostViewerMenuAvailable = (viewer: boolean, video: boolean): Pro
 export const toggleHostWindowFullscreen = (): Promise<boolean> => runtime.toggleWindowFullscreen()
 
 export const isHostWindowFullscreen = (): Promise<boolean> => runtime.isWindowFullscreen()
+
+// Subscribes to cairndex:// deep links delivered while the app is running
+export const listenHostDeepLink = (
+  handler: (target: DeepLinkTarget) => void,
+): Promise<() => void> => runtime.listenDeepLink(handler)
+
+// Drains a deep link that arrived before the SPA could listen (cold start)
+export const takeHostPendingDeepLink = (): Promise<DeepLinkTarget | null> =>
+  runtime.takePendingDeepLink()
 
 // Observes native fullscreen changes made outside the viewer (the View menu)
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>

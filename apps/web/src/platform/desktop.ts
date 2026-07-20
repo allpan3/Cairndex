@@ -7,7 +7,13 @@ import { load } from '@tauri-apps/plugin-store'
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
 import { createDragGuard } from './dragGuard'
-import type { HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
+import type {
+  DeepLinkTarget,
+  HostOs,
+  HostPlatform,
+  PlatformRuntime,
+  ReverseMapResult,
+} from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
@@ -212,6 +218,11 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     isWindowFullscreen: () => getCurrentWindow().isFullscreen(),
     listenFullscreen: (handler) =>
       listen<boolean>('cairndex://fullscreen', (event) => handler(event.payload)),
+    listenDeepLink: (handler) =>
+      listen<DeepLinkTarget>('cairndex://deep-link', (event) => handler(event.payload)),
+    // A link can arrive before the webview exists (macOS delivers an Apple Event
+    // on cold start), so the shell parks it and the SPA drains it on mount.
+    takePendingDeepLink: () => invoke<DeepLinkTarget | null>('take_pending_deep_link'),
     listenLifecycle: async () => {
       const appWindow = getCurrentWindow()
       const stopClose = await appWindow.onCloseRequested(async (event) => {
