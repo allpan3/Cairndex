@@ -39,9 +39,17 @@ pub(crate) struct ItemSpec {
     pub(crate) predefined: Option<String>,
     #[serde(default)]
     pub(crate) separator: bool,
-    /// Enablement group: `server`, `library`, `viewer`, `never`, or absent.
+    /// Enablement group: `server`, `library`, `viewer`, `viewer-video`, `never`,
+    /// or absent.
     #[serde(default)]
     pub(crate) requires: Option<String>,
+    /// Bare-key bindings the web app handles itself in the focused viewer. The
+    /// shell never registers these; it reads them only to assert that an item with
+    /// a viewer key does not also reserve a global accelerator. It must still
+    /// deserialize in every build so that test parses the real shipped table.
+    #[cfg_attr(not(test), allow(dead_code))]
+    #[serde(default)]
+    pub(crate) keys: Vec<String>,
     /// True when the shell handles the item itself instead of emitting an SPA
     /// action (quit, native window fullscreen).
     #[serde(default)]
@@ -172,6 +180,55 @@ mod tests {
         }
     }
 
+    // Predefined items carry accelerators the table never names, so the uniqueness
+    // check above cannot see them. An explicit entry that collided with one would
+    // shadow a standard editing shortcut inside every text field.
+    #[test]
+    fn explicit_accelerators_avoid_predefined_ones() {
+        const IMPLICIT: &[&str] = &[
+            "CmdOrCtrl+Z",       // undo
+            "CmdOrCtrl+Shift+Z", // redo
+            "CmdOrCtrl+X",       // cut
+            "CmdOrCtrl+C",       // copy
+            "CmdOrCtrl+V",       // paste
+            "CmdOrCtrl+A",       // select all
+            "CmdOrCtrl+M",       // minimize
+            "CmdOrCtrl+W",       // close window
+        ];
+        for menu in &keymap().menus {
+            for item in &menu.items {
+                if let Some(accelerator) = item.accelerator.as_deref() {
+                    assert!(
+                        !IMPLICIT.contains(&accelerator),
+                        "{} {:?} collides with a predefined item's accelerator {accelerator:?}",
+                        menu.id,
+                        item.label.as_deref().unwrap_or_default()
+                    );
+                }
+            }
+        }
+    }
+
+    // An item with a bare viewer key must not also reserve a global accelerator
+    // (owner rule, 2026-07-19): it would spend an app-wide combo on a command that
+    // is only reachable with the viewer open.
+    #[test]
+    fn viewer_keys_and_accelerators_do_not_overlap() {
+        for menu in &keymap().menus {
+            for item in &menu.items {
+                if item.keys.is_empty() {
+                    continue;
+                }
+                assert!(
+                    item.accelerator.is_none(),
+                    "{} {:?} duplicates its viewer key with an accelerator",
+                    menu.id,
+                    item.label.as_deref().unwrap_or_default()
+                );
+            }
+        }
+    }
+
     // Keeps native identifiers and SPA actions deliberately one-to-one.
     #[test]
     fn maps_only_dispatchable_menu_items() {
@@ -191,7 +248,16 @@ mod tests {
     fn enablement_groups_are_populated() {
         assert!(!items_requiring("library").is_empty());
         assert!(!items_requiring("server").is_empty());
-        assert!(!items_requiring("viewer").is_empty());
+        // Split groups: an image bundle enables `viewer` only, since the rest need
+        // a PlayerController that image playback never creates.
+        assert_eq!(
+            items_requiring("viewer")
+                .iter()
+                .map(|(_, id)| *id)
+                .collect::<Vec<_>>(),
+            vec!["previous-file", "next-file"]
+        );
+        assert!(!items_requiring("viewer-video").is_empty());
         assert!(items_requiring("nonexistent-group").is_empty());
     }
 }

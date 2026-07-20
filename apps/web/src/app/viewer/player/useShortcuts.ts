@@ -8,6 +8,13 @@ export interface ShortcutActions {
   snapshot: () => void
   previous: () => void
   next: () => void
+  /**
+   * Whether the viewer is currently fullscreen. Supplied by the viewer rather than
+   * read from the player, because an image bundle has no `PlayerController` yet can
+   * still be fullscreen via the View menu.
+   */
+  isFullscreen: () => boolean
+  exitFullscreen: () => void
 }
 
 /**
@@ -96,10 +103,11 @@ export function handleViewerShortcut(
   const key = event.key
   if (key === 'Escape') {
     // Escape leaves fullscreen before it closes the viewer. In the shell that
-    // fullscreen is the native window, so `document.fullscreenElement` is null
-    // and the player's own state is the only reliable signal.
+    // fullscreen is the native window, so `document.fullscreenElement` is null and
+    // the viewer-supplied state is the only reliable signal — including for image
+    // bundles, which have no player but can still be fullscreen.
     if (document.fullscreenElement) void document.exitFullscreen()
-    else if (player?.fullscreen) player.toggleFullscreen()
+    else if (actions.isFullscreen()) actions.exitFullscreen()
     else actions.close()
     return true
   }

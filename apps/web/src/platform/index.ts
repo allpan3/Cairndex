@@ -61,8 +61,8 @@ interface PlatformRuntime {
   listenMenu(handler: (action: DesktopMenuAction) => void): Promise<() => void>
   setLibraryAvailable(enabled: boolean): Promise<void>
   setServerAvailable(enabled: boolean): Promise<void>
-  setPlaybackAvailable(enabled: boolean): Promise<void>
-  setWindowFullscreen(fullscreen: boolean): Promise<void>
+  setViewerMenuAvailable(viewer: boolean, video: boolean): Promise<void>
+  toggleWindowFullscreen(): Promise<boolean>
   isWindowFullscreen(): Promise<boolean>
   listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
   listenLifecycle(): Promise<() => void>
@@ -118,10 +118,10 @@ const webRuntime: PlatformRuntime = {
   listenMenu: async () => () => undefined,
   setLibraryAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
-  setPlaybackAvailable: async () => undefined,
+  setViewerMenuAvailable: async () => undefined,
   // The browser has no native window fullscreen; the viewer keeps using the
   // HTML Fullscreen API there (see usePlayer.toggleFullscreen).
-  setWindowFullscreen: async () => undefined,
+  toggleWindowFullscreen: async () => false,
   isWindowFullscreen: async () => false,
   listenFullscreen: async () => () => undefined,
   listenLifecycle: async () => () => undefined,
@@ -241,13 +241,15 @@ export const setHostLibraryAvailable = (enabled: boolean): Promise<void> =>
 export const setHostServerAvailable = (enabled: boolean): Promise<void> =>
   runtime.setServerAvailable(enabled)
 
-// Enables the native Playback menu only while a media viewer is actually open
-export const setHostPlaybackAvailable = (enabled: boolean): Promise<void> =>
-  runtime.setPlaybackAvailable(enabled)
+// Enables Playback items while a viewer is open. `video` is tracked separately
+// because an image bundle has no player, so the player-only items would be live
+// but dead there.
+export const setHostViewerMenuAvailable = (viewer: boolean, video: boolean): Promise<void> =>
+  runtime.setViewerMenuAvailable(viewer, video)
 
-// Drives real window fullscreen in the shell; a no-op in the browser
-export const setHostWindowFullscreen = (fullscreen: boolean): Promise<void> =>
-  runtime.setWindowFullscreen(fullscreen)
+// Toggles real window fullscreen in the shell atomically, returning the new state.
+// A no-op returning false in the browser.
+export const toggleHostWindowFullscreen = (): Promise<boolean> => runtime.toggleWindowFullscreen()
 
 export const isHostWindowFullscreen = (): Promise<boolean> => runtime.isWindowFullscreen()
 

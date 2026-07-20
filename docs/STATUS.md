@@ -43,10 +43,10 @@ Implementation:
 - **Native viewer fullscreen.** The viewer is already a full-window overlay, so
   the shell toggles the real window instead of the HTML Fullscreen API, which
   WKWebView gates behind user activation a native menu item cannot supply (the
-  D1 audit found this). Every transition — View menu, viewer control, `F` key —
-  flows through the `set_window_fullscreen` command, which emits
-  `cairndex://fullscreen`, so the control cannot show a stale state after the
-  menu toggled the window. Escape leaves fullscreen before closing the viewer.
+  D1 audit found this). State is tracked from the **window**, not from the
+  commands the app issues: a `WindowEvent::Resized` watcher reads the real
+  `is_fullscreen()` and broadcasts `cairndex://fullscreen` only when it changed.
+  Escape leaves fullscreen before closing the viewer.
 - **Window-state edge cases.** Size/position/maximized still persist;
   `FULLSCREEN` and `VISIBLE` are now excluded, because quitting from a fullscreen
   viewer otherwise relaunched into an empty fullscreen window, and a hidden
@@ -58,16 +58,60 @@ Implementation:
   viewer context-menu actions. (No viewer context menu exists yet — this frees
   the gesture rather than adding one.)
 
+### Review round — fullscreen ownership and image-bundle gaps
+
+An external review of the above found one P2 and two P3s, all applied.
+
+- **P2 — the green traffic-light button bypassed the invariant.** The receipt
+  claimed "one command owns every transition", but macOS can fullscreen the
+  window itself (zoom button, Mission Control) and that path issued no command,
+  so `player.fullscreen` went stale: the control showed the wrong icon and Escape
+  would close the viewer while the window stayed fullscreen. The claim was simply
+  overstated. Fixed by inverting the ownership — the shell now watches
+  `WindowEvent::Resized` (which fires across every fullscreen transition), reads
+  the window's **actual** state, and broadcasts on change. Tracking the observed
+  rather than the assumed state also makes a mid-animation read self-correcting,
+  and the de-duplication keeps a live-resize drag silent.
+- **P3 — Escape did not leave fullscreen on an image bundle.** The behavior keyed
+  off `player?.fullscreen`, and images have no player, so a fullscreen image
+  viewer closed and left the workspace window stuck in fullscreen. Fullscreen
+  state now comes from viewer-supplied `isFullscreen`/`exitFullscreen` actions
+  (the `player` object exists for images; only its use as a *controller* is
+  gated), so both media kinds behave the same.
+- **P3 — the Playback menu was live-but-dead on image bundles.** All ten items
+  were enabled whenever a viewer was mounted, though only Previous/Next File do
+  anything without a player. The `viewer` group is now split into `viewer` and
+  `viewer-video`, which is the same argument the "never live against a closed
+  viewer" rationale already made.
+- **P3 — initial-state race.** The initial fullscreen query and the event
+  subscription were independent async channels, so a stale initial value could
+  overwrite a newer event. Closed with a seen-an-event flag.
+- **Nits applied:** the `keys` arrays were documentation only, so a test now walks
+  every declared key through `handleViewerShortcut` and asserts it produces the
+  same observable calls as `runViewerCommand` — closing the drift hole on the web
+  side (verified by mutation: mis-mapping `J` fails it). Explicit accelerators are
+  now checked against predefined items' implicit ones (⌘Z/⌘X/⌘C/⌘V/⌘A/⌘M/⌘W). The
+  viewer's `toggleFullscreen` uses a new atomic Rust toggle instead of a
+  get-then-set across two IPC round trips. `muda` is pinned to `=0.19.3` so it
+  cannot drift from the parser Tauri actually registers with. The `StateFlags`
+  comment now names `DECORATIONS` too.
+- **Not addressed (recorded):** ⌘[ / ⌘] are Option-modified positions on several
+  European layouts and may be awkward there — deferred to the per-platform
+  bindings pass the plan already anticipates. `shortcutReference()` remains an
+  unconsumed export, kept as the seam for a shortcut-reference UI.
+
 Verification:
 
-- Desktop: `cargo fmt --check`, Clippy `-D warnings`, **38 unit tests** (was 33;
-  +5 keymap: embedded-table parse, accelerator validity through muda, accelerator
-  uniqueness, dispatch mapping, enablement-group population). Release
-  `npm run tauri build` produced `Cairndex.app`.
-- Web: Prettier, ESLint, `tsc -b`, full Vitest (**197 passed**, was 183; +14
-  covering keymap/action-type parity, the shared dispatcher, Playback routing and
-  mount-scoped availability, browser inertness, and native-fullscreen Escape),
-  and the production Vite build.
+- Desktop: `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`,
+  **40 unit tests** (was 33; +7 keymap: embedded-table parse, accelerator validity
+  through muda, accelerator uniqueness, collision with predefined accelerators,
+  viewer-key/accelerator overlap, dispatch mapping, split enablement groups).
+  Release `npm run tauri build` produced `Cairndex.app`.
+- Web: Prettier, ESLint, `tsc -b`, full Vitest (**202 passed**, was 183; +19
+  covering keymap/action-type parity, the shared dispatcher, the keys→command
+  drift guard, Playback routing, split image/video availability, browser
+  inertness, and native-fullscreen Escape on both media kinds), and the production
+  Vite build.
 - Playwright: browser-only partition **72 passed**, including the rewritten
   click-play case that asserts left click toggles playback and a right click is
   no longer cancelled.
@@ -79,7 +123,10 @@ Known issues: **the menu bar's rendered contents were not machine-verified.**
 `System Events` enumeration needs assistive access this environment does not
 have, so the parity table below is derived from the keymap table and the
 construction code rather than read off a running menu bar; an owner pass on the
-packaged app remains the final acceptance step, as with D1–D4. `muda` was added
+packaged app remains the final acceptance step, as with D1–D4. That pass should
+explicitly include **clicking the green zoom button while a video is fullscreen
+and while windowed**, since that is the OS-initiated path the P2 fix addresses and
+it is the one transition no automated test here can exercise. `muda` was added
 as a **test-only** dependency (Tauri does not re-export `Accelerator`) pinned to
 `default-features = false`, deliberately dropping its `libxdo`/`gtk` features so
 the Ubuntu Rust-only CI job does not start needing `libxdo-dev`. Deep links, job
