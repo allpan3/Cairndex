@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest'
+
+import type { ViewerCommand } from '../app/viewer/player/useShortcuts'
+import type { DesktopMenuAction, DesktopWorkspaceAction } from '../desktop/types'
+import { actionIdsRequiring, dispatchableActionIds, keymapMenus, shortcutReference } from './keymap'
+
+// The shell builds its native menu from keymap.json, so these lists are the
+// contract between the two. Declaring them explicitly (rather than deriving them
+// from the same source) is the point: a table edit that is not mirrored in the
+// SPA's action types fails here instead of producing a dead menu item.
+const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
+  'settings',
+  'pair-device',
+  'new-bundle',
+  'show-bundles',
+  'show-files',
+  'zoom-in',
+  'zoom-out',
+  'toggle-sidebar',
+  'toggle-inspector',
+]
+
+const EXPECTED_PLAYBACK_ACTIONS: ViewerCommand[] = [
+  'play-pause',
+  'previous-file',
+  'next-file',
+  'seek-back',
+  'seek-forward',
+  'rate-down',
+  'rate-up',
+  'toggle-mute',
+  'toggle-subtitles',
+  'snapshot',
+]
+
+describe('keymap table', () => {
+  it('dispatches exactly the actions the SPA types declare', () => {
+    const expected: DesktopMenuAction[] = [
+      ...EXPECTED_WORKSPACE_ACTIONS,
+      ...EXPECTED_PLAYBACK_ACTIONS,
+    ]
+    expect(dispatchableActionIds().sort()).toEqual([...expected].sort())
+  })
+
+  it('puts every viewer-gated action in the Playback menu', () => {
+    expect(actionIdsRequiring('viewer').sort()).toEqual([...EXPECTED_PLAYBACK_ACTIONS].sort())
+  })
+
+  it('excludes shell-owned and placeholder items from SPA dispatch', () => {
+    // `quit` and `fullscreen` are handled in Rust; the help entry is a disabled
+    // placeholder. None of them may reach the SPA as an action.
+    expect(dispatchableActionIds()).not.toContain('quit')
+    expect(dispatchableActionIds()).not.toContain('fullscreen')
+    expect(dispatchableActionIds()).not.toContain('help-placeholder')
+  })
+
+  it('gives every non-separator item a label', () => {
+    for (const menu of keymapMenus) {
+      for (const item of menu.items) {
+        if (item.separator || item.predefined) continue
+        expect(item.label, `${menu.id} item ${item.id ?? '?'}`).toBeTruthy()
+      }
+    }
+  })
+
+  it('uses only modifier-based accelerators so typing is never swallowed', () => {
+    // Accelerators are handled by the OS before the webview sees the key, so a
+    // bare-key accelerator would intercept that letter inside every text field.
+    for (const menu of keymapMenus) {
+      for (const item of menu.items) {
+        if (!item.accelerator) continue
+        expect(item.accelerator, `${menu.id} ${item.label ?? ''}`).toMatch(
+          /^(CmdOrCtrl|Cmd|Ctrl|Alt|Shift|Control)\+/,
+        )
+      }
+    }
+  })
+
+  it('never reuses an accelerator', () => {
+    const accelerators = keymapMenus
+      .flatMap((menu) => menu.items)
+      .map((item) => item.accelerator)
+      .filter((value): value is string => Boolean(value))
+    expect(new Set(accelerators).size).toBe(accelerators.length)
+  })
+
+  it('reports the browser-reserved combos the shell unlocks', () => {
+    const reserved = shortcutReference()
+      .filter((entry) => entry.browserReserved)
+      .map((entry) => entry.accelerator)
+    // These are the D5 shortcut audit's whole point: combos a browser intercepts
+    // (tabs, address bar, devtools, history, new window) that only work in the shell.
+    expect(reserved).toEqual(
+      expect.arrayContaining([
+        'CmdOrCtrl+1',
+        'CmdOrCtrl+2',
+        'CmdOrCtrl+N',
+        'CmdOrCtrl+T',
+        'CmdOrCtrl+L',
+        'CmdOrCtrl+Shift+I',
+      ]),
+    )
+  })
+})
