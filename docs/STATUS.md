@@ -14,9 +14,12 @@ desktop local-server sidecar for opening local library folders, the
 portability invariant (nothing authoritative in `registry.db`), cloud-sync
 one-active-machine semantics with WAL checkpoint/snapshot hygiene, and the
 accepted partitioned-dual-writer limitation. ADR index and CHANGELOG updated.
-No gates run (prose-only change). Awaiting owner review of the proposed ADR;
-implementation milestones slot after plan 3 D5 per the ADR's consequences
-section.
+The owner ratified the milestone placement, so the roadmap now carries it:
+`docs/plans/README.md` gains phase E2 (server-side lease first, then the
+sidecar) between the desktop shell and write mode, and plan 3 gains milestone
+D6 for the sidecar (§8/§10 updated from "noted, not planned"). No gates run
+(prose-only change). Merged directly to `main` at the owner's request; the
+ADR itself remains proposed pending a full read.
 
 ## Completed: Plan 3 D4 second review round — drag hardening
 
