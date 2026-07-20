@@ -1,5 +1,131 @@
 # Project status
 
+## Completed: server-side library ownership lease (ADR-0018 §2–§4)
+
+Branch `feat/library-ownership-lease` from `main` at `4b933f2`. This is build-order
+**phase F's first item** and the stated prerequisite for plan 3 D6 — the owner
+asked to start D6 on 2026-07-20, and the gate had not landed, so the lease was
+built first (owner-chosen, same day).
+
+**Correction to the D5 receipts below: D5a, D5b, and D5c are all merged.** Those
+sections still describe the three branches as "stacked and unmerged", which was
+true when written; all three are now ancestors of `main`. Verified with
+`git merge-base --is-ancestor`.
+
+Implementation:
+
+- **The lease file** (`ownership/lease.py`) at
+  `.cairndex/locks/active-owner.json` — inside the library, because the two
+  servers in a conflict cannot see each other's registries and a cloud-synced copy
+  has no server at all. Written atomically (temp + same-directory rename, fsynced
+  before the rename) so a sync engine or a concurrent reader never sees half a
+  record. Every write regenerates the `nonce`, heartbeats included; that is what
+  makes an overwrite detectable at all.
+- **Five states, not four.** Released / own / fresh / stale, plus **unreadable**.
+  A lease we cannot parse is deliberately *not* folded into released: "we could
+  not find out" must never become "nobody holds it", or a corrupt or
+  partially-written file becomes a silent second writer. It routes to the same
+  confirmation path as stale, with the holder unknown.
+- **Write-then-verify acquisition.** No compare-and-swap exists on a synced
+  folder or an SMB share, so a claim is only real once it survives a read-back.
+  The uncontended path is an `O_EXCL` create, where exactly one of two racing
+  servers can win with no timestamps involved.
+- **The observation window is the part that does not trust clocks.** Staleness is
+  judged against `heartbeat_at`, written by another machine, so it is only a hint
+  — a skewed peer can look dead. Before a stale takeover the server watches the
+  lease for longer than a heartbeat period; a live holder writing to the same disk
+  (two servers on one NAS export) visibly touches it and keeps the library, even
+  though the user already confirmed. Skew the other way — a future-dated heartbeat
+  — reads as fresh, erring toward refusing to serve, which is the recoverable
+  direction.
+- **Takeover always needs confirmation** (owner-ratified). There is no
+  auto-takeover after any TTL. Because clean shutdown releases, the prompt is
+  reached only after a crash or under sync lag.
+- **The heartbeat is the watchdog.** Every interval it re-reads before rewriting.
+  A foreign `server_uuid`, *or our own under a nonce we did not write* (a sync
+  engine resolving a conflict the other way), means ownership moved: never
+  re-grab, stop writing, cancel that library's jobs, unmount. Two servers each
+  re-grabbing would be exactly the alternating dual-writer the lease exists to
+  prevent. Heartbeats continue while idle, because going quiet would make a
+  healthy NAS server's libraries look stealable from every other machine.
+- **Reads need the lease too.** Browsing writes (bundle cursors, missing-file
+  reconciliation), and reading a SQLite DB another machine is writing through a
+  share is what ADR-0008 rejected. No leaseless read-only mount.
+- **Both mount gates**, content (`get_library_session`) and streaming
+  (`get_library_access`). A byte-range request that skipped the lease would be
+  precisely the read the model forbids. A library already held costs one
+  dictionary lookup, so the gate adds no filesystem I/O to the request path.
+- **Jobs re-verify at start and at every batch boundary.** The heartbeat also
+  flags a library's jobs for cancellation, but that needs a registry round trip
+  to be noticed; the batch check is in-memory, so a scan stops the moment the
+  watchdog knows. `execute_job` uses `ensure_owned`, which acquires a released or
+  own lease but never takes a foreign one — a background worker must not make the
+  user's takeover decision.
+- **Endpoints.** `GET /api/v1/libraries/{id}/ownership` sits outside the mount
+  gate on purpose: it is what a client calls *because* a mount was refused.
+  `POST .../ownership/takeover` returns 202 and runs the observation window on a
+  background thread, since the window outlasts a heartbeat period and no HTTP
+  request should be held open for minutes. Taking over a *live* lease is refused
+  with 422 rather than forced — "that machine is gone" is not a claim anyone can
+  make about a server that heartbeat seconds ago.
+- **Sync-conflict artifacts** next to the lease are logged loudly and never
+  resolved or deleted; that copy is the only evidence the library may have
+  diverged (ADR-0018 §7).
+- Persistent `server_uuid` in a new registry `server_identity` table, so a crashed
+  server recognizes its own lease instead of prompting on every restart.
+- `DomainError`/`ErrorBody` gained optional `details`, serialized with
+  `exclude_none` so every existing error's shape is unchanged.
+
+Two defects found and fixed during the work, both in my own code:
+
+- `acquire` originally held the manager's state lock across its sleeps, so a
+  two-minute takeover observation would have blocked `holds()` — and therefore
+  every request to *every* library — for its full duration. Acquisition is now
+  serialized per library, outside the state lock.
+- The first observation-window test passed with the observation window deleted:
+  it was catching the injected steal via write-then-verify instead. Found by
+  mutation testing. The holder now stirs only during the long observation sleep
+  and stays quiet through the short verify one, so the test discriminates between
+  the two mechanisms it could have been proving.
+
+Verification:
+
+- Backend `ruff check`, `ruff format --check`, `mypy src` (strict), and full
+  pytest: **518 passed** (was 497; +66 across three new files —
+  `test_ownership_lease.py`, `test_ownership_api.py`, `test_ownership_jobs.py`).
+  API tests deliberately run through `isolated_client`, because the shared-session
+  `client` fixture overrides the dependency the gate lives in and would bypass the
+  thing under test.
+- **Mutation-tested rather than assumed.** Seven mutations were applied and each
+  one failed a test: treating an unreadable lease as released, skipping the
+  observation window, dropping the nonce comparison from the heartbeat, removing
+  either mount gate, and removing either job-boundary check.
+- OpenAPI and `schema.d.ts` regenerated; the diff is purely additive (two paths,
+  three schemas, `ErrorBody.details`).
+
+Known gaps, honestly:
+
+- **No multi-machine test was run.** Every conflict scenario is simulated by
+  writing a foreign lease into a temp directory from the same process. The logic
+  is filesystem-agnostic and driven against real files, but genuine SMB/NFS
+  behavior — rename atomicity, `O_EXCL` semantics, directory fsync — and real
+  sync-engine conflict artifacts are unexercised. Worth an owner pass with the NAS
+  before this is relied on.
+- **The heartbeat thread was never observed running.** Tests call
+  `heartbeat_once()` directly; the timing loop itself is exercised only by
+  `start`/`stop`.
+- **ADR-0018 §6 (WAL checkpoint hygiene and the periodic snapshot) is not
+  implemented.** It is listed in the ADR's server work but is not part of the
+  §3–§4 prerequisite. Cloud-synced libraries therefore still sync a
+  `db`/`-wal`/`-shm` triple that can be captured mid-write. This is the next
+  recommended slice before D6.
+- No frontend work: the SPA does not yet surface the refusal, the redirect, or the
+  takeover confirmation. That UI belongs with D6's connections model.
+
+Next recommended task: **ADR-0018 §6 (idle/close WAL checkpointing + snapshot
+job)**, then **Plan 3 D6 — local-server sidecar**, whose gate this branch clears.
+
+
 ## Open follow-ups from the D5 owner pass (2026-07-20)
 
 Recorded so they survive the session; none is started.
