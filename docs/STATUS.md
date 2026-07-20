@@ -102,6 +102,22 @@ Verification:
   either mount gate, and removing either job-boundary check.
 - OpenAPI and `schema.d.ts` regenerated; the diff is purely additive (two paths,
   three schemas, `ErrorBody.details`).
+- Frontend gates re-run after regeneration: ESLint, Prettier, `tsc -b`, Vitest
+  (**229 passed**), Vite build.
+- **Verified against a real running server**, not only the test harness — an
+  isolated `CAIRNDEX_DATA_DIR`, a scratch library, no user media. The full cycle
+  was exercised end to end: creating a library wrote no lease; the first content
+  request acquired one on disk with the configured machine name and advertised
+  URL; planting a live foreign lease was caught by the **real 60 s heartbeat
+  thread** (`… now held by the-NAS; surrendering` in the log), after which the
+  library refused with `library_lease_held` and the redirect; aging that lease
+  past the TTL switched the refusal to `library_lease_takeover_required` with
+  `can_take_over: true`; `POST …/takeover` returned **202 immediately** while
+  `takeover.running` stayed true, and the lease was acquired **exactly 120 s
+  later** (10:15:47 → 10:17:47), matching the observation window rather than
+  short-circuiting it; the library then mounted with HTTP 200. Stopping the
+  server wrote `released_at`, and a planted Dropbox-style conflict copy was
+  detected by name. No errors in the server log; all scratch state removed.
 
 Known gaps, honestly:
 
