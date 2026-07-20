@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicI8, Ordering};
+
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, Submenu, SubmenuBuilder},
     App, AppHandle, Emitter, Manager, Runtime,
@@ -93,13 +95,35 @@ pub(crate) fn install_handler<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
+/// Last fullscreen state broadcast to the SPA, so repeated resize events emit at
+/// most one event per real transition.
+static LAST_FULLSCREEN: AtomicI8 = AtomicI8::new(-1);
+
+/// Reads the window's *actual* fullscreen state and broadcasts it when it has
+/// changed. Every transition funnels through here — the View menu, the viewer's
+/// own control, and OS-initiated ones the app never requested (the green zoom
+/// button, or Mission Control). Broadcasting the observed state rather than an
+/// assumed one also means a read taken mid-animation self-corrects on the next
+/// resize event instead of pinning a wrong value.
+pub(crate) fn broadcast_fullscreen<R: Runtime>(app: &AppHandle<R>) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(fullscreen) = window.is_fullscreen() else {
+        return;
+    };
+    let current = i8::from(fullscreen);
+    if LAST_FULLSCREEN.swap(current, Ordering::Relaxed) != current {
+        let _ = app.emit(FULLSCREEN_EVENT, fullscreen);
+    }
+}
+
 // Toggles native window fullscreen without depending on web user activation
 pub(crate) fn toggle_main_window_fullscreen<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         if let Ok(fullscreen) = window.is_fullscreen() {
-            if window.set_fullscreen(!fullscreen).is_ok() {
-                let _ = app.emit(FULLSCREEN_EVENT, !fullscreen);
-            }
+            let _ = window.set_fullscreen(!fullscreen);
+            broadcast_fullscreen(app);
         }
     }
 }
@@ -143,25 +167,33 @@ pub(crate) fn set_server_menu_enabled(app: AppHandle, enabled: bool) -> Result<(
     set_group_enabled(&app, "server", enabled)
 }
 
-// Enables the Playback menu only while a media viewer is actually open
+// Enables Playback items while a viewer is open. `video` is separate because an
+// image bundle has no player: only Previous/Next File do anything there, and
+// showing the rest as enabled would offer live menu items that silently no-op.
 #[tauri::command]
-pub(crate) fn set_playback_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    set_group_enabled(&app, "viewer", enabled)
+pub(crate) fn set_viewer_menu_enabled(
+    app: AppHandle,
+    viewer: bool,
+    video: bool,
+) -> Result<(), String> {
+    set_group_enabled(&app, "viewer", viewer)?;
+    set_group_enabled(&app, "viewer-video", video)
 }
 
-// Sets native window fullscreen for the viewer. Every fullscreen change flows
-// through here (or the View menu item above) so exactly one place emits the
-// state event and no observer can hold a stale value.
+// Toggles native window fullscreen atomically. The viewer calls this rather than
+// reading then setting over two IPC round trips, so two fast presses cannot both
+// observe the same pre-toggle state. Returns the resulting state.
 #[tauri::command]
-pub(crate) fn set_window_fullscreen(app: AppHandle, fullscreen: bool) -> Result<(), String> {
+pub(crate) fn toggle_window_fullscreen(app: AppHandle) -> Result<bool, String> {
     let Some(window) = app.get_webview_window("main") else {
-        return Ok(());
+        return Ok(false);
     };
+    let fullscreen = window.is_fullscreen().map_err(|error| error.to_string())?;
     window
-        .set_fullscreen(fullscreen)
+        .set_fullscreen(!fullscreen)
         .map_err(|error| error.to_string())?;
-    let _ = app.emit(FULLSCREEN_EVENT, fullscreen);
-    Ok(())
+    broadcast_fullscreen(&app);
+    Ok(!fullscreen)
 }
 
 // Restores the primary window when a second process launches

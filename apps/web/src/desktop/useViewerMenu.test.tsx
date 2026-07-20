@@ -2,7 +2,7 @@ import { render } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { PlayerController } from '../app/viewer/player/usePlayer'
-import { isDesktopHost, listenHostMenu, setHostPlaybackAvailable } from '../platform'
+import { isDesktopHost, listenHostMenu, setHostViewerMenuAvailable } from '../platform'
 import type { DesktopMenuAction } from './types'
 import { isPlaybackAction, useViewerMenu } from './useViewerMenu'
 
@@ -10,7 +10,7 @@ vi.mock('../platform', () => ({
   isDesktopHost: vi.fn(() => true),
   listenHostMenu: vi.fn().mockResolvedValue(() => undefined),
   setHostLibraryAvailable: vi.fn().mockResolvedValue(undefined),
-  setHostPlaybackAvailable: vi.fn().mockResolvedValue(undefined),
+  setHostViewerMenuAvailable: vi.fn().mockResolvedValue(undefined),
 }))
 
 let emit: ((action: DesktopMenuAction) => void) | null = null
@@ -22,6 +22,8 @@ function mockActions() {
     snapshot: vi.fn(),
     previous: vi.fn(),
     next: vi.fn(),
+    isFullscreen: vi.fn(() => false),
+    exitFullscreen: vi.fn(),
   }
 }
 
@@ -77,17 +79,25 @@ test('routes Playback menu events to the open viewer and ignores the rest', asyn
 
 test('enables the Playback menu only while the viewer is mounted', async () => {
   const view = render(<Harness player={mockPlayer()} actions={mockActions()} />)
-  await vi.waitFor(() => expect(setHostPlaybackAvailable).toHaveBeenCalledWith(true))
+  await vi.waitFor(() => expect(setHostViewerMenuAvailable).toHaveBeenCalledWith(true, true))
 
   view.unmount()
   // Leaving the menu live against a closed viewer would give the user items that
   // silently do nothing.
-  expect(setHostPlaybackAvailable).toHaveBeenLastCalledWith(false)
+  expect(setHostViewerMenuAvailable).toHaveBeenLastCalledWith(false, false)
+})
+
+test('leaves player-only items disabled for an image bundle', async () => {
+  // An image bundle has no PlayerController, so Play/Pause and friends would be
+  // enabled-but-dead; only Previous/Next File actually work there.
+  const view = render(<Harness player={null} actions={mockActions()} />)
+  await vi.waitFor(() => expect(setHostViewerMenuAvailable).toHaveBeenCalledWith(true, false))
+  view.unmount()
 })
 
 test('stays inert in the browser', async () => {
   vi.mocked(isDesktopHost).mockReturnValue(false)
   const view = render(<Harness player={mockPlayer()} actions={mockActions()} />)
   view.unmount()
-  expect(setHostPlaybackAvailable).not.toHaveBeenCalled()
+  expect(setHostViewerMenuAvailable).not.toHaveBeenCalled()
 })

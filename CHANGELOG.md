@@ -29,10 +29,12 @@ grouped under `Unreleased` until the first tagged release.
 - **Viewer fullscreen is real window fullscreen in the shell (Plan 3 D5a).** The
   viewer is already a full-window overlay, so the shell now toggles the native
   window instead of the HTML Fullscreen API, which WKWebView gates behind user
-  activation that a native menu item cannot supply. Every fullscreen change flows
-  through one command that broadcasts `cairndex://fullscreen`, so the viewer's
-  control cannot show a stale state after the View menu toggled the window, and
-  Escape leaves fullscreen before closing the viewer. Browser behavior is
+  activation that a native menu item cannot supply. Fullscreen state is tracked
+  from the window itself — a resize watcher reads the real state and broadcasts
+  `cairndex://fullscreen` on change — so transitions the app never requested (the
+  green zoom button, Mission Control) are picked up too, and a read taken
+  mid-animation self-corrects. Escape leaves fullscreen before closing the viewer,
+  including on image bundles, which have no player. Browser behavior is
   unchanged.
 - **Left click toggles playback (Plan 3 D5a).** Clicking the video plays/pauses
   it, matching every other player. Right click no longer hijacks play/pause and
