@@ -21,9 +21,11 @@ Run as ``cairndex-sidecar`` (the PyInstaller entry point, ADR-0019 §2) or as
 ``python -m cairndex.sidecar`` in development.
 """
 
+import argparse
 import contextlib
 import socket
 import sys
+import threading
 
 import uvicorn
 
@@ -60,7 +62,47 @@ def announce_port(port: int) -> None:
     sys.stdout.flush()
 
 
-def main() -> int:
+def watch_parent(server: uvicorn.Server) -> None:
+    """Shut down gracefully when the shell's end of our stdin pipe closes.
+
+    This is how the shell stops us, in preference to a signal, for two reasons.
+
+    It is genuinely cross-platform: Windows has no SIGTERM, so a signal-based
+    stop would need target-OS branches in the shell that plan 3 §2.1 exists to
+    avoid.
+
+    More importantly it survives the shell *not* getting to ask. A SIGTERM is
+    only sent by a shell that is still alive enough to send it; a crash or a
+    `kill -9` sends nothing, and the sidecar would then keep running — holding
+    ownership leases that the user meets as a takeover prompt on their next
+    launch. The pipe, by contrast, is closed by the kernel whatever killed the
+    parent, so the graceful path that releases those leases still runs.
+
+    Opt-in via ``--watch-parent`` rather than automatic: a sidecar started by
+    hand may have stdin at ``/dev/null``, which is at EOF immediately and would
+    make the server exit the moment it started.
+    """
+
+    def wait_for_eof() -> None:
+        with contextlib.suppress(Exception):
+            # Returns b"" only at EOF. The shell never writes to this pipe, so
+            # anything it did send is deliberately ignored — the close is the
+            # whole message.
+            sys.stdin.buffer.read()
+        server.should_exit = True
+
+    threading.Thread(target=wait_for_eof, name="cairndex-parent-watch", daemon=True).start()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cairndex-sidecar", description=__doc__)
+    parser.add_argument(
+        "--watch-parent",
+        action="store_true",
+        help="stop when stdin reaches EOF (the desktop shell passes this)",
+    )
+    args = parser.parse_args(argv)
+
     from cairndex.auth.local_token import sidecar_mode
 
     if not sidecar_mode():
@@ -84,7 +126,10 @@ def main() -> int:
 
         config = uvicorn.Config(app, log_level="warning", access_log=False)
         server = uvicorn.Server(config)
-        # uvicorn installs its own SIGTERM/SIGINT handling and runs the app's
+        if args.watch_parent:
+            watch_parent(server)
+        # Either route into the same graceful stop: uvicorn's own SIGTERM/SIGINT
+        # handling, or `should_exit` set by the parent watch. Both run the app's
         # lifespan shutdown, which is what releases the ownership leases.
         server.run(sockets=[sock])
     finally:

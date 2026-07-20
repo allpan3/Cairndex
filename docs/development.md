@@ -268,15 +268,45 @@ speculatively — they make a future genuine gap look already handled. If the
 smoke test ever fails on a missing module, add the entry and name the failure it
 fixes in a comment.
 
-**Sidecar contract with the shell.** `cairndex.sidecar` binds an ephemeral
-loopback port itself and prints `CAIRNDEX_SIDECAR_PORT=<port>` on stdout; the
-shell parses that line. Binding first and announcing second means the announced
-port is always live, which having the shell pick a free port would not
-guarantee. The shell also sets `CAIRNDEX_LOCAL_TOKEN`; the sidecar refuses to
-start without it rather than serving an unauthenticated API on a port any local
-process can reach. Shutdown must be SIGTERM, not SIGKILL — the graceful path is
-what releases ownership leases, and skipping it leaves the user a takeover
-prompt on their next launch.
+**`tauri build` needs this bundle.** `tauri.conf.json` stages
+`packaging/dist/cairndex-sidecar` as a bundle resource, so build it before
+building the desktop app or Tauri fails on the missing resource. CI does this in
+the macOS job.
+
+**Sidecar contract with the shell** (`apps/desktop/src-tauri/src/sidecar.rs`):
+
+- The sidecar binds an ephemeral loopback port *itself* and prints
+  `CAIRNDEX_SIDECAR_PORT=<port>` on stdout; the shell parses that line. Binding
+  first and announcing second means the announced port is always live — having
+  the shell pick a free port and pass it down leaves a window for something else
+  to take it.
+- The shell generates a fresh 256-bit token per start and passes it in the
+  **environment**, not argv, since a command line is visible in any process
+  listing. The sidecar refuses to start without it rather than serving an
+  unauthenticated API on a port any local process can reach.
+- **Shutdown is closing the sidecar's stdin, not a signal.** The sidecar runs
+  with `--watch-parent` and stops when that pipe reaches EOF. Two reasons: it
+  needs no target-OS branches (Windows has no SIGTERM, and plan 3 §2.1 exists to
+  avoid such branches), and it still works when the shell never gets to ask. A
+  signal requires a shell alive enough to send it; a crash or `kill -9` sends
+  nothing and would orphan a process still holding ownership leases, which the
+  user meets as a takeover prompt on their next launch. The kernel closes the
+  pipe however the shell dies. Verified: SIGKILLing a parent leaves no orphan and
+  the lease still comes back with `released_at`.
+- The sidecar gets its own `CAIRNDEX_DATA_DIR` under the app's data directory
+  (`local-server/`), kept out of the shell's own store — its registry is
+  invisible plumbing (ADR-0018 §5).
+
+The Rust lifecycle test spawns the real bundle, but only when
+`CAIRNDEX_SIDECAR_BIN` points at one; otherwise it skips, so the desktop gates
+stay runnable without Python. **Set it when running the desktop tests locally**,
+or the test passes without proving anything:
+
+```bash
+cd apps/desktop/src-tauri
+CAIRNDEX_SIDECAR_BIN=$PWD/../../server/packaging/dist/cairndex-sidecar/cairndex-sidecar \
+  cargo test --locked
+```
 
 ## Databases and local state
 

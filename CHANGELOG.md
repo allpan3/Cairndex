@@ -36,6 +36,18 @@ grouped under `Unreleased` until the first tagged release.
   `docs/deployment.md`, which also documents the one-active-machine semantics for
   cloud-synced libraries.
 
+- **The desktop shell can now run a local server (Plan 3 D6.3).**
+  `apps/desktop/src-tauri/src/sidecar.rs` spawns the bundled server on demand,
+  waits for it to become healthy, and stops it with the app. The bundle is staged
+  into `Cairndex.app` as a resource. The sidecar announces its own ephemeral
+  loopback port, and the shell generates a fresh 256-bit bearer per start and
+  passes it in the environment rather than argv. Shutdown closes the sidecar's
+  stdin instead of sending a signal — that needs no per-OS branches and, unlike a
+  signal, still works when the shell crashes, so a killed app cannot orphan a
+  process still holding ownership leases. New commands: `start_local_server`,
+  `stop_local_server`, `local_server_status`. No UI consumes them yet; that is
+  D6.4/D6.5.
+
 - **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
   the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus
   `fetch_ffmpeg.py` for pinned, checksum-verified static media binaries and a
