@@ -47,7 +47,7 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
-- **ADR-0018 (proposed): library ownership lease and desktop local-server
+- **ADR-0018 (accepted): library ownership lease and desktop local-server
   sidecar.** Records the single-server-per-library enforcement design: an
   active-owner lease file inside `.cairndex/locks/` (write-then-verify
   acquisition, heartbeat watchdog, confirm-on-stale-takeover, unmount on lost

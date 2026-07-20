@@ -1,6 +1,6 @@
 # Project status
 
-## In review: ADR-0018 — library ownership lease and local-server sidecar
+## Completed: ADR-0018 — library ownership lease and local-server sidecar
 
 Branch `docs/adr-library-ownership-lease` (documentation only; no code
 change). An owner design discussion on 2026-07-19 ratified the
@@ -19,8 +19,9 @@ the lease/sidecar work heads build-order phase F in `docs/plans/README.md`
 (server-side lease first, then the plan 3 D6 sidecar, ahead of the
 write-mode slices — owner-directed: no separate phase), and plan 3 gains
 milestone D6 (§8/§10 updated from "noted, not planned"). No gates run
-(prose-only change). Landed directly on `main` at the owner's request; the
-ADR itself remains proposed pending a full read.
+(prose-only change). Landed directly on `main` at the owner's request, and
+the owner then marked ADR-0018 **accepted** (2026-07-19). Implementation
+work heads phase F: server-side lease first, then the plan 3 D6 sidecar.
 
 ## Completed: Plan 3 D4 second review round — drag hardening
 
