@@ -26,6 +26,13 @@
       "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost http: https:; img-src 'self' data: blob: http: https:; media-src 'self' blob: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:"
     }
   },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["cairndex"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["app"],

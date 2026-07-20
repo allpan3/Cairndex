@@ -26,12 +26,30 @@ export interface HostPlatform {
   canRevealInFinder: boolean
   canOpenWithDefaultApp: boolean
   canDragOutFiles: boolean
+  // True when the host can put a generated artifact where the user chooses
+  // (plan 1 §10 / M11). The browser can only trigger an ordinary download.
+  canSaveExports: boolean
   revealFile(libraryId: string, relativePath: string): Promise<void>
   openFile(libraryId: string, relativePath: string): Promise<void>
   startFileDrag(items: DragOutItem[]): Promise<void>
   getLibraryMapping(libraryId: string): Promise<string | null>
   locateLibrary(libraryId: string, libraryUuid: string): Promise<string | null>
   clearLibraryMapping(libraryId: string): Promise<void>
+  /**
+   * Saves an export artifact through the native save dialog (M11 seam; no export
+   * UI exists yet). Resolves to the chosen path, or null when the user cancelled.
+   * The caller supplies bytes and a suggested file *name* — never a path, so the
+   * destination can only come from the OS dialog.
+   */
+  saveExport(suggestedName: string, bytes: Uint8Array): Promise<string | null>
+}
+
+// One resolved `cairndex://` deep link (plan 3 §7). `libraryId` is optional; when
+// absent the target opens in whatever library is already active.
+export interface DeepLinkTarget {
+  kind: 'bundle' | 'collection'
+  id: string
+  libraryId?: string | null
 }
 
 export type HostOs = 'macos' | 'windows' | 'linux' | 'unknown'
@@ -65,6 +83,11 @@ interface PlatformRuntime {
   toggleWindowFullscreen(): Promise<boolean>
   isWindowFullscreen(): Promise<boolean>
   listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
+  listenDeepLink(handler: (target: DeepLinkTarget) => void): Promise<() => void>
+  takePendingDeepLink(): Promise<DeepLinkTarget | null>
+  ensureNotificationPermission(): Promise<boolean>
+  notify(title: string, body: string): Promise<void>
+  setBadgeCount(count: number | null): Promise<void>
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
@@ -124,6 +147,14 @@ const webRuntime: PlatformRuntime = {
   toggleWindowFullscreen: async () => false,
   isWindowFullscreen: async () => false,
   listenFullscreen: async () => () => undefined,
+  listenDeepLink: async () => () => undefined,
+  takePendingDeepLink: async () => null,
+  // The browser build deliberately does not ask for the Notification API: a web
+  // page prompting for notifications is exactly the pattern users distrust, and
+  // the tab is visible anyway when the owner triggers a job.
+  ensureNotificationPermission: async () => false,
+  notify: async () => undefined,
+  setBadgeCount: async () => undefined,
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
@@ -252,6 +283,27 @@ export const setHostViewerMenuAvailable = (viewer: boolean, video: boolean): Pro
 export const toggleHostWindowFullscreen = (): Promise<boolean> => runtime.toggleWindowFullscreen()
 
 export const isHostWindowFullscreen = (): Promise<boolean> => runtime.isWindowFullscreen()
+
+// Subscribes to cairndex:// deep links delivered while the app is running
+export const listenHostDeepLink = (
+  handler: (target: DeepLinkTarget) => void,
+): Promise<() => void> => runtime.listenDeepLink(handler)
+
+// Drains a deep link that arrived before the SPA could listen (cold start)
+export const takeHostPendingDeepLink = (): Promise<DeepLinkTarget | null> =>
+  runtime.takePendingDeepLink()
+
+// Asks for notification permission once, returning whether it is granted
+export const ensureHostNotificationPermission = (): Promise<boolean> =>
+  runtime.ensureNotificationPermission()
+
+// Posts a user notification through the OS notification centre
+export const notifyHost = (title: string, body: string): Promise<void> =>
+  runtime.notify(title, body)
+
+// Sets or clears the dock/taskbar badge (null clears it)
+export const setHostBadgeCount = (count: number | null): Promise<void> =>
+  runtime.setBadgeCount(count)
 
 // Observes native fullscreen changes made outside the viewer (the View menu)
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>

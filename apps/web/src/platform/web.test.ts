@@ -15,3 +15,10 @@ test('keeps native host capabilities false and harmless in plain web', async () 
   await expect(webPlatform.locateLibrary('lib', 'portable-id')).resolves.toBeNull()
   await expect(webPlatform.clearLibraryMapping('lib')).resolves.toBeUndefined()
 })
+
+test('exposes no export save capability in the browser', async () => {
+  // M11's Export dialog reads this flag to decide between a native Save As… and
+  // an ordinary browser download; the web build must never claim the former.
+  expect(webPlatform.canSaveExports).toBe(false)
+  await expect(webPlatform.saveExport('clip.gif', new Uint8Array([1]))).resolves.toBeNull()
+})
