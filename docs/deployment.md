@@ -277,21 +277,39 @@ single-instance plugin forwards only **argv** to the running instance — and on
 macOS a deep link arrives as an Apple Event, not argv. The link parks in the
 process that immediately exits, and is silently lost.
 
-So when the `/Applications` copy should own the scheme:
+So when the `/Applications` copy should own the scheme, **unregister every other
+claimant by path**. `lsregister -u` is the tool that works, including for paths on
+volumes that no longer exist:
 
 ```bash
-# Remove the build-directory bundle (it returns on the next build) …
-rm -rf apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app
-# … then rebuild LaunchServices' database to drop stale claims.
-"$lsregister" -kill -r -domain local -domain system -domain user
-# Re-register the copy that should win:
-"$lsregister" -f /Applications/Cairndex.app
+# Eject the DMG if it is still mounted — a mounted image is itself a claimant.
+hdiutil detach /Volumes/Cairndex
+
+# Unregister each unwanted path from the dump above. This works on dead paths too.
+"$lsregister" -u /Volumes/dmg.XXXXXX/Cairndex.app
+"$lsregister" -u "$(git rev-parse --show-toplevel)/apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app"
+
+# Optionally also delete the build-directory bundle; it returns on the next build,
+# and each rebuild re-registers it, so expect to repeat the -u above after builds.
+rm -rf "$(git rev-parse --show-toplevel)/apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app"
 ```
+
+Two things that do **not** work, both verified on macOS 26:
+
+- `lsregister -kill` — removed by Apple ("the `-kill` option has been removed
+  because it was dangerous and no longer useful"). Any recipe you find online that
+  rebuilds the database this way is stale.
+- `lsregister -gc` — runs without error but does not drop these stale claims.
+
+Note the `git rev-parse --show-toplevel` in the paths above: the build-directory
+bundle must be addressed absolutely, since a relative path silently resolves
+against whatever directory you happen to be in and the `rm` then does nothing.
 
 Re-run the `-dump` command above to confirm only the intended path claims the
 scheme. **Any deep-link testing must be done against whichever copy is meant to
 own it** — otherwise a passing or failing result says nothing about the app the
-user actually runs.
+user actually runs. Expect to re-check after every `tauri build`, since each one
+recreates and re-registers the build-directory bundle.
 
 ### When you actually need Developer ID signing
 
