@@ -23,7 +23,17 @@ export function deepLinkIdentity(target: DeepLinkTarget): string {
  * before it reaches the handler — otherwise a cold-start link could open its
  * target, and then open it a second time when the event arrives.
  */
-export function useDeepLink(handler: (target: DeepLinkTarget) => void): void {
+export function useDeepLink(
+  handler: (target: DeepLinkTarget) => void,
+  /**
+   * Gates delivery until the app can actually act on a link. A cold-start link is
+   * drained milliseconds after mount, while the libraries query is still in
+   * flight, so classifying it against an empty list would report every
+   * `?library=` link as "not on this server". Nothing is lost by waiting: the
+   * shell parks links until the SPA drains them.
+   */
+  enabled = true,
+): void {
   const handlerRef = useRef(handler)
   // Retains the last target delivered, so the parked copy and the event that
   // describes the same link cannot both act.
@@ -34,7 +44,7 @@ export function useDeepLink(handler: (target: DeepLinkTarget) => void): void {
   }, [handler])
 
   useEffect(() => {
-    if (!isDesktopHost()) return
+    if (!isDesktopHost() || !enabled) return
     let disposed = false
     let unlisten: (() => void) | undefined
 
@@ -64,5 +74,5 @@ export function useDeepLink(handler: (target: DeepLinkTarget) => void): void {
       disposed = true
       unlisten?.()
     }
-  }, [])
+  }, [enabled])
 }

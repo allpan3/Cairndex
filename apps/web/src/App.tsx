@@ -209,6 +209,12 @@ export default function App() {
   // workspace is keyed on libraryId, so it remounts on a switch and then consumes
   // the target — which is why the target lives in App state rather than in the
   // workspace's own.
+  //
+  // Delivery is gated on the libraries query having settled. A cold-start link is
+  // drained within milliseconds of mount, so classifying it against a
+  // still-loading (empty) list would report every `?library=` link as "not on
+  // this server". The shell parks links until we drain them, so waiting loses
+  // nothing.
   useDeepLink(
     useCallback(
       (target) => {
@@ -222,6 +228,7 @@ export default function App() {
       },
       [libraries, changeLibrary],
     ),
+    !librariesQuery.isLoading,
   )
 
   // Set the module-global active library during render so content queries (which

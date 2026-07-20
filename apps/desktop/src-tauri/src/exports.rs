@@ -34,8 +34,9 @@ pub(crate) fn sanitize_file_name(suggested: &str) -> Option<String> {
         .next()
         .unwrap_or_default()
         .trim()
-        // Strip characters that are path-significant or illegal on common systems.
-        .replace(['\0', ':'], "");
+        // Strip characters that are path-significant or illegal on common systems,
+        // so the dialog's prefill is usable as-is on Windows too.
+        .replace(['\0', ':', '<', '>', '"', '|', '?', '*'], "");
     let name = name.trim_start_matches('.').trim();
     if name.is_empty() {
         return None;
@@ -128,12 +129,18 @@ mod tests {
     }
 
     #[test]
-    fn removes_characters_that_are_path_significant() {
+    fn removes_characters_that_are_path_significant_or_illegal() {
         assert_eq!(
             sanitize_file_name("clip:1.gif").as_deref(),
             Some("clip1.gif")
         );
         assert_eq!(sanitize_file_name("a\0b.gif").as_deref(), Some("ab.gif"));
+        // Illegal on Windows; harmless elsewhere, but the prefill should be usable
+        // on any host the shell runs on.
+        assert_eq!(
+            sanitize_file_name(r#"a<b>c"d|e?f*g.gif"#).as_deref(),
+            Some("abcdefg.gif")
+        );
     }
 
     #[test]

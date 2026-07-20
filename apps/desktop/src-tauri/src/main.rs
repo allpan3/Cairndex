@@ -107,6 +107,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         deeplink::handle_deep_link(&handle, url.as_str());
                     }
                 });
+                // Belt and braces: cold-start correctness otherwise rests on the
+                // Apple Event arriving *after* the handler above is registered.
+                // `get_current` returns a link the plugin already captured, and the
+                // SPA de-duplicates, so covering both costs nothing.
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    for url in urls {
+                        deeplink::handle_deep_link(app.handle(), url.as_str());
+                    }
+                }
             }
             // Windows/Linux cold start: the very first process receives the URL in
             // its own argv, which no plugin callback covers.
