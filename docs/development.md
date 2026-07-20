@@ -268,10 +268,26 @@ speculatively — they make a future genuine gap look already handled. If the
 smoke test ever fails on a missing module, add the entry and name the failure it
 fixes in a comment.
 
-**`tauri build` needs this bundle.** `tauri.conf.json` stages
-`packaging/dist/cairndex-sidecar` as a bundle resource, so build it before
-building the desktop app or Tauri fails on the missing resource. CI does this in
-the macOS job.
+**The desktop crate does not compile without this path.** `tauri.conf.json`
+stages `packaging/dist/cairndex-sidecar` as a bundle resource, and `tauri-build`
+copies resources at **compile** time — so a missing non-glob path fails
+`cargo check`, `cargo test`, and `tauri dev`, not just `tauri build`:
+
+```text
+error: failed to run custom build command for `cairndex-desktop`
+  resource path `../../server/packaging/dist/cairndex-sidecar` doesn't exist
+```
+
+Either build the bundle (`packaging/build_sidecar.py`) or, if you only need the
+Rust to compile, create the directory empty — the resource copier skips empty
+directories, and `binary_path()` then correctly reports `not_bundled` at runtime:
+
+```bash
+mkdir -p apps/server/packaging/dist/cairndex-sidecar
+```
+
+CI does the first in the macOS job and the second in the Ubuntu Rust job, which
+runs no Python.
 
 **Sidecar contract with the shell** (`apps/desktop/src-tauri/src/sidecar.rs`):
 

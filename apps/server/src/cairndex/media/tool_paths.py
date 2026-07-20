@@ -16,11 +16,14 @@ Resolution order, most explicit first:
    Finder-launched case when nothing was configured.
 """
 
+import logging
 import os
 import shutil
 from pathlib import Path
 
 from cairndex.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 # Checked only after PATH, so a deliberately-chosen binary always wins. These are
 # the standard package-manager prefixes on macOS (Homebrew on Apple Silicon and
@@ -34,17 +37,26 @@ _FALLBACK_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _configured(explicit: Path | None) -> str | None:
+def _configured(name: str, explicit: Path | None) -> str | None:
+    """Use the configured binary, or fall through to discovery.
+
+    Falling through keeps a stale setting from disabling media work outright,
+    but it is logged: the desktop shell sets these to *bundled* binaries, so a
+    path that exists yet is not executable usually means a packaging bug (a lost
+    execute bit), and silently using a system ffmpeg instead would hide it right
+    up until a machine that has no system ffmpeg.
+    """
     if explicit is None:
         return None
     candidate = Path(explicit).expanduser()
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return str(candidate)
+    logger.warning("configured %s is not an executable file; falling back to discovery", name)
     return None
 
 
 def _resolve(name: str, explicit: Path | None) -> str | None:
-    configured = _configured(explicit)
+    configured = _configured(name, explicit)
     if configured is not None:
         return configured
     found = shutil.which(name)
