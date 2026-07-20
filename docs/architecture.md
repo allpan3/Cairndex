@@ -223,6 +223,7 @@ A Cairndex library is a directory with this package:
       thumbnails/
       subtitles/
       storyboards/
+    library.db.bak
     locks/
       active-owner.json
 ```
@@ -230,7 +231,7 @@ A Cairndex library is a directory with this package:
 The manifest stores the portable library identity and display name. `library.db`
 holds all content metadata for that library. The cache holds reproducible derived
 artifacts and is ignored by scanning/grouping. `locks/active-owner.json` is the
-ownership lease (§4.1).
+ownership lease (§4.1) and `library.db.bak` its sync-heal snapshot (§4.2).
 
 The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
 
@@ -305,6 +306,29 @@ start and at every batch boundary. `GET /api/v1/libraries/{id}/ownership` sits
 outside the gate on purpose — it is the endpoint a client calls *because* a mount
 was refused; `POST .../ownership/takeover` returns 202 and runs the observation
 window in the background.
+
+### 4.2 SQLite sync hygiene
+
+A library in WAL mode is up to three files, and a cloud-sync engine uploads
+whatever it finds whenever it looks. `persistence/checkpoint.py` plus a
+`SqliteMaintenance` timer thread keep the at-rest state coherent (ADR-0018 §6):
+
+- a library idle past a threshold gets `wal_checkpoint(TRUNCATE)` — `TRUNCATE`
+  rather than `PASSIVE`, which would leave the WAL at its high-water mark and
+  keep the sync engine shipping a large file carrying nothing;
+- a periodic consistent snapshot goes to `.cairndex/library.db.bak` via SQLite's
+  online backup API, written temp-then-renamed. The backup API is required
+  rather than preferred: a file copy taken while a WAL is outstanding silently
+  misses everything the WAL holds;
+- clean shutdown checkpoints and disposes every library engine *before* releasing
+  the leases, so each library is left as a single consistent file before another
+  machine is invited to pick it up.
+
+Maintenance only ever touches libraries whose lease this server holds; the set is
+supplied to `SqliteMaintenance` as a callable, so `persistence` stays unaware of
+the ownership layer. It runs on its own thread rather than sharing the lease
+heartbeat's: a slow checkpoint on a sluggish mount must not be able to delay a
+heartbeat into looking stale to other machines.
 
 ## 5. Storage and path safety
 

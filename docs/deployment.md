@@ -166,6 +166,35 @@ artifact is the only evidence the library may have diverged. No folder-based lea
 can prevent a partitioned dual write — what it guarantees is bounded detection and
 no silent data loss (ADR-0018 §7).
 
+### Keeping a synced library's files consistent
+
+A SQLite database in WAL mode is up to three files — `library.db`, `-wal`, and
+`-shm` — and a sync engine uploads whatever it happens to find. Two mechanisms
+keep what it finds coherent (ADR-0018 §6):
+
+- **Idle checkpoint.** A library untouched for `CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER`
+  seconds gets `wal_checkpoint(TRUNCATE)`, folding the WAL back into
+  `library.db` and truncating it to zero. SQLite's own automatic checkpoint only
+  fires around 1000 pages, which a browsing session may not reach for a long
+  time. At rest you should therefore see a complete `library.db` and an empty
+  `-wal`; after a clean shutdown, `library.db` alone.
+- **Periodic snapshot.** Every `CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` seconds
+  (default 24 h; `0` disables) a consistent copy is written to
+  `.cairndex/library.db.bak` through SQLite's online backup API — which captures
+  a transactionally consistent view including anything still in the WAL, unlike a
+  file copy. It is written to a temp name and renamed into place, so the snapshot
+  itself is never observed half-written. This is the heal path if a machine's
+  last sync ever did ship a torn state and that machine never syncs again.
+
+Both only ever run against libraries this server currently holds the lease for.
+Tuning knobs: `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED` (default `true`),
+`CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL` (default `60`),
+`CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER` (default `120`), and
+`CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` (default `86400`).
+
+The snapshot is a convenience, **not a backup** — it lives inside the library it
+copies, so it is lost with the folder. Keep the real backups below.
+
 ### Backups
 
 ADR-0008 split persistent state across multiple SQLite DBs:
@@ -175,7 +204,10 @@ ADR-0008 split persistent state across multiple SQLite DBs:
   `/storage/media/.cairndex/library.db`.
 
 Back up the registry plus every library DB you care about. Generated cache files
-under `.cairndex/cache/` are reproducible and can usually be regenerated.
+under `.cairndex/cache/` are reproducible and can usually be regenerated, and
+`.cairndex/library.db.bak` is the in-library sync-heal snapshot described above —
+it is not a substitute for an off-box backup, since it travels with (and dies
+with) the library folder.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
 online backup API and integrity-checks it:
