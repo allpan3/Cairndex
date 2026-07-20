@@ -108,11 +108,51 @@ GPL. Until it is populated, builds use `--skip-ffmpeg` and the sidecar falls bac
 to a system ffmpeg via `media/tool_paths.py`. That works on a developer machine
 and **not** on a user's, so this blocks a real release, not D6.3.
 
+### Landed: sidecar lifecycle in the shell (D6.3)
+
+`apps/desktop/src-tauri/src/sidecar.rs` — spawn on demand, health-gate, stop with
+the app. `tauri.conf.json` stages the bundle as a resource, so `tauri build` now
+requires it (CI builds it first).
+
+- **The port comes from the sidecar.** It binds ephemeral loopback and announces
+  on stdout; picking a free port in the shell and passing it down would leave a
+  window for something else to take it.
+- **The token is generated per start and passed in the environment**, not argv,
+  because a command line shows up in any process listing — and it is the
+  sidecar's only access gate.
+- **Shutdown closes stdin rather than sending a signal**, which is the decision
+  worth remembering. It needs no target-OS branches (Windows has no SIGTERM, and
+  plan 3 §2.1 exists to avoid such branches), and — the real reason — it survives
+  the shell not getting to ask. A signal needs a shell alive enough to send it;
+  a crash or `kill -9` sends nothing and would orphan a sidecar still holding
+  ownership leases, which the user meets as a takeover prompt on their next
+  launch. **Verified by SIGKILLing a parent process:** no orphan, and the lease
+  came back with `released_at`. That is a strictly better property than the
+  SIGTERM approach originally sketched.
+- Sidecar shutdown hangs off `RunEvent::Exit`, not `ExitRequested` — the latter
+  can be cancelled, and unmounting a library out from under a user who chose to
+  stay would be worse than shutting down slightly later.
+
+Verification:
+
+- Desktop `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`, and
+  **60 unit tests** (was 55).
+- The lifecycle test **spawns the real packaged bundle** — loopback bind, health
+  open, 401 anonymous, 200 with the token, and stdin-close shutdown leaving the
+  port dead. It skips unless `CAIRNDEX_SIDECAR_BIN` is set, so the desktop gates
+  stay runnable without Python; CI's macOS job sets it, which is what turns it
+  from a no-op into a real check.
+- A release `tauri build` produced `Cairndex.app` (**88 MB**) with the sidecar at
+  `Contents/Resources/cairndex-sidecar/cairndex-sidecar` — exactly where
+  `binary_path()` looks — and **the staged copy was launched from inside the
+  `.app`** and served health 200 and an authenticated request 200.
+
+Known gaps: no UI consumes the commands yet (D6.4/D6.5), and the app still has
+no way to *open a local folder* — that is the next slice. The bundled build
+carries no ffmpeg until the manifest is pinned, so a packaged sidecar currently
+falls back to a system ffmpeg.
+
 ### Remaining
-- **D6.3** Rust lifecycle: spawn on an ephemeral loopback port with a generated
-  token, a private `CAIRNDEX_DATA_DIR` under Application Support, and explicit
-  ffmpeg paths; health-poll for readiness; stop on shell shutdown so leases are
-  released.
 - **D6.4/D6.5** web: the connections model (remote servers plus one managed local
   server), "Open library folder…", and the lease refusal / redirect /
   takeover-confirmation UX on top of the `…/ownership` endpoints.
