@@ -19,8 +19,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.core.errors import LibraryLeaseError
 from cairndex.domain.enums import JobPhase, JobStatus, JobType, LibraryStatus
 from cairndex.jobs.errors import safe_error_message
+from cairndex.ownership import get_lease_manager
 from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.registry.library_engine import get_library_sessionmaker
@@ -34,6 +36,21 @@ _PROGRESS_MIN_INTERVAL = 0.5
 
 class JobCancelled(Exception):
     """Raised inside a handler when cancellation has been requested."""
+
+
+class JobOwnershipLost(JobCancelled):
+    """Raised inside a handler when this server lost the library's lease.
+
+    A subclass of ``JobCancelled`` so every handler's existing unwind path
+    already does the right thing — roll back, stop, leave no partial write. It
+    is a distinct type only so the terminal message can say what happened, since
+    "cancelled" would suggest the user asked for it.
+
+    This is the fast half of ADR-0018 §4's job re-verification. The slow half —
+    the heartbeat flagging the library's jobs for cancellation — still runs, but
+    it needs a registry round trip to be noticed; this check is an in-memory
+    lookup, so a batch boundary reacts the moment the watchdog knows.
+    """
 
 
 class JobContext:
@@ -55,6 +72,8 @@ class JobContext:
         job_id: str,
         payload: dict[str, Any],
         library_root: Path,
+        library_id: str = "",
+        owns_library: Callable[[], bool] | None = None,
         progress_min_interval: float = _PROGRESS_MIN_INTERVAL,
     ) -> None:
         self.session = session
@@ -62,6 +81,10 @@ class JobContext:
         self.job_id = job_id
         self.payload = payload
         self.library_root = library_root
+        self.library_id = library_id
+        # Defaults to "yes" so a directly-constructed context (tests, one-off
+        # handler runs) behaves exactly as before this check existed.
+        self._owns_library = owns_library or (lambda: True)
         self.phase: JobPhase | None = None
         self.message: str | None = None
         self._progress_min_interval = progress_min_interval
@@ -118,6 +141,11 @@ class JobContext:
         self._raise_if_cancelled()
 
     def _raise_if_cancelled(self) -> None:
+        # Ownership first: it is a local lookup, and if we no longer own the
+        # library the very next thing this job would do is write to a library
+        # another server owns (ADR-0018 §4).
+        if not self._owns_library():
+            raise JobOwnershipLost
         if job_service.is_cancel_requested(self.registry_session, self.job_id):
             raise JobCancelled
 
@@ -157,6 +185,21 @@ def execute_job(
             reg.commit()
             return JobStatus.FAILED
         library_root = Path(library.root_path)
+
+        # Re-verify ownership before starting (ADR-0018 §4). A queued job can
+        # outlive a restart or a takeover, and running it would write into a
+        # library this server no longer owns. ``ensure_owned`` acquires a
+        # released or own lease silently but never takes a foreign one — a
+        # background job is not a place to make that decision on the user's
+        # behalf.
+        lease_manager = get_lease_manager()
+        try:
+            lease_manager.ensure_owned(library_id=library.id, root=library_root)
+        except LibraryLeaseError as exc:
+            job_service.mark_finished(reg, job_id, status=JobStatus.FAILED, error=exc.message)
+            reg.commit()
+            return JobStatus.FAILED
+
         maker = get_library_sessionmaker(library)
 
         job_service.mark_running(reg, job_id)
@@ -169,6 +212,8 @@ def execute_job(
                 job_id=job_id,
                 payload=payload,
                 library_root=library_root,
+                library_id=library.id,
+                owns_library=lambda: lease_manager.holds(library.id, library_root),
             )
             try:
                 result = handler(ctx)
@@ -178,6 +223,16 @@ def execute_job(
                 )
                 reg.commit()
                 return JobStatus.SUCCEEDED
+            except JobOwnershipLost:
+                content.rollback()
+                job_service.mark_finished(
+                    reg,
+                    job_id,
+                    status=JobStatus.CANCELLED,
+                    message="stopped: another server took over this library",
+                )
+                reg.commit()
+                return JobStatus.CANCELLED
             except JobCancelled:
                 content.rollback()
                 job_service.mark_finished(reg, job_id, status=JobStatus.CANCELLED)
