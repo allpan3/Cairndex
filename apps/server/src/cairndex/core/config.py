@@ -82,6 +82,25 @@ class Settings(BaseSettings):
     # thread.
     lease_heartbeat_enabled: bool = True
 
+    # --- SQLite sync hygiene (ADR-0018 §6) ----------------------------------
+    # A library in WAL mode is three files on disk, and a cloud-sync engine
+    # uploads whatever it finds. Checkpointing an idle library keeps its at-rest
+    # state a single consistent file rather than a torn triple.
+
+    # Run the background maintenance pass (idle checkpoint + snapshot).
+    sqlite_maintenance_enabled: bool = True
+
+    # Seconds between maintenance passes, and how long a library must have gone
+    # untouched before one applies to it. A checkpoint competes with live
+    # readers, so it targets genuinely idle libraries.
+    sqlite_maintenance_interval: float = 60.0
+    sqlite_idle_checkpoint_after: float = 120.0
+
+    # Seconds between consistent snapshots of a library DB to
+    # ``.cairndex/library.db.bak`` (SQLite backup API). This is the heal path if
+    # a machine's last sync ever shipped a mid-write state. Set to 0 to disable.
+    sqlite_snapshot_interval: float = 86400.0
+
     # Directory of the built frontend (apps/web/dist). When set and present the
     # backend serves the SPA so a single production container ships both halves
     # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.

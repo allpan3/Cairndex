@@ -36,6 +36,21 @@ grouped under `Unreleased` until the first tagged release.
   `docs/deployment.md`, which also documents the one-active-machine semantics for
   cloud-synced libraries.
 
+- **SQLite sync hygiene for synced libraries (ADR-0018 §6).** A library in WAL
+  mode is up to three files on disk, and a cloud-sync engine uploads whatever it
+  happens to find. An idle library is now checkpointed with
+  `wal_checkpoint(TRUNCATE)` so its at-rest state is a complete `library.db` and
+  an empty WAL rather than a triple that can be captured mid-write, and a clean
+  shutdown checkpoints and closes every library before releasing its lease,
+  leaving a single file. A periodic consistent snapshot is written to
+  `.cairndex/library.db.bak` through SQLite's online backup API (temp file then
+  rename) as the heal path if a torn state ever does get shipped — it is a
+  convenience, not a backup, since it travels with the library folder. Both only
+  ever run against libraries this server holds the lease for. Tunable via
+  `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED`, `CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL`,
+  `CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER`, and
+  `CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL`.
+
 - **D5c desktop distribution (Plan 3).** Release builds now produce a **DMG**
   alongside the `.app`, giving drag-to-Applications install ergonomics. The full
   Developer ID signing + notarization procedure is documented in
