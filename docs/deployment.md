@@ -87,6 +87,20 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 
+**Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
+short hostname) is the human-readable name another machine shows when it asks
+whether to take a library over, so it is worth setting to something recognizable
+on a NAS. `CAIRNDEX_ADVERTISED_URL` (unset by default) is the URL clients can
+reach this server at; when set to a **non-loopback** address, another machine
+that finds this server holding a library can offer "connect there instead" rather
+than only naming a host. Leave it unset for a laptop or a desktop sidecar — a
+loopback URL means nothing to a different machine and is never offered as a
+redirect. `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL` (default `60`) and
+`CAIRNDEX_LEASE_TTL` (default `300`, 5× the interval so a couple of missed beats
+never look like a dead server) tune the lease timing; the defaults are fine
+unless a very slow mount proves otherwise. `CAIRNDEX_LEASE_HEARTBEAT_ENABLED`
+(default `true`) exists for tests.
+
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before
 restarting ffmpeg), `CAIRNDEX_TRANSCODE_AHEAD_WINDOW` (default `5`, segments a
@@ -106,6 +120,51 @@ few GB of headroom is ample for the default 2-session bound.
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
 `CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
 root mounted at `/storage/media`).
+
+### One server per library
+
+A library may be served by exactly one Cairndex server at a time (ADR-0018). Each
+server writes an ownership lease inside the library at
+`.cairndex/locks/active-owner.json` and refreshes it every minute; a second server
+pointed at the same folder — over SMB, over NFS, or through a cloud-synced copy —
+refuses to open it and names the machine that holds it instead.
+
+What this means operationally:
+
+- **A clean shutdown releases every lease.** Stopping the container, quitting a
+  desktop sidecar, or unregistering a library all mark it released, so the next
+  server to open it acquires silently. This is the everyday path and it never
+  prompts.
+- **A crash leaves the lease behind.** It ages out after
+  `CAIRNDEX_LEASE_TTL` and the next server offers a takeover — but only with
+  explicit confirmation, showing the holding machine and its last heartbeat.
+  There is no automatic takeover after any timeout, deliberately: the case that
+  looks identical to a crash is a machine whose sync is merely paused.
+- **Before taking a stale lease, the server watches it** for longer than a
+  heartbeat period. A holder that is actually alive touches the file during that
+  window and keeps the library, even though the user already confirmed.
+- **Set `CAIRNDEX_ADVERTISED_URL` on a NAS server.** Without it, another machine
+  can only say "this library is served by *hostname*"; with it, it can offer to
+  connect to the right server instead.
+
+To inspect who holds a library, read the lease directly — it is plain JSON and
+safe to `cat`:
+
+```bash
+cat /storage/media/.cairndex/locks/active-owner.json
+```
+
+Or ask a server: `GET /api/v1/libraries/{library_id}/ownership` answers even when
+the library will not mount, which is exactly when you need it.
+
+**Cloud-synced libraries** (Dropbox, iCloud Drive, Syncthing, OneDrive) are
+supported with **one-active-machine** semantics: use the library on one machine
+at a time and quit cleanly before opening it elsewhere. If both sides ever write
+while the sync is partitioned, the sync engine leaves a conflict copy next to the
+lease; the server logs that loudly and never resolves or deletes it, because that
+artifact is the only evidence the library may have diverged. No folder-based lease
+can prevent a partitioned dual write — what it guarantees is bounded detection and
+no silent data loss (ADR-0018 §7).
 
 ### Backups
 

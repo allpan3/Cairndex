@@ -318,6 +318,27 @@ salted `token_hash`, JSON `library_ids` scope, `created_at`, nullable
 the first approved pairing poll and never stored. Revocation retains the row for
 owner audit. This is registry/runtime state, not portable library metadata.
 
+### `server_identity`
+
+This install's stable identity (ADR-0018 §2): `id`, `server_uuid` (unique),
+`machine_name`, `created_at`. Exactly one row, created on first use. Every
+ownership lease this server writes carries the `server_uuid`, so it must survive
+restarts — a regenerated identity would make a crashed server fail to recognize
+its own lease and demand a takeover confirmation on every start. `machine_name`
+is refreshed from the host (or `CAIRNDEX_MACHINE_NAME`) on read, so renaming a
+machine shows up in the next lease write without minting a new identity.
+
+Server-local infrastructure, not library state, so it does not conflict with the
+ADR-0018 §1 portability invariant: nothing here is authoritative for a library,
+and a fresh install simply mints a new identity.
+
+### Ownership lease (not a table)
+
+The active-owner lease is a JSON file *inside each library* at
+`.cairndex/locks/active-owner.json`, not a registry row — deliberately, since two
+conflicting servers cannot see each other's registries and a synced library copy
+has no server at all. See `docs/architecture.md` §4.1 and ADR-0018.
+
 The in-process worker consumes this registry queue. Each job names a library;
 the worker opens that library's `library.db`, runs scan/probe/thumbnail/storyboard
 handlers against the library root, commits durable content results into the
