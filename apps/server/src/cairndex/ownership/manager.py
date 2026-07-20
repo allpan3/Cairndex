@@ -148,6 +148,11 @@ class LeaseManager:
         with self._lock:
             return sorted(self._held)
 
+    def held_library_id_set(self) -> set[str]:
+        """The libraries we may safely write to right now (ADR-0018 §6 callers)."""
+        with self._lock:
+            return set(self._held)
+
     # --- acquisition -----------------------------------------------------
 
     def ensure_owned(self, *, library_id: str, root: Path) -> None:

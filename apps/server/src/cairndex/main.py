@@ -12,7 +12,9 @@ from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
 from cairndex.ownership import get_lease_manager
+from cairndex.persistence.maintenance import SqliteMaintenance
 from cairndex.registry.engine import get_registry_sessionmaker
+from cairndex.registry.library_engine import close_library_engines
 
 
 @asynccontextmanager
@@ -35,14 +37,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.worker = worker
     if settings.lease_heartbeat_enabled:
         get_lease_manager().start()
+
+    maintenance: SqliteMaintenance | None = None
+    if settings.sqlite_maintenance_enabled:
+        maintenance = SqliteMaintenance(
+            owned_library_ids=lambda: get_lease_manager().held_library_id_set(),
+            interval=settings.sqlite_maintenance_interval,
+            idle_after=settings.sqlite_idle_checkpoint_after,
+            snapshot_interval=settings.sqlite_snapshot_interval,
+        )
+        maintenance.start()
     try:
         yield
     finally:
-        # Stop the worker first: a job that is still running would otherwise
-        # keep writing to a library whose lease we are about to release.
+        # Order matters on the way out. Stop producing writes first (the worker,
+        # then maintenance), fold each library's WAL back in and close it, and
+        # only then release the leases — so every library is left as a single
+        # consistent file *before* another machine is invited to pick it up.
         if worker is not None:
             worker.stop()
+        if maintenance is not None:
+            maintenance.stop()
         shutdown_session_manager()
+        close_library_engines()
         if settings.lease_heartbeat_enabled:
             manager = get_lease_manager()
             manager.stop()

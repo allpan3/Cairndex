@@ -1,5 +1,70 @@
 # Project status
 
+## Completed: SQLite sync hygiene (ADR-0018 §6)
+
+Same branch `feat/library-ownership-lease`, following the lease slices below.
+Closes the last server-side item before plan 3 D6.
+
+Established first, empirically, rather than assumed: a plain `engine.dispose()`
+*already* folds the WAL in and removes `-wal`/`-shm`, and a normal interpreter
+exit does too because CPython closes the connections during teardown. So the
+"clean close" half was mostly working by accident. The two real gaps were that
+**library engines were never disposed on shutdown at all** (`main.py` disposed
+the worker and HLS sessions but not the per-library engines), and that a *running*
+server leaves a live WAL indefinitely — SQLite's automatic checkpoint only fires
+around 1000 pages, which a browsing session may not reach, and that is exactly
+the state a sync engine uploads.
+
+Implementation:
+
+- **Idle checkpoint.** `persistence/checkpoint.py` plus a `SqliteMaintenance`
+  timer thread; a library untouched past a threshold gets
+  `wal_checkpoint(TRUNCATE)`. `TRUNCATE` rather than `PASSIVE` on purpose —
+  passive leaves the WAL at its high-water mark, so the sync engine keeps
+  shipping a large second file carrying nothing.
+- **Periodic snapshot** to `.cairndex/library.db.bak` via SQLite's online backup
+  API, temp file then rename. The backup API is required, not preferred: a file
+  copy taken while a WAL is outstanding silently misses everything the WAL holds.
+  A test pins that distinction by mutation.
+- **Clean close** now checkpoints and disposes every library engine, ordered
+  *before* releasing the leases, so each library is a single consistent file
+  before another machine is invited to pick it up.
+- Maintenance only touches libraries whose lease we hold — maintaining one we
+  lost would be writing into another server's library. The owned set is passed to
+  `SqliteMaintenance` as a callable, so `persistence` stays unaware of the
+  ownership layer. It runs on its own thread rather than sharing the heartbeat's:
+  a slow checkpoint on a sluggish mount must not delay a heartbeat into looking
+  stale to other machines.
+
+One defect found by its own test: **the snapshot was dirtying the library it was
+protecting.** `with sqlite3.connect(...)` manages the transaction but does not
+close the connection, and an open connection to a WAL database leaves a
+`-wal`/`-shm` pair behind — so snapshotting recreated the exact torn triple the
+module exists to prevent. Fixed with `contextlib.closing`; the file-set assertion
+that caught it stays as the regression guard.
+
+Verification:
+
+- Backend gate green: ruff, ruff format, strict mypy, **537 passed** (was 518;
+  +19). Four mutations applied, each failing a test: `PASSIVE` instead of
+  `TRUNCATE`, a file copy instead of the backup API, ignoring the owned-library
+  filter, and dropping the explicit connection close.
+- **Live run** against a real server with short intervals: during activity the
+  library showed the full `db`/`-wal`/`-shm` triple; after the idle pass the WAL
+  was **0 bytes** and `library.db.bak` had appeared; after a clean shutdown the
+  marker directory held `library.db` and the snapshot **and no sidecars at all**.
+  The snapshot passed `PRAGMA integrity_check` and contained all 20 rows written.
+  No errors in the server log; scratch state removed.
+
+Known gaps: unchanged from the lease receipt — no multi-machine or real
+SMB/NFS/sync-engine test. Snapshot restore is a manual file copy with no UI or
+documented drill beyond the deployment note; worth a follow-up if the heal path
+is ever wanted as more than a last resort.
+
+Next recommended task: **Plan 3 D6 — local-server sidecar**. Every server-side
+prerequisite is now in place.
+
+
 ## Completed: server-side library ownership lease (ADR-0018 §2–§4)
 
 Branch `feat/library-ownership-lease` from `main` at `4b933f2`. This is build-order
