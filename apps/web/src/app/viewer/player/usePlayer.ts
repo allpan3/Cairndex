@@ -8,6 +8,12 @@ import {
   type SetStateAction,
 } from 'react'
 
+import {
+  isDesktopHost,
+  isHostWindowFullscreen,
+  listenHostFullscreen,
+  setHostWindowFullscreen,
+} from '../../../platform'
 import type { PlayerPrefs } from '../../types'
 import { createEngine, type PlaybackEngine, type PlaybackSource } from './engine'
 
@@ -203,6 +209,28 @@ export function usePlayer({
   }, [source, syncBuffered, videoElement])
 
   useEffect(() => {
+    // In the shell the viewer uses real window fullscreen (see toggleFullscreen),
+    // so track the window rather than the HTML Fullscreen API — including changes
+    // made from the native View menu, which never touches the DOM.
+    if (isDesktopHost()) {
+      let disposed = false
+      let unlisten: (() => void) | undefined
+      void isHostWindowFullscreen()
+        .then((active) => {
+          if (!disposed) setFullscreen(active)
+        })
+        .catch(() => undefined)
+      void listenHostFullscreen((active) => setFullscreen(active))
+        .then((stop) => {
+          if (disposed) stop()
+          else unlisten = stop
+        })
+        .catch(() => undefined)
+      return () => {
+        disposed = true
+        unlisten?.()
+      }
+    }
     const onFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current)
     document.addEventListener('fullscreenchange', onFullscreen)
     return () => document.removeEventListener('fullscreenchange', onFullscreen)
@@ -287,6 +315,16 @@ export function usePlayer({
   }, [updatePrefs])
 
   const toggleFullscreen = useCallback(() => {
+    // The viewer is already a full-window overlay, so in the shell real window
+    // fullscreen is the correct "proper viewer fullscreen" (plan 3 §7) and it
+    // sidesteps WKWebView's user-activation requirement on requestFullscreen,
+    // which a native menu item cannot satisfy (D1 audit).
+    if (isDesktopHost()) {
+      void isHostWindowFullscreen()
+        .then((active) => setHostWindowFullscreen(!active))
+        .catch(() => undefined)
+      return
+    }
     const root = rootRef.current
     if (!root) return
     if (document.fullscreenElement === root) void document.exitFullscreen()
