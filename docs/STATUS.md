@@ -1,5 +1,71 @@
 # Project status
 
+## In progress: Plan 3 D6 — local-server sidecar
+
+Same branch `feat/library-ownership-lease`. Started 2026-07-20 once both
+server-side prerequisites (the lease and §6 hygiene) were in place.
+
+**Owner decisions, 2026-07-20.** ADR-0018 §5 deliberately left the sidecar's
+packaging open. Settled as: **bundle a staged uv-managed Python plus a
+relocatable venv** rather than PyInstaller, and **bundle ffmpeg/ffprobe** rather
+than discovering an installed copy. PyInstaller is the conventional choice and
+was presented as such; the staged runtime won because the owner builds from
+source and does not distribute (the D5c signing decision), which removes
+PyInstaller's main advantage — a hermetic binary for other people's machines —
+while leaving its main cost, runtime `ImportError`s from frozen dynamic imports
+in SQLAlchemy and Pillow. Recorded here as a plan-level implementation choice,
+not an ADR; ADR-0018 already anticipated it being made at milestone time.
+
+### Landed: server groundwork (D6.1)
+
+- **`CAIRNDEX_LOCAL_TOKEN` sidecar mode.** Every API request must carry the
+  loopback owner token; `/api/v1/health` stays open so the shell can wait for
+  readiness before it has any reason to trust the process it just spawned. A
+  loopback port is reachable by any local process, so this is the sidecar's
+  access gate. It replaces the ADR-0015 pairing ceremony, which has nobody to
+  approve it here.
+- **The local token does not satisfy a library passphrase**, unlike a paired
+  device token. Pairing is approved from an already-unlocked owner session, so a
+  device token means somebody proved access; the local token is minted with no
+  ceremony, and treating it as proof would make a locked library openable by
+  whatever can read the token. Pinned by a test and by mutation.
+- **ffmpeg/ffprobe resolution** moved to `media/tool_paths.py`: explicit setting,
+  then `PATH`, then conventional install prefixes. The last step was added after
+  confirming the actual failure: ffmpeg lives at `/opt/homebrew/bin` on this
+  machine, and a Finder-launched app inherits launchd's `PATH`
+  (`/usr/bin:/bin:/usr/sbin:/sbin`), so a spawned sidecar would report "ffmpeg
+  not found" on a machine that plainly has it.
+- Backend gate green (**559 passed**, +22). No OpenAPI change.
+
+### Proven: the packaging approach works (pre-work for D6.2)
+
+Rather than assume relocatability, it was tested end to end. A copy of uv's
+`cpython-3.12-macos-aarch64` tree plus a `uv venv --relocatable` venv, with the
+real binary-wheel dependencies (Pillow, pillow-heif) and the `cairndex-server`
+package installed, was **moved twice** and then started from the final path. It
+served `/api/v1/health` 200 without a token, `/api/v1/libraries` 401 without one,
+and 200 with the owner token — so the staged runtime, the relocation, and the new
+sidecar gate all work together. Staged size **66 MB**.
+
+**One packaging complication found:** Homebrew's `ffmpeg` is a thin
+dynamically-linked binary (652 KB) that depends on dozens of dylibs under
+`/opt/homebrew`. It cannot simply be copied into a bundle — bundling it means
+either a **static** ffmpeg build or rewriting install names for the whole dylib
+closure. The static build is the sane path and is what D6.2 should use.
+
+### Remaining
+
+- **D6.2** packaging: a build step that stages the interpreter, the venv, and a
+  static ffmpeg/ffprobe into the Tauri bundle as resources; CI kept green.
+- **D6.3** Rust lifecycle: spawn on an ephemeral loopback port with a generated
+  token, a private `CAIRNDEX_DATA_DIR` under Application Support, and explicit
+  ffmpeg paths; health-poll for readiness; stop on shell shutdown so leases are
+  released.
+- **D6.4/D6.5** web: the connections model (remote servers plus one managed local
+  server), "Open library folder…", and the lease refusal / redirect /
+  takeover-confirmation UX on top of the `…/ownership` endpoints.
+
+
 ## Completed: SQLite sync hygiene (ADR-0018 §6)
 
 Same branch `feat/library-ownership-lease`, following the lease slices below.
