@@ -24,12 +24,22 @@ Implementation:
   enables the group only while a viewer is mounted, so its items are never live
   against a closed viewer. Previous/Next File work without a `PlayerController`
   so image bundles navigate too.
-- **Shortcut audit.** ⌘1/⌘2, ⌘N, ⌘T, ⌘L, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are marked
+- **Shortcut audit.** ⌘1/⌘2, ⌘N, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are marked
   `browserReserved` and work only in the shell. **Decision:** every accelerator
   is modifier-based, enforced by a test — a bare-key accelerator is handled by
   the OS before the webview sees it and would intercept that letter inside every
   text field, which is why the Playback menu does not bind bare Space/K. Bare-key
   viewer bindings stay web-side and behave identically in both hosts.
+- **Accelerators only where they add reach (owner, 2026-07-19).** The first cut
+  gave all ten Playback items an accelerator; on owner review eight were pure
+  duplicates of an existing bare viewer key, for commands reachable only with the
+  viewer open, while permanently reserving a global combo each — including ⌘L and
+  ⌘T, two combos the shell had just unlocked from the browser. Those eight were
+  stripped (⌘K, ⌘J, ⌘L, ⌘T, ⇧⌘M, ⇧⌘P, ⇧⌘, ⇧⌘.), freeing them for future
+  library-wide actions. Previous/Next File keep ⌘[ / ⌘] because they are the
+  genuine gap: once a video loads the arrow keys become seek, so those two
+  commands otherwise have **no** keyboard binding at all. A regression pins the
+  rule — any Playback item with a `keys` entry must have a null accelerator.
 - **Native viewer fullscreen.** The viewer is already a full-window overlay, so
   the shell toggles the real window instead of the HTML Fullscreen API, which
   WKWebView gates behind user activation a native menu item cannot supply (the

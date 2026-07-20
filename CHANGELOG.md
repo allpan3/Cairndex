@@ -18,9 +18,11 @@ grouped under `Unreleased` until the first tagged release.
   previous/next file, ±10 s, speed, mute, subtitles, snapshot) through the same
   dispatcher the key bindings use, and stays enabled only while a viewer is
   mounted. The shortcut audit enables combos a browser reserves and the shell can
-  now own: ⌘1/⌘2, ⌘N, ⌘T, ⌘L, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I. All accelerators are
+  now own: ⌘1/⌘2, ⌘N, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I. All accelerators are
   modifier-based by construction, so none can swallow a keystroke meant for a
-  text field.
+  text field. Playback items carry an accelerator only where no bare viewer key
+  already covers the command — just Previous/Next File (⌘[ / ⌘]), which have no
+  key binding at all once a video loads, since the arrows then mean seek.
 
 ### Changed
 

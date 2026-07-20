@@ -141,9 +141,19 @@ viewer; `requires` names the enablement group (`server`, `library`, `viewer`,
 `never`); `browserReserved` marks combos a browser intercepts before the page.
 
 Those reserved combos are the point of the D5 shortcut audit: ⌘1/⌘2 (tab
-switching), ⌘N/⌘T (new window/tab), ⌘L (address bar), ⌘[ / ⌘] (history),
-⌘= / ⌘− (browser zoom), and ⌘⇧I (devtools) are unusable on the web and work only
-inside the shell. The web build's bare-key viewer bindings are unchanged.
+switching), ⌘N (new window), ⌘[ / ⌘] (history), ⌘= / ⌘− (browser zoom), and ⌘⇧I
+(devtools) are unusable on the web and work only inside the shell. The web
+build's bare-key viewer bindings are unchanged.
+
+**Give an item an accelerator only when no `keys` entry already covers it**
+(owner rule, 2026-07-19). An accelerator is reserved application-wide, so
+duplicating a bare viewer key spends a global combo on a command you can only
+reach with the viewer open. That is why the Playback menu carries accelerators on
+just Previous/Next File: with a video loaded the arrow keys mean seek, so those
+two commands have no bare-key binding at all, while Play/Pause, seek ±10 s,
+speed, mute, subtitles, and snapshot are already covered by Space/K, J/L, `,`/`.`,
+M, C, and S. Menu items without an accelerator are perfectly normal — `Pair
+Device…` has none either.
 
 The Playback menu is routed to the open media viewer. `runViewerCommand` in
 `app/viewer/player/useShortcuts.ts` is the one dispatcher shared by the key

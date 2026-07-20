@@ -89,16 +89,40 @@ describe('keymap table', () => {
       .filter((entry) => entry.browserReserved)
       .map((entry) => entry.accelerator)
     // These are the D5 shortcut audit's whole point: combos a browser intercepts
-    // (tabs, address bar, devtools, history, new window) that only work in the shell.
+    // (tabs, devtools, history, new window) that only work in the shell.
     expect(reserved).toEqual(
       expect.arrayContaining([
         'CmdOrCtrl+1',
         'CmdOrCtrl+2',
         'CmdOrCtrl+N',
-        'CmdOrCtrl+T',
-        'CmdOrCtrl+L',
+        'CmdOrCtrl+[',
+        'CmdOrCtrl+]',
         'CmdOrCtrl+Shift+I',
       ]),
     )
+  })
+
+  it('gives a Playback item an accelerator only when no viewer key covers it', () => {
+    // Owner decision (2026-07-19): a global accelerator for a command that already
+    // has a bare viewer key buys nothing, since these are reachable only with the
+    // viewer open — and it permanently reserves that combo app-wide. So Playback
+    // items carry an accelerator ONLY where the keyboard would otherwise be dead.
+    const playback = keymapMenus.find((menu) => menu.id === 'playback-menu')
+    expect(playback).toBeDefined()
+
+    for (const item of playback?.items ?? []) {
+      if (item.separator) continue
+      const hasViewerKey = (item.keys ?? []).length > 0
+      if (hasViewerKey) {
+        expect(item.accelerator, `${item.label ?? ''} duplicates its viewer key`).toBeNull()
+      }
+    }
+
+    // Previous/Next File are the exception that justifies the rule: with a video
+    // loaded, Arrow keys mean seek, so these have no bare-key binding at all.
+    const withAccelerator = (playback?.items ?? [])
+      .filter((item) => item.accelerator)
+      .map((item) => item.id)
+    expect(withAccelerator).toEqual(['previous-file', 'next-file'])
   })
 })
