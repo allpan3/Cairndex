@@ -217,6 +217,63 @@ Build a single target with `npm run tauri build -- --bundles app` (or `dmg`).
 AppleScript and is a known flake source on headless runners, and CI only needs to
 prove the app compiles and bundles. The DMG is a release/local artifact.
 
+### Installing and updating your local build
+
+**First install.** Open the DMG and drag Cairndex to Applications, or copy the
+`.app` directly:
+
+```bash
+cp -R apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
+```
+
+**Updating after a rebuild — read this one.** `npm run tauri build` writes into
+`target/release/bundle/`. It does **not** touch `/Applications`. Nothing warns you
+that the installed copy is now older than the code you just built, and the app
+shows no version anywhere, so a stale install looks identical to a fresh one. This
+has already cost one debugging session: a fix was reported as "not working" while
+the copy under test predated it by 40 minutes.
+
+```bash
+cd apps/desktop
+npm run tauri build
+
+# Quit the running app first — replacing a running bundle leaves it in a
+# half-updated state until relaunch.
+osascript -e 'quit app "Cairndex"' 2>/dev/null || true
+
+rm -rf /Applications/Cairndex.app
+cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
+open /Applications/Cairndex.app
+```
+
+**When in doubt, rebuild and reinstall.** It takes under a minute, and it is more
+reliable than trying to determine what you are running. There is no version string
+in the UI, so a stale install looks exactly like a current one.
+
+If you do want to check, be precise about what the check proves:
+
+```bash
+diff -q \
+  /Applications/Cairndex.app/Contents/MacOS/cairndex-desktop \
+  apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app/Contents/MacOS/cairndex-desktop
+```
+
+A match means only that the installed copy equals **the last artifact you built**.
+It says nothing about whether that artifact reflects your current source — if the
+build predates your latest edits, both sides are equally stale and this reports a
+match. Confirming "the installed app matches the last build" and concluding "the
+installed app has my fix" is a real trap; it has already misled a debugging session
+here. Only a fresh `npm run tauri build` immediately before the copy makes the
+match meaningful.
+
+Do **not** compare modification times instead: `cp -R` stamps the copy with the
+time it was copied, not built, so timestamps legitimately differ even when the
+install is current.
+
+**After every rebuild, re-check `cairndex://` scheme ownership** — each build
+recreates and re-registers the build-directory bundle, so the installed copy may
+stop being the one that handles links. See the section below.
+
 ### A DMG is packaging, not trust
 
 The DMG exists for install ergonomics — drag-to-Applications instead of "find the

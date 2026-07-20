@@ -107,6 +107,30 @@ npm run tauri dev
 
 Health check: `curl http://localhost:8000/api/v1/health`
 
+### Rebuilding and reinstalling the desktop app
+
+`tauri dev` above runs the shell against the Vite dev server. To test a **packaged**
+build — required for deep links, notifications, and anything else that needs a
+registered `.app` — build it and replace the installed copy. Building alone does
+**not** update `/Applications`:
+
+```bash
+cd apps/desktop
+npm run tauri build                              # writes target/release/bundle/
+
+osascript -e 'quit app "Cairndex"' 2>/dev/null   # quit before replacing
+rm -rf /Applications/Cairndex.app
+cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
+open /Applications/Cairndex.app
+```
+
+Cairndex displays no version anywhere, so a stale install is indistinguishable
+from a current one by looking at it. **When in doubt, rebuild and reinstall** —
+it takes under a minute and is more reliable than trying to work out what you are
+running. After every rebuild, re-check which copy owns the `cairndex://` scheme;
+each build re-registers the build-directory bundle. See
+[docs/deployment.md](docs/deployment.md#installing-and-updating-your-local-build).
+
 ## Quickstart (Docker)
 
 ```bash
