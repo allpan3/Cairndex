@@ -242,6 +242,57 @@ spctl --assess --type open --context context:primary-signature -vv \
 That `rejected` is expected and harmless on the machine that built it; it is what
 another Mac's Gatekeeper reports before the owner approves it once.
 
+One more consequence of the ad-hoc model: **an ad-hoc signature changes on every
+rebuild.** Some macOS privacy grants are keyed to the code signature rather than
+the bundle identifier, so a rebuilt app may occasionally re-prompt for a
+permission it was already granted — for Cairndex that is most likely the
+local-network prompt the shell already triggers when reaching a LAN server.
+Re-approving is expected under this model, not a sign of misconfiguration; a
+stable Developer ID signature is what removes it.
+
+### If you install from the DMG: the `cairndex://` scheme has several claimants
+
+Installing creates a **second** copy of the app. The build directory keeps its own
+at `apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app`, recreated by
+every build, and both register the `cairndex://` URL scheme. LaunchServices then
+picks a registrant by its own heuristics, so `open cairndex://…` may cold-launch
+the **stale build-directory copy** rather than the one in `/Applications`.
+
+The DMG build itself adds another: `bundle_dmg.sh` stages the app on a temporary
+`/Volumes/dmg.XXXXXX` volume, and that path stays registered after the volume is
+gone. On this repository's machine, after one DMG build and no installation, the
+registrants were:
+
+```bash
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$lsregister" -dump | awk '/^[[:space:]]*path:/ { p=$2 }
+                           /claimed schemes:.*cairndex:/ { print p }' | sort -u
+# → /Users/…/target/release/bundle/macos/Cairndex.app
+# → /Volumes/dmg.f9FEwK/Cairndex.app        ← dead mount point, still claimed
+```
+
+Why this matters beyond launching the wrong build: if the `/Applications` copy is
+already running and LaunchServices launches a *different* copy for the link, the
+single-instance plugin forwards only **argv** to the running instance — and on
+macOS a deep link arrives as an Apple Event, not argv. The link parks in the
+process that immediately exits, and is silently lost.
+
+So when the `/Applications` copy should own the scheme:
+
+```bash
+# Remove the build-directory bundle (it returns on the next build) …
+rm -rf apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app
+# … then rebuild LaunchServices' database to drop stale claims.
+"$lsregister" -kill -r -domain local -domain system -domain user
+# Re-register the copy that should win:
+"$lsregister" -f /Applications/Cairndex.app
+```
+
+Re-run the `-dump` command above to confirm only the intended path claims the
+scheme. **Any deep-link testing must be done against whichever copy is meant to
+own it** — otherwise a passing or failing result says nothing about the app the
+user actually runs.
+
 ### When you actually need Developer ID signing
 
 Ad-hoc signing stops being sufficient the moment a build has to run on a **second
@@ -287,12 +338,24 @@ Then build with the environment populated:
 ```bash
 cd apps/desktop
 export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID1234)"
+# Only consumed if Tauri performs notarization itself; the manual notarytool
+# route below already carries the team id inside the keychain profile. Exported
+# anyway so either route works without editing this recipe.
 export APPLE_TEAM_ID="TEAMID1234"
 npm run tauri build
 ```
 
-Tauri signs the app and the DMG with that identity. Notarize and staple the
-resulting DMG:
+Tauri signs the `.app` with that identity. Whether its bundler also codesigns the
+**DMG container** (as opposed to only the app inside it) is version-dependent and
+has not been exercised here, so check the first time you run this path —
+notarization wants the container signed too:
+
+```bash
+codesign -dv "$DMG" 2>&1 | grep -E 'Signature|Authority' || \
+  codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG"
+```
+
+Then notarize and staple the DMG:
 
 ```bash
 DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
