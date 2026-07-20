@@ -2,6 +2,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification'
 import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
@@ -223,6 +228,14 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     // A link can arrive before the webview exists (macOS delivers an Apple Event
     // on cold start), so the shell parks it and the SPA drains it on mount.
     takePendingDeepLink: () => invoke<DeepLinkTarget | null>('take_pending_deep_link'),
+    ensureNotificationPermission: async () => {
+      if (await isPermissionGranted()) return true
+      // macOS shows the system prompt here, so callers request it at a moment the
+      // user has just started a long job rather than at launch.
+      return (await requestPermission()) === 'granted'
+    },
+    notify: async (title, body) => sendNotification({ title, body }),
+    setBadgeCount: async (count) => getCurrentWindow().setBadgeCount(count ?? undefined),
     listenLifecycle: async () => {
       const appWindow = getCurrentWindow()
       const stopClose = await appWindow.onCloseRequested(async (event) => {
