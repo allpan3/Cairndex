@@ -36,6 +36,19 @@ grouped under `Unreleased` until the first tagged release.
   `docs/deployment.md`, which also documents the one-active-machine semantics for
   cloud-synced libraries.
 
+- **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
+  `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback
+  owner token on every API request (health stays open so the shell can wait for
+  readiness). It replaces the ADR-0015 pairing ceremony, which has nobody to
+  approve it for a process the shell started itself — but deliberately does
+  **not** stand in for a library passphrase the way a paired device token does,
+  since it is minted with no owner approval. `CAIRNDEX_FFMPEG_PATH` /
+  `CAIRNDEX_FFPROBE_PATH` name the media binaries explicitly, and resolution now
+  falls back to conventional install prefixes after `PATH`, because a macOS app
+  launched from Finder inherits launchd's minimal `PATH` and would otherwise
+  report "ffmpeg not found" on a machine that plainly has it. Unset, everything
+  behaves exactly as before.
+
 - **SQLite sync hygiene for synced libraries (ADR-0018 §6).** A library in WAL
   mode is up to three files on disk, and a cloud-sync engine uploads whatever it
   happens to find. An idle library is now checkpointed with

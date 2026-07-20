@@ -87,6 +87,25 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 
+**Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
+binaries explicitly. Unset, they are resolved from `PATH` and then from the
+conventional install prefixes (`/opt/homebrew/bin`, `/usr/local/bin`,
+`/opt/local/bin`, `/usr/bin`, `/bin`). The fallback exists because a macOS app
+launched from Finder inherits launchd's minimal `PATH`, which has no Homebrew
+prefix — without it a desktop-spawned server reports "ffmpeg not found" on a
+machine that plainly has ffmpeg. A shell-launched server or container behaves
+exactly as before.
+
+**Desktop sidecar** (ADR-0018 §5): `CAIRNDEX_LOCAL_TOKEN` puts the server in
+*sidecar mode* — every `/api/v1` request must present it as a bearer token
+(`/api/v1/health` stays open so the shell can wait for readiness). This is for a
+loopback server the desktop app spawns and is set by the shell; **do not set it
+on a NAS or container deployment**, which uses the ADR-0010 passphrase and
+ADR-0015 device pairing instead. The token authenticates the shell, not the
+owner: a library with a passphrase stays locked until it is actually unlocked,
+unlike a paired device token, because the local token is minted with no approval
+ceremony.
+
 **Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
 short hostname) is the human-readable name another machine shows when it asks
 whether to take a library over, so it is worth setting to something recognizable

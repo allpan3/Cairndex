@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # and its derived cache live in each library's own ``.cairndex/`` instead.
     data_dir: Path = _DEFAULT_DATA_DIR
 
+    # Loopback owner token for the desktop local-server sidecar (ADR-0018 §5).
+    # When set, every API request must present it as a bearer token. Unset for
+    # an ordinary NAS/container server, which uses the ADR-0010 passphrase and
+    # ADR-0015 device pairing instead. See ``auth/local_token.py``.
+    local_token: str | None = None
+
     # Optional explicit override for the SQLite database URL. When unset, the
     # database lives at ``{data_dir}/cairndex.db``.
     database_url: str | None = None
@@ -133,6 +139,14 @@ class Settings(BaseSettings):
     # keyframe-accurate copy playlist; falls back to a duration-derived playlist
     # on timeout/failure.
     transcode_keyframe_timeout: float = 60.0
+
+    # Explicit ffmpeg/ffprobe locations. Unset, they are resolved from PATH and
+    # then from conventional install prefixes (``media/tool_paths.py``). The
+    # desktop shell sets these when spawning its local-server sidecar, because a
+    # Finder-launched app inherits launchd's minimal PATH and would otherwise
+    # miss a Homebrew ffmpeg entirely (plan 3 D6).
+    ffmpeg_path: Path | None = None
+    ffprobe_path: Path | None = None
 
     # Optional ffmpeg hardware-accelerated *decode* for transcode sessions
     # (plan 1 §6.2). One of vaapi|qsv|videotoolbox; unset/"none" uses software

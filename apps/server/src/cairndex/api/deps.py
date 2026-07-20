@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from cairndex.auth import SESSION_COOKIE, requires_unlock
+from cairndex.auth.local_token import is_local_owner_token
 from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
 from cairndex.ownership import get_lease_manager
@@ -83,9 +84,19 @@ def authorize_library(
     """Authorize one library through an explicit bearer or the ADR-0010 cookie."""
     if is_bearer_authorization(authorization):
         assert authorization is not None
+        token = _bearer_token(authorization)
+        if is_local_owner_token(token):
+            # The desktop sidecar's loopback owner token (ADR-0018 §5). It
+            # authenticates the caller as the shell that spawned this server,
+            # but unlike a paired device token it does **not** stand in for a
+            # library's passphrase: it is minted with no owner approval, so a
+            # locked library stays locked until someone actually unlocks it.
+            if requires_unlock(root, session_cookie, library_id):
+                raise AuthRequiredError(f"library {library_id!r} is locked")
+            return
         token_service.authenticate_device_token(
             registry,
-            token=_bearer_token(authorization),
+            token=token,
             library_id=library_id,
         )
         return
