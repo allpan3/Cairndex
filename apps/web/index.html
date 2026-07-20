@@ -4,6 +4,31 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Kill the white launch flash. Three layers, because each covers a different
+      moment and none of them covers the others:
+        1. `color-scheme: dark` makes the engine's *default canvas* dark, which is
+           what paints before any stylesheet is parsed at all.
+        2. The inline style below owns the document background until the CSS
+           bundle loads — an external stylesheet is far too late for this.
+        3. The shell's window `backgroundColor` (apps/desktop/src-tauri/
+           tauri.conf.json) covers the native window before the webview paints.
+      The colour is `--bg` from src/index.css; change all three together.
+    -->
+    <meta name="color-scheme" content="dark" />
+    <style>
+      /* `color-scheme` is set as a real property, not left to the meta tag alone:
+         the meta did not reach the computed style in testing, and this is what
+         darkens the engine's default canvas and the scrollbars. */
+      html {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #141519;
+      }
+    </style>
     <title>Cairndex</title>
   </head>
   <body>

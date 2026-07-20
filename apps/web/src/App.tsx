@@ -47,6 +47,7 @@ import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
+import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
 import { hostFileMenuEntries } from './app/hostActions'
 import { isMultiSelection, selectionTargets } from './app/selection'
 import { LibraryManager } from './app/LibraryManager'
@@ -1029,6 +1030,18 @@ function Workspace({
           disabled: n > 1,
         },
       ]
+      // Desktop-only: a cairndex:// URI is meaningless in a browser, which has no
+      // handler for the scheme.
+      if (platform.kind === 'desktop' && n === 1) {
+        items.push({
+          label: 'Copy URI',
+          onClick: () => {
+            void copyText(buildDeepLinkUri('bundle', id, libraryId)).then((copied) =>
+              setFlash(copied ? 'Bundle URI copied.' : 'Could not copy the URI.'),
+            )
+          },
+        })
+      }
       const hostPath =
         n === 1 ? filtered.find((item) => item.id === id)?.resume_relative_path : null
       if (hostPath) {
@@ -1071,6 +1084,8 @@ function Workspace({
       hostLabels,
       onOpenHostFile,
       onRevealHostFile,
+      platform.kind,
+      libraryId,
     ],
   )
 
@@ -1166,15 +1181,27 @@ function Workspace({
       }
       const n = targetIds.length
       const targets = (collections.data ?? []).filter((c) => targetIds.includes(c.id))
-      menu.open(e, [
-        {
-          label: n > 1 ? `Delete ${n} Collections` : 'Delete Collection',
-          danger: true,
-          onClick: () => setRemovingCollections(targets),
-        },
-      ])
+      const items: MenuEntry[] = []
+      // Desktop-only: the scheme has no handler in a browser.
+      if (platform.kind === 'desktop' && n === 1) {
+        items.push({
+          label: 'Copy URI',
+          onClick: () => {
+            void copyText(buildDeepLinkUri('collection', id, libraryId)).then((copied) =>
+              setFlash(copied ? 'Collection URI copied.' : 'Could not copy the URI.'),
+            )
+          },
+        })
+        items.push(null)
+      }
+      items.push({
+        label: n > 1 ? `Delete ${n} Collections` : 'Delete Collection',
+        danger: true,
+        onClick: () => setRemovingCollections(targets),
+      })
+      menu.open(e, items)
     },
-    [selectedCollectionIds, collections.data, menu],
+    [selectedCollectionIds, collections.data, menu, platform.kind, libraryId],
   )
 
   // Drag a collection onto another → reparent it (cycle/self guarded server-side).
