@@ -96,6 +96,22 @@ optional hardening. All applied.
   parked by the shell with a 30 s TTL, so an unreachable server drops the link
   rather than mis-reporting it.
 
+**Correction (owner-reported, same day).** The cleanup procedure first shipped
+here did not work, in two ways, and the owner hit both. `lsregister -kill` has
+been **removed from macOS** ("dangerous and no longer useful"), so the documented
+database rebuild was a no-op; and the `rm -rf` used a repo-relative path with no
+stated working directory, so running it from `apps/web` silently deleted nothing.
+Determined empirically on macOS 26 that `lsregister -gc` also does not drop these
+claims, and that `lsregister -u <path>` is the tool that works — including for
+paths on volumes that no longer exist. The docs now use `-u` per path, address the
+build bundle through `git rev-parse --show-toplevel` so it cannot resolve
+relatively, name both non-working commands so a reader does not retry them, note
+that a *mounted* DMG is itself a claimant, and warn that every `tauri build`
+recreates and re-registers the build-directory bundle. On the owner's machine five
+paths claimed the scheme (an `/Applications` install, the build directory, a
+mounted DMG, and two dead scratch mounts); after the corrected procedure, exactly
+one does.
+
 Verification for this round: web Prettier, ESLint, `tsc -b`, full Vitest
 (**223 passed**, +1 asserting nothing is drained or classified while the libraries
 query has not succeeded), the Vite build, and the Playwright browser partition
