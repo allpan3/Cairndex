@@ -37,3 +37,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0016](0016-ordered-bundle-media-cursor.md) | Ordered bundle media cursor | accepted |
 | [0017](0017-desktop-bearer-media-relay.md) | Desktop bearer media relay | proposed (accepted-pending-owner-review) |
 | [0018](0018-library-ownership-lease-and-local-server.md) | Library ownership lease and desktop local-server sidecar | accepted |
+| [0019](0019-open-source-distribution-model.md) | Open-source distribution and desktop sidecar packaging | proposed |
