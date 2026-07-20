@@ -234,11 +234,17 @@ handoff:
   bindings. The Playback group is enabled only while a viewer is mounted.
 - Shortcut audit: browser-reserved combos (⌘L, ⌘number, ⌘W…) become safe to
   use; keep one keymap table in the web app with per-platform bindings.
-  **Implemented (D5a):** ⌘1/⌘2, ⌘N, ⌘T, ⌘L, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are
-  marked `browserReserved` and live only in the shell. Every accelerator is
+  **Implemented (D5a):** ⌘1/⌘2, ⌘N, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are marked
+  `browserReserved` and live only in the shell. Every accelerator is
   modifier-based by construction (test-enforced), so none can swallow a
   keystroke meant for a text field; bare-key viewer bindings stay web-side and
-  behave identically in both hosts.
+  behave identically in both hosts. **Owner rule (2026-07-19):** an item gets an
+  accelerator only when no bare viewer key already covers it — an accelerator is
+  reserved application-wide, so duplicating a viewer key spends a global combo on
+  a command reachable only with the viewer open. Playback therefore keeps
+  accelerators solely on Previous/Next File, which lose their arrow-key binding
+  to seek once a video loads; that freed ⌘K, ⌘J, ⌘L, ⌘T, ⇧⌘M, ⇧⌘P, ⇧⌘, and ⇧⌘.
+  for future library-wide actions.
 - Window state persistence (size/position), proper fullscreen for the viewer,
   optional second window for the viewer later (needs a small router seam —
   defer unless wanted). **Implemented (D5a):** size/position/maximized persist,
