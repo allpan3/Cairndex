@@ -26,12 +26,22 @@ export interface HostPlatform {
   canRevealInFinder: boolean
   canOpenWithDefaultApp: boolean
   canDragOutFiles: boolean
+  // True when the host can put a generated artifact where the user chooses
+  // (plan 1 §10 / M11). The browser can only trigger an ordinary download.
+  canSaveExports: boolean
   revealFile(libraryId: string, relativePath: string): Promise<void>
   openFile(libraryId: string, relativePath: string): Promise<void>
   startFileDrag(items: DragOutItem[]): Promise<void>
   getLibraryMapping(libraryId: string): Promise<string | null>
   locateLibrary(libraryId: string, libraryUuid: string): Promise<string | null>
   clearLibraryMapping(libraryId: string): Promise<void>
+  /**
+   * Saves an export artifact through the native save dialog (M11 seam; no export
+   * UI exists yet). Resolves to the chosen path, or null when the user cancelled.
+   * The caller supplies bytes and a suggested file *name* — never a path, so the
+   * destination can only come from the OS dialog.
+   */
+  saveExport(suggestedName: string, bytes: Uint8Array): Promise<string | null>
 }
 
 // One resolved `cairndex://` deep link (plan 3 §7). `libraryId` is optional; when
