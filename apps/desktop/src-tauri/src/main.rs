@@ -4,6 +4,8 @@ mod app_menu;
 mod deeplink;
 // Puts validated absolute paths on the OS pasteboard for drag-out to Finder
 mod dragout;
+// Saves server-generated export artifacts through the native save dialog
+mod exports;
 // Embeds the SPA-owned keymap table that defines the native menu
 mod keymap;
 // Flushes webview state before every application-level exit path
@@ -72,6 +74,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app_menu::set_viewer_menu_enabled,
             app_menu::toggle_window_fullscreen,
             deeplink::take_pending_deep_link,
+            exports::save_export_file,
             dragout::start_file_drag,
             host::open_file,
             host::reveal_file,

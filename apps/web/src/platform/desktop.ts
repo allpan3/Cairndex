@@ -145,6 +145,7 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   canRevealInFinder: true,
   canOpenWithDefaultApp: true,
   canDragOutFiles: true,
+  canSaveExports: true,
   revealFile: (libraryId: string, relativePath: string) =>
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
@@ -154,6 +155,11 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   locateLibrary: (libraryId: string, libraryUuid: string) =>
     invoke<string | null>('locate_library_mapping', { libraryId, libraryUuid }),
   clearLibraryMapping: (libraryId: string) => invoke('clear_library_mapping', { libraryId }),
+  // Tauri serializes a Uint8Array as a number array over IPC; the shell writes it
+  // to the path the OS dialog returned. Suitable for the small artifacts M11
+  // generates (a capped GIF or a single contact sheet), not for streaming media.
+  saveExport: (suggestedName: string, bytes: Uint8Array) =>
+    invoke<string | null>('save_export_file', { suggestedName, bytes: Array.from(bytes) }),
 }
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam

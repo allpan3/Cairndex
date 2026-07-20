@@ -1,5 +1,94 @@
 # Project status
 
+## Completed: Plan 3 D5b — deep links, job notifications, export seam
+
+Branch `codex/plan3-d5b-deeplinks-notifications`, stacked on the **unmerged**
+`codex/plan3-d5a-menus-shortcuts` (it builds on that platform seam), from
+`4ae7c37`.
+
+Implementation:
+
+- **`cairndex://` deep links.** `cairndex://bundle/<id>` and
+  `cairndex://collection/<id>`, with an optional `?library=<id>`; without it the
+  target opens in the active library. The OS picks one of two delivery paths and
+  they behave differently, which is the whole difficulty: macOS sends an Apple
+  Event that can fire **before the webview exists**, so a link that is merely
+  emitted is lost — `deeplink.rs` parks it and the SPA drains it through
+  `take_pending_deep_link` once listening. Windows/Linux pass the URL in argv, to
+  the first process on a cold start and to a second process on a warm one, whose
+  argv the single-instance plugin forwards (hence single-instance is registered
+  *before* the deep-link plugin). The SPA subscribes **before** draining, so a
+  link arriving in between is not lost, and de-duplicates by identity, so a
+  cold-start link that also arrives as an event opens once rather than twice.
+  **Decision:** a link naming a library this server does not have is reported
+  rather than opened in the active library — silently doing the latter could show
+  a different bundle than the link meant. Over-deep paths are rejected rather than
+  truncated, for the same reason.
+- **Job notifications and dock badge.** Rides on the job snapshots the sidebar
+  progress bar already polls, so no new polling. **Decision:** the unit is a
+  *run*, not a job — `Update library` chains scan → probe → storyboards, so
+  per-job notification would fire three times for one user action; a run ends only
+  after activity has been absent for a settle window, since that chain briefly
+  reports no active job between stages. A notification fires only when the run
+  exceeded the length threshold **and** the window is unfocused (announcing a job
+  to someone watching its progress bar is noise). Duration uses the server's
+  `started_at`, so a run queued behind another job is measured by when it actually
+  ran. A cancelled job is a deliberate user action and is not reported as a
+  failure. Permission is requested when a run *starts*, so the system prompt
+  appears while the user is present and has just asked for the work. The browser
+  build stays inert deliberately: a web page prompting for notifications is the
+  pattern users distrust.
+- **Export save seam (M11 hook only, no export UI).** `save_export_file` takes
+  bytes plus a suggested file *name*; the destination comes solely from the native
+  save dialog, and any path structure in the suggestion is stripped first —
+  mirroring the D3 rule that no client-supplied absolute path is trusted. Sized
+  for plan 1 §10's small artifacts (a capped GIF, one contact sheet), not
+  streaming media. `canSaveExports` lets M11's dialog choose between a native
+  Save As… and an ordinary browser download.
+
+Verification:
+
+- Desktop: `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`,
+  **53 unit tests** (was 40; +8 deep-link parsing/argv, +5 export name
+  sanitization and artifact write). Release `tauri build` produced `Cairndex.app`,
+  and the packaged binary launched under an isolated `HOME` with the deep-link,
+  notification, and dialog plugins initialized.
+- Web: Prettier, ESLint, `tsc -b`, full Vitest (**220 passed**, was 202; +18
+  covering warm/cold deep-link delivery, once-only double delivery,
+  subscribe-before-drain ordering, run accumulation across a chained flow with a
+  mid-run gap, silence when short or focused, permission timing, failure vs
+  cancellation, and browser inertness on every new surface), and the Vite build.
+- Playwright: browser-only partition **72 passed**.
+- The built bundle declares `CFBundleURLSchemes ["cairndex"]`, and LaunchServices
+  reports exactly one bundle claiming `cairndex:` — ours.
+
+Known issues: **the end-to-end "deep link opens the right bundle from a cold
+start" acceptance criterion is not machine-verified here.** OS-level routing is
+proven (Info.plist + LaunchServices) and the parse/park/drain logic is unit-tested
+on both sides, but firing `open cairndex://…` would have launched the packaged app
+against the owner's **live server**, which was running on `:8000` during this
+session; causing live side effects on the owner's real library to satisfy a test
+was not an acceptable trade, so that step is deferred to the owner pass. The
+notification and dock badge likewise need a real run to observe. Neither
+notifications nor deep links function in `tauri dev` — both require a packaged,
+registered app. D5c (signing) remains; the updater stays deferred.
+
+Owner manual checklist for D5a+D5b:
+
+1. Click the green zoom button while a video is fullscreen, and while windowed
+   (the D5a P2 path no automated test can reach).
+2. With Cairndex closed, run `open "cairndex://bundle/<a real bundle id>"` and
+   confirm it launches and opens that bundle; repeat while running.
+3. Start an Update on a large library, switch away, and confirm one notification
+   and a dock badge appear when it finishes — and that the badge clears on focus.
+4. Confirm the Playback menu is enabled for a video bundle and that only
+   Previous/Next File are enabled for an image bundle.
+
+Next recommended task: **Plan 3 D5c — Developer ID signing and notarization
+pipeline** (needs the owner's paid Apple Developer Program enrollment; see the
+D5a receipt).
+
+
 ## Completed: Plan 3 D5a — menus, shortcuts, window state, viewer fullscreen
 
 Branch `codex/plan3-d5a-menus-shortcuts` from `main` at `736539d`. The owner
