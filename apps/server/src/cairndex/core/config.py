@@ -51,6 +51,37 @@ class Settings(BaseSettings):
     # jobs are driven deterministically instead of by a polling thread.
     worker_enabled: bool = True
 
+    # --- Library ownership lease (ADR-0018) ---------------------------------
+    # A server may serve a library only while it holds that library's
+    # ``.cairndex/locks/active-owner.json`` lease.
+
+    # Human-readable name shown to a user deciding whether to take a lease over
+    # ("This library is served by …"). Defaults to the machine's hostname.
+    machine_name: str | None = None
+
+    # The URL clients can reach this server at, recorded in the lease so another
+    # machine can offer "connect there instead" rather than only naming a host.
+    # Only non-loopback URLs are offered as redirects (ADR-0018 §2), so leaving
+    # this unset on a laptop sidecar is correct.
+    advertised_url: str | None = None
+
+    # Seconds between lease heartbeats, and how long a lease may go untouched
+    # before another server may offer a (still user-confirmed) takeover. The TTL
+    # is 5x the interval so a couple of missed beats — a busy box, a slow NAS —
+    # never look like a dead server.
+    lease_heartbeat_interval: float = 60.0
+    lease_ttl: float = 300.0
+
+    # Pause between writing our lease and re-reading it to confirm our nonce
+    # survived (the write-then-verify in ADR-0018 §3). Must outlast the reorder
+    # window of a shared mount, not a network round trip.
+    lease_verify_delay: float = 1.0
+
+    # Run the lease heartbeat/watchdog thread on app startup. Disabled in tests
+    # so lease timing is driven deterministically instead of by a background
+    # thread.
+    lease_heartbeat_enabled: bool = True
+
     # Directory of the built frontend (apps/web/dist). When set and present the
     # backend serves the SPA so a single production container ships both halves
     # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.
