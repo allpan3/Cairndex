@@ -2941,6 +2941,57 @@
         "title": "JobType",
         "type": "string"
       },
+      "LeaseHolderRead": {
+        "description": "The server currently recorded in a library's lease.\n\nNever carries a filesystem path \u2014 only what a user needs to recognize the\nmachine and, when ``advertised_url`` is set, reach it.",
+        "properties": {
+          "advertised_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Advertised Url"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "machine_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Machine Name"
+          },
+          "server_uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Uuid"
+          }
+        },
+        "title": "LeaseHolderRead",
+        "type": "object"
+      },
       "LibraryCreate": {
         "description": "Create a brand-new library package under ``root_path``.",
         "properties": {
@@ -2966,6 +3017,66 @@
           "display_name"
         ],
         "title": "LibraryCreate",
+        "type": "object"
+      },
+      "LibraryOwnershipRead": {
+        "description": "How this server currently relates to a library's ownership lease.\n\nDeliberately readable while the library is *not* mountable \u2014 it is the\nendpoint a client calls after a mount was refused, to find out who holds the\nlibrary and whether a takeover is on the table.",
+        "properties": {
+          "can_take_over": {
+            "title": "Can Take Over",
+            "type": "boolean"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseHolderRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "library_id": {
+            "title": "Library Id",
+            "type": "string"
+          },
+          "mountable": {
+            "title": "Mountable",
+            "type": "boolean"
+          },
+          "redirect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redirect Url"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "takeover": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TakeoverRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "library_id",
+          "state",
+          "mountable",
+          "can_take_over"
+        ],
+        "title": "LibraryOwnershipRead",
         "type": "object"
       },
       "LibraryRead": {
@@ -4911,6 +5022,42 @@
           }
         },
         "title": "TagUpdate",
+        "type": "object"
+      },
+      "TakeoverRead": {
+        "description": "State of a confirmed takeover started on this server.",
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running"
+        ],
+        "title": "TakeoverRead",
         "type": "object"
       },
       "TargetSuggestionRead": {
@@ -12375,6 +12522,92 @@
         "summary": "List Unbundled Files",
         "tags": [
           "manual-bundling"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/ownership": {
+      "get": {
+        "description": "Who owns this library, and can this server serve it?",
+        "operationId": "get_ownership_api_v1_libraries__library_id__ownership_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOwnershipRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Ownership",
+        "tags": [
+          "ownership"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/ownership/takeover": {
+      "post": {
+        "description": "Confirm that the recorded holder is gone and serve this library here.\n\nAccepted, not completed: before taking a lease this server watches it for\nlonger than a heartbeat period, so a holder that is actually alive gets the\nchance to prove it. Poll ``GET \u2026/ownership`` until ``takeover.running`` is\nfalse.\n\nRefuses outright while a *live* lease is in place. The confirmation means \"I\nknow that machine is gone\", which is not a claim anyone can truthfully make\nabout a server that heartbeat seconds ago \u2014 so this is a 422 rather than a\nforced takeover.",
+        "operationId": "take_over_api_v1_libraries__library_id__ownership_takeover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryOwnershipRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Take Over",
+        "tags": [
+          "ownership"
         ]
       }
     },

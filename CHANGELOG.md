@@ -10,6 +10,32 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Library ownership lease (ADR-0018 §2–§4).** A library can now be served by
+  exactly one Cairndex server at a time. Each server writes a lease inside the
+  library at `.cairndex/locks/active-owner.json` and refreshes it every minute; a
+  second server pointed at the same folder — over SMB, over NFS, or through a
+  cloud-synced copy — refuses to open it and names the machine that holds it,
+  offering a redirect when that machine advertises a reachable address. This
+  hardens the NAS deployment on its own and is the prerequisite for the plan 3 D6
+  desktop sidecar.
+
+  A clean shutdown releases every lease, so the everyday quit-here / open-there
+  flow never prompts. Only a crash (or a paused sync) leaves a lease to age into
+  staleness, and taking one over **always** requires explicit user confirmation —
+  there is no automatic takeover after any timeout. Before taking a stale lease
+  the server watches it for longer than a heartbeat period, so a holder that is
+  actually alive keeps the library regardless of the confirmation. If this server
+  loses a lease it holds, it stops writing, cancels that library's jobs, and
+  unmounts rather than fighting for it back.
+
+  New endpoints: `GET /api/v1/libraries/{id}/ownership` (readable precisely when
+  the library will not mount) and `POST .../ownership/takeover` (202; the
+  observation window runs in the background). New settings:
+  `CAIRNDEX_MACHINE_NAME`, `CAIRNDEX_ADVERTISED_URL`,
+  `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL`, `CAIRNDEX_LEASE_TTL` — see
+  `docs/deployment.md`, which also documents the one-active-machine semantics for
+  cloud-synced libraries.
+
 - **D5c desktop distribution (Plan 3).** Release builds now produce a **DMG**
   alongside the `.app`, giving drag-to-Applications install ergonomics. The full
   Developer ID signing + notarization procedure is documented in
@@ -48,6 +74,12 @@ grouped under `Unreleased` until the first tagged release.
   key binding at all once a video loads, since the arrows then mean seek.
 
 ### Changed
+
+- **Structured errors may now carry `details`.** `ErrorBody` gains an optional
+  `details` object, used by the ownership-lease refusals to name the holding
+  server so a client can offer a redirect instead of a dead end. It is omitted
+  entirely from every error that does not set it, so existing responses are
+  unchanged. Regenerated `openapi.json` and `schema.d.ts` accordingly.
 
 - **Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**
   Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs
