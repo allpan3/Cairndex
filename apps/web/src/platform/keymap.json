@@ -17,6 +17,12 @@
     "switching, address bar, devtools, history). They are unusable on the web and",
     "become available only inside the shell — that is the D5 shortcut audit.",
     "",
+    "RULE (owner, 2026-07-19): give an item an accelerator ONLY when no 'keys' entry",
+    "already covers it. An accelerator is reserved application-wide, so duplicating a",
+    "bare viewer key burns a global combo for a command reachable only with the viewer",
+    "open. Playback therefore carries accelerators solely on Previous/Next File, which",
+    "have no bare-key binding at all once a video loads (the arrows become seek).",
+    "",
     "'requires' gates enablement: 'server' items wait for desktop bootstrap to reach a",
     "verified server, 'library' items for an unlocked mounted workspace, 'viewer' for",
     "an open media viewer. null means always enabled.",
@@ -29,8 +35,12 @@
       "id": "app-menu",
       "label": "App",
       "items": [
-        { "predefined": "about" },
-        { "separator": true },
+        {
+          "predefined": "about"
+        },
+        {
+          "separator": true
+        },
         {
           "id": "settings",
           "label": "Settings…",
@@ -39,7 +49,9 @@
           "requires": null,
           "keys": []
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "quit",
           "label": "Quit Cairndex",
@@ -71,21 +83,39 @@
           "requires": "server",
           "keys": []
         },
-        { "separator": true },
-        { "predefined": "close-window" }
+        {
+          "separator": true
+        },
+        {
+          "predefined": "close-window"
+        }
       ]
     },
     {
       "id": "edit-menu",
       "label": "Edit",
       "items": [
-        { "predefined": "undo" },
-        { "predefined": "redo" },
-        { "separator": true },
-        { "predefined": "cut" },
-        { "predefined": "copy" },
-        { "predefined": "paste" },
-        { "predefined": "select-all" }
+        {
+          "predefined": "undo"
+        },
+        {
+          "predefined": "redo"
+        },
+        {
+          "separator": true
+        },
+        {
+          "predefined": "cut"
+        },
+        {
+          "predefined": "copy"
+        },
+        {
+          "predefined": "paste"
+        },
+        {
+          "predefined": "select-all"
+        }
       ]
     },
     {
@@ -108,7 +138,9 @@
           "requires": "library",
           "keys": []
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "zoom-in",
           "label": "Increase Card Size",
@@ -125,7 +157,9 @@
           "requires": "library",
           "keys": []
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "toggle-sidebar",
           "label": "Toggle Sidebar",
@@ -142,7 +176,9 @@
           "requires": "library",
           "keys": []
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "fullscreen",
           "label": "Toggle Full Screen",
@@ -161,12 +197,14 @@
         {
           "id": "play-pause",
           "label": "Play/Pause",
-          "accelerator": "CmdOrCtrl+K",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": ["Space", "K"]
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "previous-file",
           "label": "Previous File",
@@ -183,11 +221,13 @@
           "requires": "viewer",
           "keys": []
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "seek-back",
           "label": "Back 10 Seconds",
-          "accelerator": "CmdOrCtrl+J",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": ["J"]
@@ -195,16 +235,18 @@
         {
           "id": "seek-forward",
           "label": "Forward 10 Seconds",
-          "accelerator": "CmdOrCtrl+L",
-          "browserReserved": true,
+          "accelerator": null,
+          "browserReserved": false,
           "requires": "viewer",
           "keys": ["L"]
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "rate-down",
           "label": "Decrease Speed",
-          "accelerator": "CmdOrCtrl+Shift+,",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": [","]
@@ -212,16 +254,18 @@
         {
           "id": "rate-up",
           "label": "Increase Speed",
-          "accelerator": "CmdOrCtrl+Shift+.",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": ["."]
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "toggle-mute",
           "label": "Mute",
-          "accelerator": "CmdOrCtrl+Shift+M",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": ["M"]
@@ -229,16 +273,18 @@
         {
           "id": "toggle-subtitles",
           "label": "Subtitles",
-          "accelerator": "CmdOrCtrl+T",
-          "browserReserved": true,
+          "accelerator": null,
+          "browserReserved": false,
           "requires": "viewer",
           "keys": ["C"]
         },
-        { "separator": true },
+        {
+          "separator": true
+        },
         {
           "id": "snapshot",
           "label": "Save Snapshot",
-          "accelerator": "CmdOrCtrl+Shift+P",
+          "accelerator": null,
           "browserReserved": false,
           "requires": "viewer",
           "keys": ["S"]
@@ -248,7 +294,14 @@
     {
       "id": "window-menu",
       "label": "Window",
-      "items": [{ "predefined": "minimize" }, { "predefined": "close-window" }]
+      "items": [
+        {
+          "predefined": "minimize"
+        },
+        {
+          "predefined": "close-window"
+        }
+      ]
     },
     {
       "id": "help-menu",
