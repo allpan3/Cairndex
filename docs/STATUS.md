@@ -1,5 +1,125 @@
 # Project status
 
+## Completed: Plan 3 D5c — desktop distribution (DMG + env-gated signing docs)
+
+Branch `codex/plan3-d5c-distribution`, stacked on the **unmerged**
+`codex/plan3-d5b-deeplinks-notifications` (which is itself stacked on D5a).
+
+The owner settled the distribution question on 2026-07-19, which removed D5c's
+only external blocker: **Developer ID signing is no longer a v1 requirement.**
+Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs at
+link time, so packaged builds have worked since D1 with no certificate. The
+$99/yr Apple Developer Program buys nothing until a build must run on a second
+Mac or reach someone else's hands. D5c therefore became docs + config with no
+code changes. Recorded as a **plan amendment, not an ADR** — a scope and
+distribution-model decision, no architecture change.
+
+Implementation:
+
+- **DMG target.** `bundle.targets` is now `["app", "dmg"]`, so a release build
+  produces a drag-to-Applications disk image alongside the `.app`.
+- **CI keeps `--bundles app`.** Tauri's DMG bundler drives Finder over AppleScript
+  and is a known flake source on headless runners; CI only needs to prove the app
+  compiles and bundles, so the config lists both targets and the workflow
+  overrides. The reason is recorded inline in `ci.yml` so it is not "simplified"
+  away later.
+- **Signing pipeline, inert until configured.** `docs/deployment.md` gains the
+  full Developer ID + notarization procedure — certificate creation,
+  `notarytool store-credentials` (so no secret ever reaches a shell history or
+  this repo), signing build, `notarytool submit --wait`, `stapler staple`, and
+  verification. It is driven by `APPLE_SIGNING_IDENTITY` / `APPLE_TEAM_ID` / a
+  keychain profile name; **unset, the build is exactly today's ad-hoc build**, so
+  nothing is re-plumbed when signing is eventually wanted.
+- **The docs say plainly that a DMG is not trust.** It is install ergonomics.
+  An unsigned DMG on another Mac still needs System Settings → *Open Anyway*, and
+  the section says so explicitly so the DMG is not mistaken for a signing
+  substitute.
+
+Verification:
+
+- `npm run tauri build` with the signing variables explicitly unset produced both
+  bundles: `Cairndex.app` and **`Cairndex_0.1.0_aarch64.dmg` (5.3 MB)**.
+- The DMG was mounted and inspected: it contains `Cairndex.app` plus an
+  `/Applications` symlink, so drag-to-install works as intended.
+- The app inside the DMG reports `Signature=adhoc`, `TeamIdentifier=not set` —
+  confirming the documented model rather than assuming it.
+- Gatekeeper's verdict was captured rather than asserted: `spctl --assess` on the
+  DMG returns `rejected` / `source=no usable signature`. That real output is now
+  quoted in `docs/deployment.md`, so the "a DMG is not a signing substitute"
+  warning is demonstrated instead of claimed.
+- Desktop `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`, and
+  **54 unit tests** re-run green; no code changed in this slice.
+
+### Review round — duplicate scheme registration and doc precision
+
+An external review of D5c produced one P3, three documentation nits, and one
+optional hardening. All applied.
+
+- **P3 — the DMG introduces a duplicate `cairndex://` registrant, and the hazard
+  is already live.** Installing from the DMG leaves two copies of the app: the
+  `/Applications` one and the build-directory one, recreated by every build. Both
+  claim the scheme, LaunchServices picks by its own heuristics, and `open
+  cairndex://…` may cold-launch the stale build-dir copy. The sharper failure is
+  the one the reviewer identified: if the intended copy is *running* and a
+  different copy is launched for the link, single-instance forwards only **argv**,
+  while macOS delivers the URL by **Apple Event** — so the link parks in a process
+  that immediately exits and is silently lost.
+
+  Investigating this found something beyond the report: **the DMG build alone
+  already creates a second registrant.** `bundle_dmg.sh` stages the app on a
+  temporary `/Volumes/dmg.XXXXXX` volume, and that claim survives the volume. On
+  this machine, after one DMG build and *no* installation, two paths claimed the
+  scheme — the build directory and `/Volumes/dmg.f9FEwK/Cairndex.app`, a mount
+  point that no longer exists. This **supersedes the D5b receipt's claim** that
+  LaunchServices reported exactly one claimant; that was true when written but is
+  not a property the system maintains, and the D5b entry now says so. Documented
+  in `docs/deployment.md` with the real inspection command and its actual output,
+  plus cleanup steps, and added to the owner checklist as item 5 — deep-link
+  testing against the wrong copy proves nothing.
+- **Nit — the DMG-signing claim was too confident.** "Tauri signs the app and the
+  DMG" was asserted, but whether the bundler codesigns the DMG *container* rather
+  than only the app inside is version-dependent and unexercised here. Reworded to
+  instruct verifying with `codesign -dv` on first use and signing the container
+  manually if it did not, since notarization wants the container signed.
+- **Nit — ad-hoc signatures change on every rebuild**, and some macOS privacy
+  grants key off the signature rather than the bundle id, so a rebuilt app may
+  re-prompt — most likely the local-network prompt Cairndex already triggers.
+  Recorded as expected under the ad-hoc model.
+- **Nit — `APPLE_TEAM_ID`'s role** is now stated: it is consumed only if Tauri
+  performs notarization itself, since the manual `notarytool` keychain profile
+  already carries the team id.
+- **Optional hardening taken — the deep-link readiness gate is now `isSuccess`,
+  not "settled".** On an errored libraries query the old gate enabled delivery
+  against an empty list, so a valid `?library=` link flashed "not on this server"
+  while the app was already showing a connection failure — a doubly wrong message.
+  Classification now only ever runs against a list that actually loaded. Links are
+  parked by the shell with a 30 s TTL, so an unreachable server drops the link
+  rather than mis-reporting it.
+
+Verification for this round: web Prettier, ESLint, `tsc -b`, full Vitest
+(**223 passed**, +1 asserting nothing is drained or classified while the libraries
+query has not succeeded), the Vite build, and the Playwright browser partition
+(**72 passed**). Desktop `cargo fmt --check`, Clippy, and **54 unit tests** re-run
+green — no Rust changed. A release `tauri build` again produced both bundles.
+
+Known issues: none specific to D5c. The acceptance criterion was retired with the
+§3 requirement — "signed build produced by the documented pipeline" is replaced by
+"**DMG produced by the documented pipeline; signing path documented and
+env-gated**", both of which are met. The signing procedure itself is **documented
+but unexercised**: it cannot be run without an Apple Developer Program membership,
+so it stays untested until the owner has a reason to sign. The updater remains
+deferred (private repo, no releases, and Tauri's updater would need a token
+embedded in the shipped app).
+
+**Plan 3 D5 is now complete (D5a + D5b + D5c).** All three branches are stacked
+and unmerged; D5b's owner manual checklist still applies, and D5c adds one item:
+open the DMG, drag Cairndex to Applications, and launch it from there.
+
+Next recommended task: **Plan 3 D6 — local-server sidecar** (ADR-0018), which is
+gated on the server-side ownership lease landing first; see
+`docs/plans/README.md` phase F.
+
+
 ## Completed: Plan 3 D5b — deep links, job notifications, export seam
 
 Branch `codex/plan3-d5b-deeplinks-notifications`, stacked on the **unmerged**
@@ -112,7 +232,10 @@ Verification:
   the Vite build.
 - Playwright: browser-only partition **72 passed**.
 - The built bundle declares `CFBundleURLSchemes ["cairndex"]`, and LaunchServices
-  reports exactly one bundle claiming `cairndex:` — ours.
+  reported exactly one bundle claiming `cairndex:` — ours. **Superseded: see the
+  D5c review round.** That was true at the time, but the D5c DMG build later
+  proved the single-registrant assumption does not hold in general — the bundler's
+  scratch volume leaves a second, permanently dead claimant behind.
 
 Known issues: **the end-to-end "deep link opens the right bundle from a cold
 start" acceptance criterion is not machine-verified here.** OS-level routing is
@@ -135,6 +258,14 @@ Owner manual checklist for D5a+D5b:
    and a dock badge appear when it finishes — and that the badge clears on focus.
 4. Confirm the Playback menu is enabled for a video bundle and that only
    Previous/Next File are enabled for an image bundle.
+5. **Before running item 2, check which copy owns the `cairndex://` scheme.** More
+   than one bundle can claim it (an `/Applications` install, the build-directory
+   copy, and a dead DMG scratch mount all register), and LaunchServices picks by
+   its own heuristics. Deep-link testing against the wrong copy proves nothing —
+   and if a *different* copy is launched while the intended one runs, the link is
+   silently lost, because single-instance forwards only argv while macOS delivers
+   the URL by Apple Event. `docs/deployment.md` has the inspection and cleanup
+   commands.
 
 Next recommended task: **Plan 3 D5c — Developer ID signing and notarization
 pipeline** (needs the owner's paid Apple Developer Program enrollment; see the
