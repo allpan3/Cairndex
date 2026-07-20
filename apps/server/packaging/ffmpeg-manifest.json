@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Pinned static ffmpeg/ffprobe builds for the desktop sidecar (ADR-0019 §3).",
+    "",
+    "Empty on purpose: choosing where these binaries come from is a supply-chain",
+    "and licensing decision for the project owner, not something to inherit from",
+    "whatever a build script happened to hardcode. Any practical static ffmpeg",
+    "includes libx264 and is therefore GPL, so publishing it carries source-offer",
+    "obligations (ADR-0019 §3).",
+    "",
+    "A package-manager ffmpeg will NOT work: Homebrew's is a thin binary over a",
+    "large dylib closure under its own prefix, so a copy runs on the build",
+    "machine and nowhere else. The build must be genuinely static.",
+    "",
+    "To populate: pick a source, download it, record the URL and sha256 here,",
+    "then run `python packaging/fetch_ffmpeg.py`. build_sidecar.py refuses to",
+    "bundle a binary whose checksum does not match this file.",
+    "",
+    "Until this is populated, build with --skip-ffmpeg; the sidecar then falls",
+    "back to a system ffmpeg via media/tool_paths.py, which works on a developer",
+    "machine but not on a user's."
+  ],
+  "platforms": {
+    "macos-arm64": { "ffmpeg": null, "ffprobe": null },
+    "macos-x86_64": { "ffmpeg": null, "ffprobe": null },
+    "linux-x86_64": { "ffmpeg": null, "ffprobe": null }
+  },
+  "sha256": {}
+}

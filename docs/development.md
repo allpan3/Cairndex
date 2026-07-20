@@ -235,6 +235,49 @@ target-OS edge (the GTK-vs-raw window handle) inside `dragout.rs`. Keep all
 Tauri imports in `apps/web/src/platform/desktop.ts`; shared SPA modules consume
 only the platform surface and capability flags.
 
+## Local-server sidecar (`apps/server/packaging`)
+
+The desktop app bundles the Python server so a local library folder opens with
+no server administration (plan 3 D6, ADR-0018 §5). It is packaged with
+PyInstaller one-dir (ADR-0019 §2).
+
+```bash
+cd apps/server
+uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see below)
+uv run python packaging/build_sidecar.py      # -> packaging/dist/cairndex-sidecar/
+uv run python packaging/smoke_test.py         # runs the bundle and drives it over HTTP
+```
+
+Until `packaging/ffmpeg-manifest.json` is populated, build with `--skip-ffmpeg`;
+the sidecar then falls back to a system ffmpeg through `media/tool_paths.py`,
+which is fine on a developer machine and not fine on a user's.
+
+**Run the smoke test after any dependency change.** The unit suite imports from
+source, where every module is present, so it structurally cannot catch a frozen
+bundle missing a dynamically resolved import — that only surfaces when the code
+path first runs. The smoke test drives the real binary through the paths where
+that actually happens: SQLAlchemy's sqlite dialect, the job worker, Pillow
+thumbnails, a HEIC preview (`media/previews.py` imports `pillow_heif` inside a
+function), and SIGTERM releasing the ownership lease. CI runs it on every push.
+
+`hiddenimports` in `cairndex-sidecar.spec` is **empty, and that was measured**.
+An initial version listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries;
+removing each in turn and re-running the smoke test showed all were redundant
+(PyInstaller ships `hook-PIL.py` and `hook-sqlalchemy.py`). Do not add entries
+speculatively — they make a future genuine gap look already handled. If the
+smoke test ever fails on a missing module, add the entry and name the failure it
+fixes in a comment.
+
+**Sidecar contract with the shell.** `cairndex.sidecar` binds an ephemeral
+loopback port itself and prints `CAIRNDEX_SIDECAR_PORT=<port>` on stdout; the
+shell parses that line. Binding first and announcing second means the announced
+port is always live, which having the shell pick a free port would not
+guarantee. The shell also sets `CAIRNDEX_LOCAL_TOKEN`; the sidecar refuses to
+start without it rather than serving an unauthenticated API on a port any local
+process can reach. Shutdown must be SIGTERM, not SIGKILL — the graceful path is
+what releases ownership leases, and skipping it leaves the user a takeover
+prompt on their next launch.
+
 ## Databases and local state
 
 Cairndex now uses the ADR-0008 per-library model:
