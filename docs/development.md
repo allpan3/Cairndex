@@ -125,6 +125,43 @@ mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are
 explained ("move them into the library first"); an unmapped library is told to
 locate itself. No absolute path ever crosses into the web layer.
 
+### Menus and shortcuts (D5a)
+
+`apps/web/src/platform/keymap.json` is the **single source of truth** for the
+native menu bar. The shell embeds it with `include_str!` and builds the menu
+from it (`src-tauri/src/keymap.rs`), so a label or accelerator cannot drift
+between the two consumers; the SPA reads the same file through
+`platform/keymap.ts` for action typing and the shortcut reference. Edit the
+table, not `app_menu.rs`.
+
+Table fields: `accelerator` is the OS-level binding (always modifier-based, so
+it can never swallow a keystroke meant for a text field — a test enforces this);
+`keys` lists the bare-key bindings the web app handles itself in the focused
+viewer; `requires` names the enablement group (`server`, `library`, `viewer`,
+`never`); `browserReserved` marks combos a browser intercepts before the page.
+
+Those reserved combos are the point of the D5 shortcut audit: ⌘1/⌘2 (tab
+switching), ⌘N/⌘T (new window/tab), ⌘L (address bar), ⌘[ / ⌘] (history),
+⌘= / ⌘− (browser zoom), and ⌘⇧I (devtools) are unusable on the web and work only
+inside the shell. The web build's bare-key viewer bindings are unchanged.
+
+The Playback menu is routed to the open media viewer. `runViewerCommand` in
+`app/viewer/player/useShortcuts.ts` is the one dispatcher shared by the key
+bindings and the native menu, and `useViewerMenu` enables the menu only while a
+viewer is mounted, so its items are never live against a closed viewer.
+
+Viewer fullscreen uses **real window fullscreen** in the shell rather than the
+HTML Fullscreen API, which WKWebView gates behind user activation a native menu
+item cannot supply (D1 audit). Every fullscreen change — the View menu item, the
+viewer's own control, the `F` key — flows through the `set_window_fullscreen`
+command, which emits `cairndex://fullscreen` so no observer holds a stale state.
+Escape leaves fullscreen before it closes the viewer. Window state persists
+size/position/maximized but deliberately **not** fullscreen or visibility:
+restoring those would relaunch into an empty fullscreen or window-less app.
+
+Left click on the video toggles play/pause; right click is deliberately left
+unhandled so it stays available for viewer context-menu actions.
+
 Desktop checks:
 
 ```bash
