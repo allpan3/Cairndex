@@ -234,9 +234,11 @@ handoff:
 ## 8. What this plan does NOT change
 
 - No embedded Python server in the shell for v1. The owner's deployment is a
-  NAS server; the shell is a client. (A bundled "local mode" sidecar via
-  PyInstaller is a plausible later milestone for laptop-only use — noted, not
-  planned.)
+  NAS server; the shell is a client. (The bundled "local mode" sidecar for
+  laptop-local libraries is now **planned** as D6 via
+  [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md); it
+  follows D5 and the server-side ownership lease, and remains outside the
+  D1–D5 scope this plan shipped.)
 - No mpv/custom video pipeline in the shell (§2 rationale).
 - No write-mode logic in the shell itself — write mode is a server
   capability ([plan 4](04-library-write-mode.md), ADR-0013); the shell's
@@ -252,6 +254,7 @@ handoff:
 | D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 ✅ | Drag-out / drag-in | §6 |
 | D5 | Shell polish | Menu/shortcut audit, window state, deep links, job notifications, native save dialog + notification for media exports (plan 1 §10), updater + signing pipeline |
+| D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) has landed |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
 handoff; D4 adds the remaining drag interaction a browser cannot provide.
@@ -267,6 +270,7 @@ handoff; D4 adds the remaining drag interaction a browser cannot provide.
   rewrite). Explicitly deferred.
 - **`tauri-plugin-drag` maintenance** — small plugin; if it stalls, drag-out
   is implementable directly with an NSDraggingSession snippet in `src-tauri`.
-- Open: second-window viewer, local-mode sidecar (§8). Linux shell is a
+- Open: second-window viewer. The local-mode sidecar is no longer open — it
+  is planned as D6 per ADR-0018 (§8). Linux shell is a
   stated future want (not v1); §2.1 records the rules that keep it a
   packaging exercise. Windows remains free-ish and unplanned.
