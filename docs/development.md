@@ -180,6 +180,41 @@ restoring those would relaunch into an empty fullscreen or window-less app.
 Left click on the video toggles play/pause; right click is deliberately left
 unhandled so it stays available for viewer context-menu actions.
 
+### Deep links, notifications, and the export seam (D5b)
+
+`cairndex://bundle/<id>` and `cairndex://collection/<id>` open that target, with
+an optional `?library=<id>`; without it the target opens in the active library.
+The scheme is declared in `tauri.conf.json` under `plugins.deep-link`, which puts
+`CFBundleURLSchemes` into the built bundle — a link therefore only resolves from a
+**packaged, LaunchServices-registered** app, never from `tauri dev`.
+
+Cold start is the case to keep in mind when changing this. macOS delivers the URL
+as an Apple Event that can fire *before* the webview exists, so `deeplink.rs`
+parks whatever arrives and the SPA drains it through `take_pending_deep_link`
+once it is listening. Windows and Linux instead pass the URL in argv — to the
+first process on a cold start, and to a second process on a warm one, whose argv
+the single-instance plugin forwards (which is why single-instance is registered
+*before* the deep-link plugin). Both paths can describe one user action, so
+`useDeepLink` de-duplicates by identity. A link naming a library this server does
+not have is reported rather than opened in whatever library is active.
+
+Job notifications ride on the job snapshots the sidebar progress bar already
+polls — no extra polling. The unit is a **run**, not a job, because `Update
+library` chains scan → probe → storyboards and would otherwise notify three times
+for one action; a run ends only after activity has been absent for
+`RUN_SETTLE_MS`. A notification fires only when the run was longer than
+`LONG_RUN_MS` *and* the window is unfocused, since announcing a job to someone
+watching its progress bar is noise. The dock badge means "finished while you were
+away", so focus clears it. Permission is requested when a run starts, not at
+launch, so the system prompt appears while the user is present.
+
+`save_export_file` is the **M11 seam only** — no export UI exists yet. The web
+layer passes bytes plus a suggested file *name*; the destination comes solely
+from the native save dialog, and any path structure in the suggestion is stripped
+before use, mirroring the D3 rule that no client-supplied absolute path is ever
+trusted. It suits the small artifacts plan 1 §10 generates (a capped GIF, one
+contact sheet), not streaming media.
+
 Desktop checks:
 
 ```bash

@@ -2,12 +2,23 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from '@tauri-apps/plugin-notification'
 import { load } from '@tauri-apps/plugin-store'
 
 import { runDesktopExitTasks } from '../desktop/exitTasks'
 import type { DesktopMenuAction } from '../desktop/types'
 import { createDragGuard } from './dragGuard'
-import type { HostOs, HostPlatform, PlatformRuntime, ReverseMapResult } from './index'
+import type {
+  DeepLinkTarget,
+  HostOs,
+  HostPlatform,
+  PlatformRuntime,
+  ReverseMapResult,
+} from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
@@ -134,6 +145,7 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   canRevealInFinder: true,
   canOpenWithDefaultApp: true,
   canDragOutFiles: true,
+  canSaveExports: true,
   revealFile: (libraryId: string, relativePath: string) =>
     invoke('reveal_file', { libraryId, relativePath }),
   openFile: (libraryId: string, relativePath: string) =>
@@ -143,6 +155,11 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   locateLibrary: (libraryId: string, libraryUuid: string) =>
     invoke<string | null>('locate_library_mapping', { libraryId, libraryUuid }),
   clearLibraryMapping: (libraryId: string) => invoke('clear_library_mapping', { libraryId }),
+  // Tauri serializes a Uint8Array as a number array over IPC; the shell writes it
+  // to the path the OS dialog returned. Suitable for the small artifacts M11
+  // generates (a capped GIF or a single contact sheet), not for streaming media.
+  saveExport: (suggestedName: string, bytes: Uint8Array) =>
+    invoke<string | null>('save_export_file', { suggestedName, bytes: Array.from(bytes) }),
 }
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam
@@ -212,6 +229,19 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     isWindowFullscreen: () => getCurrentWindow().isFullscreen(),
     listenFullscreen: (handler) =>
       listen<boolean>('cairndex://fullscreen', (event) => handler(event.payload)),
+    listenDeepLink: (handler) =>
+      listen<DeepLinkTarget>('cairndex://deep-link', (event) => handler(event.payload)),
+    // A link can arrive before the webview exists (macOS delivers an Apple Event
+    // on cold start), so the shell parks it and the SPA drains it on mount.
+    takePendingDeepLink: () => invoke<DeepLinkTarget | null>('take_pending_deep_link'),
+    ensureNotificationPermission: async () => {
+      if (await isPermissionGranted()) return true
+      // macOS shows the system prompt here, so callers request it at a moment the
+      // user has just started a long job rather than at launch.
+      return (await requestPermission()) === 'granted'
+    },
+    notify: async (title, body) => sendNotification({ title, body }),
+    setBadgeCount: async (count) => getCurrentWindow().setBadgeCount(count ?? undefined),
     listenLifecycle: async () => {
       const appWindow = getCurrentWindow()
       const stopClose = await appWindow.onCloseRequested(async (event) => {
