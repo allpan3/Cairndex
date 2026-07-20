@@ -210,6 +210,24 @@ mod tests {
         assert_eq!(target.library_id, None);
     }
 
+    // Pins the contract with the SPA's `buildDeepLinkUri` (app/deepLinkUri.ts):
+    // it percent-encodes both segments, so an id containing a separator or a space
+    // must survive the round trip instead of changing the parsed shape. `%2F` is
+    // not a literal `/`, so it stays inside one path segment and decodes after the
+    // split — the id keeps its slash and the link is still a two-segment link.
+    #[test]
+    fn parses_the_uri_shape_the_spa_generates() {
+        let target = parse_deep_link("cairndex://bundle/a%20b%2Fc?library=lib%201").unwrap();
+        assert_eq!(target.kind, "bundle");
+        assert_eq!(target.id, "a b/c");
+        assert_eq!(target.library_id.as_deref(), Some("lib 1"));
+
+        let plain = parse_deep_link("cairndex://collection/c9?library=lib-1").unwrap();
+        assert_eq!(plain.kind, "collection");
+        assert_eq!(plain.id, "c9");
+        assert_eq!(plain.library_id.as_deref(), Some("lib-1"));
+    }
+
     #[test]
     fn rejects_unknown_or_malformed_links() {
         // Foreign scheme: never act on a link another app's handler owns.
