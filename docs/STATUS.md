@@ -5,16 +5,29 @@
 Same branch `feat/library-ownership-lease`. Started 2026-07-20 once both
 server-side prerequisites (the lease and §6 hygiene) were in place.
 
-**Owner decisions, 2026-07-20.** ADR-0018 §5 deliberately left the sidecar's
-packaging open. Settled as: **bundle a staged uv-managed Python plus a
-relocatable venv** rather than PyInstaller, and **bundle ffmpeg/ffprobe** rather
-than discovering an installed copy. PyInstaller is the conventional choice and
-was presented as such; the staged runtime won because the owner builds from
-source and does not distribute (the D5c signing decision), which removes
-PyInstaller's main advantage — a hermetic binary for other people's machines —
-while leaving its main cost, runtime `ImportError`s from frozen dynamic imports
-in SQLAlchemy and Pillow. Recorded here as a plan-level implementation choice,
-not an ADR; ADR-0018 already anticipated it being made at milestone time.
+**Owner decisions, 2026-07-20 — see [ADR-0019](adr/0019-open-source-distribution-model.md)
+(proposed).** ADR-0018 §5 deliberately left the sidecar's packaging open. It is
+settled as **PyInstaller one-dir**, with **bundled static ffmpeg/ffprobe**.
+
+**A first recommendation here was wrong and is corrected.** A staged uv runtime
+was recommended over PyInstaller partly on the reasoning that the owner would be
+the only person to hit a packaging bug. The owner then said Cairndex is going
+open source with **prebuilt binaries published through GitHub Releases**, which
+voids that premise: strangers with no toolchain will run these artifacts, so
+PyInstaller's smaller, conventional, hermetic output is worth its cost. The
+staged-runtime approach was verified working before being set aside (below) and
+is recorded in ADR-0019 §2 as the fallback, since the sidecar's contract with the
+shell is identical either way.
+
+That correction reaches further than packaging. Three recorded decisions were
+justified by "single-owner, built from source, not distributed" and are reopened
+in ADR-0019 §4: **Developer ID signing** (the D5c amendment's reasoning is void —
+an unsigned DMG makes every downloader click through Gatekeeper), **the
+updater** (deferred for a private repo with no releases), and **ffmpeg
+licensing** (a static build with libx264 is GPL; Cairndex invokes it via
+subprocess, which is the aggregation case, but distributing the binary carries
+source-offer obligations). Multi-arch release CI is a fourth. None block D6; all
+block the first public release.
 
 ### Landed: server groundwork (D6.1)
 
@@ -37,26 +50,29 @@ not an ADR; ADR-0018 already anticipated it being made at milestone time.
   not found" on a machine that plainly has it.
 - Backend gate green (**559 passed**, +22). No OpenAPI change.
 
-### Proven: the packaging approach works (pre-work for D6.2)
+### Measured while choosing (pre-work for D6.2)
 
-Rather than assume relocatability, it was tested end to end. A copy of uv's
-`cpython-3.12-macos-aarch64` tree plus a `uv venv --relocatable` venv, with the
-real binary-wheel dependencies (Pillow, pillow-heif) and the `cairndex-server`
-package installed, was **moved twice** and then started from the final path. It
-served `/api/v1/health` 200 without a token, `/api/v1/libraries` 401 without one,
-and 200 with the owner token — so the staged runtime, the relocation, and the new
-sidecar gate all work together. Staged size **66 MB**.
+The staged-runtime option was tested rather than assumed, which is why ADR-0019
+can record it as a real fallback. A copy of uv's `cpython-3.12-macos-aarch64`
+tree plus a `uv venv --relocatable` venv, with the real binary-wheel dependencies
+(Pillow, pillow-heif) and the `cairndex-server` package installed, was **moved
+twice** and then started from the final path. It served `/api/v1/health` 200
+without a token, `/api/v1/libraries` 401 without one, and 200 with the owner
+token — so relocation and the new sidecar gate both work. Staged size **66 MB**,
+the number that argued for PyInstaller once artifacts became downloads.
 
 **One packaging complication found:** Homebrew's `ffmpeg` is a thin
 dynamically-linked binary (652 KB) that depends on dozens of dylibs under
 `/opt/homebrew`. It cannot simply be copied into a bundle — bundling it means
 either a **static** ffmpeg build or rewriting install names for the whole dylib
-closure. The static build is the sane path and is what D6.2 should use.
+closure. The static build is the sane path (ADR-0019 §3).
 
 ### Remaining
 
-- **D6.2** packaging: a build step that stages the interpreter, the venv, and a
-  static ffmpeg/ffprobe into the Tauri bundle as resources; CI kept green.
+- **D6.2** packaging: a PyInstaller one-dir spec for the server, a static
+  ffmpeg/ffprobe staged as Tauri resources, and — required by ADR-0019 §2 — a CI
+  smoke test that *runs* the packaged sidecar against a real request path, so a
+  missing hidden import fails the build instead of a user's first launch.
 - **D6.3** Rust lifecycle: spawn on an ephemeral loopback port with a generated
   token, a private `CAIRNDEX_DATA_DIR` under Application Support, and explicit
   ffmpeg paths; health-poll for readiness; stop on shell shutdown so leases are
@@ -315,6 +331,11 @@ Branch `codex/plan3-d5c-distribution`, stacked on the **unmerged**
 
 The owner settled the distribution question on 2026-07-19, which removed D5c's
 only external blocker: **Developer ID signing is no longer a v1 requirement.**
+**Superseded 2026-07-20 — see [ADR-0019](adr/0019-open-source-distribution-model.md) §4.**
+The reasoning below rests on Cairndex being built from source and not
+distributed. The owner has since decided to open source it and publish
+prebuilt binaries, so signing is required again; the rest of this receipt
+(the DMG target, the env-gated pipeline, the measurements) still stands.
 Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs at
 link time, so packaged builds have worked since D1 with no certificate. The
 $99/yr Apple Developer Program buys nothing until a build must run on a second
