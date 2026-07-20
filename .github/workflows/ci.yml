@@ -172,8 +172,12 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Unit tests
         run: cargo test --locked
+      # `--bundles app` deliberately overrides the config's ["app", "dmg"].
+      # Tauri's DMG bundler drives Finder over AppleScript, which is a known flake
+      # source on headless runners. CI only needs to prove the app compiles and
+      # bundles; the DMG is produced by release/local builds (docs/deployment.md).
       - name: Build Tauri app
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles app
         working-directory: apps/desktop
 
   docker:
