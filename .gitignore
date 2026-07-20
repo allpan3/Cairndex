@@ -67,3 +67,8 @@ apps/server/var/
 # --- Logs ---
 *.log
 logs/
+
+# --- Desktop sidecar packaging (ADR-0019) ---
+# Vendored static ffmpeg/ffprobe: large third-party binaries, fetched by
+# packaging/fetch_ffmpeg.py from a pinned manifest. Never committed.
+apps/server/packaging/vendor/

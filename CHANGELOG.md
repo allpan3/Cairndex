@@ -36,6 +36,17 @@ grouped under `Unreleased` until the first tagged release.
   `docs/deployment.md`, which also documents the one-active-machine semantics for
   cloud-synced libraries.
 
+- **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
+  the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus
+  `fetch_ffmpeg.py` for pinned, checksum-verified static media binaries and a
+  `smoke_test.py` that runs the *packaged* bundle over HTTP. A new CI job builds
+  and smoke-tests it on every push, because the unit suite imports from source
+  and structurally cannot catch a frozen bundle missing a dynamically resolved
+  import. `cairndex.sidecar` binds an ephemeral loopback port and announces it on
+  stdout, refuses to start without its owner token, and releases its ownership
+  leases on SIGTERM. The static-ffmpeg source is not yet pinned — choosing it is
+  an owner decision (ADR-0019 §3) — so builds currently use `--skip-ffmpeg`.
+
 - **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
   `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback
   owner token on every API request (health stays open so the shell can wait for

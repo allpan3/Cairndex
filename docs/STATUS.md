@@ -67,12 +67,48 @@ dynamically-linked binary (652 KB) that depends on dozens of dylibs under
 either a **static** ffmpeg build or rewriting install names for the whole dylib
 closure. The static build is the sane path (ADR-0019 §3).
 
-### Remaining
+### Landed: sidecar packaging (D6.2)
 
-- **D6.2** packaging: a PyInstaller one-dir spec for the server, a static
-  ffmpeg/ffprobe staged as Tauri resources, and — required by ADR-0019 §2 — a CI
-  smoke test that *runs* the packaged sidecar against a real request path, so a
-  missing hidden import fails the build instead of a user's first launch.
+`apps/server/packaging/` — a PyInstaller one-dir build, a checksum-verified
+ffmpeg fetch step, and the smoke test ADR-0019 §2 required. A new `sidecar` CI
+job builds and smoke-tests on every push.
+
+- **`cairndex.sidecar`** binds its own ephemeral loopback port and prints
+  `CAIRNDEX_SIDECAR_PORT=<port>` on stdout. Binding first and announcing second
+  removes the race that having the shell pick a free port would leave. It
+  refuses to start without `CAIRNDEX_LOCAL_TOKEN` rather than serving an
+  unauthenticated API on a port any local process can reach, and handles SIGTERM
+  as a graceful stop because that path is what releases ownership leases.
+- **`hiddenimports` is empty, and that was measured, not assumed.** The first
+  spec listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries with comments
+  claiming each was a runtime resolution PyInstaller could not see. Removing each
+  group in turn and re-running the smoke test showed **every one was redundant** —
+  PyInstaller 6.x ships `hook-PIL.py` and `hook-sqlalchemy.py`, and uvicorn's
+  "auto" modules resolve through literal imports static analysis does follow. The
+  comment was wrong and is now replaced by the finding. Speculative entries are
+  not free: they make a future genuine gap look already handled.
+- **The smoke test was strengthened when it failed to bite.** Dropping the Pillow
+  hidden imports did not fail it, which showed the coverage proved less than it
+  claimed. `pillow_heif` was the one real candidate (`media/previews.py` imports
+  it inside a function) and JPEG/PNG never exercise it — so the test now
+  generates a **HEIC fixture and renders a preview**. Verified by mutation:
+  excluding `pillow_heif` from the bundle now fails with the real error.
+- The smoke test drives the *packaged binary over HTTP* through library creation
+  (SQLAlchemy's sqlite dialect, FTS5), a scan job, a thumbnail job, the HEIC
+  preview, and SIGTERM — then asserts the lease came back with `released_at`.
+
+Verified on the real bundle: **73 MB**, scan and thumbnail jobs succeeded, a
+480×360 JPEG thumbnail served, HEIC preview rendered, lease acquired on first
+serve and released on SIGTERM with the WAL folded in.
+
+**Not done: the static ffmpeg source is unpinned.** `ffmpeg-manifest.json` ships
+empty on purpose — choosing where those binaries come from is a supply-chain and
+licensing decision for the owner (ADR-0019 §3), and any practical static build is
+GPL. Until it is populated, builds use `--skip-ffmpeg` and the sidecar falls back
+to a system ffmpeg via `media/tool_paths.py`. That works on a developer machine
+and **not** on a user's, so this blocks a real release, not D6.3.
+
+### Remaining
 - **D6.3** Rust lifecycle: spawn on an ephemeral loopback port with a generated
   token, a private `CAIRNDEX_DATA_DIR` under Application Support, and explicit
   ffmpeg paths; health-poll for readiness; stop on shell shutdown so leases are

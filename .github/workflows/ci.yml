@@ -37,6 +37,38 @@ jobs:
       - name: pytest
         run: uv run pytest
 
+  sidecar:
+    name: Packaged sidecar (build + smoke test)
+    # The unit suite imports from source, where every module is present, so it
+    # structurally cannot catch a PyInstaller bundle missing a dynamically
+    # resolved import — that failure only appears when the frozen code path
+    # first runs. This job builds the real bundle and drives it over HTTP
+    # (ADR-0019 §2), so such a gap fails the build instead of a user's first
+    # launch.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg (the smoke test scans and previews real fixtures)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Sync dependencies
+        run: uv sync --frozen
+      # --skip-ffmpeg until ffmpeg-manifest.json is populated; choosing a static
+      # ffmpeg source is an owner decision (ADR-0019 §3). The runner's system
+      # ffmpeg covers the smoke test either way, so this still exercises the
+      # media paths — it just does not yet prove the *bundled* binary works.
+      - name: Build the sidecar bundle
+        run: uv run python packaging/build_sidecar.py --skip-ffmpeg
+      - name: Smoke-test the packaged sidecar
+        run: uv run python packaging/smoke_test.py
+
   frontend:
     name: Frontend (lint, types, unit, build, browser e2e)
     runs-on: ubuntu-latest
