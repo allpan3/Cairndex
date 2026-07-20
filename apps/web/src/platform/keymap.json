@@ -25,7 +25,9 @@
     "",
     "'requires' gates enablement: 'server' items wait for desktop bootstrap to reach a",
     "verified server, 'library' items for an unlocked mounted workspace, 'viewer' for",
-    "an open media viewer. null means always enabled.",
+    "an open media viewer, and 'viewer-video' for a viewer showing a video (an image",
+    "bundle has no player, so those commands would be enabled but dead). null means",
+    "always enabled.",
     "",
     "'predefined' selects a Tauri built-in menu item (OS-localized, native behavior);",
     "such entries carry no id/accelerator of their own."
@@ -199,7 +201,7 @@
           "label": "Play/Pause",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["Space", "K"]
         },
         {
@@ -229,7 +231,7 @@
           "label": "Back 10 Seconds",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["J"]
         },
         {
@@ -237,7 +239,7 @@
           "label": "Forward 10 Seconds",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["L"]
         },
         {
@@ -248,7 +250,7 @@
           "label": "Decrease Speed",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": [","]
         },
         {
@@ -256,7 +258,7 @@
           "label": "Increase Speed",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["."]
         },
         {
@@ -267,7 +269,7 @@
           "label": "Mute",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["M"]
         },
         {
@@ -275,7 +277,7 @@
           "label": "Subtitles",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["C"]
         },
         {
@@ -286,7 +288,7 @@
           "label": "Save Snapshot",
           "accelerator": null,
           "browserReserved": false,
-          "requires": "viewer",
+          "requires": "viewer-video",
           "keys": ["S"]
         }
       ]

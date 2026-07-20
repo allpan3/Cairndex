@@ -3,14 +3,18 @@ import { useEffect, useRef } from 'react'
 import type { ShortcutActions, ViewerCommand } from '../app/viewer/player/useShortcuts'
 import { runViewerCommand } from '../app/viewer/player/useShortcuts'
 import type { PlayerController } from '../app/viewer/player/usePlayer'
-import { isDesktopHost, setHostPlaybackAvailable } from '../platform'
+import { isDesktopHost, setHostViewerMenuAvailable } from '../platform'
 import { actionIdsRequiring } from '../platform/keymap'
 import type { DesktopMenuAction } from './types'
 import { useDesktopMenu } from './useDesktopMenu'
 
 // Derived from the shared table so a Playback item added to keymap.json is
-// automatically recognized here instead of being silently dropped.
-const PLAYBACK_ACTIONS = new Set(actionIdsRequiring('viewer'))
+// automatically recognized here instead of being silently dropped. Both groups
+// count: `viewer` works for any bundle, `viewer-video` needs a player.
+const PLAYBACK_ACTIONS = new Set([
+  ...actionIdsRequiring('viewer'),
+  ...actionIdsRequiring('viewer-video'),
+])
 
 /** True when a menu action belongs to the Playback menu. */
 export function isPlaybackAction(action: DesktopMenuAction): action is ViewerCommand {
@@ -36,13 +40,21 @@ export function useViewerMenu(player: PlayerController | null, actions: Shortcut
     runViewerCommand(action, playerRef.current, actionsRef.current)
   })
 
+  // An image bundle has no player, so the player-only items stay disabled there
+  // rather than being live-but-dead — the same reason the whole group is disabled
+  // when no viewer is open at all.
+  const hasVideo = player !== null
   useEffect(() => {
     if (!isDesktopHost()) return
-    void setHostPlaybackAvailable(true).catch((error: unknown) =>
+    void setHostViewerMenuAvailable(true, hasVideo).catch((error: unknown) =>
       console.error('Could not enable the desktop Playback menu', error),
     )
+  }, [hasVideo])
+
+  useEffect(() => {
+    if (!isDesktopHost()) return
     return () => {
-      void setHostPlaybackAvailable(false).catch((error: unknown) =>
+      void setHostViewerMenuAvailable(false, false).catch((error: unknown) =>
         console.error('Could not disable the desktop Playback menu', error),
       )
     }

@@ -396,8 +396,12 @@ export function MediaViewer({
       snapshot,
       previous: () => step(-1),
       next: () => step(1),
+      // `player` exists even for image bundles (only its use as a *controller* is
+      // gated on videoActive), so fullscreen state stays correct for images too.
+      isFullscreen: () => player.fullscreen,
+      exitFullscreen: () => player.toggleFullscreen(),
     }),
-    [onClose, toggleInfo, snapshot, step],
+    [onClose, toggleInfo, snapshot, step, player],
   )
 
   useShortcuts(rootRef, videoActive ? player : null, shortcutActions)

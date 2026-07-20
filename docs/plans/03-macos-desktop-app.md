@@ -253,9 +253,12 @@ handoff:
   declines to restore a position no current monitor intersects). Viewer
   fullscreen is *real window fullscreen* — the viewer is already a full-window
   overlay, and this avoids WKWebView gating `requestFullscreen` behind user
-  activation a menu item cannot supply. One command owns every transition and
-  broadcasts `cairndex://fullscreen` so no observer holds a stale state. The
-  second viewer window remains deferred.
+  activation a menu item cannot supply. State is tracked from the window itself
+  rather than from the commands the app issues: a `WindowEvent::Resized` watcher
+  reads the real state and broadcasts `cairndex://fullscreen` on change, so
+  OS-initiated transitions the app never requested (green zoom button, Mission
+  Control) are folded in too, and a mid-animation read self-corrects. The second
+  viewer window remains deferred.
 - Single instance + `cairndex://` deep links (open bundle/collection);
   dock badge / user notification when a long job (scan/probe) finishes —
   subscribes to the existing job progress API.

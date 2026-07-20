@@ -15,7 +15,10 @@ tauri-build = { version = "2", features = [] }
 # `default-features = false` deliberately drops the `libxdo`/`gtk` features: the
 # accelerator parser needs neither, and enabling them would make the Ubuntu
 # Rust-only CI job require libxdo-dev (AGENTS.md cross-platform gate).
-muda = { version = "0.19", default-features = false }
+# Pinned exactly: the test is only meaningful if it validates accelerators through
+# the SAME parser that registers them, so this must track the muda version Tauri
+# vendors. Bumping Tauri may require bumping this in the same change.
+muda = { version = "=0.19.3", default-features = false }
 
 [dependencies]
 # `drag` is the cross-platform engine behind `tauri-plugin-drag`. We depend on it

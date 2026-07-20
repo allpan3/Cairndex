@@ -43,7 +43,17 @@ describe('keymap table', () => {
   })
 
   it('puts every viewer-gated action in the Playback menu', () => {
-    expect(actionIdsRequiring('viewer').sort()).toEqual([...EXPECTED_PLAYBACK_ACTIONS].sort())
+    const gated = [...actionIdsRequiring('viewer'), ...actionIdsRequiring('viewer-video')]
+    expect(gated.sort()).toEqual([...EXPECTED_PLAYBACK_ACTIONS].sort())
+  })
+
+  it('gates player-only commands behind a video, not just an open viewer', () => {
+    // An image bundle has no PlayerController. Only file navigation works there, so
+    // the rest must sit in the stricter group or they render enabled-but-dead.
+    expect(actionIdsRequiring('viewer')).toEqual(['previous-file', 'next-file'])
+    expect(actionIdsRequiring('viewer-video')).toEqual(
+      expect.arrayContaining(['play-pause', 'seek-back', 'toggle-mute', 'snapshot']),
+    )
   })
 
   it('excludes shell-owned and placeholder items from SPA dispatch', () => {

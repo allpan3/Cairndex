@@ -12,7 +12,7 @@ import {
   isDesktopHost,
   isHostWindowFullscreen,
   listenHostFullscreen,
-  setHostWindowFullscreen,
+  toggleHostWindowFullscreen,
 } from '../../../platform'
 import type { PlayerPrefs } from '../../types'
 import { createEngine, type PlaybackEngine, type PlaybackSource } from './engine'
@@ -215,12 +215,19 @@ export function usePlayer({
     if (isDesktopHost()) {
       let disposed = false
       let unlisten: (() => void) | undefined
+      // The initial query and the subscription are independent async channels. If
+      // an event lands first, the older query's result is stale by the time it
+      // resolves and must not overwrite it.
+      let sawEvent = false
       void isHostWindowFullscreen()
         .then((active) => {
-          if (!disposed) setFullscreen(active)
+          if (!disposed && !sawEvent) setFullscreen(active)
         })
         .catch(() => undefined)
-      void listenHostFullscreen((active) => setFullscreen(active))
+      void listenHostFullscreen((active) => {
+        sawEvent = true
+        setFullscreen(active)
+      })
         .then((stop) => {
           if (disposed) stop()
           else unlisten = stop
@@ -319,10 +326,10 @@ export function usePlayer({
     // fullscreen is the correct "proper viewer fullscreen" (plan 3 §7) and it
     // sidesteps WKWebView's user-activation requirement on requestFullscreen,
     // which a native menu item cannot satisfy (D1 audit).
+    // The toggle is atomic in Rust; reading then setting over two IPC round trips
+    // would let two fast presses both observe the same pre-toggle state.
     if (isDesktopHost()) {
-      void isHostWindowFullscreen()
-        .then((active) => setHostWindowFullscreen(!active))
-        .catch(() => undefined)
+      void toggleHostWindowFullscreen().catch(() => undefined)
       return
     }
     const root = rootRef.current

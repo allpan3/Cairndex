@@ -138,7 +138,10 @@ Table fields: `accelerator` is the OS-level binding (always modifier-based, so
 it can never swallow a keystroke meant for a text field — a test enforces this);
 `keys` lists the bare-key bindings the web app handles itself in the focused
 viewer; `requires` names the enablement group (`server`, `library`, `viewer`,
-`never`); `browserReserved` marks combos a browser intercepts before the page.
+`viewer-video`, `never`); `browserReserved` marks combos a browser intercepts
+before the page. `viewer` and `viewer-video` are separate because an image bundle
+has no player: only Previous/Next File work there, so the player-only items stay
+disabled rather than live-but-dead.
 
 Those reserved combos are the point of the D5 shortcut audit: ⌘1/⌘2 (tab
 switching), ⌘N (new window), ⌘[ / ⌘] (history), ⌘= / ⌘− (browser zoom), and ⌘⇧I
@@ -162,10 +165,15 @@ viewer is mounted, so its items are never live against a closed viewer.
 
 Viewer fullscreen uses **real window fullscreen** in the shell rather than the
 HTML Fullscreen API, which WKWebView gates behind user activation a native menu
-item cannot supply (D1 audit). Every fullscreen change — the View menu item, the
-viewer's own control, the `F` key — flows through the `set_window_fullscreen`
-command, which emits `cairndex://fullscreen` so no observer holds a stale state.
-Escape leaves fullscreen before it closes the viewer. Window state persists
+item cannot supply (D1 audit). Fullscreen can also be entered or left without the
+app asking — the green zoom button, Mission Control, a window manager — so state
+is not tracked from the commands the app issues. Instead the shell watches
+`WindowEvent::Resized` (which fires across every fullscreen transition), reads the
+window's *actual* state, and broadcasts `cairndex://fullscreen` when it changed.
+Broadcasting the observed rather than the assumed state also means a read taken
+mid-animation self-corrects. The de-duplication keeps an ordinary live-resize drag
+silent. Escape leaves fullscreen before it closes the viewer, including on image
+bundles, which have no player. Window state persists
 size/position/maximized but deliberately **not** fullscreen or visibility:
 restoring those would relaunch into an empty fullscreen or window-less app.
 
