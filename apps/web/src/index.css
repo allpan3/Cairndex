@@ -2953,7 +2953,13 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 58px 64px 86px;
+  /* No padding: the media fills the whole viewer and `object-fit: contain`
+     letterboxes in one direction only. Padding here used to reserve space for the
+     top bar and controls, which produced black bands on *all four* sides even
+     when the aspect ratio matched — but that chrome is absolutely positioned and
+     overlays the media anyway, so the reservation bought nothing. Nav buttons
+     position against `.media-viewer`, not this element, so they are unaffected. */
+  padding: 0;
 }
 .mv-video-stage {
   position: relative;
@@ -2969,7 +2975,9 @@ code {
   max-height: 100%;
   object-fit: contain;
   background: #000;
-  box-shadow: 0 18px 80px rgba(0, 0, 0, 0.42);
+  /* The drop shadow that used to float the media inside its padded stage is gone:
+     the media now reaches the viewer edges, where the shadow is either clipped by
+     the viewer's `overflow: hidden` or reads as a smudge along the frame. */
 }
 .mv-video {
   width: 100%;
