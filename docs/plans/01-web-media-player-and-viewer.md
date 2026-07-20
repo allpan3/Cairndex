@@ -482,10 +482,23 @@ running scan must not queue-block a ten-second export:
   shipping export.
 - TV: not exposed.
 
-## 10.1 Viewer chrome and fit — owner feedback 2026-07-20
+## 10.1 Viewer chrome and fit — owner feedback 2026-07-20 (**done**)
 
-Owner-reported after the D5 owner pass; **explicitly deferred to its own branch
-after D5 merged**, not part of D5.
+Owner-reported after the D5 owner pass and implemented on its own branch once D5
+merged.
+
+**Root cause, once looked at:** the chrome was already correct. `.mv-topbar` and
+`.mv-controls` were already absolutely positioned, already carried
+top-and-bottom gradients fading to transparent, and already faded out via
+`.media-viewer--idle`. The black frames came from a single rule — `.mv-stage`
+carried `padding: 58px 64px 86px`, reserving room for chrome that overlays the
+media anyway. That padding bought nothing and cost bands on all four sides even
+when the aspect ratio matched. Removing it makes the media span the viewer, and
+`object-fit: contain` letterboxes in one direction only — which is exactly the
+requested behavior, in windowed and fullscreen alike, since both are the same
+layout at different sizes. The media's drop shadow went too: it is either clipped
+by the viewer's `overflow: hidden` or reads as a smudge along the frame now that
+the picture reaches the edges.
 
 Observed: entering fullscreen leaves black frames on *all* sides. Expected
 behavior, in the owner's words — the video should always fit/maximize to use the
