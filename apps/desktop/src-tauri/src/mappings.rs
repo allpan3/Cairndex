@@ -92,6 +92,10 @@ impl MappingError {
 #[derive(Deserialize)]
 struct LibraryManifest {
     library_uuid: String,
+    // Optional: only the folder picker reads it, and an older manifest that
+    // predates the field must still validate for reveal/open.
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 // Couples one stored local root to the portable identity proven at locate time
@@ -175,13 +179,13 @@ fn validate_library_uuid(library_uuid: &str) -> Result<(), MappingError> {
     Ok(())
 }
 
-// Proves that a picked folder is the portable library the server described
-fn validate_library_root(
-    local_root: &Path,
-    expected_library_uuid: &str,
-) -> Result<PathBuf, MappingError> {
-    validate_library_uuid(expected_library_uuid)?;
-    let root = canonicalize_root(local_root)?;
+// Reads and parses a candidate folder's library manifest.
+//
+// Split out so discovering an unknown library (`pick_library_folder`) and
+// re-proving a known one (`validate_library_root`) apply exactly the same
+// parsing and the same failure wording — a folder that is "not a Cairndex
+// library" should say so identically whichever path noticed.
+fn read_library_manifest(root: &Path) -> Result<LibraryManifest, MappingError> {
     let manifest_path = root.join(".cairndex").join("manifest.json");
     let bytes = fs::read(manifest_path).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
@@ -196,12 +200,22 @@ fn validate_library_root(
             )
         }
     })?;
-    let manifest: LibraryManifest = serde_json::from_slice(&bytes).map_err(|_| {
+    serde_json::from_slice(&bytes).map_err(|_| {
         MappingError::new(
             MappingErrorCode::InvalidManifest,
             "The selected library manifest is invalid.",
         )
-    })?;
+    })
+}
+
+// Proves that a picked folder is the portable library the server described
+fn validate_library_root(
+    local_root: &Path,
+    expected_library_uuid: &str,
+) -> Result<PathBuf, MappingError> {
+    validate_library_uuid(expected_library_uuid)?;
+    let root = canonicalize_root(local_root)?;
+    let manifest = read_library_manifest(&root)?;
     if !manifest
         .library_uuid
         .eq_ignore_ascii_case(expected_library_uuid)
@@ -355,6 +369,68 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
     })
     .await
     .map_err(|_| MappingError::store_task_failed())?
+}
+
+/// A library folder the user picked, for opening through the local server.
+#[derive(Debug, Serialize)]
+pub(crate) struct PickedLibrary {
+    /// Canonical absolute path. Safe to hand to the *local* server: it came from
+    /// the OS picker rather than from the web layer, and the server it is sent to
+    /// is one this shell spawned on this machine. The §5 rule that the web layer
+    /// never supplies absolute paths is unaffected — the web layer receives this
+    /// and passes it straight back, it does not invent one.
+    pub(crate) path: String,
+    pub(crate) library_uuid: String,
+    pub(crate) display_name: String,
+}
+
+/// Pick an existing Cairndex library folder on this machine (plan 3 D6).
+///
+/// Unlike `locate_library_mapping`, no library is known yet — this *discovers*
+/// one, so the manifest supplies the identity rather than being checked against
+/// an expected one. Returns `None` when the user cancels, which is not an error.
+#[tauri::command]
+pub(crate) async fn pick_library_folder<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<PickedLibrary>, MappingError> {
+    let Some(selected) = app
+        .dialog()
+        .file()
+        .set_title("Open Library Folder")
+        .blocking_pick_folder()
+    else {
+        return Ok(None);
+    };
+    let selected = selected.into_path().map_err(|_| {
+        MappingError::new(
+            MappingErrorCode::InvalidLibraryRoot,
+            "The selected library folder is not a local filesystem path.",
+        )
+    })?;
+
+    // Canonicalizing and reading the manifest can both touch a slow or offline
+    // mount, so keep them off the IPC thread (the D3 review's async rule).
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = canonicalize_root(&selected)?;
+        let manifest = read_library_manifest(&root)?;
+        validate_library_uuid(&manifest.library_uuid)?;
+        let path = root
+            .to_str()
+            .ok_or_else(|| {
+                MappingError::new(
+                    MappingErrorCode::InvalidLibraryRoot,
+                    "The selected library folder uses an unsupported path encoding.",
+                )
+            })?
+            .to_owned();
+        Ok(Some(PickedLibrary {
+            path,
+            library_uuid: manifest.library_uuid,
+            display_name: manifest.display_name.unwrap_or_default(),
+        }))
+    })
+    .await
+    .map_err(|_| MappingError::host_action_failed())?
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map
