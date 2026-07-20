@@ -75,6 +75,34 @@ def test_a_wrong_token_is_rejected(sidecar_env: None) -> None:
     assert is_local_owner_token("") is False
 
 
+def test_a_non_ascii_bearer_is_rejected_rather_than_crashing(sidecar_env: None) -> None:
+    """``secrets.compare_digest`` raises TypeError on non-ASCII *strings*.
+
+    Comparing them directly would turn a bad credential into a 500 traceback
+    instead of a 401 — an error-handling difference a caller can probe.
+    """
+    assert is_local_owner_token("tökén") is False
+    assert is_local_owner_token("🔑") is False
+
+
+def test_a_non_ascii_bearer_gets_a_clean_401_through_the_gate(
+    sidecar_client: TestClient,
+) -> None:
+    """Sent as raw bytes, which is how a real client would reach this.
+
+    httpx refuses to encode a non-ASCII *str* header value, so passing one would
+    only ever fail in the client. The ASGI layer decodes header bytes as
+    latin-1, though, so those bytes do arrive as a non-ASCII ``str`` — which is
+    exactly what makes the comparison reachable.
+    """
+    resp = sidecar_client.get(
+        "/api/v1/libraries", headers={"Authorization": "Bearer tökén".encode()}
+    )
+
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "local_token_required"
+
+
 def test_a_blank_configured_token_does_not_enable_sidecar_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -194,16 +222,23 @@ def test_an_explicitly_configured_ffmpeg_wins(
         get_settings.cache_clear()
 
 
-def test_a_configured_path_that_is_not_executable_is_ignored(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_configured_path_that_is_not_executable_is_ignored_but_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Fall through to discovery rather than failing outright on a stale config."""
+    """Fall through to discovery rather than failing outright on a stale config.
+
+    Logged, though: the shell points this at a *bundled* binary, so a file that
+    exists but is not executable usually means a packaging bug, and silently
+    using a system ffmpeg would hide it until a machine that has none.
+    """
     not_executable = tmp_path / "ffmpeg"
     not_executable.write_text("", encoding="utf-8")
     monkeypatch.setenv("CAIRNDEX_FFMPEG_PATH", str(not_executable))
     get_settings.cache_clear()
     try:
-        assert tool_paths.ffmpeg_path() != str(not_executable)
+        with caplog.at_level("WARNING"):
+            assert tool_paths.ffmpeg_path() != str(not_executable)
+        assert any("not an executable" in record.message for record in caplog.records)
     finally:
         get_settings.cache_clear()
 

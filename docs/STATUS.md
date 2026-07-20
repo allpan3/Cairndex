@@ -71,7 +71,9 @@ closure. The static build is the sane path (ADR-0019 §3).
 
 `apps/server/packaging/` — a PyInstaller one-dir build, a checksum-verified
 ffmpeg fetch step, and the smoke test ADR-0019 §2 required. A new `sidecar` CI
-job builds and smoke-tests on every push.
+job is configured to build and smoke-test it. **That job has never run**: this
+branch is unpushed, and CI triggers only on pushes to `main` or on a pull
+request, so the three new/changed jobs are verified config, not observed runs.
 
 - **`cairndex.sidecar`** binds its own ephemeral loopback port and prints
   `CAIRNDEX_SIDECAR_PORT=<port>` on stdout. Binding first and announcing second
@@ -139,9 +141,10 @@ Verification:
   **60 unit tests** (was 55).
 - The lifecycle test **spawns the real packaged bundle** — loopback bind, health
   open, 401 anonymous, 200 with the token, and stdin-close shutdown leaving the
-  port dead. It skips unless `CAIRNDEX_SIDECAR_BIN` is set, so the desktop gates
-  stay runnable without Python; CI's macOS job sets it, which is what turns it
-  from a no-op into a real check.
+  port dead. It skips unless `CAIRNDEX_SIDECAR_BIN` is set, so the desktop
+  *tests* stay runnable without Python; CI's macOS job sets it, which is what
+  turns it from a no-op into a real check. **Compilation is a different matter —
+  see the review round below.**
 - A release `tauri build` produced `Cairndex.app` (**88 MB**) with the sidecar at
   `Contents/Resources/cairndex-sidecar/cairndex-sidecar` — exactly where
   `binary_path()` looks — and **the staged copy was launched from inside the
@@ -151,6 +154,73 @@ Known gaps: no UI consumes the commands yet (D6.4/D6.5), and the app still has
 no way to *open a local folder* — that is the next slice. The bundled build
 carries no ffmpeg until the manifest is pinned, so a packaged sidecar currently
 falls back to a system ffmpeg.
+
+### Review round — a CI break I would have shipped, and a start race
+
+An external review of D6.2/D6.3 found one P1, one P2, and three smaller items.
+All confirmed by reproduction before fixing, and all applied.
+
+- **P1 — the desktop crate stopped compiling without the sidecar bundle.**
+  `tauri-build` copies `bundle.resources` at *compile* time, not bundle time, so
+  the missing path fails `cargo check`, `cargo test`, and `tauri dev` — not just
+  `tauri build`, which is all I had claimed. **The Ubuntu "Desktop Rust" job
+  would have failed on the first push**, since only the macOS job got a
+  build-sidecar step. Reproduced exactly (`resource path … doesn't exist`,
+  exit 101). Fixed with an empty-directory placeholder in the Ubuntu job — the
+  resource copier skips empty directories, and `binary_path()` still reports
+  `not_bundled` at runtime — rather than adding uv and PyInstaller to a job that
+  gains no coverage from them. Verified both halves: empty dir compiles and
+  passes tests; the real bundle still builds and runs. `development.md` now
+  states the compile-time reality with the actual error text.
+- **P2 — two concurrent `start_local_server` calls could hand back a dead
+  server.** The `info()` check and the insert were not one critical section, so
+  both callers could see an empty slot, both spawn, and the second insert
+  terminate the first child *after* its caller had already been given that
+  sidecar's URL and token. The comment asserting "`start_local_server`
+  guarantees the slot is empty" named exactly the guarantee concurrency breaks.
+  Not theoretical: React StrictMode double-invoking a mount effect is the normal
+  way a UI produces those two calls, and D6.4 is about to add one. Fixed with a
+  dedicated `startup` mutex held across check-launch-insert; the fast path in
+  the command was *removed*, because checking outside the lock is what created
+  the race. A new test runs two threads against the real bundle and asserts both
+  get the same server *and* that it is still alive; removing the lock fails it.
+- **P3 — `SO_REUSEADDR` on the sidecar's listening socket.** Pointless here (we
+  bind `:0` and never rebind a specific port) and actively harmful on Windows,
+  where it lets a different socket bind a port already in use and steal
+  connections — a hijack primitive against a token-gated loopback server.
+  Removed. Worth noting the shutdown design is justified by Windows portability,
+  so a Windows-unsafe option had no business sitting next to it.
+- **P3 — a non-ASCII bearer produced a 500 instead of a 401.**
+  `secrets.compare_digest` raises `TypeError` on non-ASCII *strings*. Now
+  compares encoded bytes. The HTTP-level regression test sends the header as raw
+  **bytes**, because httpx refuses to encode a non-ASCII `str` header at all —
+  a str-typed test would only ever have failed in the client and proved nothing.
+- **Nits.** The `CAIRNDEX_SIDECAR_BIN` comment claimed it was "never consulted in
+  a packaged app"; it is checked unconditionally, so the comment now says so and
+  records why that is acceptable (anyone who can set the app's environment is
+  already the user). A configured-but-non-executable ffmpeg path now logs before
+  falling through to discovery — silence there would hide a lost execute bit in
+  a bundle until it reached a machine with no system ffmpeg.
+- **Not taken:** a `WWW-Authenticate` header on the middleware's 401. The
+  reviewer marked it take-or-leave; every other error in this API is a bare
+  structured body, and diverging for one gate is worse than being consistent.
+
+**Correction to this receipt's own claims**, both flagged by the review: the
+sidecar CI job "builds and smoke-tests on every push" was a statement about
+config, not an observed run (this branch is unpushed), and "the desktop gates
+stay runnable without Python" was true of the test skip but false of
+compilation. Both corrected above.
+
+Verification for this round: backend gate green (**561 passed**, +2 non-ASCII
+bearer cases); desktop `cargo fmt --check`, Clippy `-D warnings`, and **61 unit
+tests** (+1 concurrency), with the real-bundle tests run against a built sidecar.
+Mutation-checked: reverting the byte comparison fails both new auth tests, and
+removing the startup lock fails the concurrency test.
+
+**Still unrun: CI itself.** Pushing this branch would not help — the workflow
+triggers on pushes to `main` and on pull requests, so a feature-branch push
+executes nothing. Getting a real verdict on the three new/changed jobs needs a
+PR, which is the owner's call.
 
 ### Remaining
 - **D6.4/D6.5** web: the connections model (remote servers plus one managed local

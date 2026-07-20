@@ -40,8 +40,11 @@ const PORT_ANNOUNCE_PREFIX: &str = "CAIRNDEX_SIDECAR_PORT=";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(15);
-// Overrides the bundled binary during development, where no Tauri resource dir
-// exists yet. Never consulted in a packaged app.
+// Overrides the bundled binary, for development (where no Tauri resource dir
+// exists yet) and for the lifecycle test. Checked unconditionally, so a packaged
+// app launched with it set will honour it too — acceptable because anyone who
+// can set this app's environment is already running as the user, which is
+// outside the threat model the loopback token addresses.
 const DEV_BINARY_ENV: &str = "CAIRNDEX_SIDECAR_BIN";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -88,6 +91,16 @@ struct Running {
 #[derive(Default)]
 pub(crate) struct LocalServer {
     running: Mutex<Option<Running>>,
+    /// Serializes start attempts end to end.
+    ///
+    /// `running` alone is not enough: it is unlocked across the seconds-long
+    /// launch, so two callers can both observe an empty slot and both spawn a
+    /// server. The second insertion would then terminate the first child while
+    /// its caller was already holding that sidecar's URL and token — a handle to
+    /// a dead process. React StrictMode double-invoking a mount effect is
+    /// exactly how a UI produces those two calls, so this is a real path, not a
+    /// theoretical one.
+    startup: Mutex<()>,
 }
 
 impl LocalServer {
@@ -97,6 +110,18 @@ impl LocalServer {
             .ok()
             .and_then(|guard| guard.as_ref().map(|running| running.info.clone()))
     }
+}
+
+/// Lock through a poisoned mutex rather than failing.
+///
+/// Poisoning means some thread panicked while holding the lock; the data here is
+/// an `Option<Running>` and a unit, neither of which can be left half-updated in
+/// a way that matters. Refusing to start the local server for the rest of the
+/// session would be the worse outcome.
+fn lock_through_poison<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 // Generates the per-start bearer the sidecar requires on every request
@@ -209,21 +234,32 @@ fn await_health(base_url: &str) -> bool {
 
 // Starts the sidecar and blocks until it is serving
 fn start<R: Runtime>(app: &AppHandle<R>) -> Result<LocalServerInfo, SidecarError> {
+    let state = app.state::<LocalServer>();
+    // Held across the whole check-launch-insert. A second caller blocks here and
+    // then finds the slot filled, so it returns the running server rather than
+    // spawning a rival — the check and the insert have to be one critical
+    // section or neither caller can trust what it is handed back.
+    let _startup = lock_through_poison(&state.startup);
+
+    if let Some(info) = state.info() {
+        return Ok(info);
+    }
+
     let binary = binary_path(app)?;
     let data = data_dir(app)?;
     let (child, info) = launch(&binary, &data)?;
 
-    if let Ok(mut guard) = app.state::<LocalServer>().running.lock() {
-        // Replace whatever was there; `start_local_server` guarantees the slot
-        // is empty, and leaking a child here would orphan a lease holder.
-        if let Some(mut previous) = guard.take() {
-            terminate(&mut previous.child);
-        }
-        *guard = Some(Running {
-            child,
-            info: info.clone(),
-        });
+    let mut guard = lock_through_poison(&state.running);
+    // Nothing else can have inserted while we hold `startup`, but a leaked child
+    // here would be an orphaned lease holder, so drop any occupant explicitly
+    // rather than letting one fall out of scope.
+    if let Some(mut previous) = guard.take() {
+        terminate(&mut previous.child);
     }
+    *guard = Some(Running {
+        child,
+        info: info.clone(),
+    });
     Ok(info)
 }
 
@@ -322,9 +358,10 @@ fn terminate(child: &mut Child) {
 pub(crate) async fn start_local_server<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<LocalServerInfo, SidecarError> {
-    if let Some(info) = app.state::<LocalServer>().info() {
-        return Ok(info);
-    }
+    // No fast path here on purpose. Checking outside `start` is what made two
+    // concurrent callers both decide to spawn; `start` re-checks under its
+    // startup lock, which is the only place the answer is trustworthy.
+    //
     // Spawning, reading a pipe, and polling health all block; the IPC thread
     // must not be the one waiting through a 45-second cold start.
     tauri::async_runtime::spawn_blocking(move || start(&app))
@@ -446,6 +483,66 @@ mod tests {
             .send();
         assert!(after.is_err(), "the sidecar should no longer be listening");
 
+        let _ = std::fs::remove_dir_all(&workdir);
+    }
+
+    #[test]
+    fn concurrent_starts_yield_one_live_server() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        // Models what `start` does: the startup lock must make check-launch-insert
+        // one critical section. Without it both threads observe an empty slot,
+        // both launch, and the loser's caller is handed a terminated sidecar.
+        let state = std::sync::Arc::new(LocalServer::default());
+        let workdir =
+            std::env::temp_dir().join(format!("cairndex-race-test-{}", std::process::id()));
+        std::fs::create_dir_all(&workdir).expect("workdir");
+
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let state = std::sync::Arc::clone(&state);
+                let binary = binary.clone();
+                let workdir = workdir.clone();
+                std::thread::spawn(move || {
+                    let _startup = lock_through_poison(&state.startup);
+                    if let Some(info) = state.info() {
+                        return info;
+                    }
+                    let (child, info) = launch(&binary, &workdir).expect("launch");
+                    let mut guard = lock_through_poison(&state.running);
+                    *guard = Some(Running {
+                        child,
+                        info: info.clone(),
+                    });
+                    info
+                })
+            })
+            .collect();
+
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|h| h.join().expect("join"))
+            .collect();
+
+        // Both callers got the same server...
+        assert_eq!(results[0].base_url, results[1].base_url);
+        assert_eq!(results[0].token, results[1].token);
+
+        // ...and it is the one still running, not a terminated rival.
+        let client = reqwest::blocking::Client::new();
+        let response = client
+            .get(format!("{}/api/v1/libraries", results[0].base_url))
+            .bearer_auth(&results[0].token)
+            .send()
+            .expect("the returned sidecar should still be alive");
+        assert!(response.status().is_success());
+
+        let running = lock_through_poison(&state.running).take();
+        if let Some(mut running) = running {
+            terminate(&mut running.child);
+        }
         let _ = std::fs::remove_dir_all(&workdir);
     }
 

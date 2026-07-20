@@ -45,7 +45,11 @@ def bind_loopback_socket() -> socket.socket:
     our choosing it and uvicorn listening on it.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # Deliberately no SO_REUSEADDR. Its purpose is rebinding a specific port
+    # still in TIME_WAIT, and we never bind a specific port — the OS picks one.
+    # On Windows it is worse than useless: SO_REUSEADDR there lets a *different*
+    # socket bind a port already in use and steal connections, which on a
+    # token-gated loopback server would be a hijack primitive.
     sock.bind((HOST, 0))
     sock.listen(128)
     return sock
