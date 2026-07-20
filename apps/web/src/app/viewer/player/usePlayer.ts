@@ -8,6 +8,12 @@ import {
   type SetStateAction,
 } from 'react'
 
+import {
+  isDesktopHost,
+  isHostWindowFullscreen,
+  listenHostFullscreen,
+  toggleHostWindowFullscreen,
+} from '../../../platform'
 import type { PlayerPrefs } from '../../types'
 import { createEngine, type PlaybackEngine, type PlaybackSource } from './engine'
 
@@ -203,6 +209,35 @@ export function usePlayer({
   }, [source, syncBuffered, videoElement])
 
   useEffect(() => {
+    // In the shell the viewer uses real window fullscreen (see toggleFullscreen),
+    // so track the window rather than the HTML Fullscreen API — including changes
+    // made from the native View menu, which never touches the DOM.
+    if (isDesktopHost()) {
+      let disposed = false
+      let unlisten: (() => void) | undefined
+      // The initial query and the subscription are independent async channels. If
+      // an event lands first, the older query's result is stale by the time it
+      // resolves and must not overwrite it.
+      let sawEvent = false
+      void isHostWindowFullscreen()
+        .then((active) => {
+          if (!disposed && !sawEvent) setFullscreen(active)
+        })
+        .catch(() => undefined)
+      void listenHostFullscreen((active) => {
+        sawEvent = true
+        setFullscreen(active)
+      })
+        .then((stop) => {
+          if (disposed) stop()
+          else unlisten = stop
+        })
+        .catch(() => undefined)
+      return () => {
+        disposed = true
+        unlisten?.()
+      }
+    }
     const onFullscreen = () => setFullscreen(document.fullscreenElement === rootRef.current)
     document.addEventListener('fullscreenchange', onFullscreen)
     return () => document.removeEventListener('fullscreenchange', onFullscreen)
@@ -287,6 +322,16 @@ export function usePlayer({
   }, [updatePrefs])
 
   const toggleFullscreen = useCallback(() => {
+    // The viewer is already a full-window overlay, so in the shell real window
+    // fullscreen is the correct "proper viewer fullscreen" (plan 3 §7) and it
+    // sidesteps WKWebView's user-activation requirement on requestFullscreen,
+    // which a native menu item cannot satisfy (D1 audit).
+    // The toggle is atomic in Rust; reading then setting over two IPC round trips
+    // would let two fast presses both observe the same pre-toggle state.
+    if (isDesktopHost()) {
+      void toggleHostWindowFullscreen().catch(() => undefined)
+      return
+    }
     const root = rootRef.current
     if (!root) return
     if (document.fullscreenElement === root) void document.exitFullscreen()

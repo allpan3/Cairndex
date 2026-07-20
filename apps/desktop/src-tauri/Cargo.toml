@@ -8,6 +8,18 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[dev-dependencies]
+# Already vendored transitively as Tauri's menu backend; Tauri does not re-export
+# `Accelerator`, so the keymap test parses accelerator strings through muda
+# directly. Test-only, so it adds no weight to the shipped binary.
+# `default-features = false` deliberately drops the `libxdo`/`gtk` features: the
+# accelerator parser needs neither, and enabling them would make the Ubuntu
+# Rust-only CI job require libxdo-dev (AGENTS.md cross-platform gate).
+# Pinned exactly: the test is only meaningful if it validates accelerators through
+# the SAME parser that registers them, so this must track the muda version Tauri
+# vendors. Bumping Tauri may require bumping this in the same change.
+muda = { version = "=0.19.3", default-features = false }
+
 [dependencies]
 # `drag` is the cross-platform engine behind `tauri-plugin-drag`. We depend on it
 # directly (rather than the plugin) so drag-out paths are resolved and validated

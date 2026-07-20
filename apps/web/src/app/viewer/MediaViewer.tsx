@@ -15,6 +15,7 @@ import {
   useFileMutations,
   usePlaybackManifest,
 } from '../../api/hooks'
+import { useViewerMenu } from '../../desktop/useViewerMenu'
 import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
@@ -388,13 +389,25 @@ export function MediaViewer({
     }, 'image/png')
   }, [current?.display_title, title, videoElement])
 
-  useShortcuts(rootRef, videoActive ? player : null, {
-    close: onClose,
-    toggleInfo,
-    snapshot,
-    previous: () => step(-1),
-    next: () => step(1),
-  })
+  const shortcutActions = useMemo(
+    () => ({
+      close: onClose,
+      toggleInfo,
+      snapshot,
+      previous: () => step(-1),
+      next: () => step(1),
+      // `player` exists even for image bundles (only its use as a *controller* is
+      // gated on videoActive), so fullscreen state stays correct for images too.
+      isFullscreen: () => player.fullscreen,
+      exitFullscreen: () => player.toggleFullscreen(),
+    }),
+    [onClose, toggleInfo, snapshot, step, player],
+  )
+
+  useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
+  // Native Playback menu items drive the same commands as the key bindings, and
+  // the menu is live only while this viewer is mounted (plan 3 §7).
+  useViewerMenu(videoActive ? player : null, shortcutActions)
 
   const loading =
     bundleLoading || filesLoading || (current?.media_kind === 'video' && playbackLoading)

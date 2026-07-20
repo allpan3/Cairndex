@@ -203,6 +203,15 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       listen<DesktopMenuAction>('cairndex://menu', (event) => handler(event.payload)),
     setLibraryAvailable: (enabled) => invoke('set_library_menu_enabled', { enabled }),
     setServerAvailable: (enabled) => invoke('set_server_menu_enabled', { enabled }),
+    setViewerMenuAvailable: (viewer, video) => invoke('set_viewer_menu_enabled', { viewer, video }),
+    // Native window fullscreen, not the HTML Fullscreen API: WKWebView requires
+    // user activation for the latter, which a menu item does not carry (D1). The
+    // toggle is atomic in Rust so two fast presses cannot both read the same
+    // pre-toggle state across two IPC round trips.
+    toggleWindowFullscreen: () => invoke<boolean>('toggle_window_fullscreen'),
+    isWindowFullscreen: () => getCurrentWindow().isFullscreen(),
+    listenFullscreen: (handler) =>
+      listen<boolean>('cairndex://fullscreen', (event) => handler(event.payload)),
     listenLifecycle: async () => {
       const appWindow = getCurrentWindow()
       const stopClose = await appWindow.onCloseRequested(async (event) => {
