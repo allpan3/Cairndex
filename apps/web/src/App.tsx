@@ -79,6 +79,7 @@ import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import {
   DEFAULT_PREFS,
@@ -97,6 +98,7 @@ import {
   hasHostDeviceToken,
   hostOperationErrorMessage,
   reverseMapHostPaths,
+  type DeepLinkTarget,
 } from './platform'
 
 interface EditorState {
@@ -176,6 +178,7 @@ export default function App() {
   const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
   const [managing, setManaging] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
+  const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
@@ -198,6 +201,26 @@ export default function App() {
       setChosenId(nextId)
     },
     [libraryId, queryClient, setChosenId],
+  )
+
+  // A cairndex:// link may name a library other than the active one, so the
+  // switch happens here while the target itself is handed to the workspace. The
+  // workspace is keyed on libraryId, so it remounts on a switch and then consumes
+  // the target — which is why the target lives in App state rather than in the
+  // workspace's own.
+  useDeepLink(
+    useCallback(
+      (target) => {
+        const named = target.libraryId ?? null
+        const known = named === null || libraries.some((library) => library.id === named)
+        if (known && named !== null) changeLibrary(named)
+        // An unknown library id is reported rather than silently opening the
+        // target in whatever library happens to be active — that could show a
+        // different bundle than the link meant.
+        setDeepLink({ ...target, unknownLibrary: known ? null : named })
+      },
+      [libraries, changeLibrary],
+    ),
   )
 
   // Set the module-global active library during render so content queries (which
@@ -335,6 +358,8 @@ export default function App() {
         key={libraryId}
         libraries={libraries}
         libraryId={libraryId}
+        deepLink={deepLink}
+        onDeepLinkHandled={() => setDeepLink(null)}
         onChangeLibrary={changeLibrary}
         onManage={() => setManaging(true)}
         onSettings={() => setSettingsPage('devices')}
@@ -435,9 +460,17 @@ function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSetti
   )
 }
 
+// A deep-link target awaiting the workspace, plus the library id the link named
+// when this server has no such library (reported instead of silently ignored).
+interface PendingDeepLink extends DeepLinkTarget {
+  unknownLibrary: string | null
+}
+
 interface WorkspaceProps {
   libraries: LibraryRead[]
   libraryId: string
+  deepLink: PendingDeepLink | null
+  onDeepLinkHandled: () => void
   onChangeLibrary: (id: string) => void
   onManage: () => void
   onSettings: () => void
@@ -448,6 +481,8 @@ interface WorkspaceProps {
 function Workspace({
   libraries,
   libraryId,
+  deepLink,
+  onDeepLinkHandled,
   onChangeLibrary,
   onManage,
   onSettings,
@@ -538,6 +573,31 @@ function Workspace({
   // A file to highlight after "Locate in File Browser" (until the user navigates
   // or picks another entry), independent of the loaded fileEntry object.
   const [locatedPath, setLocatedPath] = useState<string | null>(null)
+
+  // Apply a cairndex:// target once this workspace is mounted for the right
+  // library. App owns the library switch and this component is keyed on
+  // libraryId, so by the time a cross-library link reaches here the remount has
+  // already happened.
+  useEffect(() => {
+    if (!deepLink) return
+    /* eslint-disable react-hooks/set-state-in-effect -- the link is delivered by
+       the OS, not by a React event. A cold-start link is parked by the shell and a
+       cross-library link arrives only after this component has remounted, so there
+       is no earlier callback to carry it; the parent clears the prop on handling,
+       so this runs once and cannot cascade. */
+    if (deepLink.unknownLibrary) {
+      setFlash('This link points at a library that is not on this server.')
+    } else if (deepLink.kind === 'bundle') {
+      setMode('collection')
+      setOpenBundleId(deepLink.id)
+    } else {
+      setMode('collection')
+      setOpenBundleId(null)
+      setSelection({ view: 'all', collectionId: deepLink.id })
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    onDeepLinkHandled()
+  }, [deepLink, onDeepLinkHandled])
   // Live snapshot of the running maintenance job so the
   // sidebar can render a determinate/indeterminate progress bar. Null when idle.
   const [activeJob, setActiveJob] = useState<JobRead | null>(null)
