@@ -1,5 +1,23 @@
 # Project status
 
+## In review: ADR-0018 — library ownership lease and local-server sidecar
+
+Branch `docs/adr-library-ownership-lease` (documentation only; no code
+change). An owner design discussion on 2026-07-19 ratified the
+single-server-per-library direction and two conflict-semantics decisions
+(stale-lease takeover always requires user confirmation; a server that loses
+its lease unmounts the library rather than serving read-only). ADR-0018
+records the full design: the `.cairndex/locks/active-owner.json` lease
+(three-state classification, write-then-verify acquisition, pre-takeover
+observation window, heartbeat watchdog with conflict-artifact scan), the
+desktop local-server sidecar for opening local library folders, the
+portability invariant (nothing authoritative in `registry.db`), cloud-sync
+one-active-machine semantics with WAL checkpoint/snapshot hygiene, and the
+accepted partitioned-dual-writer limitation. ADR index and CHANGELOG updated.
+No gates run (prose-only change). Awaiting owner review of the proposed ADR;
+implementation milestones slot after plan 3 D5 per the ADR's consequences
+section.
+
 ## Completed: Plan 3 D4 second review round — drag hardening
 
 Branch `codex/plan3-d4-drag`; tip `329cec1` (docs receipt follows). A second
