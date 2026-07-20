@@ -6,10 +6,12 @@ export const webPlatform: HostPlatform = {
   canRevealInFinder: false,
   canOpenWithDefaultApp: false,
   canDragOutFiles: false,
+  canSaveExports: false,
   revealFile: async () => undefined,
   openFile: async () => undefined,
   startFileDrag: async () => undefined,
   getLibraryMapping: async () => null,
   locateLibrary: async () => null,
   clearLibraryMapping: async () => undefined,
+  saveExport: async () => null,
 }
