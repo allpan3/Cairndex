@@ -473,6 +473,13 @@ running scan must not queue-block a ten-second export:
   the viewer.
 - Desktop (plan 3 D5): same UI plus a native save dialog and a completion
   notification through the platform seam; finished artifacts are drag-out-able.
+  The save seam landed in **D5b** (`save_export_file` + `HostPlatform.canSaveExports`)
+  with no caller. **Before M11 ships a real export flow, change how the bytes
+  travel:** the seam currently passes them as a JSON number array
+  (`Array.from(bytes)`), which turns a few-megabyte GIF into tens of megabytes of
+  JSON serialized on the main thread. Move it to Tauri's raw request body
+  (`tauri::ipc::Request`) — acceptable for a seam with no callers, not for a
+  shipping export.
 - TV: not exposed.
 
 ## 11. Milestones (each = one reviewable branch/PR)

@@ -13,8 +13,14 @@ vi.mock('../platform', () => ({
 
 let emit: ((target: DeepLinkTarget) => void) | null = null
 
-function Harness({ onLink }: { onLink: (target: DeepLinkTarget) => void }) {
-  useDeepLink(onLink)
+function Harness({
+  onLink,
+  enabled = true,
+}: {
+  onLink: (target: DeepLinkTarget) => void
+  enabled?: boolean
+}) {
+  useDeepLink(onLink, enabled)
   return null
 }
 
@@ -94,4 +100,30 @@ test('stays inert in the browser', () => {
   render(<Harness onLink={vi.fn()} />)
   expect(listenHostDeepLink).not.toHaveBeenCalled()
   expect(takeHostPendingDeepLink).not.toHaveBeenCalled()
+})
+
+test('waits for readiness before draining, then delivers', async () => {
+  // Regression: a cold-start link drains within milliseconds of mount, while the
+  // libraries query is still in flight. Classifying it then would report every
+  // `?library=` link as "not on this server", and the identity dedupe would stop
+  // the corrected link from ever being re-delivered.
+  vi.mocked(takeHostPendingDeepLink).mockResolvedValue({
+    kind: 'bundle',
+    id: 'b1',
+    libraryId: 'lib-1',
+  })
+  const onLink = vi.fn()
+  const view = render(<Harness onLink={onLink} enabled={false} />)
+
+  await vi.waitFor(() => expect(listenHostDeepLink).not.toHaveBeenCalled())
+  expect(takeHostPendingDeepLink).not.toHaveBeenCalled()
+  expect(onLink).not.toHaveBeenCalled()
+
+  // Libraries have now loaded: the parked link is drained and classified against
+  // a populated list.
+  view.rerender(<Harness onLink={onLink} enabled />)
+  await vi.waitFor(() =>
+    expect(onLink).toHaveBeenCalledWith({ kind: 'bundle', id: 'b1', libraryId: 'lib-1' }),
+  )
+  expect(onLink).toHaveBeenCalledTimes(1)
 })

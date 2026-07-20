@@ -9,7 +9,7 @@ import {
   setHostBadgeCount,
 } from '../platform'
 import { accumulateRun, isNotableRun, runNotification, LONG_RUN_MS } from './jobRun'
-import { useJobNotifications } from './useJobNotifications'
+import { resetJobNotificationsForTests, useJobNotifications } from './useJobNotifications'
 
 vi.mock('../platform', () => ({
   isDesktopHost: vi.fn(() => true),
@@ -94,6 +94,7 @@ describe('run accumulation', () => {
 describe('notification delivery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetJobNotificationsForTests()
     vi.mocked(isDesktopHost).mockReturnValue(true)
     vi.useFakeTimers()
     // Default to "user is away" so the interesting path runs.
@@ -166,6 +167,22 @@ describe('notification delivery', () => {
       'Cairndex ran into a problem',
       expect.stringContaining('not finish cleanly'),
     )
+  })
+
+  test('keeps a run in flight across a Workspace remount', async () => {
+    // The Workspace is keyed on libraryId, so switching libraries mid-scan — which
+    // a deep link can now cause — remounts it. Component-local state would drop
+    // the run and it would never notify.
+    const old = new Date(Date.now() - 30_000).toISOString()
+    const first = render(<Harness activeJob={job({ started_at: old })} />)
+    first.unmount()
+
+    const second = render(<Harness activeJob={job({ job_type: 'probe', started_at: old })} />)
+    second.rerender(<Harness activeJob={null} />)
+    await vi.advanceTimersByTimeAsync(2_000)
+
+    expect(notifyHost).toHaveBeenCalledTimes(1)
+    expect(setHostBadgeCount).toHaveBeenCalledWith(1)
   })
 
   test('stays inert in the browser', async () => {

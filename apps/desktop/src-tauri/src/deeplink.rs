@@ -18,6 +18,7 @@
 //! `take_pending_deep_link` call once the SPA is listening.
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -37,9 +38,18 @@ pub(crate) struct DeepLinkTarget {
     pub(crate) library_id: Option<String>,
 }
 
-/// Holds a link that arrived before the SPA could listen for it.
+/// How long a parked link stays drainable.
+///
+/// The park exists to bridge the gap between an Apple Event and the SPA becoming
+/// ready — seconds at most. Keeping it indefinitely means a webview reload (crash
+/// recovery, or a dev refresh) would re-open a link the user clicked long ago,
+/// with the SPA's own dedupe memory gone.
+const PARK_TTL: Duration = Duration::from_secs(30);
+
+/// Holds a link that arrived before the SPA could listen for it, with the time it
+/// was parked so a stale one can be discarded rather than replayed.
 #[derive(Default)]
-pub(crate) struct PendingDeepLink(Mutex<Option<DeepLinkTarget>>);
+pub(crate) struct PendingDeepLink(Mutex<Option<(DeepLinkTarget, Instant)>>);
 
 /// Parses one `cairndex://` URL, rejecting anything that is not a known target.
 ///
@@ -114,7 +124,7 @@ pub(crate) fn handle_deep_link<R: Runtime>(app: &AppHandle<R>, raw: &str) {
         if let Ok(mut pending) = state.0.lock() {
             // Last link wins: if several arrive before the SPA is ready, the most
             // recent is the one the user actually meant to open.
-            *pending = Some(target.clone());
+            *pending = Some((target.clone(), Instant::now()));
         }
     }
     let _ = app.emit(DEEP_LINK_EVENT, target);
@@ -122,13 +132,23 @@ pub(crate) fn handle_deep_link<R: Runtime>(app: &AppHandle<R>, raw: &str) {
 }
 
 /// Drains any link that arrived before the SPA subscribed. Returns `None` when
-/// the app was launched normally.
+/// the app was launched normally, or when the parked link has gone stale.
 #[tauri::command]
 pub(crate) fn take_pending_deep_link(
     state: tauri::State<'_, PendingDeepLink>,
 ) -> Result<Option<DeepLinkTarget>, String> {
     let mut pending = state.0.lock().map_err(|error| error.to_string())?;
-    Ok(pending.take())
+    Ok(take_if_fresh(&mut pending, Instant::now()))
+}
+
+/// Takes the parked link unless it has outlived [`PARK_TTL`]. Always clears the
+/// slot, so a stale link cannot be replayed by a later drain either.
+fn take_if_fresh(
+    pending: &mut Option<(DeepLinkTarget, Instant)>,
+    now: Instant,
+) -> Option<DeepLinkTarget> {
+    let (target, parked_at) = pending.take()?;
+    (now.duration_since(parked_at) <= PARK_TTL).then_some(target)
 }
 
 /// Scans process arguments for a `cairndex://` URL.
@@ -203,6 +223,30 @@ mod tests {
         // thing, so reject rather than take the first two segments.
         assert!(parse_deep_link("cairndex://bundle/a/b").is_none());
         assert!(parse_deep_link("not a url").is_none());
+    }
+
+    // A warm-delivered link stays parked after the event was consumed. A webview
+    // reload would otherwise drain it and re-open a target the user chose long
+    // ago, since the SPA's dedupe memory does not survive the reload.
+    #[test]
+    fn discards_a_parked_link_that_has_gone_stale() {
+        let target = parse_deep_link("cairndex://bundle/abc").unwrap();
+        let now = Instant::now();
+
+        let mut fresh = Some((target.clone(), now));
+        assert_eq!(take_if_fresh(&mut fresh, now), Some(target.clone()));
+        // Draining always clears the slot, so a second drain finds nothing.
+        assert_eq!(take_if_fresh(&mut fresh, now), None);
+
+        let mut stale = Some((target, now));
+        assert_eq!(
+            take_if_fresh(&mut stale, now + PARK_TTL + Duration::from_secs(1)),
+            None
+        );
+        assert!(
+            stale.is_none(),
+            "a stale link must not stay parked for a later drain"
+        );
     }
 
     #[test]
