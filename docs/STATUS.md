@@ -15,10 +15,11 @@ portability invariant (nothing authoritative in `registry.db`), cloud-sync
 one-active-machine semantics with WAL checkpoint/snapshot hygiene, and the
 accepted partitioned-dual-writer limitation. ADR index and CHANGELOG updated.
 The owner ratified the milestone placement, so the roadmap now carries it:
-`docs/plans/README.md` gains phase E2 (server-side lease first, then the
-sidecar) between the desktop shell and write mode, and plan 3 gains milestone
-D6 for the sidecar (§8/§10 updated from "noted, not planned"). No gates run
-(prose-only change). Merged directly to `main` at the owner's request; the
+the lease/sidecar work heads build-order phase F in `docs/plans/README.md`
+(server-side lease first, then the plan 3 D6 sidecar, ahead of the
+write-mode slices — owner-directed: no separate phase), and plan 3 gains
+milestone D6 (§8/§10 updated from "noted, not planned"). No gates run
+(prose-only change). Landed directly on `main` at the owner's request; the
 ADR itself remains proposed pending a full read.
 
 ## Completed: Plan 3 D4 second review round — drag hardening
