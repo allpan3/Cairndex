@@ -47,6 +47,15 @@ Do not implement several major milestones in one unreviewable patch.
 - Rebase and use `git push --force-with-lease` only on non-main branches.
 - Large features must be merged through a pull request or a PR-style documented review.
 - Preserve useful commits; squash noisy fixups before merge.
+- **Do not open a pull request until the owner asks for one.** Work freely on a
+  branch and commit as usual; opening the PR is the owner's call, not a default
+  step at the end of a task. The same applies to merging.
+- **Follow-up work belongs in the open PR it follows up on.** When a review
+  comment, a bug found during testing, or a doc gap relates to a PR that is still
+  open, commit it to that branch instead of opening a second PR. Reserve a new
+  branch and PR for work that is genuinely independent. Cherry-pick and
+  `--force-with-lease` onto the existing branch when something has already landed
+  in the wrong place.
 
 ## Safety rules
 
