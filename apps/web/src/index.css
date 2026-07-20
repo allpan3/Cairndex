@@ -1,5 +1,8 @@
 :root {
   /* Dark, desktop-class palette (AGENTS.md §8 — Eagle-inspired). */
+  /* --bg is mirrored in apps/desktop/src-tauri/tauri.conf.json as the window's
+     backgroundColor, so the shell paints this instead of white before the SPA's
+     first frame. Change both together or the launch flash returns. */
   --bg: #141519;
   --bg-2: #181a1f;
   --surface: #1e2026;
