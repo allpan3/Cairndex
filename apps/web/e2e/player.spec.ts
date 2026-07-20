@@ -2211,3 +2211,60 @@ test('plays a real MKV over a backend remux session and tears it down on close @
     rmSync(dataDir, { recursive: true, force: true })
   }
 })
+
+test('the video stage fills the viewer, letterboxing in one direction only', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  const viewer = page.locator('.media-viewer')
+
+  const [v, box] = await Promise.all([video.boundingBox(), viewer.boundingBox()])
+  expect(v).not.toBeNull()
+  expect(box).not.toBeNull()
+
+  // The regression this pins: the stage used to carry padding that reserved space
+  // for the top bar and controls, so black bands appeared on *all four* sides even
+  // when the aspect ratio matched. The media element must now span the viewer on
+  // both axes; `object-fit: contain` is what letterboxes the picture inside it,
+  // in one direction only.
+  expect(Math.round(v!.width)).toBe(Math.round(box!.width))
+  expect(Math.round(v!.height)).toBe(Math.round(box!.height))
+  expect(Math.round(v!.x)).toBe(Math.round(box!.x))
+  expect(Math.round(v!.y)).toBe(Math.round(box!.y))
+})
+
+test('viewer chrome overlays the video and autohides when idle', async ({ page }) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  const topbar = page.locator('.mv-topbar')
+  const controls = page.locator('.mv-controls')
+
+  // Chrome must sit *over* the media rather than beside it, or it would push the
+  // video back into a padded box.
+  for (const bar of [topbar, controls]) {
+    const [barBox, videoBox] = await Promise.all([bar.boundingBox(), video.boundingBox()])
+    expect(barBox).not.toBeNull()
+    // Overlapping vertically with the video proves it is drawn on top of it.
+    const overlaps =
+      barBox!.y < videoBox!.y + videoBox!.height && barBox!.y + barBox!.height > videoBox!.y
+    expect(overlaps).toBe(true)
+  }
+
+  // The top bar fades into the picture instead of being a solid black band.
+  const topbarBg = await topbar.evaluate((el) => getComputedStyle(el).backgroundImage)
+  expect(topbarBg).toContain('gradient')
+  expect(topbarBg).toContain('rgba(0, 0, 0, 0)')
+
+  // Idle hides both; moving the pointer brings them back.
+  await page.waitForTimeout(3000)
+  await expect(topbar).toHaveCSS('opacity', '0')
+  await expect(controls).toHaveCSS('opacity', '0')
+  await page.mouse.move(400, 300)
+  await expect(topbar).toHaveCSS('opacity', '1')
+  await expect(controls).toHaveCSS('opacity', '1')
+})
