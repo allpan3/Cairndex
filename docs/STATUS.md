@@ -1,5 +1,73 @@
 # Project status
 
+## Completed: Plan 3 D5c — desktop distribution (DMG + env-gated signing docs)
+
+Branch `codex/plan3-d5c-distribution`, stacked on the **unmerged**
+`codex/plan3-d5b-deeplinks-notifications` (which is itself stacked on D5a).
+
+The owner settled the distribution question on 2026-07-19, which removed D5c's
+only external blocker: **Developer ID signing is no longer a v1 requirement.**
+Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs at
+link time, so packaged builds have worked since D1 with no certificate. The
+$99/yr Apple Developer Program buys nothing until a build must run on a second
+Mac or reach someone else's hands. D5c therefore became docs + config with no
+code changes. Recorded as a **plan amendment, not an ADR** — a scope and
+distribution-model decision, no architecture change.
+
+Implementation:
+
+- **DMG target.** `bundle.targets` is now `["app", "dmg"]`, so a release build
+  produces a drag-to-Applications disk image alongside the `.app`.
+- **CI keeps `--bundles app`.** Tauri's DMG bundler drives Finder over AppleScript
+  and is a known flake source on headless runners; CI only needs to prove the app
+  compiles and bundles, so the config lists both targets and the workflow
+  overrides. The reason is recorded inline in `ci.yml` so it is not "simplified"
+  away later.
+- **Signing pipeline, inert until configured.** `docs/deployment.md` gains the
+  full Developer ID + notarization procedure — certificate creation,
+  `notarytool store-credentials` (so no secret ever reaches a shell history or
+  this repo), signing build, `notarytool submit --wait`, `stapler staple`, and
+  verification. It is driven by `APPLE_SIGNING_IDENTITY` / `APPLE_TEAM_ID` / a
+  keychain profile name; **unset, the build is exactly today's ad-hoc build**, so
+  nothing is re-plumbed when signing is eventually wanted.
+- **The docs say plainly that a DMG is not trust.** It is install ergonomics.
+  An unsigned DMG on another Mac still needs System Settings → *Open Anyway*, and
+  the section says so explicitly so the DMG is not mistaken for a signing
+  substitute.
+
+Verification:
+
+- `npm run tauri build` with the signing variables explicitly unset produced both
+  bundles: `Cairndex.app` and **`Cairndex_0.1.0_aarch64.dmg` (5.3 MB)**.
+- The DMG was mounted and inspected: it contains `Cairndex.app` plus an
+  `/Applications` symlink, so drag-to-install works as intended.
+- The app inside the DMG reports `Signature=adhoc`, `TeamIdentifier=not set` —
+  confirming the documented model rather than assuming it.
+- Gatekeeper's verdict was captured rather than asserted: `spctl --assess` on the
+  DMG returns `rejected` / `source=no usable signature`. That real output is now
+  quoted in `docs/deployment.md`, so the "a DMG is not a signing substitute"
+  warning is demonstrated instead of claimed.
+- Desktop `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`, and
+  **54 unit tests** re-run green; no code changed in this slice.
+
+Known issues: none specific to D5c. The acceptance criterion was retired with the
+§3 requirement — "signed build produced by the documented pipeline" is replaced by
+"**DMG produced by the documented pipeline; signing path documented and
+env-gated**", both of which are met. The signing procedure itself is **documented
+but unexercised**: it cannot be run without an Apple Developer Program membership,
+so it stays untested until the owner has a reason to sign. The updater remains
+deferred (private repo, no releases, and Tauri's updater would need a token
+embedded in the shipped app).
+
+**Plan 3 D5 is now complete (D5a + D5b + D5c).** All three branches are stacked
+and unmerged; D5b's owner manual checklist still applies, and D5c adds one item:
+open the DMG, drag Cairndex to Applications, and launch it from there.
+
+Next recommended task: **Plan 3 D6 — local-server sidecar** (ADR-0018), which is
+gated on the server-side ownership lease landing first; see
+`docs/plans/README.md` phase F.
+
+
 ## Completed: Plan 3 D5b — deep links, job notifications, export seam
 
 Branch `codex/plan3-d5b-deeplinks-notifications`, stacked on the **unmerged**

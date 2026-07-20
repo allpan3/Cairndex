@@ -103,16 +103,34 @@ apps/desktop/
   `tauri build`, plus the Ubuntu check job from §2.1; web gates already cover
   the UI. Linux/Windows shells stay out of scope for v1 but are kept cheap by
   the §2.1 rules (owner wants Linux eventually).
-- Distribution: Developer ID signing + notarization (D5c). Dev builds unsigned.
-  Auto-update via the Tauri updater plugin against GitHub Releases was the
-  original intent, but the owner **deferred the updater** on 2026-07-19: the
-  repository is private with no releases, and Tauri's updater fetches release
-  assets over plain HTTPS, so a private repo would require embedding a token in
-  the shipped app. Revisit once a public release channel exists (public release
-  assets, a separate public releases repo, or a self-hosted `latest.json`).
-  Signing itself requires the paid Apple Developer Program ($99/yr); a free
-  Apple ID only yields a Personal Team certificate that fails Gatekeeper
-  elsewhere.
+- Distribution — **amended 2026-07-19 (owner)**. Developer ID signing and
+  notarization are **no longer a v1 requirement**. Cairndex is single-owner and
+  built from source, and Apple Silicon ad-hoc signs at link time, so packaged
+  builds have worked locally since D1 with no certificate. The $99/yr Apple
+  Developer Program buys nothing until a build must run on a **second Mac** or
+  reach someone else's hands; below that threshold it is pure cost. The v1
+  distribution model is therefore **built-from-source / ad-hoc signed**, shipping
+  both an `.app` and a **DMG** for drag-to-Applications ergonomics.
+
+  A DMG is packaging, **not** trust: an unsigned DMG on another Mac still needs
+  System Settings → *Open Anyway*. It is not a signing substitute.
+
+  Developer ID remains a documented **upgrade path**, not a prerequisite. The full
+  signing + notarization procedure lives in
+  [docs/deployment.md](../deployment.md) and is driven by environment variables
+  (`APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, a notarytool keychain profile). With
+  them unset the build is exactly today's ad-hoc build, so nothing is re-plumbed
+  when signing is eventually wanted.
+
+  This is a plan amendment, not an ADR: no architecture changes, only a scope and
+  distribution-model decision.
+
+  Auto-update via the Tauri updater against GitHub Releases was the original
+  intent but is **deferred** (owner, 2026-07-19): the repository is private with
+  no releases, and Tauri's updater fetches release assets over plain HTTPS, so it
+  would require embedding a token in the shipped app. Revisit once a public
+  release channel exists (public release assets, a separate public releases repo,
+  or a self-hosted `latest.json`).
 
 ## 4. Platform abstraction in `apps/web`
 
@@ -298,7 +316,7 @@ handoff:
 | D4 ✅ | Drag-out / drag-in | §6 |
 | D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
 | D5b ✅ | Deep links, notifications, export seam | `cairndex://` bundle/collection deep links with cold-start parking and single-instance handoff, one dock badge / notification per long *run* (not per job), native save-dialog seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
-| D5c | Distribution | Developer ID signing + notarization pipeline documented in `docs/deployment.md` (dev builds unsigned). **Updater deferred** by the owner (2026-07-19): the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app to read private release assets |
+| D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app |
 | D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) has landed |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
