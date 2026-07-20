@@ -2,6 +2,8 @@
 mod app_menu;
 // Puts validated absolute paths on the OS pasteboard for drag-out to Finder
 mod dragout;
+// Embeds the SPA-owned keymap table that defines the native menu
+mod keymap;
 // Flushes webview state before every application-level exit path
 mod lifecycle;
 // Owns shell-local library mappings and path containment validation
@@ -22,13 +24,40 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             app_menu::focus_main_window(app);
         }))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Restore only SIZE/POSITION/MAXIMIZED. The default set also carries
+        // FULLSCREEN, VISIBLE, and DECORATIONS: restoring fullscreen would relaunch
+        // into an empty fullscreen window after quitting from a fullscreen viewer,
+        // restoring visibility could relaunch the app with no window at all, and
+        // decorations are never changed so persisting them is pointless. The plugin
+        // already declines to restore a position no current monitor intersects, so a
+        // window saved on a since-disconnected display comes back on the primary one.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Fullscreen can also be entered or left without the app asking — the green
+        // zoom button, Mission Control, or a window manager. Those paths issue no
+        // command, so watch resize (which fires across every fullscreen transition)
+        // and rebroadcast the observed state. `broadcast_fullscreen` de-duplicates,
+        // so an ordinary live-resize drag emits nothing.
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Resized(_)) {
+                app_menu::broadcast_fullscreen(window.app_handle());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,
+            app_menu::set_viewer_menu_enabled,
+            app_menu::toggle_window_fullscreen,
             dragout::start_file_drag,
             host::open_file,
             host::reveal_file,
