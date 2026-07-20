@@ -246,18 +246,29 @@ cp -R src-tauri/target/release/bundle/macos/Cairndex.app /Applications/
 open /Applications/Cairndex.app
 ```
 
-To confirm the installed copy really is the build you just made, compare the
-binaries. Do **not** compare modification times: `cp -R` stamps the copy with the
-time it was copied, not the time it was built, so the two legitimately differ even
-when the install is current.
+**When in doubt, rebuild and reinstall.** It takes under a minute, and it is more
+reliable than trying to determine what you are running. There is no version string
+in the UI, so a stale install looks exactly like a current one.
+
+If you do want to check, be precise about what the check proves:
 
 ```bash
 diff -q \
   /Applications/Cairndex.app/Contents/MacOS/cairndex-desktop \
-  apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app/Contents/MacOS/cairndex-desktop \
-  && echo "installed copy is the current build" \
-  || echo "installed copy is STALE — re-run the update steps above"
+  apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app/Contents/MacOS/cairndex-desktop
 ```
+
+A match means only that the installed copy equals **the last artifact you built**.
+It says nothing about whether that artifact reflects your current source — if the
+build predates your latest edits, both sides are equally stale and this reports a
+match. Confirming "the installed app matches the last build" and concluding "the
+installed app has my fix" is a real trap; it has already misled a debugging session
+here. Only a fresh `npm run tauri build` immediately before the copy makes the
+match meaningful.
+
+Do **not** compare modification times instead: `cp -R` stamps the copy with the
+time it was copied, not built, so timestamps legitimately differ even when the
+install is current.
 
 **After every rebuild, re-check `cairndex://` scheme ownership** — each build
 recreates and re-registers the build-directory bundle, so the installed copy may
