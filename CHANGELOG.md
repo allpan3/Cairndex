@@ -10,6 +10,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **D5b deep links, job notifications, and the export seam (Plan 3).**
+  `cairndex://bundle/<id>` and `cairndex://collection/<id>` (optional
+  `?library=<id>`) open that target in the desktop app, including from a cold
+  start — macOS delivers the URL before the webview exists, so the shell parks it
+  until the SPA is listening; Windows/Linux pass it in argv, forwarded by
+  single-instance on a warm start. Links only resolve from a packaged,
+  LaunchServices-registered app. A long maintenance run that finishes while the
+  window is unfocused now posts a user notification and a dock badge, coalesced
+  per *run* rather than per job (`Update library` chains three jobs for one user
+  action); returning to the window clears the badge. A native save-dialog seam for
+  future media exports (plan 1 §10 / M11) is present but unused — no export UI
+  ships here.
+
 - **D5a menus and shortcuts (Plan 3).** The desktop menu bar is now built from a
   single shared table, `apps/web/src/platform/keymap.json`: the shell embeds it at
   compile time and constructs the menu from it, while the SPA reads the same file

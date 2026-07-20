@@ -261,7 +261,16 @@ handoff:
   viewer window remains deferred.
 - Single instance + `cairndex://` deep links (open bundle/collection);
   dock badge / user notification when a long job (scan/probe) finishes —
-  subscribes to the existing job progress API.
+  subscribes to the existing job progress API. **Implemented (D5b).** Deep links
+  take one of two OS-chosen delivery paths: macOS sends an Apple Event that can
+  arrive before the webview exists (so the shell parks it and the SPA drains it),
+  while Windows/Linux pass argv — to the first process on a cold start, to a
+  second process on a warm one, forwarded by single-instance. Both can describe
+  one action, so links are de-duplicated by identity. Notifications coalesce per
+  *run* rather than per job, because `Update library` chains three jobs for one
+  user action, and fire only when the run was long **and** the window is
+  unfocused. Links resolve only from a packaged, LaunchServices-registered app —
+  not from `tauri dev`.
 - localStorage prefs migrate transparently (WKWebView persists per bundle id);
   shell-owned settings (server URL, token, mappings) live in the Tauri store.
 
@@ -288,7 +297,7 @@ handoff:
 | D3 ✅ | Path mappings + reveal/open | §5 end-to-end incl. manifest-UUID validation + tests (Rust unit tests for the path rules) |
 | D4 ✅ | Drag-out / drag-in | §6 |
 | D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
-| D5b | Deep links, notifications, export seam | `cairndex://` deep links via single-instance handoff, dock badge / user notification when a long job finishes, native save dialog + notification seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
+| D5b ✅ | Deep links, notifications, export seam | `cairndex://` bundle/collection deep links with cold-start parking and single-instance handoff, one dock badge / notification per long *run* (not per job), native save-dialog seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
 | D5c | Distribution | Developer ID signing + notarization pipeline documented in `docs/deployment.md` (dev builds unsigned). **Updater deferred** by the owner (2026-07-19): the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app to read private release assets |
 | D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) has landed |
 
