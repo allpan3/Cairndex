@@ -109,7 +109,19 @@ grouped under `Unreleased` until the first tagged release.
   entirely from every error that does not set it, so existing responses are
   unchanged. Regenerated `openapi.json` and `schema.d.ts` accordingly.
 
-- **Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**
+- **Distribution model: open source with published binaries (ADR-0019,
+  proposed).** Cairndex is going open source and desktop builds will be published
+  through GitHub Releases. This settles the sidecar packaging that ADR-0018 §5
+  left open — **PyInstaller one-dir plus a bundled static ffmpeg/ffprobe** — and
+  reopens three decisions that were justified by "built from source, not
+  distributed": Developer ID signing (required again; the entry below is
+  superseded), the deferred updater, and ffmpeg's GPL source-offer obligations.
+  Choosing a project license and producing multi-arch release artifacts join
+  them. None block plan 3 D6; all block the first public release.
+
+- ~~**Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**~~
+  **Superseded by ADR-0019 §4** — the premise below (single-owner, built from
+  source, not distributed) no longer holds.
   Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs
   at link time, so packaged builds have worked locally since D1 with no
   certificate. The $99/yr Apple Developer Program buys nothing until a build must
