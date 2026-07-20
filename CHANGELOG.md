@@ -10,6 +10,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **D5c desktop distribution (Plan 3).** Release builds now produce a **DMG**
+  alongside the `.app`, giving drag-to-Applications install ergonomics. The full
+  Developer ID signing + notarization procedure is documented in
+  `docs/deployment.md` and driven entirely by environment variables
+  (`APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, a notarytool keychain profile); with
+  those unset the build is byte-for-byte today's ad-hoc-signed build, so nothing
+  is re-plumbed when signing is eventually wanted. CI continues to build with
+  `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and
+  flakes on headless runners.
+
 - **D5b deep links, job notifications, and the export seam (Plan 3).**
   `cairndex://bundle/<id>` and `cairndex://collection/<id>` (optional
   `?library=<id>`) open that target in the desktop app, including from a cold
@@ -38,6 +48,15 @@ grouped under `Unreleased` until the first tagged release.
   key binding at all once a video loads, since the arrows then mean seek.
 
 ### Changed
+
+- **Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**
+  Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs
+  at link time, so packaged builds have worked locally since D1 with no
+  certificate. The $99/yr Apple Developer Program buys nothing until a build must
+  run on a second Mac or reach someone else's hands. The stated distribution model
+  becomes built-from-source / ad-hoc signed, with Developer ID documented as an
+  upgrade path. Note that a DMG is install ergonomics, **not** trust: an unsigned
+  DMG on another Mac still requires System Settings → *Open Anyway*.
 
 - **Viewer fullscreen is real window fullscreen in the shell (Plan 3 D5a).** The
   viewer is already a full-window overlay, so the shell now toggles the native

@@ -191,6 +191,208 @@ adds no rate limiting, lockout, or TLS. Direct public-internet exposure remains
 unsupported without a separate hardened reverse proxy. Full multi-user accounts
 are out of scope.
 
+## Desktop app distribution (macOS)
+
+### What Cairndex ships today
+
+Cairndex is single-owner software built from source, so the release build is
+**ad-hoc signed** — not Developer ID signed, not notarized. On Apple Silicon the
+linker ad-hoc signs every binary automatically, which is why packaged builds have
+run locally since D1 with no certificate and no Apple Developer Program
+membership. That is the supported model:
+
+```bash
+cd apps/desktop
+npm run tauri build
+```
+
+This produces both bundle targets:
+
+- `src-tauri/target/release/bundle/macos/Cairndex.app` — the app itself;
+- `src-tauri/target/release/bundle/dmg/Cairndex_<version>_<arch>.dmg` — a
+  drag-to-Applications disk image.
+
+Build a single target with `npm run tauri build -- --bundles app` (or `dmg`).
+**CI deliberately passes `--bundles app`**: Tauri's DMG bundler drives Finder over
+AppleScript and is a known flake source on headless runners, and CI only needs to
+prove the app compiles and bundles. The DMG is a release/local artifact.
+
+### A DMG is packaging, not trust
+
+The DMG exists for install ergonomics — drag-to-Applications instead of "find the
+.app in a build directory". **It changes nothing about Gatekeeper.** An unsigned,
+un-notarized DMG copied to another Mac still triggers the "cannot be opened
+because the developer cannot be verified" warning, and that Mac's owner must
+approve it once under System Settings → Privacy & Security → *Open Anyway*.
+
+Do not read the DMG as a substitute for signing. It is not one. You can see the
+difference directly — this is the real output for an ad-hoc build:
+
+```bash
+codesign -dv src-tauri/target/release/bundle/macos/Cairndex.app
+# → Signature=adhoc
+# → TeamIdentifier=not set
+
+spctl --assess --type open --context context:primary-signature -vv \
+  src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+# → rejected
+# → source=no usable signature
+```
+
+That `rejected` is expected and harmless on the machine that built it; it is what
+another Mac's Gatekeeper reports before the owner approves it once.
+
+One more consequence of the ad-hoc model: **an ad-hoc signature changes on every
+rebuild.** Some macOS privacy grants are keyed to the code signature rather than
+the bundle identifier, so a rebuilt app may occasionally re-prompt for a
+permission it was already granted — for Cairndex that is most likely the
+local-network prompt the shell already triggers when reaching a LAN server.
+Re-approving is expected under this model, not a sign of misconfiguration; a
+stable Developer ID signature is what removes it.
+
+### If you install from the DMG: the `cairndex://` scheme has several claimants
+
+Installing creates a **second** copy of the app. The build directory keeps its own
+at `apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app`, recreated by
+every build, and both register the `cairndex://` URL scheme. LaunchServices then
+picks a registrant by its own heuristics, so `open cairndex://…` may cold-launch
+the **stale build-directory copy** rather than the one in `/Applications`.
+
+The DMG build itself adds another: `bundle_dmg.sh` stages the app on a temporary
+`/Volumes/dmg.XXXXXX` volume, and that path stays registered after the volume is
+gone. On this repository's machine, after one DMG build and no installation, the
+registrants were:
+
+```bash
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$lsregister" -dump | awk '/^[[:space:]]*path:/ { p=$2 }
+                           /claimed schemes:.*cairndex:/ { print p }' | sort -u
+# → /Users/…/target/release/bundle/macos/Cairndex.app
+# → /Volumes/dmg.f9FEwK/Cairndex.app        ← dead mount point, still claimed
+```
+
+Why this matters beyond launching the wrong build: if the `/Applications` copy is
+already running and LaunchServices launches a *different* copy for the link, the
+single-instance plugin forwards only **argv** to the running instance — and on
+macOS a deep link arrives as an Apple Event, not argv. The link parks in the
+process that immediately exits, and is silently lost.
+
+So when the `/Applications` copy should own the scheme:
+
+```bash
+# Remove the build-directory bundle (it returns on the next build) …
+rm -rf apps/desktop/src-tauri/target/release/bundle/macos/Cairndex.app
+# … then rebuild LaunchServices' database to drop stale claims.
+"$lsregister" -kill -r -domain local -domain system -domain user
+# Re-register the copy that should win:
+"$lsregister" -f /Applications/Cairndex.app
+```
+
+Re-run the `-dump` command above to confirm only the intended path claims the
+scheme. **Any deep-link testing must be done against whichever copy is meant to
+own it** — otherwise a passing or failing result says nothing about the app the
+user actually runs.
+
+### When you actually need Developer ID signing
+
+Ad-hoc signing stops being sufficient the moment a build has to run on a **second
+Mac** or reach **someone else's hands** — distribution to other people, a
+download link, or anything where "click Open Anyway" is not an acceptable
+instruction. That threshold is what justifies the **Apple Developer Program at
+$99/year**; below it, the fee buys Cairndex nothing. A free Apple ID yields only a
+"Personal Team" certificate, which signs locally and still fails Gatekeeper
+elsewhere, so there is no free path to a distributable build.
+
+### The signing pipeline (inert until configured)
+
+The build reads its signing configuration from the environment. **With these
+variables unset, the build behaves exactly as documented above** — ad-hoc signed,
+no notarization, no extra steps. Nothing needs to be re-plumbed when you decide to
+sign; you only set the variables.
+
+One-time setup, after enrolling in the Apple Developer Program:
+
+1. In Xcode (Settings → Accounts → Manage Certificates) or on
+   developer.apple.com, create and install a **Developer ID Application**
+   certificate into your login keychain. Confirm it is there:
+
+   ```bash
+   security find-identity -v -p codesigning
+   # → "Developer ID Application: Your Name (TEAMID1234)"
+   ```
+
+2. Store notarization credentials in the keychain so no secret ever appears in a
+   shell history, a build script, or this repository:
+
+   ```bash
+   xcrun notarytool store-credentials "cairndex-notary" \
+     --apple-id "you@example.com" \
+     --team-id "TEAMID1234" \
+     --password "<app-specific password from appleid.apple.com>"
+   ```
+
+   Use an **app-specific password**, never your Apple ID password.
+
+Then build with the environment populated:
+
+```bash
+cd apps/desktop
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID1234)"
+# Only consumed if Tauri performs notarization itself; the manual notarytool
+# route below already carries the team id inside the keychain profile. Exported
+# anyway so either route works without editing this recipe.
+export APPLE_TEAM_ID="TEAMID1234"
+npm run tauri build
+```
+
+Tauri signs the `.app` with that identity. Whether its bundler also codesigns the
+**DMG container** (as opposed to only the app inside it) is version-dependent and
+has not been exercised here, so check the first time you run this path —
+notarization wants the container signed too:
+
+```bash
+codesign -dv "$DMG" 2>&1 | grep -E 'Signature|Authority' || \
+  codesign --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG"
+```
+
+Then notarize and staple the DMG:
+
+```bash
+DMG=src-tauri/target/release/bundle/dmg/Cairndex_0.1.0_aarch64.dmg
+xcrun notarytool submit "$DMG" --keychain-profile "cairndex-notary" --wait
+xcrun stapler staple "$DMG"
+```
+
+Stapling embeds the notarization ticket so the DMG validates on a Mac with no
+network access. Verify the result before handing it to anyone:
+
+```bash
+spctl --assess --type open --context context:primary-signature -vv "$DMG"
+# → source=Notarized Developer ID
+xcrun stapler validate "$DMG"
+```
+
+Notes for when this is picked up:
+
+- Hardened Runtime is required for notarization. Set it in
+  `tauri.conf.json` under `bundle.macOS.hardenedRuntime` (Tauri enables it by
+  default when signing) and add entitlements there if a future capability needs
+  one; Cairndex currently needs none beyond the default.
+- Notarization requires the app to be signed with a **Developer ID Application**
+  certificate specifically — an "Apple Development" certificate is rejected.
+- The `dev.cairndex.app` bundle identifier is owner-specified and must match the
+  identifier registered under the team.
+- Auto-update is **deferred**, not part of this pipeline (see
+  [plan 3 §3](plans/03-macos-desktop-app.md)): the repository is private with no
+  releases, and Tauri's updater fetches release assets over plain HTTPS, so it
+  would require embedding a token in the shipped app.
+
+### Linux and Windows
+
+Out of scope for v1 but kept cheap by the cross-platform rules in plan 3 §2.1.
+Linux packaging would be AppImage/deb with no notarization concept; Windows would
+want an Authenticode certificate on the same env-gated pattern.
+
 ## Health check
 
 `GET /api/v1/health` returns `{"status": "ok", "api_features": [...], ...}` and backs the image's
