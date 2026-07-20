@@ -47,6 +47,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **ADR-0018 (proposed): library ownership lease and desktop local-server
+  sidecar.** Records the single-server-per-library enforcement design: an
+  active-owner lease file inside `.cairndex/locks/` (write-then-verify
+  acquisition, heartbeat watchdog, confirm-on-stale-takeover, unmount on lost
+  ownership), the desktop shell's future managed local server for opening
+  local library folders without server administration, the portability
+  invariant that keeps `registry.db` free of authoritative library state, and
+  the supported one-active-machine-at-a-time semantics (plus SQLite
+  checkpoint/snapshot hygiene) for cloud-synced libraries. Documentation
+  only; no behavior change.
+
 - **Desktop drag-out and drag-in (Plan 3 D4 / §6).** A mapped desktop library
   can drag its real files out to Finder and other apps from the File Browser
   cards/rows, the opened bundle album tiles, the File inspector, and the bundle
