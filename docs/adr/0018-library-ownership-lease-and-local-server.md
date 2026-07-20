@@ -1,6 +1,6 @@
 # ADR-0018: Library ownership lease and desktop local-server sidecar
 
-- Status: proposed
+- Status: accepted (owner-ratified 2026-07-19)
 - Date: 2026-07-19
 - Branch/PR: `docs/adr-library-ownership-lease`
 
