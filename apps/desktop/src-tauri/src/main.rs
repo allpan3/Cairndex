@@ -86,6 +86,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             mappings::clear_library_mapping,
             mappings::get_library_mapping,
             mappings::locate_library_mapping,
+            mappings::pick_library_folder,
             mappings::reverse_map_paths,
             media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
