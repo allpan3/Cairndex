@@ -44,9 +44,17 @@ grouped under `Unreleased` until the first tagged release.
   passes it in the environment rather than argv. Shutdown closes the sidecar's
   stdin instead of sending a signal — that needs no per-OS branches and, unlike a
   signal, still works when the shell crashes, so a killed app cannot orphan a
-  process still holding ownership leases. New commands: `start_local_server`,
-  `stop_local_server`, `local_server_status`. No UI consumes them yet; that is
-  D6.4/D6.5.
+  process still holding ownership leases. Concurrent `start_local_server` calls
+  are serialized end to end, so a double-invoked mount effect (React StrictMode)
+  cannot leave a caller holding a terminated sidecar's URL and token. New
+  commands: `start_local_server`, `stop_local_server`, `local_server_status`. No
+  UI consumes them yet; that is D6.4/D6.5.
+
+  **Building the desktop crate now requires the sidecar bundle path to exist** —
+  `tauri-build` copies bundle resources at compile time, so `cargo check`,
+  `cargo test`, and `tauri dev` all need either a built bundle or an empty
+  `apps/server/packaging/dist/cairndex-sidecar` directory. See
+  `docs/development.md`.
 
 - **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
   the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus

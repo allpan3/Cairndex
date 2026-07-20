@@ -161,6 +161,15 @@ jobs:
       - name: Build SPA for Tauri compile context
         run: npm run build
         working-directory: apps/web
+      # tauri-build copies `bundle.resources` at *compile* time, so a missing
+      # path fails `cargo check`, not just `tauri build`. This job deliberately
+      # does not build the real sidecar (that would need uv and PyInstaller here
+      # for no extra coverage — the macOS job and the `sidecar` job both build
+      # it). An empty directory satisfies the resource copier, which skips empty
+      # directories, and `binary_path()` still reports `not_bundled` at runtime.
+      - name: Placeholder for the sidecar resource
+        run: mkdir -p apps/server/packaging/dist/cairndex-sidecar
+        working-directory: .
       - name: Rust format check
         run: cargo fmt --check
       - name: Clippy

@@ -36,8 +36,15 @@ def sidecar_mode() -> bool:
 
 
 def is_local_owner_token(candidate: str) -> bool:
-    """Constant-time comparison against the configured sidecar token."""
+    """Constant-time comparison against the configured sidecar token.
+
+    Compares encoded bytes, not ``str``: ``compare_digest`` raises ``TypeError``
+    on a string containing non-ASCII, so a request carrying, say,
+    ``Authorization: Bearer tökén`` would surface as a 500 traceback instead of
+    a plain 401. Bytes have no such restriction, and the token we generate is
+    hex, so a non-ASCII candidate simply fails to match.
+    """
     expected = local_token()
     if expected is None:
         return False
-    return secrets.compare_digest(candidate, expected)
+    return secrets.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
