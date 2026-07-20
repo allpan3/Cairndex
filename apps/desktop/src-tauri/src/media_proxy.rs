@@ -32,6 +32,18 @@ struct ProxyConfig {
     server_url: Url,
     token: Option<String>,
     library_ids: HashSet<String>,
+    /// Whether the bearer authorizes the whole server rather than the listed
+    /// libraries.
+    ///
+    /// A paired device token (ADR-0015) is scoped, so it is attached only to
+    /// libraries it explicitly grants — D2 made that fail closed deliberately.
+    /// The desktop sidecar's loopback owner token (ADR-0018 §5) is a different
+    /// credential: it authorizes the whole local server, and the set of
+    /// libraries registered there changes as the user opens folders, so an
+    /// enumerated scope would be stale the moment it was written. Kept as an
+    /// explicit flag rather than overloading "empty `library_ids`", which today
+    /// means "nothing approved" and must keep meaning that.
+    server_scoped_token: bool,
     secret: String,
 }
 
@@ -65,6 +77,7 @@ impl MediaProxy {
         server_url: &str,
         token: Option<String>,
         library_ids: Vec<String>,
+        server_scoped_token: bool,
     ) -> Result<String, String> {
         let normalized = crate::server_url::normalize_server_url(server_url)?;
         let server_url = Url::parse(&normalized).map_err(|error| error.to_string())?;
@@ -82,6 +95,7 @@ impl MediaProxy {
                 server_url,
                 token,
                 library_ids,
+                server_scoped_token,
                 secret: secret.clone(),
             });
         Ok(format!("http://{}/{secret}", self.address))
@@ -190,7 +204,7 @@ fn handle_request(request: Request, client: &Client, config: &RwLock<Option<Prox
     let Some(token) = config
         .token
         .as_ref()
-        .filter(|_| config.library_ids.contains(library_id))
+        .filter(|_| config.server_scoped_token || config.library_ids.contains(library_id))
     else {
         let _ = request.respond(error_response(StatusCode(403), origin.as_deref()));
         return;
@@ -388,8 +402,14 @@ pub(crate) fn configure_media_proxy(
     server_url: String,
     token: Option<String>,
     library_ids: Vec<String>,
+    server_scoped_token: Option<bool>,
 ) -> Result<String, String> {
-    proxy.configure(&server_url, token, library_ids)
+    proxy.configure(
+        &server_url,
+        token,
+        library_ids,
+        server_scoped_token.unwrap_or(false),
+    )
 }
 
 #[cfg(test)]
@@ -491,6 +511,7 @@ mod tests {
                 &format!("http://{upstream_address}/base"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
 
@@ -526,6 +547,7 @@ mod tests {
                 "http://127.0.0.1:9",
                 Some("cdx_test".to_string()),
                 vec!["allowed".to_string()],
+                false,
             )
             .unwrap();
         let client = Client::new();
@@ -572,15 +594,74 @@ mod tests {
         );
     }
 
+    // A server-scoped bearer covers libraries no enumerated scope could list
+    #[test]
+    fn a_server_scoped_token_reaches_libraries_absent_from_the_scope_list() {
+        // The sidecar case: the loopback owner token authorizes the whole local
+        // server, and libraries appear there as the user opens folders, so an
+        // enumerated scope would always be a step behind.
+        let proxy = MediaProxy::start().unwrap();
+        let proxy_base = proxy
+            .configure(
+                "http://127.0.0.1:9",
+                Some("local_token".to_string()),
+                Vec::new(),
+                true,
+            )
+            .unwrap();
+
+        // 502, not 403: the request was authorized and forwarded, and only then
+        // failed to reach the deliberately dead upstream. A scoped token would
+        // have been refused at the gate before any connection was attempted.
+        let status = Client::new()
+            .get(format!(
+                "{proxy_base}/api/v1/libraries/never-enumerated/files/file/stream"
+            ))
+            .send()
+            .unwrap()
+            .status()
+            .as_u16();
+        assert_ne!(
+            status, 403,
+            "a server-scoped token must not be scope-refused"
+        );
+    }
+
+    // An unscoped device token still fails closed (the D2 guarantee)
+    #[test]
+    fn an_unscoped_token_is_still_refused_without_the_server_scope_flag() {
+        let proxy = MediaProxy::start().unwrap();
+        let proxy_base = proxy
+            .configure(
+                "http://127.0.0.1:9",
+                Some("device_token".to_string()),
+                Vec::new(),
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(
+            Client::new()
+                .get(format!(
+                    "{proxy_base}/api/v1/libraries/any/files/file/stream"
+                ))
+                .send()
+                .unwrap()
+                .status()
+                .as_u16(),
+            403
+        );
+    }
+
     // Rotates the capability route whenever server auth configuration changes
     #[test]
     fn rotates_the_capability_route_on_configuration() {
         let proxy = MediaProxy::start().unwrap();
         let first = proxy
-            .configure("http://127.0.0.1:9", None, Vec::new())
+            .configure("http://127.0.0.1:9", None, Vec::new(), false)
             .unwrap();
         let second = proxy
-            .configure("http://127.0.0.1:9", None, Vec::new())
+            .configure("http://127.0.0.1:9", None, Vec::new(), false)
             .unwrap();
 
         assert_ne!(first, second);
@@ -605,6 +686,7 @@ mod tests {
                 &format!("http://{upstream_address}"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
 
@@ -693,6 +775,7 @@ mod tests {
                 &format!("http://{upstream_address}"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
         let slow_base = proxy_base.clone();

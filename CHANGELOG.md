@@ -56,6 +56,15 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Shell support for opening a local library folder (Plan 3 D6.4, in progress).**
+  A `pick_library_folder` command opens the native folder picker and validates the
+  selection as a Cairndex library, returning its canonical path, portable uuid,
+  and display name — the shell-side half of "Open library folder…". The media
+  relay gained an explicit **server-scoped token** mode for the sidecar's loopback
+  owner token, which authorizes a whole server rather than an enumerated set of
+  libraries; a paired device token keeps its fail-closed per-library scoping
+  unchanged. No SPA consumes either yet.
+
 - **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
   the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus
   `fetch_ffmpeg.py` for pinned, checksum-verified static media binaries and a
