@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "Capabilities for the Cairndex main window",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-destroy", "store:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy",
+    "store:default",
+    "deep-link:default",
+    "notification:default"
+  ]
 }
