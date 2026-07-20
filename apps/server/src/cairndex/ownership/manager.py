@@ -27,6 +27,7 @@ from pathlib import Path
 from cairndex.core.config import get_settings
 from cairndex.core.errors import (
     LeaseTakeoverRequiredError,
+    LibraryLeaseError,
     LibraryLeaseHeldError,
 )
 from cairndex.core.time import utcnow
@@ -83,6 +84,23 @@ class _Held:
     record: LeaseRecord
 
 
+@dataclass(frozen=True)
+class TakeoverProgress:
+    """The outcome of a confirmed takeover that is running, or just finished.
+
+    A takeover watches the lease for longer than a heartbeat period before it
+    may proceed, which is far too long to hold an HTTP request open. So the
+    endpoint starts it and returns, and the client polls the ownership status
+    until ``running`` clears — at which point either we hold the lease or
+    ``error_code`` says why we do not.
+    """
+
+    running: bool
+    error_code: str | None = None
+    error_message: str | None = None
+    holder: dict[str, object] | None = None
+
+
 class LeaseManager:
     """Owns this server's leases. Thread-safe; one instance per process."""
 
@@ -105,6 +123,8 @@ class LeaseManager:
         self._sleep = sleep
         self._on_ownership_lost = on_ownership_lost
         self._held: dict[str, _Held] = {}
+        self._takeovers: dict[str, TakeoverProgress] = {}
+        self._acquire_locks: dict[str, threading.Lock] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -149,37 +169,53 @@ class LeaseManager:
         holder that proves itself alive during the observation window still
         wins, because the confirmation answers "is this machine gone?" and the
         observation is what actually checks.
+
+        Serialized per library, deliberately **not** under the state lock: an
+        acquisition sleeps — a second for the write-verify, two minutes for a
+        takeover observation — and holding the state lock across that would
+        block ``holds()``, and therefore every request to every *other* library,
+        for the duration.
         """
+        with self._acquire_lock_for(library_id):
+            # Another thread may have acquired it while we waited our turn.
+            if self.holds(library_id, root):
+                return
+            self._acquire_locked(library_id=library_id, root=root, confirm=confirm_takeover)
+
+    def _acquire_lock_for(self, library_id: str) -> threading.Lock:
         with self._lock:
-            snapshot = read_lease(root)
-            state = classify(
-                snapshot,
-                our_uuid=self.server_uuid,
-                now=self._clock(),
-                ttl=self.settings.ttl_delta,
+            return self._acquire_locks.setdefault(library_id, threading.Lock())
+
+    def _acquire_locked(self, *, library_id: str, root: Path, confirm: bool) -> None:
+        snapshot = read_lease(root)
+        state = classify(
+            snapshot,
+            our_uuid=self.server_uuid,
+            now=self._clock(),
+            ttl=self.settings.ttl_delta,
+        )
+
+        if state is LeaseState.FRESH:
+            assert snapshot.record is not None
+            raise LibraryLeaseHeldError(
+                self._held_message(snapshot.record.machine_name),
+                details=snapshot.record.holder.as_details(),
             )
 
-            if state is LeaseState.FRESH:
-                assert snapshot.record is not None
-                raise LibraryLeaseHeldError(
-                    self._held_message(snapshot.record.machine_name),
-                    details=snapshot.record.holder.as_details(),
+        if state in (LeaseState.STALE, LeaseState.UNREADABLE):
+            if not confirm:
+                raise LeaseTakeoverRequiredError(
+                    self._takeover_message(state, snapshot.record),
+                    details=(
+                        snapshot.record.holder.as_details()
+                        if snapshot.record is not None
+                        else {"server_uuid": None, "machine_name": None}
+                    ),
                 )
+            self._observe_before_takeover(root)
 
-            if state in (LeaseState.STALE, LeaseState.UNREADABLE):
-                if not confirm_takeover:
-                    raise LeaseTakeoverRequiredError(
-                        self._takeover_message(state, snapshot.record),
-                        details=(
-                            snapshot.record.holder.as_details()
-                            if snapshot.record is not None
-                            else {"server_uuid": None, "machine_name": None}
-                        ),
-                    )
-                self._observe_before_takeover(root)
-
-            self._write_and_verify(library_id=library_id, root=root, existing=not snapshot.absent)
-            self._warn_on_conflict_artifacts(root)
+        self._write_and_verify(library_id=library_id, root=root, existing=not snapshot.absent)
+        self._warn_on_conflict_artifacts(root)
 
     def _observe_before_takeover(self, root: Path) -> None:
         """Watch the lease for longer than a heartbeat before taking it.
@@ -251,6 +287,78 @@ class LeaseManager:
     def _remember(self, library_id: str, root: Path, record: LeaseRecord) -> None:
         with self._lock:
             self._held[library_id] = _Held(root=root, record=record)
+
+    # --- confirmed takeover (asynchronous) --------------------------------
+
+    def start_takeover(self, *, library_id: str, root: Path) -> None:
+        """Begin a user-confirmed takeover in the background.
+
+        Returns as soon as the observation is under way. The caller polls
+        ``describe`` until ``takeover.running`` clears; at that point we either
+        hold the lease or the recorded error says which holder stopped us.
+        """
+        with self._lock:
+            existing = self._takeovers.get(library_id)
+            if existing is not None and existing.running:
+                return
+            self._takeovers[library_id] = TakeoverProgress(running=True)
+
+        thread = threading.Thread(
+            target=self._run_takeover,
+            args=(library_id, root),
+            name=f"cairndex-takeover-{library_id}",
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_takeover(self, library_id: str, root: Path) -> None:
+        try:
+            self.acquire(library_id=library_id, root=root, confirm_takeover=True)
+        except LibraryLeaseError as exc:
+            self._finish_takeover(
+                library_id,
+                TakeoverProgress(
+                    running=False,
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    holder=exc.details,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 — surface, never strand "running"
+            logger.exception("takeover failed for library %s", library_id)
+            self._finish_takeover(
+                library_id,
+                TakeoverProgress(
+                    running=False, error_code="takeover_failed", error_message=str(exc)
+                ),
+            )
+        else:
+            self._finish_takeover(library_id, TakeoverProgress(running=False))
+
+    def _finish_takeover(self, library_id: str, progress: TakeoverProgress) -> None:
+        with self._lock:
+            self._takeovers[library_id] = progress
+
+    def takeover_progress(self, library_id: str) -> TakeoverProgress | None:
+        with self._lock:
+            return self._takeovers.get(library_id)
+
+    def describe(self, *, library_id: str, root: Path) -> tuple[LeaseState, LeaseRecord | None]:
+        """Classify this library's lease without acquiring anything.
+
+        Backs the ownership status endpoint, which has to stay callable exactly
+        when the mount gate is refusing — so it never takes, writes, or waits.
+        """
+        if self.holds(library_id, root):
+            return LeaseState.OWN, None
+        snapshot = read_lease(root)
+        state = classify(
+            snapshot,
+            our_uuid=self.server_uuid,
+            now=self._clock(),
+            ttl=self.settings.ttl_delta,
+        )
+        return state, snapshot.record
 
     # --- holding ---------------------------------------------------------
 

@@ -38,9 +38,13 @@ def _dispose_library_engines() -> Iterator[None]:
     dispose_all_library_engines()
     from cairndex.auth import session_store
     from cairndex.auth.device_tokens import pairing_store
+    from cairndex.ownership import reset_lease_manager
 
     session_store.clear()
     pairing_store.clear()
+    # Leases are held in process memory (ADR-0018), so without this a library id
+    # reused by a later test would look already-owned and skip the mount gate.
+    reset_lease_manager()
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -53,10 +57,18 @@ def _isolate_data_dir(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None
     os.environ["CAIRNDEX_DATA_DIR"] = str(data_dir)
     # Drive jobs deterministically in tests; no background polling thread.
     os.environ["CAIRNDEX_WORKER_ENABLED"] = "false"
+    # Same for the ownership-lease heartbeat (ADR-0018): tests call
+    # ``heartbeat_once`` directly rather than racing a 60s timer.
+    os.environ["CAIRNDEX_LEASE_HEARTBEAT_ENABLED"] = "false"
+    # Acquisition sleeps between writing a lease and reading it back to confirm
+    # the claim survived. Real duration, no value in a test.
+    os.environ["CAIRNDEX_LEASE_VERIFY_DELAY"] = "0"
     get_settings.cache_clear()
     yield
     os.environ.pop("CAIRNDEX_DATA_DIR", None)
     os.environ.pop("CAIRNDEX_WORKER_ENABLED", None)
+    os.environ.pop("CAIRNDEX_LEASE_HEARTBEAT_ENABLED", None)
+    os.environ.pop("CAIRNDEX_LEASE_VERIFY_DELAY", None)
     get_settings.cache_clear()
 
 
