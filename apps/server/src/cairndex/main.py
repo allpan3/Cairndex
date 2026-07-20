@@ -5,8 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from cairndex.api.errors import register_exception_handlers
+from cairndex.api.local_token_middleware import register_local_token_gate
 from cairndex.api.static_site import mount_static_site
 from cairndex.api.v1.router import router as api_v1_router
+from cairndex.auth.local_token import sidecar_mode
 from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
@@ -76,6 +78,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Only present for a desktop sidecar (ADR-0018 §5); an ordinary NAS or
+    # container deployment never registers it and is unaffected.
+    if sidecar_mode():
+        register_local_token_gate(app)
     register_exception_handlers(app)
     app.include_router(api_v1_router)
     # Mounted last so the explicit /api/v1 routes always win; only present in
