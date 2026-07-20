@@ -16,6 +16,8 @@ mod mappings;
 mod media_proxy;
 // Owns validation for the persisted Cairndex server URL
 mod server_url;
+// Spawns and supervises the bundled local-server sidecar
+mod sidecar;
 // Performs validated native file handoffs through the opener plugin
 mod host;
 
@@ -26,6 +28,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let app = tauri::Builder::default()
         .manage(lifecycle::ExitGate::default())
         .manage(deeplink::PendingDeepLink::default())
+        .manage(sidecar::LocalServer::default())
         // Single-instance must be registered BEFORE the deep-link plugin: on
         // Windows/Linux a deep link launches a *second* process whose argv carries
         // the URL, and this callback is where that argv is forwarded to the running
@@ -86,6 +89,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             mappings::reverse_map_paths,
             media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
+            sidecar::local_server_status,
+            sidecar::start_local_server,
+            sidecar::stop_local_server,
         ])
         .setup(|app| {
             let media_proxy = media_proxy::MediaProxy::start().map_err(std::io::Error::other)?;
@@ -126,10 +132,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(tauri::generate_context!())?;
 
-    app.run(|app, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            lifecycle::intercept_exit(app, api);
-        }
+    app.run(|app, event| match event {
+        tauri::RunEvent::ExitRequested { api, .. } => lifecycle::intercept_exit(app, api),
+        // Stop the sidecar as the process actually goes away, not when exit is
+        // merely requested: `intercept_exit` can cancel that request, and a
+        // library unmounted out from under a user who chose to stay would be
+        // worse than a slightly later shutdown. Closing its stdin here lets it
+        // release its ownership leases (ADR-0018 §3), so the next launch — here
+        // or on another machine — acquires them silently.
+        tauri::RunEvent::Exit => sidecar::shutdown(app),
+        _ => {}
     });
     Ok(())
 }

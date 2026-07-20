@@ -198,12 +198,33 @@ jobs:
       - name: Build SPA for Tauri compile context
         run: npm run build
         working-directory: apps/web
+      - name: Install uv (for the sidecar bundle)
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.23"
+          enable-cache: true
+      - name: Sync server dependencies
+        run: uv sync --frozen
+        working-directory: apps/server
+      # tauri.conf.json stages this bundle as a resource, so `tauri build`
+      # cannot run without it. --skip-ffmpeg until ffmpeg-manifest.json is
+      # populated (ADR-0019 §3).
+      - name: Build the sidecar bundle
+        run: uv run python packaging/build_sidecar.py --skip-ffmpeg
+        working-directory: apps/server
       - name: Rust format check
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Unit tests
+      # CAIRNDEX_SIDECAR_BIN switches the lifecycle test from skipped to real:
+      # it spawns the packaged sidecar and checks the loopback bind, the token
+      # gate, and that closing stdin stops it. Without the variable that test
+      # passes without proving anything.
+      - name: Unit tests (including the real sidecar lifecycle)
         run: cargo test --locked
+        env:
+          CAIRNDEX_SIDECAR_BIN: >-
+            ${{ github.workspace }}/apps/server/packaging/dist/cairndex-sidecar/cairndex-sidecar
       # `--bundles app` deliberately overrides the config's ["app", "dmg"].
       # Tauri's DMG bundler drives Finder over AppleScript, which is a known flake
       # source on headless runners. CI only needs to prove the app compiles and
