@@ -55,9 +55,10 @@ grouped under `Unreleased` until the first tagged release.
   local library folders without server administration, the portability
   invariant that keeps `registry.db` free of authoritative library state, and
   the supported one-active-machine-at-a-time semantics (plus SQLite
-  checkpoint/snapshot hygiene) for cloud-synced libraries. The build order
-  gains phase E2 (`docs/plans/README.md`) and plan 3 gains milestone D6 for
-  the sidecar. Documentation only; no behavior change.
+  checkpoint/snapshot hygiene) for cloud-synced libraries. The work heads
+  build-order phase F (`docs/plans/README.md`), ahead of the write-mode
+  slices, and plan 3 gains milestone D6 for the sidecar. Documentation only;
+  no behavior change.
 
 - **Desktop drag-out and drag-in (Plan 3 D4 / §6).** A mapped desktop library
   can drag its real files out to Finder and other apps from the File Browser
