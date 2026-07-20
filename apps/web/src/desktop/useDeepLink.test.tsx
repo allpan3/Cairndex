@@ -127,3 +127,21 @@ test('waits for readiness before draining, then delivers', async () => {
   )
   expect(onLink).toHaveBeenCalledTimes(1)
 })
+
+test('never classifies against a list that failed to load', async () => {
+  // The gate is `isSuccess`, not "settled": on an errored libraries query the list
+  // is empty, so delivering would report a valid `?library=` link as "not on this
+  // server" while the app is already showing a connection failure. Staying quiet
+  // is the honest outcome — and the shell's park TTL means a link is dropped
+  // rather than mis-reported.
+  vi.mocked(takeHostPendingDeepLink).mockResolvedValue({
+    kind: 'bundle',
+    id: 'b1',
+    libraryId: 'lib-1',
+  })
+  const onLink = vi.fn()
+  render(<Harness onLink={onLink} enabled={false} />)
+
+  await vi.waitFor(() => expect(takeHostPendingDeepLink).not.toHaveBeenCalled())
+  expect(onLink).not.toHaveBeenCalled()
+})
