@@ -1,5 +1,84 @@
 # Project status
 
+## Completed: Plan 3 D5a — menus, shortcuts, window state, viewer fullscreen
+
+Branch `codex/plan3-d5a-menus-shortcuts` from `main` at `736539d`. The owner
+split D5 into three slices on 2026-07-19 (D5a menus/shortcuts/window, D5b deep
+links/notifications/export seam, D5c signing), **deferred the updater**, and
+asked for left-click play/pause. This receipt covers D5a.
+
+Implementation:
+
+- **One keymap table, not two.** `apps/web/src/platform/keymap.json` is the
+  single source of truth for the native menu bar. The shell embeds it with
+  `include_str!` and *builds* the menu from it (`src-tauri/src/keymap.rs`), so a
+  label or accelerator cannot drift between shell and SPA — the usual failure
+  mode of a mirrored table is structurally impossible. The SPA reads the same
+  file through `platform/keymap.ts`. Enablement groups (`server` / `library` /
+  `viewer`) are derived from the table instead of the previous hardcoded id
+  lists.
+- **Playback menu → open viewer.** A new Playback submenu (play/pause,
+  previous/next file, ±10 s, speed, mute, subtitles, snapshot) routes to the
+  mounted viewer. `runViewerCommand` is one dispatcher shared by the native menu
+  and the key bindings, so the two surfaces cannot diverge; `useViewerMenu`
+  enables the group only while a viewer is mounted, so its items are never live
+  against a closed viewer. Previous/Next File work without a `PlayerController`
+  so image bundles navigate too.
+- **Shortcut audit.** ⌘1/⌘2, ⌘N, ⌘T, ⌘L, ⌘[ / ⌘], ⌘= / ⌘−, and ⌘⇧I are marked
+  `browserReserved` and work only in the shell. **Decision:** every accelerator
+  is modifier-based, enforced by a test — a bare-key accelerator is handled by
+  the OS before the webview sees it and would intercept that letter inside every
+  text field, which is why the Playback menu does not bind bare Space/K. Bare-key
+  viewer bindings stay web-side and behave identically in both hosts.
+- **Native viewer fullscreen.** The viewer is already a full-window overlay, so
+  the shell toggles the real window instead of the HTML Fullscreen API, which
+  WKWebView gates behind user activation a native menu item cannot supply (the
+  D1 audit found this). Every transition — View menu, viewer control, `F` key —
+  flows through the `set_window_fullscreen` command, which emits
+  `cairndex://fullscreen`, so the control cannot show a stale state after the
+  menu toggled the window. Escape leaves fullscreen before closing the viewer.
+- **Window-state edge cases.** Size/position/maximized still persist;
+  `FULLSCREEN` and `VISIBLE` are now excluded, because quitting from a fullscreen
+  viewer otherwise relaunched into an empty fullscreen window, and a hidden
+  window could relaunch with no window at all. The offscreen/monitor-disconnected
+  case needed no change: the plugin already declines to restore a position no
+  current monitor intersects.
+- **Owner request:** left click on the video toggles play/pause; the previous
+  right-click play/pause hijack is removed so right click stays available for
+  viewer context-menu actions. (No viewer context menu exists yet — this frees
+  the gesture rather than adding one.)
+
+Verification:
+
+- Desktop: `cargo fmt --check`, Clippy `-D warnings`, **38 unit tests** (was 33;
+  +5 keymap: embedded-table parse, accelerator validity through muda, accelerator
+  uniqueness, dispatch mapping, enablement-group population). Release
+  `npm run tauri build` produced `Cairndex.app`.
+- Web: Prettier, ESLint, `tsc -b`, full Vitest (**197 passed**, was 183; +14
+  covering keymap/action-type parity, the shared dispatcher, Playback routing and
+  mount-scoped availability, browser inertness, and native-fullscreen Escape),
+  and the production Vite build.
+- Playwright: browser-only partition **72 passed**, including the rewritten
+  click-play case that asserts left click toggles playback and a right click is
+  no longer cancelled.
+- The packaged binary was launched under an isolated `HOME` and survived, which
+  proves the menu is constructed without panicking (the builder panics on a bad
+  table); the isolated home was then removed.
+
+Known issues: **the menu bar's rendered contents were not machine-verified.**
+`System Events` enumeration needs assistive access this environment does not
+have, so the parity table below is derived from the keymap table and the
+construction code rather than read off a running menu bar; an owner pass on the
+packaged app remains the final acceptance step, as with D1–D4. `muda` was added
+as a **test-only** dependency (Tauri does not re-export `Accelerator`) pinned to
+`default-features = false`, deliberately dropping its `libxdo`/`gtk` features so
+the Ubuntu Rust-only CI job does not start needing `libxdo-dev`. Deep links, job
+notifications, the export save-dialog seam, and signing remain in D5b/D5c; the
+updater is deferred pending a public release channel.
+
+Next recommended task: **Plan 3 D5b — deep links, job notifications, export
+seam**.
+
 ## Completed: ADR-0018 — library ownership lease and local-server sidecar
 
 Branch `docs/adr-library-ownership-lease` (documentation only; no code
