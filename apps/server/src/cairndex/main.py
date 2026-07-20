@@ -11,27 +11,42 @@ from cairndex.core.config import PACKAGED_DESKTOP_ORIGINS, get_settings
 from cairndex.jobs.registry import build_registry
 from cairndex.jobs.worker import Worker
 from cairndex.media.hls import shutdown_session_manager
+from cairndex.ownership import get_lease_manager
 from cairndex.registry.engine import get_registry_sessionmaker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Start/stop the in-process background worker and reap HLS sessions.
+    """Start/stop the background worker and lease heartbeat; reap HLS sessions.
 
     Interactive HLS sessions (ADR-0014) hold live ffmpeg processes and ephemeral
     transcode dirs; tearing them down on shutdown avoids orphaned encoders.
+
+    Releasing every ownership lease on the way out (ADR-0018 §3) is what keeps
+    the takeover prompt rare: a cleanly stopped server leaves its libraries
+    marked released, so the next machine to open one acquires it silently. Only
+    a crash leaves a lease to age into staleness and require a confirmation.
     """
+    settings = get_settings()
     worker: Worker | None = None
-    if get_settings().worker_enabled:
+    if settings.worker_enabled:
         worker = Worker(get_registry_sessionmaker(), build_registry())
         worker.start()
         app.state.worker = worker
+    if settings.lease_heartbeat_enabled:
+        get_lease_manager().start()
     try:
         yield
     finally:
+        # Stop the worker first: a job that is still running would otherwise
+        # keep writing to a library whose lease we are about to release.
         if worker is not None:
             worker.stop()
         shutdown_session_manager()
+        if settings.lease_heartbeat_enabled:
+            manager = get_lease_manager()
+            manager.stop()
+            manager.release_all()
 
 
 def create_app() -> FastAPI:

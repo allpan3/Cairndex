@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from cairndex.auth import SESSION_COOKIE, requires_unlock
 from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
+from cairndex.ownership import get_lease_manager
 from cairndex.persistence.engine import get_session as _get_session
 from cairndex.registry import device_tokens as token_service
 from cairndex.registry import services as registry_service
@@ -55,6 +56,20 @@ def _bearer_token(authorization: str) -> str:
 def is_bearer_authorization(authorization: str | None) -> bool:
     """Return whether the header explicitly selects the Bearer scheme."""
     return authorization is not None and authorization.partition(" ")[0].lower() == "bearer"
+
+
+def require_library_ownership(library_id: str, root: Path) -> None:
+    """Refuse to serve a library this server does not own (ADR-0018 §3).
+
+    Reads need the lease as much as writes do. Browsing already writes — bundle
+    cursors, missing-file reconciliation — and reading a SQLite DB that another
+    machine is writing through a share or a sync engine is exactly what ADR-0008
+    rejected. So there is no leaseless read-only mount: no lease, no mount.
+
+    Cheap by construction: a library we already hold costs one dictionary
+    lookup, so this adds no filesystem I/O to the request path.
+    """
+    get_lease_manager().ensure_owned(library_id=library_id, root=root)
 
 
 def authorize_library(
@@ -109,6 +124,7 @@ def get_library_session(
         session_cookie=session_cookie,
         authorization=authorization,
     )
+    require_library_ownership(library_id, root)
 
     session = get_library_sessionmaker(library)()
     try:
@@ -210,6 +226,7 @@ def get_library_access(
             session_cookie=session_cookie,
             authorization=authorization,
         )
+    require_library_ownership(library_id, Path(library.root_path))
     maker = get_library_sessionmaker(library)
 
     @contextmanager
