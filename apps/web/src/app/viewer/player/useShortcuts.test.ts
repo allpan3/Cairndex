@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
-import { handleViewerShortcut } from './useShortcuts'
+import { handleViewerShortcut, runViewerCommand } from './useShortcuts'
 import type { PlayerController } from './usePlayer'
 
 /** Build a mock PlayerController for pure shortcut-dispatch tests. */
@@ -106,4 +106,60 @@ test('maps shell shortcuts without a video player', () => {
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'ArrowRight' }), null, actions)
   expect(actions.next).toHaveBeenCalled()
+})
+
+test('runs Playback menu commands through the same dispatcher as the keys', () => {
+  const player = mockPlayer()
+  const actions = mockActions()
+
+  // The native Playback menu drives these ids; each must reach the same handler
+  // its key binding does, so the two surfaces cannot drift (plan 3 §7).
+  expect(runViewerCommand('play-pause', player, actions)).toBe(true)
+  expect(player.playPause).toHaveBeenCalled()
+
+  runViewerCommand('seek-forward', player, actions)
+  expect(player.seekBy).toHaveBeenLastCalledWith(10)
+  runViewerCommand('seek-back', player, actions)
+  expect(player.seekBy).toHaveBeenLastCalledWith(-10)
+
+  runViewerCommand('rate-up', player, actions)
+  expect(player.setRate).toHaveBeenLastCalledWith(1.25)
+
+  runViewerCommand('toggle-mute', player, actions)
+  expect(player.setMuted).toHaveBeenLastCalledWith(true)
+
+  runViewerCommand('toggle-subtitles', player, actions)
+  expect(player.toggleSubtitles).toHaveBeenCalled()
+
+  runViewerCommand('snapshot', player, actions)
+  expect(actions.snapshot).toHaveBeenCalled()
+})
+
+test('navigates files from the menu even with no video player', () => {
+  const actions = mockActions()
+
+  // Images have no PlayerController but still need Previous/Next File to work.
+  expect(runViewerCommand('next-file', null, actions)).toBe(true)
+  expect(actions.next).toHaveBeenCalled()
+  expect(runViewerCommand('previous-file', null, actions)).toBe(true)
+  expect(actions.previous).toHaveBeenCalled()
+
+  // Player-only commands must report "not handled" rather than throwing.
+  expect(runViewerCommand('play-pause', null, actions)).toBe(false)
+  expect(runViewerCommand('snapshot', null, actions)).toBe(false)
+})
+
+test('escape leaves native fullscreen before it closes the viewer', () => {
+  const actions = mockActions()
+  // In the shell, fullscreen is the native window, so document.fullscreenElement
+  // is null and only the player's own state reveals it.
+  const player = mockPlayer({ fullscreen: true })
+
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'Escape' }), player, actions)
+  expect(player.toggleFullscreen).toHaveBeenCalled()
+  expect(actions.close).not.toHaveBeenCalled()
+
+  const windowed = mockPlayer({ fullscreen: false })
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'Escape' }), windowed, actions)
+  expect(actions.close).toHaveBeenCalled()
 })

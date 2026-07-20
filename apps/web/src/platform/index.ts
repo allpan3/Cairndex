@@ -61,6 +61,10 @@ interface PlatformRuntime {
   listenMenu(handler: (action: DesktopMenuAction) => void): Promise<() => void>
   setLibraryAvailable(enabled: boolean): Promise<void>
   setServerAvailable(enabled: boolean): Promise<void>
+  setPlaybackAvailable(enabled: boolean): Promise<void>
+  setWindowFullscreen(fullscreen: boolean): Promise<void>
+  isWindowFullscreen(): Promise<boolean>
+  listenFullscreen(handler: (fullscreen: boolean) => void): Promise<() => void>
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
@@ -114,6 +118,12 @@ const webRuntime: PlatformRuntime = {
   listenMenu: async () => () => undefined,
   setLibraryAvailable: async () => undefined,
   setServerAvailable: async () => undefined,
+  setPlaybackAvailable: async () => undefined,
+  // The browser has no native window fullscreen; the viewer keeps using the
+  // HTML Fullscreen API there (see usePlayer.toggleFullscreen).
+  setWindowFullscreen: async () => undefined,
+  isWindowFullscreen: async () => false,
+  listenFullscreen: async () => () => undefined,
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
@@ -230,6 +240,20 @@ export const setHostLibraryAvailable = (enabled: boolean): Promise<void> =>
   runtime.setLibraryAvailable(enabled)
 export const setHostServerAvailable = (enabled: boolean): Promise<void> =>
   runtime.setServerAvailable(enabled)
+
+// Enables the native Playback menu only while a media viewer is actually open
+export const setHostPlaybackAvailable = (enabled: boolean): Promise<void> =>
+  runtime.setPlaybackAvailable(enabled)
+
+// Drives real window fullscreen in the shell; a no-op in the browser
+export const setHostWindowFullscreen = (fullscreen: boolean): Promise<void> =>
+  runtime.setWindowFullscreen(fullscreen)
+
+export const isHostWindowFullscreen = (): Promise<boolean> => runtime.isWindowFullscreen()
+
+// Observes native fullscreen changes made outside the viewer (the View menu)
+export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>
+  runtime.listenFullscreen(handler)
 export const listenHostLifecycle = (): Promise<() => void> => runtime.listenLifecycle()
 
 // Reverse-maps Finder-dropped absolute paths against one library's local mapping

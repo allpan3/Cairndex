@@ -1,0 +1,268 @@
+{
+  "$comment": [
+    "Canonical Cairndex keyboard/menu table (plan 3 §7). This file is the SINGLE",
+    "source of truth for the native menu bar and its accelerators. It is consumed",
+    "twice: TypeScript imports it for the in-app shortcut reference and menu-action",
+    "typing, and the Tauri shell include_str!s it at compile time and BUILDS the",
+    "native menu from it (apps/desktop/src-tauri/src/keymap.rs). Because the menu is",
+    "built from this table rather than mirroring it, the two cannot drift.",
+    "",
+    "'accelerator' is a muda accelerator string handled by the OS before the webview",
+    "sees the event; it is therefore always modifier-based, so it can never swallow a",
+    "keystroke meant for a text field. 'keys' lists the bare-key bindings the web app",
+    "handles itself in the focused viewer (app/viewer/player/useShortcuts.ts); those",
+    "work identically in the browser and in the shell.",
+    "",
+    "'browserReserved' marks accelerators a browser intercepts before the page (tab",
+    "switching, address bar, devtools, history). They are unusable on the web and",
+    "become available only inside the shell — that is the D5 shortcut audit.",
+    "",
+    "'requires' gates enablement: 'server' items wait for desktop bootstrap to reach a",
+    "verified server, 'library' items for an unlocked mounted workspace, 'viewer' for",
+    "an open media viewer. null means always enabled.",
+    "",
+    "'predefined' selects a Tauri built-in menu item (OS-localized, native behavior);",
+    "such entries carry no id/accelerator of their own."
+  ],
+  "menus": [
+    {
+      "id": "app-menu",
+      "label": "App",
+      "items": [
+        { "predefined": "about" },
+        { "separator": true },
+        {
+          "id": "settings",
+          "label": "Settings…",
+          "accelerator": "CmdOrCtrl+,",
+          "browserReserved": false,
+          "requires": null,
+          "keys": []
+        },
+        { "separator": true },
+        {
+          "id": "quit",
+          "label": "Quit Cairndex",
+          "accelerator": "CmdOrCtrl+Q",
+          "browserReserved": true,
+          "requires": null,
+          "keys": [],
+          "native": true
+        }
+      ]
+    },
+    {
+      "id": "file-menu",
+      "label": "File",
+      "items": [
+        {
+          "id": "new-bundle",
+          "label": "New Empty Bundle…",
+          "accelerator": "CmdOrCtrl+N",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        {
+          "id": "pair-device",
+          "label": "Pair Device…",
+          "accelerator": null,
+          "browserReserved": false,
+          "requires": "server",
+          "keys": []
+        },
+        { "separator": true },
+        { "predefined": "close-window" }
+      ]
+    },
+    {
+      "id": "edit-menu",
+      "label": "Edit",
+      "items": [
+        { "predefined": "undo" },
+        { "predefined": "redo" },
+        { "separator": true },
+        { "predefined": "cut" },
+        { "predefined": "copy" },
+        { "predefined": "paste" },
+        { "predefined": "select-all" }
+      ]
+    },
+    {
+      "id": "view-menu",
+      "label": "View",
+      "items": [
+        {
+          "id": "show-bundles",
+          "label": "Bundles",
+          "accelerator": "CmdOrCtrl+1",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        {
+          "id": "show-files",
+          "label": "Files",
+          "accelerator": "CmdOrCtrl+2",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        { "separator": true },
+        {
+          "id": "zoom-in",
+          "label": "Increase Card Size",
+          "accelerator": "CmdOrCtrl+=",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        {
+          "id": "zoom-out",
+          "label": "Decrease Card Size",
+          "accelerator": "CmdOrCtrl+-",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        { "separator": true },
+        {
+          "id": "toggle-sidebar",
+          "label": "Toggle Sidebar",
+          "accelerator": "CmdOrCtrl+Shift+S",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        {
+          "id": "toggle-inspector",
+          "label": "Toggle Inspector",
+          "accelerator": "CmdOrCtrl+Shift+I",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        { "separator": true },
+        {
+          "id": "fullscreen",
+          "label": "Toggle Full Screen",
+          "accelerator": "CmdOrCtrl+Control+F",
+          "browserReserved": false,
+          "requires": null,
+          "keys": [],
+          "native": true
+        }
+      ]
+    },
+    {
+      "id": "playback-menu",
+      "label": "Playback",
+      "items": [
+        {
+          "id": "play-pause",
+          "label": "Play/Pause",
+          "accelerator": "CmdOrCtrl+K",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": ["Space", "K"]
+        },
+        { "separator": true },
+        {
+          "id": "previous-file",
+          "label": "Previous File",
+          "accelerator": "CmdOrCtrl+[",
+          "browserReserved": true,
+          "requires": "viewer",
+          "keys": []
+        },
+        {
+          "id": "next-file",
+          "label": "Next File",
+          "accelerator": "CmdOrCtrl+]",
+          "browserReserved": true,
+          "requires": "viewer",
+          "keys": []
+        },
+        { "separator": true },
+        {
+          "id": "seek-back",
+          "label": "Back 10 Seconds",
+          "accelerator": "CmdOrCtrl+J",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": ["J"]
+        },
+        {
+          "id": "seek-forward",
+          "label": "Forward 10 Seconds",
+          "accelerator": "CmdOrCtrl+L",
+          "browserReserved": true,
+          "requires": "viewer",
+          "keys": ["L"]
+        },
+        { "separator": true },
+        {
+          "id": "rate-down",
+          "label": "Decrease Speed",
+          "accelerator": "CmdOrCtrl+Shift+,",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": [","]
+        },
+        {
+          "id": "rate-up",
+          "label": "Increase Speed",
+          "accelerator": "CmdOrCtrl+Shift+.",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": ["."]
+        },
+        { "separator": true },
+        {
+          "id": "toggle-mute",
+          "label": "Mute",
+          "accelerator": "CmdOrCtrl+Shift+M",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": ["M"]
+        },
+        {
+          "id": "toggle-subtitles",
+          "label": "Subtitles",
+          "accelerator": "CmdOrCtrl+T",
+          "browserReserved": true,
+          "requires": "viewer",
+          "keys": ["C"]
+        },
+        { "separator": true },
+        {
+          "id": "snapshot",
+          "label": "Save Snapshot",
+          "accelerator": "CmdOrCtrl+Shift+P",
+          "browserReserved": false,
+          "requires": "viewer",
+          "keys": ["S"]
+        }
+      ]
+    },
+    {
+      "id": "window-menu",
+      "label": "Window",
+      "items": [{ "predefined": "minimize" }, { "predefined": "close-window" }]
+    },
+    {
+      "id": "help-menu",
+      "label": "Help",
+      "items": [
+        {
+          "id": "help-placeholder",
+          "label": "Cairndex Help",
+          "accelerator": null,
+          "browserReserved": false,
+          "requires": "never",
+          "keys": []
+        }
+      ]
+    }
+  ]
+}

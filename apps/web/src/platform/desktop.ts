@@ -203,6 +203,13 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       listen<DesktopMenuAction>('cairndex://menu', (event) => handler(event.payload)),
     setLibraryAvailable: (enabled) => invoke('set_library_menu_enabled', { enabled }),
     setServerAvailable: (enabled) => invoke('set_server_menu_enabled', { enabled }),
+    setPlaybackAvailable: (enabled) => invoke('set_playback_menu_enabled', { enabled }),
+    // Native window fullscreen, not the HTML Fullscreen API: WKWebView requires
+    // user activation for the latter, which a menu item does not carry (D1).
+    setWindowFullscreen: (fullscreen) => invoke('set_window_fullscreen', { fullscreen }),
+    isWindowFullscreen: () => getCurrentWindow().isFullscreen(),
+    listenFullscreen: (handler) =>
+      listen<boolean>('cairndex://fullscreen', (event) => handler(event.payload)),
     listenLifecycle: async () => {
       const appWindow = getCurrentWindow()
       const stopClose = await appWindow.onCloseRequested(async (event) => {
