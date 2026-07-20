@@ -1,5 +1,40 @@
 # Project status
 
+## Open follow-ups from the D5 owner pass (2026-07-20)
+
+Recorded so they survive the session; none is started.
+
+- **No visualization of background work that this client did not start.** The
+  sidebar's `JobProgress` is driven by `activeJob`, which exists only while the
+  mutation that launched the job is still polling it. So progress vanishes exactly
+  where it matters most: after an app restart or reload mid-job, for a job started
+  from another client, and for the `Update` chain's fire-and-forget storyboard
+  stage. The server already exposes `GET /api/v1/jobs` with
+  `processed`/`total`/`phase`, so a persistent indicator sourced from *that*
+  (rather than from local mutation state) would survive reloads, show other
+  clients' work, and give the D5b dock badge something meaningful to reflect. Needs
+  an idle strategy — poll while work is active, stop when idle — so it does not
+  wake the server forever. Owner-reported 2026-07-20.
+- **`execute_job` holds the registry session open for the whole job.**
+  `apps/server/src/cairndex/jobs/worker.py` wraps the entire handler run in one
+  `with registry_factory() as reg:`, so a long job keeps a SQLite connection
+  checked out for its full duration — 442 s in the one observed case. That job
+  failed with `Cannot operate on a closed database` *after* completing all its work
+  (4/4 processed), failing only at commit. The most likely trigger was a
+  `uvicorn --reload` restart during active editing rather than a product defect
+  (the failure sits ~11 minutes after a commit that morning, and 48 jobs have run
+  since with zero failures), but holding a connection across minutes of ffmpeg work
+  is fragile on its own and is the same family of problem as the streaming-route
+  connection issue. Worth restructuring so the registry session is opened per
+  progress write rather than held.
+- **Two historical scan failures are already fixed.** The
+  `OverflowError: Python int too large to convert to SQLite INTEGER` failures on
+  2026-07-10 (09:45 Z, 10:32 Z) came from unsigned 64-bit `st_dev`/`st_ino` on a
+  network filesystem. `efa91d0` added `_sqlite_filesystem_identity` at 10:37 Z,
+  after both. No scan has failed since. Recorded only so the entries in the job
+  history are not re-investigated.
+
+
 ## Completed: Plan 3 D5c — desktop distribution (DMG + env-gated signing docs)
 
 Branch `codex/plan3-d5c-distribution`, stacked on the **unmerged**
