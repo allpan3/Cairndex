@@ -112,17 +112,28 @@ class LeaseRecord:
 class LeaseSnapshot:
     """The outcome of one read of the lease file.
 
-    Three distinguishable outcomes, because they lead to different decisions:
-    absent (``record is None`` and not ``corrupt``), parsed, or present but
-    unparseable.
+    Four distinguishable outcomes, because they lead to different decisions:
+    absent (nothing there), parsed, present but unparseable (``corrupt``), or
+    **not readable at all** (``io_error``).
+
+    ``corrupt`` and ``io_error`` are kept apart because only one of them is
+    evidence about the *file*. Corrupt means we read bytes and they were not a
+    lease — someone or something wrote them. An I/O error means the read itself
+    failed (an offline mount, a permissions blip, ``ESTALE``), which says
+    nothing about who holds the lease. Acquisition treats both as UNREADABLE —
+    "we could not find out" must never become "nobody holds it" — but the
+    heartbeat must not surrender over an I/O error the way it does over a
+    foreign write, for the same reason it already tolerates a failed *write*:
+    an unreachable mount is unreachable for everyone else too.
     """
 
     record: LeaseRecord | None = None
     corrupt: bool = False
+    io_error: bool = False
 
     @property
     def absent(self) -> bool:
-        return self.record is None and not self.corrupt
+        return self.record is None and not self.corrupt and not self.io_error
 
 
 def new_nonce() -> str:
@@ -186,9 +197,11 @@ def parse_lease(raw: str) -> LeaseRecord | None:
 def read_lease(root: Path) -> LeaseSnapshot:
     """Read the lease under ``root``. Never raises for ordinary I/O problems.
 
-    An unreadable *directory entry* (permissions, a vanished mount) is reported
-    as ``corrupt`` rather than absent for the same reason a malformed file is:
-    "we could not find out" must not be mistaken for "nobody holds it".
+    A failed read (permissions, a vanished mount, ``EIO``) is ``io_error``, not
+    absent — "we could not find out" must not be mistaken for "nobody holds
+    it" — and not ``corrupt`` either, because it is evidence about the *mount*,
+    not about the file's content. The distinction matters to the heartbeat,
+    which surrenders over corruption but rides out an I/O blip.
     """
     path = pkg.lease_path(root)
     try:
@@ -196,7 +209,7 @@ def read_lease(root: Path) -> LeaseSnapshot:
     except FileNotFoundError:
         return LeaseSnapshot()
     except OSError:
-        return LeaseSnapshot(corrupt=True)
+        return LeaseSnapshot(io_error=True)
     except UnicodeDecodeError:
         return LeaseSnapshot(corrupt=True)
 
@@ -224,7 +237,7 @@ def classify(
     a heartbeat dated in the future — reads as fresh, which errs toward
     refusing to serve.
     """
-    if snapshot.corrupt:
+    if snapshot.corrupt or snapshot.io_error:
         return LeaseState.UNREADABLE
     record = snapshot.record
     if record is None or record.released_at is not None:

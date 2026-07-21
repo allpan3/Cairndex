@@ -207,12 +207,32 @@ export default function App() {
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
+  const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
+  const libraryId = useMemo(() => {
+    if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
+    return libraries[0]?.id ?? null
+  }, [libraries, chosenId])
+
+  const changeLibrary = useCallback(
+    (nextId: string) => {
+      if (nextId === libraryId) return
+      // Set the request scope before active observers are removed so no old
+      // query can restart against the library being left behind
+      setActiveLibraryId(nextId)
+      resetLibraryContentQueries(queryClient)
+      setChosenId(nextId)
+    },
+    [libraryId, queryClient, setChosenId],
+  )
+
   // "Open Library Folder…" is handled *here* as well as in DesktopBootstrap.
   // The two cover different states and both are real: the bootstrap's listener
   // tears down once the workspace mounts (`if (ready) return`), so handling it
   // only there left the item dead in the running app — which is where a user
   // spends all their time. The menu item is enabled in both states, so both
-  // must listen.
+  // must listen. (Declared after `libraries`/`changeLibrary` so the closure
+  // reads initialized bindings — the ref-based hook already delivers the
+  // latest render's handler, so this is ordering hygiene, not a behavior fix.)
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
     else if (action === 'pair-device') setSettingsPage('pair')
@@ -246,24 +266,6 @@ export default function App() {
         })
     }
   })
-
-  const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
-  const libraryId = useMemo(() => {
-    if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
-    return libraries[0]?.id ?? null
-  }, [libraries, chosenId])
-
-  const changeLibrary = useCallback(
-    (nextId: string) => {
-      if (nextId === libraryId) return
-      // Set the request scope before active observers are removed so no old
-      // query can restart against the library being left behind
-      setActiveLibraryId(nextId)
-      resetLibraryContentQueries(queryClient)
-      setChosenId(nextId)
-    },
-    [libraryId, queryClient, setChosenId],
-  )
 
   // "Open Library Folder…" queues its result before activating the connection,
   // because activation remounts this tree. Consumed here on mount rather than

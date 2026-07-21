@@ -251,7 +251,12 @@ class LeaseManager:
 
         before_nonce = before.record.nonce if before.record else None
         after_nonce = after.record.nonce if after.record else None
-        if before_nonce == after_nonce and before.corrupt == after.corrupt:
+        unchanged = (
+            before_nonce == after_nonce
+            and before.corrupt == after.corrupt
+            and before.io_error == after.io_error
+        )
+        if unchanged:
             return
 
         if after.record is not None and after.record.server_uuid != self.server_uuid:
@@ -425,9 +430,19 @@ class LeaseManager:
         snapshot = read_lease(held.root)
         record = snapshot.record
 
+        if snapshot.io_error:
+            # The read itself failed — an offline mount, not a takeover. Same
+            # policy as the failed *write* below: stay held and skip this beat,
+            # because nobody else can reach the library either, and a transient
+            # NFS blip must not cancel a 40-minute scan or show the user a
+            # takeover prompt for their own healthy library. Deliberately no
+            # rewrite: blind-writing over content we could not read could
+            # clobber a lease that did move on.
+            logger.warning("lease heartbeat could not read for library %s", library_id)
+            return True
         if snapshot.corrupt:
-            # Our own lease became unreadable. Someone is writing this file, and
-            # it is not us; treat it the same as a foreign nonce.
+            # We read the file and it was not a lease. Someone is writing this
+            # file, and it is not us; treat it the same as a foreign nonce.
             logger.warning("lease for library %s is unreadable; surrendering", library_id)
             return False
         if record is None:
