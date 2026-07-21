@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
@@ -80,6 +80,12 @@ import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import {
+  getConnections,
+  libraryStorageKey,
+  subscribeConnections,
+  takePendingLibrarySelection,
+} from './desktop/connections'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import { useJobNotifications } from './desktop/useJobNotifications'
@@ -177,7 +183,17 @@ function Resizer({
 export default function App() {
   const queryClient = useQueryClient()
   const librariesQuery = useLibraries()
-  const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
+  // Keyed per connection: library ids are per-server and not globally unique,
+  // so one shared key could carry a NAS id into the local server (plan 3 §7.1).
+  // In the browser there is one connection forever and the key is the original.
+  const activeConnectionId = useSyncExternalStore(
+    subscribeConnections,
+    () => getConnections().activeConnectionId,
+  )
+  const [chosenId, setChosenId] = usePersistentState<string | null>(
+    libraryStorageKey(activeConnectionId),
+    null,
+  )
   const [managing, setManaging] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
@@ -204,6 +220,16 @@ export default function App() {
     },
     [libraryId, queryClient, setChosenId],
   )
+
+  // "Open Library Folder…" queues its result before activating the connection,
+  // because activation remounts this tree. Consumed here on mount rather than
+  // read during render: taking it is a side effect, and the take is idempotent
+  // (a second run finds nothing, and re-selecting the same library is a no-op),
+  // so StrictMode's double-invoke is harmless.
+  useEffect(() => {
+    const pending = takePendingLibrarySelection(activeConnectionId)
+    if (pending) changeLibrary(pending)
+  }, [activeConnectionId, changeLibrary])
 
   // A cairndex:// link may name a library other than the active one, so the
   // switch happens here while the target itself is handed to the workspace. The

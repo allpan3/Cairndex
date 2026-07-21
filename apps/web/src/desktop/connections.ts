@@ -253,9 +253,49 @@ async function restore(previous: Connection | null): Promise<void> {
   }
 }
 
+/**
+ * Where one connection's remembered library selection is stored.
+ *
+ * Per connection, not global. Library ids are per-server and not globally
+ * unique, so a single key could carry an id from the NAS into the local server,
+ * where — in the improbable case it also exists — it would silently select the
+ * wrong library. The unsuffixed key is kept for the browser, which has exactly
+ * one server and therefore one scope forever.
+ */
+export function libraryStorageKey(connectionId: string | null): string {
+  return connectionId ? `cairndex.libraryId:${connectionId}` : 'cairndex.libraryId'
+}
+
+/**
+ * A library to select once a connection's workspace mounts.
+ *
+ * Activation remounts the query scope, and with it the component holding the
+ * library selection — so "open this folder, then show that library" is a
+ * handoff *across* a remount, not a piece of persisted state. Deliberately not
+ * localStorage: that would make the outcome depend on storage being writable,
+ * and it would also collide with the user's own remembered selection for the
+ * connection, which should not be overwritten just because a folder was opened.
+ *
+ * Consumed once, by the workspace that mounts next.
+ */
+const pendingSelection = new Map<string, string>()
+
+export function setPendingLibrarySelection(connectionId: string, libraryId: string): void {
+  pendingSelection.set(connectionId, libraryId)
+}
+
+/** Take the pending selection for a connection, if one is waiting. */
+export function takePendingLibrarySelection(connectionId: string | null): string | null {
+  if (!connectionId) return null
+  const libraryId = pendingSelection.get(connectionId) ?? null
+  pendingSelection.delete(connectionId)
+  return libraryId
+}
+
 /** Test-only reset, mirroring `resetHostPlatformForTests`. */
 export function resetConnectionsForTests(): void {
   state = EMPTY
   listeners = new Set()
   inFlight = null
+  pendingSelection.clear()
 }

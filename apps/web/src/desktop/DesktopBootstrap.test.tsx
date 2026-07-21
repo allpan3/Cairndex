@@ -26,6 +26,9 @@ vi.mock('../platform', () => ({
   loadHostConnections: vi.fn().mockResolvedValue(null),
   saveHostConnections: vi.fn().mockResolvedValue(undefined),
   startHostLocalServer: vi.fn(),
+  openHostLibraryFolder: vi.fn().mockResolvedValue(null),
+  hostOperationErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : 'failed',
   normalizeHostServerUrl: vi.fn(),
   resolveHostAssetUrl: (value: string) => value,
   saveHostServerUrl: vi.fn(),
