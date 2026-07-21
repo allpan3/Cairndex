@@ -15,6 +15,8 @@ use reqwest::{
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 use url::Url;
 
+use crate::sidecar::LocalServer;
+
 const PROXY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const PROXY_WORKERS: usize = 8;
@@ -32,6 +34,18 @@ struct ProxyConfig {
     server_url: Url,
     token: Option<String>,
     library_ids: HashSet<String>,
+    /// Whether the bearer authorizes the whole server rather than the listed
+    /// libraries.
+    ///
+    /// A paired device token (ADR-0015) is scoped, so it is attached only to
+    /// libraries it explicitly grants — D2 made that fail closed deliberately.
+    /// The desktop sidecar's loopback owner token (ADR-0018 §5) is a different
+    /// credential: it authorizes the whole local server, and the set of
+    /// libraries registered there changes as the user opens folders, so an
+    /// enumerated scope would be stale the moment it was written. Kept as an
+    /// explicit flag rather than overloading "empty `library_ids`", which today
+    /// means "nothing approved" and must keep meaning that.
+    server_scoped_token: bool,
     secret: String,
 }
 
@@ -65,6 +79,7 @@ impl MediaProxy {
         server_url: &str,
         token: Option<String>,
         library_ids: Vec<String>,
+        server_scoped_token: bool,
     ) -> Result<String, String> {
         let normalized = crate::server_url::normalize_server_url(server_url)?;
         let server_url = Url::parse(&normalized).map_err(|error| error.to_string())?;
@@ -82,6 +97,7 @@ impl MediaProxy {
                 server_url,
                 token,
                 library_ids,
+                server_scoped_token,
                 secret: secret.clone(),
             });
         Ok(format!("http://{}/{secret}", self.address))
@@ -190,7 +206,7 @@ fn handle_request(request: Request, client: &Client, config: &RwLock<Option<Prox
     let Some(token) = config
         .token
         .as_ref()
-        .filter(|_| config.library_ids.contains(library_id))
+        .filter(|_| config.server_scoped_token || config.library_ids.contains(library_id))
     else {
         let _ = request.respond(error_response(StatusCode(403), origin.as_deref()));
         return;
@@ -385,11 +401,40 @@ fn forward_response_header(name: &str) -> bool {
 #[tauri::command]
 pub(crate) fn configure_media_proxy(
     proxy: tauri::State<'_, MediaProxy>,
+    local: tauri::State<'_, crate::sidecar::LocalServer>,
     server_url: String,
     token: Option<String>,
     library_ids: Vec<String>,
 ) -> Result<String, String> {
-    proxy.configure(&server_url, token, library_ids)
+    // Derived here, never accepted from the caller. The flag disables the
+    // per-library scoping D2 made fail closed, so a webview that could set it
+    // while pointed at a *remote* server would silently reattach a paired device
+    // token to libraries that token does not grant. The shell already knows the
+    // one server the flag is legitimate for — the sidecar it spawned — so it
+    // decides rather than trusting.
+    let server_scoped_token = targets_running_sidecar(&local, &server_url, token.as_deref());
+    proxy.configure(&server_url, token, library_ids, server_scoped_token)
+}
+
+/// Whether this configuration targets the sidecar this shell is running.
+///
+/// Matched against the sidecar's exact URL *and* token rather than against
+/// "is loopback": an SSH tunnel to a remote server is loopback too, and
+/// loopback was never the actual invariant. Both must match, so a restarted
+/// sidecar (new token) or a switch to a remote URL falls back to scoped mode on
+/// its own — no separate invalidation step to forget.
+fn targets_running_sidecar(local: &LocalServer, server_url: &str, token: Option<&str>) -> bool {
+    let Some(info) = local.info() else {
+        return false; // no sidecar running: nothing this flag could be valid for
+    };
+    let (Some(token), Ok(candidate), Ok(sidecar)) = (
+        token,
+        crate::server_url::normalize_server_url(server_url),
+        crate::server_url::normalize_server_url(&info.base_url),
+    ) else {
+        return false;
+    };
+    candidate == sidecar && token == info.token
 }
 
 #[cfg(test)]
@@ -491,6 +536,7 @@ mod tests {
                 &format!("http://{upstream_address}/base"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
 
@@ -526,6 +572,7 @@ mod tests {
                 "http://127.0.0.1:9",
                 Some("cdx_test".to_string()),
                 vec!["allowed".to_string()],
+                false,
             )
             .unwrap();
         let client = Client::new();
@@ -572,15 +619,92 @@ mod tests {
         );
     }
 
+    // A server-scoped bearer covers libraries no enumerated scope could list
+    #[test]
+    fn a_server_scoped_token_reaches_libraries_absent_from_the_scope_list() {
+        // The sidecar case: the loopback owner token authorizes the whole local
+        // server, and libraries appear there as the user opens folders, so an
+        // enumerated scope would always be a step behind.
+        // Asserted against a live upstream rather than a dead port. "Was not
+        // refused" is a weaker claim than this test's name makes — it would pass
+        // on a 404 or a 500 too. A real upstream lets it assert what actually
+        // matters: the request was forwarded *and* carried the right credential.
+        // It also avoids seeding a connect-to-dead-port wait, which refuses fast
+        // here but can be a firewall timeout on Windows, a platform this module
+        // keeps citing as a target.
+        let upstream = Server::http("127.0.0.1:0").unwrap();
+        let upstream_address = upstream.server_addr().to_ip().unwrap();
+        let worker = thread::spawn(move || {
+            let request = upstream.recv().unwrap();
+            assert_eq!(
+                request.url(),
+                "/api/v1/libraries/never-enumerated/files/file/stream"
+            );
+            assert_eq!(
+                request_header(&request, "authorization").as_deref(),
+                Some("Bearer local_token")
+            );
+            request
+                .respond(Response::from_data(b"ok".to_vec()))
+                .unwrap();
+        });
+
+        let proxy = MediaProxy::start().unwrap();
+        let proxy_base = proxy
+            .configure(
+                &format!("http://{upstream_address}"),
+                Some("local_token".to_string()),
+                Vec::new(),
+                true,
+            )
+            .unwrap();
+
+        let response = Client::new()
+            .get(format!(
+                "{proxy_base}/api/v1/libraries/never-enumerated/files/file/stream"
+            ))
+            .send()
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(response.bytes().unwrap().as_ref(), b"ok");
+        worker.join().unwrap();
+    }
+
+    // An unscoped device token still fails closed (the D2 guarantee)
+    #[test]
+    fn an_unscoped_token_is_still_refused_without_the_server_scope_flag() {
+        let proxy = MediaProxy::start().unwrap();
+        let proxy_base = proxy
+            .configure(
+                "http://127.0.0.1:9",
+                Some("device_token".to_string()),
+                Vec::new(),
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(
+            Client::new()
+                .get(format!(
+                    "{proxy_base}/api/v1/libraries/any/files/file/stream"
+                ))
+                .send()
+                .unwrap()
+                .status()
+                .as_u16(),
+            403
+        );
+    }
+
     // Rotates the capability route whenever server auth configuration changes
     #[test]
     fn rotates_the_capability_route_on_configuration() {
         let proxy = MediaProxy::start().unwrap();
         let first = proxy
-            .configure("http://127.0.0.1:9", None, Vec::new())
+            .configure("http://127.0.0.1:9", None, Vec::new(), false)
             .unwrap();
         let second = proxy
-            .configure("http://127.0.0.1:9", None, Vec::new())
+            .configure("http://127.0.0.1:9", None, Vec::new(), false)
             .unwrap();
 
         assert_ne!(first, second);
@@ -605,6 +729,7 @@ mod tests {
                 &format!("http://{upstream_address}"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
 
@@ -693,6 +818,7 @@ mod tests {
                 &format!("http://{upstream_address}"),
                 Some("cdx_test".to_string()),
                 vec!["lib".to_string()],
+                false,
             )
             .unwrap();
         let slow_base = proxy_base.clone();
@@ -726,5 +852,121 @@ mod tests {
         assert_eq!(slow_client.join().unwrap(), "s");
         fast_client.join().unwrap();
         upstream_worker.join().unwrap();
+    }
+
+    // --- scope-flag derivation (`targets_running_sidecar`) -----------------
+    //
+    // This function is the only thing keeping `server_scoped_token` derived
+    // rather than accepted: if it errs toward `true`, a paired device token
+    // pointed at a remote server gets attached to libraries it does not grant,
+    // silently reopening the hole D2 closed. These tests drive the real
+    // function against a real `LocalServer` whose `info()` liveness check is in
+    // play — a fabricated info would test a program that is not the one
+    // shipping.
+
+    use crate::sidecar::LocalServerInfo;
+    use std::process::{Command, Stdio};
+
+    // A live stand-in child: `cat` with a piped stdin blocks until the handle
+    // drops, which is exactly the lifetime the entry needs. (Unix-only, like
+    // the CI matrix; a Windows test runner would need a different stand-in.)
+    fn live_local_server(base_url: &str, token: &str) -> crate::sidecar::LocalServer {
+        let child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn stand-in child");
+        let state = crate::sidecar::LocalServer::default();
+        state.install_for_tests(
+            child,
+            LocalServerInfo {
+                base_url: base_url.to_string(),
+                token: token.to_string(),
+            },
+        );
+        state
+    }
+
+    #[test]
+    fn no_running_sidecar_never_legitimizes_the_flag() {
+        let state = crate::sidecar::LocalServer::default();
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("tok")
+        ));
+    }
+
+    #[test]
+    fn the_running_sidecars_own_url_and_token_derive_server_scope() {
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("local-tok")
+        ));
+        // Normalization, not string equality: a trailing slash is the same server.
+        assert!(targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567/",
+            Some("local-tok")
+        ));
+    }
+
+    #[test]
+    fn a_device_token_at_the_sidecars_url_stays_scoped() {
+        // The D2 case: right address, wrong credential. A paired device token
+        // must keep its per-library fail-closed gate even against loopback.
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("cdx_device_token")
+        ));
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            None
+        ));
+    }
+
+    #[test]
+    fn the_sidecars_token_at_another_url_stays_scoped() {
+        // Right credential, wrong address — a remote URL never gets the flag,
+        // whatever token rides along.
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://nas.local:8000",
+            Some("local-tok")
+        ));
+    }
+
+    #[test]
+    fn a_sidecar_that_exited_no_longer_legitimizes_the_flag() {
+        // `info()` live-checks the child, so a stale entry for a crashed
+        // sidecar must fall back to scoped mode rather than blessing whatever
+        // now squats on that port.
+        let mut child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn stand-in child");
+        drop(child.stdin.take()); // closing stdin ends `cat`
+        child.wait().expect("stand-in exits");
+
+        let state = crate::sidecar::LocalServer::default();
+        state.install_for_tests(
+            child,
+            LocalServerInfo {
+                base_url: "http://127.0.0.1:4567".to_string(),
+                token: "local-tok".to_string(),
+            },
+        );
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("local-tok")
+        ));
     }
 }

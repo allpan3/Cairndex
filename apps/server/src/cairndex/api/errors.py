@@ -37,7 +37,11 @@ def _status_for(error: DomainError) -> int:
 def register_exception_handlers(app: FastAPI) -> None:
     async def handle_domain_error(_request: Request, exc: Exception) -> JSONResponse:
         assert isinstance(exc, DomainError)
-        body = ErrorBody(code=exc.code, message=exc.message)
-        return JSONResponse(status_code=_status_for(exc), content=body.model_dump())
+        body = ErrorBody(code=exc.code, message=exc.message, details=exc.details)
+        # exclude_none keeps ``details`` out of every error that does not set it,
+        # so the response shape is unchanged for existing consumers.
+        return JSONResponse(
+            status_code=_status_for(exc), content=body.model_dump(exclude_none=True)
+        )
 
     app.add_exception_handler(DomainError, handle_domain_error)

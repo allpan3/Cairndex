@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # and its derived cache live in each library's own ``.cairndex/`` instead.
     data_dir: Path = _DEFAULT_DATA_DIR
 
+    # Loopback owner token for the desktop local-server sidecar (ADR-0018 §5).
+    # When set, every API request must present it as a bearer token. Unset for
+    # an ordinary NAS/container server, which uses the ADR-0010 passphrase and
+    # ADR-0015 device pairing instead. See ``auth/local_token.py``.
+    local_token: str | None = None
+
     # Optional explicit override for the SQLite database URL. When unset, the
     # database lives at ``{data_dir}/cairndex.db``.
     database_url: str | None = None
@@ -50,6 +56,68 @@ class Settings(BaseSettings):
     # Run the in-process background worker on app startup. Disabled in tests so
     # jobs are driven deterministically instead of by a polling thread.
     worker_enabled: bool = True
+
+    # --- Library ownership lease (ADR-0018) ---------------------------------
+    # A server may serve a library only while it holds that library's
+    # ``.cairndex/locks/active-owner.json`` lease.
+
+    # Human-readable name shown to a user deciding whether to take a lease over
+    # ("This library is served by …"). Defaults to the machine's hostname.
+    machine_name: str | None = None
+
+    # The URL clients can reach this server at, recorded in the lease so another
+    # machine can offer "connect there instead" rather than only naming a host.
+    # Only non-loopback URLs are offered as redirects (ADR-0018 §2), so leaving
+    # this unset on a laptop sidecar is correct.
+    advertised_url: str | None = None
+
+    # Seconds between lease heartbeats, and how long a lease may go untouched
+    # before another server may offer a (still user-confirmed) takeover. The TTL
+    # is 5x the interval so a couple of missed beats — a busy box, a slow NAS —
+    # never look like a dead server.
+    lease_heartbeat_interval: float = 60.0
+    lease_ttl: float = 300.0
+
+    # Extra time, on top of one full heartbeat interval, that a lease is watched
+    # before a confirmed takeover may proceed.
+    #
+    # The full interval is not configurable and never should be: a takeover
+    # begins at an arbitrary point in the holder's cycle, so only after a whole
+    # interval has passed is a live holder *guaranteed* to have written. This
+    # margin is the slack on top of that — it covers a holder whose write has to
+    # propagate through a cloud-sync engine before this machine can see it.
+    # Raise it for a synced library on a slow link; the default suits a local
+    # disk or a network share, where propagation is immediate.
+    lease_observation_margin: float = 20.0
+
+    # Pause between writing our lease and re-reading it to confirm our nonce
+    # survived (the write-then-verify in ADR-0018 §3). Must outlast the reorder
+    # window of a shared mount, not a network round trip.
+    lease_verify_delay: float = 1.0
+
+    # Run the lease heartbeat/watchdog thread on app startup. Disabled in tests
+    # so lease timing is driven deterministically instead of by a background
+    # thread.
+    lease_heartbeat_enabled: bool = True
+
+    # --- SQLite sync hygiene (ADR-0018 §6) ----------------------------------
+    # A library in WAL mode is three files on disk, and a cloud-sync engine
+    # uploads whatever it finds. Checkpointing an idle library keeps its at-rest
+    # state a single consistent file rather than a torn triple.
+
+    # Run the background maintenance pass (idle checkpoint + snapshot).
+    sqlite_maintenance_enabled: bool = True
+
+    # Seconds between maintenance passes, and how long a library must have gone
+    # untouched before one applies to it. A checkpoint competes with live
+    # readers, so it targets genuinely idle libraries.
+    sqlite_maintenance_interval: float = 60.0
+    sqlite_idle_checkpoint_after: float = 120.0
+
+    # Seconds between consistent snapshots of a library DB to
+    # ``.cairndex/library.db.bak`` (SQLite backup API). This is the heal path if
+    # a machine's last sync ever shipped a mid-write state. Set to 0 to disable.
+    sqlite_snapshot_interval: float = 86400.0
 
     # Directory of the built frontend (apps/web/dist). When set and present the
     # backend serves the SPA so a single production container ships both halves
@@ -83,6 +151,14 @@ class Settings(BaseSettings):
     # keyframe-accurate copy playlist; falls back to a duration-derived playlist
     # on timeout/failure.
     transcode_keyframe_timeout: float = 60.0
+
+    # Explicit ffmpeg/ffprobe locations. Unset, they are resolved from PATH and
+    # then from conventional install prefixes (``media/tool_paths.py``). The
+    # desktop shell sets these when spawning its local-server sidecar, because a
+    # Finder-launched app inherits launchd's minimal PATH and would otherwise
+    # miss a Homebrew ffmpeg entirely (plan 3 D6).
+    ffmpeg_path: Path | None = None
+    ffprobe_path: Path | None = None
 
     # Optional ffmpeg hardware-accelerated *decode* for transcode sessions
     # (plan 1 §6.2). One of vaapi|qsv|videotoolbox; unset/"none" uses software

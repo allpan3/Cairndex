@@ -39,6 +39,11 @@ pub(crate) struct MappingError {
 }
 
 impl MappingError {
+    // Hands the user-facing text to another module's error type
+    pub(crate) fn into_message(self) -> String {
+        self.message
+    }
+
     // Builds one structured rejection without exposing local filesystem paths
     fn new(code: MappingErrorCode, message: impl Into<String>) -> Self {
         Self {
@@ -92,6 +97,10 @@ impl MappingError {
 #[derive(Deserialize)]
 struct LibraryManifest {
     library_uuid: String,
+    // Optional: only the folder picker reads it, and an older manifest that
+    // predates the field must still validate for reveal/open.
+    #[serde(default)]
+    display_name: Option<String>,
 }
 
 // Couples one stored local root to the portable identity proven at locate time
@@ -175,13 +184,13 @@ fn validate_library_uuid(library_uuid: &str) -> Result<(), MappingError> {
     Ok(())
 }
 
-// Proves that a picked folder is the portable library the server described
-fn validate_library_root(
-    local_root: &Path,
-    expected_library_uuid: &str,
-) -> Result<PathBuf, MappingError> {
-    validate_library_uuid(expected_library_uuid)?;
-    let root = canonicalize_root(local_root)?;
+// Reads and parses a candidate folder's library manifest.
+//
+// Split out so discovering an unknown library (`pick_library_folder`) and
+// re-proving a known one (`validate_library_root`) apply exactly the same
+// parsing and the same failure wording — a folder that is "not a Cairndex
+// library" should say so identically whichever path noticed.
+fn read_library_manifest(root: &Path) -> Result<LibraryManifest, MappingError> {
     let manifest_path = root.join(".cairndex").join("manifest.json");
     let bytes = fs::read(manifest_path).map_err(|error| {
         if error.kind() == io::ErrorKind::NotFound {
@@ -196,12 +205,22 @@ fn validate_library_root(
             )
         }
     })?;
-    let manifest: LibraryManifest = serde_json::from_slice(&bytes).map_err(|_| {
+    serde_json::from_slice(&bytes).map_err(|_| {
         MappingError::new(
             MappingErrorCode::InvalidManifest,
             "The selected library manifest is invalid.",
         )
-    })?;
+    })
+}
+
+// Proves that a picked folder is the portable library the server described
+fn validate_library_root(
+    local_root: &Path,
+    expected_library_uuid: &str,
+) -> Result<PathBuf, MappingError> {
+    validate_library_uuid(expected_library_uuid)?;
+    let root = canonicalize_root(local_root)?;
+    let manifest = read_library_manifest(&root)?;
     if !manifest
         .library_uuid
         .eq_ignore_ascii_case(expected_library_uuid)
@@ -355,6 +374,56 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
     })
     .await
     .map_err(|_| MappingError::store_task_failed())?
+}
+
+/// A library folder the user picked, resolved but **not** exposed to the web.
+///
+/// The absolute path stays inside the shell. Handing it to the web layer would
+/// invert plan 3 §5 in the direction that actually matters: `reverse_map_paths`
+/// only echoes paths the web already supplied, whereas this one the shell
+/// *originates*. Once it were in web state nothing could bound where it went —
+/// a connection switch between pick and submit, a query cache, an error toast
+/// printing a request body. `sidecar::open_library_folder` consumes this
+/// in-process instead, so the web layer only ever sees ids.
+pub(crate) struct PickedFolder {
+    pub(crate) root: PathBuf,
+    pub(crate) library_uuid: String,
+    /// `None` when the manifest omits it, so the caller can choose its own
+    /// fallback (the folder basename) rather than being handed an empty string
+    /// that has to be tested for.
+    pub(crate) display_name: Option<String>,
+}
+
+/// Prompt for an existing Cairndex library folder on this machine (plan 3 D6).
+///
+/// Unlike `validate_library_root` no library is known yet — this *discovers*
+/// one, so the manifest supplies the identity rather than being checked against
+/// an expected one. `Ok(None)` means the user cancelled, which is not an error.
+pub(crate) fn pick_library_folder<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<PickedFolder>, MappingError> {
+    let Some(selected) = app
+        .dialog()
+        .file()
+        .set_title("Open Library Folder")
+        .blocking_pick_folder()
+    else {
+        return Ok(None);
+    };
+    let selected = selected.into_path().map_err(|_| {
+        MappingError::new(
+            MappingErrorCode::InvalidLibraryRoot,
+            "The selected library folder is not a local filesystem path.",
+        )
+    })?;
+    let root = canonicalize_root(&selected)?;
+    let manifest = read_library_manifest(&root)?;
+    validate_library_uuid(&manifest.library_uuid)?;
+    Ok(Some(PickedFolder {
+        root,
+        library_uuid: manifest.library_uuid,
+        display_name: manifest.display_name,
+    }))
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map

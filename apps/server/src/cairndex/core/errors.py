@@ -7,13 +7,21 @@ services back a future non-HTTP caller (AGENTS.md §14).
 
 
 class DomainError(Exception):
-    """Base class for expected, client-attributable domain errors."""
+    """Base class for expected, client-attributable domain errors.
+
+    ``details`` is an optional machine-readable payload for errors a client must
+    *act* on rather than merely display — currently the ownership-lease refusals
+    (ADR-0018), which carry the holding server so the client can offer a
+    redirect instead of a dead end. It is serialized as-is, so it must never
+    contain a filesystem path or anything else the caller should not see.
+    """
 
     code = "domain_error"
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
         super().__init__(message)
         self.message = message
+        self.details = details
 
 
 class NotFoundError(DomainError):
@@ -85,3 +93,47 @@ class DeviceScopeError(DomainError):
     """A valid device token does not include the requested library."""
 
     code = "device_scope_forbidden"
+
+
+class LibraryLeaseError(ConflictError):
+    """Base for ownership-lease refusals (ADR-0018). Maps to 409.
+
+    All three carry the holding server in ``details`` when it is known, so the
+    client can name the machine and — when the holder advertises a reachable,
+    non-loopback URL — offer to connect there instead.
+    """
+
+    code = "library_lease_conflict"
+
+
+class LibraryLeaseHeldError(LibraryLeaseError):
+    """Another server holds a live lease on this library.
+
+    Not recoverable by this server: the right action is to talk to the holder,
+    not to take the library from it. Distinct from ``LeaseTakeoverRequiredError``
+    precisely so the client does not offer a takeover the user should not take.
+    """
+
+    code = "library_lease_held"
+
+
+class LeaseTakeoverRequiredError(LibraryLeaseError):
+    """A foreign lease looks abandoned; serving it needs explicit confirmation.
+
+    Because a clean shutdown releases the lease, this is reached only after a
+    crash, or while a holder's sync is lagging or paused — exactly the cases
+    ADR-0018 ratified as needing a human decision rather than a timeout. There
+    is deliberately no auto-takeover after any TTL.
+    """
+
+    code = "library_lease_takeover_required"
+
+
+class LibraryOwnershipLostError(LibraryLeaseError):
+    """We held this library's lease and another server took it (ADR-0018 §4).
+
+    The library has been unmounted and its jobs cancelled. We never fight for a
+    lease back; the client is redirected to the new holder.
+    """
+
+    code = "library_ownership_lost"

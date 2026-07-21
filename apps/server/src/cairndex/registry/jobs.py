@@ -130,6 +130,28 @@ def request_cancel(session: Session, job_id: str) -> JobQueueEntry:
     return job
 
 
+def request_cancel_for_library(session: Session, library_id: str) -> int:
+    """Cancel every unfinished job for one library. Returns how many were flagged.
+
+    Used when a library is unmounted because its ownership lease was lost
+    (ADR-0018 §4): a scan or probe must not keep writing to a library another
+    server now owns. Cancellation is cooperative — the running handler notices
+    at its next checkpoint — which is why the job worker also re-verifies the
+    lease at batch boundaries.
+    """
+    stmt = select(JobQueueEntry).where(
+        JobQueueEntry.library_id == library_id,
+        JobQueueEntry.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+    )
+    flagged = 0
+    for job in session.scalars(stmt):
+        job.cancel_requested = True
+        flagged += 1
+    if flagged:
+        session.flush()
+    return flagged
+
+
 def is_cancel_requested(session: Session, job_id: str) -> bool:
     job = session.get(JobQueueEntry, job_id)
     if job is None:

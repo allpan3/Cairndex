@@ -1,16 +1,18 @@
 """Thin ffprobe adapter: run ffprobe and normalize its JSON.
 
-Read-only — ffprobe never modifies the file. ``ffprobe`` must be on PATH;
-callers should treat a missing binary or a probe failure as a recoverable,
-per-file condition (the file simply stays un-probed), not a fatal error.
+Read-only — ffprobe never modifies the file. The binary is located by
+``media/tool_paths.py``; callers should treat a missing binary or a probe
+failure as a recoverable, per-file condition (the file simply stays un-probed),
+not a fatal error.
 """
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
+
+from cairndex.media.tool_paths import ffprobe_path as resolve_ffprobe
 
 PROBE_VERSION = 2
 
@@ -20,7 +22,8 @@ class ProbeError(RuntimeError):
 
 
 def ffprobe_path() -> str | None:
-    return shutil.which("ffprobe")
+    """Resolve the ffprobe binary. See ``media/tool_paths.py`` for the order."""
+    return resolve_ffprobe()
 
 
 def ffprobe_available() -> bool:
@@ -31,7 +34,7 @@ def run_ffprobe(path: Path, *, timeout: float = 30.0) -> dict[str, Any]:
     """Return the raw parsed ffprobe JSON (format + streams) for ``path``."""
     exe = ffprobe_path()
     if exe is None:
-        raise ProbeError("ffprobe not found on PATH")
+        raise ProbeError("ffprobe not found")
     cmd = [
         exe,
         "-v",

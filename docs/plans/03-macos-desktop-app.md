@@ -104,7 +104,13 @@ apps/desktop/
   the UI. Linux/Windows shells stay out of scope for v1 but are kept cheap by
   the §2.1 rules (owner wants Linux eventually).
 - Distribution — **amended 2026-07-19 (owner)**. Developer ID signing and
-  notarization are **no longer a v1 requirement**. Cairndex is single-owner and
+  notarization are **no longer a v1 requirement**. *(Briefly marked superseded on
+  2026-07-20; that reversal was itself withdrawn on 2026-07-21 — see
+  [ADR-0019](../adr/0019-open-source-distribution-model.md) §4. Open source and
+  published binaries do not force signing, because System Settings → Open Anyway
+  is a working path users of unsigned macOS software already take. This amendment
+  stands; only its "single-owner" premise changed, not its conclusion.)*
+  Cairndex is single-owner and
   built from source, and Apple Silicon ad-hoc signs at link time, so packaged
   builds have worked locally since D1 with no certificate. The $99/yr Apple
   Developer Program buys nothing until a build must run on a **second Mac** or
@@ -292,6 +298,188 @@ handoff:
 - localStorage prefs migrate transparently (WKWebView persists per bundle id);
   shell-owned settings (server URL, token, mappings) live in the Tauri store.
 
+## 7.1 Connections model (D6.4/D6.5 design sketch)
+
+> Status: **implemented** (D6.4/D6.5 web layer, 2026-07-20). Written before
+> implementation for review and followed as written. Settles how
+> ADR-0018 §5's "set of connections" behaves. The shell-side half (sidecar
+> lifecycle, `open_library_folder`) has landed; this is the web half.
+
+### Decision: one active connection at a time
+
+ADR-0018 §5 says the client generalizes to "remote servers plus one managed
+local server". That admits switching or simultaneous browsing. **Switching.**
+
+The codebase has effectively voted three times already: the media proxy is
+single-config and rotates its capability secret as a security property (D2/ADR-0017),
+deep-link classification is built around "not on *this* server", and job
+notification/polling assumes one server's job list. Simultaneity would multiply
+all three. It also buys no capability — ADR-0018 guarantees a library is served
+by exactly one server anyway, so the only gain is breadth of view. Nothing here
+forecloses it later: it becomes additive UI plus a proxy redesign, if something
+ever demands it.
+
+### Shape
+
+```text
+Connection = { id, kind: 'remote' | 'local', label, serverUrl }
+```
+
+- Persisted in the Tauri store under `connections`, plus `activeConnectionId`.
+- The **local** entry is singular and managed: no `serverUrl` is persisted for
+  it, because the sidecar's port is ephemeral and only valid for the current
+  process. It is resolved at activation from `start_local_server`.
+- Migration: an existing stored `serverUrl` becomes the first `remote`
+  connection, active. No user-visible first-run change for someone who already
+  configured a NAS.
+
+### Activation
+
+`activateConnection(id)` is the single choke point, and does what
+`configureHostServer` does today plus the credential switch:
+
+1. resolve the base URL — stored for remote, `start_local_server()` for local —
+   and, for remote, verify something compatible answers there (`verifyServer`
+   is a **pure probe**: it asks the candidate directly and moves nothing);
+2. `configureServer(url)` (the runtime already reloads device auth per server);
+3. reconfigure the media proxy, which rotates its secret — so URLs minted for
+   the previous connection stop resolving, which is the behaviour we want on a
+   switch rather than something to work around;
+4. **commit**: point the JSON API base at the new server (`setApiBaseUrl` —
+   owned here and nowhere else; the D6 review found it moving only as a probe
+   side effect, which left a local activation querying the previous remote and
+   a failed activation querying the dead candidate), set `activeConnectionId`,
+   reset job-run state, and swap the workspace (below).
+
+The local connection's credential is the loopback owner token from
+`start_local_server`; the media proxy derives its server-scoped mode by matching
+the running sidecar, so nothing in the web layer carries a scope flag.
+
+**Failure semantics — all-or-nothing.** Steps 1–3 are the fallible ones (a
+sidecar that will not start, a proxy reconfigure that errors), and every one of
+them runs *before* anything user-visible changes. Step 4 is the only commit
+point and cannot fail. A half-switch — new URL against an old cache, or the
+reverse — is worse than either endpoint, because every subsequent request looks
+plausible and is wrong. On failure the previous connection is still fully
+configured, and the error surfaces without the app having moved.
+
+One wrinkle this creates: step 3 rotates the proxy secret, so a failure *after*
+it has run leaves the old connection with dead media URLs. Step 3 is therefore
+re-run against the previous connection when a later step fails — the only
+compensating action needed, because it is the only step with an effect outside
+web state.
+
+**Serialization — one activation at a time.** A menu double-click or a
+StrictMode double-effect produces exactly the race just fixed in `start_once`,
+and with more moving parts. A module-scope in-flight promise: a second call for
+the *same* id joins it, a second call for a *different* id is rejected rather
+than queued (queueing would run a switch the user has already navigated past).
+
+**Swapping the workspace.** Library ids are per-server and **not** globally
+unique, so a stale react-query entry can be read as belonging to the new server.
+`queryClient.clear()` alone does not settle this: components already mounted
+keep their in-flight promises and can write a resolved old-server response into
+the fresh cache. So the workspace is **remounted by key** on
+`activeConnectionId`, which discards those subscriptions along with the cache.
+That replaces a discipline ("remember to clear") with a structural property, and
+is testable as one.
+
+`useJobNotifications` keeps its run state at module scope (D5b, so a Workspace
+remount does not drop a run in flight) — which is exactly why activation must
+reset it explicitly. Otherwise a run started on the NAS settles after the switch
+and notifies about work on a server the user is no longer looking at, or worse
+is attributed to the local one. `askedPermission` is deliberately *not* reset;
+the OS prompt is per-app, not per-connection.
+
+### Sidecar lifetime
+
+Started on first activation of the local connection; **kept running until app
+exit** even when the user switches back to a remote server. Stopping on switch
+would release and reacquire ownership leases each time, which is sync-visible
+churn for no benefit, and would make switching back cost a cold start.
+
+### "Open library folder…"
+
+A File-menu item (`keymap.json`, so the menu and SPA stay in step), enabled only
+on desktop. It calls the single `open_library_folder` command, which returns ids
+only, then activates the local connection and navigates to the returned
+`library_id`. Cancel is a no-op.
+
+### D6.5 — ownership UX
+
+Sits on the endpoints already shipped, and belongs at the **mount gate**, not in
+the open flow: opening a folder registers it, while the lease is only taken when
+a library is mounted, so a conflict surfaces on mount whichever route got there.
+
+| Server state         | UI                                                          |
+| -------------------- | ----------------------------------------------------------- |
+| `library_lease_held` | Name the holder. Offer "Connect to <url>" when `redirect_url` is set, which adds/activates that remote connection — after verifying it answers, so a wrong or dead advertised address cannot strand the app |
+| `library_lease_takeover_required` | Explain, show holder + last heartbeat, offer "Serve here anyway" |
+| `library_ownership_lost` | The library unmounted underneath us; same redirect offer |
+
+Takeover is `POST …/ownership/takeover` (202) then polling `GET …/ownership`
+until `takeover.running` clears — the observation window is ~2 minutes by
+design, so the dialog must show indeterminate progress and stay cancellable
+(cancelling stops polling; it does not stop the server-side attempt).
+
+### Known limitation: the redirect does not carry the library
+
+Connecting to the holder switches servers but lands on that server's *first*
+library, not the one the user was trying to open. Library ids are per-registry,
+so the id in hand is meaningless on the target; the portable `library_uuid`
+would be the right key, and the ownership response does not currently carry it.
+Adding it is the fix when this is worth doing.
+
+Worth stating plainly because the lease is about **one server per library, not
+one client**. A NAS serving that library to other people is working exactly as
+intended, and connecting to it is the correct resolution — the redirect is not
+taking anything away from anyone.
+
+### Explicitly not in scope
+
+Simultaneous multi-server browsing, and any UI for editing the local connection,
+which is managed rather than configured.
+
+**Cross-connection deep links** keep today's report, with one wording change:
+with connections the message can name the active one ("this library is not on
+<label>") for almost nothing. When it is revisited it must be an *offer* —
+"this library is on <other label> — switch?" — never an auto-switch. Activation
+now tears down the query cache and rotates the media route, which is far too
+destructive to trigger from a clicked link.
+
+### Commit split
+
+1. **Connections store + activation.** The store shape and migration,
+   `activateConnection` with its all-or-nothing ordering and serialization, the
+   remount-by-key swap, and the `useJobNotifications` reset. The `start_once`
+   liveness fix is a prerequisite and has already landed separately — activation
+   must be able to recover by retrying rather than wedging on a cached dead
+   sidecar.
+2. **"Open library folder…"** — keymap entry, menu wiring, and the flow onto
+   `open_library_folder` + activation.
+3. **Ownership UX** — the three states, the redirect offer, and the takeover
+   dialog with its polling.
+
+### Test plan
+
+Vitest around `connections.ts`:
+
+- migration from a bare stored `serverUrl` into one active remote connection;
+- a failed activation (sidecar refuses to start) leaves the previous connection
+  fully intact — URL, credential, and media route all still the old ones;
+- concurrent activations for the same id start the sidecar exactly **once**;
+- a second activation for a *different* id while one is in flight is rejected,
+  not queued;
+- **activation with a mounted workspace drops in-flight old-server state** — the
+  test that turns remount-by-key from a discipline into a property. Resolve a
+  deliberately slow old-server query *after* the switch and assert nothing from
+  it reaches the new cache;
+- `useJobNotifications` run state does not survive a switch, while
+  `askedPermission` does.
+
+Ownership dialog states drive from fixture payloads. Playwright stays
+browser-only, where every desktop surface is inert.
+
 ## 8. What this plan does NOT change
 
 - No embedded Python server in the shell for v1. The owner's deployment is a
@@ -316,8 +504,9 @@ handoff:
 | D4 ✅ | Drag-out / drag-in | §6 |
 | D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
 | D5b ✅ | Deep links, notifications, export seam | `cairndex://` bundle/collection deep links with cold-start parking and single-instance handoff, one dock badge / notification per long *run* (not per job), native save-dialog seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
-| D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app |
-| D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) has landed |
+| D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app. *(The updater's premise did change — it moves to D7. Signing's did not; see §3.)* |
+| D6 ✅ | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) landed first, along with §6 checkpoint hygiene. Owner acceptance pass on the packaged app **2026-07-21** |
+| D7 | First public release | The release pipeline, not new product surface. Pin a static ffmpeg/ffprobe in `ffmpeg-manifest.json` ([ADR-0019](../adr/0019-open-source-distribution-model.md) §3) — the one true blocker, since without it a packaged sidecar falls back to a system ffmpeg that a user does not have. Then: per-architecture release artifacts (Apple Silicon + Intel), a README install section covering the Open Anyway first launch, the GPL source offer for the bundled ffmpeg, and a first observed run of a **downloaded** (quarantined) build. Tauri's updater rides here or later — it is now unblocked, not required |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
 handoff; D4 adds the remaining drag interaction a browser cannot provide.

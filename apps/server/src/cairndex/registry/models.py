@@ -82,6 +82,28 @@ class JobQueueEntry(RegistryBase):
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
+class ServerIdentity(RegistryBase):
+    """This server install's stable identity (ADR-0018 §2).
+
+    Exactly one row, created on first use. ``server_uuid`` is what a lease file
+    carries, so it must survive restarts: if it were regenerated per process, a
+    server that crashed would no longer recognize its own lease and would demand
+    a takeover confirmation from the user on every restart.
+
+    This is server-local infrastructure, not library state, so it does not
+    violate the ADR-0018 §1 portability invariant — nothing here is authoritative
+    for a library, and a fresh install simply mints a new identity.
+    """
+
+    __tablename__ = "server_identity"
+
+    id: Mapped[UlidPk]
+    server_uuid: Mapped[str] = mapped_column(String(26), unique=True)
+    # Human-readable, shown in takeover prompts ("served by Allen's MacBook Pro").
+    machine_name: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[CreatedAt]
+
+
 class DeviceToken(RegistryBase):
     """A revocable bearer credential issued through owner-approved pairing."""
 
