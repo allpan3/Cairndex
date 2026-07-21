@@ -26,6 +26,8 @@ import {
   useReorderCollections,
   useLibraries,
   useLibraryAuth,
+  useLibraryOwnership,
+  useStartTakeover,
   useLibraryLock,
   useProbe,
   resetLibraryContentQueries,
@@ -81,11 +83,14 @@ import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import {
+  connectToServer,
   getConnections,
   libraryStorageKey,
   subscribeConnections,
   takePendingLibrarySelection,
 } from './desktop/connections'
+import { LibraryAccessNotice } from './app/LibraryAccessNotice'
+import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import { useJobNotifications } from './desktop/useJobNotifications'
@@ -269,6 +274,11 @@ export default function App() {
   // never fires content queries while locked.
   const auth = useLibraryAuth(libraryId)
   const lock = useLibraryLock(libraryId)
+  // Ownership is checked at the mount gate, not by reacting to 409s from
+  // content queries: a lease refusal would otherwise arrive once per query as a
+  // scatter of identical errors instead of one explainable state (ADR-0018).
+  const ownership = useLibraryOwnership(libraryId)
+  const takeover = useStartTakeover(libraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
   const desktop = getHostPlatform().kind === 'desktop'
   const deviceHasAccess = libraryId ? hasHostDeviceAccess(libraryId) : false
@@ -311,6 +321,37 @@ export default function App() {
       onClose={() => setSettingsPage(null)}
     />
   )
+
+  // Placed before the auth gate: a library this server may not serve cannot be
+  // unlocked either, so the passphrase screen would be a dead end.
+  // `=== false`, not `!mountable`: this screen only ever appears when the server
+  // explicitly says the library is not servable here. An absent or malformed
+  // field must fail *open* — the server's own mount gate is the enforcement, and
+  // this UI is the explanation, so blocking on an unparsed response would hide a
+  // working library behind an unexplained wall.
+  if (libraryId && ownership.data?.mountable === false) {
+    return (
+      <>
+        <LibraryOwnershipNotice
+          ownership={ownership.data}
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={changeLibrary}
+          onTakeOver={() => takeover.mutate()}
+          onConnectTo={(serverUrl) => {
+            void connectToServer(serverUrl)
+          }}
+          takeoverPending={takeover.isPending}
+          takeoverError={
+            takeover.error instanceof Error
+              ? takeover.error.message
+              : (ownership.data.takeover?.error_message ?? null)
+          }
+        />
+        {settingsDialog}
+      </>
+    )
+  }
 
   if (auth.isPending) {
     return (
@@ -410,49 +451,6 @@ export default function App() {
 }
 
 // Fails closed while preserving library switching and desktop recovery actions
-function LibraryAccessNotice({
-  libraries,
-  libraryId,
-  onChangeLibrary,
-  title,
-  message,
-  children,
-}: {
-  libraries: LibraryRead[]
-  libraryId: string
-  onChangeLibrary: (id: string) => void
-  title: string
-  message: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="lockscreen">
-      <section className="lockscreen__card">
-        <div className="lockscreen__brand">
-          <span>🍃</span> Cairndex
-        </div>
-        {libraries.length > 1 && (
-          <select
-            className="edit"
-            value={libraryId}
-            onChange={(event) => onChangeLibrary(event.target.value)}
-            aria-label="Library"
-          >
-            {libraries.map((library) => (
-              <option key={library.id} value={library.id}>
-                {library.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="lockscreen__title">{title}</div>
-        <p className="lockscreen__message">{message}</p>
-        {children}
-      </section>
-    </div>
-  )
-}
-
 /**
  * Empty app shell shown before any library exists. Renders the real sidebar
  * (so the "+" to add a library sits where it always does) with no content, and

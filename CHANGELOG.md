@@ -56,6 +56,18 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Ownership lease UX (Plan 3 D6.5).** A library another server holds now
+  explains itself instead of failing content queries. Checked once at the mount
+  gate rather than per query, so a refusal is one state and not a scatter of
+  identical errors. Three outcomes: a **live** holder is named and offers
+  "Connect to <machine>" when it advertises a reachable address — never a
+  takeover, since taking a library from a server actively serving it is the
+  dual-writer the lease exists to prevent; a **stale or unreadable** lease offers
+  a confirmed takeover explaining why confirmation is needed; and a takeover in
+  flight shows indeterminate progress with a note that it takes a couple of
+  minutes and that a live holder can still win. The library picker stays visible
+  throughout, so no state strands the user.
+
 - **Open Library Folder… (Plan 3 D6.4).** A File-menu item (⌘O, a combo the
   browser reserves and the shell can own) picks a library folder, starts the
   local server, registers the folder, and switches to it. Deliberately ungated:

@@ -504,6 +504,34 @@ export const unlockLibrary = (libraryId: string, passphrase: string) =>
 export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
 
+// --- Library ownership lease (ADR-0018) ------------------------------------
+// Readable precisely when the library will *not* mount, which is the point: it
+// is what a client calls after a lease refusal to learn who holds the library.
+export interface LeaseHolder {
+  server_uuid: string | null
+  machine_name: string | null
+  advertised_url: string | null
+  heartbeat_at: string | null
+}
+
+export interface LibraryOwnership {
+  library_id: string
+  /** `own` | `released` | `fresh` | `stale` | `unreadable` */
+  state: string
+  mountable: boolean
+  can_take_over: boolean
+  /** Set only when the holder advertises a reachable, non-loopback address. */
+  redirect_url: string | null
+  holder: LeaseHolder | null
+  takeover: { running: boolean; error_code: string | null; error_message: string | null } | null
+}
+
+export const fetchLibraryOwnership = (libraryId: string, signal?: AbortSignal) =>
+  getJson<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership`, signal)
+
+export const startLibraryTakeover = (libraryId: string) =>
+  send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/takeover`, 'POST')
+
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
 export const startDevicePairing = (deviceName: string) =>
   send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })

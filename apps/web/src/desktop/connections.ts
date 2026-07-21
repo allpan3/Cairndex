@@ -267,6 +267,22 @@ export function libraryStorageKey(connectionId: string | null): string {
 }
 
 /**
+ * Follow a lease redirect: add the holder's server and switch to it.
+ *
+ * The URL comes from the *server's* ownership response, which only ever offers
+ * a non-loopback address (a loopback one names the holder's own machine and
+ * would send this user to their own server). It is added as an ordinary remote
+ * connection, so the user keeps it afterwards rather than having to re-enter it.
+ *
+ * A no-op outside the desktop shell: the browser has one server and no way to
+ * point itself at another.
+ */
+export async function connectToServer(serverUrl: string): Promise<void> {
+  const connection = await addRemoteConnection(serverUrl)
+  await activateConnection(connection.id)
+}
+
+/**
  * A library to select once a connection's workspace mounts.
  *
  * Activation remounts the query scope, and with it the component holding the
