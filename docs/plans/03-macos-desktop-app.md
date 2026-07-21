@@ -338,13 +338,48 @@ Connection = { id, kind: 'remote' | 'local', label, serverUrl }
 3. reconfigure the media proxy, which rotates its secret — so URLs minted for
    the previous connection stop resolving, which is the behaviour we want on a
    switch rather than something to work around;
-4. clear the react-query cache. Library ids are per-server and **not** globally
-   unique, so a stale entry could otherwise be read as belonging to the new
-   server. This is the one correctness step easy to forget.
+4. **commit**: set `activeConnectionId`, reset job-run state, and swap the
+   workspace (below).
 
 The local connection's credential is the loopback owner token from
 `start_local_server`; the media proxy derives its server-scoped mode by matching
 the running sidecar, so nothing in the web layer carries a scope flag.
+
+**Failure semantics — all-or-nothing.** Steps 1–3 are the fallible ones (a
+sidecar that will not start, a proxy reconfigure that errors), and every one of
+them runs *before* anything user-visible changes. Step 4 is the only commit
+point and cannot fail. A half-switch — new URL against an old cache, or the
+reverse — is worse than either endpoint, because every subsequent request looks
+plausible and is wrong. On failure the previous connection is still fully
+configured, and the error surfaces without the app having moved.
+
+One wrinkle this creates: step 3 rotates the proxy secret, so a failure *after*
+it has run leaves the old connection with dead media URLs. Step 3 is therefore
+re-run against the previous connection when a later step fails — the only
+compensating action needed, because it is the only step with an effect outside
+web state.
+
+**Serialization — one activation at a time.** A menu double-click or a
+StrictMode double-effect produces exactly the race just fixed in `start_once`,
+and with more moving parts. A module-scope in-flight promise: a second call for
+the *same* id joins it, a second call for a *different* id is rejected rather
+than queued (queueing would run a switch the user has already navigated past).
+
+**Swapping the workspace.** Library ids are per-server and **not** globally
+unique, so a stale react-query entry can be read as belonging to the new server.
+`queryClient.clear()` alone does not settle this: components already mounted
+keep their in-flight promises and can write a resolved old-server response into
+the fresh cache. So the workspace is **remounted by key** on
+`activeConnectionId`, which discards those subscriptions along with the cache.
+That replaces a discipline ("remember to clear") with a structural property, and
+is testable as one.
+
+`useJobNotifications` keeps its run state at module scope (D5b, so a Workspace
+remount does not drop a run in flight) — which is exactly why activation must
+reset it explicitly. Otherwise a run started on the NAS settles after the switch
+and notifies about work on a server the user is no longer looking at, or worse
+is attributed to the local one. `askedPermission` is deliberately *not* reset;
+the OS prompt is per-app, not per-connection.
 
 ### Sidecar lifetime
 
@@ -379,16 +414,48 @@ design, so the dialog must show indeterminate progress and stay cancellable
 
 ### Explicitly not in scope
 
-Simultaneous multi-server browsing; cross-connection deep links (a link naming a
-library on an inactive connection keeps today's "not on this server" report);
-and any UI for editing the local connection, which is managed, not configured.
+Simultaneous multi-server browsing, and any UI for editing the local connection,
+which is managed rather than configured.
+
+**Cross-connection deep links** keep today's report, with one wording change:
+with connections the message can name the active one ("this library is not on
+<label>") for almost nothing. When it is revisited it must be an *offer* —
+"this library is on <other label> — switch?" — never an auto-switch. Activation
+now tears down the query cache and rotates the media route, which is far too
+destructive to trigger from a clicked link.
+
+### Commit split
+
+1. **Connections store + activation.** The store shape and migration,
+   `activateConnection` with its all-or-nothing ordering and serialization, the
+   remount-by-key swap, and the `useJobNotifications` reset. The `start_once`
+   liveness fix is a prerequisite and has already landed separately — activation
+   must be able to recover by retrying rather than wedging on a cached dead
+   sidecar.
+2. **"Open library folder…"** — keymap entry, menu wiring, and the flow onto
+   `open_library_folder` + activation.
+3. **Ownership UX** — the three states, the redirect offer, and the takeover
+   dialog with its polling.
 
 ### Test plan
 
-Vitest around `connections.ts` (migration from a bare `serverUrl`, activation
-order, cache clear on switch, local activation starting the sidecar exactly
-once) and the ownership dialog states driven from fixture payloads. Playwright
-stays browser-only, where every desktop surface is inert.
+Vitest around `connections.ts`:
+
+- migration from a bare stored `serverUrl` into one active remote connection;
+- a failed activation (sidecar refuses to start) leaves the previous connection
+  fully intact — URL, credential, and media route all still the old ones;
+- concurrent activations for the same id start the sidecar exactly **once**;
+- a second activation for a *different* id while one is in flight is rejected,
+  not queued;
+- **activation with a mounted workspace drops in-flight old-server state** — the
+  test that turns remount-by-key from a discipline into a property. Resolve a
+  deliberately slow old-server query *after* the switch and assert nothing from
+  it reaches the new cache;
+- `useJobNotifications` run state does not survive a switch, while
+  `askedPermission` does.
+
+Ownership dialog states drive from fixture payloads. Playwright stays
+browser-only, where every desktop surface is inert.
 
 ## 8. What this plan does NOT change
 
