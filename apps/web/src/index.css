@@ -1309,6 +1309,9 @@ button {
   opacity: 0.3;
   cursor: default;
 }
+.file-row__actions .cover-action--active:disabled {
+  opacity: 1;
+}
 
 /* Immediate, styled tooltip for icon buttons (clearer than the slow native
    title). The bubble is right-anchored so it extends left into the panel and

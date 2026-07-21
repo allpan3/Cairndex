@@ -530,9 +530,13 @@ generation now parses `showinfo` frame indices from its existing ffmpeg pass and
 limits VTT cues to real sampled frames before the tile filter pads a final sheet.
 EOF requests clamp to a decodable frame 100 ms before probed duration, and reset
 restores the bundle cover displaced by the selection. Bundle detail surfaces use
-`updated_at` as their image version; cover mutations optimistically update file
-queries and refetch version-bearing bundle/browse/collection data. Collection
-timestamps are touched through reverse membership plus ancestor traversal, not
+`updated_at` as their image version. Cover-file selection optimistically updates
+bundle detail, adopts the authoritative PATCH response, and refreshes browse
+artwork in the background; metadata detail reads do not perform member-path
+checks. Bundle file-list, playback, and scan paths retain missing-file
+reconciliation. Cover-frame mutations optimistically update file queries and
+refetch version-bearing bundle/browse/collection data. Collection timestamps
+are touched through reverse membership plus ancestor traversal, not
 an all-collection scan. Storyboard parsing removes ANSI control sequences and
 falls back to emitted-sheet capacity with a warning when `showinfo` is absent.
 

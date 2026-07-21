@@ -646,6 +646,8 @@ export function FileList({
                     data-tip={f.id === coverId ? 'Current cover' : 'Set as cover'}
                     aria-label={f.id === coverId ? 'Current cover' : 'Set as cover'}
                     aria-pressed={f.id === coverId}
+                    aria-busy={update.isPending}
+                    disabled={update.isPending}
                     onClick={() => {
                       if (f.id !== coverId) update.mutate({ cover_file_id: f.id })
                     }}
