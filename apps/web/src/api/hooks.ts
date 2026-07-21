@@ -55,6 +55,8 @@ import {
   enqueueStoryboards,
   enqueueThumbnails,
   fetchAuthStatus,
+  fetchLibraryOwnership,
+  startLibraryTakeover,
   fetchDevices,
   fetchJob,
   lockLibrary,
@@ -296,6 +298,35 @@ export function useLibraryAuth(libraryId: string | null) {
     queryKey: ['auth-status', libraryId],
     queryFn: ({ signal }) => fetchAuthStatus(libraryId!, signal),
     enabled: libraryId !== null,
+  })
+}
+
+/**
+ * Whether this server may serve the library (ADR-0018).
+ *
+ * Gates the workspace mount rather than reacting to 409s from content queries:
+ * a lease refusal would otherwise surface once per query, as a scatter of
+ * identical errors, instead of one explainable state. Polls only while a
+ * takeover is running — the observation window is minutes long by design.
+ */
+export function useLibraryOwnership(libraryId: string | null) {
+  return useQuery({
+    queryKey: ['library-ownership', libraryId],
+    queryFn: ({ signal }) => fetchLibraryOwnership(libraryId!, signal),
+    enabled: libraryId !== null,
+    refetchInterval: (query) => (query.state.data?.takeover?.running ? 2000 : false),
+  })
+}
+
+export function useStartTakeover(libraryId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => startLibraryTakeover(libraryId!),
+    onSuccess: (ownership) => {
+      // Seed the polling query with the 202 response so the dialog shows
+      // "running" immediately rather than after the next poll.
+      qc.setQueryData(['library-ownership', libraryId], ownership)
+    },
   })
 }
 
