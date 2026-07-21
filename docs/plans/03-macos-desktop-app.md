@@ -203,9 +203,10 @@ handoff:
   drag pasteboard so Finder/other apps receive them. **Implemented (D4)** on
   the File Browser cards/rows, the opened bundle album tiles, the File
   inspector, and the bundle inspector — where the cover drags the whole bundle
-  and each "Files in bundle" row drags that file. Only offered when the library
-  is mapped and files are available; bundle grid cards keep their existing
-  in-window reorder / move-to-collection drag and are not drag-out sources.
+  and Option-dragging each reorderable "Files in bundle" row drags that file.
+  Only offered when the library is mapped and files are available; bundle grid
+  cards keep their existing in-window reorder / move-to-collection drag and are
+  not drag-out sources.
   Implementation note: the shell depends on the **`drag` crate directly** (the
   engine behind `tauri-plugin-drag`) rather than the plugin, because the
   plugin's only surface is a JS command that takes absolute paths — which would

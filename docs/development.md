@@ -118,7 +118,8 @@ command or an unchecked opener call.
 
 The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
 tile, the File inspector, or the bundle inspector — its cover drags the whole
-bundle, its file rows drag one file — out to Finder while the library is mapped;
+bundle, while Option-dragging one of its reorderable file rows drags that file —
+out to Finder while the library is mapped;
 `dragout.rs` validates each path exactly like reveal/open and starts the native
 drag through the `drag` crate. Dropping files from Finder that land inside the
 mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are

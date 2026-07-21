@@ -10,6 +10,11 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Bundle file order now uses direct row dragging instead of arrow buttons.**
+  Drag a file card to the gap where it should play, or focus it and press
+  Option+Up/Down for keyboard reordering. In the mapped desktop app,
+  Option-drag retains the existing copy-out-to-Finder gesture.
+
 - **Renamed files on SMB/network libraries can be relinked after scan identity
   repair misses them.** Missing Files now includes stale provisional rows and
   offers a compact relink action when exactly one live, already-linked file has
