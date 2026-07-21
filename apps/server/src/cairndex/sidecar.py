@@ -146,7 +146,17 @@ def main(argv: list[str] | None = None) -> int:
         # importing it here keeps resolution in ordinary Python.
         from cairndex.main import app
 
-        config = uvicorn.Config(app, log_level="warning", access_log=False)
+        # `timeout_graceful_shutdown` bounds how long uvicorn waits for open
+        # connections after a stop is requested; its default is *unbounded*. The
+        # shell gives a stopping sidecar 15 seconds before falling back to kill
+        # (`SHUTDOWN_GRACE` in apps/desktop/src-tauri/src/sidecar.rs), and the
+        # kill path is exactly what strands ownership leases — so one connection
+        # held open at quit (an in-flight stream, a stalled relay read) must not
+        # be able to eat the whole grace. 10 s keeps the graceful path, lifespan
+        # shutdown and lease release included, inside the shell's budget.
+        config = uvicorn.Config(
+            app, log_level="warning", access_log=False, timeout_graceful_shutdown=10
+        )
         server = uvicorn.Server(config)
         if args.watch_parent:
             watch_parent(server)
