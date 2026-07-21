@@ -119,6 +119,15 @@ class GroupingSource(StrEnum):
     IMPORT = "import"
 
 
+# Controls how aggressively filename stems combine files within one directory
+class StemMode(StrEnum):
+    """Sensitivity used by grouping-plan stem matching."""
+
+    NARROW = "narrow"
+    BALANCED = "balanced"
+    WIDE = "wide"
+
+
 class ProposalKind(StrEnum):
     """Whether a grouping proposal makes a bundle or a logical container (ADR-0009).
 

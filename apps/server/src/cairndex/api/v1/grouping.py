@@ -13,6 +13,7 @@ from cairndex.api.schemas.grouping import (
     ApplyConflictRead,
     ApplyPlanRequest,
     ApplyResultRead,
+    PlanGenerateRequest,
     PlanRead,
     PlanSummary,
     ProposalDestinationUpdate,
@@ -39,14 +40,14 @@ def _summary(plan: object) -> PlanSummary:
 
 
 @router.post("/plans", response_model=PlanRead, status_code=status.HTTP_201_CREATED)
-def generate_plan(db: LibrarySession) -> PlanRead:
+def generate_plan(db: LibrarySession, payload: PlanGenerateRequest | None = None) -> PlanRead:
     """Suggest a grouping for the current library and store it as the active
     plan (superseding any earlier open plan).
 
     Manual and scan-triggered generation share the same durable boundary:
     confirmed bundles stay settled regardless of collection membership, while
     still-unbundled files and new additions remain eligible."""
-    plan = plan_store.generate_plan(db)
+    plan = plan_store.generate_plan(db, stem_modes=payload.stem_modes if payload else None)
     return PlanRead.model_validate(plan)
 
 

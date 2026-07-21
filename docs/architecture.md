@@ -418,8 +418,14 @@ Grouping behavior:
 - the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
   reasons, parent links, and a stable video → audio → image → remaining-files
   order (natural path order within each group);
-- multi-video directories pair sidecars by unique normalized full video stem or
-  full-stem suffix before falling back to a unique leading subject prefix;
+- multi-video directories are partitioned by normalized filename stem before
+  matching each candidate against confirmed bundles in the same directory;
+  balanced matching folds conservative trailing rendition labels, while narrow
+  and wide per-directory modes respectively retain literal stems or use a
+  broader subject/source prefix;
+- grouping plans persist those per-directory stem modes, and the review controls
+  regenerate a complete superseding snapshot while seeding the returned plan
+  directly into the client cache;
 - grouping review persists file drag-and-drop within or across bundle proposals,
   bundle reparenting into suggested collections, and bundle/collection title
   edits before apply; reviewed file sequence becomes playlist order;
@@ -436,9 +442,10 @@ Grouping behavior:
 - explicitly edited proposals retain their original bundle identity while
   confirmed bundles remain outside every grouping-regeneration candidate set;
 - subject-prefix matching can group videos with sidecars/covers in mixed folders;
-- confirmed bundles are excluded from re-grouping; new files in confirmed-owned
-  directories are proposed as additions, while an explicit new-bundle override
-  applies those files separately and leaves the confirmed target untouched;
+- confirmed bundles are excluded from re-grouping; each new filename-stem group
+  in their directory is proposed against a unique matching owner (with a narrow
+  directory-only fallback), while an explicit new-bundle override applies those
+  files separately and leaves the confirmed target untouched;
 - applying a plan is the only step that confirms scan-staged bundles, creates
   suggested collections, assigns roles, selects a cover, and links external
   subtitles;

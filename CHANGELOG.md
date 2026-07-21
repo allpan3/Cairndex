@@ -336,6 +336,16 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Grouping suggestions respect multiple bundle stems in one directory.** The
+  suggester now partitions fresh files by stem before matching each group to a
+  confirmed bundle, so one confirmed owner no longer absorbs every new video in
+  its directory. Balanced matching folds trailing rendition labels such as
+  `- 720p`, allowing a version to target an otherwise-identical existing bundle
+  and expose the reversible existing/new destination control. Grouping review
+  adds persisted per-directory Narrow/Balanced/Widen controls, and regenerated
+  plans are seeded into the query cache immediately so **Suggest grouping** no
+  longer flashes or remains as an empty suggestion list while candidates exist.
+
 - **D4 review hardening (Plan 3).** Dragging a folder or a non-media sidecar in
   from Finder alongside media no longer aborts the whole add: the reverse-map maps
   only regular files (directories count outside) and the manual-bundling apply

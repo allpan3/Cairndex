@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { type GroupingProposal, setActiveLibraryId } from '../api/client'
@@ -104,16 +104,22 @@ const ADDITION: GroupingProposal = {
 function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
   let proposals = structuredClone(initialProposals)
   let planId = 'plan1'
+  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
   return vi.fn((url: string, init?: RequestInit) => {
     let body: unknown
     if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
       planId = 'plan2'
-      proposals = []
+      stemModes = (
+        JSON.parse(init.body as string) as {
+          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
+        }
+      ).stem_modes
       body = {
         id: planId,
         status: 'open',
-        rule_version: 2,
+        rule_version: 5,
         scan_job_id: null,
+        stem_modes: stemModes,
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
         proposals,
@@ -123,7 +129,7 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
         {
           id: planId,
           status: 'open',
-          rule_version: 2,
+          rule_version: 5,
           generated_at: '2026-07-13T00:00:00Z',
           applied_at: null,
           proposal_count: proposals.length,
@@ -133,8 +139,9 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
       body = {
         id: planId,
         status: 'open',
-        rule_version: 2,
+        rule_version: 5,
         scan_job_id: 'job1',
+        stem_modes: stemModes,
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals,
@@ -402,7 +409,7 @@ test('disables destination actions while saving and surfaces a switch error', as
   expect(screen.getByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
 })
 
-test('regenerating suggestions replaces the open plan without showing settled bundles', async () => {
+test('regenerating suggestions keeps returned candidates visible immediately', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
@@ -410,13 +417,67 @@ test('regenerating suggestions replaces the open plan without showing settled bu
   await screen.findByText('SRCV-005 - cut')
   fireEvent.click(screen.getByRole('button', { name: 'Suggest grouping' }))
 
-  await screen.findByText('Nothing to group — there are no unbundled files awaiting suggestions.')
-  expect(screen.queryByText('SRCV-005 - cut')).not.toBeInTheDocument()
+  await screen.findByText('Suggestions generated from the current library state.')
+  expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
+  expect(
+    screen.queryByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
+  ).not.toBeInTheDocument()
   expect(
     fetchMock.mock.calls.some(
       ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
     ),
   ).toBe(true)
+})
+
+test('widens one folder and preserves that mode in the regenerated plan', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const widen = await screen.findByRole('button', {
+    name: 'Widen stem matching in SRCV-005',
+  })
+  fireEvent.click(widen)
+
+  await screen.findByText('SRCV-005 now uses wide stem matching.')
+  expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Widen stem matching in SRCV-005' })).toBeDisabled()
+  const post = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+  )
+  expect(post?.[1]).toMatchObject({
+    body: JSON.stringify({ stem_modes: { 'SRCV-005': 'wide' } }),
+  })
+})
+
+test('places a folder stem control on the deepest matching container row', async () => {
+  const outer: GroupingProposal = { ...PROPOSALS[0]!, title: 'Western', directory: 'Western' }
+  const inner: GroupingProposal = {
+    ...PROPOSALS[0]!,
+    id: 'collection2',
+    title: 'Nora Vance',
+    directory: 'Western/Nora Vance',
+    parent_proposal_id: outer.id,
+  }
+  const bundle: GroupingProposal = {
+    ...PROPOSALS[1]!,
+    directory: 'Western/Nora Vance',
+    parent_proposal_id: inner.id,
+  }
+  vi.stubGlobal('fetch', mockGroupingApi([outer, inner, bundle]))
+  renderReview()
+
+  const outerRow = (
+    await screen.findByRole('button', { name: 'Rename collection suggestion Western' })
+  ).closest('.grp-row') as HTMLElement
+  const innerRow = screen
+    .getByRole('button', { name: 'Rename collection suggestion Nora Vance' })
+    .closest('.grp-row') as HTMLElement
+
+  expect(
+    within(outerRow).queryByLabelText('Stem matching for Western/Nora Vance'),
+  ).not.toBeInTheDocument()
+  expect(within(innerRow).getByLabelText('Stem matching for Western/Nora Vance')).toBeVisible()
 })
 
 test('Escape cancels a bundle suggestion rename', async () => {

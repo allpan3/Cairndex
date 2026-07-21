@@ -68,6 +68,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Reversible destination for new files suggested into a confirmed bundle
     ("grouping_proposals", "target_bundle_title", "VARCHAR(1024)"),
     ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Per-directory heuristic overrides retained by each durable grouping snapshot
+    ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
 )
 
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress", "bundle_cursors")
