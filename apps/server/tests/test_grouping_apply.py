@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, GroupingPlanStatus, GroupingState
+from cairndex.domain.enums import FileAvailability, FileRole, GroupingPlanStatus, GroupingState
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
 from cairndex.persistence.models import (
@@ -181,6 +181,28 @@ def test_apply_reports_missing_files_as_conflict(session: Session, library_root:
     # The remaining video+poster still group; the vanished srt is a localized note.
     assert result.bundles_confirmed == 1
     assert any("no longer exist" in c.reason for c in result.conflicts)
+
+
+# A stale plan fails closed after scan marks one of its files missing
+def test_apply_reports_file_marked_missing_as_conflict(
+    session: Session, library_root: Path
+) -> None:
+    from cairndex.scanning.scanner import scan_library
+
+    _make_movie_folder(library_root)
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+
+    srt = session.scalars(
+        select(AssetFile).where(AssetFile.relative_path == "Cosmos/cosmos.en.srt")
+    ).one()
+    srt.availability = FileAvailability.MISSING
+    session.flush()
+
+    result = apply_service.apply_plan(session, plan)
+
+    assert result.bundles_confirmed == 1
+    assert any("no longer exist" in conflict.reason for conflict in result.conflicts)
 
 
 def test_generating_a_plan_supersedes_the_previous_open_one(

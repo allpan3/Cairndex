@@ -7,6 +7,7 @@ already-confirmed bundle that the suggester must leave alone.
 
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import (
@@ -388,6 +389,29 @@ def test_suggest_for_session_over_a_scanned_movie_folder(
         FileRole.COVER,
         FileRole.SUBTITLE,
     }
+
+
+# Missing rows stay repairable without entering fresh grouping proposals
+def test_suggest_for_session_excludes_files_marked_missing(
+    session: Session, library_root: Path
+) -> None:
+    present = library_root / "present.mp4"
+    stale = library_root / "stale.mp4"
+    present.write_text("video")
+    stale.write_text("video")
+    scan_library(session, library_root)
+    stale.unlink()
+    scan_library(session, library_root)
+
+    plan = suggest_for_session(session)
+    path_by_id = dict(session.execute(select(AssetFile.id, AssetFile.relative_path)).all())
+    suggested_paths = {
+        path_by_id[file.asset_file_id]
+        for proposal in _bundles(plan.proposals)
+        for file in proposal.files
+    }
+
+    assert suggested_paths == {"present.mp4"}
 
 
 # Hidden cache files are not grouping candidates
