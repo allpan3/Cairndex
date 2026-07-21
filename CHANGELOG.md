@@ -56,6 +56,15 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Open Library Folder… (Plan 3 D6.4).** A File-menu item (⌘O, a combo the
+  browser reserves and the shell can own) picks a library folder, starts the
+  local server, registers the folder, and switches to it. Deliberately ungated:
+  it works from the first-run screen with no remote server ever configured, which
+  is the milestone's premise. Dismissing the picker changes nothing — no sidecar
+  start, no connection switch. The library to show is handed across the
+  connection switch explicitly rather than through storage, since activation
+  remounts the tree that consumes it.
+
 - **Connections model in the desktop shell (Plan 3 D6.4).** The shell now holds a
   set of connections — remote servers plus one managed local server — with
   exactly one active at a time, replacing its single stored server URL. An
