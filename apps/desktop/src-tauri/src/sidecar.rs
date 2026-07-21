@@ -30,8 +30,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime};
+
+use crate::mappings::{self, MappingError};
 
 // The line the sidecar prints once it is listening. Contract with
 // `cairndex.sidecar`; keep the two in step.
@@ -56,6 +58,7 @@ pub(crate) enum SidecarErrorCode {
     StartupFailed,
     DataDirUnavailable,
     TokenGenerationFailed,
+    OpenFailed,
 }
 
 #[derive(Debug, Serialize)]
@@ -70,6 +73,12 @@ impl SidecarError {
             code,
             message: message.into(),
         }
+    }
+
+    // Folder-picker rejections keep the mapping layer's own wording, which is
+    // already path-free and already has web-side copy for each code.
+    fn from_mapping(error: MappingError) -> Self {
+        Self::new(SidecarErrorCode::OpenFailed, error.into_message())
     }
 }
 
@@ -104,7 +113,7 @@ pub(crate) struct LocalServer {
 }
 
 impl LocalServer {
-    fn info(&self) -> Option<LocalServerInfo> {
+    pub(crate) fn info(&self) -> Option<LocalServerInfo> {
         self.running
             .lock()
             .ok()
@@ -392,6 +401,126 @@ pub(crate) async fn stop_local_server<R: Runtime>(app: AppHandle<R>) -> Result<(
     Ok(())
 }
 
+/// A library opened through the local server. Ids only — no filesystem path.
+#[derive(Debug, Serialize)]
+pub(crate) struct OpenedLibrary {
+    pub(crate) library_id: String,
+    pub(crate) library_uuid: String,
+    /// `None` when the manifest omits a name; the caller picks its own fallback.
+    pub(crate) display_name: Option<String>,
+}
+
+/// Pick a library folder and open it through the local server (plan 3 D6).
+///
+/// Deliberately one command rather than a pick step plus a register step. The
+/// absolute path never crosses into the web layer: the shell picks it,
+/// validates it, and sends it to the sidecar whose address it reads from its
+/// *own* state — so "could this path reach a remote server?" is not a discipline
+/// to audit but a thing that cannot happen. The web layer receives ids.
+///
+/// `Ok(None)` means the user cancelled the picker.
+#[tauri::command]
+pub(crate) async fn open_library_folder<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<OpenedLibrary>, SidecarError> {
+    // The dialog must be driven from the caller's thread, as the other pickers
+    // in this shell already are; everything after it can block.
+    let picked = mappings::pick_library_folder(&app).map_err(SidecarError::from_mapping)?;
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<LocalServer>();
+        let info = start_once(&state, || {
+            let binary = binary_path(&app)?;
+            let data = data_dir(&app)?;
+            launch(&binary, &data)
+        })?;
+        let library_id = register_library(&info, &picked.root)?;
+        Ok(Some(OpenedLibrary {
+            library_id,
+            library_uuid: picked.library_uuid,
+            display_name: picked.display_name,
+        }))
+    })
+    .await
+    .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?
+}
+
+/// Register a folder with the sidecar, or return the id it already has.
+///
+/// Looks up by portable uuid before registering, because re-opening a folder
+/// already known to this sidecar is the ordinary case — a plain register would
+/// answer 409 for it. Lookup-then-create rather than create-then-recover keeps
+/// the common path to one predictable outcome.
+fn register_library(info: &LocalServerInfo, root: &Path) -> Result<String, SidecarError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+
+    let existing: Vec<LibraryRow> = client
+        .get(format!("{}/api/v1/libraries", info.base_url))
+        .bearer_auth(&info.token)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .and_then(|response| response.json())
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+
+    let manifest_uuid = read_uuid(root);
+    if let Some(found) = manifest_uuid
+        .as_deref()
+        .and_then(|uuid| existing.into_iter().find(|row| row.library_uuid == uuid))
+    {
+        return Ok(found.id);
+    }
+
+    let response = client
+        .post(format!("{}/api/v1/libraries/register", info.base_url))
+        .bearer_auth(&info.token)
+        .json(&serde_json::json!({ "root_path": root }))
+        .send()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+
+    if !response.status().is_success() {
+        // Surface the server's own structured message; it is the one that knows
+        // why (not a library, missing library.db, unreadable manifest).
+        let detail = response
+            .json::<ServerError>()
+            .map(|body| body.message)
+            .unwrap_or_else(|_| "The local server could not open this folder.".to_string());
+        return Err(SidecarError::new(SidecarErrorCode::OpenFailed, detail));
+    }
+
+    response
+        .json::<LibraryRow>()
+        .map(|row| row.id)
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))
+}
+
+// Reads the portable uuid again on the blocking thread, so the lookup compares
+// against what is on disk right now rather than a value captured earlier.
+fn read_uuid(root: &Path) -> Option<String> {
+    let raw = std::fs::read(root.join(".cairndex").join("manifest.json")).ok()?;
+    let parsed: serde_json::Value = serde_json::from_slice(&raw).ok()?;
+    parsed
+        .get("library_uuid")
+        .and_then(|value| value.as_str())
+        .map(str::to_owned)
+}
+
+#[derive(Deserialize)]
+struct LibraryRow {
+    id: String,
+    library_uuid: String,
+}
+
+#[derive(Deserialize)]
+struct ServerError {
+    message: String,
+}
+
 /// Report the running local server, if any, without starting one.
 #[tauri::command]
 pub(crate) fn local_server_status<R: Runtime>(app: AppHandle<R>) -> Option<LocalServerInfo> {
@@ -550,6 +679,96 @@ mod tests {
             terminate(&mut running.child);
         }
         let _ = std::fs::remove_dir_all(&workdir);
+    }
+
+    #[test]
+    fn opening_a_folder_registers_it_and_reopening_finds_the_same_library() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let work = std::env::temp_dir().join(format!("cairndex-open-test-{}", std::process::id()));
+        let data = work.join("data");
+        let library = work.join("library");
+        std::fs::create_dir_all(&data).expect("data dir");
+        std::fs::create_dir_all(&library).expect("library dir");
+
+        let (mut child, info) = launch(&binary, &data).expect("launch");
+
+        // Create a real library through the sidecar so the folder on disk is one
+        // `register_library` can legitimately find.
+        let client = reqwest::blocking::Client::new();
+        let created: serde_json::Value = client
+            .post(format!("{}/api/v1/libraries/create", info.base_url))
+            .bearer_auth(&info.token)
+            .json(&serde_json::json!({
+                "root_path": library.to_str().unwrap(),
+                "display_name": "Opened",
+            }))
+            .send()
+            .expect("create")
+            .json()
+            .expect("created json");
+        let created_id = created["id"].as_str().expect("id").to_string();
+
+        // The flow's own step: an already-registered folder must resolve to the
+        // library it already is, not fail the way a bare register would.
+        let found = register_library(&info, &library).expect("register existing");
+        assert_eq!(found, created_id);
+
+        // And a folder the sidecar has never seen registers fresh.
+        let second = work.join("second");
+        std::fs::create_dir_all(&second).expect("second dir");
+        let second_created: serde_json::Value = client
+            .post(format!("{}/api/v1/libraries/create", info.base_url))
+            .bearer_auth(&info.token)
+            .json(&serde_json::json!({
+                "root_path": second.to_str().unwrap(),
+                "display_name": "Second",
+            }))
+            .send()
+            .expect("create second")
+            .json()
+            .expect("second json");
+        assert_ne!(
+            second_created["id"].as_str().unwrap(),
+            created_id,
+            "the two libraries must be distinct"
+        );
+        assert_eq!(
+            register_library(&info, &second).expect("register second"),
+            second_created["id"].as_str().unwrap()
+        );
+
+        terminate(&mut child);
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn opening_a_folder_that_is_not_a_library_reports_the_servers_reason() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let work = std::env::temp_dir().join(format!("cairndex-open-fail-{}", std::process::id()));
+        let data = work.join("data");
+        let plain = work.join("not-a-library");
+        std::fs::create_dir_all(&data).expect("data dir");
+        std::fs::create_dir_all(&plain).expect("plain dir");
+
+        let (mut child, info) = launch(&binary, &data).expect("launch");
+
+        let error = register_library(&info, &plain).expect_err("should refuse a plain folder");
+        // The server's own wording, not a generic shell message: it is the layer
+        // that knows *why* (no marker, missing library.db, bad manifest).
+        assert!(
+            error.message.contains("Cairndex library") || error.message.contains("marker"),
+            "unhelpful message: {}",
+            error.message
+        );
+
+        terminate(&mut child);
+        let _ = std::fs::remove_dir_all(&work);
     }
 
     #[test]
