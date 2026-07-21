@@ -23,6 +23,7 @@ Run as ``cairndex-sidecar`` (the PyInstaller entry point, ADR-0019 §2) or as
 
 import argparse
 import contextlib
+import os
 import socket
 import sys
 import threading
@@ -34,6 +35,8 @@ import uvicorn
 # deliberately a single greppable token rather than JSON so a partial line can
 # never be half-parsed as valid.
 PORT_ANNOUNCE_PREFIX = "CAIRNDEX_SIDECAR_PORT="
+# Read directly, never through ``sys.stdin`` — see ``watch_parent``.
+STDIN_FD = 0
 HOST = "127.0.0.1"
 
 
@@ -89,10 +92,25 @@ def watch_parent(server: uvicorn.Server) -> None:
 
     def wait_for_eof() -> None:
         with contextlib.suppress(Exception):
-            # Returns b"" only at EOF. The shell never writes to this pipe, so
-            # anything it did send is deliberately ignored — the close is the
-            # whole message.
-            sys.stdin.buffer.read()
+            # Reads the raw fd rather than ``sys.stdin.buffer``. That is not a
+            # style choice: a thread blocked inside the BufferedReader holds its
+            # lock, and if the interpreter then finalizes for any other reason —
+            # a SIGINT, say — CPython tries to close stdin, cannot take the
+            # lock, and calls ``abort()``:
+            #
+            #   Fatal Python error: _enter_buffered_busy: could not acquire lock
+            #   for <_io.BufferedReader name='<stdin>'> at interpreter shutdown,
+            #   possibly due to daemon threads
+            #
+            # That abort skips the lifespan shutdown, so the ownership lease is
+            # never released — leaving precisely the stale lease and takeover
+            # prompt this design exists to avoid. ``os.read`` touches no Python
+            # buffer object and has no such lock. Found by a real crash report
+            # from the packaged build.
+            while os.read(STDIN_FD, 4096):
+                # The shell never writes here; anything it did send is ignored,
+                # because the *close* is the whole message.
+                pass
         server.should_exit = True
 
     threading.Thread(target=wait_for_eof, name="cairndex-parent-watch", daemon=True).start()
