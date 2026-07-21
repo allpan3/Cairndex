@@ -207,14 +207,16 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       invoke<{ base_url: string; token: string } | null>('local_server_status').then((info) =>
         info ? { baseUrl: info.base_url, token: info.token } : null,
       ),
-    openLibraryFolder: () =>
+    openLibraryFolder: (knownLibraryUuids) =>
       invoke<{
+        already_available: boolean
         library_id: string
         library_uuid: string
         display_name: string | null
-      } | null>('open_library_folder').then((opened) =>
+      } | null>('open_library_folder', { knownLibraryUuids }).then((opened) =>
         opened
           ? {
+              alreadyAvailable: opened.already_available,
               libraryId: opened.library_id,
               libraryUuid: opened.library_uuid,
               displayName: opened.display_name,

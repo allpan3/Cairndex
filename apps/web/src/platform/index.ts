@@ -54,8 +54,16 @@ export interface LocalServerInfo {
   token: string
 }
 
-/** A library opened through the local server. Ids only — never a path. */
+/** The outcome of picking a library folder. Ids only — never a path. */
 export interface OpenedLibrary {
+  /**
+   * True when the caller's *current* server already has this library, so no
+   * local server was started. Opening it locally would register a second server
+   * against the same folder, which the ownership lease then refuses — the user
+   * ends up told their library is "open on <their own machine>".
+   */
+  alreadyAvailable: boolean
+  /** Empty when `alreadyAvailable`: ids are per-registry, so ours would be wrong. */
   libraryId: string
   libraryUuid: string
   displayName: string | null
@@ -113,7 +121,7 @@ interface PlatformRuntime {
   configureServer(serverUrl: string, options?: { localToken?: string | null }): Promise<void>
   startLocalServer(): Promise<LocalServerInfo>
   localServerStatus(): Promise<LocalServerInfo | null>
-  openLibraryFolder(): Promise<OpenedLibrary | null>
+  openLibraryFolder(knownLibraryUuids: string[]): Promise<OpenedLibrary | null>
   loadConnections(): Promise<StoredConnections | null>
   saveConnections(value: StoredConnections): Promise<void>
   hasDeviceToken(): boolean
@@ -306,9 +314,11 @@ export const startHostLocalServer = (): Promise<LocalServerInfo> => runtime.star
 export const hostLocalServerStatus = (): Promise<LocalServerInfo | null> =>
   runtime.localServerStatus()
 
-// Picks a library folder and opens it through the local server, returning ids only
-export const openHostLibraryFolder = (): Promise<OpenedLibrary | null> =>
-  runtime.openLibraryFolder()
+// Picks a library folder and opens it through the local server, returning ids only.
+// `knownLibraryUuids` are the portable ids the caller's current server already
+// serves, so a folder it already has is reported rather than opened twice.
+export const openHostLibraryFolder = (knownLibraryUuids: string[]): Promise<OpenedLibrary | null> =>
+  runtime.openLibraryFolder(knownLibraryUuids)
 
 export const loadHostConnections = (): Promise<StoredConnections | null> =>
   runtime.loadConnections()
