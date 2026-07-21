@@ -12,7 +12,7 @@ import os
 import secrets
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
@@ -131,12 +131,23 @@ def new_nonce() -> str:
 
 
 def _parse_dt(raw: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp, treating a missing offset as UTC.
+
+    The format is documented as ISO-8601 UTC, but this file is plain JSON that
+    people legitimately read and edit by hand, and "2026-07-20T12:00:00" is the
+    obvious thing to type. Left naive it would poison every comparison against
+    an aware ``now`` with ``TypeError: can't subtract offset-naive and
+    offset-aware datetimes`` — which the heartbeat's never-die guard would
+    swallow, leaving the library silently held instead of unmounting. Assuming
+    UTC matches both the documented format and what a person editing it means.
+    """
     if not isinstance(raw, str) or not raw:
         return None
     try:
-        return datetime.fromisoformat(raw)
+        parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def parse_lease(raw: str) -> LeaseRecord | None:

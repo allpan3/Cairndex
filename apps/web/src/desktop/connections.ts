@@ -296,8 +296,26 @@ export async function connectToServer(serverUrl: string): Promise<void> {
  */
 const pendingSelection = new Map<string, string>()
 
+/**
+ * Bumped on every queue so subscribers re-check.
+ *
+ * The remount alone is not enough: re-opening a folder on the connection that
+ * is *already* active leaves `activeConnectionId` unchanged, so nothing
+ * remounts and an effect keyed only on that id never re-runs — the second open
+ * of an already-registered library would appear to do nothing at all
+ * (owner-reported). This version is what makes the queue observable in its own
+ * right.
+ */
+let pendingVersion = 0
+
+export function getPendingSelectionVersion(): number {
+  return pendingVersion
+}
+
 export function setPendingLibrarySelection(connectionId: string, libraryId: string): void {
   pendingSelection.set(connectionId, libraryId)
+  pendingVersion += 1
+  notify()
 }
 
 /** Take the pending selection for a connection, if one is waiting. */
@@ -314,4 +332,5 @@ export function resetConnectionsForTests(): void {
   listeners = new Set()
   inFlight = null
   pendingSelection.clear()
+  pendingVersion = 0
 }
