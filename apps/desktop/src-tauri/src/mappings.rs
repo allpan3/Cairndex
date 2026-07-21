@@ -39,6 +39,11 @@ pub(crate) struct MappingError {
 }
 
 impl MappingError {
+    // Hands the user-facing text to another module's error type
+    pub(crate) fn into_message(self) -> String {
+        self.message
+    }
+
     // Builds one structured rejection without exposing local filesystem paths
     fn new(code: MappingErrorCode, message: impl Into<String>) -> Self {
         Self {
@@ -371,28 +376,32 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
     .map_err(|_| MappingError::store_task_failed())?
 }
 
-/// A library folder the user picked, for opening through the local server.
-#[derive(Debug, Serialize)]
-pub(crate) struct PickedLibrary {
-    /// Canonical absolute path. Safe to hand to the *local* server: it came from
-    /// the OS picker rather than from the web layer, and the server it is sent to
-    /// is one this shell spawned on this machine. The §5 rule that the web layer
-    /// never supplies absolute paths is unaffected — the web layer receives this
-    /// and passes it straight back, it does not invent one.
-    pub(crate) path: String,
+/// A library folder the user picked, resolved but **not** exposed to the web.
+///
+/// The absolute path stays inside the shell. Handing it to the web layer would
+/// invert plan 3 §5 in the direction that actually matters: `reverse_map_paths`
+/// only echoes paths the web already supplied, whereas this one the shell
+/// *originates*. Once it were in web state nothing could bound where it went —
+/// a connection switch between pick and submit, a query cache, an error toast
+/// printing a request body. `sidecar::open_library_folder` consumes this
+/// in-process instead, so the web layer only ever sees ids.
+pub(crate) struct PickedFolder {
+    pub(crate) root: PathBuf,
     pub(crate) library_uuid: String,
-    pub(crate) display_name: String,
+    /// `None` when the manifest omits it, so the caller can choose its own
+    /// fallback (the folder basename) rather than being handed an empty string
+    /// that has to be tested for.
+    pub(crate) display_name: Option<String>,
 }
 
-/// Pick an existing Cairndex library folder on this machine (plan 3 D6).
+/// Prompt for an existing Cairndex library folder on this machine (plan 3 D6).
 ///
-/// Unlike `locate_library_mapping`, no library is known yet — this *discovers*
+/// Unlike `validate_library_root` no library is known yet — this *discovers*
 /// one, so the manifest supplies the identity rather than being checked against
-/// an expected one. Returns `None` when the user cancels, which is not an error.
-#[tauri::command]
-pub(crate) async fn pick_library_folder<R: Runtime>(
-    app: AppHandle<R>,
-) -> Result<Option<PickedLibrary>, MappingError> {
+/// an expected one. `Ok(None)` means the user cancelled, which is not an error.
+pub(crate) fn pick_library_folder<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Option<PickedFolder>, MappingError> {
     let Some(selected) = app
         .dialog()
         .file()
@@ -407,30 +416,14 @@ pub(crate) async fn pick_library_folder<R: Runtime>(
             "The selected library folder is not a local filesystem path.",
         )
     })?;
-
-    // Canonicalizing and reading the manifest can both touch a slow or offline
-    // mount, so keep them off the IPC thread (the D3 review's async rule).
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = canonicalize_root(&selected)?;
-        let manifest = read_library_manifest(&root)?;
-        validate_library_uuid(&manifest.library_uuid)?;
-        let path = root
-            .to_str()
-            .ok_or_else(|| {
-                MappingError::new(
-                    MappingErrorCode::InvalidLibraryRoot,
-                    "The selected library folder uses an unsupported path encoding.",
-                )
-            })?
-            .to_owned();
-        Ok(Some(PickedLibrary {
-            path,
-            library_uuid: manifest.library_uuid,
-            display_name: manifest.display_name.unwrap_or_default(),
-        }))
-    })
-    .await
-    .map_err(|_| MappingError::host_action_failed())?
+    let root = canonicalize_root(&selected)?;
+    let manifest = read_library_manifest(&root)?;
+    validate_library_uuid(&manifest.library_uuid)?;
+    Ok(Some(PickedFolder {
+        root,
+        library_uuid: manifest.library_uuid,
+        display_name: manifest.display_name,
+    }))
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map
