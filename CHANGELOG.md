@@ -8,7 +8,247 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Relaunching while the local connection is active reopens into it** instead
+  of the first-run "Connect to your server" screen (review, P3). The local
+  connection stores no URL by design — its sidecar port is per process — and
+  the bootstrap read that null as "unconfigured". It now activates the entry
+  (starting the sidecar) and falls back to setup only if that fails, with the
+  shell's own reason shown. The bootstrap's redundant post-activation probes
+  are gone too: activation verifies reachability itself before committing.
+
+- **The sidecar bounds its graceful shutdown at 10 s** (review, P3). uvicorn's
+  default waits for open connections *indefinitely*, so one connection held
+  open at quit could push the shell past its 15 s grace into the kill fallback
+  — the exact path that strands ownership leases and greets the next launch
+  with a takeover prompt. The bound keeps the lifespan shutdown, lease release
+  included, inside the shell's budget by construction.
+
+- **Connection activation now owns the JSON API base URL** (whole-milestone D6
+  review, P1). The base moved only as a side effect of the reachability probe,
+  so activating the local connection never pointed the app at the sidecar —
+  requests kept going to the previous remote server (or nowhere on first run) —
+  and a *failed* activation left every request pointed at the dead server it
+  had just probed while the UI still showed the old connection. `verifyServer`
+  is now a pure probe, the base moves in activation's commit step for both
+  connection kinds, and the compensation path can restore a *local* previous
+  connection (it used to skip it entirely because local stores no URL). Pinned
+  by a new suite that asserts where requests actually resolve after each
+  activation outcome — the property every earlier test mocked away.
+
+- **A lease heartbeat no longer surrenders over a transient read failure**
+  (review, P2). A failed *write* was already tolerated ("an offline mount is
+  not a lost lease — nobody else can reach it either"), but a failed *read*
+  was folded into "corrupt" and surrendered — unmounting the library and
+  cancelling its jobs over one NFS/SMB blip, then showing a takeover prompt
+  for the user's own healthy library. `read_lease` now distinguishes an I/O
+  error from real corruption; the heartbeat rides out the former (no blind
+  rewrite either) and still surrenders on the latter. Acquisition still treats
+  both as UNREADABLE — "we could not find out" never becomes "nobody holds it".
+
+- **The media relay's scope-flag derivation is now under test** (review, P2).
+  `targets_running_sidecar` — the only guard keeping `server_scoped_token`
+  derived rather than caller-supplied — had zero coverage; any weakening of its
+  URL+token match would have survived the suite and silently reattached a
+  paired device token to libraries it does not grant. Five tests now drive the
+  real function against a real live-checked `LocalServer`, including the two
+  dangerous directions (device token at the sidecar's URL, sidecar token at a
+  remote URL) and a dead sidecar. Verified by mutation.
+
 ### Added
+
+- **Cairndex is MIT licensed** ([`LICENSE`](LICENSE)), ahead of the first public
+  release (ADR-0019 §4). Binary desktop releases additionally bundle static
+  ffmpeg/ffprobe builds, which are GPL-2.0-or-later and carry their own source
+  offer — Cairndex invokes them as separate executables, so its own terms are
+  unaffected. The `LICENSE` file states both.
+
+- **Plan 3 D6 (local-server sidecar) is complete**, verified by an owner pass on
+  the packaged app rather than by tests alone. The desktop app can now open a
+  local library folder with no server to install or configure: it starts a
+  bundled server on demand, and the ownership lease keeps that from colliding
+  with a NAS or another machine serving the same folder.
+
+- **Library ownership lease (ADR-0018 §2–§4).** A library can now be served by
+  exactly one Cairndex server at a time. Each server writes a lease inside the
+  library at `.cairndex/locks/active-owner.json` and refreshes it every minute; a
+  second server pointed at the same folder — over SMB, over NFS, or through a
+  cloud-synced copy — refuses to open it and names the machine that holds it,
+  offering a redirect when that machine advertises a reachable address. This
+  hardens the NAS deployment on its own and is the prerequisite for the plan 3 D6
+  desktop sidecar.
+
+  A clean shutdown releases every lease, so the everyday quit-here / open-there
+  flow never prompts. Only a crash (or a paused sync) leaves a lease to age into
+  staleness, and taking one over **always** requires explicit user confirmation —
+  there is no automatic takeover after any timeout. Before taking a stale lease
+  the server watches it for longer than a heartbeat period, so a holder that is
+  actually alive keeps the library regardless of the confirmation. If this server
+  loses a lease it holds, it stops writing, cancels that library's jobs, and
+  unmounts rather than fighting for it back.
+
+  New endpoints: `GET /api/v1/libraries/{id}/ownership` (readable precisely when
+  the library will not mount) and `POST .../ownership/takeover` (202; the
+  observation window runs in the background). New settings:
+  `CAIRNDEX_MACHINE_NAME`, `CAIRNDEX_ADVERTISED_URL`,
+  `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL`, `CAIRNDEX_LEASE_TTL` — see
+  `docs/deployment.md`, which also documents the one-active-machine semantics for
+  cloud-synced libraries.
+
+- **The desktop shell can now run a local server (Plan 3 D6.3).**
+  `apps/desktop/src-tauri/src/sidecar.rs` spawns the bundled server on demand,
+  waits for it to become healthy, and stops it with the app. The bundle is staged
+  into `Cairndex.app` as a resource. The sidecar announces its own ephemeral
+  loopback port, and the shell generates a fresh 256-bit bearer per start and
+  passes it in the environment rather than argv. Shutdown closes the sidecar's
+  stdin instead of sending a signal — that needs no per-OS branches and, unlike a
+  signal, still works when the shell crashes, so a killed app cannot orphan a
+  process still holding ownership leases. Concurrent `start_local_server` calls
+  are serialized end to end, so a double-invoked mount effect (React StrictMode)
+  cannot leave a caller holding a terminated sidecar's URL and token. New
+  commands: `start_local_server`, `stop_local_server`, `local_server_status`. No
+  UI consumes them yet; that is D6.4/D6.5.
+
+  **Building the desktop crate now requires the sidecar bundle path to exist** —
+  `tauri-build` copies bundle resources at compile time, so `cargo check`,
+  `cargo test`, and `tauri dev` all need either a built bundle or an empty
+  `apps/server/packaging/dist/cairndex-sidecar` directory. See
+  `docs/development.md`.
+
+- **A confirmed takeover now waits ~80 s instead of 120 s, and says so.** The
+  observation window was two full heartbeat intervals; only the *first* carries
+  the guarantee (a takeover starts at an arbitrary point in the holder's cycle,
+  so a whole interval must pass before a live holder is certain to have written).
+  The second was margin for a write that has to propagate through a cloud-sync
+  engine, and is now a separate `CAIRNDEX_LEASE_OBSERVATION_MARGIN` (default
+  20 s) — raise it for a synced library, rather than paying for it on a local
+  disk. The dialog now states the duration, explains why it is that long, and
+  counts down instead of spinning silently for minutes.
+
+- **Fixed: switching connections did not check the server was reachable.** A
+  lease redirect would activate the holder's advertised address without
+  verifying anything answered there, stranding the app on a dead server and
+  persisting it as active — so the next launch opened straight into the error
+  screen. Reachability is now checked before the switch commits, like every
+  other fallible step, and a failure leaves the previous connection untouched.
+
+- **Fixed: opening a folder your current server already serves.** ⌘O started a
+  *second* server against the same folder, which the ownership lease then
+  correctly refused — reporting the library as "open on <your own machine>",
+  since both servers were on it. The shell is now told which libraries the
+  current server already has, and reports a match instead of opening anything;
+  the app just selects the library it already had, by portable `library_uuid`
+  (registry ids differ between servers, so the shell's id would be meaningless).
+
+- **Fixed: re-opening an already-registered library did not switch to it.** The
+  library to show was handed over through a slot consumed on remount, but
+  activating the connection that is *already* active changes no id and remounts
+  nothing, so the second open appeared to do nothing. The queue is now observable
+  in its own right.
+
+- **Fixed: a hand-edited lease timestamp without a timezone was ignored.**
+  `active-owner.json` is plain JSON people legitimately edit, and a naive
+  timestamp raised `TypeError` inside the classifier — swallowed by the
+  heartbeat's never-die guard, so the library stayed silently held instead of
+  unmounting. A missing offset is now read as UTC, matching both the documented
+  format and what someone editing the file means.
+
+- **Fixed: Open Library Folder… did nothing in the running app.** It was handled
+  only in the first-run bootstrap, whose menu listener tears down once the
+  workspace mounts — so the item stayed enabled and inert in the state a user
+  actually spends their time in. Now handled in both, since the item is reachable
+  from both, and a failed open reports the reason instead of failing silently.
+
+- **Fixed: the sidecar aborted at shutdown, leaving its ownership lease held.**
+  `--watch-parent` blocked a daemon thread inside `sys.stdin.buffer.read()`,
+  which holds that reader's lock; if the interpreter then finalized for any other
+  reason (a SIGINT, say) CPython could not close stdin and called `abort()`. The
+  abort skipped the lifespan shutdown, so the lease was never released and the
+  next launch met a takeover prompt it should never have seen. Now reads the raw
+  file descriptor, which takes no such lock. Found from a real crash report while
+  exercising the packaged app.
+
+- **Ownership lease UX (Plan 3 D6.5).** A library another server holds now
+  explains itself instead of failing content queries. Checked once at the mount
+  gate rather than per query, so a refusal is one state and not a scatter of
+  identical errors. Three outcomes: a **live** holder is named and offers
+  "Connect to <machine>" when it advertises a reachable address — never a
+  takeover, since taking a library from a server actively serving it is the
+  dual-writer the lease exists to prevent; a **stale or unreadable** lease offers
+  a confirmed takeover explaining why confirmation is needed; and a takeover in
+  flight shows indeterminate progress with a note that it takes a couple of
+  minutes and that a live holder can still win. The library picker stays visible
+  throughout, so no state strands the user.
+
+- **Open Library Folder… (Plan 3 D6.4).** A File-menu item (⌘O, a combo the
+  browser reserves and the shell can own) picks a library folder, starts the
+  local server, registers the folder, and switches to it. Deliberately ungated:
+  it works from the first-run screen with no remote server ever configured, which
+  is the milestone's premise. Dismissing the picker changes nothing — no sidecar
+  start, no connection switch. The library to show is handed across the
+  connection switch explicitly rather than through storage, since activation
+  remounts the tree that consumes it.
+
+- **Connections model in the desktop shell (Plan 3 D6.4).** The shell now holds a
+  set of connections — remote servers plus one managed local server — with
+  exactly one active at a time, replacing its single stored server URL. An
+  existing configured server migrates into the first remote connection, so a NAS
+  setup sees no first-run change. Activation is all-or-nothing (every fallible
+  step runs before anything user-visible moves, and a failure re-points transport
+  at the previous server) and serialized (a repeat request for the same
+  connection joins the one in flight; a different one is refused rather than
+  queued). The query cache is now scoped per connection by remounting rather than
+  clearing, because library ids are per-server and an in-flight request can
+  otherwise resolve into the new connection's cache. No UI exposes switching yet.
+
+- **Shell support for opening a local library folder (Plan 3 D6.4, in progress).**
+  A `pick_library_folder` command opens the native folder picker and validates the
+  selection as a Cairndex library, returning its canonical path, portable uuid,
+  and display name — the shell-side half of "Open library folder…". The media
+  relay gained an explicit **server-scoped token** mode for the sidecar's loopback
+  owner token, which authorizes a whole server rather than an enumerated set of
+  libraries; a paired device token keeps its fail-closed per-library scoping
+  unchanged. No SPA consumes either yet.
+
+- **Packaged local-server sidecar (Plan 3 D6.2).** `apps/server/packaging` builds
+  the server into a PyInstaller one-dir bundle the desktop shell can spawn, plus
+  `fetch_ffmpeg.py` for pinned, checksum-verified static media binaries and a
+  `smoke_test.py` that runs the *packaged* bundle over HTTP. A new CI job builds
+  and smoke-tests it on every push, because the unit suite imports from source
+  and structurally cannot catch a frozen bundle missing a dynamically resolved
+  import. `cairndex.sidecar` binds an ephemeral loopback port and announces it on
+  stdout, refuses to start without its owner token, and releases its ownership
+  leases on SIGTERM. The static-ffmpeg source is not yet pinned — choosing it is
+  an owner decision (ADR-0019 §3) — so builds currently use `--skip-ffmpeg`.
+
+- **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
+  `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback
+  owner token on every API request (health stays open so the shell can wait for
+  readiness). It replaces the ADR-0015 pairing ceremony, which has nobody to
+  approve it for a process the shell started itself — but deliberately does
+  **not** stand in for a library passphrase the way a paired device token does,
+  since it is minted with no owner approval. `CAIRNDEX_FFMPEG_PATH` /
+  `CAIRNDEX_FFPROBE_PATH` name the media binaries explicitly, and resolution now
+  falls back to conventional install prefixes after `PATH`, because a macOS app
+  launched from Finder inherits launchd's minimal `PATH` and would otherwise
+  report "ffmpeg not found" on a machine that plainly has it. Unset, everything
+  behaves exactly as before.
+
+- **SQLite sync hygiene for synced libraries (ADR-0018 §6).** A library in WAL
+  mode is up to three files on disk, and a cloud-sync engine uploads whatever it
+  happens to find. An idle library is now checkpointed with
+  `wal_checkpoint(TRUNCATE)` so its at-rest state is a complete `library.db` and
+  an empty WAL rather than a triple that can be captured mid-write, and a clean
+  shutdown checkpoints and closes every library before releasing its lease,
+  leaving a single file. A periodic consistent snapshot is written to
+  `.cairndex/library.db.bak` through SQLite's online backup API (temp file then
+  rename) as the heal path if a torn state ever does get shipped — it is a
+  convenience, not a backup, since it travels with the library folder. Both only
+  ever run against libraries this server holds the lease for. Tunable via
+  `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED`, `CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL`,
+  `CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER`, and
+  `CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL`.
 
 - **D5c desktop distribution (Plan 3).** Release builds now produce a **DMG**
   alongside the `.app`, giving drag-to-Applications install ergonomics. The full
@@ -49,7 +289,25 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
-- **Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**
+- **Structured errors may now carry `details`.** `ErrorBody` gains an optional
+  `details` object, used by the ownership-lease refusals to name the holding
+  server so a client can offer a redirect instead of a dead end. It is omitted
+  entirely from every error that does not set it, so existing responses are
+  unchanged. Regenerated `openapi.json` and `schema.d.ts` accordingly.
+
+- **Distribution model: open source with published binaries (ADR-0019,
+  proposed).** Cairndex is going open source and desktop builds will be published
+  through GitHub Releases. This settles the sidecar packaging that ADR-0018 §5
+  left open — **PyInstaller one-dir plus a bundled static ffmpeg/ffprobe** — and
+  reopens three decisions that were justified by "built from source, not
+  distributed": Developer ID signing (required again; the entry below is
+  superseded), the deferred updater, and ffmpeg's GPL source-offer obligations.
+  Choosing a project license and producing multi-arch release artifacts join
+  them. None block plan 3 D6; all block the first public release.
+
+- ~~**Developer ID signing is no longer a v1 requirement (Plan 3 §3 amendment).**~~
+  **Superseded by ADR-0019 §4** — the premise below (single-owner, built from
+  source, not distributed) no longer holds.
   Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs
   at link time, so packaged builds have worked locally since D1 with no
   certificate. The $99/yr Apple Developer Program buys nothing until a build must

@@ -235,6 +235,101 @@ target-OS edge (the GTK-vs-raw window handle) inside `dragout.rs`. Keep all
 Tauri imports in `apps/web/src/platform/desktop.ts`; shared SPA modules consume
 only the platform surface and capability flags.
 
+## Local-server sidecar (`apps/server/packaging`)
+
+The desktop app bundles the Python server so a local library folder opens with
+no server administration (plan 3 D6, ADR-0018 §5). It is packaged with
+PyInstaller one-dir (ADR-0019 §2).
+
+```bash
+cd apps/server
+uv run python packaging/fetch_ffmpeg.py       # pinned static binaries (see below)
+uv run python packaging/build_sidecar.py      # -> packaging/dist/cairndex-sidecar/
+uv run python packaging/smoke_test.py         # runs the bundle and drives it over HTTP
+```
+
+Until `packaging/ffmpeg-manifest.json` is populated, build with `--skip-ffmpeg`;
+the sidecar then falls back to a system ffmpeg through `media/tool_paths.py`,
+which is fine on a developer machine and not fine on a user's.
+
+**Run the smoke test after any dependency change.** The unit suite imports from
+source, where every module is present, so it structurally cannot catch a frozen
+bundle missing a dynamically resolved import — that only surfaces when the code
+path first runs. The smoke test drives the real binary through the paths where
+that actually happens: SQLAlchemy's sqlite dialect, the job worker, Pillow
+thumbnails, a HEIC preview (`media/previews.py` imports `pillow_heif` inside a
+function), and SIGTERM releasing the ownership lease. CI runs it on every push.
+
+`hiddenimports` in `cairndex-sidecar.spec` is **empty, and that was measured**.
+An initial version listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries;
+removing each in turn and re-running the smoke test showed all were redundant
+(PyInstaller ships `hook-PIL.py` and `hook-sqlalchemy.py`). Do not add entries
+speculatively — they make a future genuine gap look already handled. If the
+smoke test ever fails on a missing module, add the entry and name the failure it
+fixes in a comment.
+
+**The desktop crate does not compile without this path.** `tauri.conf.json`
+stages `packaging/dist/cairndex-sidecar` as a bundle resource, and `tauri-build`
+copies resources at **compile** time — so a missing non-glob path fails
+`cargo check`, `cargo test`, and `tauri dev`, not just `tauri build`:
+
+```text
+error: failed to run custom build command for `cairndex-desktop`
+  resource path `../../server/packaging/dist/cairndex-sidecar` doesn't exist
+```
+
+Either build the bundle (`packaging/build_sidecar.py`) or, if you only need the
+Rust to compile, create the directory empty — the resource copier skips empty
+directories, and `binary_path()` then correctly reports `not_bundled` at runtime:
+
+```bash
+mkdir -p apps/server/packaging/dist/cairndex-sidecar
+```
+
+CI does the first in the macOS job and the second in the Ubuntu Rust job, which
+runs no Python.
+
+A **stale empty placeholder is caught at bundling**, not at compile:
+`beforeBuildCommand` runs `check-sidecar-staged.mjs`, which fails `tauri build`
+when the staged directory holds no executable. Without it the build succeeds and
+ships an app whose local server is simply absent — the resource copier skips an
+empty directory silently, and the user meets `not_bundled` much later.
+
+**Sidecar contract with the shell** (`apps/desktop/src-tauri/src/sidecar.rs`):
+
+- The sidecar binds an ephemeral loopback port *itself* and prints
+  `CAIRNDEX_SIDECAR_PORT=<port>` on stdout; the shell parses that line. Binding
+  first and announcing second means the announced port is always live — having
+  the shell pick a free port and pass it down leaves a window for something else
+  to take it.
+- The shell generates a fresh 256-bit token per start and passes it in the
+  **environment**, not argv, since a command line is visible in any process
+  listing. The sidecar refuses to start without it rather than serving an
+  unauthenticated API on a port any local process can reach.
+- **Shutdown is closing the sidecar's stdin, not a signal.** The sidecar runs
+  with `--watch-parent` and stops when that pipe reaches EOF. Two reasons: it
+  needs no target-OS branches (Windows has no SIGTERM, and plan 3 §2.1 exists to
+  avoid such branches), and it still works when the shell never gets to ask. A
+  signal requires a shell alive enough to send it; a crash or `kill -9` sends
+  nothing and would orphan a process still holding ownership leases, which the
+  user meets as a takeover prompt on their next launch. The kernel closes the
+  pipe however the shell dies. Verified: SIGKILLing a parent leaves no orphan and
+  the lease still comes back with `released_at`.
+- The sidecar gets its own `CAIRNDEX_DATA_DIR` under the app's data directory
+  (`local-server/`), kept out of the shell's own store — its registry is
+  invisible plumbing (ADR-0018 §5).
+
+The Rust lifecycle test spawns the real bundle, but only when
+`CAIRNDEX_SIDECAR_BIN` points at one; otherwise it skips, so the desktop gates
+stay runnable without Python. **Set it when running the desktop tests locally**,
+or the test passes without proving anything:
+
+```bash
+cd apps/desktop/src-tauri
+CAIRNDEX_SIDECAR_BIN=$PWD/../../server/packaging/dist/cairndex-sidecar/cairndex-sidecar \
+  cargo test --locked
+```
+
 ## Databases and local state
 
 Cairndex now uses the ADR-0008 per-library model:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
@@ -26,6 +26,8 @@ import {
   useReorderCollections,
   useLibraries,
   useLibraryAuth,
+  useLibraryOwnership,
+  useStartTakeover,
   useLibraryLock,
   useProbe,
   resetLibraryContentQueries,
@@ -80,6 +82,18 @@ import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import {
+  activeConnectionLabel,
+  connectToServer,
+  getConnections,
+  getPendingSelectionVersion,
+  libraryStorageKey,
+  subscribeConnections,
+  takePendingLibrarySelection,
+} from './desktop/connections'
+import { LibraryAccessNotice } from './app/LibraryAccessNotice'
+import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
+import { openLibraryFolder } from './desktop/openLibraryFolder'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import { useJobNotifications } from './desktop/useJobNotifications'
@@ -177,15 +191,21 @@ function Resizer({
 export default function App() {
   const queryClient = useQueryClient()
   const librariesQuery = useLibraries()
-  const [chosenId, setChosenId] = usePersistentState<string | null>('cairndex.libraryId', null)
+  // Keyed per connection: library ids are per-server and not globally unique,
+  // so one shared key could carry a NAS id into the local server (plan 3 §7.1).
+  // In the browser there is one connection forever and the key is the original.
+  const activeConnectionId = useSyncExternalStore(
+    subscribeConnections,
+    () => getConnections().activeConnectionId,
+  )
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
+  const [chosenId, setChosenId] = usePersistentState<string | null>(
+    libraryStorageKey(activeConnectionId),
+    null,
+  )
   const [managing, setManaging] = useState(false)
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
-
-  useDesktopMenu((action) => {
-    if (action === 'settings') setSettingsPage('devices')
-    else if (action === 'pair-device') setSettingsPage('pair')
-  })
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
   const libraryId = useMemo(() => {
@@ -204,6 +224,63 @@ export default function App() {
     },
     [libraryId, queryClient, setChosenId],
   )
+
+  // "Open Library Folder…" is handled *here* as well as in DesktopBootstrap.
+  // The two cover different states and both are real: the bootstrap's listener
+  // tears down once the workspace mounts (`if (ready) return`), so handling it
+  // only there left the item dead in the running app — which is where a user
+  // spends all their time. The menu item is enabled in both states, so both
+  // must listen. (Declared after `libraries`/`changeLibrary` so the closure
+  // reads initialized bindings — the ref-based hook already delivers the
+  // latest render's handler, so this is ordering hygiene, not a behavior fix.)
+  useDesktopMenu((action) => {
+    if (action === 'settings') setSettingsPage('devices')
+    else if (action === 'pair-device') setSettingsPage('pair')
+    else if (action === 'open-library-folder') {
+      setOpenFolderError(null)
+      // Tell the shell which libraries this server already serves, so picking a
+      // folder it already has selects it here instead of starting a second
+      // server against the same folder — which the lease would then refuse.
+      void openLibraryFolder(libraries.map((library) => library.library_uuid).filter(Boolean))
+        .then((result) => {
+          // Confirm the action rather than leaving it silent. A folder opens on
+          // the *local* server, which is a different server from any remote one
+          // with its own library list — so "nothing appeared to happen" and
+          // "it opened somewhere you were not looking" are easy to confuse.
+          // Naming both the library and the connection distinguishes them.
+          if (!result.opened) return
+          const name = result.opened.displayName ?? 'library'
+          if (result.opened.alreadyAvailable) {
+            const here = libraries.find(
+              (library) => library.library_uuid === result.opened!.libraryUuid,
+            )
+            if (here) {
+              changeLibrary(here.id)
+              return
+            }
+          }
+          setOpenFolderError(`Opened ${name} on ${activeConnectionLabel()}`)
+        })
+        .catch((error: unknown) => {
+          setOpenFolderError(hostOperationErrorMessage(error))
+        })
+    }
+  })
+
+  // "Open Library Folder…" queues its result before activating the connection,
+  // because activation remounts this tree. Consumed here on mount rather than
+  // read during render: taking it is a side effect, and the take is idempotent
+  // (a second run finds nothing, and re-selecting the same library is a no-op),
+  // so StrictMode's double-invoke is harmless.
+  // Depends on the queue version as well as the connection, because re-opening
+  // a folder on the *already active* connection changes no id and remounts
+  // nothing — the case where the second open of a registered library silently
+  // did nothing.
+  const pendingVersion = useSyncExternalStore(subscribeConnections, getPendingSelectionVersion)
+  useEffect(() => {
+    const pending = takePendingLibrarySelection(activeConnectionId)
+    if (pending) changeLibrary(pending)
+  }, [activeConnectionId, pendingVersion, changeLibrary])
 
   // A cairndex:// link may name a library other than the active one, so the
   // switch happens here while the target itself is handed to the workspace. The
@@ -243,6 +320,11 @@ export default function App() {
   // never fires content queries while locked.
   const auth = useLibraryAuth(libraryId)
   const lock = useLibraryLock(libraryId)
+  // Ownership is checked at the mount gate, not by reacting to 409s from
+  // content queries: a lease refusal would otherwise arrive once per query as a
+  // scatter of identical errors instead of one explainable state (ADR-0018).
+  const ownership = useLibraryOwnership(libraryId)
+  const takeover = useStartTakeover(libraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
   const desktop = getHostPlatform().kind === 'desktop'
   const deviceHasAccess = libraryId ? hasHostDeviceAccess(libraryId) : false
@@ -276,6 +358,14 @@ export default function App() {
     )
   }
 
+  // Rendered alongside the settings dialog so it appears in every state the
+  // menu item is reachable from, including the ones that replace the workspace.
+  const openFolderNotice = openFolderError && (
+    <div className="mb-toast" role="alert" onClick={() => setOpenFolderError(null)}>
+      {openFolderError}
+    </div>
+  )
+
   const settingsDialog = settingsPage && (
     <SettingsDialog
       key={settingsPage}
@@ -286,11 +376,44 @@ export default function App() {
     />
   )
 
+  // Placed before the auth gate: a library this server may not serve cannot be
+  // unlocked either, so the passphrase screen would be a dead end.
+  // `=== false`, not `!mountable`: this screen only ever appears when the server
+  // explicitly says the library is not servable here. An absent or malformed
+  // field must fail *open* — the server's own mount gate is the enforcement, and
+  // this UI is the explanation, so blocking on an unparsed response would hide a
+  // working library behind an unexplained wall.
+  if (libraryId && ownership.data?.mountable === false) {
+    return (
+      <>
+        <LibraryOwnershipNotice
+          ownership={ownership.data}
+          libraries={libraries}
+          libraryId={libraryId}
+          onChangeLibrary={changeLibrary}
+          onTakeOver={() => takeover.mutate()}
+          onConnectTo={(serverUrl) => {
+            void connectToServer(serverUrl)
+          }}
+          takeoverPending={takeover.isPending}
+          takeoverError={
+            takeover.error instanceof Error
+              ? takeover.error.message
+              : (ownership.data.takeover?.error_message ?? null)
+          }
+        />
+        {settingsDialog}
+        {openFolderNotice}
+      </>
+    )
+  }
+
   if (auth.isPending) {
     return (
       <>
         <div className="app-loading">Checking library access…</div>
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -317,6 +440,7 @@ export default function App() {
           </button>
         </LibraryAccessNotice>
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -344,6 +468,7 @@ export default function App() {
             </span>
           </LibraryAccessNotice>
           {settingsDialog}
+          {openFolderNotice}
         </>
       )
     }
@@ -359,6 +484,7 @@ export default function App() {
           error={lock.unlock.error?.message ?? null}
         />
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -379,54 +505,12 @@ export default function App() {
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
       {settingsDialog}
+      {openFolderNotice}
     </>
   )
 }
 
 // Fails closed while preserving library switching and desktop recovery actions
-function LibraryAccessNotice({
-  libraries,
-  libraryId,
-  onChangeLibrary,
-  title,
-  message,
-  children,
-}: {
-  libraries: LibraryRead[]
-  libraryId: string
-  onChangeLibrary: (id: string) => void
-  title: string
-  message: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="lockscreen">
-      <section className="lockscreen__card">
-        <div className="lockscreen__brand">
-          <span>🍃</span> Cairndex
-        </div>
-        {libraries.length > 1 && (
-          <select
-            className="edit"
-            value={libraryId}
-            onChange={(event) => onChangeLibrary(event.target.value)}
-            aria-label="Library"
-          >
-            {libraries.map((library) => (
-              <option key={library.id} value={library.id}>
-                {library.name}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="lockscreen__title">{title}</div>
-        <p className="lockscreen__message">{message}</p>
-        {children}
-      </section>
-    </div>
-  )
-}
-
 /**
  * Empty app shell shown before any library exists. Renders the real sidebar
  * (so the "+" to add a library sits where it always does) with no content, and

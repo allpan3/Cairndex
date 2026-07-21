@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm --prefix ../web run dev -- --host 127.0.0.1 --port 5173 --strictPort",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "npm --prefix ../web run build",
+    "beforeBuildCommand": "npm --prefix ../web run build && node ./check-sidecar-staged.mjs",
     "frontendDist": "../../web/dist"
   },
   "app": {
@@ -30,13 +30,21 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["cairndex"]
+        "schemes": [
+          "cairndex"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "resources": {
+      "../../server/packaging/dist/cairndex-sidecar": "cairndex-sidecar"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

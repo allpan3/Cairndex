@@ -1,16 +1,19 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
+import { resetConnectionsForTests } from './connections'
 import { DesktopBootstrap } from './DesktopBootstrap'
 import {
   configureHostServer,
   initializeHostPlatform,
   listenHostLifecycle,
   listenHostMenu,
+  loadHostConnections,
   loadHostServerUrl,
   normalizeHostServerUrl,
   saveHostServerUrl,
   setHostServerAvailable,
+  startHostLocalServer,
 } from '../platform'
 
 vi.mock('../platform', () => ({
@@ -20,6 +23,14 @@ vi.mock('../platform', () => ({
   listenHostLifecycle: vi.fn().mockResolvedValue(() => undefined),
   listenHostMenu: vi.fn().mockResolvedValue(() => undefined),
   loadHostServerUrl: vi.fn(),
+  // D6: the bootstrap resolves its server through the connections store, which
+  // migrates the legacy `loadHostServerUrl` value on first read.
+  loadHostConnections: vi.fn().mockResolvedValue(null),
+  saveHostConnections: vi.fn().mockResolvedValue(undefined),
+  startHostLocalServer: vi.fn(),
+  openHostLibraryFolder: vi.fn().mockResolvedValue(null),
+  hostOperationErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : 'failed',
   normalizeHostServerUrl: vi.fn(),
   resolveHostAssetUrl: (value: string) => value,
   saveHostServerUrl: vi.fn(),
@@ -40,6 +51,7 @@ const okResponse = () =>
   )
 
 beforeEach(() => {
+  resetConnectionsForTests()
   vi.mocked(configureHostServer).mockReset().mockResolvedValue(undefined)
   vi.mocked(initializeHostPlatform)
     .mockReset()
@@ -50,8 +62,10 @@ beforeEach(() => {
   vi.mocked(listenHostMenu)
     .mockReset()
     .mockResolvedValue(() => undefined)
+  vi.mocked(loadHostConnections).mockReset().mockResolvedValue(null)
   vi.mocked(loadHostServerUrl).mockReset()
   vi.mocked(normalizeHostServerUrl).mockReset()
+  vi.mocked(startHostLocalServer).mockReset()
   vi.mocked(saveHostServerUrl).mockReset()
   vi.mocked(setHostServerAvailable).mockReset().mockResolvedValue(undefined)
   vi.stubGlobal('fetch', vi.fn(okResponse))
@@ -69,7 +83,9 @@ test('mounts the shared app with a reachable stored server', async () => {
 
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
   expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8000/api/v1/health', expect.anything())
-  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:8000')
+  // `localToken: null` is the remote case; the sidecar's server-wide bearer is
+  // only passed for the managed local connection (plan 3 §7.1).
+  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:8000', { localToken: null })
   expect(setHostServerAvailable).toHaveBeenLastCalledWith(true)
 })
 
@@ -144,4 +160,57 @@ test('keeps server settings actionable when the stored server is unavailable', a
   act(() => menuHandler?.('settings'))
   expect(input).toHaveFocus()
   expect(input).toHaveSelection(input.getAttribute('value') ?? '')
+})
+
+// Quitting while on the local connection must reopen into it, not first-run.
+// The local entry stores no URL by design (its port is per process), and the
+// bootstrap used to read that null as "unconfigured" — sending a local-only
+// user through "Connect to your server" on every launch.
+test('reopens into the local connection that was active at last quit', async () => {
+  vi.mocked(loadHostConnections).mockResolvedValue({
+    connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
+    activeConnectionId: 'local',
+  })
+  vi.mocked(startHostLocalServer).mockResolvedValue({
+    baseUrl: 'http://127.0.0.1:54321',
+    token: 'local-tok',
+  })
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
+  expect(startHostLocalServer).toHaveBeenCalled()
+  // The sidecar's server-wide bearer rides along, unlike the remote case.
+  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:54321', {
+    localToken: 'local-tok',
+  })
+  expect(setHostServerAvailable).toHaveBeenLastCalledWith(true)
+})
+
+// A sidecar that cannot start falls back to setup, showing the shell's reason
+test('falls back to setup when the local server cannot start', async () => {
+  vi.mocked(loadHostConnections).mockResolvedValue({
+    connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
+    activeConnectionId: 'local',
+  })
+  vi.mocked(startHostLocalServer).mockRejectedValue(
+    new Error('The local server did not start in time.'),
+  )
+
+  render(
+    <DesktopBootstrap>
+      <div>Shared SPA</div>
+    </DesktopBootstrap>,
+  )
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'The local server did not start in time.',
+  )
+  expect(screen.queryByText('Shared SPA')).not.toBeInTheDocument()
+  // Recoverable both ways: the form is live, and ⌘O works from this screen.
+  expect(screen.getByLabelText('Server URL')).toBeInTheDocument()
 })

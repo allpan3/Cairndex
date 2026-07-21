@@ -504,6 +504,41 @@ export const unlockLibrary = (libraryId: string, passphrase: string) =>
 export const lockLibrary = (libraryId: string) =>
   send<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/lock`, 'POST')
 
+// --- Library ownership lease (ADR-0018) ------------------------------------
+// Readable precisely when the library will *not* mount, which is the point: it
+// is what a client calls after a lease refusal to learn who holds the library.
+export interface LeaseHolder {
+  server_uuid: string | null
+  machine_name: string | null
+  advertised_url: string | null
+  heartbeat_at: string | null
+}
+
+export interface LibraryOwnership {
+  library_id: string
+  /** `own` | `released` | `fresh` | `stale` | `unreadable` */
+  state: string
+  mountable: boolean
+  can_take_over: boolean
+  /** Set only when the holder advertises a reachable, non-loopback address. */
+  redirect_url: string | null
+  holder: LeaseHolder | null
+  takeover: {
+    running: boolean
+    error_code: string | null
+    error_message: string | null
+    /** ISO-8601 UTC; with `observation_seconds`, lets the UI show time left. */
+    started_at: string | null
+    observation_seconds: number | null
+  } | null
+}
+
+export const fetchLibraryOwnership = (libraryId: string, signal?: AbortSignal) =>
+  getJson<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership`, signal)
+
+export const startLibraryTakeover = (libraryId: string) =>
+  send<LibraryOwnership>(`/api/v1/libraries/${libraryId}/ownership/takeover`, 'POST')
+
 // --- Device pairing and bearer-token management (ADR-0015) -----------------
 export const startDevicePairing = (deviceName: string) =>
   send<PairStartResponse>('/api/v1/auth/pair/start', 'POST', { device_name: deviceName })
@@ -827,6 +862,12 @@ export const deleteBundle = (id: string) => send<void>(`${lib()}/bundles/${id}`,
 export const deleteCollection = (id: string, cascade = false) =>
   send<void>(`${lib()}/collections/${id}?cascade=${cascade}`, 'DELETE')
 
-export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
+export async function fetchHealth(signal?: AbortSignal, baseUrl?: string): Promise<HealthStatus> {
+  // An explicit `baseUrl` probes that server without touching the module's
+  // configured base — verification must be able to ask "is anything there?"
+  // without repointing the app at the answer (plan 3 §7.1 activation).
+  if (baseUrl) {
+    return getJson<HealthStatus>(`${baseUrl.replace(/\/+$/, '')}/api/v1/health`, signal)
+  }
   return getJson<HealthStatus>('/api/v1/health', signal)
 }

@@ -7,6 +7,7 @@ import type { ViewerCommand } from '../app/viewer/player/useShortcuts'
  */
 export type DesktopWorkspaceAction =
   | 'settings'
+  | 'open-library-folder'
   | 'pair-device'
   | 'new-bundle'
   | 'show-bundles'

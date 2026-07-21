@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Canonical Cairndex keyboard/menu table (plan 3 §7). This file is the SINGLE",
+    "Canonical Cairndex keyboard/menu table (plan 3 \u00a77). This file is the SINGLE",
     "source of truth for the native menu bar and its accelerators. It is consumed",
     "twice: TypeScript imports it for the in-app shortcut reference and menu-action",
     "typing, and the Tauri shell include_str!s it at compile time and BUILDS the",
@@ -15,7 +15,7 @@
     "",
     "'browserReserved' marks accelerators a browser intercepts before the page (tab",
     "switching, address bar, devtools, history). They are unusable on the web and",
-    "become available only inside the shell — that is the D5 shortcut audit.",
+    "become available only inside the shell \u2014 that is the D5 shortcut audit.",
     "",
     "RULE (owner, 2026-07-19): give an item an accelerator ONLY when no 'keys' entry",
     "already covers it. An accelerator is reserved application-wide, so duplicating a",
@@ -45,7 +45,7 @@
         },
         {
           "id": "settings",
-          "label": "Settings…",
+          "label": "Settings\u2026",
           "accelerator": "CmdOrCtrl+,",
           "browserReserved": false,
           "requires": null,
@@ -70,8 +70,16 @@
       "label": "File",
       "items": [
         {
+          "id": "open-library-folder",
+          "label": "Open Library Folder\u2026",
+          "accelerator": "CmdOrCtrl+O",
+          "browserReserved": true,
+          "requires": null,
+          "keys": []
+        },
+        {
           "id": "new-bundle",
-          "label": "New Empty Bundle…",
+          "label": "New Empty Bundle\u2026",
           "accelerator": "CmdOrCtrl+N",
           "browserReserved": true,
           "requires": "library",
@@ -79,7 +87,7 @@
         },
         {
           "id": "pair-device",
-          "label": "Pair Device…",
+          "label": "Pair Device\u2026",
           "accelerator": null,
           "browserReserved": false,
           "requires": "server",

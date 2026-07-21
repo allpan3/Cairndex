@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { fetchHealth, setApiBaseUrl } from '../api/client'
+import { QueryScope } from '../QueryScope'
+import { INCOMPATIBLE_SERVER_ERROR } from './verifyServer'
+import { openLibraryFolder } from './openLibraryFolder'
 import {
-  configureHostServer,
+  activateConnection,
+  addRemoteConnection,
+  getConnections,
+  loadConnections,
+  subscribeConnections,
+} from './connections'
+
+import {
+  hostOperationErrorMessage,
   initializeHostPlatform,
   listenHostLifecycle,
   listenHostMenu,
-  loadHostServerUrl,
   normalizeHostServerUrl,
   saveHostServerUrl,
   setHostServerAvailable,
@@ -21,28 +30,6 @@ interface SetupState {
   error: string | null
 }
 
-const INCOMPATIBLE_SERVER_ERROR = 'This address is not a compatible Cairndex server.'
-const REQUIRED_API_FEATURES = ['pairing', 'progress']
-
-// Verifies that a normalized server URL reaches a live Cairndex backend
-async function verifyServer(serverUrl: string): Promise<void> {
-  setApiBaseUrl(serverUrl)
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 5000)
-  try {
-    const health = await fetchHealth(controller.signal)
-    const compatible =
-      health.status === 'ok' &&
-      typeof health.app_name === 'string' &&
-      health.app_name.length > 0 &&
-      Array.isArray(health.api_features) &&
-      REQUIRED_API_FEATURES.every((feature) => health.api_features.includes(feature))
-    if (!compatible) throw new Error(INCOMPATIBLE_SERVER_ERROR)
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
 // Surfaces recoverable desktop bridge failures without hiding the setup UI
 function reportDesktopBridgeError(message: string, error: unknown): void {
   console.error(message, error)
@@ -50,6 +37,13 @@ function reportDesktopBridgeError(message: string, error: unknown): void {
 
 // Gates the shared SPA on first-run desktop server configuration
 export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
+  // Drives the QueryScope key below. Subscribed rather than kept in local state
+  // so an activation from anywhere — the menu, a future connections UI — swaps
+  // the scope without having to route through this component.
+  const activeConnectionId = useSyncExternalStore(
+    subscribeConnections,
+    () => getConnections().activeConnectionId,
+  )
   const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -80,6 +74,22 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     void initializeHostPlatform()
       .then(() =>
         listenHostMenu((action) => {
+          if (action === 'open-library-folder') {
+            // Deliberately reachable from the first-run screen: opening a local
+            // folder starts its own server, so it must not require a remote one
+            // to have been configured first.
+            void openLibraryFolder()
+              .then((result) => {
+                if (result.opened) setReady(true)
+              })
+              .catch((error: unknown) => {
+                setSetup((current) => ({
+                  serverUrl: current?.serverUrl ?? 'http://127.0.0.1:8000',
+                  error: hostOperationErrorMessage(error),
+                }))
+              })
+            return
+          }
           if (action !== 'settings') return
           serverInputRef.current?.focus()
           serverInputRef.current?.select()
@@ -108,15 +118,26 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         reportDesktopBridgeError('Could not disable server menu actions during setup', error)
       }
       try {
-        const stored = await loadHostServerUrl()
+        // Migrates a pre-D6 stored `serverUrl` into one active remote
+        // connection, so an existing NAS setup sees no first-run change.
+        const state = await loadConnections()
         if (!active) return
-        if (!stored) {
+        const activeId = state.activeConnectionId
+        const entry = state.connections.find((candidate) => candidate.id === activeId) ?? null
+        // The local connection stores no URL by design (its port is per
+        // process), so "has no URL" must not be read as "unconfigured" — that
+        // reading sent anyone who quit while on the local connection back to
+        // the first-run screen on every launch, against ADR-0018's "local
+        // libraries just work". Only a remote entry without a URL is broken.
+        if (!activeId || !entry || (entry.kind === 'remote' && !entry.serverUrl)) {
           setSetup({ serverUrl: 'http://127.0.0.1:8000', error: null })
           return
         }
         try {
-          await configureHostServer(stored)
-          await verifyServer(stored)
+          // Activation does the whole job for either kind: it starts the
+          // sidecar for local, and for remote it probes reachability before
+          // committing — no separate verify step here.
+          await activateConnection(activeId)
           if (active) {
             try {
               await setHostServerAvailable(true)
@@ -128,11 +149,13 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         } catch (error) {
           if (active) {
             setSetup({
-              serverUrl: stored,
+              serverUrl: entry.serverUrl ?? 'http://127.0.0.1:8000',
               error:
-                error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
-                  ? error.message
-                  : 'Cairndex did not respond at this address. Check that the server is running.',
+                entry.kind === 'local'
+                  ? hostOperationErrorMessage(error)
+                  : error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
+                    ? error.message
+                    : 'Cairndex did not respond at this address. Check that the server is running.',
             })
           }
         }
@@ -157,8 +180,11 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     setSetup({ ...setup, error: null })
     try {
       const normalized = await normalizeHostServerUrl(setup.serverUrl)
-      await configureHostServer(normalized)
-      await verifyServer(normalized)
+      const connection = await addRemoteConnection(normalized)
+      // Activation probes reachability itself before committing, so a dead or
+      // incompatible address throws here and nothing below runs.
+      await activateConnection(connection.id)
+      // Kept for now so a downgrade to a pre-D6 build still finds its server.
       await saveHostServerUrl(normalized)
       try {
         await setHostServerAvailable(true)
@@ -179,7 +205,11 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     }
   }
 
-  if (ready) return children
+  // Keyed on the active connection: a switch remounts the whole scope, so the
+  // previous server's cache and any request still in flight against it are
+  // discarded rather than left to resolve into the new connection's cache
+  // (plan 3 §7.1 — library ids are per-server and not globally unique).
+  if (ready) return <QueryScope key={activeConnectionId ?? 'initial'}>{children}</QueryScope>
   if (!setup) return <div className="app-loading">Loading desktop settings…</div>
 
   return (

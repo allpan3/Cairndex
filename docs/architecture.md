@@ -223,22 +223,112 @@ A Cairndex library is a directory with this package:
       thumbnails/
       subtitles/
       storyboards/
+    library.db.bak
+    locks/
+      active-owner.json
 ```
 
 The manifest stores the portable library identity and display name. `library.db`
 holds all content metadata for that library. The cache holds reproducible derived
-artifacts and is ignored by scanning/grouping.
+artifacts and is ignored by scanning/grouping. `locks/active-owner.json` is the
+ownership lease (§4.1) and `library.db.bak` its sync-heal snapshot (§4.2).
 
 The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
 
 - `registered_libraries`: known library roots, manifest paths, availability,
   schema version, and last-opened timestamps;
 - `job_queue`: scan/probe/thumbnail jobs, progress, cancellation, terminal state,
-  and result payloads.
+  and result payloads;
+- `server_identity`: this install's persistent `server_uuid` and machine name,
+  which every lease it writes is stamped with.
 
 The registry is runtime/server state, not portable content metadata. Moving a
 library folder should keep its `.cairndex/library.db` and cache with it; the
 server may need to register the new root path.
+
+**Portability invariant (ADR-0018 §1):** everything a user would miss lives in
+`.cairndex/`, and everything in the registry must be reconstructible from
+nothing. This is what makes a cloud-synced library open correctly on a second
+machine that has no server state at all. Any future feature that puts
+authoritative library state in `registry.db` breaks that and needs a superseding
+ADR — worth checking on registry schema changes.
+
+### 4.1 Ownership lease
+
+A server may serve a library only while it holds that library's lease at
+`.cairndex/locks/active-owner.json` (ADR-0018). Enforcement lives in the library
+folder rather than in any server's registry for a simple reason: the two servers
+in a conflict cannot see each other, and a cloud-synced copy of a library has no
+server at all. The folder is the one thing every would-be server can observe.
+
+The lease records the holding `server_uuid`, a human-readable `machine_name`, an
+optional `advertised_url`, `acquired_at`/`heartbeat_at`, and a `nonce`
+regenerated on every write. A server reading it classifies one of five states:
+
+| State        | Meaning                                        | Action                                     |
+| ------------ | ---------------------------------------------- | ------------------------------------------ |
+| `released`   | No lease, or `released_at` set                 | Acquire silently                           |
+| `own`        | Our own `server_uuid` (we crashed)             | Re-acquire silently, however stale         |
+| `fresh`      | Foreign, heartbeat within TTL                  | Refuse; offer a redirect to the holder     |
+| `stale`      | Foreign, heartbeat older than TTL              | Offer a user-confirmed takeover            |
+| `unreadable` | A lease exists but could not be parsed         | Offer a user-confirmed takeover            |
+
+`unreadable` is deliberately not folded into `released`: "we could not find out"
+must never become "nobody holds it", or a corrupt file turns into a silent second
+writer.
+
+Because no atomic compare-and-swap exists on a synced folder or an SMB share,
+acquisition is **write-then-verify** — exclusive-create when no file exists,
+otherwise write our nonce, pause, and re-read to confirm it survived. Before a
+*stale* takeover the server additionally watches the lease for longer than a
+heartbeat period: a live holder writing to the same disk visibly touches the file
+during the window, which catches the two-servers-one-NAS-export case without
+trusting cross-machine clocks at all. Timestamps only ever suggest staleness;
+the observation is what establishes it. Takeover **always** requires explicit user
+confirmation — there is no auto-takeover after any TTL.
+
+Holding is a heartbeat that doubles as a watchdog: every interval the server
+re-reads the lease *before* rewriting it. A foreign `server_uuid`, or our own
+under a nonce we did not write, means ownership moved. The response is fixed: never
+fight for it back, stop writing, cancel that library's jobs, and unmount. Heartbeats
+continue while a library is idle, because going quiet would make a healthy NAS
+server's libraries look abandoned from every other machine.
+
+**Reads need the lease too.** Browsing already writes — bundle cursors,
+missing-file reconciliation — and reading a SQLite DB another machine is writing
+through a share or a sync engine is exactly what ADR-0008 rejected. There is no
+leaseless read-only mount.
+
+The mount gate (`api/deps.py`) covers both the content-session and the streaming
+`LibraryAccess` dependency, and costs a dictionary lookup for a library already
+held, so it adds no filesystem I/O to the request path. Long jobs re-verify at
+start and at every batch boundary. `GET /api/v1/libraries/{id}/ownership` sits
+outside the gate on purpose — it is the endpoint a client calls *because* a mount
+was refused; `POST .../ownership/takeover` returns 202 and runs the observation
+window in the background.
+
+### 4.2 SQLite sync hygiene
+
+A library in WAL mode is up to three files, and a cloud-sync engine uploads
+whatever it finds whenever it looks. `persistence/checkpoint.py` plus a
+`SqliteMaintenance` timer thread keep the at-rest state coherent (ADR-0018 §6):
+
+- a library idle past a threshold gets `wal_checkpoint(TRUNCATE)` — `TRUNCATE`
+  rather than `PASSIVE`, which would leave the WAL at its high-water mark and
+  keep the sync engine shipping a large file carrying nothing;
+- a periodic consistent snapshot goes to `.cairndex/library.db.bak` via SQLite's
+  online backup API, written temp-then-renamed. The backup API is required
+  rather than preferred: a file copy taken while a WAL is outstanding silently
+  misses everything the WAL holds;
+- clean shutdown checkpoints and disposes every library engine *before* releasing
+  the leases, so each library is left as a single consistent file before another
+  machine is invited to pick it up.
+
+Maintenance only ever touches libraries whose lease this server holds; the set is
+supplied to `SqliteMaintenance` as a callable, so `persistence` stays unaware of
+the ownership layer. It runs on its own thread rather than sharing the lease
+heartbeat's: a slow checkpoint on a sluggish mount must not be able to delay a
+heartbeat into looking stale to other machines.
 
 ## 5. Storage and path safety
 
