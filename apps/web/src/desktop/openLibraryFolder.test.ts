@@ -21,6 +21,13 @@ const loadHostConnections = vi.fn()
 const saveHostConnections = vi.fn()
 const loadHostServerUrl = vi.fn()
 
+const verifyServer = vi.fn<(url: string) => Promise<void>>()
+vi.mock('./verifyServer', () => ({
+  verifyServer: (url: string) => verifyServer(url),
+  INCOMPATIBLE_SERVER_ERROR: 'This address is not a compatible Cairndex server.',
+  UNREACHABLE_SERVER_ERROR: 'Cairndex did not respond at this address.',
+}))
+
 vi.mock('../platform', () => ({
   configureHostServer: (url: string, options?: unknown) => configureHostServer(url, options),
   startHostLocalServer: () => startHostLocalServer(),
@@ -45,6 +52,7 @@ beforeEach(() => {
   resetConnectionsForTests()
   resetJobNotificationsForTests()
   vi.clearAllMocks()
+  verifyServer.mockResolvedValue(undefined)
   configureHostServer.mockResolvedValue(undefined)
   saveHostConnections.mockResolvedValue(undefined)
   loadHostConnections.mockResolvedValue(null)
