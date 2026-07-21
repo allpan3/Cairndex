@@ -296,7 +296,8 @@ handoff:
 
 ## 7.1 Connections model (D6.4/D6.5 design sketch)
 
-> Status: **proposed**, written before implementation for review. Settles how
+> Status: **implemented** (D6.4/D6.5 web layer, 2026-07-20). Written before
+> implementation for review and followed as written. Settles how
 > ADR-0018 §5's "set of connections" behaves. The shell-side half (sidecar
 > lifecycle, `open_library_folder`) has landed; this is the web half.
 
