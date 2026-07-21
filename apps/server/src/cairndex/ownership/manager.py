@@ -20,7 +20,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -50,6 +50,7 @@ class LeaseSettings:
     heartbeat_interval: float
     ttl: float
     verify_delay: float
+    observation_margin: float = 20.0
 
     @property
     def ttl_delta(self) -> timedelta:
@@ -59,12 +60,19 @@ class LeaseSettings:
     def observation_window(self) -> float:
         """How long to watch a lease before taking it over (ADR-0018 §3).
 
-        One heartbeat period plus one more interval: long enough that a live
-        holder writing to the same disk must touch the file within the window,
-        which catches "two servers pointed at one NAS export" without comparing
-        clocks across machines at all.
+        One full heartbeat interval, plus a margin. The interval is the part
+        that carries the guarantee and is deliberately not configurable: a
+        takeover starts at an arbitrary point in the holder's cycle, so only
+        after a whole interval has elapsed is a live holder certain to have
+        written. Watching for less would let a healthy server stay silent
+        through the window and lose its library.
+
+        The margin is slack for a write that has to reach us — through a
+        cloud-sync engine, say — rather than appearing on a local disk at once.
+        It was previously a second full interval, which made the wait twice as
+        long as it needs to be for a library that is not synced.
         """
-        return self.heartbeat_interval * 2
+        return self.heartbeat_interval + self.observation_margin
 
     @classmethod
     def from_settings(cls) -> "LeaseSettings":
@@ -73,6 +81,7 @@ class LeaseSettings:
             heartbeat_interval=settings.lease_heartbeat_interval,
             ttl=settings.lease_ttl,
             verify_delay=settings.lease_verify_delay,
+            observation_margin=settings.lease_observation_margin,
         )
 
 
@@ -99,6 +108,11 @@ class TakeoverProgress:
     error_code: str | None = None
     error_message: str | None = None
     holder: dict[str, object] | None = None
+    # When the observation started, and how long it runs. Reported so the client
+    # can say how much longer rather than showing an unexplained spinner for
+    # minutes — the wait is inherent to the design, so it should be legible.
+    started_at: datetime | None = None
+    observation_seconds: float | None = None
 
 
 class LeaseManager:
@@ -306,7 +320,11 @@ class LeaseManager:
             existing = self._takeovers.get(library_id)
             if existing is not None and existing.running:
                 return
-            self._takeovers[library_id] = TakeoverProgress(running=True)
+            self._takeovers[library_id] = TakeoverProgress(
+                running=True,
+                started_at=self._clock(),
+                observation_seconds=self.settings.observation_window,
+            )
 
         thread = threading.Thread(
             target=self._run_takeover,
@@ -342,7 +360,12 @@ class LeaseManager:
 
     def _finish_takeover(self, library_id: str, progress: TakeoverProgress) -> None:
         with self._lock:
-            self._takeovers[library_id] = progress
+            previous = self._takeovers.get(library_id)
+            self._takeovers[library_id] = replace(
+                progress,
+                started_at=previous.started_at if previous else None,
+                observation_seconds=previous.observation_seconds if previous else None,
+            )
 
     def takeover_progress(self, library_id: str) -> TakeoverProgress | None:
         with self._lock:

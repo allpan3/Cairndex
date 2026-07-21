@@ -9,6 +9,17 @@ const LIBRARIES = [
   { id: 'lib-2', name: 'Video' },
 ] as LibraryRead[]
 
+function runningTakeover(overrides: Partial<NonNullable<LibraryOwnership['takeover']>> = {}) {
+  return {
+    running: true,
+    error_code: null,
+    error_message: null,
+    started_at: new Date().toISOString(),
+    observation_seconds: 80,
+    ...overrides,
+  }
+}
+
 function ownership(overrides: Partial<LibraryOwnership> = {}): LibraryOwnership {
   return {
     library_id: 'lib-1',
@@ -116,12 +127,44 @@ describe('a takeover in flight', () => {
     renderNotice(
       ownership({
         state: 'stale',
-        takeover: { running: true, error_code: null, error_message: null },
+        takeover: runningTakeover(),
       }),
     )
 
-    expect(screen.getByRole('status')).toBeInTheDocument()
-    expect(screen.getByText(/couple of minutes/i)).toBeInTheDocument()
+    // States the actual duration rather than a vague "a couple of minutes",
+    // both in the explanation and as a live countdown.
+    expect(screen.getAllByText(/1 minute 20 seconds/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('status')).toHaveTextContent(/1 minute 20 seconds left/i)
+  })
+
+  it('explains why the wait is that long, in terms of the holder', () => {
+    renderNotice(ownership({ state: 'stale', takeover: runningTakeover() }))
+    expect(screen.getByText(/longer than the gap between a running server/i)).toBeInTheDocument()
+  })
+
+  it('falls back to a wait with no number when the server reports no timing', () => {
+    renderNotice(
+      ownership({
+        state: 'stale',
+        takeover: runningTakeover({ started_at: null, observation_seconds: null }),
+      }),
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(/watching the ownership record/i)
+  })
+
+  it('says it is finishing once the window has elapsed', () => {
+    renderNotice(
+      ownership({
+        state: 'stale',
+        takeover: runningTakeover({
+          started_at: new Date(Date.now() - 200_000).toISOString(),
+          observation_seconds: 80,
+        }),
+      }),
+    )
+    // The window is over but the write-then-verify still has to run, so the
+    // dialog must not sit at "0 seconds left".
+    expect(screen.getByRole('status')).toHaveTextContent(/finishing up/i)
   })
 
   it('shows progress from the moment the request is sent, before the first poll', () => {
@@ -134,9 +177,9 @@ describe('a takeover in flight', () => {
   it('says a live holder can still win the race', () => {
     // Confirmation answers "is that machine gone?"; the observation window is
     // what actually checks, and it can disagree with the user.
-    renderNotice(ownership({ takeover: { running: true, error_code: null, error_message: null } }))
+    renderNotice(ownership({ takeover: runningTakeover() }))
 
-    expect(screen.getByText(/still running, it will say so/i)).toBeInTheDocument()
+    expect(screen.getByText(/it will write during the check/i)).toBeInTheDocument()
   })
 })
 

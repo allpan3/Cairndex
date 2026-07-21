@@ -523,7 +523,14 @@ export interface LibraryOwnership {
   /** Set only when the holder advertises a reachable, non-loopback address. */
   redirect_url: string | null
   holder: LeaseHolder | null
-  takeover: { running: boolean; error_code: string | null; error_message: string | null } | null
+  takeover: {
+    running: boolean
+    error_code: string | null
+    error_message: string | null
+    /** ISO-8601 UTC; with `observation_seconds`, lets the UI show time left. */
+    started_at: string | null
+    observation_seconds: number | null
+  } | null
 }
 
 export const fetchLibraryOwnership = (libraryId: string, signal?: AbortSignal) =>
