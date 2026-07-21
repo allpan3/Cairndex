@@ -415,6 +415,9 @@ before apply.
 
 Grouping behavior:
 
+- observations include only files marked available by the latest scan; missing
+  rows remain in the library database for repair and metadata continuity but do
+  not enter a new plan, and a stale plan treats them as apply conflicts;
 - the suggester proposes BUNDLE and CONTAINER nodes with roles, confidence,
   reasons, parent links, and a stable video → audio → image → remaining-files
   order (natural path order within each group);

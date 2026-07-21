@@ -895,7 +895,8 @@ export function GroupingReview({
             only the checked items. Use Narrow or Widen beside a folder to regenerate with stricter
             or broader filename stems. Double-click either title to rename it. Newly confirmed
             bundles join their selected parent collection; existing confirmed bundles stay untouched
-            unless a reviewed addition targets them. Nothing on disk changes.
+            unless a reviewed addition targets them. Suggestions reflect the latest scan; run Scan
+            new files after changing the filesystem. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}

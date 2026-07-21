@@ -401,6 +401,9 @@ Current workflow details:
   default, and Widen uses a broader subject/source prefix to create fewer
   bundles. The per-directory choices are persisted on the regenerated plan
   snapshot;
+- suggestions reflect the latest reconciled scan state: rows marked missing are
+  retained for repair and metadata continuity but excluded from grouping; run
+  Update or Scan new files after filesystem changes before regenerating;
 - explicit cross-bundle review edits revise provisional suggestions while
   preserving stable file identities and cleaning up an emptied source bundle;
 - applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;

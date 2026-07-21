@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import GroupingState, ProposalKind, StemMode
+from cairndex.domain.enums import FileAvailability, GroupingState, ProposalKind, StemMode
 from cairndex.grouping.suggester import (
     FileObservation,
     GroupingPlan,
@@ -39,7 +39,7 @@ class _CollectionContext:
 
 
 def gather_observations(session: Session) -> list[FileObservation]:
-    """Snapshot linked files while treating every confirmed bundle as settled."""
+    """Snapshot available linked files while treating confirmed bundles as settled."""
     rows = session.execute(
         select(
             AssetFile.id,
@@ -48,7 +48,9 @@ def gather_observations(session: Session) -> list[FileObservation]:
             AssetBundle.id,
             AssetBundle.grouping_state,
             AssetBundle.title,
-        ).join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        )
+        .join(AssetBundle, AssetFile.bundle_id == AssetBundle.id)
+        .where(AssetFile.availability == FileAvailability.AVAILABLE)
     ).all()
     return [
         FileObservation(

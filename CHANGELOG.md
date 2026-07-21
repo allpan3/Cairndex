@@ -10,6 +10,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Grouping suggestions exclude files marked missing by the latest scan.** The
+  scanner still retains their database rows so metadata and moved-file repair
+  survive, but they no longer appear as live grouping candidates. Applying an
+  older open plan also reports a conflict instead of regrouping a now-missing
+  row.
+
 - **Files can be moved reliably between grouping suggestions.** The whole file
   row now starts a drag, and both the target bundle heading and its file list
   accept the drop, removing the two small hit targets that made cross-bundle
