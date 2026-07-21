@@ -1,5 +1,18 @@
 # Project status
 
+## Completed: compact current-cover indicator (2026-07-21)
+
+Direct-to-`main` inspector follow-up.
+
+- The filename no longer gets a leading star when its file is the bundle cover.
+- The existing cover action now carries the state: muted “Set as cover” for
+  eligible files and a yellow, pressed “Current cover” star for the active one.
+- The image and camera glyphs remain reserved for media-kind and frame-capture
+  meanings, so the existing star remains the least ambiguous compact icon.
+- Frontend lint/format/typecheck, all 297 component tests, the production build,
+  and all 80 Playwright tests pass. Browser coverage checks the active star's
+  rendered yellow color, pressed state, label, and filename separation.
+
 ## Completed: wrapping bundle-inspector titles (2026-07-21)
 
 Direct-to-`main` inspector follow-up.

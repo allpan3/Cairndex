@@ -581,7 +581,6 @@ export function FileList({
             >
               <div className="file-row__main">
                 <div className="file-row__name">
-                  {f.id === coverId && <span title="Cover">★</span>}
                   <span className="file-row__title">{f.display_title}</span>
                   {f.availability !== 'available' && (
                     <span className="badge badge--missing">missing</span>
@@ -595,10 +594,13 @@ export function FileList({
               <div className="file-row__actions">
                 {thumbnailable && (
                   <button
-                    className="tip"
-                    data-tip="Set as cover"
-                    aria-label="Set as cover"
-                    onClick={() => update.mutate({ cover_file_id: f.id })}
+                    className={`tip cover-action${f.id === coverId ? ' cover-action--active' : ''}`}
+                    data-tip={f.id === coverId ? 'Current cover' : 'Set as cover'}
+                    aria-label={f.id === coverId ? 'Current cover' : 'Set as cover'}
+                    aria-pressed={f.id === coverId}
+                    onClick={() => {
+                      if (f.id !== coverId) update.mutate({ cover_file_id: f.id })
+                    }}
                   >
                     ★
                   </button>

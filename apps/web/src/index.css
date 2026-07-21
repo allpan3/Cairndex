@@ -1292,6 +1292,12 @@ button {
   color: var(--text-strong);
   border-color: var(--border-strong);
 }
+.files .file-row__actions .cover-action--active,
+.files .file-row__actions .cover-action--active:hover {
+  color: var(--star);
+  border-color: color-mix(in srgb, var(--star) 45%, var(--border));
+  background: color-mix(in srgb, var(--star) 10%, var(--surface));
+}
 .file-row__actions button:disabled {
   opacity: 0.3;
   cursor: default;
