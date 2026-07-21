@@ -9,8 +9,10 @@ all work.
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 from sqlalchemy.orm import Session
 
+from cairndex.api.v1 import bundles as bundle_routes
 from cairndex.persistence.models import AssetBundle
 
 
@@ -207,6 +209,30 @@ def test_unset_notes_reads_empty_list(
     base = f"/api/v1/libraries/{library_id}"
     body = client.get(f"{base}/bundles/{bundle.id}").json()
     assert body["notes"] == []
+
+
+# Keep metadata-only detail reads off the filesystem
+def test_bundle_detail_does_not_reconcile_every_file(
+    client: TestClient, library_id: str, monkeypatch: MonkeyPatch
+) -> None:
+    """A metadata read must not stat every bundle member on the filesystem."""
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={"title": "Fast metadata"}).json()["id"]
+
+    # Fail if this route regains an all-member path sweep
+    def unexpected_reconciliation(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("bundle detail performed filesystem reconciliation")
+
+    monkeypatch.setattr(
+        bundle_routes.playback,
+        "reconcile_missing_files",
+        unexpected_reconciliation,
+    )
+
+    response = client.get(f"{base}/bundles/{bundle_id}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Fast metadata"
 
 
 def test_note_filter_matches_any_note(client: TestClient, library_id: str) -> None:

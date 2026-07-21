@@ -22,6 +22,22 @@ function bundle(i: number) {
   }
 }
 
+// Bundle detail returned by the inspector and metadata-write mocks
+function bundleDetail(coverFileId: string | null) {
+  return {
+    id: 'b0',
+    title: 'Movie 0',
+    note: null,
+    source_url: null,
+    rating: 0,
+    cover_file_id: coverFileId,
+    resume_file_id: 'f0',
+    created_at: '2026-06-25T00:00:00Z',
+    imported_at: '2026-06-25T00:00:00Z',
+    updated_at: '2026-06-25T00:00:00Z',
+  }
+}
+
 async function mockApi(page: Page, coverFileId: string | null = null) {
   const items = Array.from({ length: 40 }, (_, i) => bundle(i))
   await page.route('**/api/v1/libraries', (r) =>
@@ -84,20 +100,7 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
         ],
       })
     } else {
-      r.fulfill({
-        json: {
-          id: 'b0',
-          title: 'Movie 0',
-          note: null,
-          source_url: null,
-          rating: 0,
-          cover_file_id: coverFileId,
-          resume_file_id: 'f0',
-          created_at: '2026-06-25T00:00:00Z',
-          imported_at: '2026-06-25T00:00:00Z',
-          updated_at: '2026-06-25T00:00:00Z',
-        },
-      })
+      r.fulfill({ json: bundleDetail(coverFileId) })
     }
   })
 }
@@ -864,6 +867,76 @@ test('highlights the current cover action instead of prefixing its filename', as
   await expect(
     page.locator('.files .file-row', { hasText: 'movie.mp4' }).locator('.file-row__name'),
   ).not.toContainText('★')
+})
+
+test('switches the cover highlight before the metadata request finishes', async ({ page }) => {
+  await mockApi(page, 'f0')
+  let releasePatch: (() => void) | undefined
+  let patchFinished = false
+  const heldPatch = new Promise<void>((resolve) => {
+    releasePatch = resolve
+  })
+  await page.route('**/bundles/b0', async (route) => {
+    if (route.request().method() !== 'PATCH') {
+      await route.fallback()
+      return
+    }
+    await heldPatch
+    await route.fulfill({ json: bundleDetail('f1') })
+    patchFinished = true
+  })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const oldAction = page
+    .locator('.files .file-row', { hasText: 'movie.mp4' })
+    .locator('.cover-action')
+  const nextAction = page
+    .locator('.files .file-row', { hasText: 'poster.jpg' })
+    .locator('.cover-action')
+  await expect(oldAction).toHaveAttribute('aria-label', 'Current cover')
+  await expect(nextAction).toHaveAttribute('aria-label', 'Set as cover')
+  await nextAction.click()
+
+  await expect(oldAction).toHaveAttribute('aria-label', 'Set as cover')
+  await expect(nextAction).toHaveAttribute('aria-label', 'Current cover')
+  await expect(nextAction).toBeDisabled()
+  expect(await nextAction.evaluate((element) => getComputedStyle(element).opacity)).toBe('1')
+  if (!releasePatch) throw new Error('expected a held cover request')
+  releasePatch()
+  await expect.poll(() => patchFinished).toBe(true)
+})
+
+test('rolls the optimistic cover highlight back after a failed write', async ({ page }) => {
+  await mockApi(page, 'f0')
+  let releasePatch: (() => void) | undefined
+  const heldPatch = new Promise<void>((resolve) => {
+    releasePatch = resolve
+  })
+  await page.route('**/bundles/b0', async (route) => {
+    if (route.request().method() !== 'PATCH') {
+      await route.fallback()
+      return
+    }
+    await heldPatch
+    await route.fulfill({ status: 500, json: { message: 'write failed' } })
+  })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const oldAction = page
+    .locator('.files .file-row', { hasText: 'movie.mp4' })
+    .locator('.cover-action')
+  const nextAction = page
+    .locator('.files .file-row', { hasText: 'poster.jpg' })
+    .locator('.cover-action')
+  await nextAction.click()
+  await expect(nextAction).toHaveAttribute('aria-label', 'Current cover')
+  if (!releasePatch) throw new Error('expected a held cover request')
+  releasePatch()
+
+  await expect(oldAction).toHaveAttribute('aria-label', 'Current cover')
+  await expect(nextAction).toHaveAttribute('aria-label', 'Set as cover')
 })
 
 test('opens the selected inspector file from the play action after cover', async ({ page }) => {

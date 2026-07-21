@@ -205,8 +205,6 @@ def list_bundles(db: LibrarySession, page: Pagination) -> Page[BundleRead]:
 @router.get("/{bundle_id}", response_model=BundleRead)
 def get_bundle(bundle_id: str, db: LibrarySession) -> BundleRead:
     bundle = service.get_bundle(db, bundle_id)
-    files = list(service.list_files(db, bundle_id))
-    playback.reconcile_missing_files(db, files)
     return _bundle_read(db, bundle)
 
 

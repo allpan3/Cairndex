@@ -901,15 +901,39 @@ export function useBundleCollections(id: string | null) {
 // After a write, invalidate the queries whose results may have changed so the
 // UI reflects the edit (and survives a manual reload).
 
+// Apply the bundle fields represented directly by a metadata PATCH
+function applyBundlePatch(previous: BundleRead, patch: BundlePatch): BundleRead {
+  return {
+    ...previous,
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.rating !== undefined ? { rating: patch.rating } : {}),
+    ...(patch.cover_file_id !== undefined ? { cover_file_id: patch.cover_file_id } : {}),
+    ...(patch.notes !== undefined && patch.notes !== null ? { notes: patch.notes } : {}),
+  }
+}
+
 export function useUpdateBundle(id: string, version?: number) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (patch: BundlePatch) => updateBundle(id, patch, version),
-    // onSettled (not onSuccess) so a 409 conflict also refetches the bundle —
-    // the editor then shows whatever the other client wrote (ADR-0008 phase 9).
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['bundle', id] })
-      qc.invalidateQueries({ queryKey: ['browse'] })
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: ['bundle', id] })
+      const previous = qc.getQueryData<BundleRead>(['bundle', id])
+      qc.setQueryData<BundleRead>(['bundle', id], (current) =>
+        current ? applyBundlePatch(current, patch) : current,
+      )
+      return { previous }
+    },
+    onError: (_error, _patch, context) => {
+      if (context?.previous) qc.setQueryData(['bundle', id], context.previous)
+    },
+    // The PATCH response is authoritative and avoids a second metadata round trip
+    onSuccess: (bundle) => qc.setQueryData(['bundle', id], bundle),
+    onSettled: (_bundle, error) => {
+      // A conflict/error still refetches the other client's current value
+      if (error) void qc.invalidateQueries({ queryKey: ['bundle', id] })
+      // Cover artwork and cards can refresh without delaying inspector feedback
+      void qc.invalidateQueries({ queryKey: ['browse'] })
     },
   })
 }
