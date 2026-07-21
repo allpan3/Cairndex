@@ -1,5 +1,18 @@
 # Project status
 
+## Completed: direct bundle-file reordering (2026-07-21)
+
+Direct-to-`main` inspector follow-up.
+
+- The Files in bundle rows are direct drag sources and gap-aware drop targets;
+  the separate up/down buttons are removed.
+- Option+Up/Down preserves keyboard reordering. When desktop file handoff is
+  available, Option-drag preserves copy-out to Finder while a plain drag
+  reorders inside the bundle.
+- Frontend lint/format/typecheck, all 296 component tests, the production build,
+  and all 78 Playwright tests pass. The in-app browser could not claim the local
+  URL under its security policy, so no separate live-tab check was performed.
+
 ## Completed: explicit relink for missed network renames (2026-07-21)
 
 Direct-to-`main` follow-up after directory-aware grouping.

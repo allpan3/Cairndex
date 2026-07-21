@@ -1212,6 +1212,38 @@ button {
   font-size: 12px;
   border-bottom: 1px solid var(--border);
 }
+.files .file-row {
+  position: relative;
+  cursor: grab;
+  outline: none;
+}
+.files .file-row:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.files .file-row:active,
+.files .file-row--dragging {
+  cursor: grabbing;
+}
+.files .file-row--dragging {
+  opacity: 0.45;
+}
+.files .file-row[data-drop]::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.files .file-row[data-drop='before']::after {
+  top: -1px;
+}
+.files .file-row[data-drop='after']::after {
+  bottom: -1px;
+}
 .file-row__main {
   min-width: 0;
 }
