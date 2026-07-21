@@ -56,6 +56,12 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Fixed: Open Library Folder… did nothing in the running app.** It was handled
+  only in the first-run bootstrap, whose menu listener tears down once the
+  workspace mounts — so the item stayed enabled and inert in the state a user
+  actually spends their time in. Now handled in both, since the item is reachable
+  from both, and a failed open reports the reason instead of failing silently.
+
 - **Fixed: the sidecar aborted at shutdown, leaving its ownership lease held.**
   `--watch-parent` blocked a daemon thread inside `sys.stdin.buffer.read()`,
   which holds that reader's lock; if the interpreter then finalized for any other

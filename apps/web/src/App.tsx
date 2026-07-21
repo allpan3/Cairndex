@@ -91,6 +91,7 @@ import {
 } from './desktop/connections'
 import { LibraryAccessNotice } from './app/LibraryAccessNotice'
 import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
+import { openLibraryFolder } from './desktop/openLibraryFolder'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import { useJobNotifications } from './desktop/useJobNotifications'
@@ -195,6 +196,7 @@ export default function App() {
     subscribeConnections,
     () => getConnections().activeConnectionId,
   )
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
   const [chosenId, setChosenId] = usePersistentState<string | null>(
     libraryStorageKey(activeConnectionId),
     null,
@@ -203,9 +205,21 @@ export default function App() {
   const [settingsPage, setSettingsPage] = useState<'devices' | 'pair' | null>(null)
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
+  // "Open Library Folder…" is handled *here* as well as in DesktopBootstrap.
+  // The two cover different states and both are real: the bootstrap's listener
+  // tears down once the workspace mounts (`if (ready) return`), so handling it
+  // only there left the item dead in the running app — which is where a user
+  // spends all their time. The menu item is enabled in both states, so both
+  // must listen.
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
     else if (action === 'pair-device') setSettingsPage('pair')
+    else if (action === 'open-library-folder') {
+      setOpenFolderError(null)
+      void openLibraryFolder().catch((error: unknown) => {
+        setOpenFolderError(hostOperationErrorMessage(error))
+      })
+    }
   })
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
@@ -312,6 +326,14 @@ export default function App() {
     )
   }
 
+  // Rendered alongside the settings dialog so it appears in every state the
+  // menu item is reachable from, including the ones that replace the workspace.
+  const openFolderNotice = openFolderError && (
+    <div className="mb-toast" role="alert" onClick={() => setOpenFolderError(null)}>
+      {openFolderError}
+    </div>
+  )
+
   const settingsDialog = settingsPage && (
     <SettingsDialog
       key={settingsPage}
@@ -349,6 +371,7 @@ export default function App() {
           }
         />
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -358,6 +381,7 @@ export default function App() {
       <>
         <div className="app-loading">Checking library access…</div>
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -384,6 +408,7 @@ export default function App() {
           </button>
         </LibraryAccessNotice>
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -411,6 +436,7 @@ export default function App() {
             </span>
           </LibraryAccessNotice>
           {settingsDialog}
+          {openFolderNotice}
         </>
       )
     }
@@ -426,6 +452,7 @@ export default function App() {
           error={lock.unlock.error?.message ?? null}
         />
         {settingsDialog}
+        {openFolderNotice}
       </>
     )
   }
@@ -446,6 +473,7 @@ export default function App() {
       />
       {managing && <LibraryManager onClose={() => setManaging(false)} />}
       {settingsDialog}
+      {openFolderNotice}
     </>
   )
 }
