@@ -355,6 +355,10 @@ edit it; Enter or blur saves the open-plan edit, while Escape cancels it. A
 re-scan addition can be switched from its recommended existing bundle to
 a new bundle with the circular-arrows icon beside its title, renamed, and
 switched back on the same row. Hover or focus the icon to see its exact action.
+Use Narrow or Widen beside a represented filesystem directory to regenerate the
+plan with stricter or broader filename-stem matching. This supersedes the open
+plan like any other regeneration, so finish drag, rename, and selection review
+after choosing stem sensitivity.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the

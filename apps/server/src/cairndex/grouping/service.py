@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import GroupingState, ProposalKind
+from cairndex.domain.enums import GroupingState, ProposalKind, StemMode
 from cairndex.grouping.suggester import (
     FileObservation,
     GroupingPlan,
@@ -220,9 +220,14 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
         else proposal
         for index, proposal in enumerate(plan.proposals)
     )
-    return GroupingPlan(plan.rule_version, (*additions, *updated))
+    return GroupingPlan(plan.rule_version, (*additions, *updated), plan.stem_modes)
 
 
-def suggest_for_session(session: Session) -> GroupingPlan:
+def suggest_for_session(
+    session: Session, *, stem_modes: dict[str, StemMode] | None = None
+) -> GroupingPlan:
     """Build a grouping plan with relevant existing collections as review context."""
-    return _with_collection_context(session, suggest_grouping(gather_observations(session)))
+    return _with_collection_context(
+        session,
+        suggest_grouping(gather_observations(session), stem_modes),
+    )

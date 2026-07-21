@@ -278,6 +278,20 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
       },
     ],
   }
+  const freshProposal = {
+    ...oldProposal,
+    id: 'fresh1',
+    title: 'Still unbundled',
+    directory: 'Fresh',
+    reason: 'current plan',
+    files: [
+      {
+        ...oldProposal.files[0],
+        asset_file_id: 'fresh-file',
+        relative_path: 'Fresh/movie.mp4',
+      },
+    ],
+  }
   let activePlanId = 'plan1'
   let generated = false
   await page.route('**/grouping/plans', (route) => {
@@ -289,11 +303,12 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         json: {
           id: activePlanId,
           status: 'open',
-          rule_version: 2,
+          rule_version: 5,
           scan_job_id: null,
+          stem_modes: {},
           generated_at: '2026-07-13T00:01:00Z',
           applied_at: null,
-          proposals: [],
+          proposals: [freshProposal],
         },
       })
     }
@@ -302,10 +317,10 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
         {
           id: activePlanId,
           status: 'open',
-          rule_version: 2,
+          rule_version: 5,
           generated_at: '2026-07-13T00:00:00Z',
           applied_at: null,
-          proposal_count: generated ? 0 : 1,
+          proposal_count: 1,
         },
       ],
     })
@@ -315,8 +330,9 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
       json: {
         id: 'plan1',
         status: 'open',
-        rule_version: 2,
+        rule_version: 5,
         scan_job_id: 'job1',
+        stem_modes: {},
         generated_at: '2026-07-13T00:00:00Z',
         applied_at: null,
         proposals: [oldProposal],
@@ -328,11 +344,12 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
       json: {
         id: 'plan2',
         status: 'open',
-        rule_version: 2,
+        rule_version: 5,
         scan_job_id: null,
+        stem_modes: {},
         generated_at: '2026-07-13T00:01:00Z',
         applied_at: null,
-        proposals: [],
+        proposals: [freshProposal],
       },
     }),
   )
@@ -341,11 +358,14 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
   await page.getByRole('button', { name: 'More library maintenance actions' }).click()
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   await expect(page.getByText('Already bundled')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Widen stem matching in Settled' })).toBeVisible()
   await page.locator('.grp-foot').getByRole('button', { name: 'Suggest grouping' }).click()
 
+  await expect(page.getByText('Still unbundled')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Widen stem matching in Fresh' })).toBeVisible()
   await expect(
     page.getByText('Nothing to group — there are no unbundled files awaiting suggestions.'),
-  ).toBeVisible()
+  ).toHaveCount(0)
   await expect(page.getByText('Already bundled')).toHaveCount(0)
   expect(generated).toBe(true)
 })

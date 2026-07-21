@@ -115,6 +115,23 @@ def test_regenerate_plan_does_not_reopen_confirmed_bundles(
     assert {file.id for file in bundle.files} == original_file_ids
 
 
+# Stem sensitivity is a durable input to each generated review snapshot
+def test_generate_plan_persists_per_directory_stem_modes(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+
+    created = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "wide"}})
+
+    assert created.status_code == 201
+    assert created.json()["stem_modes"] == {"Cosmos": "wide"}
+    fetched = client.get(f"{base}/plans/{created.json()['id']}")
+    assert fetched.json()["stem_modes"] == {"Cosmos": "wide"}
+    invalid = client.post(f"{base}/plans", json={"stem_modes": {"Cosmos": "widest"}})
+    assert invalid.status_code == 422
+
+
 # Persist an addition candidate's reversible destination through the public API
 def test_switch_addition_destination_and_rename_the_new_bundle(
     client: TestClient, library_id: str, library_root: Path, session: Session

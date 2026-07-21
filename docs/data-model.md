@@ -254,9 +254,10 @@ Durable, reviewable snapshots of the grouping suggester output.
 
 - `grouping_plans`: `id`, `scan_job_id` (nullable; registry job id, no cross-DB
   FK), `status` (`open` | `applied` | `superseded` | `cancelled`),
-  `rule_version`, `generated_at`, `applied_at`, `version`, timestamps. Generating
-  a new plan supersedes the prior open one. Scan jobs generate an open plan and
-  return its id/proposal count without applying it.
+  `rule_version`, `stem_modes` (JSON map from library-relative directory to
+  `narrow` | `balanced` | `wide`), `generated_at`, `applied_at`, `version`,
+  timestamps. Generating a new plan supersedes the prior open one. Scan jobs
+  generate an open plan and return its id/proposal count without applying it.
 - `grouping_proposals`: `id`, `plan_id` (FK, CASCADE), `parent_proposal_id` (self
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
   `target_bundle_title` (nullable display snapshot), `create_new_bundle`
@@ -290,6 +291,8 @@ sequence/derived-role values for every affected proposal. `PUT
 into a CONTAINER proposal or back to the top level. These owner edits are marked
 explicitly so apply can preserve `base_bundle_id` across reviewed provisional
 membership changes. Confirmed bundles remain outside regenerated plans.
+`POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
+that snapshot; omitting a directory selects the balanced default.
 
 ## Registry database
 

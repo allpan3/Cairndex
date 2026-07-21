@@ -201,6 +201,24 @@ leading subject prefix. This avoids treating long filenames that share an
 author/source prefix as ambiguous while preserving one-file proposals for
 image-only folders.
 
+As amended on 2026-07-20, fresh files in a confirmed bundle's directory are
+partitioned into filename-stem candidates **before** any existing bundle is
+selected. Each candidate independently targets a unique matching confirmed
+bundle; the directory alone is only a fallback for one candidate/one owner or a
+sidecar-only arrival. A lone confirmed bundle therefore cannot absorb several
+unrelated new video stems. The balanced matcher folds conservative trailing
+rendition markers such as `720p`, `1080p`, or `4K`, so a new rendition can still
+target the otherwise-identical confirmed bundle and retain the reversible
+existing/new destination choice.
+
+Grouping plans also carry a bounded per-directory `stem_modes` map. Review may
+regenerate a directory at three sensitivities: **narrow** uses complete,
+rendition-sensitive normalized stems and tends toward more bundles;
+**balanced** is the rendition-folded default; **wide** uses the first two
+spaced-dash semantic segments (subject plus source/series) and tends toward fewer
+bundles. Changing sensitivity creates a new plan snapshot under the normal
+supersession rules; it never mutates files or confirmed bundles.
+
 Nested folders recurse: a CONTAINER's children are classified independently, so
 `Movies/` (container) can hold `Cosmos/` and `Waves/` (bundles).
 

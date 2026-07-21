@@ -23,14 +23,14 @@ its reason so a fuzzy guess is easy to override.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
+from cairndex.domain.enums import FileRole, MediaKind, ProposalKind, StemMode
 
 # Bumped whenever the heuristic changes in a way worth re-surfacing. Recorded on
 # provisional bundles/plans so a re-scan can tell stale suggestions apart.
-SUGGESTER_RULE_VERSION = 4
+SUGGESTER_RULE_VERSION = 5
 
 # Image stems that name a cover/poster regardless of the bundle's subject.
 _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "front"})
@@ -40,6 +40,12 @@ _COVER_STEMS = frozenset({"cover", "poster", "thumbnail", "thumb", "folder", "fr
 # which usually means separate items.
 _PART_MARKER = re.compile(r"[._\-\s]*(?:part|pt|cd|disc|disk)[._\-\s]*0*(\d+)$", re.IGNORECASE)
 _SUBJECT_DELIMITER = re.compile(r"[._\-\s]+")
+_SEMANTIC_DELIMITER = re.compile(r"\s+(?:-|–|—)\s+")
+_RENDITION_SEGMENT = re.compile(
+    r"[._\-\s]+(?:360p|480p|576p|720p|1080p|1440p|2160p|[248]k|uhd|fhd|hd)"
+    r"(?=(?:[._\-\s]+\[[^\]]+\])*$)",
+    re.IGNORECASE,
+)
 
 _MEDIA_SEQUENCE_RANK = {
     MediaKind.VIDEO: 0,
@@ -109,6 +115,7 @@ class GroupingProposal:
 class GroupingPlan:
     rule_version: int
     proposals: tuple[GroupingProposal, ...]
+    stem_modes: dict[str, StemMode] = field(default_factory=dict)
 
 
 # --- internal directory tree -------------------------------------------------
@@ -143,10 +150,57 @@ def _subject_prefix(name: str) -> str:
     return _SUBJECT_DELIMITER.split(stem, maxsplit=1)[0]
 
 
+# Remove a trailing rendition label while preserving title and release tags
+def _fold_rendition_suffix(stem: str) -> str:
+    """Remove a conservative trailing quality marker such as ``720p`` or ``4K``."""
+    return _RENDITION_SEGMENT.sub("", stem)
+
+
+# Normalize separators in a raw title chunk
+def _normalize_text(value: str) -> str:
+    """Normalize separators in text that is not necessarily a filename."""
+    return " ".join(part for part in _SUBJECT_DELIMITER.split(value.casefold()) if part)
+
+
 # Normalize separators while retaining the complete filename subject
-def _normalized_stem(name: str) -> str:
+def _normalized_stem(name: str, *, fold_rendition: bool = False) -> str:
     """Return a comparable full stem across spaces, dots, dashes, and underscores."""
-    return " ".join(part for part in _SUBJECT_DELIMITER.split(_stem(name).casefold()) if part)
+    stem = _stem(name).casefold()
+    if fold_rendition:
+        stem = _fold_rendition_suffix(stem)
+    return _normalize_text(stem)
+
+
+# Select the literal or rendition-folded stem for the requested sensitivity
+def _comparison_stem(name: str, mode: StemMode) -> str:
+    """Return the filename stem used by one grouping sensitivity."""
+    return _normalized_stem(name, fold_rendition=mode is not StemMode.NARROW)
+
+
+# Split a filename into owner-meaningful chunks for the wider grouping mode
+def _semantic_segments(name: str) -> tuple[str, ...]:
+    """Return spaced-dash title chunks, falling back to normalized tokens."""
+    stem = _fold_rendition_suffix(_stem(name).casefold())
+    chunks = [
+        _normalize_text(chunk)
+        for chunk in _SEMANTIC_DELIMITER.split(stem)
+        if _normalize_text(chunk)
+    ]
+    if len(chunks) > 1:
+        return tuple(chunks)
+    return tuple(_normalize_text(stem).split())
+
+
+# Derive wider keys that retain a subject and its source/series qualifier
+def _wide_stem_keys(files: list[FileObservation]) -> tuple[dict[str, str], int]:
+    """Return stable semantic-prefix keys and the shared key depth."""
+    segments = [_semantic_segments(file.relative_path) for file in files]
+    depth = min(2, max((len(value) for value in segments), default=1))
+    keys = {
+        file.asset_file_id: " | ".join(value[:depth])
+        for file, value in zip(files, segments, strict=True)
+    }
+    return keys, depth
 
 
 def _natural_key(name: str) -> list[object]:
@@ -190,17 +244,6 @@ def _is_multipart(videos: list[FileObservation]) -> bool:
     return len(bases) == 1 and None not in bases
 
 
-def _is_bundle(files: list[FileObservation]) -> bool:
-    """Whether a folder's direct media read as one subject (a BUNDLE) rather
-    than a collection of unrelated items (a CONTAINER)."""
-    if len(files) <= 1:
-        return True
-    videos = [f for f in files if f.media_kind is MediaKind.VIDEO]
-    if len(videos) == 1:
-        return True  # one video + sidecars (images/subs/attachments)
-    return _is_multipart(videos)  # several parts of one work
-
-
 def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
     videos = [f for f in files if f.media_kind is MediaKind.VIDEO]
     sidecars = len(files) - len(videos)
@@ -214,7 +257,9 @@ def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
 
 
 # Split a mixed direct-media directory into video-centered bundle candidates
-def _bundle_groups(media: list[FileObservation]) -> list[list[FileObservation]]:
+def _bundle_groups(
+    media: list[FileObservation], mode: StemMode = StemMode.BALANCED
+) -> list[list[FileObservation]]:
     """Group direct media into proposed bundle file sets.
 
     A folder with a single subject remains one bundle. A folder with multiple
@@ -225,48 +270,69 @@ def _bundle_groups(media: list[FileObservation]) -> list[list[FileObservation]]:
     """
     if not media:
         return []
-    if _is_bundle(media):
-        return [media]
-
     videos = sorted((f for f in media if f.media_kind is MediaKind.VIDEO), key=_obs_sort_key)
+    if _is_multipart(videos):
+        return [media]
     if not videos:
         return [[f] for f in sorted(media, key=_obs_sort_key)]
+    if len(videos) == 1 and mode is not StemMode.NARROW:
+        return [media]
 
-    groups: list[list[FileObservation]] = [[video] for video in videos]
-    prefix_counts: dict[str, int] = {}
+    wide_keys, wide_depth = _wide_stem_keys(videos)
+    groups_by_key: dict[str, list[FileObservation]] = {}
     for video in videos:
-        prefix = _subject_prefix(video.relative_path)
+        key = (
+            wide_keys[video.asset_file_id]
+            if mode is StemMode.WIDE
+            else _comparison_stem(video.relative_path, mode)
+        )
+        groups_by_key.setdefault(key, []).append(video)
+    groups = list(groups_by_key.values())
+
+    prefix_counts: dict[str, int] = {}
+    for group in groups:
+        prefix = _subject_prefix(group[0].relative_path)
         prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
     group_by_prefix = {
-        _subject_prefix(video.relative_path): group
-        for video, group in zip(videos, groups, strict=True)
-        if prefix_counts[_subject_prefix(video.relative_path)] == 1
+        _subject_prefix(group[0].relative_path): group
+        for group in groups
+        if prefix_counts[_subject_prefix(group[0].relative_path)] == 1
     }
-    video_stems = [_normalized_stem(video.relative_path) for video in videos]
+    stems_by_group = [
+        {_comparison_stem(video.relative_path, mode) for video in group} for group in groups
+    ]
+    group_by_wide_key = {key: group for key, group in groups_by_key.items()}
     unassigned: list[FileObservation] = []
     for f in sorted((x for x in media if x.media_kind is not MediaKind.VIDEO), key=_obs_sort_key):
-        stem = _normalized_stem(f.relative_path)
+        stem = _comparison_stem(f.relative_path, mode)
         exact_matches = [
             group
-            for video_stem, group in zip(video_stems, groups, strict=True)
-            if stem == video_stem
+            for video_stems, group in zip(stems_by_group, groups, strict=True)
+            if stem in video_stems
         ]
         suffix_matches = [
             group
-            for video_stem, group in zip(video_stems, groups, strict=True)
-            if stem.startswith(f"{video_stem} ")
+            for video_stems, group in zip(stems_by_group, groups, strict=True)
+            if any(stem.startswith(f"{video_stem} ") for video_stem in video_stems)
         ]
-        group = (
+        wide_key = " | ".join(_semantic_segments(f.relative_path)[:wide_depth])
+        matched_group = (
             exact_matches[0]
             if len(exact_matches) == 1
-            else suffix_matches[0]
-            if not exact_matches and len(suffix_matches) == 1
-            else group_by_prefix.get(_subject_prefix(f.relative_path))
+            else (
+                suffix_matches[0]
+                if not exact_matches and len(suffix_matches) == 1
+                else group_by_wide_key.get(wide_key)
+                if mode is StemMode.WIDE
+                else group_by_prefix.get(_subject_prefix(f.relative_path))
+                if mode is StemMode.BALANCED
+                else None
+            )
         )
-        if group is None:
+        if matched_group is None:
             unassigned.append(f)
         else:
-            group.append(f)
+            matched_group.append(f)
     groups.extend([f] for f in unassigned)
     return groups
 
@@ -296,8 +362,17 @@ def _roles_in_order(ordered: list[FileObservation]) -> tuple[ProposedFile, ...]:
     cover_id = _pick_cover(images)
 
     proposed: list[ProposedFile] = []
+    first_video_id = videos[0].asset_file_id if videos else None
     for sequence, f in enumerate(ordered):
-        proposed.append(ProposedFile(f.asset_file_id, _role_for(f, multipart, cover_id), sequence))
+        role = _role_for(f, multipart, cover_id)
+        if (
+            f.media_kind is MediaKind.VIDEO
+            and len(videos) > 1
+            and not multipart
+            and f.asset_file_id != first_video_id
+        ):
+            role = FileRole.ALTERNATE_VERSION
+        proposed.append(ProposedFile(f.asset_file_id, role, sequence))
     return tuple(proposed)
 
 
@@ -337,8 +412,12 @@ def _bundle_proposal(
     parent: str | None,
     *,
     owns_directory: bool,
+    stem_mode: StemMode = StemMode.BALANCED,
 ) -> GroupingProposal:
     confidence, reason = _bundle_reason(files)
+    videos = [file for file in files if file.media_kind is MediaKind.VIDEO]
+    if stem_mode is StemMode.WIDE and len(videos) > 1 and not _is_multipart(videos):
+        confidence, reason = 0.55, f"{len(files)} files matched by a wider stem prefix"
     # A bundle that fills its whole folder takes the folder's name; one of several
     # bundles split out of a container reads better titled by its own file.
     title = _basename(directory) if owns_directory and directory else _stem(files[0].relative_path)
@@ -377,7 +456,11 @@ def _container_proposal(
     )
 
 
-def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
+def _classify(
+    node: _Dir,
+    parent: str | None,
+    stem_modes: Mapping[str, StemMode],
+) -> list[GroupingProposal]:
     """Recursively turn a directory subtree into proposals.
 
     ``parent`` is the enclosing CONTAINER directory (``None`` at the top). The
@@ -390,15 +473,16 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
     child_parent = None if is_root else node.path
     child_proposals: list[GroupingProposal] = []
     for name in sorted(node.children):
-        child_proposals.extend(_classify(node.children[name], child_parent))
+        child_proposals.extend(_classify(node.children[name], child_parent, stem_modes))
 
     has_subbundles = bool(child_proposals)
     media = node.files
+    stem_mode = stem_modes.get(node.path, StemMode.BALANCED)
     proposals: list[GroupingProposal] = []
 
     if has_subbundles and not is_root:
         # This folder is a CONTAINER for the bundles found beneath it.
-        direct_count = len(_bundle_groups(media)) + len(
+        direct_count = len(_bundle_groups(media, stem_mode)) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
         )
         proposals.append(
@@ -409,27 +493,37 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
                 reason=f"holds {direct_count} sub-item(s)",
             )
         )
-        proposals.extend(_direct_media_proposals(media, node.path, parent_for_children=node.path))
+        proposals.extend(
+            _direct_media_proposals(
+                media, node.path, parent_for_children=node.path, stem_mode=stem_mode
+            )
+        )
         proposals.extend(child_proposals)
         return proposals
 
     if has_subbundles and is_root:
-        proposals.extend(_direct_media_proposals(media, "", parent_for_children=None))
+        proposals.extend(
+            _direct_media_proposals(media, "", parent_for_children=None, stem_mode=stem_mode)
+        )
         proposals.extend(child_proposals)
         return proposals
 
     # Leaf folder (no sub-bundles).
     if not media:
         return []
-    if _is_bundle(media):
-        proposals.append(_bundle_proposal(media, node.path, parent, owns_directory=True))
+    groups = _bundle_groups(media, stem_mode)
+    if len(groups) == 1:
+        proposals.append(
+            _bundle_proposal(groups[0], node.path, parent, owns_directory=True, stem_mode=stem_mode)
+        )
         return proposals
     if is_root:
         # Unrelated loose files at the root: bundle by subject where possible, no root container
-        proposals.extend(_direct_media_proposals(media, "", parent_for_children=None))
+        proposals.extend(
+            _direct_media_proposals(media, "", parent_for_children=None, stem_mode=stem_mode)
+        )
         return proposals
     # A container of unrelated items: one child bundle per subject or file
-    groups = _bundle_groups(media)
     grouped_count = sum(len(group) > 1 for group in groups)
     proposals.append(
         _container_proposal(
@@ -443,17 +537,31 @@ def _classify(node: _Dir, parent: str | None) -> list[GroupingProposal]:
             ),
         )
     )
-    proposals.extend(_direct_media_proposals(media, node.path, parent_for_children=node.path))
+    proposals.extend(
+        _direct_media_proposals(
+            media, node.path, parent_for_children=node.path, stem_mode=stem_mode
+        )
+    )
     return proposals
 
 
 def _direct_media_proposals(
-    media: list[FileObservation], directory: str, *, parent_for_children: str | None
+    media: list[FileObservation],
+    directory: str,
+    *,
+    parent_for_children: str | None,
+    stem_mode: StemMode,
 ) -> list[GroupingProposal]:
     """Proposals for a container's own direct media (those not in a subfolder)."""
-    groups = _bundle_groups(media)
+    groups = _bundle_groups(media, stem_mode)
     return [
-        _bundle_proposal(group, directory, parent_for_children, owns_directory=len(groups) == 1)
+        _bundle_proposal(
+            group,
+            directory,
+            parent_for_children,
+            owns_directory=len(groups) == 1,
+            stem_mode=stem_mode,
+        )
         for group in groups
     ]
 
@@ -462,28 +570,78 @@ def _direct_media_proposals(
 class _Owner:
     bundle_id: str
     title: str | None
+    files: tuple[FileObservation, ...]
 
 
-def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, _Owner]:
-    """Map a directory to the confirmed bundle that owns it.
-
-    A directory is owned only when every confirmed file in it belongs to the
-    same bundle; a directory split across several confirmed bundles is ambiguous
-    and gets no owner, so additions there fall back to normal suggestion.
-    """
-    bundles_by_dir: dict[str, set[str]] = {}
+def _confirmed_owners(confirmed: list[FileObservation]) -> dict[str, list[_Owner]]:
+    """Map each directory to every confirmed bundle represented there."""
+    files_by_dir_bundle: dict[tuple[str, str], list[FileObservation]] = {}
     title_by_bundle: dict[str, str | None] = {}
     for f in confirmed:
         if f.bundle_id is None:
             continue
-        bundles_by_dir.setdefault(_dirname(f.relative_path), set()).add(f.bundle_id)
+        key = (_dirname(f.relative_path), f.bundle_id)
+        files_by_dir_bundle.setdefault(key, []).append(f)
         title_by_bundle[f.bundle_id] = f.bundle_title
-    owners: dict[str, _Owner] = {}
-    for directory, bundle_ids in bundles_by_dir.items():
-        if len(bundle_ids) == 1:
-            bundle_id = next(iter(bundle_ids))
-            owners[directory] = _Owner(bundle_id, title_by_bundle.get(bundle_id))
+    owners: dict[str, list[_Owner]] = {}
+    for (directory, bundle_id), files in files_by_dir_bundle.items():
+        owners.setdefault(directory, []).append(
+            _Owner(bundle_id, title_by_bundle.get(bundle_id), tuple(files))
+        )
     return owners
+
+
+# Score one fresh bundle candidate against one settled bundle in the same directory
+def _owner_match_score(owner: _Owner, files: list[FileObservation], mode: StemMode) -> int:
+    """Rank exact/rendition/suffix stem matches without using directory alone."""
+    owner_anchors = [file for file in owner.files if file.media_kind is MediaKind.VIDEO]
+    fresh_anchors = [file for file in files if file.media_kind is MediaKind.VIDEO]
+    owner_anchors = owner_anchors or list(owner.files)
+    fresh_anchors = fresh_anchors or files
+    owner_stems = {_comparison_stem(file.relative_path, mode) for file in owner_anchors}
+    fresh_stems = {_comparison_stem(file.relative_path, mode) for file in fresh_anchors}
+    if owner_stems & fresh_stems:
+        return 3
+    if any(
+        fresh.startswith(f"{owner} ") or owner.startswith(f"{fresh} ")
+        for owner in owner_stems
+        for fresh in fresh_stems
+    ):
+        return 2
+    if mode is StemMode.WIDE:
+        common = max(
+            (
+                int(
+                    _semantic_segments(owner.relative_path)[:2]
+                    == _semantic_segments(fresh.relative_path)[:2]
+                )
+                for owner in owner_anchors
+                for fresh in fresh_anchors
+            ),
+            default=0,
+        )
+        return 1 if common > 0 else 0
+    return 0
+
+
+# Choose a unique best stem match, with a one-group/one-owner directory fallback
+def _match_owner(
+    owners: list[_Owner],
+    files: list[FileObservation],
+    mode: StemMode,
+    *,
+    group_count: int,
+    allow_directory_fallback: bool,
+) -> _Owner | None:
+    """Return one unambiguous confirmed target for a fresh file group."""
+    scored = [(owner, _owner_match_score(owner, files, mode)) for owner in owners]
+    best = max((score for _, score in scored), default=0)
+    matches = [owner for owner, score in scored if score == best and score > 0]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches and len(owners) == 1 and (group_count == 1 or allow_directory_fallback):
+        return owners[0]
+    return None
 
 
 # Assign addition roles without changing an owner-reviewed sequence
@@ -525,7 +683,10 @@ def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingP
     )
 
 
-def suggest_grouping(files: Iterable[FileObservation]) -> GroupingPlan:
+def suggest_grouping(
+    files: Iterable[FileObservation],
+    stem_modes: Mapping[str, StemMode] | None = None,
+) -> GroupingPlan:
     """Propose a grouping for ``files``.
 
     Confirmed groupings are excluded from *new* proposals, but a newly discovered
@@ -534,23 +695,39 @@ def suggest_grouping(files: Iterable[FileObservation]) -> GroupingPlan:
     never disturbs a confirmed grouping, it only suggests folding new files in.
     """
     files = list(files)
+    stem_modes = dict(stem_modes or {})
     confirmed = [f for f in files if f.grouping_confirmed]
     owners = _confirmed_owners(confirmed)
 
     additions: dict[str, tuple[_Owner, list[FileObservation]]] = {}
     fresh: list[FileObservation] = []
-    for f in files:
-        if f.grouping_confirmed:
-            continue
-        owner = owners.get(_dirname(f.relative_path))
-        if owner is not None:
-            additions.setdefault(owner.bundle_id, (owner, []))[1].append(f)
-        else:
-            fresh.append(f)
+    unconfirmed_by_dir: dict[str, list[FileObservation]] = {}
+    for file in files:
+        if not file.grouping_confirmed:
+            unconfirmed_by_dir.setdefault(_dirname(file.relative_path), []).append(file)
+    for directory in sorted(unconfirmed_by_dir):
+        candidates = unconfirmed_by_dir[directory]
+        mode = stem_modes.get(directory, StemMode.BALANCED)
+        groups = _bundle_groups(candidates, mode)
+        directory_owners = owners.get(directory, [])
+        only_sidecars = all(file.media_kind is not MediaKind.VIDEO for file in candidates)
+        for group in groups:
+            owner = _match_owner(
+                directory_owners,
+                group,
+                mode,
+                group_count=len(groups),
+                allow_directory_fallback=only_sidecars,
+            )
+            if owner is None:
+                fresh.extend(group)
+            else:
+                additions.setdefault(owner.bundle_id, (owner, []))[1].extend(group)
 
     addition_proposals = [_addition_proposal(owner, group) for owner, group in additions.values()]
-    proposals = _classify(_build_tree(fresh), parent=None)
+    proposals = _classify(_build_tree(fresh), parent=None, stem_modes=stem_modes)
     return GroupingPlan(
         rule_version=SUGGESTER_RULE_VERSION,
         proposals=(*addition_proposals, *proposals),
+        stem_modes=stem_modes,
     )

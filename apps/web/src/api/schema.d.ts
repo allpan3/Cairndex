@@ -2916,6 +2916,13 @@ export interface components {
             /** Suggestions */
             suggestions: string[];
         };
+        /** PlanGenerateRequest */
+        PlanGenerateRequest: {
+            /** Stem Modes */
+            stem_modes?: {
+                [key: string]: components["schemas"]["StemMode"];
+            };
+        };
         /** PlanRead */
         PlanRead: {
             /** Applied At */
@@ -2934,6 +2941,10 @@ export interface components {
             /** Scan Job Id */
             scan_job_id: string | null;
             status: components["schemas"]["GroupingPlanStatus"];
+            /** Stem Modes */
+            stem_modes: {
+                [key: string]: components["schemas"]["StemMode"];
+            };
         };
         /** PlanSummary */
         PlanSummary: {
@@ -3218,6 +3229,12 @@ export interface components {
             /** Sort Order */
             sort_order?: number | null;
         };
+        /**
+         * StemMode
+         * @description Sensitivity used by grouping-plan stem matching.
+         * @enum {string}
+         */
+        StemMode: "narrow" | "balanced" | "wide";
         /** SubtitleTrackRead */
         SubtitleTrackRead: {
             /** Format */
@@ -6093,7 +6110,11 @@ export interface operations {
                 cairndex_session?: string | null;
             };
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlanGenerateRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
