@@ -99,14 +99,23 @@ Corrected here rather than left standing.
   — and it is a documentation problem, not an engineering one. Revisit when the
   friction is actually costing users, not on principle.
 
-  Two things this does *not* excuse. **Every executable in the bundle must still
-  carry at least an ad-hoc signature**, because Apple Silicon kills unsigned ones
-  outright — that includes the PyInstaller sidecar and the dylibs beside it, not
-  just `Cairndex.app`. And the **downloaded** path is still unproven: the D6
-  packaged run launched a locally-built app, which carries no
-  `com.apple.quarantine` attribute, so the first-launch experience an actual
-  downloader gets has never been observed. Verifying it needs a real
-  round-trip through a browser download, and belongs with the first release.
+  **Ad-hoc signing is an invariant that already holds — not a task.** Apple
+  Silicon kills any mach-O without a valid signature, and the toolchain handles
+  this without being asked: the arm64 linker ad-hoc signs at link time
+  (`Cairndex.app` reports `flags=0x20002(adhoc,linker-signed)`), and PyInstaller
+  re-signs each binary it rewrites install names on. Measured 2026-07-21 across
+  the shipped bundle — the sidecar executable and all **52** bundled
+  `.so`/`.dylib` files report `Signature=adhoc`.
+
+  It is recorded here only because of how it would break: a future build step
+  that modifies a binary *after* signing (`strip`, `install_name_tool`, a
+  resource copy) invalidates the signature, and an **invalid** signature fails
+  harder than an absent one. Anything touching binaries post-build must re-sign.
+
+  Separately, the **downloaded** path is still unobserved. The D6 packaged run
+  launched a locally-built app carrying `com.apple.provenance` but no
+  `com.apple.quarantine`, which is precisely why it opened with no dialog. What
+  an actual downloader sees needs a real browser round-trip to confirm — D7.
 
 - **ffmpeg pinning is greenlit** (owner, 2026-07-21). It was written up as an
   owner decision because it hardcodes a third-party trust choice into the repo,
