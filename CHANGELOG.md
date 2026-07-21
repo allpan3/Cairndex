@@ -10,6 +10,18 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Cairndex is MIT licensed** ([`LICENSE`](LICENSE)), ahead of the first public
+  release (ADR-0019 §4). Binary desktop releases additionally bundle static
+  ffmpeg/ffprobe builds, which are GPL-2.0-or-later and carry their own source
+  offer — Cairndex invokes them as separate executables, so its own terms are
+  unaffected. The `LICENSE` file states both.
+
+- **Plan 3 D6 (local-server sidecar) is complete**, verified by an owner pass on
+  the packaged app rather than by tests alone. The desktop app can now open a
+  local library folder with no server to install or configure: it starts a
+  bundled server on demand, and the ownership lease keeps that from colliding
+  with a NAS or another machine serving the same folder.
+
 - **Library ownership lease (ADR-0018 §2–§4).** A library can now be served by
   exactly one Cairndex server at a time. Each server writes a lease inside the
   library at `.cairndex/locks/active-owner.json` and refreshes it every minute; a
