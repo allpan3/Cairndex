@@ -404,7 +404,7 @@ a library is mounted, so a conflict surfaces on mount whichever route got there.
 
 | Server state         | UI                                                          |
 | -------------------- | ----------------------------------------------------------- |
-| `library_lease_held` | Name the holder. Offer "Connect to <url>" when `redirect_url` is set, which adds/activates that remote connection |
+| `library_lease_held` | Name the holder. Offer "Connect to <url>" when `redirect_url` is set, which adds/activates that remote connection — after verifying it answers, so a wrong or dead advertised address cannot strand the app |
 | `library_lease_takeover_required` | Explain, show holder + last heartbeat, offer "Serve here anyway" |
 | `library_ownership_lost` | The library unmounted underneath us; same redirect offer |
 
@@ -412,6 +412,19 @@ Takeover is `POST …/ownership/takeover` (202) then polling `GET …/ownership`
 until `takeover.running` clears — the observation window is ~2 minutes by
 design, so the dialog must show indeterminate progress and stay cancellable
 (cancelling stops polling; it does not stop the server-side attempt).
+
+### Known limitation: the redirect does not carry the library
+
+Connecting to the holder switches servers but lands on that server's *first*
+library, not the one the user was trying to open. Library ids are per-registry,
+so the id in hand is meaningless on the target; the portable `library_uuid`
+would be the right key, and the ownership response does not currently carry it.
+Adding it is the fix when this is worth doing.
+
+Worth stating plainly because the lease is about **one server per library, not
+one client**. A NAS serving that library to other people is working exactly as
+intended, and connecting to it is the correct resolution — the redirect is not
+taking anything away from anyone.
 
 ### Explicitly not in scope
 

@@ -22,6 +22,13 @@ const loadHostConnections = vi.fn()
 const saveHostConnections = vi.fn()
 const loadHostServerUrl = vi.fn()
 
+const verifyServer = vi.fn<(url: string) => Promise<void>>()
+vi.mock('./verifyServer', () => ({
+  verifyServer: (url: string) => verifyServer(url),
+  INCOMPATIBLE_SERVER_ERROR: 'This address is not a compatible Cairndex server.',
+  UNREACHABLE_SERVER_ERROR: 'Cairndex did not respond at this address.',
+}))
+
 vi.mock('../platform', () => ({
   configureHostServer: (url: string, options?: unknown) => configureHostServer(url, options),
   startHostLocalServer: () => startHostLocalServer(),
@@ -36,6 +43,7 @@ beforeEach(() => {
   resetConnectionsForTests()
   resetJobNotificationsForTests()
   vi.clearAllMocks()
+  verifyServer.mockResolvedValue(undefined)
   configureHostServer.mockResolvedValue(undefined)
   saveHostConnections.mockResolvedValue(undefined)
   loadHostConnections.mockResolvedValue(null)
@@ -178,6 +186,45 @@ describe('activation', () => {
       connections: { kind: string; serverUrl: string | null }[]
     }
     expect(saved.connections.find((entry) => entry.kind === 'local')?.serverUrl).toBeNull()
+  })
+})
+
+describe('reachability', () => {
+  it('refuses to switch to a server that does not answer', async () => {
+    // Owner-reported: clicking a lease redirect switched to the holder's
+    // advertised address without checking anything was there, stranding the app
+    // on a dead server *and* persisting it as active — so the next launch
+    // opened straight into the error screen.
+    loadHostServerUrl.mockResolvedValue(NAS)
+    await loadConnections()
+    const remoteId = getConnections().connections[0]!.id
+    await activateConnection(remoteId)
+
+    const dead = await addRemoteConnection('http://gone.local:8000')
+    verifyServer.mockRejectedValue(new Error('Cairndex did not respond at this address.'))
+
+    await expect(activateConnection(dead.id)).rejects.toThrow('did not respond')
+
+    expect(getActiveConnection()?.id).toBe(remoteId)
+  })
+
+  it('checks the server before configuring transport, not after', async () => {
+    loadHostServerUrl.mockResolvedValue(NAS)
+    await loadConnections()
+    const dead = await addRemoteConnection('http://gone.local:8000')
+    verifyServer.mockRejectedValue(new Error('nope'))
+
+    await expect(activateConnection(dead.id)).rejects.toThrow('nope')
+
+    // Never touched: the failure happened before any step with an effect, so
+    // there is nothing to compensate for.
+    expect(configureHostServer).not.toHaveBeenCalled()
+  })
+
+  it('does not health-check the local connection, which the shell already gated', async () => {
+    await ensureLocalConnection()
+    await activateConnection(LOCAL_CONNECTION_ID)
+    expect(verifyServer).not.toHaveBeenCalled()
   })
 })
 

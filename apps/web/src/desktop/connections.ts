@@ -28,6 +28,7 @@ import {
   type StoredConnections,
 } from '../platform'
 import { resetJobNotifications } from './useJobNotifications'
+import { verifyServer } from './verifyServer'
 
 export const LOCAL_CONNECTION_ID = 'local'
 export const LOCAL_CONNECTION_LABEL = 'This Computer'
@@ -212,6 +213,12 @@ async function runActivation(id: string): Promise<Connection> {
   } else {
     if (!target.serverUrl) throw new Error('That connection has no server address.')
     serverUrl = target.serverUrl
+    // Reachability is a fallible step, so it runs before the commit like every
+    // other one. Without this a lease redirect would switch to the holder's
+    // advertised address without checking anything answers there — stranding
+    // the user on a dead server and persisting it as active, so the next launch
+    // opened straight into the error (owner-reported).
+    await verifyServer(serverUrl)
   }
 
   try {
