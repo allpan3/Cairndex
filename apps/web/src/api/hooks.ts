@@ -22,6 +22,7 @@ import {
   type FacetParams,
   type FilePatch,
   type FileRead,
+  type FileRepairCandidate,
   type FileSelection,
   type FilterExpression,
   type GroupingPlan,
@@ -75,6 +76,7 @@ import {
   fetchCollectionCounts,
   fetchFacets,
   fetchFileBrowserEntries,
+  fetchFileRepairCandidate,
   fetchLibraries,
   fetchPlaybackManifest,
   fetchContinueWatching,
@@ -87,6 +89,7 @@ import {
   previewFilter,
   registerLibrary,
   removeFile,
+  repairFile,
   revokeDevice,
   renameGroupingProposal,
   setGroupingProposalDestination,
@@ -870,6 +873,14 @@ export function useBundleFiles(id: string | null) {
   })
 }
 
+export function useFileRepairCandidate(bundleId: string, fileId: string, enabled: boolean) {
+  return useQuery<FileRepairCandidate | null>({
+    queryKey: ['file-repair-candidate', bundleId, fileId],
+    queryFn: ({ signal }) => fetchFileRepairCandidate(bundleId, fileId, signal),
+    enabled,
+  })
+}
+
 export function useBundleTags(id: string | null) {
   return useQuery({
     queryKey: ['bundle-tags', id],
@@ -1001,6 +1012,26 @@ export function useFileMutations(bundleId: string) {
       onSuccess: updateCoverCache,
     }),
   }
+}
+
+export function useRepairFile(bundleId: string, fileId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (replacementFileId: string) => repairFile(bundleId, fileId, replacementFileId),
+    onSuccess: () => {
+      for (const key of [
+        'bundle-files',
+        'bundle',
+        'browse',
+        'view-counts',
+        'unbundled-files',
+        'file-browser',
+        'continue-watching',
+        'file-repair-candidate',
+      ])
+        qc.invalidateQueries({ queryKey: [key] })
+    },
+  })
 }
 
 /**

@@ -29,6 +29,7 @@ export type PairPollResponse = components['schemas']['PairPollResponse']
 export type FileBrowserEntry = components['schemas']['FileBrowserEntryRead']
 export type FileBrowserListing = components['schemas']['FileBrowserListingRead']
 export type FileRead = components['schemas']['FileRead']
+export type FileRepairCandidate = components['schemas']['FileRepairCandidateRead']
 export type BundleRead = components['schemas']['BundleRead']
 export type BundleCursorRead = components['schemas']['BundleCursorRead']
 export type TagRead = components['schemas']['TagRead']
@@ -706,6 +707,17 @@ export function fetchBundleFiles(id: string, signal?: AbortSignal): Promise<File
   return getJson<FileRead[]>(`${lib()}/bundles/${id}/files`, signal)
 }
 
+export function fetchFileRepairCandidate(
+  bundleId: string,
+  fileId: string,
+  signal?: AbortSignal,
+): Promise<FileRepairCandidate | null> {
+  return getJson<FileRepairCandidate | null>(
+    `${lib()}/bundles/${bundleId}/files/${fileId}/repair-candidate`,
+    signal,
+  )
+}
+
 /**
  * URL for a bundle's cover thumbnail. The endpoint path is stable, so the
  * browser would serve a stale cached image after the cover changes; passing
@@ -850,6 +862,11 @@ export const cleanupBundleOrder = (
 
 export const removeFile = (bundleId: string, fileId: string) =>
   send<void>(`${lib()}/bundles/${bundleId}/files/${fileId}`, 'DELETE')
+
+export const repairFile = (bundleId: string, fileId: string, replacementFileId: string) =>
+  send<FileRead>(`${lib()}/bundles/${bundleId}/files/${fileId}/repair`, 'PUT', {
+    replacement_file_id: replacementFileId,
+  })
 
 export const batchUpdate = (payload: BatchUpdate) =>
   send<{ updated: number }>(`${lib()}/bundles/batch`, 'POST', payload)

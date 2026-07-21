@@ -291,7 +291,11 @@ Repair must:
 
 Confidence signals may include same platform file identity, same filename/extension, same size and high-resolution mtime, same sampled/quick hash, and optional full hash only when needed for ambiguous candidates and only outside hot request paths.
 
-A same-path content edit is not a move. A cross-filesystem move followed by an edit may not be confidently repairable; keep the old file missing and expose a later manual repair/candidate workflow rather than guessing.
+A same-path content edit is not a move. When a conservative scan misses a rename
+and has already linked its replacement, Missing Files may offer an explicit
+stable-ID relink for a unique, revalidated candidate. A cross-filesystem move
+followed by an edit may not be confidently repairable; keep the old file missing
+rather than guessing when no candidate remains.
 
 If the old path still exists and a similar or identical new path appears, do not auto-merge. Treat that as a future duplicate/copy candidate. Duplicate detection is out of scope for the first release.
 

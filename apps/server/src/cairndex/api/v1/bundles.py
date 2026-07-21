@@ -21,6 +21,8 @@ from cairndex.api.schemas.bundles import (
     FileLink,
     FileRead,
     FileReorder,
+    FileRepairCandidateRead,
+    FileRepairRequest,
     FileUpdate,
     SetIdsRequest,
 )
@@ -29,6 +31,7 @@ from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
 from cairndex.media import playback, thumbnails
 from cairndex.persistence.models import AssetFile
+from cairndex.scanning import repair as repair_service
 from cairndex.services import browse as browse_service
 from cairndex.services import bundle_cursor as cursor_service
 from cairndex.services import bundles as service
@@ -271,6 +274,33 @@ def update_file(
 def reorder_files(bundle_id: str, payload: FileReorder, db: LibrarySession) -> list[FileRead]:
     files = service.reorder_files(db, bundle_id, payload.ordered_ids)
     return _file_reads(db, list(files))
+
+
+@router.get(
+    "/{bundle_id}/files/{file_id}/repair-candidate",
+    response_model=FileRepairCandidateRead | None,
+)
+def get_file_repair_candidate(
+    bundle_id: str, file_id: str, db: LibrarySession
+) -> FileRepairCandidateRead | None:
+    candidate = repair_service.find_repair_candidate(db, bundle_id, file_id)
+    return FileRepairCandidateRead(**vars(candidate)) if candidate is not None else None
+
+
+@router.put("/{bundle_id}/files/{file_id}/repair", response_model=FileRead)
+def repair_file(
+    bundle_id: str,
+    file_id: str,
+    payload: FileRepairRequest,
+    db: LibrarySession,
+) -> FileRead:
+    repaired = repair_service.repair_file(
+        db,
+        bundle_id,
+        file_id,
+        payload.replacement_file_id,
+    )
+    return _file_reads(db, [repaired])[0]
 
 
 @router.delete("/{bundle_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

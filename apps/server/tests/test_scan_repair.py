@@ -4,15 +4,18 @@ Covers AGENTS.md §5.3: high-confidence moves update the existing row in place;
 ambiguous matches, copies, and same-path edits do not spawn or merge bundles.
 """
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileAvailability
-from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress
+from cairndex.persistence.models import AssetBundle, AssetFile, PlaybackProgress, SubtitleTrack
+from cairndex.scanning.repair import find_repair_candidate, repair_file
 from cairndex.scanning.scanner import scan_library
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
@@ -166,6 +169,172 @@ def test_missing_file_stays_visible_when_no_match(session: Session, library_root
     f = _only_file(session)
     assert f.id == original_id
     assert f.availability == FileAvailability.MISSING
+
+
+def test_explicit_repair_collapses_a_renamed_network_duplicate(
+    session: Session, library_root: Path, monkeypatch
+) -> None:
+    """A confirmed relink heals the state a later rescan cannot reconsider."""
+    old_path = library_root / "movie-[2023].mp4"
+    old_path.write_text("network movie")
+    scan_library(session, library_root)
+    original = _only_file(session)
+    original_id = original.id
+    target_bundle_id = original.bundle_id
+    bundle_service.update_bundle(session, target_bundle_id, {"rating": 5, "notes": ["keep"]})
+    bundle_service.update_bundle(session, target_bundle_id, {"cover_file_id": original_id})
+    session.add(
+        PlaybackProgress(
+            file_id=original_id,
+            bundle_id=target_bundle_id,
+            position_s=10,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    new_path = library_root / "movie-[2023.07.18].mp4"
+    old_path.rename(new_path)
+    real_stat = Path.stat
+
+    def unstable_network_stat(path: Path, *, follow_symlinks: bool = True):
+        stat = real_stat(path, follow_symlinks=follow_symlinks)
+        if path.name != new_path.name:
+            return stat
+        return SimpleNamespace(
+            st_size=stat.st_size,
+            st_mtime=stat.st_mtime,
+            st_mtime_ns=stat.st_mtime_ns,
+            st_dev=stat.st_dev,
+            st_ino=stat.st_ino + 1,
+        )
+
+    monkeypatch.setattr(Path, "stat", unstable_network_stat)
+    missed = scan_library(session, library_root)
+    assert missed.created == 1 and missed.repaired == 0 and missed.missing_total == 1
+
+    replacement = session.scalar(
+        select(AssetFile).where(AssetFile.availability == FileAvailability.AVAILABLE)
+    )
+    assert replacement is not None and replacement.id != original_id
+    replacement_bundle_id = replacement.bundle_id
+    track = SubtitleTrack(
+        bundle_id=replacement.bundle_id,
+        video_file_id=replacement.id,
+        embedded_index=2,
+        language="en",
+    )
+    session.add(track)
+    session.add(
+        PlaybackProgress(
+            file_id=replacement.id,
+            bundle_id=replacement.bundle_id,
+            position_s=45,
+            duration_s=100,
+            completed=False,
+            updated_at=datetime(2026, 7, 2, tzinfo=UTC),
+        )
+    )
+    session.commit()
+
+    candidate = find_repair_candidate(session, target_bundle_id, original_id)
+    assert candidate is not None and candidate.replacement_file_id == replacement.id
+    repaired = repair_file(session, target_bundle_id, original_id, replacement.id)
+    session.commit()
+
+    assert repaired.id == original_id
+    assert repaired.relative_path == new_path.name
+    assert repaired.availability == FileAvailability.AVAILABLE
+    assert session.scalar(select(func.count()).select_from(AssetFile)) == 1
+    assert session.get(AssetBundle, replacement_bundle_id) is None
+    target = session.get(AssetBundle, target_bundle_id)
+    assert target is not None and target.rating == 5 and target.notes == ["keep"]
+    assert target.cover_file_id == original_id
+    progress = session.get(PlaybackProgress, original_id)
+    assert progress is not None and progress.position_s == 45
+    repaired_track = session.get(SubtitleTrack, track.id)
+    assert repaired_track is not None
+    assert repaired_track.bundle_id == target_bundle_id
+    assert repaired_track.video_file_id == original_id
+
+    rescanned = scan_library(session, library_root)
+    assert rescanned.created == 0 and rescanned.repaired == 0 and rescanned.missing_total == 0
+
+
+def test_repair_api_exposes_and_applies_the_unique_candidate(
+    client: TestClient,
+    library_id: str,
+    session: Session,
+    library_root: Path,
+    monkeypatch,
+) -> None:
+    old_path = library_root / "old-name.mp4"
+    old_path.write_text("same bytes")
+    scan_library(session, library_root)
+    missing = _only_file(session)
+    old_path.rename(library_root / "new-name.mp4")
+    real_stat = Path.stat
+
+    def changed_inode(path: Path, *, follow_symlinks: bool = True):
+        stat = real_stat(path, follow_symlinks=follow_symlinks)
+        if path.name != "new-name.mp4":
+            return stat
+        return SimpleNamespace(
+            st_size=stat.st_size,
+            st_mtime=stat.st_mtime,
+            st_mtime_ns=stat.st_mtime_ns,
+            st_dev=stat.st_dev,
+            st_ino=stat.st_ino + 1,
+        )
+
+    monkeypatch.setattr(Path, "stat", changed_inode)
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/bundles/{missing.bundle_id}/files/{missing.id}"
+
+    candidate = client.get(f"{base}/repair-candidate")
+    assert candidate.status_code == 200
+    replacement_id = candidate.json()["replacement_file_id"]
+
+    repaired = client.put(f"{base}/repair", json={"replacement_file_id": replacement_id})
+    assert repaired.status_code == 200
+    assert repaired.json()["id"] == missing.id
+    assert repaired.json()["relative_path"] == "new-name.mp4"
+
+
+def test_repair_candidate_rejects_an_ambiguous_fingerprint(
+    session: Session, library_root: Path
+) -> None:
+    old_path = library_root / "old.mp4"
+    old_path.write_text("same")
+    scan_library(session, library_root)
+    missing = _only_file(session)
+    fingerprint = missing.quick_fingerprint
+    assert fingerprint is not None
+    mtime_ns = int(fingerprint.rsplit(":", 1)[1])
+    old_path.unlink()
+    missing.availability = FileAvailability.MISSING
+
+    for name in ("candidate-a.mp4", "candidate-b.mp4"):
+        bundle = bundle_service.create_bundle(session, title=name)
+        row = bundle_service.add_file(
+            session,
+            bundle.id,
+            relative_path=name,
+            role=missing.role,
+            media_kind=missing.media_kind,
+        )
+        path = library_root / name
+        path.write_text("same")
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+        stat = path.stat()
+        row.quick_fingerprint = fingerprint
+        row.size_bytes = stat.st_size
+        row.availability = FileAvailability.AVAILABLE
+    session.commit()
+
+    assert find_repair_candidate(session, missing.bundle_id, missing.id) is None
 
 
 def test_two_simultaneous_moves_preserve_both_rows(session: Session, library_root: Path) -> None:

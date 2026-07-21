@@ -222,7 +222,7 @@ def test_view_counts(session: Session) -> None:
 
 
 def test_unbundled_files_hidden_from_normal_views(session: Session) -> None:
-    """Scan-staged provisional bundles belong only in the Unbundled view."""
+    """Available provisional bundles belong only in the Unbundled view."""
     confirmed = bundle_service.create_bundle(session, title="real")
     bundle_service.add_file(
         session,
@@ -253,6 +253,17 @@ def test_unbundled_files_hidden_from_normal_views(session: Session) -> None:
     counts = view_counts(session)
     assert counts["all"] == 1
     assert counts["unbundled"] == 2
+
+
+def test_missing_view_includes_a_stale_provisional_bundle(session: Session) -> None:
+    stale = _unbundled(session, "loose/gone.mp4", title="gone")
+    stale.files[0].availability = FileAvailability.MISSING
+    session.commit()
+
+    missing = browse_bundles(session, view=SystemView.MISSING)
+    assert missing.total == 1 and missing.items[0].id == stale.id
+    counts = view_counts(session)
+    assert counts["missing"] == 1 and counts["unbundled"] == 1
 
 
 def test_unbundled_files_hidden_from_collection_views(session: Session) -> None:

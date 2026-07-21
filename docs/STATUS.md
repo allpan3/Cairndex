@@ -1,5 +1,27 @@
 # Project status
 
+## Completed: explicit relink for missed network renames (2026-07-21)
+
+Direct-to-`main` follow-up after directory-aware grouping.
+
+- Missing Files now includes stale provisional bundles instead of leaving their
+  missing rows visible only in scan totals.
+- A missing file with exactly one live, globally unique quick-fingerprint match
+  gets one compact `↻` action in the inspector. No dropdown or persistent target
+  selector consumes row space.
+- Relink preserves the original `AssetFile.id`, established bundle/file metadata,
+  cover/cursor/subtitle references, and newest playback progress while removing
+  the duplicate metadata row. It performs no filesystem writes.
+- Candidate lookup re-stats the current path and rejects an old path that has
+  reappeared, stale candidates, and ambiguous fingerprints.
+- Backend service/API/browser-count coverage and a frontend interaction test pin
+  the repair flow. Backend Ruff/format/mypy and all 577 tests pass; frontend
+  lint/format/typecheck, all 294 tests, production build, and all 77 Playwright
+  tests pass. A read-only check against the live Lex library found all seven
+  affected bundles and a unique candidate for every one of its 11 stale rows.
+  The in-app browser could not reload the local URL under its security policy,
+  so the Lex-specific check used the API and did not apply any repairs.
+
 ## Completed: directory-aware grouping stem sensitivity (2026-07-20)
 
 Branch `codex/grouping-stem-controls`, based directly on `main`.
@@ -3714,8 +3736,10 @@ dialogs).
   from seconds to single-digit/low-tens of ms at 5k and keep all paths
   comfortably interactive (browse ~120 ms, filters <150 ms) at 100k bundles (see
   `docs/performance.md`). Branch `perf/large-library-baselines`.
-- Same-volume high-confidence moved-file repair is implemented; cross-filesystem
-  repair candidates, duplicate/copy handling, and manual repair are future work.
+- Same-volume high-confidence moved-file repair and explicit relink to an
+  already-linked unique quick-fingerprint replacement are implemented. Arbitrary
+  cross-filesystem/content-changed repair and duplicate/copy handling remain
+  future work.
 - File Browser is read-only. Write mode, reveal/open-with-default-app, and desktop
   helper/Tauri integration are not yet implemented but are now **planned and
   design-ratified**: library write mode in `docs/plans/04-library-write-mode.md`

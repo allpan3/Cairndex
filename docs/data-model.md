@@ -115,7 +115,11 @@ Moved-file repair updates the existing `asset_files` row in place when
 confidence is high, preserving `id`, `bundle_id`, collection memberships, tags,
 rating, cover/cursor references, and subtitle links. The normal scan path does
 not full-hash large files; `full_hash` remains lazy for future duplicate
-verification or ambiguous repair workflows.
+verification or ambiguous repair workflows. If a conservative scan has already
+created an available replacement row, Missing Files can explicitly collapse a
+globally unique, live quick-fingerprint match back into the missing row. The
+replacement row is removed only from metadata; the original stable id and
+established bundle survive, and no source file is changed.
 
 `directory_path` is synchronized from `relative_path` on create and moved-file
 repair, additively backfilled for existing libraries, and indexed so File
@@ -124,8 +128,9 @@ refreshed by full scan reconciliation and bounded access-time checks. Opening a
 bundle checks all of its linked rows; entering a directory checks its linked
 direct children. These checks can change `available` to `missing` when the
 stored path has vanished, but do not change the relative path or guess which
-unlinked filesystem entry is the moved file. Only scan reconciliation performs
-high-confidence moved-file repair.
+unlinked filesystem entry is the moved file. Scan reconciliation performs
+automatic high-confidence repair; the explicit Missing Files action handles a
+unique replacement that is already linked.
 
 The scanner ignores hidden paths (`.cairndex`, dotfiles/dot-directories, and a
 small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
