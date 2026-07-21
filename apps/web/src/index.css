@@ -2312,6 +2312,11 @@ code {
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
+.grp-row--file-drop {
+  border-radius: 5px;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .grp-kind {
   font-size: 13px;
 }
@@ -2456,6 +2461,12 @@ code {
   gap: 8px;
   font-size: 12px;
   padding: 1px 0;
+}
+.grp-file--draggable {
+  cursor: grab;
+}
+.grp-file--draggable:active {
+  cursor: grabbing;
 }
 .grp-file[data-drop]::after {
   content: '';

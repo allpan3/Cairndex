@@ -17,11 +17,14 @@ Branch `codex/grouping-stem-controls`, based directly on `main`.
 - The generation mutation seeds the returned plan and summary cache before list
   invalidation, keeping current candidates visible instead of replacing the
   review with a spurious empty state.
+- File moves use the whole file row as a drag source and the target bundle
+  heading or file list as a drop surface, so cross-bundle review edits do not
+  depend on two small hit targets.
 - Backend regression/API/bootstrap coverage and frontend component/browser-flow
   coverage exercise multi-stem folders, rendition matching, mode persistence,
   destination visibility, and non-empty regeneration.
-- Verification: backend Ruff/format/mypy and 457 tests pass; frontend
-  lint/format/typecheck, 231 tests, production build, and all 77 Playwright tests
+- Verification: backend Ruff/format/mypy and 571 tests pass; frontend
+  lint/format/typecheck, 293 tests, production build, and all 77 Playwright tests
   pass. A real isolated browser run with screenshot-shaped filenames confirmed
   balanced split/addition behavior, both sensitivity directions, destination
   switching visibility, and populated manual regeneration.

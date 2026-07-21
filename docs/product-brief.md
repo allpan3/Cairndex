@@ -377,9 +377,9 @@ Current workflow details:
   still-unbundled files and new additions remain eligible;
 - the grouping review UI supports checkbox selection, parent/child cascading,
   Select all / Deselect all, double-click rename for bundle and collection
-  suggestions, file drag-and-drop within or across bundle suggestions, bundle
-  drag-and-drop into any suggested collection or back to the top level, and
-  **Accept selected**;
+  suggestions, whole-row file drag-and-drop within or across bundle suggestions
+  (onto either a bundle heading or its file list), bundle drag-and-drop into any
+  suggested collection or back to the top level, and **Accept selected**;
 - a re-scan addition recommends its existing confirmed bundle by default, with
   a compact, tooltip-described destination icon converting that same proposal
   in place to a new bundle; the owner can switch back without losing selection,

@@ -426,7 +426,8 @@ Grouping behavior:
 - grouping plans persist those per-directory stem modes, and the review controls
   regenerate a complete superseding snapshot while seeding the returned plan
   directly into the client cache;
-- grouping review persists file drag-and-drop within or across bundle proposals,
+- grouping review persists whole-row file drag-and-drop within or across bundle
+  proposals, accepting either the target bundle heading or file list as a drop,
   bundle reparenting into suggested collections, and bundle/collection title
   edits before apply; reviewed file sequence becomes playlist order;
 - additions to confirmed bundles retain that bundle as a reversible target while

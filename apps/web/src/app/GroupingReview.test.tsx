@@ -550,23 +550,28 @@ test('drags proposal files to reorder within a bundle', async () => {
   })
 })
 
-test('drags a file into another bundle suggestion', async () => {
+test('drags a file row onto another bundle suggestion heading', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
   const dataTransfer = dragData()
 
-  fireEvent.dragStart(await screen.findByRole('button', { name: 'Drag file cover.jpg' }), {
-    dataTransfer,
-  })
-  const target = screen.getByRole('list', { name: 'Files in Second bundle' })
+  const source = (await screen.findByText('cover.jpg')).closest('.grp-file')
+  const target = screen
+    .getByRole('button', { name: 'Rename bundle suggestion Second bundle' })
+    .closest('.grp-row--bundle')
+  if (!source || !target) throw new Error('missing file drag source or bundle drop target')
+
+  fireEvent.dragStart(source, { dataTransfer })
   fireEvent.dragOver(target, { dataTransfer })
+  expect(target).toHaveClass('grp-row--file-drop')
   fireEvent.drop(target, { dataTransfer })
 
+  const targetFiles = screen.getByRole('list', { name: 'Files in Second bundle' })
   await waitFor(() =>
-    expect([...target.querySelectorAll('.grp-file__name')].map((node) => node.textContent)).toEqual(
-      ['second.mp4', 'cover.jpg'],
-    ),
+    expect(
+      [...targetFiles.querySelectorAll('.grp-file__name')].map((node) => node.textContent),
+    ).toEqual(['second.mp4', 'cover.jpg']),
   )
   const moveCall = fetchMock.mock.calls.find(([url]) => url.endsWith('/files/file3/move'))
   expect(moveCall?.[1]).toMatchObject({

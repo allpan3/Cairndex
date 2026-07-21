@@ -787,12 +787,11 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   ).toBeVisible()
 
   const targetList = page.getByRole('list', { name: 'Files in SRCV-005 - cut' })
-  const targetFile = targetList.locator('.grp-file').last()
-  const targetBox = await targetFile.boundingBox()
-  if (!targetBox) throw new Error('missing file drop target')
-  await page.getByRole('button', { name: 'Drag file trailer.mp4' }).dragTo(targetFile, {
-    targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
+  const targetBundleRow = page.locator('.grp-row--bundle', {
+    has: page.getByRole('button', { name: 'Rename bundle suggestion SRCV-005 - cut' }),
   })
+  const sourceFileRow = page.locator('.grp-file', { hasText: 'trailer.mp4' })
+  await sourceFileRow.dragTo(targetBundleRow)
   await expect.poll(() => fileMove).toEqual({ source: 'proposal2', target: 'proposal1', index: 3 })
   await expect(targetList.locator('.grp-file__name')).toHaveText([
     'SRCV-005.mp4',
