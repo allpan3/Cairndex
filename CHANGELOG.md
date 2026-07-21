@@ -10,6 +10,21 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Relaunching while the local connection is active reopens into it** instead
+  of the first-run "Connect to your server" screen (review, P3). The local
+  connection stores no URL by design — its sidecar port is per process — and
+  the bootstrap read that null as "unconfigured". It now activates the entry
+  (starting the sidecar) and falls back to setup only if that fails, with the
+  shell's own reason shown. The bootstrap's redundant post-activation probes
+  are gone too: activation verifies reachability itself before committing.
+
+- **The sidecar bounds its graceful shutdown at 10 s** (review, P3). uvicorn's
+  default waits for open connections *indefinitely*, so one connection held
+  open at quit could push the shell past its 15 s grace into the kill fallback
+  — the exact path that strands ownership leases and greets the next launch
+  with a takeover prompt. The bound keeps the lifespan shutdown, lease release
+  included, inside the shell's budget by construction.
+
 - **Connection activation now owns the JSON API base URL** (whole-milestone D6
   review, P1). The base moved only as a side effect of the reachability probe,
   so activating the local connection never pointed the app at the sidecar —

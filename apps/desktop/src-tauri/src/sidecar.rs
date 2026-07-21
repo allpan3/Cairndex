@@ -41,6 +41,11 @@ const PORT_ANNOUNCE_PREFIX: &str = "CAIRNDEX_SIDECAR_PORT=";
 // A cold start pays for Python interpreter startup plus SQLite schema setup.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(20);
+// Must stay longer than the sidecar's own graceful-shutdown bound (uvicorn's
+// `timeout_graceful_shutdown=10` in `cairndex/sidecar.py`): the sidecar caps
+// how long open connections can delay its stop precisely so the kill fallback
+// below — the path that strands ownership leases — is never reached by a
+// connection merely being slow to close.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(15);
 // Overrides the bundled binary, for development (where no Tauri resource dir
 // exists yet) and for the lifecycle test. Checked unconditionally, so a packaged
