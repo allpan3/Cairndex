@@ -1,5 +1,23 @@
 # Project status
 
+## Completed: desktop-safe file reorder and direct file play (2026-07-21)
+
+Direct-to-`main` inspector interaction follow-up.
+
+- Plain dragging a file row now uses pointer capture and hit-tested insertion
+  gaps, avoiding the HTML drag/drop lifecycle that the desktop WebView also
+  uses for native file handoff.
+- Option-drag remains the explicit mapped-library copy-out gesture, and
+  Option+Up/Down remains the keyboard reorder path.
+- Each available supported image or video has a compact play action immediately
+  after its cover action. It opens that exact file in the unified viewer and
+  feeds the existing bundle-cursor behavior.
+- Frontend lint/format/typecheck, all 298 component tests, the production build,
+  and all 81 Playwright tests pass. The reorder browser test uses a real mouse
+  gesture rather than synthetic HTML drag events. The quit desktop app's local
+  tab was unreachable, so this pass could not add a live WKWebView acceptance
+  check.
+
 ## Completed: compact current-cover indicator (2026-07-21)
 
 Direct-to-`main` inspector follow-up.
