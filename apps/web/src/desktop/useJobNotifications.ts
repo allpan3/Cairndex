@@ -24,11 +24,39 @@ interface NotificationState {
 
 const state: NotificationState = { run: null, settleTimer: null, askedPermission: false }
 
-/** Test-only reset, mirroring `resetHostPlatformForTests`. */
-export function resetJobNotificationsForTests(): void {
+/**
+ * Drop any run in flight.
+ *
+ * Used by connection activation as well as by tests: run state is module-scoped
+ * so it survives a Workspace remount (a deliberate D5b choice, so a library
+ * switch does not lose a run), which means a *connection* switch must clear it
+ * explicitly or a run started on the previous server settles here and notifies
+ * about work on a server the user has left.
+ *
+ * `askedPermission` is deliberately preserved — the OS notification prompt is
+ * per-app, not per-connection, and re-asking on every switch would be the exact
+ * nagging the D5b design avoided.
+ */
+export function resetJobNotifications(): void {
   if (state.settleTimer) clearTimeout(state.settleTimer)
   state.run = null
   state.settleTimer = null
+}
+
+/** Test-only: seed a run and the permission flag. */
+export function setJobRunForTests(seed: { startedAt: number; askedPermission: boolean }): void {
+  state.run = { startedAt: seed.startedAt, jobs: new Map(), failed: false } as unknown as JobRun
+  state.askedPermission = seed.askedPermission
+}
+
+/** Test-only: observe the module-scoped state without exporting it. */
+export function peekJobRunForTests(): { run: JobRun | null; askedPermission: boolean } {
+  return { run: state.run, askedPermission: state.askedPermission }
+}
+
+/** Test-only reset: also forgets that permission was requested. */
+export function resetJobNotificationsForTests(): void {
+  resetJobNotifications()
   state.askedPermission = false
 }
 
