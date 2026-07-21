@@ -70,6 +70,8 @@ def _describe(library_id: str, root: Path) -> LibraryOwnershipRead:
                 running=progress.running,
                 error_code=progress.error_code,
                 error_message=progress.error_message,
+                started_at=progress.started_at.isoformat() if progress.started_at else None,
+                observation_seconds=progress.observation_seconds,
             )
             if progress is not None
             else None

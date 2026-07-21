@@ -78,6 +78,18 @@ class Settings(BaseSettings):
     lease_heartbeat_interval: float = 60.0
     lease_ttl: float = 300.0
 
+    # Extra time, on top of one full heartbeat interval, that a lease is watched
+    # before a confirmed takeover may proceed.
+    #
+    # The full interval is not configurable and never should be: a takeover
+    # begins at an arbitrary point in the holder's cycle, so only after a whole
+    # interval has passed is a live holder *guaranteed* to have written. This
+    # margin is the slack on top of that — it covers a holder whose write has to
+    # propagate through a cloud-sync engine before this machine can see it.
+    # Raise it for a synced library on a slow link; the default suits a local
+    # disk or a network share, where propagation is immediate.
+    lease_observation_margin: float = 20.0
+
     # Pause between writing our lease and re-reading it to confirm our nonce
     # survived (the write-then-verify in ADR-0018 §3). Must outlast the reorder
     # window of a shared mount, not a network round trip.

@@ -22,6 +22,12 @@ class TakeoverRead(BaseModel):
     running: bool
     error_code: str | None = None
     error_message: str | None = None
+    # ISO-8601 UTC start, and the length of the observation window. Together
+    # these let a client show how much longer it has to wait: the window is
+    # minutes by design, and an unexplained spinner for that long reads as a
+    # hang rather than as the safety check it is.
+    started_at: str | None = None
+    observation_seconds: float | None = None
 
 
 class LibraryOwnershipRead(BaseModel):

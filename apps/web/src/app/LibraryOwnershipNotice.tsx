@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 import type { LibraryOwnership, LibraryRead } from '../api/client'
 import { LibraryAccessNotice } from './LibraryAccessNotice'
 
@@ -25,6 +27,39 @@ interface Props {
   takeoverError: string | null
 }
 
+/** "1 minute 20 seconds", "45 seconds" — no bare second counts past a minute. */
+function humanDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds))
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  if (minutes === 0) return `${rest} second${rest === 1 ? '' : 's'}`
+  const minutePart = `${minutes} minute${minutes === 1 ? '' : 's'}`
+  return rest === 0 ? minutePart : `${minutePart} ${rest} second${rest === 1 ? '' : 's'}`
+}
+
+/**
+ * Seconds left in the observation window, ticking once a second.
+ *
+ * The wait is inherent — the server must watch the lease for longer than a
+ * heartbeat period before it may proceed — so the honest thing is to show it
+ * rather than spin silently for minutes. Returns null when the server did not
+ * report timing, in which case the UI falls back to describing the wait without
+ * a number.
+ */
+function useRemainingSeconds(startedAt: string | null, total: number | null): number | null {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!startedAt || total === null) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [startedAt, total])
+
+  if (!startedAt || total === null) return null
+  const started = new Date(startedAt).getTime()
+  if (Number.isNaN(started)) return null
+  return Math.max(0, total - (now - started) / 1000)
+}
+
 function holderName(ownership: LibraryOwnership): string {
   return ownership.holder?.machine_name?.trim() || 'another server'
 }
@@ -49,18 +84,31 @@ export function LibraryOwnershipNotice({
   const running = ownership.takeover?.running === true || takeoverPending
   const who = holderName(ownership)
   const seen = lastSeen(ownership)
+  const remaining = useRemainingSeconds(
+    ownership.takeover?.started_at ?? null,
+    ownership.takeover?.observation_seconds ?? null,
+  )
 
   if (running) {
+    const total = ownership.takeover?.observation_seconds ?? null
     return (
       <LibraryAccessNotice
         libraries={libraries}
         libraryId={libraryId}
         onChangeLibrary={onChangeLibrary}
         title="Taking over this library…"
-        message={`Checking that ${who} is really gone. This takes a couple of minutes: if that machine is still running, it will say so during the check and keep the library.`}
+        message={
+          total === null
+            ? `Watching this library's ownership record to check that ${who} is really gone. If that machine is still running it will write to the record during the check, and it keeps the library.`
+            : `Watching this library's ownership record for ${humanDuration(total)} to check that ${who} is really gone. That is slightly longer than the gap between a running server's updates, so if ${who} is alive it will write during the check — and it keeps the library.`
+        }
       >
         <span className="lockscreen__hint" role="status">
-          Watching the ownership record…
+          {remaining === null
+            ? 'Watching the ownership record…'
+            : remaining > 0
+              ? `About ${humanDuration(remaining)} left…`
+              : 'Finishing up…'}
         </span>
       </LibraryAccessNotice>
     )

@@ -3354,8 +3354,12 @@ export interface components {
             error_code?: string | null;
             /** Error Message */
             error_message?: string | null;
+            /** Observation Seconds */
+            observation_seconds?: number | null;
             /** Running */
             running: boolean;
+            /** Started At */
+            started_at?: string | null;
         };
         /** TargetSuggestionRead */
         TargetSuggestionRead: {
