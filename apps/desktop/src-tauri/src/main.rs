@@ -86,11 +86,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             mappings::clear_library_mapping,
             mappings::get_library_mapping,
             mappings::locate_library_mapping,
-            mappings::pick_library_folder,
             mappings::reverse_map_paths,
             media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
             sidecar::local_server_status,
+            sidecar::open_library_folder,
             sidecar::start_local_server,
             sidecar::stop_local_server,
         ])

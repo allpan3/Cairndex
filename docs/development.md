@@ -289,6 +289,12 @@ mkdir -p apps/server/packaging/dist/cairndex-sidecar
 CI does the first in the macOS job and the second in the Ubuntu Rust job, which
 runs no Python.
 
+A **stale empty placeholder is caught at bundling**, not at compile:
+`beforeBuildCommand` runs `check-sidecar-staged.mjs`, which fails `tauri build`
+when the staged directory holds no executable. Without it the build succeeds and
+ships an app whose local server is simply absent — the resource copier skips an
+empty directory silently, and the user meets `not_bundled` much later.
+
 **Sidecar contract with the shell** (`apps/desktop/src-tauri/src/sidecar.rs`):
 
 - The sidecar binds an ephemeral loopback port *itself* and prints

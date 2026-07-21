@@ -15,6 +15,8 @@ use reqwest::{
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 use url::Url;
 
+use crate::sidecar::LocalServer;
+
 const PROXY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const PROXY_WORKERS: usize = 8;
@@ -399,17 +401,40 @@ fn forward_response_header(name: &str) -> bool {
 #[tauri::command]
 pub(crate) fn configure_media_proxy(
     proxy: tauri::State<'_, MediaProxy>,
+    local: tauri::State<'_, crate::sidecar::LocalServer>,
     server_url: String,
     token: Option<String>,
     library_ids: Vec<String>,
-    server_scoped_token: Option<bool>,
 ) -> Result<String, String> {
-    proxy.configure(
-        &server_url,
+    // Derived here, never accepted from the caller. The flag disables the
+    // per-library scoping D2 made fail closed, so a webview that could set it
+    // while pointed at a *remote* server would silently reattach a paired device
+    // token to libraries that token does not grant. The shell already knows the
+    // one server the flag is legitimate for — the sidecar it spawned — so it
+    // decides rather than trusting.
+    let server_scoped_token = targets_running_sidecar(&local, &server_url, token.as_deref());
+    proxy.configure(&server_url, token, library_ids, server_scoped_token)
+}
+
+/// Whether this configuration targets the sidecar this shell is running.
+///
+/// Matched against the sidecar's exact URL *and* token rather than against
+/// "is loopback": an SSH tunnel to a remote server is loopback too, and
+/// loopback was never the actual invariant. Both must match, so a restarted
+/// sidecar (new token) or a switch to a remote URL falls back to scoped mode on
+/// its own — no separate invalidation step to forget.
+fn targets_running_sidecar(local: &LocalServer, server_url: &str, token: Option<&str>) -> bool {
+    let Some(info) = local.info() else {
+        return false; // no sidecar running: nothing this flag could be valid for
+    };
+    let (Some(token), Ok(candidate), Ok(sidecar)) = (
         token,
-        library_ids,
-        server_scoped_token.unwrap_or(false),
-    )
+        crate::server_url::normalize_server_url(server_url),
+        crate::server_url::normalize_server_url(&info.base_url),
+    ) else {
+        return false;
+    };
+    candidate == sidecar && token == info.token
 }
 
 #[cfg(test)]
@@ -600,31 +625,49 @@ mod tests {
         // The sidecar case: the loopback owner token authorizes the whole local
         // server, and libraries appear there as the user opens folders, so an
         // enumerated scope would always be a step behind.
+        // Asserted against a live upstream rather than a dead port. "Was not
+        // refused" is a weaker claim than this test's name makes — it would pass
+        // on a 404 or a 500 too. A real upstream lets it assert what actually
+        // matters: the request was forwarded *and* carried the right credential.
+        // It also avoids seeding a connect-to-dead-port wait, which refuses fast
+        // here but can be a firewall timeout on Windows, a platform this module
+        // keeps citing as a target.
+        let upstream = Server::http("127.0.0.1:0").unwrap();
+        let upstream_address = upstream.server_addr().to_ip().unwrap();
+        let worker = thread::spawn(move || {
+            let request = upstream.recv().unwrap();
+            assert_eq!(
+                request.url(),
+                "/api/v1/libraries/never-enumerated/files/file/stream"
+            );
+            assert_eq!(
+                request_header(&request, "authorization").as_deref(),
+                Some("Bearer local_token")
+            );
+            request
+                .respond(Response::from_data(b"ok".to_vec()))
+                .unwrap();
+        });
+
         let proxy = MediaProxy::start().unwrap();
         let proxy_base = proxy
             .configure(
-                "http://127.0.0.1:9",
+                &format!("http://{upstream_address}"),
                 Some("local_token".to_string()),
                 Vec::new(),
                 true,
             )
             .unwrap();
 
-        // 502, not 403: the request was authorized and forwarded, and only then
-        // failed to reach the deliberately dead upstream. A scoped token would
-        // have been refused at the gate before any connection was attempted.
-        let status = Client::new()
+        let response = Client::new()
             .get(format!(
                 "{proxy_base}/api/v1/libraries/never-enumerated/files/file/stream"
             ))
             .send()
-            .unwrap()
-            .status()
-            .as_u16();
-        assert_ne!(
-            status, 403,
-            "a server-scoped token must not be scope-refused"
-        );
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(response.bytes().unwrap().as_ref(), b"ok");
+        worker.join().unwrap();
     }
 
     // An unscoped device token still fails closed (the D2 guarantee)
