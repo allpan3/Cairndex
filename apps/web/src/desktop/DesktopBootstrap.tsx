@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { QueryScope } from '../QueryScope'
+import { INCOMPATIBLE_SERVER_ERROR, verifyServer } from './verifyServer'
 import { openLibraryFolder } from './openLibraryFolder'
 import {
   activateConnection,
@@ -10,7 +11,6 @@ import {
   subscribeConnections,
 } from './connections'
 
-import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
   hostOperationErrorMessage,
   initializeHostPlatform,
@@ -28,28 +28,6 @@ interface DesktopBootstrapProps {
 interface SetupState {
   serverUrl: string
   error: string | null
-}
-
-const INCOMPATIBLE_SERVER_ERROR = 'This address is not a compatible Cairndex server.'
-const REQUIRED_API_FEATURES = ['pairing', 'progress']
-
-// Verifies that a normalized server URL reaches a live Cairndex backend
-async function verifyServer(serverUrl: string): Promise<void> {
-  setApiBaseUrl(serverUrl)
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 5000)
-  try {
-    const health = await fetchHealth(controller.signal)
-    const compatible =
-      health.status === 'ok' &&
-      typeof health.app_name === 'string' &&
-      health.app_name.length > 0 &&
-      Array.isArray(health.api_features) &&
-      REQUIRED_API_FEATURES.every((feature) => health.api_features.includes(feature))
-    if (!compatible) throw new Error(INCOMPATIBLE_SERVER_ERROR)
-  } finally {
-    window.clearTimeout(timeout)
-  }
 }
 
 // Surfaces recoverable desktop bridge failures without hiding the setup UI

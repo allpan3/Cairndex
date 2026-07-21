@@ -56,6 +56,13 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Fixed: switching connections did not check the server was reachable.** A
+  lease redirect would activate the holder's advertised address without
+  verifying anything answered there, stranding the app on a dead server and
+  persisting it as active — so the next launch opened straight into the error
+  screen. Reachability is now checked before the switch commits, like every
+  other fallible step, and a failure leaves the previous connection untouched.
+
 - **Fixed: re-opening an already-registered library did not switch to it.** The
   library to show was handed over through a slot consumed on remount, but
   activating the connection that is *already* active changes no id and remounts
