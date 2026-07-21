@@ -117,7 +117,13 @@ loopback URL means nothing to a different machine and is never offered as a
 redirect. `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL` (default `60`) and
 `CAIRNDEX_LEASE_TTL` (default `300`, 5× the interval so a couple of missed beats
 never look like a dead server) tune the lease timing; the defaults are fine
-unless a very slow mount proves otherwise. `CAIRNDEX_LEASE_HEARTBEAT_ENABLED`
+unless a very slow mount proves otherwise. `CAIRNDEX_LEASE_OBSERVATION_MARGIN`
+(default `20`) is the extra time a confirmed takeover watches a lease *on top of*
+one full heartbeat interval — so the wait is ~80 s by default. The full interval
+is not configurable and should not be: a takeover starts at an arbitrary point in
+the holder's cycle, so only after a whole interval is a live holder guaranteed to
+have written. Raise the margin for a cloud-synced library on a slow link, where
+the holder's write has to propagate before this machine can see it. `CAIRNDEX_LEASE_HEARTBEAT_ENABLED`
 (default `true`) exists for tests.
 
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`

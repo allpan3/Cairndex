@@ -5049,9 +5049,31 @@
             ],
             "title": "Error Message"
           },
+          "observation_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Seconds"
+          },
           "running": {
             "title": "Running",
             "type": "boolean"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
           }
         },
         "required": [

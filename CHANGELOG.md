@@ -56,6 +56,16 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **A confirmed takeover now waits ~80 s instead of 120 s, and says so.** The
+  observation window was two full heartbeat intervals; only the *first* carries
+  the guarantee (a takeover starts at an arbitrary point in the holder's cycle,
+  so a whole interval must pass before a live holder is certain to have written).
+  The second was margin for a write that has to propagate through a cloud-sync
+  engine, and is now a separate `CAIRNDEX_LEASE_OBSERVATION_MARGIN` (default
+  20 s) — raise it for a synced library, rather than paying for it on a local
+  disk. The dialog now states the duration, explains why it is that long, and
+  counts down instead of spinning silently for minutes.
+
 - **Fixed: switching connections did not check the server was reachable.** A
   lease redirect would activate the holder's advertised address without
   verifying anything answered there, stranding the app on a dead server and
