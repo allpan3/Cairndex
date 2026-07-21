@@ -118,13 +118,15 @@ command or an unchecked opener call.
 
 The same mapping powers drag (D4). Drag a file card/row, an opened bundle album
 tile, the File inspector, or the bundle inspector — its cover drags the whole
-bundle, while Option-dragging one of its reorderable file rows drags that file —
-out to Finder while the library is mapped;
+bundle, while Option-dragging one of its pointer-reorderable file rows drags
+that file — out to Finder while the library is mapped;
 `dragout.rs` validates each path exactly like reveal/open and starts the native
 drag through the `drag` crate. Dropping files from Finder that land inside the
 mapped root seeds Create Bundle (via `reverse_map_paths`); files outside are
 explained ("move them into the library first"); an unmapped library is told to
-locate itself. No absolute path ever crosses into the web layer.
+locate itself. A plain captured-pointer drag on an inspector file row reorders
+it inside the bundle without invoking WebView HTML drag/drop. No absolute path
+ever crosses into the web layer.
 
 ### Menus and shortcuts (D5a)
 

@@ -10,6 +10,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Bundle file rows now reorder reliably in the desktop app and can play one
+  file directly.** Reordering uses captured pointer movement instead of WebView
+  HTML drag/drop events, while Option-drag still hands the file to Finder. A
+  compact play action immediately after the cover action opens that exact
+  supported image or video in the unified viewer.
+
 - **The current bundle cover is indicated on its action instead of beside the
   filename.** The selected file's star button is filled yellow and exposed as
   “Current cover”; other eligible files retain the muted “Set as cover” action.

@@ -626,7 +626,10 @@ function Workspace({
   // sidebar rows can accept cross-surface drops (reparent / move into collection).
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
-  const [viewerBundleId, setViewerBundleId] = useState<string | null>(null)
+  const [viewerTarget, setViewerTarget] = useState<{
+    bundleId: string
+    initialFileId?: string
+  } | null>(null)
   const [search, setSearch] = useState('')
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [reviewingGrouping, setReviewingGrouping] = useState(false)
@@ -1027,7 +1030,7 @@ function Workspace({
     setSelectedIds(new Set([id]))
     setActiveId(id)
     setSelectedCollectionIds(new Set())
-    setViewerBundleId(id)
+    setViewerTarget({ bundleId: id })
   }, [])
 
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
@@ -1109,7 +1112,7 @@ function Workspace({
           label: 'Open Bundle',
           onClick: () => {
             setOpenBundleId(id)
-            setViewerBundleId(null)
+            setViewerTarget(null)
           },
           disabled: n > 1,
         },
@@ -1238,11 +1241,11 @@ function Workspace({
           setDeletingBundles(null)
           clearSelection()
           if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
-          if (viewerBundleId && targets.includes(viewerBundleId)) setViewerBundleId(null)
+          if (viewerTarget && targets.includes(viewerTarget.bundleId)) setViewerTarget(null)
         },
       })
     },
-    [deletingBundles, deleteBundles, clearSelection, openBundleId, viewerBundleId],
+    [deletingBundles, deleteBundles, clearSelection, openBundleId, viewerTarget],
   )
 
   // Removal is confirmed in a dialog (RemoveCollectionDialog) so the owner can
@@ -1719,7 +1722,8 @@ function Workspace({
         <Inspector
           bundleId={activeId}
           onAddFiles={(id) => setAddFilesBundleId(id)}
-          onPlayBundle={(id) => setViewerBundleId(id)}
+          onPlayBundle={(id) => setViewerTarget({ bundleId: id })}
+          onPlayFile={(bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId })}
           onStartFileDrag={onStartFileDrag}
         />
       )}
@@ -1733,12 +1737,13 @@ function Workspace({
 
       <ContextMenu state={menu.state} onClose={menu.close} />
 
-      {viewerBundleId && (
+      {viewerTarget && (
         <MediaViewer
-          bundleId={viewerBundleId}
+          bundleId={viewerTarget.bundleId}
+          initialFileId={viewerTarget.initialFileId}
           playerPrefs={prefs.player}
           onPlayerPrefs={setPlayerPrefs}
-          onClose={() => setViewerBundleId(null)}
+          onClose={() => setViewerTarget(null)}
         />
       )}
 

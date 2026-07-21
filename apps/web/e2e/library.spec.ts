@@ -42,7 +42,9 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   )
   await page.route('**/bundles/b0**', (r) => {
     const url = r.request().url()
-    if (url.includes('/files')) {
+    if (url.endsWith('/playback')) {
+      r.fulfill({ json: { bundle_id: 'b0', videos: [] } })
+    } else if (url.includes('/files')) {
       r.fulfill({
         json: [
           {
@@ -58,6 +60,7 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
             sequence: 0,
             size_bytes: 1000,
             availability: 'available',
+            supported: true,
             tech_metadata: { width: 1920, height: 1080, duration: 60 },
             created_at: '2026-06-25T00:00:00Z',
             updated_at: '2026-06-25T00:00:00Z',
@@ -863,6 +866,21 @@ test('highlights the current cover action instead of prefixing its filename', as
   ).not.toContainText('★')
 })
 
+test('opens the selected inspector file from the play action after cover', async ({ page }) => {
+  await mockApi(page, 'f0')
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const row = page.locator('.files .file-row', { hasText: 'movie.mp4' })
+  const actions = row.locator('.file-row__actions button')
+  await expect(actions.nth(0)).toHaveAttribute('aria-label', 'Current cover')
+  await expect(actions.nth(1)).toHaveAttribute('aria-label', 'Play movie.mp4')
+  await actions.nth(1).click()
+
+  await expect(page.getByRole('dialog', { name: 'Movie 0' })).toBeVisible()
+  await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4 · 1 / 1')
+})
+
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {
   await mockApi(page)
   let orderedIds: string[] | null = null
@@ -877,11 +895,15 @@ test('reorders bundle files by dragging the inspector cards', async ({ page }) =
   await expect(rows).toHaveCount(2)
   await expect(page.getByRole('button', { name: 'Move up' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Move down' })).toHaveCount(0)
+  const sourceBox = await rows.first().boundingBox()
   const targetBox = await rows.last().boundingBox()
-  if (!targetBox) throw new Error('missing target file row bounds')
-  await rows.first().dragTo(rows.last(), {
-    targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
+  if (!sourceBox || !targetBox) throw new Error('missing file row bounds')
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height - 2, {
+    steps: 5,
   })
+  await page.mouse.up()
 
   await expect.poll(() => orderedIds).toEqual(['f1', 'f0'])
 })

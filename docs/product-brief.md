@@ -323,7 +323,8 @@ file independently of the cover; video time remains per-file watch progress.
 Opening the bundle starts at that cursor, end-of-video advances through ordered
 supported media, and card hover represents the same cursor. An image cursor is
 a still preview; a video cursor uses storyboard/direct preview from its saved
-time. See ADR-0016.
+time. The inspector's per-file play action opens the selected supported media
+directly and lets the same cursor mechanism remember it. See ADR-0016.
 
 ### Fallback playback
 
