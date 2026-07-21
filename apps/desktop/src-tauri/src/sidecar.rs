@@ -235,6 +235,24 @@ fn await_health(base_url: &str) -> bool {
 // Starts the sidecar and blocks until it is serving
 fn start<R: Runtime>(app: &AppHandle<R>) -> Result<LocalServerInfo, SidecarError> {
     let state = app.state::<LocalServer>();
+    start_once(&state, || {
+        let binary = binary_path(app)?;
+        let data = data_dir(app)?;
+        launch(&binary, &data)
+    })
+}
+
+/// The check-launch-insert critical section.
+///
+/// Takes the launcher as a closure so a test can drive *this* function rather
+/// than re-implement it. That distinction is not cosmetic: the first version of
+/// the concurrency test built its own `LocalServer` and repeated the locking
+/// inline, so it proved the pattern worked while proving nothing about whether
+/// `start` used it — deleting the lock from the real path left every test green.
+fn start_once(
+    state: &LocalServer,
+    launch_one: impl FnOnce() -> Result<(Child, LocalServerInfo), SidecarError>,
+) -> Result<LocalServerInfo, SidecarError> {
     // Held across the whole check-launch-insert. A second caller blocks here and
     // then finds the slot filled, so it returns the running server rather than
     // spawning a rival — the check and the insert have to be one critical
@@ -245,9 +263,7 @@ fn start<R: Runtime>(app: &AppHandle<R>) -> Result<LocalServerInfo, SidecarError
         return Ok(info);
     }
 
-    let binary = binary_path(app)?;
-    let data = data_dir(app)?;
-    let (child, info) = launch(&binary, &data)?;
+    let (child, info) = launch_one()?;
 
     let mut guard = lock_through_poison(&state.running);
     // Nothing else can have inserted while we hold `startup`, but a leaked child
@@ -492,9 +508,9 @@ mod tests {
             eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
             return;
         };
-        // Models what `start` does: the startup lock must make check-launch-insert
-        // one critical section. Without it both threads observe an empty slot,
-        // both launch, and the loser's caller is handed a terminated sidecar.
+        // Drives the real `start_once`, not a copy of it. An earlier version of
+        // this test repeated the locking inline and so stayed green when the
+        // lock was deleted from the production path.
         let state = std::sync::Arc::new(LocalServer::default());
         let workdir =
             std::env::temp_dir().join(format!("cairndex-race-test-{}", std::process::id()));
@@ -506,17 +522,7 @@ mod tests {
                 let binary = binary.clone();
                 let workdir = workdir.clone();
                 std::thread::spawn(move || {
-                    let _startup = lock_through_poison(&state.startup);
-                    if let Some(info) = state.info() {
-                        return info;
-                    }
-                    let (child, info) = launch(&binary, &workdir).expect("launch");
-                    let mut guard = lock_through_poison(&state.running);
-                    *guard = Some(Running {
-                        child,
-                        info: info.clone(),
-                    });
-                    info
+                    start_once(&state, || launch(&binary, &workdir)).expect("start")
                 })
             })
             .collect();
