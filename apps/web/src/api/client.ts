@@ -862,6 +862,12 @@ export const deleteBundle = (id: string) => send<void>(`${lib()}/bundles/${id}`,
 export const deleteCollection = (id: string, cascade = false) =>
   send<void>(`${lib()}/collections/${id}?cascade=${cascade}`, 'DELETE')
 
-export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
+export async function fetchHealth(signal?: AbortSignal, baseUrl?: string): Promise<HealthStatus> {
+  // An explicit `baseUrl` probes that server without touching the module's
+  // configured base — verification must be able to ask "is anything there?"
+  // without repointing the app at the answer (plan 3 §7.1 activation).
+  if (baseUrl) {
+    return getJson<HealthStatus>(`${baseUrl.replace(/\/+$/, '')}/api/v1/health`, signal)
+  }
   return getJson<HealthStatus>('/api/v1/health', signal)
 }

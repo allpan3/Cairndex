@@ -853,4 +853,120 @@ mod tests {
         fast_client.join().unwrap();
         upstream_worker.join().unwrap();
     }
+
+    // --- scope-flag derivation (`targets_running_sidecar`) -----------------
+    //
+    // This function is the only thing keeping `server_scoped_token` derived
+    // rather than accepted: if it errs toward `true`, a paired device token
+    // pointed at a remote server gets attached to libraries it does not grant,
+    // silently reopening the hole D2 closed. These tests drive the real
+    // function against a real `LocalServer` whose `info()` liveness check is in
+    // play — a fabricated info would test a program that is not the one
+    // shipping.
+
+    use crate::sidecar::LocalServerInfo;
+    use std::process::{Command, Stdio};
+
+    // A live stand-in child: `cat` with a piped stdin blocks until the handle
+    // drops, which is exactly the lifetime the entry needs. (Unix-only, like
+    // the CI matrix; a Windows test runner would need a different stand-in.)
+    fn live_local_server(base_url: &str, token: &str) -> crate::sidecar::LocalServer {
+        let child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn stand-in child");
+        let state = crate::sidecar::LocalServer::default();
+        state.install_for_tests(
+            child,
+            LocalServerInfo {
+                base_url: base_url.to_string(),
+                token: token.to_string(),
+            },
+        );
+        state
+    }
+
+    #[test]
+    fn no_running_sidecar_never_legitimizes_the_flag() {
+        let state = crate::sidecar::LocalServer::default();
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("tok")
+        ));
+    }
+
+    #[test]
+    fn the_running_sidecars_own_url_and_token_derive_server_scope() {
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("local-tok")
+        ));
+        // Normalization, not string equality: a trailing slash is the same server.
+        assert!(targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567/",
+            Some("local-tok")
+        ));
+    }
+
+    #[test]
+    fn a_device_token_at_the_sidecars_url_stays_scoped() {
+        // The D2 case: right address, wrong credential. A paired device token
+        // must keep its per-library fail-closed gate even against loopback.
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("cdx_device_token")
+        ));
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            None
+        ));
+    }
+
+    #[test]
+    fn the_sidecars_token_at_another_url_stays_scoped() {
+        // Right credential, wrong address — a remote URL never gets the flag,
+        // whatever token rides along.
+        let state = live_local_server("http://127.0.0.1:4567", "local-tok");
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://nas.local:8000",
+            Some("local-tok")
+        ));
+    }
+
+    #[test]
+    fn a_sidecar_that_exited_no_longer_legitimizes_the_flag() {
+        // `info()` live-checks the child, so a stale entry for a crashed
+        // sidecar must fall back to scoped mode rather than blessing whatever
+        // now squats on that port.
+        let mut child = Command::new("cat")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn stand-in child");
+        drop(child.stdin.take()); // closing stdin ends `cat`
+        child.wait().expect("stand-in exits");
+
+        let state = crate::sidecar::LocalServer::default();
+        state.install_for_tests(
+            child,
+            LocalServerInfo {
+                base_url: "http://127.0.0.1:4567".to_string(),
+                token: "local-tok".to_string(),
+            },
+        );
+        assert!(!targets_running_sidecar(
+            &state,
+            "http://127.0.0.1:4567",
+            Some("local-tok")
+        ));
+    }
 }

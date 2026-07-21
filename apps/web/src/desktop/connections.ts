@@ -27,6 +27,7 @@ import {
   type StoredConnection,
   type StoredConnections,
 } from '../platform'
+import { setApiBaseUrl } from '../api/client'
 import { resetJobNotifications } from './useJobNotifications'
 import { verifyServer } from './verifyServer'
 
@@ -229,6 +230,13 @@ async function runActivation(id: string): Promise<Connection> {
   }
 
   // --- commit: nothing below can fail --------------------------------------
+  // The API base is where every JSON request goes, so it moves here — in the
+  // commit, for both kinds — and nowhere else. It used to move only as a side
+  // effect of `verifyServer`, which meant a local activation never pointed the
+  // app at the sidecar at all (requests kept going to the previous remote, or
+  // nowhere on first run), and a failed remote activation left the base on the
+  // dead server it had just probed. Found by the D6 whole-milestone review.
+  setApiBaseUrl(serverUrl)
   // Run state is module-scoped by D5b design (so a Workspace remount does not
   // drop a run in flight), which is exactly why a *connection* switch has to
   // clear it: a run started on the previous server would otherwise settle here
@@ -250,10 +258,22 @@ async function runActivation(id: string): Promise<Connection> {
 // Re-points transport at the connection that was active before a failed switch.
 // Reconfiguring rotates the media relay's capability route, so without this the
 // previous connection would survive with dead media URLs.
+//
+// Handles both kinds. The local connection stores no URL by design, so the
+// original `!previous?.serverUrl` guard silently skipped it — the one
+// compensation path could not compensate for a switch away from local. Its
+// address and token are re-read from the shell, which returns the running
+// sidecar rather than starting a rival.
 async function restore(previous: Connection | null): Promise<void> {
-  if (!previous?.serverUrl) return
   try {
-    await configureHostServer(previous.serverUrl)
+    if (previous?.kind === 'local') {
+      const info = await startHostLocalServer()
+      await configureHostServer(info.baseUrl, { localToken: info.token })
+      setApiBaseUrl(info.baseUrl)
+    } else if (previous?.serverUrl) {
+      await configureHostServer(previous.serverUrl)
+      setApiBaseUrl(previous.serverUrl)
+    }
   } catch {
     // Nothing better to do: the switch already failed, and reporting a second
     // failure over the first would only obscure the cause.

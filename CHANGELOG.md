@@ -8,6 +8,39 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Connection activation now owns the JSON API base URL** (whole-milestone D6
+  review, P1). The base moved only as a side effect of the reachability probe,
+  so activating the local connection never pointed the app at the sidecar —
+  requests kept going to the previous remote server (or nowhere on first run) —
+  and a *failed* activation left every request pointed at the dead server it
+  had just probed while the UI still showed the old connection. `verifyServer`
+  is now a pure probe, the base moves in activation's commit step for both
+  connection kinds, and the compensation path can restore a *local* previous
+  connection (it used to skip it entirely because local stores no URL). Pinned
+  by a new suite that asserts where requests actually resolve after each
+  activation outcome — the property every earlier test mocked away.
+
+- **A lease heartbeat no longer surrenders over a transient read failure**
+  (review, P2). A failed *write* was already tolerated ("an offline mount is
+  not a lost lease — nobody else can reach it either"), but a failed *read*
+  was folded into "corrupt" and surrendered — unmounting the library and
+  cancelling its jobs over one NFS/SMB blip, then showing a takeover prompt
+  for the user's own healthy library. `read_lease` now distinguishes an I/O
+  error from real corruption; the heartbeat rides out the former (no blind
+  rewrite either) and still surrenders on the latter. Acquisition still treats
+  both as UNREADABLE — "we could not find out" never becomes "nobody holds it".
+
+- **The media relay's scope-flag derivation is now under test** (review, P2).
+  `targets_running_sidecar` — the only guard keeping `server_scoped_token`
+  derived rather than caller-supplied — had zero coverage; any weakening of its
+  URL+token match would have survived the suite and silently reattached a
+  paired device token to libraries it does not grant. Five tests now drive the
+  real function against a real live-checked `LocalServer`, including the two
+  dangerous directions (device token at the sidecar's URL, sidecar token at a
+  remote URL) and a dead sidecar. Verified by mutation.
+
 ### Added
 
 - **Cairndex is MIT licensed** ([`LICENSE`](LICENSE)), ahead of the first public
