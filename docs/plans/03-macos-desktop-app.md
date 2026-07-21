@@ -104,9 +104,13 @@ apps/desktop/
   the UI. Linux/Windows shells stay out of scope for v1 but are kept cheap by
   the §2.1 rules (owner wants Linux eventually).
 - Distribution — **amended 2026-07-19 (owner)**. Developer ID signing and
-  notarization are **no longer a v1 requirement**. *(Superseded 2026-07-20 by
-  [ADR-0019](../adr/0019-open-source-distribution-model.md) §4: with open source
-  and published binaries, signing is required again.)* Cairndex is single-owner and
+  notarization are **no longer a v1 requirement**. *(Briefly marked superseded on
+  2026-07-20; that reversal was itself withdrawn on 2026-07-21 — see
+  [ADR-0019](../adr/0019-open-source-distribution-model.md) §4. Open source and
+  published binaries do not force signing, because System Settings → Open Anyway
+  is a working path users of unsigned macOS software already take. This amendment
+  stands; only its "single-owner" premise changed, not its conclusion.)*
+  Cairndex is single-owner and
   built from source, and Apple Silicon ad-hoc signs at link time, so packaged
   builds have worked locally since D1 with no certificate. The $99/yr Apple
   Developer Program buys nothing until a build must run on a **second Mac** or
@@ -495,8 +499,9 @@ browser-only, where every desktop surface is inert.
 | D4 ✅ | Drag-out / drag-in | §6 |
 | D5a ✅ | Menus, shortcuts, window state | Full menu bar built from one shared keymap table, Playback menu routed to the open viewer, browser-reserved shortcut audit, window-state edge cases, native viewer fullscreen |
 | D5b ✅ | Deep links, notifications, export seam | `cairndex://` bundle/collection deep links with cold-start parking and single-instance handoff, one dock badge / notification per long *run* (not per job), native save-dialog seam for future media exports (plan 1 §10; M11 hook only, no export UI) |
-| D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app. *(Both premises superseded 2026-07-20 by ADR-0019 §4 — signing and the updater are reopened for the first public release.)* |
-| D6 | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) — **landed** on `feat/library-ownership-lease` (2026-07-20), along with §6 checkpoint hygiene |
+| D5c ✅ | Distribution | DMG bundle target added for drag-to-Applications install; the full Developer ID + notarization procedure documented in `docs/deployment.md` and **env-gated so it is inert until configured**. Developer ID is an upgrade path, not a v1 requirement (§3 amendment) — ad-hoc signing is the shipped model. CI keeps `--bundles app` because Tauri's DMG bundler drives Finder over AppleScript and flakes on headless runners. **Updater deferred**: the repo is private with no releases, and Tauri's updater would need a token embedded in the shipped app. *(The updater's premise did change — it moves to D7. Signing's did not; see §3.)* |
+| D6 ✅ | Local-server sidecar | [ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md): bundled loopback server (spawn/health/env-token auth/shutdown), connections model (remote servers + one managed local server), "Open library folder…", lease takeover-confirmation and redirect UX. Prerequisite: the server-side ownership lease (ADR-0018 §3–§4) landed first, along with §6 checkpoint hygiene. Owner acceptance pass on the packaged app **2026-07-21** |
+| D7 | First public release | The release pipeline, not new product surface. Pin a static ffmpeg/ffprobe in `ffmpeg-manifest.json` ([ADR-0019](../adr/0019-open-source-distribution-model.md) §3) — the one true blocker, since without it a packaged sidecar falls back to a system ffmpeg that a user does not have. Then: per-architecture release artifacts (Apple Silicon + Intel), a README install section covering the Open Anyway first launch, the GPL source offer for the bundled ffmpeg, and a first observed run of a **downloaded** (quarantined) build. Tauri's updater rides here or later — it is now unblocked, not required |
 
 D1–D3 deliver a real "app" with every plan-1 player gain plus safe native file
 handoff; D4 adds the remaining drag interaction a browser cannot provide.

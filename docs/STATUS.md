@@ -1,6 +1,68 @@
 # Project status
 
-## In progress: Plan 3 D6 — local-server sidecar
+## Completed: Plan 3 D6 — local-server sidecar
+
+Branch `feat/library-ownership-lease`, latest commit `eaf79a3`. Unpushed, no PR
+(owner-triggered). **Owner acceptance pass passed 2026-07-21.**
+
+### The owner acceptance pass (2026-07-21) — four defects, none visible to tests
+
+This is the receipt the section below called "the remaining acceptance step".
+The owner drove the packaged app and reported four failures in a row. Every one
+of them passed the full suite beforehand, which is the finding worth keeping.
+
+1. **⌘O did nothing.** The menu action was handled only in `DesktopBootstrap`,
+   whose listener returns early once the app is `ready` — so the shortcut was
+   dead in exactly the state a user is always in. 268 tests passed before and
+   after.
+2. **Re-opening a registered library did not switch to it.** The pending
+   selection was consumed only on remount; it now notifies with a version bump.
+3. **A naive lease timestamp was ignored.** `datetime.fromisoformat` on a
+   timestamp with no offset returns a naive value, and comparing it to an aware
+   `now` raises `TypeError` — which the heartbeat's never-die guard swallowed,
+   leaving the library silently held. Missing offsets are now read as UTC.
+4. **"Connect to <holder>" stranded the app** at "Cairndex did not respond at
+   this address" — activation never called `verifyServer`. Reachability now runs
+   before the commit, and a failure restores the previous connection.
+
+Then a fifth report that was **not** a bug: ⌘O on a folder the current server
+already served. Reproduced with two real servers on one folder — main mounted it
+and took the lease, the sidecar registered the same folder and got `409
+library_lease_held`. The lease worked exactly as designed; ⌘O was simply the
+wrong action, and because both servers were on the owner's Mac the refusal named
+their own machine. Opening a folder the active server already serves now selects
+that library in place, keyed by the portable `library_uuid` (registry ids differ
+per server), with no sidecar started. A successful open also now names the
+library **and** the connection, because "opened on a server you are not looking
+at" and "nothing happened" were indistinguishable.
+
+**The pattern across all five: tests that modelled the code instead of exercising
+it.** The worst case was the test harness itself — the mocked `useDesktopMenu`
+used `??=`, freezing the *first* render's closure, so the handler under test saw
+an empty library list while the real ref-based hook sees the current one. Four
+increasingly "faithful" integration tests passed against a program that was not
+the one shipping. Counting the earlier `beforeBuildCommand` guard and the smoke
+test that ran the sidecar without `--watch-parent`, that is at least six
+instances in this milestone. The harness now mirrors the hook.
+
+Final gates: web ESLint/Prettier/tsc, **284 Vitest**, Vite build; desktop
+fmt/Clippy/**66**; `tauri build` produces a launching `Cairndex.app`.
+
+### Next
+Plan 3 **D7 — first public release**. The only true blocker is pinning a static
+ffmpeg (ADR-0019 §3); everything else there is pipeline and documentation.
+
+Two gaps carried forward, neither D6-specific:
+- **A lease redirect lands on the target server's first library**, not the one
+  asked for — library ids are per-registry, so the fix is carrying
+  `library_uuid` on the ownership response (plan 3 §7.1).
+- **`localStorage` is undefined in this jsdom setup**, so `usePersistentState` is
+  inert under test and *every* persisted UI preference is unverified. Pre-existing
+  and much wider than D6; worth its own slice.
+
+---
+
+## Historical detail: Plan 3 D6 — local-server sidecar
 
 ### Landed: D6.4/D6.5 web layer (three commits)
 
@@ -84,6 +146,11 @@ reports `can_take_over: true`, content routes 409 with `library_lease_held` and
 `library_lease_takeover_required`, `POST …/takeover` returns 202 with
 `takeover.running` already true, and taking over a live lease is refused with
 422. All passed.
+
+*(The two paragraphs below were written on 2026-07-20 and are now answered by the
+owner acceptance pass at the top of this file. Kept because what they predicted —
+that the untested half was where the defects would be — turned out to be exactly
+right, four times over.)*
 
 **Still not verified: the UI itself.** Driving the menu bar and the native folder
 picker needs assistive access this environment does not have. Note also that
@@ -323,9 +390,8 @@ executes nothing. Getting a real verdict on the three new/changed jobs needs a
 PR, which is the owner's call.
 
 ### Remaining
-- **D6.4/D6.5** web: the connections model (remote servers plus one managed local
-  server), "Open library folder…", and the lease refusal / redirect /
-  takeover-confirmation UX on top of the `…/ownership` endpoints.
+- Nothing in D6. See the acceptance receipt at the top of this file; the release
+  work that D6 surfaced is now plan 3 **D7**.
 
 
 ## Completed: SQLite sync hygiene (ADR-0018 §6)

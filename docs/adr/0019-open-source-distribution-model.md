@@ -1,6 +1,6 @@
 # ADR-0019: Open-source distribution and desktop sidecar packaging
 
-- Status: proposed (owner input 2026-07-20; awaiting ratification)
+- Status: accepted (owner input 2026-07-20; ratified with amendments 2026-07-21)
 - Date: 2026-07-20
 - Branch/PR: `feat/library-ownership-lease`
 
@@ -77,25 +77,50 @@ own license — but **distributing** the binary carries GPL source-offer
 obligations. This ADR records the constraint; it is not legal advice, and the
 owner should confirm before the first release.
 
-### 4. Decisions this reopens
+### 4. Decisions this reopens — resolved by the owner, 2026-07-21
 
-Recorded explicitly so they are not rediscovered at release time:
+The first draft of this section claimed signing was "no longer optional" and
+listed four release blockers. The owner reviewed it and **only one is a blocker**.
+Corrected here rather than left standing.
 
-- **Developer ID signing** is no longer optional. The D5c amendment's reasoning
-  is void; an unsigned DMG makes every downloader walk through System Settings →
-  *Open Anyway*, and `spctl --assess` already returns `rejected` (measured in
-  D5c). The signing pipeline is already documented and env-gated in
-  `docs/deployment.md`, so enabling it is configuration plus an Apple Developer
-  Program membership — not new work.
-- **The updater** returns to the table. Its deferral cited a private repo with no
-  releases; with a public repo and releases, Tauri's updater no longer needs a
-  token embedded in the shipped app.
-- **Project license** must be chosen before the first public push, and interacts
-  with §3.
-- **CI** must produce per-architecture release artifacts (Apple Silicon and
-  Intel at minimum), which the current macOS build job does not do.
+- **Project license: MIT** (owner, 2026-07-21). Cairndex's own code is MIT. This
+  is compatible with shipping a GPL ffmpeg binary in the same release artifact —
+  §3's aggregation reasoning is what makes that true — but the GPL obligation
+  attaches to *that binary*, so the release must carry the corresponding source
+  or a written offer for it. That is a release-notes line, not a code constraint.
 
-None of these block plan 3 D6; all block the first public release.
+- **Developer ID signing stays an upgrade path, not a requirement** (owner,
+  2026-07-21). The draft's claim was reasoned from Gatekeeper's *default* refusal
+  and skipped the step every macOS user of unsigned software already knows:
+  System Settings → Privacy & Security → **Open Anyway**. That path works, it is
+  what a large share of open-source macOS software ships behind, and the D5c
+  amendment's conclusion survives its premise. The cost is real but bounded — a
+  scary first-launch dialog, an install step in the README, and support questions
+  — and it is a documentation problem, not an engineering one. Revisit when the
+  friction is actually costing users, not on principle.
+
+  Two things this does *not* excuse. **Every executable in the bundle must still
+  carry at least an ad-hoc signature**, because Apple Silicon kills unsigned ones
+  outright — that includes the PyInstaller sidecar and the dylibs beside it, not
+  just `Cairndex.app`. And the **downloaded** path is still unproven: the D6
+  packaged run launched a locally-built app, which carries no
+  `com.apple.quarantine` attribute, so the first-launch experience an actual
+  downloader gets has never been observed. Verifying it needs a real
+  round-trip through a browser download, and belongs with the first release.
+
+- **ffmpeg pinning is greenlit** (owner, 2026-07-21). It was written up as an
+  owner decision because it hardcodes a third-party trust choice into the repo,
+  and because §3's GPL consequence follows from it. Both are now answered, so it
+  is ordinary work: pick a genuinely static build, verify it is static rather
+  than trusting the label, record URL + sha256 in `ffmpeg-manifest.json`, and let
+  the existing checksum gate in `build_sidecar.py` hold it. libx264 is not
+  avoidable — `media/hls.py` uses it for the transcode ladder, and only the remux
+  path is `-c:v copy` — so an LGPL build would silently lose transcoding.
+
+- **The updater** and **per-architecture release CI** are release-pipeline work,
+  not decisions. Both move to plan 3 D7 (§9).
+
+Net: nothing here blocks D6, and only the ffmpeg pin blocks a usable release.
 
 ## Alternatives considered
 
@@ -115,10 +140,10 @@ None of these block plan 3 D6; all block the first public release.
 Easier: a user can download one artifact and open a local library folder with no
 toolchain, no Python, and no ffmpeg.
 
-Harder / follow-up: a packaged-sidecar smoke test in CI (§2), a static ffmpeg
-acquisition and licensing step in the release pipeline (§3), and the four
-reopened decisions in §4 — signing, updater, license, and multi-arch CI — before
-the first public release.
+Harder / follow-up: a packaged-sidecar smoke test in CI (§2) — done — and a
+static ffmpeg acquisition step (§3), which is the one remaining blocker on a
+usable release. The rest of §4 resolved into a licence file, a README install
+note, and plan 3 D7 work.
 
 ## References
 
