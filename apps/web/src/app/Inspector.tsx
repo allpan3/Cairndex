@@ -29,6 +29,64 @@ function ConflictNotice({ error }: { error: unknown }) {
   )
 }
 
+/** Bundle title textarea that grows with wrapped content and inspector width. */
+function BundleTitleEditor({
+  value,
+  onChange,
+  onCommit,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onCommit: () => void
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  // Fit without showing a scrollbar or clipping the final line
+  const fit = (element: HTMLTextAreaElement) => {
+    element.style.height = 'auto'
+    const border = element.offsetHeight - element.clientHeight
+    element.style.height = `${element.scrollHeight + border}px`
+  }
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (element) fit(element)
+  }, [value])
+
+  // Re-fit when resizing the inspector changes where the title wraps
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    let lastWidth = element.clientWidth
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width === undefined || Math.abs(width - lastWidth) < 0.5) return
+      lastWidth = width
+      fit(element)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <textarea
+      ref={ref}
+      className="edit edit--title edit--title-wrap"
+      rows={1}
+      value={value}
+      placeholder="Untitled"
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onCommit}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter') return
+        event.preventDefault()
+        event.currentTarget.blur()
+      }}
+      aria-label="Title"
+    />
+  )
+}
+
 export function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
     <span className="stars" role="radiogroup" aria-label="Rating">
@@ -207,17 +265,7 @@ function BundleEditor({
 
       <ConflictNotice error={update.error} />
 
-      <input
-        className="edit edit--title"
-        value={title}
-        placeholder="Untitled"
-        onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => commitTitle(title)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
-        }}
-        aria-label="Title"
-      />
+      <BundleTitleEditor value={title} onChange={setTitle} onCommit={() => commitTitle(title)} />
 
       <div className="prop">
         <span className="prop__k">Rating</span>

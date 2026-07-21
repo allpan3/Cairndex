@@ -1,5 +1,18 @@
 # Project status
 
+## Completed: wrapping bundle-inspector titles (2026-07-21)
+
+Direct-to-`main` inspector follow-up.
+
+- The bundle title editor is an auto-fitting textarea that wraps long titles,
+  grows with their rendered line count, and re-fits after inspector resizing.
+- Enter still commits without inserting a newline; blur behavior and the title
+  API contract are unchanged.
+- Frontend lint/format/typecheck, all 296 component tests, the production build,
+  and all 79 Playwright tests pass. The new browser test measures real wrapped
+  geometry and the Enter commit path. The in-app browser remained unavailable
+  for the local URL under its security policy.
+
 ## Completed: direct bundle-file reordering (2026-07-21)
 
 Direct-to-`main` inspector follow-up.
