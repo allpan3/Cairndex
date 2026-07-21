@@ -30,11 +30,19 @@ export interface OpenLibraryFolderResult {
  * Throws with the shell's own message when the folder is not a library, the
  * sidecar cannot start, or the server refuses the registration.
  */
-export async function openLibraryFolder(): Promise<OpenLibraryFolderResult> {
+export async function openLibraryFolder(
+  knownLibraryUuids: string[] = [],
+): Promise<OpenLibraryFolderResult> {
   // Cancellable step first: dismissing the picker must leave the current
   // connection, cache, and library exactly as they were.
-  const opened = await openHostLibraryFolder()
+  const opened = await openHostLibraryFolder(knownLibraryUuids)
   if (!opened) return { opened: null }
+
+  // The current server already has it. Starting a local one would make a second
+  // server for the same folder, which the lease refuses — so the useful action
+  // is simply to select what is already there. The caller resolves the library
+  // by uuid, since our id would belong to a registry it is not talking to.
+  if (opened.alreadyAvailable) return { opened }
 
   await ensureLocalConnection()
 

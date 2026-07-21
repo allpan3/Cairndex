@@ -73,6 +73,14 @@ grouped under `Unreleased` until the first tagged release.
   screen. Reachability is now checked before the switch commits, like every
   other fallible step, and a failure leaves the previous connection untouched.
 
+- **Fixed: opening a folder your current server already serves.** ⌘O started a
+  *second* server against the same folder, which the ownership lease then
+  correctly refused — reporting the library as "open on <your own machine>",
+  since both servers were on it. The shell is now told which libraries the
+  current server already has, and reports a match instead of opening anything;
+  the app just selects the library it already had, by portable `library_uuid`
+  (registry ids differ between servers, so the shell's id would be meaningless).
+
 - **Fixed: re-opening an already-registered library did not switch to it.** The
   library to show was handed over through a slot consumed on remount, but
   activating the connection that is *already* active changes no id and remounts
