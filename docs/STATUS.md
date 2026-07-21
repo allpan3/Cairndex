@@ -75,16 +75,29 @@ Gates after the fixes: backend ruff / format / strict mypy / **566 pytest**
 fmt / Clippy `-D warnings` / **71 tests** (+5), run with `CAIRNDEX_SIDECAR_BIN`
 pointed at the real packaged bundle.
 
-P3s from the same review, deliberately not fixed here: relaunching while the
-local connection is active lands on the first-run setup screen
-(`DesktopBootstrap` reads the local entry's null URL as "unconfigured");
-`release()` has a small read-check→write window that can briefly clobber a new
-holder's lease (self-healing within one heartbeat, inside ADR-0018 §4's
-accepted bound); uvicorn's unbounded graceful shutdown could push the shell's
-15 s grace into the kill path if a connection is held open at quit
-(`timeout_graceful_shutdown` is the one-line bound). Disposition is the
-owner's call; recommendation recorded in the review thread — fix the first two
-cheaply, treat the lease race as an accepted documented bound.
+P3s from the same review (owner-directed disposition, follow-up commit):
+
+- **Fixed — relaunch on the local connection.** `DesktopBootstrap` read the
+  local entry's null URL as "unconfigured" and showed first-run setup on every
+  launch to a local-only user. It now activates the entry (starting the
+  sidecar) and falls back to setup only on failure, showing the shell's own
+  reason. The bootstrap's redundant post-activation `verifyServer` probes were
+  removed at the same time — activation verifies before committing. Pinned by
+  two tests; reverting the null-URL guard fails both.
+- **Fixed — bounded sidecar shutdown.** uvicorn's `timeout_graceful_shutdown`
+  defaults to unbounded, so a connection held open at quit could eat the
+  shell's 15 s `SHUTDOWN_GRACE` and reach the kill fallback — the path that
+  strands leases. Now 10 s, inside the shell's budget; the two constants
+  cross-reference each other. Verified by rebuilding the bundle and re-running
+  the packaging smoke test plus the desktop lifecycle tests against it.
+- **Accepted, not fixed — `release()`'s read-check→write window.** A racing
+  acquisition between release's read and its write can be briefly clobbered;
+  self-healing within one heartbeat, inside ADR-0018 §4's accepted exposure
+  bound. Recorded here rather than coded around.
+
+Gates after the P3 fixes: backend 566; web ESLint/Prettier/tsc/**291 Vitest**
+(+2)/build; desktop fmt/Clippy/**71** against the rebuilt bundle; packaging
+smoke test green.
 
 ### The owner acceptance pass (2026-07-21) — four defects, none visible to tests
 

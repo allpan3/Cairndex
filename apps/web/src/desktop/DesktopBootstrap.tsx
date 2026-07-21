@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { QueryScope } from '../QueryScope'
-import { INCOMPATIBLE_SERVER_ERROR, verifyServer } from './verifyServer'
+import { INCOMPATIBLE_SERVER_ERROR } from './verifyServer'
 import { openLibraryFolder } from './openLibraryFolder'
 import {
   activateConnection,
@@ -123,14 +123,21 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         const state = await loadConnections()
         if (!active) return
         const activeId = state.activeConnectionId
-        const stored = state.connections.find((entry) => entry.id === activeId)?.serverUrl ?? null
-        if (!activeId || !stored) {
+        const entry = state.connections.find((candidate) => candidate.id === activeId) ?? null
+        // The local connection stores no URL by design (its port is per
+        // process), so "has no URL" must not be read as "unconfigured" — that
+        // reading sent anyone who quit while on the local connection back to
+        // the first-run screen on every launch, against ADR-0018's "local
+        // libraries just work". Only a remote entry without a URL is broken.
+        if (!activeId || !entry || (entry.kind === 'remote' && !entry.serverUrl)) {
           setSetup({ serverUrl: 'http://127.0.0.1:8000', error: null })
           return
         }
         try {
+          // Activation does the whole job for either kind: it starts the
+          // sidecar for local, and for remote it probes reachability before
+          // committing — no separate verify step here.
           await activateConnection(activeId)
-          await verifyServer(stored)
           if (active) {
             try {
               await setHostServerAvailable(true)
@@ -142,11 +149,13 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         } catch (error) {
           if (active) {
             setSetup({
-              serverUrl: stored,
+              serverUrl: entry.serverUrl ?? 'http://127.0.0.1:8000',
               error:
-                error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
-                  ? error.message
-                  : 'Cairndex did not respond at this address. Check that the server is running.',
+                entry.kind === 'local'
+                  ? hostOperationErrorMessage(error)
+                  : error instanceof Error && error.message === INCOMPATIBLE_SERVER_ERROR
+                    ? error.message
+                    : 'Cairndex did not respond at this address. Check that the server is running.',
             })
           }
         }
@@ -172,8 +181,9 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     try {
       const normalized = await normalizeHostServerUrl(setup.serverUrl)
       const connection = await addRemoteConnection(normalized)
+      // Activation probes reachability itself before committing, so a dead or
+      // incompatible address throws here and nothing below runs.
       await activateConnection(connection.id)
-      await verifyServer(normalized)
       // Kept for now so a downgrade to a pre-D6 build still finds its server.
       await saveHostServerUrl(normalized)
       try {
