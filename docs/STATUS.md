@@ -40,6 +40,59 @@ Verified: web ESLint, Prettier, tsc, **268 Vitest** (was 229 at D6 start), Vite
 build, Playwright browser partition **74**; desktop fmt/Clippy/**66**. Twelve
 mutations applied across the three commits, each failing a test.
 
+### The packaged run (2026-07-20)
+
+Built the app with the sidecar staged and exercised it. Two real defects found,
+both fixed — which is the point of doing this rather than trusting the mocks.
+
+**1. A fatal abort in the sidecar, from a real crash report.**
+`~/Library/Logs/DiagnosticReports/cairndex-sidecar-*.ips` showed `SIGABRT`,
+`abort() called`, with the stack `_enter_buffered_busy → _Py_FatalErrorFormat →
+abort`. That is CPython's *"could not acquire lock for `<_io.BufferedReader
+name='<stdin>'>` at interpreter shutdown, possibly due to daemon threads"*, and
+the cause was mine: `watch_parent` blocked a daemon thread inside
+`sys.stdin.buffer.read()`, holding the BufferedReader's lock, so an interpreter
+finalization from any *other* cause could not close stdin.
+
+Reproduced deterministically as `--watch-parent` + SIGINT. The harm was not
+cosmetic: **an abort skips the lifespan shutdown, so the ownership lease is never
+released** — leaving exactly the stale lease and takeover prompt the whole design
+exists to prevent. Fixed by reading the raw fd (`os.read`), which touches no
+Python buffer object and takes no such lock; verified that the lease is now
+released on SIGINT, where before it was not.
+
+The smoke test could not have caught it: it ran the sidecar **without**
+`--watch-parent` (unlike the shell) and never checked the exit code, so an
+aborting process still counted as "stopped". It now runs the binary the way the
+shell does and fails on `SIGABRT` or a logged fatal error — verified by mutation.
+
+**2. The `beforeBuildCommand` guard was wired to the wrong path.** It ran
+`node ../check-sidecar-staged.mjs`, but the command's working directory is
+`apps/desktop`, not `src-tauri` — so it pointed outside the repo and failed
+*every* build, including valid ones. My earlier "verification" ran the script
+directly rather than through a build, which is the same mistake as testing a
+component instead of the integration. Fixed and confirmed both ways: a real build
+passes with the bundle staged and fails with the documented message without it.
+
+**Client↔server contract verified against the packaged sidecar.** The web unit
+tests mock `fetch`, so a wrong URL or renamed field would pass there and fail
+only in a real app. Every URL and field the SPA depends on was driven against the
+real binary: `GET …/ownership` returns exactly the declared field set,
+`mountable` is a real bool, a live holder reports `fresh` / `can_take_over:
+false` / a redirect URL, a loopback holder's URL is suppressed, a stale lease
+reports `can_take_over: true`, content routes 409 with `library_lease_held` and
+`library_lease_takeover_required`, `POST …/takeover` returns 202 with
+`takeover.running` already true, and taking over a live lease is refused with
+422. All passed.
+
+**Still not verified: the UI itself.** Driving the menu bar and the native folder
+picker needs assistive access this environment does not have. Note also that
+`open -n` on the build-directory app was intercepted by the single-instance
+plugin and focused the owner's already-running `/Applications` copy instead — the
+same multi-registrant hazard D5c documented — so no second instance was launched.
+The remaining acceptance step is a human: open a folder from the menu, watch the
+sidecar start, hit a lease conflict, run a takeover.
+
 **Not yet run end to end.** The Rust talks to a real sidecar in its tests and the
 web layer is tested against mocks, but the two halves have never met in a running
 packaged app. That owner pass is the remaining acceptance step for D6, and it

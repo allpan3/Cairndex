@@ -262,8 +262,16 @@ def main() -> int:
             env["CAIRNDEX_FFPROBE_PATH"] = str(args.bundle.parent / "ffprobe")
 
         with log.open("wb") as sink:
+            # `--watch-parent` because that is how the shell actually runs it,
+            # and the flag changes shutdown behaviour: it starts a thread that
+            # blocks reading stdin. Running without it here once hid a fatal
+            # abort at interpreter shutdown that only the packaged app hit.
             process = subprocess.Popen(
-                [str(args.bundle)], env=env, stdout=sink, stderr=subprocess.STDOUT
+                [str(args.bundle), "--watch-parent"],
+                stdin=subprocess.PIPE,
+                env=env,
+                stdout=sink,
+                stderr=subprocess.STDOUT,
             )
             try:
                 port = wait_for_port(process, log)
@@ -272,11 +280,22 @@ def main() -> int:
                 # SIGTERM is what the shell sends. The lifespan shutdown it
                 # triggers is what releases the ownership lease — skip it and
                 # the user's next launch meets a takeover prompt.
-                process.send_signal(signal.SIGTERM)
+                process.send_signal(signal.SIGINT)
                 try:
                     process.wait(timeout=30)
                 except subprocess.TimeoutExpired:
-                    raise SmokeFailure("sidecar ignored SIGTERM") from None
+                    raise SmokeFailure("sidecar ignored the stop signal") from None
+
+                # A crash still "stops" the process, so the exit code has to be
+                # checked: SIGABRT (-6) is how a fatal interpreter-shutdown
+                # error looks, and it skips the lifespan shutdown entirely.
+                if process.returncode in (-signal.SIGABRT, 128 + signal.SIGABRT):
+                    raise SmokeFailure(
+                        f"sidecar aborted on shutdown (exit {process.returncode}); "
+                        "check for a Fatal Python error in the log below"
+                    )
+                if "Fatal Python error" in log.read_text(errors="replace"):
+                    raise SmokeFailure("sidecar logged a fatal Python error during shutdown")
 
                 lease = json.loads(
                     (library_root / ".cairndex" / "locks" / "active-owner.json").read_text()

@@ -56,6 +56,15 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Fixed: the sidecar aborted at shutdown, leaving its ownership lease held.**
+  `--watch-parent` blocked a daemon thread inside `sys.stdin.buffer.read()`,
+  which holds that reader's lock; if the interpreter then finalized for any other
+  reason (a SIGINT, say) CPython could not close stdin and called `abort()`. The
+  abort skipped the lifespan shutdown, so the lease was never released and the
+  next launch met a takeover prompt it should never have seen. Now reads the raw
+  file descriptor, which takes no such lock. Found from a real crash report while
+  exercising the packaged app.
+
 - **Ownership lease UX (Plan 3 D6.5).** A library another server holds now
   explains itself instead of failing content queries. Checked once at the mount
   gate rather than per query, so a refusal is one state and not a scatter of
