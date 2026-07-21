@@ -83,6 +83,7 @@ import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import {
+  activeConnectionLabel,
   connectToServer,
   getConnections,
   getPendingSelectionVersion,
@@ -217,9 +218,32 @@ export default function App() {
     else if (action === 'pair-device') setSettingsPage('pair')
     else if (action === 'open-library-folder') {
       setOpenFolderError(null)
-      void openLibraryFolder().catch((error: unknown) => {
-        setOpenFolderError(hostOperationErrorMessage(error))
-      })
+      // Tell the shell which libraries this server already serves, so picking a
+      // folder it already has selects it here instead of starting a second
+      // server against the same folder — which the lease would then refuse.
+      void openLibraryFolder(libraries.map((library) => library.library_uuid).filter(Boolean))
+        .then((result) => {
+          // Confirm the action rather than leaving it silent. A folder opens on
+          // the *local* server, which is a different server from any remote one
+          // with its own library list — so "nothing appeared to happen" and
+          // "it opened somewhere you were not looking" are easy to confuse.
+          // Naming both the library and the connection distinguishes them.
+          if (!result.opened) return
+          const name = result.opened.displayName ?? 'library'
+          if (result.opened.alreadyAvailable) {
+            const here = libraries.find(
+              (library) => library.library_uuid === result.opened!.libraryUuid,
+            )
+            if (here) {
+              changeLibrary(here.id)
+              return
+            }
+          }
+          setOpenFolderError(`Opened ${name} on ${activeConnectionLabel()}`)
+        })
+        .catch((error: unknown) => {
+          setOpenFolderError(hostOperationErrorMessage(error))
+        })
     }
   })
 

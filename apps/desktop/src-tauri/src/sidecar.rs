@@ -420,9 +420,14 @@ pub(crate) async fn stop_local_server<R: Runtime>(app: AppHandle<R>) -> Result<(
     Ok(())
 }
 
-/// A library opened through the local server. Ids only — no filesystem path.
+/// The outcome of picking a library folder. Ids only — no filesystem path.
 #[derive(Debug, Serialize)]
 pub(crate) struct OpenedLibrary {
+    /// `true` when the caller already has this library on its current server, so
+    /// no local server was started and nothing was registered.
+    pub(crate) already_available: bool,
+    /// Empty when `already_available` — the caller resolves the library from its
+    /// own list by uuid, since ids are per-registry and ours would be wrong.
     pub(crate) library_id: String,
     pub(crate) library_uuid: String,
     /// `None` when the manifest omits a name; the caller picks its own fallback.
@@ -441,6 +446,7 @@ pub(crate) struct OpenedLibrary {
 #[tauri::command]
 pub(crate) async fn open_library_folder<R: Runtime>(
     app: AppHandle<R>,
+    known_library_uuids: Vec<String>,
 ) -> Result<Option<OpenedLibrary>, SidecarError> {
     // The dialog must be driven from the caller's thread, as the other pickers
     // in this shell already are; everything after it can block.
@@ -448,6 +454,23 @@ pub(crate) async fn open_library_folder<R: Runtime>(
     let Some(picked) = picked else {
         return Ok(None);
     };
+
+    // The caller already has this library on the server it is connected to, so
+    // starting a local one would register a *second* server against the same
+    // folder — which the ownership lease then correctly refuses, leaving the
+    // user staring at "this library is open on <their own machine>". Report it
+    // instead and let the caller just select what it already has.
+    if known_library_uuids
+        .iter()
+        .any(|uuid| uuid.eq_ignore_ascii_case(&picked.library_uuid))
+    {
+        return Ok(Some(OpenedLibrary {
+            already_available: true,
+            library_id: String::new(),
+            library_uuid: picked.library_uuid,
+            display_name: picked.display_name,
+        }));
+    }
 
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<LocalServer>();
@@ -458,6 +481,7 @@ pub(crate) async fn open_library_folder<R: Runtime>(
         })?;
         let library_id = register_library(&info, &picked.root)?;
         Ok(Some(OpenedLibrary {
+            already_available: false,
             library_id,
             library_uuid: picked.library_uuid,
             display_name: picked.display_name,

@@ -31,7 +31,13 @@ vi.stubGlobal('localStorage', {
   },
 })
 
-const desktopMenu = vi.hoisted(() => ({ handler: null as ((action: string) => void) | null }))
+const desktopMenu = vi.hoisted(() => ({
+  handlers: new Set<{ current: (action: string) => void }>(),
+}))
+
+function dispatchMenu(action: string) {
+  for (const ref of desktopMenu.handlers) ref.current(action)
+}
 const host = vi.hoisted(() => ({
   openLibraryFolder: vi.fn(),
   startLocalServer: vi.fn(),
@@ -41,12 +47,26 @@ const host = vi.hoisted(() => ({
   loadServerUrl: vi.fn(),
 }))
 
-vi.mock('./desktop/useDesktopMenu', () => ({
-  useDesktopMenu: (handler: (action: string) => void) => {
-    desktopMenu.handler ??= handler
-  },
-  useDesktopMenuAvailability: vi.fn(),
-}))
+// Mirrors the real hook: one subscription per call site, holding a ref to the
+// *latest* closure. An earlier version kept only the first render's closure,
+// where the library list is still empty — so the handler saw no libraries and
+// the test failed for a reason the app does not have.
+vi.mock('./desktop/useDesktopMenu', async () => {
+  const react = await import('react')
+  return {
+    useDesktopMenu: (handler: (action: string) => void) => {
+      const ref = react.useRef(handler)
+      ref.current = handler
+      react.useEffect(() => {
+        desktopMenu.handlers.add(ref)
+        return () => {
+          desktopMenu.handlers.delete(ref)
+        }
+      }, [])
+    },
+    useDesktopMenuAvailability: vi.fn(),
+  }
+})
 
 vi.mock('./desktop/verifyServer', () => ({
   verifyServer: vi.fn().mockResolvedValue(undefined),
@@ -65,7 +85,7 @@ vi.mock('./platform', async (importOriginal) => {
     setHostServerAvailable: () => Promise.resolve(undefined),
     normalizeHostServerUrl: (value: string) => Promise.resolve(value),
     saveHostServerUrl: () => Promise.resolve(undefined),
-    openHostLibraryFolder: () => host.openLibraryFolder(),
+    openHostLibraryFolder: (uuids: string[]) => host.openLibraryFolder(uuids),
     startHostLocalServer: () => host.startLocalServer(),
     configureHostServer: (url: string, options?: unknown) => host.configureServer(url, options),
     loadHostConnections: () => host.loadConnections(),
@@ -74,8 +94,20 @@ vi.mock('./platform', async (importOriginal) => {
   }
 })
 
-const PHOTOS = { id: 'lib-photos', name: 'Photos', root_path: '/p', status: 'available' }
-const VIDEO = { id: 'lib-video', name: 'Video', root_path: '/v', status: 'available' }
+const PHOTOS = {
+  id: 'lib-photos',
+  library_uuid: 'uuid-photos',
+  name: 'Photos',
+  root_path: '/p',
+  status: 'available',
+}
+const VIDEO = {
+  id: 'lib-video',
+  library_uuid: 'uuid-video',
+  name: 'Video',
+  root_path: '/v',
+  status: 'available',
+}
 
 function mockApi(libraries: unknown[]) {
   vi.stubGlobal(
@@ -98,7 +130,7 @@ function mockApi(libraries: unknown[]) {
 beforeEach(() => {
   resetConnectionsForTests()
   store.clear()
-  desktopMenu.handler = null
+  desktopMenu.handlers.clear()
   vi.clearAllMocks()
   host.configureServer.mockResolvedValue(undefined)
   host.saveConnections.mockResolvedValue(undefined)
@@ -133,6 +165,7 @@ test('opening an already-registered library switches the app to it', async () =>
   // folder must move the app to Video.
   mockApi([PHOTOS, VIDEO])
   host.openLibraryFolder.mockResolvedValue({
+    alreadyAvailable: false,
     libraryId: VIDEO.id,
     libraryUuid: 'uuid-video',
     displayName: 'Video',
@@ -141,7 +174,7 @@ test('opening an already-registered library switches the app to it', async () =>
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
 
   await act(async () => {
-    desktopMenu.handler?.('open-library-folder')
+    dispatchMenu('open-library-folder')
   })
 
   // `setActiveLibraryId` is what every content query is scoped by, so it is the
@@ -162,6 +195,7 @@ test('opening a second library while the local connection is ALREADY active swit
     activeConnectionId: 'local',
   })
   host.openLibraryFolder.mockResolvedValue({
+    alreadyAvailable: false,
     libraryId: VIDEO.id,
     libraryUuid: 'uuid-video',
     displayName: 'Video',
@@ -171,7 +205,7 @@ test('opening a second library while the local connection is ALREADY active swit
   await waitFor(() => expect(active).toBe(PHOTOS.id))
 
   await act(async () => {
-    desktopMenu.handler?.('open-library-folder')
+    dispatchMenu('open-library-folder')
   })
 
   await waitFor(() => expect(active).toBe(VIDEO.id))
@@ -188,6 +222,7 @@ test('a library missing from the cached list still becomes active once it appear
     activeConnectionId: 'local',
   })
   host.openLibraryFolder.mockResolvedValue({
+    alreadyAvailable: false,
     libraryId: VIDEO.id,
     libraryUuid: 'uuid-video',
     displayName: 'Video',
@@ -199,7 +234,7 @@ test('a library missing from the cached list still becomes active once it appear
   libraries.push(VIDEO)
 
   await act(async () => {
-    desktopMenu.handler?.('open-library-folder')
+    dispatchMenu('open-library-folder')
   })
 
   await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
@@ -217,6 +252,7 @@ test('the real composition: App inside DesktopBootstrap, whose QueryScope is key
     activeConnectionId: 'remote:http://nas:8000',
   })
   host.openLibraryFolder.mockResolvedValue({
+    alreadyAvailable: false,
     libraryId: VIDEO.id,
     libraryUuid: 'uuid-video',
     displayName: 'Video',
@@ -233,8 +269,47 @@ test('the real composition: App inside DesktopBootstrap, whose QueryScope is key
   await waitFor(() => expect(active).toBe(PHOTOS.id), { timeout: 3000 })
 
   await act(async () => {
-    desktopMenu.handler?.('open-library-folder')
+    dispatchMenu('open-library-folder')
   })
 
   await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
+})
+
+test('a folder the current server already serves is just selected, not reopened', async () => {
+  // The owner's case. Their main server already served ~/DemoLibrary, so
+  // opening it started a *second* server for the same folder and the ownership
+  // lease refused it — reporting the library as "open on <their own machine>".
+  // The shell is now told what this server already has, and reports a match
+  // instead of opening anything.
+  mockApi([PHOTOS, VIDEO])
+  host.openLibraryFolder.mockResolvedValue({
+    alreadyAvailable: true,
+    libraryId: '',
+    libraryUuid: VIDEO.library_uuid,
+    displayName: 'Video',
+  })
+  renderApp()
+  await waitFor(() => expect(active).toBe(PHOTOS.id))
+
+  await act(async () => {
+    dispatchMenu('open-library-folder')
+  })
+
+  // Selected here, on this server — by portable uuid, since the shell has no
+  // id that means anything in this registry.
+  await waitFor(() => expect(active).toBe(VIDEO.id))
+  expect(host.startLocalServer).not.toHaveBeenCalled()
+})
+
+test('the shell is told which libraries this server already has', async () => {
+  mockApi([PHOTOS, VIDEO])
+  host.openLibraryFolder.mockResolvedValue(null)
+  renderApp()
+  await waitFor(() => expect(active).toBe(PHOTOS.id))
+
+  await act(async () => {
+    dispatchMenu('open-library-folder')
+  })
+
+  await waitFor(() => expect(host.openLibraryFolder).toHaveBeenCalled())
 })
