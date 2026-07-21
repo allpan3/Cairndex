@@ -294,6 +294,102 @@ handoff:
 - localStorage prefs migrate transparently (WKWebView persists per bundle id);
   shell-owned settings (server URL, token, mappings) live in the Tauri store.
 
+## 7.1 Connections model (D6.4/D6.5 design sketch)
+
+> Status: **proposed**, written before implementation for review. Settles how
+> ADR-0018 §5's "set of connections" behaves. The shell-side half (sidecar
+> lifecycle, `open_library_folder`) has landed; this is the web half.
+
+### Decision: one active connection at a time
+
+ADR-0018 §5 says the client generalizes to "remote servers plus one managed
+local server". That admits switching or simultaneous browsing. **Switching.**
+
+The codebase has effectively voted three times already: the media proxy is
+single-config and rotates its capability secret as a security property (D2/ADR-0017),
+deep-link classification is built around "not on *this* server", and job
+notification/polling assumes one server's job list. Simultaneity would multiply
+all three. It also buys no capability — ADR-0018 guarantees a library is served
+by exactly one server anyway, so the only gain is breadth of view. Nothing here
+forecloses it later: it becomes additive UI plus a proxy redesign, if something
+ever demands it.
+
+### Shape
+
+```text
+Connection = { id, kind: 'remote' | 'local', label, serverUrl }
+```
+
+- Persisted in the Tauri store under `connections`, plus `activeConnectionId`.
+- The **local** entry is singular and managed: no `serverUrl` is persisted for
+  it, because the sidecar's port is ephemeral and only valid for the current
+  process. It is resolved at activation from `start_local_server`.
+- Migration: an existing stored `serverUrl` becomes the first `remote`
+  connection, active. No user-visible first-run change for someone who already
+  configured a NAS.
+
+### Activation
+
+`activateConnection(id)` is the single choke point, and does what
+`configureHostServer` does today plus the credential switch:
+
+1. resolve the base URL — stored for remote, `start_local_server()` for local;
+2. `configureServer(url)` (the runtime already reloads device auth per server);
+3. reconfigure the media proxy, which rotates its secret — so URLs minted for
+   the previous connection stop resolving, which is the behaviour we want on a
+   switch rather than something to work around;
+4. clear the react-query cache. Library ids are per-server and **not** globally
+   unique, so a stale entry could otherwise be read as belonging to the new
+   server. This is the one correctness step easy to forget.
+
+The local connection's credential is the loopback owner token from
+`start_local_server`; the media proxy derives its server-scoped mode by matching
+the running sidecar, so nothing in the web layer carries a scope flag.
+
+### Sidecar lifetime
+
+Started on first activation of the local connection; **kept running until app
+exit** even when the user switches back to a remote server. Stopping on switch
+would release and reacquire ownership leases each time, which is sync-visible
+churn for no benefit, and would make switching back cost a cold start.
+
+### "Open library folder…"
+
+A File-menu item (`keymap.json`, so the menu and SPA stay in step), enabled only
+on desktop. It calls the single `open_library_folder` command, which returns ids
+only, then activates the local connection and navigates to the returned
+`library_id`. Cancel is a no-op.
+
+### D6.5 — ownership UX
+
+Sits on the endpoints already shipped, and belongs at the **mount gate**, not in
+the open flow: opening a folder registers it, while the lease is only taken when
+a library is mounted, so a conflict surfaces on mount whichever route got there.
+
+| Server state         | UI                                                          |
+| -------------------- | ----------------------------------------------------------- |
+| `library_lease_held` | Name the holder. Offer "Connect to <url>" when `redirect_url` is set, which adds/activates that remote connection |
+| `library_lease_takeover_required` | Explain, show holder + last heartbeat, offer "Serve here anyway" |
+| `library_ownership_lost` | The library unmounted underneath us; same redirect offer |
+
+Takeover is `POST …/ownership/takeover` (202) then polling `GET …/ownership`
+until `takeover.running` clears — the observation window is ~2 minutes by
+design, so the dialog must show indeterminate progress and stay cancellable
+(cancelling stops polling; it does not stop the server-side attempt).
+
+### Explicitly not in scope
+
+Simultaneous multi-server browsing; cross-connection deep links (a link naming a
+library on an inactive connection keeps today's "not on this server" report);
+and any UI for editing the local connection, which is managed, not configured.
+
+### Test plan
+
+Vitest around `connections.ts` (migration from a bare `serverUrl`, activation
+order, cache clear on switch, local activation starting the sidecar exactly
+once) and the ownership dialog states driven from fixture payloads. Playwright
+stays browser-only, where every desktop surface is inert.
+
 ## 8. What this plan does NOT change
 
 - No embedded Python server in the shell for v1. The owner's deployment is a
