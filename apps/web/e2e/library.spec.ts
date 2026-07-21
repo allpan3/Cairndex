@@ -22,7 +22,7 @@ function bundle(i: number) {
   }
 }
 
-async function mockApi(page: Page) {
+async function mockApi(page: Page, coverFileId: string | null = null) {
   const items = Array.from({ length: 40 }, (_, i) => bundle(i))
   await page.route('**/api/v1/libraries', (r) =>
     r.fulfill({
@@ -88,7 +88,7 @@ async function mockApi(page: Page) {
           note: null,
           source_url: null,
           rating: 0,
-          cover_file_id: null,
+          cover_file_id: coverFileId,
           resume_file_id: 'f0',
           created_at: '2026-06-25T00:00:00Z',
           imported_at: '2026-06-25T00:00:00Z',
@@ -844,6 +844,23 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   const missingFile = page.locator('.files .file-row', { hasText: 'poster.jpg' })
   await expect(missingFile).toHaveClass(/file-row--missing/)
   await expect(missingFile.getByText('missing')).toBeVisible()
+})
+
+test('highlights the current cover action instead of prefixing its filename', async ({ page }) => {
+  await mockApi(page, 'f0')
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const currentCover = page.getByRole('button', { name: 'Current cover' })
+  await expect(currentCover).toHaveAttribute('aria-pressed', 'true')
+  await expect(currentCover).toHaveClass(/cover-action--active/)
+  expect(await currentCover.evaluate((element) => getComputedStyle(element).color)).toBe(
+    'rgb(252, 211, 77)',
+  )
+  await expect(page.getByRole('button', { name: 'Set as cover' })).toHaveCount(1)
+  await expect(
+    page.locator('.files .file-row', { hasText: 'movie.mp4' }).locator('.file-row__name'),
+  ).not.toContainText('★')
 })
 
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {

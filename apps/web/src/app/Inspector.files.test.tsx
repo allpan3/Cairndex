@@ -102,3 +102,20 @@ test('keeps keyboard reorder and desktop Option-drag copy-out', () => {
   fireEvent(firstRow, modifiedDragStart(dragData()))
   expect(onStartFileDrag).toHaveBeenCalledWith(['folder/first.mp4'])
 })
+
+test('marks the current cover on its action instead of prefixing the filename', () => {
+  render(<FileList bundleId="bundle" bundleVersion={1} coverId="first" />)
+  const rows = screen.getAllByRole('listitem')
+  const firstRow = rows[0]
+  if (!firstRow) throw new Error('expected a file row')
+
+  const current = screen.getByRole('button', { name: 'Current cover' })
+  expect(current).toHaveClass('cover-action--active')
+  expect(current).toHaveAttribute('aria-pressed', 'true')
+  expect(firstRow.querySelector('.file-row__name')).not.toHaveTextContent('★')
+  fireEvent.click(current)
+  expect(hooks.update.mutate).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Set as cover' }))
+  expect(hooks.update.mutate).toHaveBeenCalledWith({ cover_file_id: 'second' })
+})

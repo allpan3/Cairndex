@@ -10,6 +10,10 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **The current bundle cover is indicated on its action instead of beside the
+  filename.** The selected file's star button is filled yellow and exposed as
+  “Current cover”; other eligible files retain the muted “Set as cover” action.
+
 - **Long bundle titles wrap inside the inspector instead of scrolling on one
   line.** The title editor grows to its wrapped content and re-fits when the
   inspector width changes, while Enter still saves the edit.
