@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { QueryScope } from '../QueryScope'
+import { openLibraryFolder } from './openLibraryFolder'
 import {
   activateConnection,
   addRemoteConnection,
@@ -11,6 +12,7 @@ import {
 
 import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
+  hostOperationErrorMessage,
   initializeHostPlatform,
   listenHostLifecycle,
   listenHostMenu,
@@ -94,6 +96,22 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     void initializeHostPlatform()
       .then(() =>
         listenHostMenu((action) => {
+          if (action === 'open-library-folder') {
+            // Deliberately reachable from the first-run screen: opening a local
+            // folder starts its own server, so it must not require a remote one
+            // to have been configured first.
+            void openLibraryFolder()
+              .then((result) => {
+                if (result.opened) setReady(true)
+              })
+              .catch((error: unknown) => {
+                setSetup((current) => ({
+                  serverUrl: current?.serverUrl ?? 'http://127.0.0.1:8000',
+                  error: hostOperationErrorMessage(error),
+                }))
+              })
+            return
+          }
           if (action !== 'settings') return
           serverInputRef.current?.focus()
           serverInputRef.current?.select()
