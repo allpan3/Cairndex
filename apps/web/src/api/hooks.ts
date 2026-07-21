@@ -25,7 +25,9 @@ import {
   type FileSelection,
   type FilterExpression,
   type GroupingPlan,
+  type GroupingPlanSummary,
   type GroupingProposal,
+  type GroupingStemModes,
   type JobRead,
   type LibraryCreate,
   type LibraryRegister,
@@ -515,8 +517,26 @@ export function useGroupingPlan(id: string | null) {
 export function useGenerateGroupingPlan() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => generateGroupingPlan(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['grouping-plans'] }),
+    mutationFn: (stemModes?: GroupingStemModes) => generateGroupingPlan(stemModes),
+    onSuccess: (generated) => {
+      qc.setQueryData<GroupingPlan>(['grouping-plan', generated.id], generated)
+      qc.setQueryData<GroupingPlanSummary[]>(['grouping-plans'], (current) => [
+        {
+          id: generated.id,
+          status: generated.status,
+          rule_version: generated.rule_version,
+          generated_at: generated.generated_at,
+          applied_at: generated.applied_at,
+          proposal_count: generated.proposals.length,
+        },
+        ...(current ?? [])
+          .filter((plan) => plan.id !== generated.id)
+          .map((plan) =>
+            plan.status === 'open' ? { ...plan, status: 'superseded' as const } : plan,
+          ),
+      ])
+      qc.invalidateQueries({ queryKey: ['grouping-plans'] })
+    },
   })
 }
 

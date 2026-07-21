@@ -1,6 +1,12 @@
 import { type DragEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import type { GroupingApplyResult, GroupingProposal } from '../api/client'
+import type {
+  GroupingApplyResult,
+  GroupingPlan,
+  GroupingProposal,
+  GroupingStemMode,
+  GroupingStemModes,
+} from '../api/client'
 import {
   useApplyGroupingPlan,
   useGenerateGroupingPlan,
@@ -63,6 +69,14 @@ interface DestinationControls {
   set: (proposal: GroupingProposal, createNewBundle: boolean) => void
 }
 
+/** Coordinate per-directory stem sensitivity regeneration. */
+interface StemControls {
+  canEdit: boolean
+  pending: boolean
+  modes: GroupingStemModes
+  set: (directory: string, mode: GroupingStemMode) => void
+}
+
 type ReviewDragItem =
   | { kind: 'file'; proposalId: string; assetFileId: string }
   | { kind: 'bundle'; proposalId: string }
@@ -105,6 +119,55 @@ function buildTree(proposals: GroupingProposal[]): TreeNode[] {
 
 function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.proposal.id, ...collectIds(node.children)])
+}
+
+/** Collect every bundle directory represented below one review node. */
+function bundleDirectories(node: TreeNode, cache: Map<string, Set<string>>): Set<string> {
+  const cached = cache.get(node.proposal.id)
+  if (cached) return cached
+  const directories = new Set<string>()
+  if (node.proposal.kind === 'bundle') directories.add(node.proposal.directory)
+  for (const child of node.children) {
+    for (const directory of bundleDirectories(child, cache)) directories.add(directory)
+  }
+  cache.set(node.proposal.id, directories)
+  return directories
+}
+
+/** Place exactly one stem control beside each represented filesystem directory. */
+function stemControlOwners(nodes: TreeNode[]): Map<string, string> {
+  const containers: TreeNode[] = []
+  const bundles: TreeNode[] = []
+  const visit = (items: TreeNode[]) => {
+    for (const node of items) {
+      if (node.proposal.kind === 'container') containers.push(node)
+      else bundles.push(node)
+      visit(node.children)
+    }
+  }
+  visit(nodes)
+
+  const claimed = new Set<string>()
+  const owners = new Map<string, string>()
+  const directoryCache = new Map<string, Set<string>>()
+  for (const node of [...containers].reverse()) {
+    const directories = [...bundleDirectories(node, directoryCache)]
+    if (directories.length !== 1) continue
+    const directory = directories[0]!
+    const representsDirectory =
+      node.proposal.directory === directory ||
+      node.proposal.title?.trim().toLowerCase() === baseName(directory).toLowerCase()
+    if (!representsDirectory || claimed.has(directory)) continue
+    owners.set(node.proposal.id, directory)
+    claimed.add(directory)
+  }
+  for (const node of bundles) {
+    const directory = node.proposal.directory
+    if (claimed.has(directory)) continue
+    owners.set(node.proposal.id, directory)
+    claimed.add(directory)
+  }
+  return owners
 }
 
 /** Determine whether a proposal still contains any file-backed item. */
@@ -164,6 +227,41 @@ function DestinationToggle({
     >
       <IconRefreshCw />
     </button>
+  )
+}
+
+const STEM_MODES: GroupingStemMode[] = ['narrow', 'balanced', 'wide']
+
+/** Render one-step narrower/wider controls for a represented folder. */
+function StemModeControls({ directory, stem }: { directory: string; stem: StemControls }) {
+  const current = stem.modes[directory] ?? 'balanced'
+  const index = STEM_MODES.indexOf(current)
+  const label = directory || 'library root'
+  const change = (delta: -1 | 1) => stem.set(directory, STEM_MODES[index + delta]!)
+  return (
+    <span className="grp-stem" aria-label={`Stem matching for ${label}`}>
+      <button
+        type="button"
+        className="btn btn--compact grp-stem__button"
+        disabled={!stem.canEdit || stem.pending || index === 0}
+        aria-label={`Narrow stem matching in ${label}`}
+        title="Use more of each filename and regenerate this folder as more bundles"
+        onClick={() => change(-1)}
+      >
+        Narrow
+      </button>
+      <span className="grp-stem__mode">{current}</span>
+      <button
+        type="button"
+        className="btn btn--compact grp-stem__button"
+        disabled={!stem.canEdit || stem.pending || index === STEM_MODES.length - 1}
+        aria-label={`Widen stem matching in ${label}`}
+        title="Use a broader filename prefix and regenerate this folder as fewer bundles"
+        onClick={() => change(1)}
+      >
+        Widen
+      </button>
+    </span>
   )
 }
 
@@ -261,6 +359,8 @@ function ProposalNode({
   rename,
   drag,
   destination,
+  stem,
+  stemOwners,
 }: {
   node: TreeNode
   selectedIds: Set<string>
@@ -268,6 +368,8 @@ function ProposalNode({
   rename: RenameControls
   drag: DragControls
   destination: DestinationControls
+  stem: StemControls
+  stemOwners: Map<string, string>
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -304,6 +406,9 @@ function ProposalNode({
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
             {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
+            {stemOwners.has(proposal.id) && (
+              <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
+            )}
           </span>
         </div>
         {children.length > 0 && (
@@ -317,6 +422,8 @@ function ProposalNode({
                 rename={rename}
                 drag={drag}
                 destination={destination}
+                stem={stem}
+                stemOwners={stemOwners}
               />
             ))}
           </ul>
@@ -368,6 +475,9 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
+          {stemOwners.has(proposal.id) && (
+            <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
+          )}
         </span>
       </div>
       <ul
@@ -503,6 +613,7 @@ export function GroupingReview({
   const committingRename = useRef<string | null>(null)
 
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
+  const stemOwners = useMemo(() => stemControlOwners(tree), [tree])
   const allProposalIds = useMemo(() => collectIds(tree), [tree])
   const emptyProposalIds = useMemo(() => new Set(collectEmptyIds(tree)), [tree])
   const selectedIds = useMemo(
@@ -523,20 +634,37 @@ export function GroupingReview({
     })
   }
 
+  const finishGeneration = (generated: GroupingPlan, message: string) => {
+    setChosenId(generated.id)
+    setResult(null)
+    setEditing(null)
+    setRenameError(null)
+    setDragItem(null)
+    setDropSlot(null)
+    destination.reset()
+    setDeselectedIds(new Set())
+    setNotice(message)
+  }
+
   const onGenerate = () =>
-    generate.mutate(undefined, {
+    generate.mutate(plan.data?.stem_modes ?? {}, {
       onSuccess: (p) => {
-        setChosenId(p.id)
-        setResult(null)
-        setEditing(null)
-        setRenameError(null)
-        setDragItem(null)
-        setDropSlot(null)
-        destination.reset()
-        setDeselectedIds(new Set())
-        setNotice('Suggestions generated from the current library state.')
+        finishGeneration(p, 'Suggestions generated from the current library state.')
       },
     })
+
+  const setStemMode = (directory: string, mode: GroupingStemMode) => {
+    const modes = { ...(plan.data?.stem_modes ?? {}) }
+    if (mode === 'balanced') delete modes[directory]
+    else modes[directory] = mode
+    generate.mutate(modes, {
+      onSuccess: (generated) =>
+        finishGeneration(
+          generated,
+          `${directory || 'Library root'} now uses ${mode} stem matching.`,
+        ),
+    })
+  }
 
   const startRename = (proposal: GroupingProposal) => {
     rename.reset()
@@ -720,6 +848,12 @@ export function GroupingReview({
     pending: busy,
     set: setDestination,
   }
+  const stemControls: StemControls = {
+    canEdit: status === 'open' && editing === null,
+    pending: busy,
+    modes: plan.data?.stem_modes ?? {},
+    set: setStemMode,
+  }
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -740,9 +874,10 @@ export function GroupingReview({
           <p className="grp-intro">
             Suggestions cover still-unbundled files and new additions. Review the proposed bundles
             and collections, drag files between bundles or bundles into collections, then accept
-            only the checked items. Double-click either title to rename it. Newly confirmed bundles
-            join their selected parent collection; existing confirmed bundles stay untouched unless
-            a reviewed addition targets them. Nothing on disk changes.
+            only the checked items. Use Narrow or Widen beside a folder to regenerate with stricter
+            or broader filename stems. Double-click either title to rename it. Newly confirmed
+            bundles join their selected parent collection; existing confirmed bundles stay untouched
+            unless a reviewed addition targets them. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
@@ -795,6 +930,8 @@ export function GroupingReview({
                     rename={renameControls}
                     drag={dragControls}
                     destination={destinationControls}
+                    stem={stemControls}
+                    stemOwners={stemOwners}
                   />
                 ))}
               </ul>

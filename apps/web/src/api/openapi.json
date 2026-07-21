@@ -3632,6 +3632,20 @@
         "title": "PathSuggestions",
         "type": "object"
       },
+      "PlanGenerateRequest": {
+        "properties": {
+          "stem_modes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StemMode"
+            },
+            "maxProperties": 500,
+            "title": "Stem Modes",
+            "type": "object"
+          }
+        },
+        "title": "PlanGenerateRequest",
+        "type": "object"
+      },
       "PlanRead": {
         "properties": {
           "applied_at": {
@@ -3679,6 +3693,13 @@
           },
           "status": {
             "$ref": "#/components/schemas/GroupingPlanStatus"
+          },
+          "stem_modes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StemMode"
+            },
+            "title": "Stem Modes",
+            "type": "object"
           }
         },
         "required": [
@@ -3686,6 +3707,7 @@
           "status",
           "rule_version",
           "scan_job_id",
+          "stem_modes",
           "generated_at",
           "applied_at",
           "proposals"
@@ -4654,6 +4676,16 @@
         },
         "title": "SmartCollectionUpdate",
         "type": "object"
+      },
+      "StemMode": {
+        "description": "Sensitivity used by grouping-plan stem matching.",
+        "enum": [
+          "narrow",
+          "balanced",
+          "wide"
+        ],
+        "title": "StemMode",
+        "type": "string"
       },
       "SubtitleTrackRead": {
         "properties": {
@@ -11126,6 +11158,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlanGenerateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

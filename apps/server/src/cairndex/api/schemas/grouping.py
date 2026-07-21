@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind
+from cairndex.domain.enums import FileRole, GroupingPlanStatus, ProposalKind, StemMode
 
 
 class ProposalFileRead(BaseModel):
@@ -54,6 +54,11 @@ class ProposalReparent(BaseModel):
     parent_proposal_id: str | None
 
 
+# Validate bounded per-directory stem sensitivity overrides
+class PlanGenerateRequest(BaseModel):
+    stem_modes: dict[str, StemMode] = Field(default_factory=dict, max_length=500)
+
+
 class PlanRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -61,6 +66,7 @@ class PlanRead(BaseModel):
     status: GroupingPlanStatus
     rule_version: int
     scan_job_id: str | None
+    stem_modes: dict[str, StemMode]
     generated_at: datetime
     applied_at: datetime | None
     proposals: list[ProposalRead]

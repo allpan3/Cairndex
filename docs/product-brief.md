@@ -391,13 +391,20 @@ Current workflow details:
   no file-backed descendants is likewise auto-deselected and cannot be accepted
   until it contains an item again;
 - in a flat multi-video directory, sidecars first match a unique normalized full
-  video stem (including suffix variants such as subtitles/posters), then fall
-  back to the leading subject prefix; this separates long filenames with a
-  shared author/source prefix without collapsing image-only folders;
+  video stem (including suffix variants such as subtitles/posters); trailing
+  rendition labels such as `720p` are folded by default, and fresh stem groups
+  are matched independently against confirmed bundles instead of assigning a
+  whole directory to one owner;
+- grouping review shows one Narrow/Balanced/Widen control per represented
+  filesystem directory. Narrow retains rendition labels in each complete
+  normalized stem to create more bundles, Balanced is the rendition-folded
+  default, and Widen uses a broader subject/source prefix to create fewer
+  bundles. The per-directory choices are persisted on the regenerated plan
+  snapshot;
 - explicit cross-bundle review edits revise provisional suggestions while
   preserving stable file identities and cleaning up an emptied source bundle;
 - applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
-- confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered file in its directory is suggested as an addition, not auto-applied;
+- confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered matching stem in its directory is suggested as an addition, not auto-applied;
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
 - fast-add and manual creation confirm immediately because the user already chose the grouping.
 

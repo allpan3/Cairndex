@@ -170,6 +170,17 @@ def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engi
     } <= columns
 
 
+# Existing libraries gain durable per-directory grouping sensitivity on open
+def test_ensure_content_indexes_adds_grouping_plan_stem_modes(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE grouping_plans DROP COLUMN stem_modes"))
+
+    ensure_content_indexes(engine)
+
+    columns = {c["name"] for c in inspect(engine).get_columns("grouping_plans")}
+    assert "stem_modes" in columns
+
+
 # Existing libraries gain the additive bundle cursor table on open
 def test_ensure_content_indexes_adds_bundle_cursor_table(engine: Engine) -> None:
     with engine.begin() as conn:

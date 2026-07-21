@@ -1,5 +1,31 @@
 # Project status
 
+## Completed: directory-aware grouping stem sensitivity (2026-07-20)
+
+Branch `codex/grouping-stem-controls`, based directly on `main`.
+
+- Grouping heuristic v5 partitions provisional files into stem candidates before
+  selecting an existing confirmed bundle. A directory with one confirmed bundle
+  and many unrelated video stems no longer collapses into one addition.
+- Balanced matching folds conservative terminal rendition labels, so a file that
+  differs only by `- 720p` targets the matching confirmed bundle and displays the
+  existing/new destination switch.
+- Grouping plans persist per-directory `narrow`, `balanced`, or `wide` modes.
+  Review shows one Narrow/Widen control for each represented filesystem folder;
+  regeneration uses the selected modes without changing confirmed groupings or
+  source files.
+- The generation mutation seeds the returned plan and summary cache before list
+  invalidation, keeping current candidates visible instead of replacing the
+  review with a spurious empty state.
+- Backend regression/API/bootstrap coverage and frontend component/browser-flow
+  coverage exercise multi-stem folders, rendition matching, mode persistence,
+  destination visibility, and non-empty regeneration.
+- Verification: backend Ruff/format/mypy and 457 tests pass; frontend
+  lint/format/typecheck, 231 tests, production build, and all 77 Playwright tests
+  pass. A real isolated browser run with screenshot-shaped filenames confirmed
+  balanced split/addition behavior, both sensitivity directions, destination
+  switching visibility, and populated manual regeneration.
+
 ## Completed: Plan 3 D6 — local-server sidecar
 
 Branch `feat/library-ownership-lease`. Unpushed, no PR (owner-triggered).

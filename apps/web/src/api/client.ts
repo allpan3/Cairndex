@@ -565,9 +565,12 @@ export type GroupingPlan = components['schemas']['PlanRead']
 export type GroupingProposal = components['schemas']['ProposalRead']
 export type GroupingPlanSummary = components['schemas']['PlanSummary']
 export type GroupingApplyResult = components['schemas']['ApplyResultRead']
+export type GroupingStemMode = components['schemas']['StemMode']
+export type GroupingStemModes = GroupingPlan['stem_modes']
 
 /** Suggest a grouping for the active library and store it as the open plan. */
-export const generateGroupingPlan = () => send<GroupingPlan>(`${lib()}/grouping/plans`, 'POST')
+export const generateGroupingPlan = (stemModes: GroupingStemModes = {}) =>
+  send<GroupingPlan>(`${lib()}/grouping/plans`, 'POST', { stem_modes: stemModes })
 
 export const fetchGroupingPlans = (signal?: AbortSignal): Promise<GroupingPlanSummary[]> =>
   getJson<GroupingPlanSummary[]>(`${lib()}/grouping/plans`, signal)

@@ -2385,6 +2385,24 @@ code {
   font-size: 11px;
   color: var(--text-muted);
 }
+.grp-stem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+.grp-stem__button {
+  padding: 2px 6px;
+  line-height: 16px;
+}
+.grp-stem__mode {
+  min-width: 48px;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: center;
+  text-transform: capitalize;
+}
 .grp-destination {
   display: inline-flex;
   flex: 0 0 auto;

@@ -496,6 +496,7 @@ class GroupingPlan(Base):
         default=GroupingPlanStatus.OPEN,
     )
     rule_version: Mapped[int] = mapped_column(Integer, default=1)
+    stem_modes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict, server_default="{}")
     generated_at: Mapped[CreatedAt]
     applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 

@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
-from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind
+from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind, StemMode
 from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
@@ -239,7 +239,11 @@ def persist_plan(
     """
     supersede_open_plans(session)
 
-    plan = GroupingPlan(scan_job_id=scan_job_id, rule_version=data.rule_version)
+    plan = GroupingPlan(
+        scan_job_id=scan_job_id,
+        rule_version=data.rule_version,
+        stem_modes={directory: mode.value for directory, mode in data.stem_modes.items()},
+    )
     session.add(plan)
     session.flush()
 
@@ -287,9 +291,14 @@ def persist_plan(
     return plan
 
 
-def generate_plan(session: Session, *, scan_job_id: str | None = None) -> GroupingPlan:
+def generate_plan(
+    session: Session,
+    *,
+    scan_job_id: str | None = None,
+    stem_modes: dict[str, StemMode] | None = None,
+) -> GroupingPlan:
     """Persist grouping suggestions without reopening confirmed bundles."""
-    data = suggest_for_session(session)
+    data = suggest_for_session(session, stem_modes=stem_modes)
     return persist_plan(session, data, scan_job_id=scan_job_id)
 
 

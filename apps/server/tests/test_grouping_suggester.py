@@ -9,7 +9,14 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, Grouping, GroupingSource, GroupingState, MediaKind
+from cairndex.domain.enums import (
+    FileRole,
+    Grouping,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+    StemMode,
+)
 from cairndex.grouping import (
     FileObservation,
     GroupingProposal,
@@ -22,12 +29,21 @@ from cairndex.scanning.fast_add import fast_add
 from cairndex.scanning.scanner import scan_library
 
 
-def _f(path: str, kind: MediaKind, *, confirmed: bool = False) -> FileObservation:
+def _f(
+    path: str,
+    kind: MediaKind,
+    *,
+    confirmed: bool = False,
+    bundle_id: str | None = None,
+    bundle_title: str | None = None,
+) -> FileObservation:
     return FileObservation(
         asset_file_id=path,  # the path doubles as a stable id in these tests
         relative_path=path,
         media_kind=kind,
         grouping_confirmed=confirmed,
+        bundle_id=bundle_id,
+        bundle_title=bundle_title,
     )
 
 
@@ -150,6 +166,91 @@ def test_multi_subject_folder_pairs_images_by_complete_filename_stem() -> None:
         if proposal.kind is ProposalKind.CONTAINER and proposal.directory == "Western/Ada Larson"
     )
     assert anna.reason == "2 filename-matched bundle(s) from 4 files"
+
+
+# One settled bundle no longer claims every new video subject in its directory
+def test_confirmed_owner_matches_groups_by_stem_before_directory_fallback() -> None:
+    directory = "Western/Ada Larson"
+    settled = "Ada Larson - [Hegre.com] - [2023.02.07] - A Day In The Life - 4K"
+    bath = "Ada Larson - [Hegre.com] - [2023.05.09] - Hot Bath - 4K"
+    private = "Ada Larson - [WEB] - [2023.04.15] - Private Show 5 [P1A]"
+    files = [
+        _f(
+            f"{directory}/{settled}.mp4",
+            MediaKind.VIDEO,
+            confirmed=True,
+            bundle_id="settled",
+            bundle_title=settled,
+        ),
+        _f(f"{directory}/{bath}.mp4", MediaKind.VIDEO),
+        _f(f"{directory}/{bath}.jpg", MediaKind.IMAGE),
+        _f(f"{directory}/{private}.mp4", MediaKind.VIDEO),
+        _f(f"{directory}/{private}.jpg", MediaKind.IMAGE),
+    ]
+
+    plan = suggest_grouping(files)
+    bundles = _bundles(plan.proposals)
+
+    assert len(bundles) == 2
+    assert not any(bundle.target_bundle_id for bundle in bundles)
+    assert {bundle.title for bundle in bundles} == {bath, private}
+    assert all(len(bundle.files) == 2 for bundle in bundles)
+
+
+# A trailing rendition label is a version of an existing stem, not a new title
+def test_rendition_suffix_matches_a_confirmed_bundle() -> None:
+    directory = "Western/Ada Larson"
+    title = "Ada Larson - [WEB] - [2023.04.15] - Private Show 5 [P1A]"
+    plan = suggest_grouping(
+        [
+            _f(
+                f"{directory}/{title}.mp4",
+                MediaKind.VIDEO,
+                confirmed=True,
+                bundle_id="private-show",
+                bundle_title=title,
+            ),
+            _f(f"{directory}/{title} - 720p.mp4", MediaKind.VIDEO),
+        ]
+    )
+
+    bundles = _bundles(plan.proposals)
+    assert len(bundles) == 1
+    assert bundles[0].target_bundle_id == "private-show"
+    assert bundles[0].target_bundle_title == title
+
+
+# Narrow and wide are one-step sensitivity controls around the balanced default
+def test_stem_modes_split_renditions_or_merge_semantic_prefixes() -> None:
+    directory = "Western/Ada Larson"
+    hegre_one = "Ada Larson - [Hegre.com] - [2023.02.07] - A Day In The Life - 4K"
+    hegre_two = "Ada Larson - [Hegre.com] - [2023.05.09] - Hot Bath - 4K"
+    web_release = "Ada Larson - [WEB] - [2023.04.15] - Private Show 5 [P1A]"
+    files = [
+        _f(f"{directory}/{hegre_one}.mp4", MediaKind.VIDEO),
+        _f(f"{directory}/{hegre_one}.jpg", MediaKind.IMAGE),
+        _f(f"{directory}/{hegre_two}.mp4", MediaKind.VIDEO),
+        _f(f"{directory}/{hegre_two}.jpg", MediaKind.IMAGE),
+        _f(f"{directory}/{web_release}.mp4", MediaKind.VIDEO),
+        _f(f"{directory}/{web_release}.jpg", MediaKind.IMAGE),
+    ]
+
+    balanced = suggest_grouping(files)
+    wide = suggest_grouping(files, {directory: StemMode.WIDE})
+    quality_files = [
+        _f("Versions/Movie.mp4", MediaKind.VIDEO),
+        _f("Versions/Movie.jpg", MediaKind.IMAGE),
+        _f("Versions/Movie - 720p.mp4", MediaKind.VIDEO),
+        _f("Versions/Movie - 720p.jpg", MediaKind.IMAGE),
+    ]
+    narrow = suggest_grouping(quality_files, {"Versions": StemMode.NARROW})
+    folded = suggest_grouping(quality_files)
+
+    assert len(_bundles(balanced.proposals)) == 3
+    assert len(_bundles(wide.proposals)) == 2
+    assert len(_bundles(narrow.proposals)) == 2
+    assert len(_bundles(folded.proposals)) == 1
+    assert wide.stem_modes == {directory: StemMode.WIDE}
 
 
 # Image-only folders remain item collections even when camera prefixes match
