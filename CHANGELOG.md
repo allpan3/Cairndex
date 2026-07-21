@@ -10,6 +10,13 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Selecting a bundle cover now updates the star immediately.** Bundle metadata
+  writes optimistically update the inspector, roll back on failure, and adopt
+  the PATCH response instead of waiting for another detail request. Bundle
+  detail reads no longer stat every member path; file-list, playback, and scan
+  flows retain missing-file reconciliation. Browse cards and derived thumbnails
+  refresh in the background.
+
 - **Bundle file rows now reorder reliably in the desktop app and can play one
   file directly.** Reordering uses captured pointer movement instead of WebView
   HTML drag/drop events, while Option-drag still hands the file to Finder. A

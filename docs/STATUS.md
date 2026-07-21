@@ -1,5 +1,24 @@
 # Project status
 
+## Completed: immediate cover selection feedback (2026-07-21)
+
+Direct-to-`main` inspector latency follow-up.
+
+- Bundle metadata mutations optimistically update the cached detail, so the old
+  cover star dehighlights and the selected star highlights before the request
+  finishes. A failed write restores the previous cover and refetches detail.
+- Successful writes adopt the authoritative PATCH response instead of issuing
+  a second detail request. Browse-card and thumbnail invalidation remains
+  asynchronous.
+- Bundle detail is metadata-only and no longer stats every linked member.
+  Bundle file-list, playback-manifest, media access, File Browser, and scan paths
+  retain their scoped missing-file checks.
+- Backend Ruff/format/mypy and all 578 tests pass. Frontend
+  lint/format/typecheck, all 299 component tests, the production build, and all
+  83 Playwright tests pass. Browser coverage holds the metadata request open to
+  prove the highlight changes before the response, then separately proves
+  failed-write rollback.
+
 ## Completed: desktop-safe file reorder and direct file play (2026-07-21)
 
 Direct-to-`main` inspector interaction follow-up.

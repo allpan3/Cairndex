@@ -160,6 +160,10 @@ Cover/thumbnail source precedence:
 3. first video in the bundle;
 4. generated placeholder / no thumbnail state.
 
+Selecting a cover should update the inspector action immediately, roll back if
+the metadata write fails, and let regenerated/cached artwork refresh
+asynchronously.
+
 Original cover files are Asset Files. Generated thumbnails, preview frames, storyboards, converted subtitles, and future transcodes live in application cache storage under `.cairndex/cache/` and must be reproducible. Scans must ignore `.cairndex/cache/`.
 
 ### Tags and tag groups
