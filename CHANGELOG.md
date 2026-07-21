@@ -56,6 +56,19 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Fixed: re-opening an already-registered library did not switch to it.** The
+  library to show was handed over through a slot consumed on remount, but
+  activating the connection that is *already* active changes no id and remounts
+  nothing, so the second open appeared to do nothing. The queue is now observable
+  in its own right.
+
+- **Fixed: a hand-edited lease timestamp without a timezone was ignored.**
+  `active-owner.json` is plain JSON people legitimately edit, and a naive
+  timestamp raised `TypeError` inside the classifier — swallowed by the
+  heartbeat's never-die guard, so the library stayed silently held instead of
+  unmounting. A missing offset is now read as UTC, matching both the documented
+  format and what someone editing the file means.
+
 - **Fixed: Open Library Folder… did nothing in the running app.** It was handled
   only in the first-run bootstrap, whose menu listener tears down once the
   workspace mounts — so the item stayed enabled and inert in the state a user
