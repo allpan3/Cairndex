@@ -2,8 +2,89 @@
 
 ## Completed: Plan 3 D6 — local-server sidecar
 
-Branch `feat/library-ownership-lease`, latest commit `eaf79a3`. Unpushed, no PR
-(owner-triggered). **Owner acceptance pass passed 2026-07-21.**
+Branch `feat/library-ownership-lease`. Unpushed, no PR (owner-triggered).
+**Owner acceptance pass passed 2026-07-21**, followed by a whole-milestone
+review round (below).
+
+### Whole-milestone review round (2026-07-21) — one P1, two P2s, all fixed
+
+A review pass over the full 28-commit milestone, weighted toward seams no
+single-commit review saw. Every finding was confirmed by running code before
+fixing (a failing test, a filesystem probe), and every fix is pinned by
+mutation.
+
+1. **P1 — activation never moved the JSON API base URL.** `setApiBaseUrl` was
+   called in exactly one place: inside `verifyServer`, as a probe side effect.
+   So a local activation left every JSON request pointed at the previous remote
+   server (or at nothing on first run) while the UI said "This Computer", and a
+   *failed* activation left them pointed at the dead server just probed.
+   Confirmed with a test against the real `verifyServer` + `api/client` before
+   fixing: three scenarios, three failures. Fixed by making the base an
+   explicit activation **commit** step for both kinds, making `verifyServer` a
+   pure probe (it asks the candidate URL directly), and teaching `restore` to
+   re-point a *local* previous connection (the old `!previous?.serverUrl` guard
+   skipped it — the one compensation path could not compensate for local).
+   `connections.apiBase.test.ts` pins all five outcomes; deleting the commit
+   step fails three of them.
+
+   Why every earlier gate missed it: the connections suite mocks `verifyServer`
+   wholesale and the app suites mock the platform fetch, so activation
+   *ordering* was proven while nothing observed where a request would land —
+   the milestone's model-not-exercise failure mode, seventh instance. The owner
+   acceptance pass missed it because its scenarios ran with the main server
+   also serving the test folder, which masks the wrong base.
+
+2. **P2 — a heartbeat *read* blip surrendered the lease while a *write* blip
+   was tolerated.** `read_lease` folded `OSError` into `corrupt`, which the
+   watchdog treats as "someone else is writing this file" — so one transient
+   NFS/SMB error during the 60 s re-read unmounted the library, cancelled its
+   jobs mid-scan, and (while the blip lasted) showed a takeover prompt for the
+   user's own healthy library. Confirmed with a chmod probe: read blip → lost,
+   write blip → held. `LeaseSnapshot` now distinguishes `io_error` from
+   parse-corruption; the heartbeat rides out an I/O error exactly like a failed
+   write (stay held, skip the beat, **no blind rewrite** — writing over content
+   we could not read could clobber a lease that moved on), and still surrenders
+   on real corruption. Acquisition and `describe` still classify `io_error` as
+   UNREADABLE, so "we could not find out" never becomes "nobody holds it".
+
+3. **P2 — the relay's scope-flag derivation had zero test coverage.**
+   `targets_running_sidecar` is the only guard keeping `server_scoped_token`
+   derived rather than caller-supplied; it was referenced by no test, so any
+   weakening (URL-only match, always-true) would have survived the entire suite
+   and reopened the D2 hole. Five tests now drive the real function against a
+   real `LocalServer` with the `info()` liveness check in play (a live stand-in
+   child), covering the match, the two dangerous directions (device token at
+   the sidecar's URL; sidecar token at a remote URL), URL normalization, no
+   sidecar, and a dead sidecar. Dropping the token comparison fails exactly the
+   device-token test.
+
+Mutations run and killed this round: the activation commit step (3 tests), the
+heartbeat io-error branch (1 test), the derivation's token match (1 test).
+
+One pre-existing red gate fixed in passing: `npm run lint` failed at HEAD with
+four react-compiler errors in `App.tsx` — the ⌘O menu handler read `libraries`
+and `changeLibrary` before their declarations. Runtime-correct (the ref-based
+`useDesktopMenu` delivers the latest render's closure), so the fix is a
+mechanical reorder of the hook call below the declarations; behavior unchanged,
+288 existing web tests unaffected. Worth noting the acceptance receipt claimed
+this gate green, so it regressed (or was last run) before the final App.tsx
+edits landed.
+
+Gates after the fixes: backend ruff / format / strict mypy / **566 pytest**
+(+2); web Prettier / ESLint / tsc / **289 Vitest** (+5) / Vite build; desktop
+fmt / Clippy `-D warnings` / **71 tests** (+5), run with `CAIRNDEX_SIDECAR_BIN`
+pointed at the real packaged bundle.
+
+P3s from the same review, deliberately not fixed here: relaunching while the
+local connection is active lands on the first-run setup screen
+(`DesktopBootstrap` reads the local entry's null URL as "unconfigured");
+`release()` has a small read-check→write window that can briefly clobber a new
+holder's lease (self-healing within one heartbeat, inside ADR-0018 §4's
+accepted bound); uvicorn's unbounded graceful shutdown could push the shell's
+15 s grace into the kill path if a connection is held open at quit
+(`timeout_graceful_shutdown` is the one-line bound). Disposition is the
+owner's call; recommendation recorded in the review thread — fix the first two
+cheaply, treat the lease race as an accepted documented bound.
 
 ### The owner acceptance pass (2026-07-21) — four defects, none visible to tests
 

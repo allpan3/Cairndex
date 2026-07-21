@@ -6,6 +6,7 @@ test the wrong thing. Time and sleeping are injected instead.
 """
 
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -127,6 +128,31 @@ def test_reading_garbage_is_corrupt_not_absent(tmp_path: Path) -> None:
     snapshot = read_lease(tmp_path)
     assert snapshot.corrupt
     assert not snapshot.absent
+
+
+def test_a_failed_read_is_io_error_not_absent_and_not_corrupt(tmp_path: Path) -> None:
+    """An offline mount is evidence about the mount, not about the lease.
+
+    It must not read as absent ("we could not find out" is never "nobody holds
+    it") and must not read as corrupt either — corrupt means someone wrote
+    non-lease bytes, which is what makes the heartbeat surrender, and a
+    permissions or NFS blip is not that.
+    """
+    if os.geteuid() == 0:
+        pytest.skip("chmod does not restrict root")
+    write_lease(tmp_path, make_record())
+    locks = pkg.locks_dir(tmp_path)
+    os.chmod(locks, 0o000)
+    try:
+        snapshot = read_lease(tmp_path)
+    finally:
+        os.chmod(locks, 0o755)
+
+    assert snapshot.io_error
+    assert not snapshot.corrupt
+    assert not snapshot.absent
+    # Acquisition still refuses to treat it as free.
+    assert classify_at(snapshot) is LeaseState.UNREADABLE
 
 
 # --- classification -------------------------------------------------------
@@ -490,6 +516,35 @@ def test_a_lease_that_became_unreadable_is_surrendered(tmp_path: Path) -> None:
     pkg.lease_path(tmp_path).write_text("garbage", encoding="utf-8")
 
     assert manager.heartbeat_once() == ["lib1"]
+
+
+def test_a_heartbeat_read_blip_keeps_the_lease(tmp_path: Path) -> None:
+    """A transient read failure is an offline mount, not a takeover.
+
+    The write side already has this policy ("an offline mount is not a lost
+    lease — nobody else can reach it either"); the read side used to fold an
+    OSError into corrupt and surrender, cancelling the library's jobs over an
+    NFS blip. The lease must ride it out and refresh normally once the mount is
+    back.
+    """
+    if os.geteuid() == 0:
+        pytest.skip("chmod does not restrict root")
+    manager, _ = build_manager()
+    manager.ensure_owned(library_id="lib1", root=tmp_path)
+    nonce_before = read_lease(tmp_path).record.nonce  # type: ignore[union-attr]
+
+    locks = pkg.locks_dir(tmp_path)
+    os.chmod(locks, 0o000)
+    try:
+        assert manager.heartbeat_once() == []
+        assert manager.holds("lib1")
+    finally:
+        os.chmod(locks, 0o755)
+
+    # No blind rewrite happened during the blip, and the next beat refreshes.
+    assert read_lease(tmp_path).record.nonce == nonce_before  # type: ignore[union-attr]
+    assert manager.heartbeat_once() == []
+    assert read_lease(tmp_path).record.nonce != nonce_before  # type: ignore[union-attr]
 
 
 def test_a_vanished_lease_is_rewritten_rather_than_surrendered(tmp_path: Path) -> None:

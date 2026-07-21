@@ -138,6 +138,16 @@ impl LocalServer {
             }
         }
     }
+
+    /// Install a running entry directly, so tests elsewhere in the crate (the
+    /// media relay's scope derivation) can exercise the real `info()` path —
+    /// including its liveness check — without building the packaged sidecar.
+    /// The child should be a real process; a dead one is exactly the "no longer
+    /// legitimizes anything" case.
+    #[cfg(test)]
+    pub(crate) fn install_for_tests(&self, child: Child, info: LocalServerInfo) {
+        *lock_through_poison(&self.running) = Some(Running { child, info });
+    }
 }
 
 /// Lock through a poisoned mutex rather than failing.

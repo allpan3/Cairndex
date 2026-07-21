@@ -338,13 +338,18 @@ Connection = { id, kind: 'remote' | 'local', label, serverUrl }
 `activateConnection(id)` is the single choke point, and does what
 `configureHostServer` does today plus the credential switch:
 
-1. resolve the base URL — stored for remote, `start_local_server()` for local;
+1. resolve the base URL — stored for remote, `start_local_server()` for local —
+   and, for remote, verify something compatible answers there (`verifyServer`
+   is a **pure probe**: it asks the candidate directly and moves nothing);
 2. `configureServer(url)` (the runtime already reloads device auth per server);
 3. reconfigure the media proxy, which rotates its secret — so URLs minted for
    the previous connection stop resolving, which is the behaviour we want on a
    switch rather than something to work around;
-4. **commit**: set `activeConnectionId`, reset job-run state, and swap the
-   workspace (below).
+4. **commit**: point the JSON API base at the new server (`setApiBaseUrl` —
+   owned here and nowhere else; the D6 review found it moving only as a probe
+   side effect, which left a local activation querying the previous remote and
+   a failed activation querying the dead candidate), set `activeConnectionId`,
+   reset job-run state, and swap the workspace (below).
 
 The local connection's credential is the loopback owner token from
 `start_local_server`; the media proxy derives its server-scoped mode by matching

@@ -1,4 +1,4 @@
-import { fetchHealth, setApiBaseUrl } from '../api/client'
+import { fetchHealth } from '../api/client'
 
 export const INCOMPATIBLE_SERVER_ERROR = 'This address is not a compatible Cairndex server.'
 export const UNREACHABLE_SERVER_ERROR =
@@ -16,13 +16,19 @@ const HEALTH_TIMEOUT_MS = 5000
  * anything answered there, strand the user on a dead server, and persist it as
  * the active connection so the next launch opened straight into the error.
  * Reachability is a fallible step, so it belongs before the commit.
+ *
+ * A pure probe: it must not touch the module API base. It used to call
+ * `setApiBaseUrl` as a side effect, which broke activation's all-or-nothing
+ * property from outside — a *failed* activation left every subsequent request
+ * pointed at the dead server it had just probed, and the local branch (which
+ * never probes) left the base pointed at the previous connection entirely.
+ * Activation owns the base; this function only answers a question.
  */
 export async function verifyServer(serverUrl: string): Promise<void> {
-  setApiBaseUrl(serverUrl)
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS)
   try {
-    const health = await fetchHealth(controller.signal)
+    const health = await fetchHealth(controller.signal, serverUrl)
     const compatible =
       health.status === 'ok' &&
       typeof health.app_name === 'string' &&
