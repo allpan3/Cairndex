@@ -2,6 +2,53 @@
 
 ## In progress: Plan 3 D6 — local-server sidecar
 
+### Landed: D6.4/D6.5 web layer (three commits)
+
+Built to the reviewed sketch in plan 3 §7.1, in the three slices it specified.
+
+1. **Connections store + activation.** N connections, one active; a pre-D6
+   `serverUrl` migrates into the first remote connection. Activation is
+   all-or-nothing (fallible steps first, commit last, and a failure re-points the
+   media relay at the previous server — the only step with an effect outside
+   module state) and serialized (same id joins, different id refused rather than
+   queued). `QueryScope` scopes the cache per connection by **remounting**:
+   `clear()` alone is insufficient because a query lives in the cache rather than
+   the observing component, so an in-flight fetch resolves after the clear and
+   repopulates that entry with the old server's answer under an id the new server
+   also uses.
+2. **"Open Library Folder…"** on ⌘O, ungated so it works from the first-run
+   screen with no remote ever configured. Cancel is free: no sidecar start, no
+   switch, no local entry. The library to show is handed across the switch
+   through an explicit consume-once slot rather than storage — it is a handoff
+   across a remount, not persisted state.
+3. **Ownership UX** at the mount gate. A live holder is named and redirected to,
+   never offered a takeover; stale/unreadable offers a confirmed takeover;
+   a running takeover shows indeterminate progress and admits a live holder can
+   still win.
+
+Two things found while building, both worth keeping:
+
+- **`localStorage` is undefined in this jsdom setup**, so `usePersistentState`
+  is silently inert under test. That is pre-existing and wider than D6 — anything
+  relying on persisted UI state is currently unverified.
+- **The ownership gate must fail open.** It reads `mountable === false`, not
+  `!mountable`: the server's mount gate is the enforcement and this UI is only
+  the explanation, so an unparsed response must not hide a working library.
+  Caught when unmocked App tests started failing.
+
+Verified: web ESLint, Prettier, tsc, **268 Vitest** (was 229 at D6 start), Vite
+build, Playwright browser partition **74**; desktop fmt/Clippy/**66**. Twelve
+mutations applied across the three commits, each failing a test.
+
+**Not yet run end to end.** The Rust talks to a real sidecar in its tests and the
+web layer is tested against mocks, but the two halves have never met in a running
+packaged app. That owner pass is the remaining acceptance step for D6, and it
+wants the ffmpeg manifest pinned first (ADR-0019 §3) — without it a packaged
+sidecar falls back to a system ffmpeg, which works on this machine and not on a
+user's.
+
+
+
 Same branch `feat/library-ownership-lease`. Started 2026-07-20 once both
 server-side prerequisites (the lease and §6 hygiene) were in place.
 
