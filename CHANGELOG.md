@@ -10,6 +10,11 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Files can be moved reliably between grouping suggestions.** The whole file
+  row now starts a drag, and both the target bundle heading and its file list
+  accept the drop, removing the two small hit targets that made cross-bundle
+  moves easy to miss.
+
 - **Relaunching while the local connection is active reopens into it** instead
   of the first-run "Connect to your server" screen (review, P3). The local
   connection stores no URL by design — its sidecar port is per process — and

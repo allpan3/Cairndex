@@ -437,7 +437,22 @@ function ProposalNode({
   const displayTitle = proposalDisplayTitle(proposal)
   return (
     <li className="grp-node grp-node--bundle">
-      <div className="grp-row grp-row--bundle">
+      <div
+        className={`grp-row grp-row--bundle${fileListDrop ? ' grp-row--file-drop' : ''}`}
+        onDragOver={(event) => {
+          if (drag.item?.kind !== 'file') return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          drag.hover({ kind: 'file-list', proposalId: proposal.id })
+        }}
+        onDrop={(event) => {
+          if (drag.item?.kind !== 'file') return
+          event.preventDefault()
+          event.stopPropagation()
+          drag.dropFile(proposal.id, proposal.files.length)
+        }}
+      >
         <input
           className="grp-check"
           type="checkbox"
@@ -501,11 +516,12 @@ function ProposalNode({
         {proposal.files.map((f, index) => (
           <li
             key={f.asset_file_id}
-            className={`grp-file${
+            className={`grp-file${drag.canEdit ? ' grp-file--draggable' : ''}${
               drag.item?.kind === 'file' && drag.item.assetFileId === f.asset_file_id
                 ? ' grp-file--dragging'
                 : ''
             }`}
+            draggable={drag.canEdit && !drag.pending}
             data-drop={
               drag.slot?.kind === 'file' &&
               drag.slot.proposalId === proposal.id &&
@@ -515,6 +531,8 @@ function ProposalNode({
                   : 'after'
                 : undefined
             }
+            onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
+            onDragEnd={drag.end}
             onDragOver={(event) => {
               if (drag.item?.kind !== 'file') return
               event.preventDefault()
