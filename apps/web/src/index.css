@@ -1220,7 +1220,6 @@ button {
 .files .file-row:focus-visible {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-.files .file-row:active,
 .files .file-row--dragging {
   cursor: grabbing;
 }
@@ -1297,6 +1296,14 @@ button {
   color: var(--star);
   border-color: color-mix(in srgb, var(--star) 45%, var(--border));
   background: color-mix(in srgb, var(--star) 10%, var(--surface));
+}
+.file-row__actions .play-file-action {
+  display: grid;
+  place-items: center;
+}
+.file-row__actions .play-file-action .icon {
+  width: 13px;
+  height: 13px;
 }
 .file-row__actions button:disabled {
   opacity: 0.3;

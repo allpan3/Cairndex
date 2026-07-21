@@ -13,7 +13,7 @@ import { formatBytes, formatDate, formatDimensions, formatDuration } from '../li
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
-import { IconPlus } from './icons'
+import { IconPlay, IconPlus } from './icons'
 import { moveTo } from './reorder'
 import { TagEditor } from './TagEditor'
 
@@ -109,6 +109,7 @@ export function Inspector({
   bundleId,
   onAddFiles,
   onPlayBundle,
+  onPlayFile,
   onStartFileDrag,
 }: {
   bundleId: string | null
@@ -116,6 +117,8 @@ export function Inspector({
   onAddFiles?: (bundleId: string) => void
   /** Open the unified media viewer for this bundle. */
   onPlayBundle?: (bundleId: string) => void
+  /** Open one supported file directly in the unified media viewer. */
+  onPlayFile?: (bundleId: string, fileId: string) => void
   /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
   onStartFileDrag?: (relativePaths: string[]) => void
 }) {
@@ -143,6 +146,7 @@ export function Inspector({
       bundle={bundle}
       onAddFiles={onAddFiles}
       onPlayBundle={onPlayBundle}
+      onPlayFile={onPlayFile}
       onStartFileDrag={onStartFileDrag}
     />
   )
@@ -152,11 +156,13 @@ function BundleEditor({
   bundle,
   onAddFiles,
   onPlayBundle,
+  onPlayFile,
   onStartFileDrag,
 }: {
   bundle: BundleRead
   onAddFiles?: (bundleId: string) => void
   onPlayBundle?: (bundleId: string) => void
+  onPlayFile?: (bundleId: string, fileId: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const bundleId = bundle.id
@@ -323,6 +329,7 @@ function BundleEditor({
         coverId={bundle.cover_file_id ?? null}
         // Adding unbundled files targets a confirmed bundle only (ADR-0009).
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
+        onPlayFile={onPlayFile}
         onStartFileDrag={onStartFileDrag}
       />
     </aside>
@@ -456,12 +463,14 @@ export function FileList({
   bundleVersion,
   coverId,
   onAddFiles,
+  onPlayFile,
   onStartFileDrag,
 }: {
   bundleId: string
   bundleVersion: number
   coverId: string | null
   onAddFiles?: (bundleId: string) => void
+  onPlayFile?: (bundleId: string, fileId: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
 }) {
   const { data: files = [] } = useBundleFiles(bundleId)
@@ -470,15 +479,41 @@ export function FileList({
   const missingCount = files.filter((file) => file.availability !== 'available').length
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
-  const dragIdRef = useRef<string | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
+  const pointerDragRef = useRef<{
+    fileId: string
+    pointerId: number
+    startX: number
+    startY: number
+    mode: 'reorder' | 'native'
+    active: boolean
+  } | null>(null)
 
   // Clear both the source treatment and the insertion marker
   const clearDrag = () => {
-    dragIdRef.current = null
+    pointerDragRef.current = null
     dropSlotRef.current = null
     setDragId(null)
     setDropSlot(null)
+  }
+
+  // Track the insertion gap under a captured pointer
+  const updatePointerDrop = (fileId: string, clientX: number, clientY: number) => {
+    const target = document
+      .elementFromPoint(clientX, clientY)
+      ?.closest<HTMLElement>('.files .file-row')
+    const overId = target?.dataset.reorderFileId
+    if (!target || !overId || overId === fileId || !files.some((file) => file.id === overId)) {
+      dropSlotRef.current = null
+      setDropSlot(null)
+      return
+    }
+    const rect = target.getBoundingClientRect()
+    const next = { id: overId, before: clientY < rect.top + rect.height / 2 }
+    dropSlotRef.current = next
+    setDropSlot((previous) =>
+      previous?.id === next.id && previous.before === next.before ? previous : next,
+    )
   }
 
   // Keep keyboard reordering after removing the visible arrow buttons
@@ -514,6 +549,10 @@ export function FileList({
           const dims = formatDimensions(meta.width as number, meta.height as number)
           const dur = formatDuration(meta.duration as number)
           const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
+          const playable =
+            f.availability === 'available' &&
+            f.supported &&
+            (f.media_kind === 'image' || f.media_kind === 'video')
           const dragTitle = onStartFileDrag
             ? 'Drag to reorder · Option-drag to copy this file out'
             : 'Drag to reorder'
@@ -523,7 +562,7 @@ export function FileList({
               key={f.id}
               role="listitem"
               tabIndex={0}
-              draggable
+              data-reorder-file-id={f.id}
               title={dragTitle}
               aria-label={`${f.display_title}. ${dragTitle}`}
               aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
@@ -534,50 +573,59 @@ export function FileList({
                 event.preventDefault()
                 moveByKeyboard(i, event.key === 'ArrowUp' ? -1 : 1)
               }}
-              onDragStart={(event) => {
+              onPointerDown={(event) => {
+                if (event.button !== 0) return
                 if ((event.target as HTMLElement).closest('.file-row__actions')) {
-                  event.preventDefault()
                   return
                 }
-                if (event.altKey && onStartFileDrag) {
-                  event.preventDefault()
-                  onStartFileDrag([f.relative_path])
-                  return
+                event.preventDefault()
+                event.currentTarget.focus({ preventScroll: true })
+                event.currentTarget.setPointerCapture(event.pointerId)
+                pointerDragRef.current = {
+                  fileId: f.id,
+                  pointerId: event.pointerId,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  mode: event.altKey && onStartFileDrag ? 'native' : 'reorder',
+                  active: false,
                 }
-                event.dataTransfer.effectAllowed = 'move'
-                dragIdRef.current = f.id
-                setDragId(f.id)
               }}
-              onDragEnd={clearDrag}
-              onDragOver={(event) => {
-                const activeDragId = dragIdRef.current
-                if (activeDragId === null || activeDragId === f.id) return
+              onPointerMove={(event) => {
+                const pointer = pointerDragRef.current
+                if (!pointer || pointer.pointerId !== event.pointerId) return
                 event.preventDefault()
-                event.dataTransfer.dropEffect = 'move'
-                const rect = event.currentTarget.getBoundingClientRect()
-                const before = event.clientY < rect.top + rect.height / 2
-                dropSlotRef.current = { id: f.id, before }
-                setDropSlot((previous) =>
-                  previous?.id === f.id && previous.before === before
-                    ? previous
-                    : { id: f.id, before },
-                )
+                if (!pointer.active) {
+                  if (
+                    Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY) < 4
+                  )
+                    return
+                  pointer.active = true
+                  if (pointer.mode === 'native') {
+                    event.currentTarget.releasePointerCapture?.(event.pointerId)
+                    onStartFileDrag?.([f.relative_path])
+                    clearDrag()
+                    return
+                  }
+                  setDragId(pointer.fileId)
+                }
+                updatePointerDrop(pointer.fileId, event.clientX, event.clientY)
               }}
-              onDrop={(event) => {
-                const activeDragId = dragIdRef.current
-                if (activeDragId === null) return
-                event.preventDefault()
-                if (activeDragId !== f.id) {
+              onPointerUp={(event) => {
+                const pointer = pointerDragRef.current
+                if (!pointer || pointer.pointerId !== event.pointerId) return
+                const slot = dropSlotRef.current
+                if (pointer.active && pointer.mode === 'reorder' && slot) {
                   const orderedIds = moveTo(
                     files.map((file) => file.id),
-                    activeDragId,
-                    f.id,
-                    dropSlotRef.current?.id === f.id ? dropSlotRef.current.before : true,
+                    pointer.fileId,
+                    slot.id,
+                    slot.before,
                   )
                   reorder.mutate(orderedIds)
                 }
                 clearDrag()
               }}
+              onPointerCancel={clearDrag}
             >
               <div className="file-row__main">
                 <div className="file-row__name">
@@ -603,6 +651,16 @@ export function FileList({
                     }}
                   >
                     ★
+                  </button>
+                )}
+                {playable && onPlayFile && (
+                  <button
+                    className="tip play-file-action"
+                    data-tip="Play this media"
+                    aria-label={`Play ${f.display_title}`}
+                    onClick={() => onPlayFile(bundleId, f.id)}
+                  >
+                    <IconPlay />
                   </button>
                 )}
                 {f.availability !== 'available' && (
