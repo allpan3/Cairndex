@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import (
+    FileAvailability,
     FileRole,
     GroupingPlanStatus,
     GroupingState,
@@ -138,8 +139,16 @@ def _apply_bundle(
 ) -> _BundleOutcome:
     file_ids = [pf.asset_file_id for pf in proposal.files]
     rows = {fid: session.get(AssetFile, fid) for fid in file_ids}
-    present = [r for r in rows.values() if r is not None]
-    missing = [fid for fid, r in rows.items() if r is None]
+    present = [
+        row
+        for row in rows.values()
+        if row is not None and row.availability is FileAvailability.AVAILABLE
+    ]
+    missing = [
+        file_id
+        for file_id, row in rows.items()
+        if row is None or row.availability is FileAvailability.MISSING
+    ]
 
     if missing:
         result.conflicts.append(

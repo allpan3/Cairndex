@@ -20,10 +20,13 @@ Branch `codex/grouping-stem-controls`, based directly on `main`.
 - File moves use the whole file row as a drag source and the target bundle
   heading or file list as a drop surface, so cross-bundle review edits do not
   depend on two small hit targets.
+- Files retained as `missing` after scan are excluded from new suggestions, and
+  a stale open plan reports them as apply conflicts instead of regrouping them.
 - Backend regression/API/bootstrap coverage and frontend component/browser-flow
-  coverage exercise multi-stem folders, rendition matching, mode persistence,
-  destination visibility, and non-empty regeneration.
-- Verification: backend Ruff/format/mypy and 571 tests pass; frontend
+  coverage exercise multi-stem folders, rendition matching, missing-file
+  exclusion, mode persistence, destination visibility, and non-empty
+  regeneration.
+- Verification: backend Ruff/format/mypy and 573 tests pass; frontend
   lint/format/typecheck, 293 tests, production build, and all 77 Playwright tests
   pass. A real isolated browser run with screenshot-shaped filenames confirmed
   balanced split/addition behavior, both sensitivity directions, destination
