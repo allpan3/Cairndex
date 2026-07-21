@@ -1,7 +1,14 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
-import { ConflictError, type BundleRead, thumbnailUrl } from '../api/client'
-import { useBundle, useBundleFiles, useFileMutations, useUpdateBundle } from '../api/hooks'
+import { ConflictError, type BundleRead, type FileRead, thumbnailUrl } from '../api/client'
+import {
+  useBundle,
+  useBundleFiles,
+  useFileMutations,
+  useFileRepairCandidate,
+  useRepairFile,
+  useUpdateBundle,
+} from '../api/hooks'
 import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
@@ -496,6 +503,9 @@ function FileList({
                   ★
                 </button>
               )}
+              {f.availability !== 'available' && (
+                <MissingFileRepairAction bundleId={bundleId} file={f} />
+              )}
               <button
                 className="tip"
                 data-tip="Remove from bundle (keeps the file)"
@@ -509,5 +519,46 @@ function FileList({
         )
       })}
     </div>
+  )
+}
+
+/** Compact relink affordance for one unambiguous current-path match. */
+export function MissingFileRepairAction({ bundleId, file }: { bundleId: string; file: FileRead }) {
+  const candidate = useFileRepairCandidate(bundleId, file.id, true)
+  const repair = useRepairFile(bundleId, file.id)
+  if (candidate.isError)
+    return (
+      <span className="badge badge--missing" role="alert" title="Could not check repair matches">
+        relink unavailable
+      </span>
+    )
+  const match = candidate.data
+  if (!match) return null
+
+  const label = `Relink to ${match.relative_path}`
+  return (
+    <>
+      <button
+        className="tip"
+        data-tip="Relink to current file"
+        aria-label={label}
+        title={label}
+        onClick={() => {
+          const confirmed = window.confirm(
+            `Relink this missing item to “${match.relative_path}”? ` +
+              'Its original bundle and file ID will be kept; the duplicate Cairndex link will be removed. Files on disk will not change.',
+          )
+          if (confirmed) repair.mutate(match.replacement_file_id)
+        }}
+        disabled={repair.isPending}
+      >
+        ↻
+      </button>
+      {repair.isError && (
+        <span className="badge badge--missing" role="alert">
+          relink failed
+        </span>
+      )}
+    </>
   )
 }

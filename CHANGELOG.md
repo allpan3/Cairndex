@@ -10,6 +10,15 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Renamed files on SMB/network libraries can be relinked after scan identity
+  repair misses them.** Missing Files now includes stale provisional rows and
+  offers a compact relink action when exactly one live, already-linked file has
+  the same quick fingerprint and media kind. Relinking preserves the original
+  stable file ID, established bundle metadata, references, and newest playback
+  progress; it removes only the duplicate Cairndex row and never changes the
+  filesystem. Later scans therefore stop reporting the repaired path as
+  missing.
+
 - **Grouping suggestions exclude files marked missing by the latest scan.** The
   scanner still retains their database rows so metadata and moved-file repair
   survive, but they no longer appear as live grouping candidates. Applying an
