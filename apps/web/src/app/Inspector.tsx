@@ -14,6 +14,7 @@ import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconPlus } from './icons'
+import { moveTo } from './reorder'
 import { TagEditor } from './TagEditor'
 
 /** Shown when an edit was rejected because the bundle changed elsewhere
@@ -401,7 +402,8 @@ function NoteBox({
   )
 }
 
-function FileList({
+/** Ordered bundle files with direct row dragging and compact metadata actions. */
+export function FileList({
   bundleId,
   bundleVersion,
   coverId,
@@ -418,16 +420,27 @@ function FileList({
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
   const missingCount = files.filter((file) => file.availability !== 'available').length
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  const dragIdRef = useRef<string | null>(null)
+  const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
 
-  const move = (index: number, delta: number) => {
+  // Clear both the source treatment and the insertion marker
+  const clearDrag = () => {
+    dragIdRef.current = null
+    dropSlotRef.current = null
+    setDragId(null)
+    setDropSlot(null)
+  }
+
+  // Keep keyboard reordering after removing the visible arrow buttons
+  const moveByKeyboard = (index: number, delta: number) => {
     const target = index + delta
     const ids = files.map((f) => f.id)
-    const a = ids[index]
-    const b = ids[target]
-    if (a === undefined || b === undefined) return
-    ids[index] = b
-    ids[target] = a
-    reorder.mutate(ids)
+    const drag = ids[index]
+    const over = ids[target]
+    if (drag === undefined || over === undefined) return
+    reorder.mutate(moveTo(ids, drag, over, delta < 0))
   }
 
   return (
@@ -447,77 +460,117 @@ function FileList({
         )}
       </div>
       <ConflictNotice error={update.error} />
-      {files.map((f, i) => {
-        const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
-        const dims = formatDimensions(meta.width as number, meta.height as number)
-        const dur = formatDuration(meta.duration as number)
-        const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
-        return (
-          <div
-            className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}`}
-            key={f.id}
-          >
+      <div className="files__list" role="list" aria-label="Files in bundle">
+        {files.map((f, i) => {
+          const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
+          const dims = formatDimensions(meta.width as number, meta.height as number)
+          const dur = formatDuration(meta.duration as number)
+          const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
+          const dragTitle = onStartFileDrag
+            ? 'Drag to reorder · Option-drag to copy this file out'
+            : 'Drag to reorder'
+          return (
             <div
-              className="file-row__main"
-              {...fileDragProps(onStartFileDrag, () => [f.relative_path])}
-              title={onStartFileDrag ? 'Drag to copy this file out' : undefined}
+              className={`file-row${f.availability !== 'available' ? ' file-row--missing' : ''}${dragId === f.id ? ' file-row--dragging' : ''}`}
+              key={f.id}
+              role="listitem"
+              tabIndex={0}
+              draggable
+              title={dragTitle}
+              aria-label={`${f.display_title}. ${dragTitle}`}
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
+              data-drop={dropSlot?.id === f.id ? (dropSlot.before ? 'before' : 'after') : undefined}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget) return
+                if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+                event.preventDefault()
+                moveByKeyboard(i, event.key === 'ArrowUp' ? -1 : 1)
+              }}
+              onDragStart={(event) => {
+                if ((event.target as HTMLElement).closest('.file-row__actions')) {
+                  event.preventDefault()
+                  return
+                }
+                if (event.altKey && onStartFileDrag) {
+                  event.preventDefault()
+                  onStartFileDrag([f.relative_path])
+                  return
+                }
+                event.dataTransfer.effectAllowed = 'move'
+                dragIdRef.current = f.id
+                setDragId(f.id)
+              }}
+              onDragEnd={clearDrag}
+              onDragOver={(event) => {
+                const activeDragId = dragIdRef.current
+                if (activeDragId === null || activeDragId === f.id) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                const rect = event.currentTarget.getBoundingClientRect()
+                const before = event.clientY < rect.top + rect.height / 2
+                dropSlotRef.current = { id: f.id, before }
+                setDropSlot((previous) =>
+                  previous?.id === f.id && previous.before === before
+                    ? previous
+                    : { id: f.id, before },
+                )
+              }}
+              onDrop={(event) => {
+                const activeDragId = dragIdRef.current
+                if (activeDragId === null) return
+                event.preventDefault()
+                if (activeDragId !== f.id) {
+                  const orderedIds = moveTo(
+                    files.map((file) => file.id),
+                    activeDragId,
+                    f.id,
+                    dropSlotRef.current?.id === f.id ? dropSlotRef.current.before : true,
+                  )
+                  reorder.mutate(orderedIds)
+                }
+                clearDrag()
+              }}
             >
-              <div className="file-row__name">
-                {f.id === coverId && <span title="Cover">★</span>}
-                <span className="file-row__title">{f.display_title}</span>
-                {f.availability !== 'available' && (
-                  <span className="badge badge--missing">missing</span>
+              <div className="file-row__main">
+                <div className="file-row__name">
+                  {f.id === coverId && <span title="Cover">★</span>}
+                  <span className="file-row__title">{f.display_title}</span>
+                  {f.availability !== 'available' && (
+                    <span className="badge badge--missing">missing</span>
+                  )}
+                </div>
+                <div className="file-row__role">
+                  {f.role === 'primary_video' ? 'video' : f.role} ·{' '}
+                  {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
+                </div>
+              </div>
+              <div className="file-row__actions">
+                {thumbnailable && (
+                  <button
+                    className="tip"
+                    data-tip="Set as cover"
+                    aria-label="Set as cover"
+                    onClick={() => update.mutate({ cover_file_id: f.id })}
+                  >
+                    ★
+                  </button>
                 )}
-              </div>
-              <div className="file-row__role">
-                {f.role === 'primary_video' ? 'video' : f.role} ·{' '}
-                {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
-              </div>
-            </div>
-            <div className="file-row__actions">
-              <button
-                className="tip"
-                data-tip="Move up"
-                aria-label="Move up"
-                onClick={() => move(i, -1)}
-                disabled={i === 0}
-              >
-                ↑
-              </button>
-              <button
-                className="tip"
-                data-tip="Move down"
-                aria-label="Move down"
-                onClick={() => move(i, 1)}
-                disabled={i === files.length - 1}
-              >
-                ↓
-              </button>
-              {thumbnailable && (
+                {f.availability !== 'available' && (
+                  <MissingFileRepairAction bundleId={bundleId} file={f} />
+                )}
                 <button
                   className="tip"
-                  data-tip="Set as cover"
-                  aria-label="Set as cover"
-                  onClick={() => update.mutate({ cover_file_id: f.id })}
+                  data-tip="Remove from bundle (keeps the file)"
+                  aria-label="Remove from bundle (keeps the file on disk)"
+                  onClick={() => remove.mutate(f.id)}
                 >
-                  ★
+                  ×
                 </button>
-              )}
-              {f.availability !== 'available' && (
-                <MissingFileRepairAction bundleId={bundleId} file={f} />
-              )}
-              <button
-                className="tip"
-                data-tip="Remove from bundle (keeps the file)"
-                aria-label="Remove from bundle (keeps the file on disk)"
-                onClick={() => remove.mutate(f.id)}
-              >
-                ×
-              </button>
+              </div>
             </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }

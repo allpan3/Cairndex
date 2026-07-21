@@ -846,6 +846,29 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(missingFile.getByText('missing')).toBeVisible()
 })
 
+test('reorders bundle files by dragging the inspector cards', async ({ page }) => {
+  await mockApi(page)
+  let orderedIds: string[] | null = null
+  await page.route('**/bundles/b0/files/order', async (route) => {
+    orderedIds = (route.request().postDataJSON() as { ordered_ids: string[] }).ordered_ids
+    await route.fulfill({ status: 204 })
+  })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const rows = page.locator('.files .file-row')
+  await expect(rows).toHaveCount(2)
+  await expect(page.getByRole('button', { name: 'Move up' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Move down' })).toHaveCount(0)
+  const targetBox = await rows.last().boundingBox()
+  if (!targetBox) throw new Error('missing target file row bounds')
+  await rows.first().dragTo(rows.last(), {
+    targetPosition: { x: targetBox.width / 2, y: targetBox.height - 2 },
+  })
+
+  await expect.poll(() => orderedIds).toEqual(['f1', 'f0'])
+})
+
 test('drag-selects multiple bundles with a marquee', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
