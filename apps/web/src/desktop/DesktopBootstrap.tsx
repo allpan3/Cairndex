@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+
+import { QueryScope } from '../QueryScope'
+import {
+  activateConnection,
+  addRemoteConnection,
+  getConnections,
+  loadConnections,
+  subscribeConnections,
+} from './connections'
 
 import { fetchHealth, setApiBaseUrl } from '../api/client'
 import {
-  configureHostServer,
   initializeHostPlatform,
   listenHostLifecycle,
   listenHostMenu,
-  loadHostServerUrl,
   normalizeHostServerUrl,
   saveHostServerUrl,
   setHostServerAvailable,
@@ -50,6 +57,13 @@ function reportDesktopBridgeError(message: string, error: unknown): void {
 
 // Gates the shared SPA on first-run desktop server configuration
 export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
+  // Drives the QueryScope key below. Subscribed rather than kept in local state
+  // so an activation from anywhere — the menu, a future connections UI — swaps
+  // the scope without having to route through this component.
+  const activeConnectionId = useSyncExternalStore(
+    subscribeConnections,
+    () => getConnections().activeConnectionId,
+  )
   const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
   const [saving, setSaving] = useState(false)
@@ -108,14 +122,18 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
         reportDesktopBridgeError('Could not disable server menu actions during setup', error)
       }
       try {
-        const stored = await loadHostServerUrl()
+        // Migrates a pre-D6 stored `serverUrl` into one active remote
+        // connection, so an existing NAS setup sees no first-run change.
+        const state = await loadConnections()
         if (!active) return
-        if (!stored) {
+        const activeId = state.activeConnectionId
+        const stored = state.connections.find((entry) => entry.id === activeId)?.serverUrl ?? null
+        if (!activeId || !stored) {
           setSetup({ serverUrl: 'http://127.0.0.1:8000', error: null })
           return
         }
         try {
-          await configureHostServer(stored)
+          await activateConnection(activeId)
           await verifyServer(stored)
           if (active) {
             try {
@@ -157,8 +175,10 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     setSetup({ ...setup, error: null })
     try {
       const normalized = await normalizeHostServerUrl(setup.serverUrl)
-      await configureHostServer(normalized)
+      const connection = await addRemoteConnection(normalized)
+      await activateConnection(connection.id)
       await verifyServer(normalized)
+      // Kept for now so a downgrade to a pre-D6 build still finds its server.
       await saveHostServerUrl(normalized)
       try {
         await setHostServerAvailable(true)
@@ -179,7 +199,11 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     }
   }
 
-  if (ready) return children
+  // Keyed on the active connection: a switch remounts the whole scope, so the
+  // previous server's cache and any request still in flight against it are
+  // discarded rather than left to resolve into the new connection's cache
+  // (plan 3 §7.1 — library ids are per-server and not globally unique).
+  if (ready) return <QueryScope key={activeConnectionId ?? 'initial'}>{children}</QueryScope>
   if (!setup) return <div className="app-loading">Loading desktop settings…</div>
 
   return (
