@@ -10,6 +10,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Opened bundles now follow the Grid, Justified, and List controls.** The
+  in-bundle file album was hard-coded to a thumbnail grid even though the
+  shared layout controls stayed visible. It now uses the selected layout and
+  zoom, including a compact file table in List view and aspect-aware rows in
+  Justified view.
+
 - **Relaunching while the local connection is active reopens into it** instead
   of the first-run "Connect to your server" screen (review, P3). The local
   connection stores no URL by design — its sidecar port is per process — and

@@ -148,7 +148,11 @@ export function Browser(props: BrowserProps) {
     return tops
   }, [rows])
 
-  const cardRect = (rowIndex: number, row: Row, card: PlacedCard): MarqueeRect => {
+  const cardRect = (
+    rowIndex: number,
+    row: Row<BundleSummary>,
+    card: PlacedCard<BundleSummary>,
+  ): MarqueeRect => {
     const top = rowTops[rowIndex] ?? 0
     if (layout === 'list') return { left: 0, top, width, height: row.height }
     return { left: card.x, top, width: card.width, height: row.height - 10 }

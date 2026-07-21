@@ -2726,15 +2726,35 @@ code {
   overflow-y: auto;
 }
 .album__grid {
-  padding: 12px;
+  position: relative;
+}
+.album-list__head,
+.album-tile--list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: 48px minmax(0, 1fr) 110px 70px 90px;
+  align-items: center;
   gap: 12px;
-  align-content: start;
+  padding: 0 8px;
+}
+.album-list__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  margin: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.album-list__num,
+.album-tile__size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .album-tile {
-  display: flex;
-  flex-direction: column;
+  width: 100%;
+  height: 100%;
   border: 1px solid transparent;
   border-radius: 8px;
   overflow: hidden;
@@ -2743,6 +2763,11 @@ code {
   padding: 0;
   text-align: left;
   user-select: none;
+}
+.album-tile--grid,
+.album-tile--justified {
+  display: flex;
+  flex-direction: column;
 }
 .album-tile:hover {
   border-color: var(--border-strong);
@@ -2758,6 +2783,11 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.album-tile--justified .album-tile__thumb {
+  min-height: 0;
+  flex: 1;
+  aspect-ratio: auto;
 }
 .album-tile__placeholder {
   font-size: 28px;
@@ -2775,6 +2805,41 @@ code {
   padding: 0 8px 6px;
   font-size: 11px;
   color: var(--text-muted);
+}
+.album-tile__type,
+.album-tile__size {
+  display: none;
+}
+.album-tile--list {
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+}
+.album-tile--list:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}
+.album-tile--list.album-tile--selected {
+  border-color: var(--border);
+  background: var(--accent-soft);
+  box-shadow: none;
+}
+.album-tile--list .album-tile__thumb {
+  width: 48px;
+  height: calc(100% - 8px);
+  aspect-ratio: auto;
+  border-radius: 3px;
+}
+.album-tile--list .album-tile__name,
+.album-tile--list .album-tile__sub {
+  padding: 0;
+}
+.album-tile--list .album-tile__type,
+.album-tile--list .album-tile__size {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* --- Fullscreen file viewer (lightbox) ---------------------------------- */

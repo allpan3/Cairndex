@@ -1181,3 +1181,25 @@ test('layout choice persists across reload', async ({ page }) => {
   // Still in list layout after reload (persisted to localStorage).
   await expect(page.getByText('Dimensions')).toBeVisible()
 })
+
+test('opened bundle follows grid, justified, and list layout controls', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open Bundle' }).click()
+
+  const album = page.locator('.album')
+  await expect(album).toHaveAttribute('data-layout', 'grid')
+
+  await page.getByRole('button', { name: 'List' }).click()
+  await expect(album).toHaveAttribute('data-layout', 'list')
+  await expect(album.getByRole('columnheader', { name: 'Dimensions' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Justified' }).click()
+  await expect(album).toHaveAttribute('data-layout', 'justified')
+  await expect(album.getByRole('columnheader', { name: 'Dimensions' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Grid' }).click()
+  await expect(album).toHaveAttribute('data-layout', 'grid')
+})

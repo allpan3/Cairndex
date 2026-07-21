@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { type FileRead, fileThumbnailUrl } from '../api/client'
 import { useBundle, useBundleFiles } from '../api/hooks'
@@ -9,11 +9,22 @@ import { type FileDragProps, fileDragProps } from './dragOut'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { computeRows } from './layout'
 import { selectionTargets } from './selection'
+import type { LayoutMode, PlayerPrefs } from './types'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 import { MediaViewer } from './viewer/MediaViewer'
-import type { PlayerPrefs } from './types'
+
+const ALBUM_PADDING = 12
+const ALBUM_META_HEIGHT = 44
+
+/** File plus normalized dimensions used by the shared layout engine */
+interface AlbumLayoutItem {
+  file: FileRead
+  width: number | null
+  height: number | null
+}
 
 /**
  * Inline "album" view: replaces the bundle grid in the center pane with the
@@ -25,6 +36,8 @@ import type { PlayerPrefs } from './types'
  */
 export function BundleAlbum({
   bundleId,
+  layout,
+  zoom,
   playerPrefs,
   onPlayerPrefs,
   onBack,
@@ -35,6 +48,8 @@ export function BundleAlbum({
   onStartFileDrag,
 }: {
   bundleId: string
+  layout: LayoutMode
+  zoom: number
   playerPrefs: PlayerPrefs
   onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onBack: () => void
@@ -55,6 +70,50 @@ export function BundleAlbum({
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const gridRef = useRef<HTMLDivElement | null>(null)
+  const [width, setWidth] = useState(0)
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current
+    if (!scroll) return
+    const update = () => setWidth(scroll.clientWidth - ALBUM_PADDING * 2)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(scroll)
+    return () => observer.disconnect()
+  }, [])
+
+  const layoutItems = useMemo<AlbumLayoutItem[]>(
+    () =>
+      files.map((file) => {
+        const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
+        return {
+          file,
+          width: typeof meta.width === 'number' ? meta.width : null,
+          height: typeof meta.height === 'number' ? meta.height : null,
+        }
+      }),
+    [files],
+  )
+  const fileIndexes = useMemo(() => new Map(files.map((file, index) => [file.id, index])), [files])
+  const rows = useMemo(
+    () =>
+      computeRows(layoutItems, layout, width, zoom, {
+        gridMediaHeightRatio: 1,
+        gridMetaHeight: ALBUM_META_HEIGHT,
+        justifiedMetaHeight: ALBUM_META_HEIGHT,
+      }),
+    [layout, layoutItems, width, zoom],
+  )
+  const rowTops = useMemo(() => {
+    const tops: number[] = []
+    let top = 0
+    for (const row of rows) {
+      tops.push(top)
+      top += row.height
+    }
+    return tops
+  }, [rows])
+  const contentHeight = rows.reduce((height, row) => height + row.height, 0)
 
   // Esc returns to the library — but only when the fullscreen viewer (which has
   // its own Esc-to-close) isn't open.
@@ -138,7 +197,8 @@ export function BundleAlbum({
   const { marqueeRect, onMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollRef.current,
     getWrapperEl: () => gridRef.current,
-    isBackgroundTarget: (target) => !target.closest('[data-file-id]'),
+    isBackgroundTarget: (target) =>
+      !target.closest('[data-file-id]') && !target.closest('.album-list__head'),
     hitTest,
     getBaseSelection: () => selected,
     onChange: (ids) => setSelected(new Set(ids)),
@@ -147,7 +207,7 @@ export function BundleAlbum({
   const title = bundle?.title ?? 'Untitled'
 
   return (
-    <div className="album">
+    <div className="album" data-layout={layout}>
       <div className="album__bar">
         <button className="album__back" onClick={onBack} aria-label="Back to library">
           ‹ Library
@@ -163,37 +223,80 @@ export function BundleAlbum({
         ref={scrollRef}
         onMouseDown={onMouseDown}
       >
-        <div className="album__grid" role="list" ref={gridRef} style={{ position: 'relative' }}>
-          {marqueeRect && (
+        {isLoading ? (
+          <div className="state">Loading files…</div>
+        ) : files.length === 0 ? (
+          <div className="state">This bundle has no files.</div>
+        ) : (
+          <>
+            {layout === 'list' && <AlbumListHeader />}
             <div
-              className="marquee"
+              className={`album__grid album__grid--${layout}`}
+              role="list"
+              aria-label={`Files in ${title}`}
+              ref={gridRef}
               style={{
-                position: 'absolute',
-                left: marqueeRect.left,
-                top: marqueeRect.top,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-                pointerEvents: 'none',
+                position: 'relative',
+                height: contentHeight,
+                margin: `0 ${ALBUM_PADDING}px`,
               }}
-            />
-          )}
-          {isLoading && <div className="state">Loading files…</div>}
-          {!isLoading && files.length === 0 && (
-            <div className="state">This bundle has no files.</div>
-          )}
-          {files.map((f, i) => (
-            <AlbumTile
-              key={f.id}
-              file={f}
-              selected={selected.has(f.id)}
-              onSelect={(e) => clickTile(f, e)}
-              onOpen={() => openFile(i)}
-              onContextMenu={(e) => contextTile(f, e)}
-              previewDisabled={marqueeRect !== null || menu.state !== null}
-              dragProps={fileDragProps(onStartFileDrag, () => dragTargets(f))}
-            />
-          ))}
-        </div>
+            >
+              {marqueeRect && (
+                <div
+                  className="marquee"
+                  style={{
+                    position: 'absolute',
+                    left: marqueeRect.left,
+                    top: marqueeRect.top,
+                    width: marqueeRect.width,
+                    height: marqueeRect.height,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              {rows.map((row, rowIndex) => (
+                <div
+                  className="album__row"
+                  key={`${layout}-${rowIndex}`}
+                  style={{
+                    position: 'absolute',
+                    top: rowTops[rowIndex],
+                    left: 0,
+                    width,
+                    height: row.height,
+                  }}
+                >
+                  {row.cards.map(({ item, x, width: cardWidth }) => {
+                    const file = item.file
+                    return (
+                      <div
+                        className="album__slot"
+                        key={file.id}
+                        style={{
+                          position: 'absolute',
+                          left: x,
+                          width: cardWidth,
+                          height: layout === 'list' ? row.height : row.height - 10,
+                        }}
+                      >
+                        <AlbumTile
+                          file={file}
+                          layout={layout}
+                          selected={selected.has(file.id)}
+                          onSelect={(event) => clickTile(file, event)}
+                          onOpen={() => openFile(fileIndexes.get(file.id) ?? 0)}
+                          onContextMenu={(event) => contextTile(file, event)}
+                          previewDisabled={marqueeRect !== null || menu.state !== null}
+                          dragProps={fileDragProps(onStartFileDrag, () => dragTargets(file))}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
@@ -211,8 +314,25 @@ export function BundleAlbum({
   )
 }
 
+/** Column labels for the compact file list layout */
+function AlbumListHeader() {
+  return (
+    <div className="album-list__head" role="row">
+      <span />
+      <span role="columnheader">Name</span>
+      <span role="columnheader">Dimensions</span>
+      <span role="columnheader">Type</span>
+      <span className="album-list__num" role="columnheader">
+        Size
+      </span>
+    </div>
+  )
+}
+
+/** Selectable file tile whose presentation follows the active album layout */
 function AlbumTile({
   file,
+  layout,
   selected,
   onSelect,
   onOpen,
@@ -221,6 +341,7 @@ function AlbumTile({
   dragProps,
 }: {
   file: FileRead
+  layout: LayoutMode
   selected: boolean
   onSelect: (e: React.MouseEvent | React.KeyboardEvent) => void
   onOpen: () => void
@@ -269,7 +390,7 @@ function AlbumTile({
 
   return (
     <div
-      className={`album-tile${selected ? ' album-tile--selected' : ''}`}
+      className={`album-tile album-tile--${layout}${selected ? ' album-tile--selected' : ''}`}
       onClick={(event) => onSelect(event)}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
@@ -309,6 +430,8 @@ function AlbumTile({
       <div className="album-tile__sub">
         {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}
       </div>
+      <div className="album-tile__type">{file.media_kind}</div>
+      <div className="album-tile__size">{formatBytes(file.size_bytes)}</div>
     </div>
   )
 }

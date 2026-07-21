@@ -1,15 +1,29 @@
-import type { BundleSummary } from '../api/client'
 import type { LayoutMode } from './types'
 
-export interface PlacedCard {
-  item: BundleSummary
+/** Minimum geometry needed to place an item in grid and justified layouts */
+export interface LayoutItem {
+  width: number | null
+  height: number | null
+}
+
+/** One item positioned inside a computed layout row */
+export interface PlacedCard<T extends LayoutItem> {
+  item: T
   x: number
   width: number
 }
 
-export interface Row {
+/** One computed row shared by bundle and in-bundle file views */
+export interface Row<T extends LayoutItem> {
   height: number
-  cards: PlacedCard[]
+  cards: PlacedCard<T>[]
+}
+
+/** Optional media and metadata heights for surfaces with different card chrome */
+export interface LayoutGeometry {
+  gridMediaHeightRatio?: number
+  gridMetaHeight?: number
+  justifiedMetaHeight?: number
 }
 
 const GAP = 10
@@ -45,18 +59,20 @@ export function collectionCardWidth(zoom: number): number {
   return Math.round(COLLECTION_CARD_MIN + t * (COLLECTION_CARD_MAX - COLLECTION_CARD_MIN))
 }
 
-function aspect(item: BundleSummary): number {
+/** Return a usable aspect ratio even before technical metadata exists */
+function aspect(item: LayoutItem): number {
   if (item.width && item.height) return item.width / item.height
   return 16 / 9
 }
 
-/** Pack bundle summaries into virtualizable rows for the given layout. */
-export function computeRows(
-  items: BundleSummary[],
+/** Pack items into virtualizable rows for the given layout */
+export function computeRows<T extends LayoutItem>(
+  items: T[],
   layout: LayoutMode,
   containerWidth: number,
   zoom: number,
-): Row[] {
+  geometry: LayoutGeometry = {},
+): Row<T>[] {
   if (containerWidth <= 0 || items.length === 0) return []
 
   if (layout === 'list') {
@@ -71,8 +87,9 @@ export function computeRows(
     const cardW = zoom
     const cols = Math.max(1, Math.floor((containerWidth + GAP) / (cardW + GAP)))
     const actualW = (containerWidth - (cols - 1) * GAP) / cols
-    const cardH = actualW * 0.62 + META_HEIGHT
-    const rows: Row[] = []
+    const cardH =
+      actualW * (geometry.gridMediaHeightRatio ?? 0.62) + (geometry.gridMetaHeight ?? META_HEIGHT)
+    const rows: Row<T>[] = []
     for (let i = 0; i < items.length; i += cols) {
       const slice = items.slice(i, i + cols)
       rows.push({
@@ -85,8 +102,8 @@ export function computeRows(
 
   // Justified: fixed-ish target row height, scale each row to fill the width.
   const targetH = zoom * 0.6
-  const rows: Row[] = []
-  let current: BundleSummary[] = []
+  const rows: Row<T>[] = []
+  let current: T[] = []
   let aspectSum = 0
 
   const flush = (isLast: boolean) => {
@@ -95,13 +112,13 @@ export function computeRows(
     let rowH = (containerWidth - totalGap) / aspectSum
     if (isLast) rowH = Math.min(rowH, targetH * 1.3)
     let x = 0
-    const cards: PlacedCard[] = current.map((item) => {
+    const cards: PlacedCard<T>[] = current.map((item) => {
       const w = rowH * aspect(item)
       const card = { item, x, width: w }
       x += w + GAP
       return card
     })
-    rows.push({ height: rowH + GAP, cards })
+    rows.push({ height: rowH + (geometry.justifiedMetaHeight ?? 0) + GAP, cards })
     current = []
     aspectSum = 0
   }

@@ -1569,6 +1569,8 @@ function Workspace({
             {openBundleId ? (
               <BundleAlbum
                 bundleId={openBundleId}
+                layout={prefs.layout}
+                zoom={prefs.zoom}
                 playerPrefs={prefs.player}
                 onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
