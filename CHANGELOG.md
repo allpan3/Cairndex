@@ -56,6 +56,18 @@ grouped under `Unreleased` until the first tagged release.
   `apps/server/packaging/dist/cairndex-sidecar` directory. See
   `docs/development.md`.
 
+- **Connections model in the desktop shell (Plan 3 D6.4).** The shell now holds a
+  set of connections — remote servers plus one managed local server — with
+  exactly one active at a time, replacing its single stored server URL. An
+  existing configured server migrates into the first remote connection, so a NAS
+  setup sees no first-run change. Activation is all-or-nothing (every fallible
+  step runs before anything user-visible moves, and a failure re-points transport
+  at the previous server) and serialized (a repeat request for the same
+  connection joins the one in flight; a different one is refused rather than
+  queued). The query cache is now scoped per connection by remounting rather than
+  clearing, because library ids are per-server and an in-flight request can
+  otherwise resolve into the new connection's cache. No UI exposes switching yet.
+
 - **Shell support for opening a local library folder (Plan 3 D6.4, in progress).**
   A `pick_library_folder` command opens the native folder picker and validates the
   selection as a Cairndex library, returning its canonical path, portable uuid,

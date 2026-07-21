@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
+import { resetConnectionsForTests } from './connections'
 import { DesktopBootstrap } from './DesktopBootstrap'
 import {
   configureHostServer,
@@ -20,6 +21,11 @@ vi.mock('../platform', () => ({
   listenHostLifecycle: vi.fn().mockResolvedValue(() => undefined),
   listenHostMenu: vi.fn().mockResolvedValue(() => undefined),
   loadHostServerUrl: vi.fn(),
+  // D6: the bootstrap resolves its server through the connections store, which
+  // migrates the legacy `loadHostServerUrl` value on first read.
+  loadHostConnections: vi.fn().mockResolvedValue(null),
+  saveHostConnections: vi.fn().mockResolvedValue(undefined),
+  startHostLocalServer: vi.fn(),
   normalizeHostServerUrl: vi.fn(),
   resolveHostAssetUrl: (value: string) => value,
   saveHostServerUrl: vi.fn(),
@@ -40,6 +46,7 @@ const okResponse = () =>
   )
 
 beforeEach(() => {
+  resetConnectionsForTests()
   vi.mocked(configureHostServer).mockReset().mockResolvedValue(undefined)
   vi.mocked(initializeHostPlatform)
     .mockReset()
@@ -69,7 +76,9 @@ test('mounts the shared app with a reachable stored server', async () => {
 
   expect(await screen.findByText('Shared SPA')).toBeInTheDocument()
   expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8000/api/v1/health', expect.anything())
-  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:8000')
+  // `localToken: null` is the remote case; the sidecar's server-wide bearer is
+  // only passed for the managed local connection (plan 3 §7.1).
+  expect(configureHostServer).toHaveBeenCalledWith('http://127.0.0.1:8000', { localToken: null })
   expect(setHostServerAvailable).toHaveBeenLastCalledWith(true)
 })
 
