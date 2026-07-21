@@ -85,6 +85,7 @@ import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import {
   connectToServer,
   getConnections,
+  getPendingSelectionVersion,
   libraryStorageKey,
   subscribeConnections,
   takePendingLibrarySelection,
@@ -245,10 +246,15 @@ export default function App() {
   // read during render: taking it is a side effect, and the take is idempotent
   // (a second run finds nothing, and re-selecting the same library is a no-op),
   // so StrictMode's double-invoke is harmless.
+  // Depends on the queue version as well as the connection, because re-opening
+  // a folder on the *already active* connection changes no id and remounts
+  // nothing — the case where the second open of a registered library silently
+  // did nothing.
+  const pendingVersion = useSyncExternalStore(subscribeConnections, getPendingSelectionVersion)
   useEffect(() => {
     const pending = takePendingLibrarySelection(activeConnectionId)
     if (pending) changeLibrary(pending)
-  }, [activeConnectionId, changeLibrary])
+  }, [activeConnectionId, pendingVersion, changeLibrary])
 
   // A cairndex:// link may name a library other than the active one, so the
   // switch happens here while the target itself is handed to the workspace. The

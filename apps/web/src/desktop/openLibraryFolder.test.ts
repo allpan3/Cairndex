@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   getActiveConnection,
   getConnections,
+  getPendingSelectionVersion,
+  subscribeConnections,
   loadConnections,
   resetConnectionsForTests,
   setPendingLibrarySelection,
@@ -136,6 +138,36 @@ describe('openLibraryFolder', () => {
     await expect(openLibraryFolder()).rejects.toThrow('sidecar refused')
 
     expect(getActiveConnection()?.id).toBe(remoteId)
+  })
+
+  it('re-opening on the already-active connection still queues a selection', async () => {
+    // Owner-reported: opening an *already registered* library did nothing the
+    // second time. Activating a connection that is already active changes no
+    // id, so nothing remounts and an effect keyed only on the connection never
+    // re-runs. The queue version is what makes the second open observable.
+    await loadConnections()
+    await openLibraryFolder()
+    expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBe(OPENED.libraryId)
+
+    const versionBefore = getPendingSelectionVersion()
+    openHostLibraryFolder.mockResolvedValue({ ...OPENED, libraryId: 'lib-local-2' })
+
+    await openLibraryFolder()
+
+    expect(getActiveConnection()?.id).toBe(LOCAL_CONNECTION_ID)
+    expect(getPendingSelectionVersion()).toBeGreaterThan(versionBefore)
+    expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBe('lib-local-2')
+  })
+
+  it('notifies subscribers when a selection is queued', async () => {
+    await loadConnections()
+    const seen: number[] = []
+    const stop = subscribeConnections(() => seen.push(getPendingSelectionVersion()))
+
+    await openLibraryFolder()
+    stop()
+
+    expect(seen.at(-1)).toBeGreaterThan(0)
   })
 
   it('works with no remote server ever configured', async () => {

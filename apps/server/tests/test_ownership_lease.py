@@ -171,6 +171,36 @@ def test_a_future_heartbeat_reads_as_fresh() -> None:
     assert classify_at(snapshot) is LeaseState.FRESH
 
 
+@pytest.mark.parametrize(
+    "raw",
+    ["2026-07-20T12:00:00", "2026-07-20T12:00:00Z", "2026-07-20T12:00:00+00:00"],
+)
+def test_a_hand_written_timestamp_is_understood_however_it_is_spelled(raw: str) -> None:
+    """The lease is plain JSON people legitimately edit by hand.
+
+    A naive timestamp used to raise `TypeError: can't subtract offset-naive and
+    offset-aware datetimes` inside `classify`. In the heartbeat that landed in
+    the never-die guard, so the library stayed silently held instead of
+    unmounting — owner-reported while testing a conflict by hand.
+    """
+    document = json.dumps(
+        {
+            "server_uuid": THEIR_UUID,
+            "machine_name": "NAS",
+            "advertised_url": None,
+            "acquired_at": raw,
+            "heartbeat_at": raw,
+            "nonce": "n",
+        }
+    )
+    record = parse_lease(document)
+    assert record is not None
+    # Long past the TTL relative to the fixed NOW used across this module.
+    assert (
+        classify_at(LeaseSnapshot(record=record), now=NOW + timedelta(days=1)) is LeaseState.STALE
+    )
+
+
 def test_an_unreadable_lease_is_not_treated_as_free() -> None:
     """The central safety property: "cannot tell" must not become "nobody has it"."""
     assert classify_at(LeaseSnapshot(corrupt=True)) is LeaseState.UNREADABLE
