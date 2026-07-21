@@ -10,6 +10,10 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Long bundle titles wrap inside the inspector instead of scrolling on one
+  line.** The title editor grows to its wrapped content and re-fits when the
+  inspector width changes, while Enter still saves the edit.
+
 - **Bundle file order now uses direct row dragging instead of arrow buttons.**
   Drag a file card to the gap where it should play, or focus it and press
   Option+Up/Down for keyboard reordering. In the mapped desktop app,

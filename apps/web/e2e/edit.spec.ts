@@ -36,9 +36,9 @@ function bundleDetail(id: string, title: string) {
   }
 }
 
-async function mockApi(page: Page) {
+async function mockApi(page: Page, initialTitle = 'Movie 0') {
   const state = {
-    bundle: bundleDetail('b0', 'Movie 0'),
+    bundle: bundleDetail('b0', initialTitle),
     bundleB1: bundleDetail('b1', 'Movie 1'),
     tagIds: [] as string[],
   }
@@ -126,6 +126,38 @@ async function mockApi(page: Page) {
     await r.fulfill({ json: state.bundleB1 })
   })
 }
+
+test('long bundle titles wrap and grow in the inspector', async ({ page }) => {
+  const longTitle = 'New Sensations Jasmine Callipygian 02-28-2018'
+  await mockApi(page, longTitle)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const title = page.locator('.inspector textarea[aria-label="Title"]')
+  await expect(title).toHaveValue(longTitle)
+  const metrics = await title.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      clientHeight: element.clientHeight,
+      lineHeight: Number.parseFloat(style.lineHeight),
+      overflowWrap: style.overflowWrap,
+      scrollHeight: element.scrollHeight,
+      whiteSpace: style.whiteSpace,
+    }
+  })
+  expect(metrics.clientHeight).toBeGreaterThan(metrics.lineHeight * 1.8)
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1)
+  expect(metrics.overflowWrap).toBe('anywhere')
+  expect(metrics.whiteSpace).toBe('pre-wrap')
+
+  const patched = page.waitForResponse(
+    (response) => response.url().includes('/bundles/b0') && response.request().method() === 'PATCH',
+  )
+  await title.fill(`${longTitle} Extended`)
+  await title.press('Enter')
+  await patched
+  await expect(title).toHaveValue(`${longTitle} Extended`)
+})
 
 test('editing the rating persists', async ({ page }) => {
   await mockApi(page)
