@@ -63,12 +63,33 @@ file-content serving) re-checks existence at access time; if the file has
 vanished it marks the row `missing` and returns a clear error. Automatic repair
 is left to the next scan/rescan.
 
+### 5. Explicit repair of an already-linked replacement
+
+If the automatic scan match fails, the appeared path becomes its own linked row.
+Later scans update that row and therefore no longer treat it as an appeared path;
+rescanning alone cannot reconsider the move. Missing Files exposes an explicit
+relink only when all of these remain true at request time:
+
+- the old row is still missing and its old path is still absent;
+- exactly one missing row and exactly one available row share the same media
+  kind and quick fingerprint (`size:mtime_ns`);
+- re-statting the available path yields that same fingerprint.
+
+The owner action permits a changed basename because it is an explicit choice,
+not an automatic scan guess. Apply deletes the duplicate available row, updates
+the original row to the live path, and preserves the original `AssetFile.id`,
+bundle metadata, file-level metadata, relational references, and the newest
+playback progress. It never modifies either filesystem path. Zero or multiple
+matches produce no action; arbitrary-path and content-changed repair remain
+future workflows.
+
 ## Consequences
 
 - Same-volume moves/renames preserve `AssetFile.id`, the bundle, and all
   metadata; no duplicate bundle, no lost organization.
-- Cross-filesystem move *plus* edit may not be auto-repairable (identity changes
-  and content signals shift) — the row stays `missing` until a future
-  candidate/repair workflow or manual relink. Duplicate detection remains out of
-  scope.
+- A rename whose network-filesystem identity changes can be explicitly repaired
+  after the conservative automatic match misses it, provided the quick
+  fingerprint is still unique. Cross-filesystem move *plus* edit may still lack
+  a candidate because its content signals changed. Duplicate detection remains
+  out of scope.
 - New nullable identity columns are backfilled lazily by the next scan.

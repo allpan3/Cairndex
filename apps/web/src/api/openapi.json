@@ -2478,6 +2478,53 @@
         "title": "FileReorder",
         "type": "object"
       },
+      "FileRepairCandidateRead": {
+        "properties": {
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "missing_file_id": {
+            "title": "Missing File Id",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "replacement_bundle_id": {
+            "title": "Replacement Bundle Id",
+            "type": "string"
+          },
+          "replacement_file_id": {
+            "title": "Replacement File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "missing_file_id",
+          "replacement_file_id",
+          "replacement_bundle_id",
+          "relative_path",
+          "display_title"
+        ],
+        "title": "FileRepairCandidateRead",
+        "type": "object"
+      },
+      "FileRepairRequest": {
+        "properties": {
+          "replacement_file_id": {
+            "minLength": 1,
+            "title": "Replacement File Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "replacement_file_id"
+        ],
+        "title": "FileRepairRequest",
+        "type": "object"
+      },
       "FileRole": {
         "description": "Role of an asset file within its bundle (AGENTS.md \u00a74.3).",
         "enum": [
@@ -7859,6 +7906,208 @@
           }
         },
         "summary": "Update File",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair": {
+      "put": {
+        "operationId": "repair_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileRepairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Repair File",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair-candidate": {
+      "get": {
+        "operationId": "get_file_repair_candidate_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_candidate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/FileRepairCandidateRead"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get File Repair Candidate Api V1 Libraries  Library Id  Bundles  Bundle Id  Files  File Id  Repair Candidate Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get File Repair Candidate",
         "tags": [
           "bundles"
         ]

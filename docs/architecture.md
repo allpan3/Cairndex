@@ -408,6 +408,13 @@ Scanner behavior:
 - the scan path reads cheap filesystem identity and quick fingerprint only — no
   full hashing of large files.
 
+When an SMB/network rename changes both basename and inode, the conservative
+automatic match may stage the new path separately. Missing Files includes both
+confirmed and stale provisional bundles and offers a compact explicit relink
+only for a globally unique, re-statted quick-fingerprint match. The repair
+collapses the replacement metadata row into the original stable file id and
+bundle; source files are never moved, renamed, or deleted.
+
 New files discovered by scan are staged into provisional scan-suggestion bundles.
 After scanning, the scan job persists an open grouping plan. The plan is a
 snapshot: it can safely report conflicts if files vanish or are manually changed

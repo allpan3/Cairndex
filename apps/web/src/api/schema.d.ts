@@ -533,6 +533,40 @@ export interface paths {
         patch: operations["update_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__patch"];
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Repair File */
+        put: operations["repair_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair-candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get File Repair Candidate */
+        get: operations["get_file_repair_candidate_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_candidate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/thumbnail": {
         parameters: {
             query?: never;
@@ -2484,6 +2518,24 @@ export interface components {
         FileReorder: {
             /** Ordered Ids */
             ordered_ids: string[];
+        };
+        /** FileRepairCandidateRead */
+        FileRepairCandidateRead: {
+            /** Display Title */
+            display_title: string;
+            /** Missing File Id */
+            missing_file_id: string;
+            /** Relative Path */
+            relative_path: string;
+            /** Replacement Bundle Id */
+            replacement_bundle_id: string;
+            /** Replacement File Id */
+            replacement_file_id: string;
+        };
+        /** FileRepairRequest */
+        FileRepairRequest: {
+            /** Replacement File Id */
+            replacement_file_id: string;
         };
         /**
          * FileRole
@@ -4696,6 +4748,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repair_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FileRepairRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_file_repair_candidate_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__repair_candidate_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                file_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileRepairCandidateRead"] | null;
                 };
             };
             /** @description Validation Error */

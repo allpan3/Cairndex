@@ -111,9 +111,10 @@ class BundlePage:
 # A scan stages every newly discovered file as a provisional one-file bundle
 # (grouping_source=scan_suggestion). Until the user bundles or confirms it — via
 # grouping review or the manual bundling assistant — it is an "unbundled" file:
-# it belongs only in the dedicated Unbundled view and is hidden from All, Recent,
-# Uncategorized, Untagged, Missing, and every collection. Confirmed bundles and
-# legacy/manual/fast-add bundles are never unbundled.
+# it belongs in the dedicated Unbundled view. A stale provisional row also appears
+# in Missing so the owner can repair it; it remains hidden from every other normal
+# view and collection. Confirmed bundles and legacy/manual/fast-add bundles are
+# never unbundled.
 def _unbundled_predicate() -> ColumnElement[bool]:
     """SQL predicate: a scan-staged provisional bundle not yet confirmed."""
     return (AssetBundle.grouping_state == GroupingState.PROVISIONAL) & (
@@ -211,11 +212,11 @@ def apply_scope(
     search) to any ``select`` over ``AssetBundle``. Shared by the browse grid, its
     counts, and the facet-count endpoint so all three scope identically."""
     stmt = _apply_view(stmt, session, view, collection_id, include_descendants)
-    # The Unbundled view shows *only* scan-staged provisional bundles; every other
-    # view (and any collection) hides them until they are confirmed.
+    # Missing includes stale provisional rows so they have a repair surface;
+    # every other normal view hides them until they are confirmed.
     if view is SystemView.UNBUNDLED and collection_id is None:
         stmt = stmt.where(_unbundled_predicate())
-    else:
+    elif view is not SystemView.MISSING or collection_id is not None:
         stmt = stmt.where(not_(_unbundled_predicate()))
     if predicate is not None:
         stmt = stmt.where(predicate)
@@ -472,13 +473,14 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
 def view_counts(session: Session) -> dict[str, int]:
     """Counts for the sidebar system views (scoped to this library DB)."""
 
-    def _count(*where: Any, include_unbundled: bool = False) -> int:
+    def _count(
+        *where: Any, include_unbundled: bool = False, include_all_grouping_states: bool = False
+    ) -> int:
         stmt = select(func.count()).select_from(AssetBundle).where(_visible_file_exists())
-        # Every normal view excludes scan-staged provisional bundles; only the
-        # dedicated Unbundled count includes them.
-        stmt = stmt.where(
-            _unbundled_predicate() if include_unbundled else not_(_unbundled_predicate())
-        )
+        if not include_all_grouping_states:
+            stmt = stmt.where(
+                _unbundled_predicate() if include_unbundled else not_(_unbundled_predicate())
+            )
         for clause in where:
             stmt = stmt.where(clause)
         return session.scalar(stmt) or 0
@@ -490,7 +492,8 @@ def view_counts(session: Session) -> dict[str, int]:
         exists().where(
             (AssetFile.bundle_id == AssetBundle.id)
             & (AssetFile.availability == FileAvailability.MISSING)
-        )
+        ),
+        include_all_grouping_states=True,
     )
     unbundled = _count(include_unbundled=True)
     return {

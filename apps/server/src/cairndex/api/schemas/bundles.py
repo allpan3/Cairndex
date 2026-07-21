@@ -94,6 +94,18 @@ class FileReorder(BaseModel):
     ordered_ids: list[str] = Field(min_length=1)
 
 
+class FileRepairRequest(BaseModel):
+    replacement_file_id: str = Field(min_length=1)
+
+
+class FileRepairCandidateRead(BaseModel):
+    missing_file_id: str
+    replacement_file_id: str
+    replacement_bundle_id: str
+    relative_path: str
+    display_title: str
+
+
 class BundleReorder(BaseModel):
     """Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
     order to a collection's membership; null = the global All/system-view order."""
