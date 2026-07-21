@@ -113,11 +113,30 @@ pub(crate) struct LocalServer {
 }
 
 impl LocalServer {
+    /// The running sidecar, or `None` — verified live, not merely remembered.
+    ///
+    /// Reaps the slot when the child has exited. Without this a sidecar that
+    /// died (crash, OOM kill, an external `kill`) would leave its URL and token
+    /// cached forever, and `start_once` would keep handing callers a dead server
+    /// instead of starting a new one. Self-healing matters more once connection
+    /// activation depends on it: a failed activation should be able to recover
+    /// by trying again, not stay wedged for the life of the process.
+    ///
+    /// `try_wait` is a non-blocking `waitpid`, so this stays cheap enough for
+    /// the handful of callers that ask.
     pub(crate) fn info(&self) -> Option<LocalServerInfo> {
-        self.running
-            .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().map(|running| running.info.clone()))
+        let mut guard = lock_through_poison(&self.running);
+        let running = guard.as_mut()?;
+        match running.child.try_wait() {
+            // Still running.
+            Ok(None) => Some(running.info.clone()),
+            // Exited, or we cannot tell. Either way the recorded address is not
+            // something to hand out; drop it so the next start launches afresh.
+            _ => {
+                *guard = None;
+                None
+            }
+        }
     }
 }
 
@@ -769,6 +788,54 @@ mod tests {
 
         terminate(&mut child);
         let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn a_dead_sidecar_is_reaped_and_the_next_start_launches_a_fresh_one() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let workdir =
+            std::env::temp_dir().join(format!("cairndex-dead-test-{}", std::process::id()));
+        std::fs::create_dir_all(&workdir).expect("workdir");
+
+        let state = LocalServer::default();
+        let first = start_once(&state, || launch(&binary, &workdir)).expect("first start");
+        assert!(state.info().is_some());
+
+        // Kill it the way the shell never would — no stdin close, no graceful
+        // path. This is the crash/OOM case, where nothing tells us it is gone.
+        {
+            let mut guard = lock_through_poison(&state.running);
+            let running = guard.as_mut().expect("running");
+            running.child.kill().expect("kill");
+            running.child.wait().expect("wait");
+        }
+
+        // The slot must not keep serving a dead address.
+        assert!(
+            state.info().is_none(),
+            "a sidecar that exited should not still be reported as running"
+        );
+
+        let second = start_once(&state, || launch(&binary, &workdir)).expect("second start");
+        assert_ne!(
+            second.base_url, first.base_url,
+            "the replacement should be a genuinely new server, not the dead one"
+        );
+
+        let alive = reqwest::blocking::Client::new()
+            .get(format!("{}/api/v1/health", second.base_url))
+            .send()
+            .expect("the replacement should be serving");
+        assert!(alive.status().is_success());
+
+        let running = lock_through_poison(&state.running).take();
+        if let Some(mut running) = running {
+            terminate(&mut running.child);
+        }
+        let _ = std::fs::remove_dir_all(&workdir);
     }
 
     #[test]
