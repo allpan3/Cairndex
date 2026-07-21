@@ -1,7 +1,8 @@
 """Shared ffmpeg subprocess helpers for derived-media generation."""
 
-import shutil
 import subprocess
+
+from cairndex.media.tool_paths import ffmpeg_path
 
 
 # ffmpeg could not complete a requested media derivative
@@ -9,12 +10,12 @@ class FfmpegError(RuntimeError):
     """ffmpeg was unavailable, timed out, or failed."""
 
 
-# Resolve ffmpeg from PATH for media jobs
+# Resolve ffmpeg for media jobs (configured path, then PATH, then known prefixes)
 def ffmpeg_exe() -> str:
-    """Resolve ffmpeg from PATH."""
-    exe = shutil.which("ffmpeg")
+    """Resolve the ffmpeg binary. See ``media/tool_paths.py`` for the order."""
+    exe = ffmpeg_path()
     if exe is None:
-        raise FfmpegError("ffmpeg not found on PATH")
+        raise FfmpegError("ffmpeg not found")
     return exe
 
 

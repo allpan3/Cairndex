@@ -44,6 +44,49 @@ export interface HostPlatform {
   saveExport(suggestedName: string, bytes: Uint8Array): Promise<string | null>
 }
 
+/** The running local-server sidecar (plan 3 D6). */
+export interface LocalServerInfo {
+  baseUrl: string
+  /**
+   * Bearer for every request to the sidecar. Server-wide rather than
+   * library-scoped, and regenerated per start, so it is never persisted.
+   */
+  token: string
+}
+
+/** The outcome of picking a library folder. Ids only — never a path. */
+export interface OpenedLibrary {
+  /**
+   * True when the caller's *current* server already has this library, so no
+   * local server was started. Opening it locally would register a second server
+   * against the same folder, which the ownership lease then refuses — the user
+   * ends up told their library is "open on <their own machine>".
+   */
+  alreadyAvailable: boolean
+  /** Empty when `alreadyAvailable`: ids are per-registry, so ours would be wrong. */
+  libraryId: string
+  libraryUuid: string
+  displayName: string | null
+}
+
+/** One saved connection (plan 3 §7.1). */
+export interface StoredConnection {
+  id: string
+  kind: 'remote' | 'local'
+  label: string
+  /**
+   * Null for the managed local connection: the sidecar's port is ephemeral and
+   * valid only for the current process, so it is resolved at activation rather
+   * than persisted.
+   */
+  serverUrl: string | null
+}
+
+export interface StoredConnections {
+  connections: StoredConnection[]
+  activeConnectionId: string | null
+}
+
 // One resolved `cairndex://` deep link (plan 3 §7). `libraryId` is optional; when
 // absent the target opens in whatever library is already active.
 export interface DeepLinkTarget {
@@ -68,7 +111,19 @@ interface PlatformRuntime {
   os: HostOs
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   assetUrl(value: string): string
-  configureServer(serverUrl: string): Promise<void>
+  /**
+   * Binds transport and media relay to one server.
+   *
+   * `localToken` is the sidecar's server-wide bearer; the shell derives the
+   * relay's scope mode by matching the running sidecar, so no scope flag
+   * crosses this boundary.
+   */
+  configureServer(serverUrl: string, options?: { localToken?: string | null }): Promise<void>
+  startLocalServer(): Promise<LocalServerInfo>
+  localServerStatus(): Promise<LocalServerInfo | null>
+  openLibraryFolder(knownLibraryUuids: string[]): Promise<OpenedLibrary | null>
+  loadConnections(): Promise<StoredConnections | null>
+  saveConnections(value: StoredConnections): Promise<void>
   hasDeviceToken(): boolean
   hasDeviceAccess(libraryId: string): boolean
   saveDeviceToken(token: string, libraryIds: string[]): Promise<void>
@@ -131,6 +186,15 @@ const webRuntime: PlatformRuntime = {
   fetch: (input, init) => globalThis.fetch(input, init),
   assetUrl: (value) => value,
   configureServer: async () => undefined,
+  // The browser has no sidecar and no connections record; a local library is a
+  // desktop-only concept.
+  startLocalServer: async () => {
+    throw new Error('The local server is only available in the desktop app.')
+  },
+  localServerStatus: async () => null,
+  openLibraryFolder: async () => null,
+  loadConnections: async () => null,
+  saveConnections: async () => undefined,
   hasDeviceToken: () => false,
   hasDeviceAccess: () => false,
   saveDeviceToken: async () => undefined,
@@ -236,9 +300,30 @@ export function resolveHostAssetUrl(value: string): string {
 }
 
 // Binds desktop auth and media transport to one normalized Cairndex server
-export function configureHostServer(serverUrl: string): Promise<void> {
-  return runtime.configureServer(serverUrl)
+export function configureHostServer(
+  serverUrl: string,
+  options?: { localToken?: string | null },
+): Promise<void> {
+  return runtime.configureServer(serverUrl, options)
 }
+
+// Starts the bundled local server, or returns the one already running
+export const startHostLocalServer = (): Promise<LocalServerInfo> => runtime.startLocalServer()
+
+// Reports the running local server without starting one
+export const hostLocalServerStatus = (): Promise<LocalServerInfo | null> =>
+  runtime.localServerStatus()
+
+// Picks a library folder and opens it through the local server, returning ids only.
+// `knownLibraryUuids` are the portable ids the caller's current server already
+// serves, so a folder it already has is reported rather than opened twice.
+export const openHostLibraryFolder = (knownLibraryUuids: string[]): Promise<OpenedLibrary | null> =>
+  runtime.openLibraryFolder(knownLibraryUuids)
+
+export const loadHostConnections = (): Promise<StoredConnections | null> =>
+  runtime.loadConnections()
+export const saveHostConnections = (value: StoredConnections): Promise<void> =>
+  runtime.saveConnections(value)
 
 // Reports whether this shell already retains a device bearer token
 export function hasHostDeviceToken(): boolean {

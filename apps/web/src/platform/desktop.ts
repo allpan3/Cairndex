@@ -18,11 +18,13 @@ import type {
   HostPlatform,
   PlatformRuntime,
   ReverseMapResult,
+  StoredConnections,
 } from './index'
 
 const STORE_PATH = 'cairndex-settings.json'
 const SERVER_URL_KEY = 'serverUrl'
 const DEVICE_AUTH_KEY = 'deviceAuth'
+const CONNECTIONS_KEY = 'connections'
 
 // Couples a retained device token to the server that issued it
 interface DeviceAuthRecord {
@@ -35,6 +37,9 @@ let configuredServerUrl: string | null = null
 let deviceToken: string | null = null
 let deviceLibraryIds = new Set<string>()
 let mediaProxyBaseUrl: string | null = null
+// The sidecar's server-wide bearer while the local connection is active.
+// Never persisted: it is regenerated on every sidecar start.
+let localToken: string | null = null
 
 // Maps the browser-reported desktop OS onto the shared label vocabulary
 function detectHostOs(): HostOs {
@@ -75,7 +80,10 @@ async function configureMediaProxy(): Promise<void> {
   }
   mediaProxyBaseUrl = await invoke<string>('configure_media_proxy', {
     serverUrl: configuredServerUrl,
-    token: deviceToken,
+    // The sidecar's token when the local connection is active, otherwise the
+    // paired device token. The shell decides which scoping applies by matching
+    // the running sidecar, so this layer never asserts it.
+    token: localToken ?? deviceToken,
     libraryIds: [...deviceLibraryIds],
   })
 }
@@ -116,20 +124,28 @@ function serverLibraryId(value: string): string | null {
 // Attaches the retained bearer only to explicitly approved library requests
 async function desktopFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const value = input instanceof Request ? input.url : String(input)
-  const libraryId = serverLibraryId(value)
-  if (!deviceToken || !libraryId || !deviceLibraryIds.has(libraryId))
-    return globalThis.fetch(input, init)
+  // The sidecar's token authorizes the whole server, so it goes on every
+  // request to it — including the global routes a scoped device token must
+  // stay off. A device token keeps its per-library gate (ADR-0015 / D2).
+  const bearer =
+    localToken && isServerUrl(value)
+      ? localToken
+      : (() => {
+          const libraryId = serverLibraryId(value)
+          return deviceToken && libraryId && deviceLibraryIds.has(libraryId) ? deviceToken : null
+        })()
+  if (!bearer) return globalThis.fetch(input, init)
   const headers = new Headers(input instanceof Request ? input.headers : undefined)
   new Headers(init?.headers).forEach((headerValue, name) => headers.set(name, headerValue))
-  headers.set('Authorization', `Bearer ${deviceToken}`)
+  headers.set('Authorization', `Bearer ${bearer}`)
   return globalThis.fetch(input, { ...init, headers })
 }
 
 // Converts a server media URL to the fixed-target loopback relay
 function desktopAssetUrl(value: string): string {
   const libraryId = serverLibraryId(value)
-  if (!configuredServerUrl || !mediaProxyBaseUrl || !libraryId || !deviceLibraryIds.has(libraryId))
-    return value
+  const relayable = localToken !== null || (libraryId !== null && deviceLibraryIds.has(libraryId))
+  if (!configuredServerUrl || !mediaProxyBaseUrl || !libraryId || !relayable) return value
   const server = new URL(configuredServerUrl)
   const target = new URL(value, configuredServerUrl)
   const basePath = server.pathname.replace(/\/+$/, '')
@@ -172,12 +188,49 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     os: detectHostOs(),
     fetch: desktopFetch,
     assetUrl: desktopAssetUrl,
-    configureServer: async (serverUrl) => {
+    configureServer: async (serverUrl, options) => {
       configuredServerUrl = serverUrl
-      const auth = await loadDeviceAuth(serverUrl)
+      localToken = options?.localToken ?? null
+      // A local connection has no paired device grant, and carrying a stale one
+      // across a switch would attach the wrong bearer to the wrong server.
+      const auth = localToken ? null : await loadDeviceAuth(serverUrl)
       deviceToken = auth?.token ?? null
       deviceLibraryIds = new Set(auth?.libraryIds ?? [])
       await configureMediaProxy()
+    },
+    startLocalServer: () =>
+      invoke<{ base_url: string; token: string }>('start_local_server').then((info) => ({
+        baseUrl: info.base_url,
+        token: info.token,
+      })),
+    localServerStatus: () =>
+      invoke<{ base_url: string; token: string } | null>('local_server_status').then((info) =>
+        info ? { baseUrl: info.base_url, token: info.token } : null,
+      ),
+    openLibraryFolder: (knownLibraryUuids) =>
+      invoke<{
+        already_available: boolean
+        library_id: string
+        library_uuid: string
+        display_name: string | null
+      } | null>('open_library_folder', { knownLibraryUuids }).then((opened) =>
+        opened
+          ? {
+              alreadyAvailable: opened.already_available,
+              libraryId: opened.library_id,
+              libraryUuid: opened.library_uuid,
+              displayName: opened.display_name,
+            }
+          : null,
+      ),
+    loadConnections: async () => {
+      const store = await settingsStore()
+      return (await store.get<StoredConnections>(CONNECTIONS_KEY)) ?? null
+    },
+    saveConnections: async (value) => {
+      const store = await settingsStore()
+      await store.set(CONNECTIONS_KEY, value)
+      await store.save()
     },
     hasDeviceToken: () => deviceToken !== null,
     hasDeviceAccess: (libraryId) => deviceToken !== null && deviceLibraryIds.has(libraryId),

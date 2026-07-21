@@ -9,6 +9,11 @@ const desktopMenu = vi.hoisted(() => ({
   handler: null as ((action: string) => void) | null,
 }))
 
+const openFolder = vi.hoisted(() => ({ run: vi.fn() }))
+vi.mock('./desktop/openLibraryFolder', () => ({
+  openLibraryFolder: () => openFolder.run(),
+}))
+
 vi.mock('./desktop/useDesktopMenu', () => ({
   useDesktopMenu: (handler: (action: string) => void) => {
     desktopMenu.handler ??= handler
@@ -196,6 +201,7 @@ function mockDesktopPlatform({ paired = true, access = false } = {}) {
 
 afterEach(() => {
   desktopMenu.handler = null
+  openFolder.run.mockReset()
   vi.restoreAllMocks()
 })
 
@@ -323,4 +329,38 @@ test('does not fail update when the background storyboard job fails', async () =
     timeout: 2500,
   })
   expect(screen.queryByText(/Background job failed/i)).not.toBeInTheDocument()
+})
+
+test('the Open Library Folder menu item works in the running app, not just at setup', async () => {
+  // Regression: this was handled only in DesktopBootstrap, whose menu listener
+  // tears down once the workspace mounts (`if (ready) return`). The item stayed
+  // enabled and did nothing in the state a user actually spends their time in.
+  // The unit tests missed it because they exercised `openLibraryFolder()`
+  // directly and never the wiring that reaches it.
+  openFolder.run.mockResolvedValue({ opened: null })
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  act(() => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  await waitFor(() => expect(openFolder.run).toHaveBeenCalledTimes(1))
+})
+
+test('a failed open reports the reason instead of failing silently', async () => {
+  openFolder.run.mockRejectedValue({
+    code: 'open_failed',
+    message: "'/x' is not a Cairndex library (no marker found)",
+  })
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  act(() => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('not a Cairndex library')
 })

@@ -1511,6 +1511,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/ownership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ownership
+         * @description Who owns this library, and can this server serve it?
+         */
+        get: operations["get_ownership_api_v1_libraries__library_id__ownership_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/ownership/takeover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take Over
+         * @description Confirm that the recorded holder is gone and serve this library here.
+         *
+         *     Accepted, not completed: before taking a lease this server watches it for
+         *     longer than a heartbeat period, so a holder that is actually alive gets the
+         *     chance to prove it. Poll ``GET …/ownership`` until ``takeover.running`` is
+         *     false.
+         *
+         *     Refuses outright while a *live* lease is in place. The confirmation means "I
+         *     know that machine is gone", which is not a claim anyone can truthfully make
+         *     about a server that heartbeat seconds ago — so this is a 422 rather than a
+         *     forced takeover.
+         */
+        post: operations["take_over_api_v1_libraries__library_id__ownership_takeover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/smart-collections": {
         parameters: {
             query?: never;
@@ -2611,6 +2661,23 @@ export interface components {
          */
         JobType: "scan" | "probe" | "thumbnail" | "storyboard";
         /**
+         * LeaseHolderRead
+         * @description The server currently recorded in a library's lease.
+         *
+         *     Never carries a filesystem path — only what a user needs to recognize the
+         *     machine and, when ``advertised_url`` is set, reach it.
+         */
+        LeaseHolderRead: {
+            /** Advertised Url */
+            advertised_url?: string | null;
+            /** Heartbeat At */
+            heartbeat_at?: string | null;
+            /** Machine Name */
+            machine_name?: string | null;
+            /** Server Uuid */
+            server_uuid?: string | null;
+        };
+        /**
          * LibraryCreate
          * @description Create a brand-new library package under ``root_path``.
          */
@@ -2624,6 +2691,28 @@ export interface components {
             display_name: string;
             /** Root Path */
             root_path: string;
+        };
+        /**
+         * LibraryOwnershipRead
+         * @description How this server currently relates to a library's ownership lease.
+         *
+         *     Deliberately readable while the library is *not* mountable — it is the
+         *     endpoint a client calls after a mount was refused, to find out who holds the
+         *     library and whether a takeover is on the table.
+         */
+        LibraryOwnershipRead: {
+            /** Can Take Over */
+            can_take_over: boolean;
+            holder?: components["schemas"]["LeaseHolderRead"] | null;
+            /** Library Id */
+            library_id: string;
+            /** Mountable */
+            mountable: boolean;
+            /** Redirect Url */
+            redirect_url?: string | null;
+            /** State */
+            state: string;
+            takeover?: components["schemas"]["TakeoverRead"] | null;
         };
         /** LibraryRead */
         LibraryRead: {
@@ -3255,6 +3344,22 @@ export interface components {
             name?: string | null;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /**
+         * TakeoverRead
+         * @description State of a confirmed takeover started on this server.
+         */
+        TakeoverRead: {
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Observation Seconds */
+            observation_seconds?: number | null;
+            /** Running */
+            running: boolean;
+            /** Started At */
+            started_at?: string | null;
         };
         /** TargetSuggestionRead */
         TargetSuggestionRead: {
@@ -6633,6 +6738,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnbundledFilesPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ownership_api_v1_libraries__library_id__ownership_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryOwnershipRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    take_over_api_v1_libraries__library_id__ownership_takeover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryOwnershipRead"];
                 };
             };
             /** @description Validation Error */

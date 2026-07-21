@@ -1,40 +1,36 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { isDesktopHost } from './platform'
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { staleTime: 30_000, refetchOnWindowFocus: false },
-  },
-})
+import { QueryScope } from './QueryScope'
 
 const root = createRoot(document.getElementById('root')!)
 
-// Mounts one shared query/app tree with an optional desktop-only gate
+// Mounts the app tree. The query cache is scoped by `QueryScope`: the browser
+// has one server and so one scope forever, while the desktop shell remounts it
+// per connection (plan 3 §7.1) — which is why the provider lives below this
+// point rather than here.
 function renderApp(content: ReactNode): void {
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>
-    </StrictMode>,
-  )
+  root.render(<StrictMode>{content}</StrictMode>)
 }
 
 // Replaces a blank webview with an actionable shell-load failure
 function renderDesktopLoadError(error: unknown): void {
   console.error('Desktop shell failed to load', error)
   renderApp(
-    <main className="app-loading" role="alert">
-      The desktop shell could not load. Quit and reopen Cairndex.
-    </main>,
+    <QueryScope>
+      <main className="app-loading" role="alert">
+        The desktop shell could not load. Quit and reopen Cairndex.
+      </main>
+    </QueryScope>,
   )
 }
 
 if (isDesktopHost()) {
   void import('./desktop/DesktopBootstrap')
     .then(({ DesktopBootstrap }) => {
+      // DesktopBootstrap owns the scope key: it knows the active connection.
       renderApp(
         <DesktopBootstrap>
           <App />
@@ -43,5 +39,9 @@ if (isDesktopHost()) {
     })
     .catch(renderDesktopLoadError)
 } else {
-  renderApp(<App />)
+  renderApp(
+    <QueryScope>
+      <App />
+    </QueryScope>,
+  )
 }

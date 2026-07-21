@@ -87,6 +87,45 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 
+**Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
+binaries explicitly. Unset, they are resolved from `PATH` and then from the
+conventional install prefixes (`/opt/homebrew/bin`, `/usr/local/bin`,
+`/opt/local/bin`, `/usr/bin`, `/bin`). The fallback exists because a macOS app
+launched from Finder inherits launchd's minimal `PATH`, which has no Homebrew
+prefix — without it a desktop-spawned server reports "ffmpeg not found" on a
+machine that plainly has ffmpeg. A shell-launched server or container behaves
+exactly as before.
+
+**Desktop sidecar** (ADR-0018 §5): `CAIRNDEX_LOCAL_TOKEN` puts the server in
+*sidecar mode* — every `/api/v1` request must present it as a bearer token
+(`/api/v1/health` stays open so the shell can wait for readiness). This is for a
+loopback server the desktop app spawns and is set by the shell; **do not set it
+on a NAS or container deployment**, which uses the ADR-0010 passphrase and
+ADR-0015 device pairing instead. The token authenticates the shell, not the
+owner: a library with a passphrase stays locked until it is actually unlocked,
+unlike a paired device token, because the local token is minted with no approval
+ceremony.
+
+**Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
+short hostname) is the human-readable name another machine shows when it asks
+whether to take a library over, so it is worth setting to something recognizable
+on a NAS. `CAIRNDEX_ADVERTISED_URL` (unset by default) is the URL clients can
+reach this server at; when set to a **non-loopback** address, another machine
+that finds this server holding a library can offer "connect there instead" rather
+than only naming a host. Leave it unset for a laptop or a desktop sidecar — a
+loopback URL means nothing to a different machine and is never offered as a
+redirect. `CAIRNDEX_LEASE_HEARTBEAT_INTERVAL` (default `60`) and
+`CAIRNDEX_LEASE_TTL` (default `300`, 5× the interval so a couple of missed beats
+never look like a dead server) tune the lease timing; the defaults are fine
+unless a very slow mount proves otherwise. `CAIRNDEX_LEASE_OBSERVATION_MARGIN`
+(default `20`) is the extra time a confirmed takeover watches a lease *on top of*
+one full heartbeat interval — so the wait is ~80 s by default. The full interval
+is not configurable and should not be: a takeover starts at an arbitrary point in
+the holder's cycle, so only after a whole interval is a live holder guaranteed to
+have written. Raise the margin for a cloud-synced library on a slow link, where
+the holder's write has to propagate before this machine can see it. `CAIRNDEX_LEASE_HEARTBEAT_ENABLED`
+(default `true`) exists for tests.
+
 Advanced HLS knobs (rarely changed): `CAIRNDEX_TRANSCODE_SEGMENT_WAIT`
 (default `20`, seconds to wait for a segment the encoder is producing before
 restarting ffmpeg), `CAIRNDEX_TRANSCODE_AHEAD_WINDOW` (default `5`, segments a
@@ -107,6 +146,80 @@ Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
 `CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
 root mounted at `/storage/media`).
 
+### One server per library
+
+A library may be served by exactly one Cairndex server at a time (ADR-0018). Each
+server writes an ownership lease inside the library at
+`.cairndex/locks/active-owner.json` and refreshes it every minute; a second server
+pointed at the same folder — over SMB, over NFS, or through a cloud-synced copy —
+refuses to open it and names the machine that holds it instead.
+
+What this means operationally:
+
+- **A clean shutdown releases every lease.** Stopping the container, quitting a
+  desktop sidecar, or unregistering a library all mark it released, so the next
+  server to open it acquires silently. This is the everyday path and it never
+  prompts.
+- **A crash leaves the lease behind.** It ages out after
+  `CAIRNDEX_LEASE_TTL` and the next server offers a takeover — but only with
+  explicit confirmation, showing the holding machine and its last heartbeat.
+  There is no automatic takeover after any timeout, deliberately: the case that
+  looks identical to a crash is a machine whose sync is merely paused.
+- **Before taking a stale lease, the server watches it** for longer than a
+  heartbeat period. A holder that is actually alive touches the file during that
+  window and keeps the library, even though the user already confirmed.
+- **Set `CAIRNDEX_ADVERTISED_URL` on a NAS server.** Without it, another machine
+  can only say "this library is served by *hostname*"; with it, it can offer to
+  connect to the right server instead.
+
+To inspect who holds a library, read the lease directly — it is plain JSON and
+safe to `cat`:
+
+```bash
+cat /storage/media/.cairndex/locks/active-owner.json
+```
+
+Or ask a server: `GET /api/v1/libraries/{library_id}/ownership` answers even when
+the library will not mount, which is exactly when you need it.
+
+**Cloud-synced libraries** (Dropbox, iCloud Drive, Syncthing, OneDrive) are
+supported with **one-active-machine** semantics: use the library on one machine
+at a time and quit cleanly before opening it elsewhere. If both sides ever write
+while the sync is partitioned, the sync engine leaves a conflict copy next to the
+lease; the server logs that loudly and never resolves or deletes it, because that
+artifact is the only evidence the library may have diverged. No folder-based lease
+can prevent a partitioned dual write — what it guarantees is bounded detection and
+no silent data loss (ADR-0018 §7).
+
+### Keeping a synced library's files consistent
+
+A SQLite database in WAL mode is up to three files — `library.db`, `-wal`, and
+`-shm` — and a sync engine uploads whatever it happens to find. Two mechanisms
+keep what it finds coherent (ADR-0018 §6):
+
+- **Idle checkpoint.** A library untouched for `CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER`
+  seconds gets `wal_checkpoint(TRUNCATE)`, folding the WAL back into
+  `library.db` and truncating it to zero. SQLite's own automatic checkpoint only
+  fires around 1000 pages, which a browsing session may not reach for a long
+  time. At rest you should therefore see a complete `library.db` and an empty
+  `-wal`; after a clean shutdown, `library.db` alone.
+- **Periodic snapshot.** Every `CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` seconds
+  (default 24 h; `0` disables) a consistent copy is written to
+  `.cairndex/library.db.bak` through SQLite's online backup API — which captures
+  a transactionally consistent view including anything still in the WAL, unlike a
+  file copy. It is written to a temp name and renamed into place, so the snapshot
+  itself is never observed half-written. This is the heal path if a machine's
+  last sync ever did ship a torn state and that machine never syncs again.
+
+Both only ever run against libraries this server currently holds the lease for.
+Tuning knobs: `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED` (default `true`),
+`CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL` (default `60`),
+`CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER` (default `120`), and
+`CAIRNDEX_SQLITE_SNAPSHOT_INTERVAL` (default `86400`).
+
+The snapshot is a convenience, **not a backup** — it lives inside the library it
+copies, so it is lost with the folder. Keep the real backups below.
+
 ### Backups
 
 ADR-0008 split persistent state across multiple SQLite DBs:
@@ -116,7 +229,10 @@ ADR-0008 split persistent state across multiple SQLite DBs:
   `/storage/media/.cairndex/library.db`.
 
 Back up the registry plus every library DB you care about. Generated cache files
-under `.cairndex/cache/` are reproducible and can usually be regenerated.
+under `.cairndex/cache/` are reproducible and can usually be regenerated, and
+`.cairndex/library.db.bak` is the in-library sync-heal snapshot described above —
+it is not a substitute for an off-box backup, since it travels with (and dies
+with) the library folder.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
 online backup API and integrity-checks it:

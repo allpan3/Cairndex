@@ -1,5 +1,700 @@
 # Project status
 
+## Completed: Plan 3 D6 — local-server sidecar
+
+Branch `feat/library-ownership-lease`. Unpushed, no PR (owner-triggered).
+**Owner acceptance pass passed 2026-07-21**, followed by a whole-milestone
+review round (below).
+
+### Whole-milestone review round (2026-07-21) — one P1, two P2s, all fixed
+
+A review pass over the full 28-commit milestone, weighted toward seams no
+single-commit review saw. Every finding was confirmed by running code before
+fixing (a failing test, a filesystem probe), and every fix is pinned by
+mutation.
+
+1. **P1 — activation never moved the JSON API base URL.** `setApiBaseUrl` was
+   called in exactly one place: inside `verifyServer`, as a probe side effect.
+   So a local activation left every JSON request pointed at the previous remote
+   server (or at nothing on first run) while the UI said "This Computer", and a
+   *failed* activation left them pointed at the dead server just probed.
+   Confirmed with a test against the real `verifyServer` + `api/client` before
+   fixing: three scenarios, three failures. Fixed by making the base an
+   explicit activation **commit** step for both kinds, making `verifyServer` a
+   pure probe (it asks the candidate URL directly), and teaching `restore` to
+   re-point a *local* previous connection (the old `!previous?.serverUrl` guard
+   skipped it — the one compensation path could not compensate for local).
+   `connections.apiBase.test.ts` pins all five outcomes; deleting the commit
+   step fails three of them.
+
+   Why every earlier gate missed it: the connections suite mocks `verifyServer`
+   wholesale and the app suites mock the platform fetch, so activation
+   *ordering* was proven while nothing observed where a request would land —
+   the milestone's model-not-exercise failure mode, seventh instance. The owner
+   acceptance pass missed it because its scenarios ran with the main server
+   also serving the test folder, which masks the wrong base.
+
+2. **P2 — a heartbeat *read* blip surrendered the lease while a *write* blip
+   was tolerated.** `read_lease` folded `OSError` into `corrupt`, which the
+   watchdog treats as "someone else is writing this file" — so one transient
+   NFS/SMB error during the 60 s re-read unmounted the library, cancelled its
+   jobs mid-scan, and (while the blip lasted) showed a takeover prompt for the
+   user's own healthy library. Confirmed with a chmod probe: read blip → lost,
+   write blip → held. `LeaseSnapshot` now distinguishes `io_error` from
+   parse-corruption; the heartbeat rides out an I/O error exactly like a failed
+   write (stay held, skip the beat, **no blind rewrite** — writing over content
+   we could not read could clobber a lease that moved on), and still surrenders
+   on real corruption. Acquisition and `describe` still classify `io_error` as
+   UNREADABLE, so "we could not find out" never becomes "nobody holds it".
+
+3. **P2 — the relay's scope-flag derivation had zero test coverage.**
+   `targets_running_sidecar` is the only guard keeping `server_scoped_token`
+   derived rather than caller-supplied; it was referenced by no test, so any
+   weakening (URL-only match, always-true) would have survived the entire suite
+   and reopened the D2 hole. Five tests now drive the real function against a
+   real `LocalServer` with the `info()` liveness check in play (a live stand-in
+   child), covering the match, the two dangerous directions (device token at
+   the sidecar's URL; sidecar token at a remote URL), URL normalization, no
+   sidecar, and a dead sidecar. Dropping the token comparison fails exactly the
+   device-token test.
+
+Mutations run and killed this round: the activation commit step (3 tests), the
+heartbeat io-error branch (1 test), the derivation's token match (1 test).
+
+One pre-existing red gate fixed in passing: `npm run lint` failed at HEAD with
+four react-compiler errors in `App.tsx` — the ⌘O menu handler read `libraries`
+and `changeLibrary` before their declarations. Runtime-correct (the ref-based
+`useDesktopMenu` delivers the latest render's closure), so the fix is a
+mechanical reorder of the hook call below the declarations; behavior unchanged,
+288 existing web tests unaffected. Worth noting the acceptance receipt claimed
+this gate green, so it regressed (or was last run) before the final App.tsx
+edits landed.
+
+Gates after the fixes: backend ruff / format / strict mypy / **566 pytest**
+(+2); web Prettier / ESLint / tsc / **289 Vitest** (+5) / Vite build; desktop
+fmt / Clippy `-D warnings` / **71 tests** (+5), run with `CAIRNDEX_SIDECAR_BIN`
+pointed at the real packaged bundle.
+
+P3s from the same review (owner-directed disposition, follow-up commit):
+
+- **Fixed — relaunch on the local connection.** `DesktopBootstrap` read the
+  local entry's null URL as "unconfigured" and showed first-run setup on every
+  launch to a local-only user. It now activates the entry (starting the
+  sidecar) and falls back to setup only on failure, showing the shell's own
+  reason. The bootstrap's redundant post-activation `verifyServer` probes were
+  removed at the same time — activation verifies before committing. Pinned by
+  two tests; reverting the null-URL guard fails both.
+- **Fixed — bounded sidecar shutdown.** uvicorn's `timeout_graceful_shutdown`
+  defaults to unbounded, so a connection held open at quit could eat the
+  shell's 15 s `SHUTDOWN_GRACE` and reach the kill fallback — the path that
+  strands leases. Now 10 s, inside the shell's budget; the two constants
+  cross-reference each other. Verified by rebuilding the bundle and re-running
+  the packaging smoke test plus the desktop lifecycle tests against it.
+- **Accepted, not fixed — `release()`'s read-check→write window.** A racing
+  acquisition between release's read and its write can be briefly clobbered;
+  self-healing within one heartbeat, inside ADR-0018 §4's accepted exposure
+  bound. Recorded here rather than coded around.
+
+Gates after the P3 fixes: backend 566; web ESLint/Prettier/tsc/**291 Vitest**
+(+2)/build; desktop fmt/Clippy/**71** against the rebuilt bundle; packaging
+smoke test green.
+
+### The owner acceptance pass (2026-07-21) — four defects, none visible to tests
+
+This is the receipt the section below called "the remaining acceptance step".
+The owner drove the packaged app and reported four failures in a row. Every one
+of them passed the full suite beforehand, which is the finding worth keeping.
+
+1. **⌘O did nothing.** The menu action was handled only in `DesktopBootstrap`,
+   whose listener returns early once the app is `ready` — so the shortcut was
+   dead in exactly the state a user is always in. 268 tests passed before and
+   after.
+2. **Re-opening a registered library did not switch to it.** The pending
+   selection was consumed only on remount; it now notifies with a version bump.
+3. **A naive lease timestamp was ignored.** `datetime.fromisoformat` on a
+   timestamp with no offset returns a naive value, and comparing it to an aware
+   `now` raises `TypeError` — which the heartbeat's never-die guard swallowed,
+   leaving the library silently held. Missing offsets are now read as UTC.
+4. **"Connect to <holder>" stranded the app** at "Cairndex did not respond at
+   this address" — activation never called `verifyServer`. Reachability now runs
+   before the commit, and a failure restores the previous connection.
+
+Then a fifth report that was **not** a bug: ⌘O on a folder the current server
+already served. Reproduced with two real servers on one folder — main mounted it
+and took the lease, the sidecar registered the same folder and got `409
+library_lease_held`. The lease worked exactly as designed; ⌘O was simply the
+wrong action, and because both servers were on the owner's Mac the refusal named
+their own machine. Opening a folder the active server already serves now selects
+that library in place, keyed by the portable `library_uuid` (registry ids differ
+per server), with no sidecar started. A successful open also now names the
+library **and** the connection, because "opened on a server you are not looking
+at" and "nothing happened" were indistinguishable.
+
+**The pattern across all five: tests that modelled the code instead of exercising
+it.** The worst case was the test harness itself — the mocked `useDesktopMenu`
+used `??=`, freezing the *first* render's closure, so the handler under test saw
+an empty library list while the real ref-based hook sees the current one. Four
+increasingly "faithful" integration tests passed against a program that was not
+the one shipping. Counting the earlier `beforeBuildCommand` guard and the smoke
+test that ran the sidecar without `--watch-parent`, that is at least six
+instances in this milestone. The harness now mirrors the hook.
+
+Final gates: web ESLint/Prettier/tsc, **284 Vitest**, Vite build; desktop
+fmt/Clippy/**66**; `tauri build` produces a launching `Cairndex.app`.
+
+### Next
+Plan 3 **D7 — first public release**. The only true blocker is pinning a static
+ffmpeg (ADR-0019 §3); everything else there is pipeline and documentation.
+
+Two gaps carried forward, neither D6-specific:
+- **A lease redirect lands on the target server's first library**, not the one
+  asked for — library ids are per-registry, so the fix is carrying
+  `library_uuid` on the ownership response (plan 3 §7.1).
+- **`localStorage` is undefined in this jsdom setup**, so `usePersistentState` is
+  inert under test and *every* persisted UI preference is unverified. Pre-existing
+  and much wider than D6; worth its own slice.
+
+---
+
+## Historical detail: Plan 3 D6 — local-server sidecar
+
+### Landed: D6.4/D6.5 web layer (three commits)
+
+Built to the reviewed sketch in plan 3 §7.1, in the three slices it specified.
+
+1. **Connections store + activation.** N connections, one active; a pre-D6
+   `serverUrl` migrates into the first remote connection. Activation is
+   all-or-nothing (fallible steps first, commit last, and a failure re-points the
+   media relay at the previous server — the only step with an effect outside
+   module state) and serialized (same id joins, different id refused rather than
+   queued). `QueryScope` scopes the cache per connection by **remounting**:
+   `clear()` alone is insufficient because a query lives in the cache rather than
+   the observing component, so an in-flight fetch resolves after the clear and
+   repopulates that entry with the old server's answer under an id the new server
+   also uses.
+2. **"Open Library Folder…"** on ⌘O, ungated so it works from the first-run
+   screen with no remote ever configured. Cancel is free: no sidecar start, no
+   switch, no local entry. The library to show is handed across the switch
+   through an explicit consume-once slot rather than storage — it is a handoff
+   across a remount, not persisted state.
+3. **Ownership UX** at the mount gate. A live holder is named and redirected to,
+   never offered a takeover; stale/unreadable offers a confirmed takeover;
+   a running takeover shows indeterminate progress and admits a live holder can
+   still win.
+
+Two things found while building, both worth keeping:
+
+- **`localStorage` is undefined in this jsdom setup**, so `usePersistentState`
+  is silently inert under test. That is pre-existing and wider than D6 — anything
+  relying on persisted UI state is currently unverified.
+- **The ownership gate must fail open.** It reads `mountable === false`, not
+  `!mountable`: the server's mount gate is the enforcement and this UI is only
+  the explanation, so an unparsed response must not hide a working library.
+  Caught when unmocked App tests started failing.
+
+Verified: web ESLint, Prettier, tsc, **268 Vitest** (was 229 at D6 start), Vite
+build, Playwright browser partition **74**; desktop fmt/Clippy/**66**. Twelve
+mutations applied across the three commits, each failing a test.
+
+### The packaged run (2026-07-20)
+
+Built the app with the sidecar staged and exercised it. Two real defects found,
+both fixed — which is the point of doing this rather than trusting the mocks.
+
+**1. A fatal abort in the sidecar, from a real crash report.**
+`~/Library/Logs/DiagnosticReports/cairndex-sidecar-*.ips` showed `SIGABRT`,
+`abort() called`, with the stack `_enter_buffered_busy → _Py_FatalErrorFormat →
+abort`. That is CPython's *"could not acquire lock for `<_io.BufferedReader
+name='<stdin>'>` at interpreter shutdown, possibly due to daemon threads"*, and
+the cause was mine: `watch_parent` blocked a daemon thread inside
+`sys.stdin.buffer.read()`, holding the BufferedReader's lock, so an interpreter
+finalization from any *other* cause could not close stdin.
+
+Reproduced deterministically as `--watch-parent` + SIGINT. The harm was not
+cosmetic: **an abort skips the lifespan shutdown, so the ownership lease is never
+released** — leaving exactly the stale lease and takeover prompt the whole design
+exists to prevent. Fixed by reading the raw fd (`os.read`), which touches no
+Python buffer object and takes no such lock; verified that the lease is now
+released on SIGINT, where before it was not.
+
+The smoke test could not have caught it: it ran the sidecar **without**
+`--watch-parent` (unlike the shell) and never checked the exit code, so an
+aborting process still counted as "stopped". It now runs the binary the way the
+shell does and fails on `SIGABRT` or a logged fatal error — verified by mutation.
+
+**2. The `beforeBuildCommand` guard was wired to the wrong path.** It ran
+`node ../check-sidecar-staged.mjs`, but the command's working directory is
+`apps/desktop`, not `src-tauri` — so it pointed outside the repo and failed
+*every* build, including valid ones. My earlier "verification" ran the script
+directly rather than through a build, which is the same mistake as testing a
+component instead of the integration. Fixed and confirmed both ways: a real build
+passes with the bundle staged and fails with the documented message without it.
+
+**Client↔server contract verified against the packaged sidecar.** The web unit
+tests mock `fetch`, so a wrong URL or renamed field would pass there and fail
+only in a real app. Every URL and field the SPA depends on was driven against the
+real binary: `GET …/ownership` returns exactly the declared field set,
+`mountable` is a real bool, a live holder reports `fresh` / `can_take_over:
+false` / a redirect URL, a loopback holder's URL is suppressed, a stale lease
+reports `can_take_over: true`, content routes 409 with `library_lease_held` and
+`library_lease_takeover_required`, `POST …/takeover` returns 202 with
+`takeover.running` already true, and taking over a live lease is refused with
+422. All passed.
+
+*(The two paragraphs below were written on 2026-07-20 and are now answered by the
+owner acceptance pass at the top of this file. Kept because what they predicted —
+that the untested half was where the defects would be — turned out to be exactly
+right, four times over.)*
+
+**Still not verified: the UI itself.** Driving the menu bar and the native folder
+picker needs assistive access this environment does not have. Note also that
+`open -n` on the build-directory app was intercepted by the single-instance
+plugin and focused the owner's already-running `/Applications` copy instead — the
+same multi-registrant hazard D5c documented — so no second instance was launched.
+The remaining acceptance step is a human: open a folder from the menu, watch the
+sidecar start, hit a lease conflict, run a takeover.
+
+**Not yet run end to end.** The Rust talks to a real sidecar in its tests and the
+web layer is tested against mocks, but the two halves have never met in a running
+packaged app. That owner pass is the remaining acceptance step for D6, and it
+wants the ffmpeg manifest pinned first (ADR-0019 §3) — without it a packaged
+sidecar falls back to a system ffmpeg, which works on this machine and not on a
+user's.
+
+
+
+Same branch `feat/library-ownership-lease`. Started 2026-07-20 once both
+server-side prerequisites (the lease and §6 hygiene) were in place.
+
+**Owner decisions, 2026-07-20 — see [ADR-0019](adr/0019-open-source-distribution-model.md)
+(proposed).** ADR-0018 §5 deliberately left the sidecar's packaging open. It is
+settled as **PyInstaller one-dir**, with **bundled static ffmpeg/ffprobe**.
+
+**A first recommendation here was wrong and is corrected.** A staged uv runtime
+was recommended over PyInstaller partly on the reasoning that the owner would be
+the only person to hit a packaging bug. The owner then said Cairndex is going
+open source with **prebuilt binaries published through GitHub Releases**, which
+voids that premise: strangers with no toolchain will run these artifacts, so
+PyInstaller's smaller, conventional, hermetic output is worth its cost. The
+staged-runtime approach was verified working before being set aside (below) and
+is recorded in ADR-0019 §2 as the fallback, since the sidecar's contract with the
+shell is identical either way.
+
+That correction reaches further than packaging. Three recorded decisions were
+justified by "single-owner, built from source, not distributed" and are reopened
+in ADR-0019 §4: **Developer ID signing** (the D5c amendment's reasoning is void —
+an unsigned DMG makes every downloader click through Gatekeeper), **the
+updater** (deferred for a private repo with no releases), and **ffmpeg
+licensing** (a static build with libx264 is GPL; Cairndex invokes it via
+subprocess, which is the aggregation case, but distributing the binary carries
+source-offer obligations). Multi-arch release CI is a fourth. None block D6; all
+block the first public release.
+
+### Landed: server groundwork (D6.1)
+
+- **`CAIRNDEX_LOCAL_TOKEN` sidecar mode.** Every API request must carry the
+  loopback owner token; `/api/v1/health` stays open so the shell can wait for
+  readiness before it has any reason to trust the process it just spawned. A
+  loopback port is reachable by any local process, so this is the sidecar's
+  access gate. It replaces the ADR-0015 pairing ceremony, which has nobody to
+  approve it here.
+- **The local token does not satisfy a library passphrase**, unlike a paired
+  device token. Pairing is approved from an already-unlocked owner session, so a
+  device token means somebody proved access; the local token is minted with no
+  ceremony, and treating it as proof would make a locked library openable by
+  whatever can read the token. Pinned by a test and by mutation.
+- **ffmpeg/ffprobe resolution** moved to `media/tool_paths.py`: explicit setting,
+  then `PATH`, then conventional install prefixes. The last step was added after
+  confirming the actual failure: ffmpeg lives at `/opt/homebrew/bin` on this
+  machine, and a Finder-launched app inherits launchd's `PATH`
+  (`/usr/bin:/bin:/usr/sbin:/sbin`), so a spawned sidecar would report "ffmpeg
+  not found" on a machine that plainly has it.
+- Backend gate green (**559 passed**, +22). No OpenAPI change.
+
+### Measured while choosing (pre-work for D6.2)
+
+The staged-runtime option was tested rather than assumed, which is why ADR-0019
+can record it as a real fallback. A copy of uv's `cpython-3.12-macos-aarch64`
+tree plus a `uv venv --relocatable` venv, with the real binary-wheel dependencies
+(Pillow, pillow-heif) and the `cairndex-server` package installed, was **moved
+twice** and then started from the final path. It served `/api/v1/health` 200
+without a token, `/api/v1/libraries` 401 without one, and 200 with the owner
+token — so relocation and the new sidecar gate both work. Staged size **66 MB**,
+the number that argued for PyInstaller once artifacts became downloads.
+
+**One packaging complication found:** Homebrew's `ffmpeg` is a thin
+dynamically-linked binary (652 KB) that depends on dozens of dylibs under
+`/opt/homebrew`. It cannot simply be copied into a bundle — bundling it means
+either a **static** ffmpeg build or rewriting install names for the whole dylib
+closure. The static build is the sane path (ADR-0019 §3).
+
+### Landed: sidecar packaging (D6.2)
+
+`apps/server/packaging/` — a PyInstaller one-dir build, a checksum-verified
+ffmpeg fetch step, and the smoke test ADR-0019 §2 required. A new `sidecar` CI
+job is configured to build and smoke-test it. **That job has never run**: this
+branch is unpushed, and CI triggers only on pushes to `main` or on a pull
+request, so the three new/changed jobs are verified config, not observed runs.
+
+- **`cairndex.sidecar`** binds its own ephemeral loopback port and prints
+  `CAIRNDEX_SIDECAR_PORT=<port>` on stdout. Binding first and announcing second
+  removes the race that having the shell pick a free port would leave. It
+  refuses to start without `CAIRNDEX_LOCAL_TOKEN` rather than serving an
+  unauthenticated API on a port any local process can reach, and handles SIGTERM
+  as a graceful stop because that path is what releases ownership leases.
+- **`hiddenimports` is empty, and that was measured, not assumed.** The first
+  spec listed uvicorn, SQLAlchemy, Pillow and `cairndex` entries with comments
+  claiming each was a runtime resolution PyInstaller could not see. Removing each
+  group in turn and re-running the smoke test showed **every one was redundant** —
+  PyInstaller 6.x ships `hook-PIL.py` and `hook-sqlalchemy.py`, and uvicorn's
+  "auto" modules resolve through literal imports static analysis does follow. The
+  comment was wrong and is now replaced by the finding. Speculative entries are
+  not free: they make a future genuine gap look already handled.
+- **The smoke test was strengthened when it failed to bite.** Dropping the Pillow
+  hidden imports did not fail it, which showed the coverage proved less than it
+  claimed. `pillow_heif` was the one real candidate (`media/previews.py` imports
+  it inside a function) and JPEG/PNG never exercise it — so the test now
+  generates a **HEIC fixture and renders a preview**. Verified by mutation:
+  excluding `pillow_heif` from the bundle now fails with the real error.
+- The smoke test drives the *packaged binary over HTTP* through library creation
+  (SQLAlchemy's sqlite dialect, FTS5), a scan job, a thumbnail job, the HEIC
+  preview, and SIGTERM — then asserts the lease came back with `released_at`.
+
+Verified on the real bundle: **73 MB**, scan and thumbnail jobs succeeded, a
+480×360 JPEG thumbnail served, HEIC preview rendered, lease acquired on first
+serve and released on SIGTERM with the WAL folded in.
+
+**Not done: the static ffmpeg source is unpinned.** `ffmpeg-manifest.json` ships
+empty on purpose — choosing where those binaries come from is a supply-chain and
+licensing decision for the owner (ADR-0019 §3), and any practical static build is
+GPL. Until it is populated, builds use `--skip-ffmpeg` and the sidecar falls back
+to a system ffmpeg via `media/tool_paths.py`. That works on a developer machine
+and **not** on a user's, so this blocks a real release, not D6.3.
+
+### Landed: sidecar lifecycle in the shell (D6.3)
+
+`apps/desktop/src-tauri/src/sidecar.rs` — spawn on demand, health-gate, stop with
+the app. `tauri.conf.json` stages the bundle as a resource, so `tauri build` now
+requires it (CI builds it first).
+
+- **The port comes from the sidecar.** It binds ephemeral loopback and announces
+  on stdout; picking a free port in the shell and passing it down would leave a
+  window for something else to take it.
+- **The token is generated per start and passed in the environment**, not argv,
+  because a command line shows up in any process listing — and it is the
+  sidecar's only access gate.
+- **Shutdown closes stdin rather than sending a signal**, which is the decision
+  worth remembering. It needs no target-OS branches (Windows has no SIGTERM, and
+  plan 3 §2.1 exists to avoid such branches), and — the real reason — it survives
+  the shell not getting to ask. A signal needs a shell alive enough to send it;
+  a crash or `kill -9` sends nothing and would orphan a sidecar still holding
+  ownership leases, which the user meets as a takeover prompt on their next
+  launch. **Verified by SIGKILLing a parent process:** no orphan, and the lease
+  came back with `released_at`. That is a strictly better property than the
+  SIGTERM approach originally sketched.
+- Sidecar shutdown hangs off `RunEvent::Exit`, not `ExitRequested` — the latter
+  can be cancelled, and unmounting a library out from under a user who chose to
+  stay would be worse than shutting down slightly later.
+
+Verification:
+
+- Desktop `cargo fmt --check`, Clippy `--locked --all-targets -D warnings`, and
+  **60 unit tests** (was 55).
+- The lifecycle test **spawns the real packaged bundle** — loopback bind, health
+  open, 401 anonymous, 200 with the token, and stdin-close shutdown leaving the
+  port dead. It skips unless `CAIRNDEX_SIDECAR_BIN` is set, so the desktop
+  *tests* stay runnable without Python; CI's macOS job sets it, which is what
+  turns it from a no-op into a real check. **Compilation is a different matter —
+  see the review round below.**
+- A release `tauri build` produced `Cairndex.app` (**88 MB**) with the sidecar at
+  `Contents/Resources/cairndex-sidecar/cairndex-sidecar` — exactly where
+  `binary_path()` looks — and **the staged copy was launched from inside the
+  `.app`** and served health 200 and an authenticated request 200.
+
+Known gaps: no UI consumes the commands yet (D6.4/D6.5), and the app still has
+no way to *open a local folder* — that is the next slice. The bundled build
+carries no ffmpeg until the manifest is pinned, so a packaged sidecar currently
+falls back to a system ffmpeg.
+
+### Review round — a CI break I would have shipped, and a start race
+
+An external review of D6.2/D6.3 found one P1, one P2, and three smaller items.
+All confirmed by reproduction before fixing, and all applied.
+
+- **P1 — the desktop crate stopped compiling without the sidecar bundle.**
+  `tauri-build` copies `bundle.resources` at *compile* time, not bundle time, so
+  the missing path fails `cargo check`, `cargo test`, and `tauri dev` — not just
+  `tauri build`, which is all I had claimed. **The Ubuntu "Desktop Rust" job
+  would have failed on the first push**, since only the macOS job got a
+  build-sidecar step. Reproduced exactly (`resource path … doesn't exist`,
+  exit 101). Fixed with an empty-directory placeholder in the Ubuntu job — the
+  resource copier skips empty directories, and `binary_path()` still reports
+  `not_bundled` at runtime — rather than adding uv and PyInstaller to a job that
+  gains no coverage from them. Verified both halves: empty dir compiles and
+  passes tests; the real bundle still builds and runs. `development.md` now
+  states the compile-time reality with the actual error text.
+- **P2 — two concurrent `start_local_server` calls could hand back a dead
+  server.** The `info()` check and the insert were not one critical section, so
+  both callers could see an empty slot, both spawn, and the second insert
+  terminate the first child *after* its caller had already been given that
+  sidecar's URL and token. The comment asserting "`start_local_server`
+  guarantees the slot is empty" named exactly the guarantee concurrency breaks.
+  Not theoretical: React StrictMode double-invoking a mount effect is the normal
+  way a UI produces those two calls, and D6.4 is about to add one. Fixed with a
+  dedicated `startup` mutex held across check-launch-insert; the fast path in
+  the command was *removed*, because checking outside the lock is what created
+  the race. A new test runs two threads against the real bundle and asserts both
+  get the same server *and* that it is still alive; removing the lock fails it.
+- **P3 — `SO_REUSEADDR` on the sidecar's listening socket.** Pointless here (we
+  bind `:0` and never rebind a specific port) and actively harmful on Windows,
+  where it lets a different socket bind a port already in use and steal
+  connections — a hijack primitive against a token-gated loopback server.
+  Removed. Worth noting the shutdown design is justified by Windows portability,
+  so a Windows-unsafe option had no business sitting next to it.
+- **P3 — a non-ASCII bearer produced a 500 instead of a 401.**
+  `secrets.compare_digest` raises `TypeError` on non-ASCII *strings*. Now
+  compares encoded bytes. The HTTP-level regression test sends the header as raw
+  **bytes**, because httpx refuses to encode a non-ASCII `str` header at all —
+  a str-typed test would only ever have failed in the client and proved nothing.
+- **Nits.** The `CAIRNDEX_SIDECAR_BIN` comment claimed it was "never consulted in
+  a packaged app"; it is checked unconditionally, so the comment now says so and
+  records why that is acceptable (anyone who can set the app's environment is
+  already the user). A configured-but-non-executable ffmpeg path now logs before
+  falling through to discovery — silence there would hide a lost execute bit in
+  a bundle until it reached a machine with no system ffmpeg.
+- **Not taken:** a `WWW-Authenticate` header on the middleware's 401. The
+  reviewer marked it take-or-leave; every other error in this API is a bare
+  structured body, and diverging for one gate is worse than being consistent.
+
+**Correction to this receipt's own claims**, both flagged by the review: the
+sidecar CI job "builds and smoke-tests on every push" was a statement about
+config, not an observed run (this branch is unpushed), and "the desktop gates
+stay runnable without Python" was true of the test skip but false of
+compilation. Both corrected above.
+
+Verification for this round: backend gate green (**561 passed**, +2 non-ASCII
+bearer cases); desktop `cargo fmt --check`, Clippy `-D warnings`, and **61 unit
+tests** (+1 concurrency), with the real-bundle tests run against a built sidecar.
+Mutation-checked: reverting the byte comparison fails both new auth tests, and
+removing the startup lock fails the concurrency test.
+
+**Still unrun: CI itself.** Pushing this branch would not help — the workflow
+triggers on pushes to `main` and on pull requests, so a feature-branch push
+executes nothing. Getting a real verdict on the three new/changed jobs needs a
+PR, which is the owner's call.
+
+### Remaining
+- Nothing in D6. See the acceptance receipt at the top of this file; the release
+  work that D6 surfaced is now plan 3 **D7**.
+
+
+## Completed: SQLite sync hygiene (ADR-0018 §6)
+
+Same branch `feat/library-ownership-lease`, following the lease slices below.
+Closes the last server-side item before plan 3 D6.
+
+Established first, empirically, rather than assumed: a plain `engine.dispose()`
+*already* folds the WAL in and removes `-wal`/`-shm`, and a normal interpreter
+exit does too because CPython closes the connections during teardown. So the
+"clean close" half was mostly working by accident. The two real gaps were that
+**library engines were never disposed on shutdown at all** (`main.py` disposed
+the worker and HLS sessions but not the per-library engines), and that a *running*
+server leaves a live WAL indefinitely — SQLite's automatic checkpoint only fires
+around 1000 pages, which a browsing session may not reach, and that is exactly
+the state a sync engine uploads.
+
+Implementation:
+
+- **Idle checkpoint.** `persistence/checkpoint.py` plus a `SqliteMaintenance`
+  timer thread; a library untouched past a threshold gets
+  `wal_checkpoint(TRUNCATE)`. `TRUNCATE` rather than `PASSIVE` on purpose —
+  passive leaves the WAL at its high-water mark, so the sync engine keeps
+  shipping a large second file carrying nothing.
+- **Periodic snapshot** to `.cairndex/library.db.bak` via SQLite's online backup
+  API, temp file then rename. The backup API is required, not preferred: a file
+  copy taken while a WAL is outstanding silently misses everything the WAL holds.
+  A test pins that distinction by mutation.
+- **Clean close** now checkpoints and disposes every library engine, ordered
+  *before* releasing the leases, so each library is a single consistent file
+  before another machine is invited to pick it up.
+- Maintenance only touches libraries whose lease we hold — maintaining one we
+  lost would be writing into another server's library. The owned set is passed to
+  `SqliteMaintenance` as a callable, so `persistence` stays unaware of the
+  ownership layer. It runs on its own thread rather than sharing the heartbeat's:
+  a slow checkpoint on a sluggish mount must not delay a heartbeat into looking
+  stale to other machines.
+
+One defect found by its own test: **the snapshot was dirtying the library it was
+protecting.** `with sqlite3.connect(...)` manages the transaction but does not
+close the connection, and an open connection to a WAL database leaves a
+`-wal`/`-shm` pair behind — so snapshotting recreated the exact torn triple the
+module exists to prevent. Fixed with `contextlib.closing`; the file-set assertion
+that caught it stays as the regression guard.
+
+Verification:
+
+- Backend gate green: ruff, ruff format, strict mypy, **537 passed** (was 518;
+  +19). Four mutations applied, each failing a test: `PASSIVE` instead of
+  `TRUNCATE`, a file copy instead of the backup API, ignoring the owned-library
+  filter, and dropping the explicit connection close.
+- **Live run** against a real server with short intervals: during activity the
+  library showed the full `db`/`-wal`/`-shm` triple; after the idle pass the WAL
+  was **0 bytes** and `library.db.bak` had appeared; after a clean shutdown the
+  marker directory held `library.db` and the snapshot **and no sidecars at all**.
+  The snapshot passed `PRAGMA integrity_check` and contained all 20 rows written.
+  No errors in the server log; scratch state removed.
+
+Known gaps: unchanged from the lease receipt — no multi-machine or real
+SMB/NFS/sync-engine test. Snapshot restore is a manual file copy with no UI or
+documented drill beyond the deployment note; worth a follow-up if the heal path
+is ever wanted as more than a last resort.
+
+Next recommended task: **Plan 3 D6 — local-server sidecar**. Every server-side
+prerequisite is now in place.
+
+
+## Completed: server-side library ownership lease (ADR-0018 §2–§4)
+
+Branch `feat/library-ownership-lease` from `main` at `4b933f2`. This is build-order
+**phase F's first item** and the stated prerequisite for plan 3 D6 — the owner
+asked to start D6 on 2026-07-20, and the gate had not landed, so the lease was
+built first (owner-chosen, same day).
+
+**Correction to the D5 receipts below: D5a, D5b, and D5c are all merged.** Those
+sections still describe the three branches as "stacked and unmerged", which was
+true when written; all three are now ancestors of `main`. Verified with
+`git merge-base --is-ancestor`.
+
+Implementation:
+
+- **The lease file** (`ownership/lease.py`) at
+  `.cairndex/locks/active-owner.json` — inside the library, because the two
+  servers in a conflict cannot see each other's registries and a cloud-synced copy
+  has no server at all. Written atomically (temp + same-directory rename, fsynced
+  before the rename) so a sync engine or a concurrent reader never sees half a
+  record. Every write regenerates the `nonce`, heartbeats included; that is what
+  makes an overwrite detectable at all.
+- **Five states, not four.** Released / own / fresh / stale, plus **unreadable**.
+  A lease we cannot parse is deliberately *not* folded into released: "we could
+  not find out" must never become "nobody holds it", or a corrupt or
+  partially-written file becomes a silent second writer. It routes to the same
+  confirmation path as stale, with the holder unknown.
+- **Write-then-verify acquisition.** No compare-and-swap exists on a synced
+  folder or an SMB share, so a claim is only real once it survives a read-back.
+  The uncontended path is an `O_EXCL` create, where exactly one of two racing
+  servers can win with no timestamps involved.
+- **The observation window is the part that does not trust clocks.** Staleness is
+  judged against `heartbeat_at`, written by another machine, so it is only a hint
+  — a skewed peer can look dead. Before a stale takeover the server watches the
+  lease for longer than a heartbeat period; a live holder writing to the same disk
+  (two servers on one NAS export) visibly touches it and keeps the library, even
+  though the user already confirmed. Skew the other way — a future-dated heartbeat
+  — reads as fresh, erring toward refusing to serve, which is the recoverable
+  direction.
+- **Takeover always needs confirmation** (owner-ratified). There is no
+  auto-takeover after any TTL. Because clean shutdown releases, the prompt is
+  reached only after a crash or under sync lag.
+- **The heartbeat is the watchdog.** Every interval it re-reads before rewriting.
+  A foreign `server_uuid`, *or our own under a nonce we did not write* (a sync
+  engine resolving a conflict the other way), means ownership moved: never
+  re-grab, stop writing, cancel that library's jobs, unmount. Two servers each
+  re-grabbing would be exactly the alternating dual-writer the lease exists to
+  prevent. Heartbeats continue while idle, because going quiet would make a
+  healthy NAS server's libraries look stealable from every other machine.
+- **Reads need the lease too.** Browsing writes (bundle cursors, missing-file
+  reconciliation), and reading a SQLite DB another machine is writing through a
+  share is what ADR-0008 rejected. No leaseless read-only mount.
+- **Both mount gates**, content (`get_library_session`) and streaming
+  (`get_library_access`). A byte-range request that skipped the lease would be
+  precisely the read the model forbids. A library already held costs one
+  dictionary lookup, so the gate adds no filesystem I/O to the request path.
+- **Jobs re-verify at start and at every batch boundary.** The heartbeat also
+  flags a library's jobs for cancellation, but that needs a registry round trip
+  to be noticed; the batch check is in-memory, so a scan stops the moment the
+  watchdog knows. `execute_job` uses `ensure_owned`, which acquires a released or
+  own lease but never takes a foreign one — a background worker must not make the
+  user's takeover decision.
+- **Endpoints.** `GET /api/v1/libraries/{id}/ownership` sits outside the mount
+  gate on purpose: it is what a client calls *because* a mount was refused.
+  `POST .../ownership/takeover` returns 202 and runs the observation window on a
+  background thread, since the window outlasts a heartbeat period and no HTTP
+  request should be held open for minutes. Taking over a *live* lease is refused
+  with 422 rather than forced — "that machine is gone" is not a claim anyone can
+  make about a server that heartbeat seconds ago.
+- **Sync-conflict artifacts** next to the lease are logged loudly and never
+  resolved or deleted; that copy is the only evidence the library may have
+  diverged (ADR-0018 §7).
+- Persistent `server_uuid` in a new registry `server_identity` table, so a crashed
+  server recognizes its own lease instead of prompting on every restart.
+- `DomainError`/`ErrorBody` gained optional `details`, serialized with
+  `exclude_none` so every existing error's shape is unchanged.
+
+Two defects found and fixed during the work, both in my own code:
+
+- `acquire` originally held the manager's state lock across its sleeps, so a
+  two-minute takeover observation would have blocked `holds()` — and therefore
+  every request to *every* library — for its full duration. Acquisition is now
+  serialized per library, outside the state lock.
+- The first observation-window test passed with the observation window deleted:
+  it was catching the injected steal via write-then-verify instead. Found by
+  mutation testing. The holder now stirs only during the long observation sleep
+  and stays quiet through the short verify one, so the test discriminates between
+  the two mechanisms it could have been proving.
+
+Verification:
+
+- Backend `ruff check`, `ruff format --check`, `mypy src` (strict), and full
+  pytest: **518 passed** (was 497; +66 across three new files —
+  `test_ownership_lease.py`, `test_ownership_api.py`, `test_ownership_jobs.py`).
+  API tests deliberately run through `isolated_client`, because the shared-session
+  `client` fixture overrides the dependency the gate lives in and would bypass the
+  thing under test.
+- **Mutation-tested rather than assumed.** Seven mutations were applied and each
+  one failed a test: treating an unreadable lease as released, skipping the
+  observation window, dropping the nonce comparison from the heartbeat, removing
+  either mount gate, and removing either job-boundary check.
+- OpenAPI and `schema.d.ts` regenerated; the diff is purely additive (two paths,
+  three schemas, `ErrorBody.details`).
+- Frontend gates re-run after regeneration: ESLint, Prettier, `tsc -b`, Vitest
+  (**229 passed**), Vite build.
+- **Verified against a real running server**, not only the test harness — an
+  isolated `CAIRNDEX_DATA_DIR`, a scratch library, no user media. The full cycle
+  was exercised end to end: creating a library wrote no lease; the first content
+  request acquired one on disk with the configured machine name and advertised
+  URL; planting a live foreign lease was caught by the **real 60 s heartbeat
+  thread** (`… now held by the-NAS; surrendering` in the log), after which the
+  library refused with `library_lease_held` and the redirect; aging that lease
+  past the TTL switched the refusal to `library_lease_takeover_required` with
+  `can_take_over: true`; `POST …/takeover` returned **202 immediately** while
+  `takeover.running` stayed true, and the lease was acquired **exactly 120 s
+  later** (10:15:47 → 10:17:47), matching the observation window rather than
+  short-circuiting it; the library then mounted with HTTP 200. Stopping the
+  server wrote `released_at`, and a planted Dropbox-style conflict copy was
+  detected by name. No errors in the server log; all scratch state removed.
+
+Known gaps, honestly:
+
+- **No multi-machine test was run.** Every conflict scenario is simulated by
+  writing a foreign lease into a temp directory from the same process. The logic
+  is filesystem-agnostic and driven against real files, but genuine SMB/NFS
+  behavior — rename atomicity, `O_EXCL` semantics, directory fsync — and real
+  sync-engine conflict artifacts are unexercised. Worth an owner pass with the NAS
+  before this is relied on.
+- **The heartbeat thread was never observed running.** Tests call
+  `heartbeat_once()` directly; the timing loop itself is exercised only by
+  `start`/`stop`.
+- **ADR-0018 §6 (WAL checkpoint hygiene and the periodic snapshot) is not
+  implemented.** It is listed in the ADR's server work but is not part of the
+  §3–§4 prerequisite. Cloud-synced libraries therefore still sync a
+  `db`/`-wal`/`-shm` triple that can be captured mid-write. This is the next
+  recommended slice before D6.
+- No frontend work: the SPA does not yet surface the refusal, the redirect, or the
+  takeover confirmation. That UI belongs with D6's connections model.
+
+Next recommended task: **ADR-0018 §6 (idle/close WAL checkpointing + snapshot
+job)**, then **Plan 3 D6 — local-server sidecar**, whose gate this branch clears.
+
+
 ## Open follow-ups from the D5 owner pass (2026-07-20)
 
 Recorded so they survive the session; none is started.
@@ -42,6 +737,11 @@ Branch `codex/plan3-d5c-distribution`, stacked on the **unmerged**
 
 The owner settled the distribution question on 2026-07-19, which removed D5c's
 only external blocker: **Developer ID signing is no longer a v1 requirement.**
+**Superseded 2026-07-20 — see [ADR-0019](adr/0019-open-source-distribution-model.md) §4.**
+The reasoning below rests on Cairndex being built from source and not
+distributed. The owner has since decided to open source it and publish
+prebuilt binaries, so signing is required again; the rest of this receipt
+(the DMG target, the env-gated pipeline, the measurements) still stands.
 Cairndex is single-owner and built from source, and Apple Silicon ad-hoc signs at
 link time, so packaged builds have worked since D1 with no certificate. The
 $99/yr Apple Developer Program buys nothing until a build must run on a second
