@@ -838,7 +838,7 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await page.goto('/')
   await page.locator('.card').first().click()
   // Inspector shows the bundle's (editable) title + its files.
-  await expect(page.locator('.inspector input[aria-label="Title"]')).toHaveValue('Movie 0')
+  await expect(page.locator('.inspector textarea[aria-label="Title"]')).toHaveValue('Movie 0')
   await expect(page.getByText('movie.mp4')).toBeVisible()
   await expect(page.getByText('Files in bundle (2 · 1 missing)')).toBeVisible()
   const missingFile = page.locator('.files .file-row', { hasText: 'poster.jpg' })
