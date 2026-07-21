@@ -1,0 +1,240 @@
+/**
+ * The real "Open Library Folder…" flow, end to end inside App.
+ *
+ * Deliberately does *not* mock `./desktop/openLibraryFolder` — the previous two
+ * attempts at this bug were fixed against a model of the flow rather than the
+ * flow itself, and both times the unit tests passed while the app did not. Here
+ * only the outermost seam (the Tauri command) is faked, so the connections
+ * store, the pending-selection handoff, and App's consumption all really run.
+ */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+
+import App from './App'
+import * as client from './api/client'
+import { DesktopBootstrap } from './desktop/DesktopBootstrap'
+import { resetConnectionsForTests } from './desktop/connections'
+
+// This jsdom setup provides no localStorage, so `usePersistentState` — which
+// holds the library selection — is inert without one. The app always has it, so
+// a test without it would be exercising a different program.
+const store = new Map<string, string>()
+vi.stubGlobal('localStorage', {
+  getItem: (k: string) => store.get(k) ?? null,
+  setItem: (k: string, v: string) => void store.set(k, v),
+  removeItem: (k: string) => void store.delete(k),
+  clear: () => store.clear(),
+  key: (i: number) => [...store.keys()][i] ?? null,
+  get length() {
+    return store.size
+  },
+})
+
+const desktopMenu = vi.hoisted(() => ({ handler: null as ((action: string) => void) | null }))
+const host = vi.hoisted(() => ({
+  openLibraryFolder: vi.fn(),
+  startLocalServer: vi.fn(),
+  configureServer: vi.fn(),
+  loadConnections: vi.fn(),
+  saveConnections: vi.fn(),
+  loadServerUrl: vi.fn(),
+}))
+
+vi.mock('./desktop/useDesktopMenu', () => ({
+  useDesktopMenu: (handler: (action: string) => void) => {
+    desktopMenu.handler ??= handler
+  },
+  useDesktopMenuAvailability: vi.fn(),
+}))
+
+vi.mock('./desktop/verifyServer', () => ({
+  verifyServer: vi.fn().mockResolvedValue(undefined),
+  INCOMPATIBLE_SERVER_ERROR: 'incompatible',
+  UNREACHABLE_SERVER_ERROR: 'unreachable',
+}))
+
+vi.mock('./platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./platform')>()
+  return {
+    ...actual,
+    isDesktopHost: () => true,
+    initializeHostPlatform: () => Promise.resolve({ kind: 'desktop' }),
+    listenHostLifecycle: () => Promise.resolve(() => undefined),
+    listenHostMenu: () => Promise.resolve(() => undefined),
+    setHostServerAvailable: () => Promise.resolve(undefined),
+    normalizeHostServerUrl: (value: string) => Promise.resolve(value),
+    saveHostServerUrl: () => Promise.resolve(undefined),
+    openHostLibraryFolder: () => host.openLibraryFolder(),
+    startHostLocalServer: () => host.startLocalServer(),
+    configureHostServer: (url: string, options?: unknown) => host.configureServer(url, options),
+    loadHostConnections: () => host.loadConnections(),
+    saveHostConnections: (value: unknown) => host.saveConnections(value),
+    loadHostServerUrl: () => host.loadServerUrl(),
+  }
+})
+
+const PHOTOS = { id: 'lib-photos', name: 'Photos', root_path: '/p', status: 'available' }
+const VIDEO = { id: 'lib-video', name: 'Video', root_path: '/v', status: 'available' }
+
+function mockApi(libraries: unknown[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string) => {
+      let body: unknown = {}
+      if (url.endsWith('/api/v1/libraries')) body = libraries
+      else if (url.endsWith('/auth/status')) body = { protected: false, unlocked: true }
+      else if (url.includes('/ownership')) body = { mountable: true, state: 'own' }
+      else if (url.includes('/bundles/browse'))
+        body = { items: [], total: 0, offset: 0, limit: 100 }
+      else if (url.includes('/counts') || url.includes('/facets')) body = {}
+      else if (url.includes('/collections') || url.includes('/tags') || url.includes('/jobs'))
+        body = { items: [] }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    }),
+  )
+}
+
+beforeEach(() => {
+  resetConnectionsForTests()
+  store.clear()
+  desktopMenu.handler = null
+  vi.clearAllMocks()
+  host.configureServer.mockResolvedValue(undefined)
+  host.saveConnections.mockResolvedValue(undefined)
+  host.loadConnections.mockResolvedValue(null)
+  host.loadServerUrl.mockResolvedValue(null)
+  host.startLocalServer.mockResolvedValue({ baseUrl: 'http://127.0.0.1:5555', token: 't' })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+let active: string | null = null
+beforeEach(() => {
+  active = null
+  vi.spyOn(client, 'setActiveLibraryId').mockImplementation((id: string | null) => {
+    active = id
+  })
+})
+
+function renderApp() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <App />
+    </QueryClientProvider>,
+  )
+}
+
+test('opening an already-registered library switches the app to it', async () => {
+  // Photos is first, so it is what the app shows by default. Opening Video's
+  // folder must move the app to Video.
+  mockApi([PHOTOS, VIDEO])
+  host.openLibraryFolder.mockResolvedValue({
+    libraryId: VIDEO.id,
+    libraryUuid: 'uuid-video',
+    displayName: 'Video',
+  })
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  await act(async () => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  // `setActiveLibraryId` is what every content query is scoped by, so it is the
+  // real answer to "which library is the app on".
+  await waitFor(() => {
+    expect(active).toBe(VIDEO.id)
+  })
+})
+
+test('opening a second library while the local connection is ALREADY active switches too', async () => {
+  // The reported failure. The first open switches remote -> local, which changes
+  // the active connection and remounts everything. The *second* open changes no
+  // connection at all, so nothing remounts — and the selection has to arrive by
+  // some other route.
+  mockApi([PHOTOS, VIDEO])
+  host.loadConnections.mockResolvedValue({
+    connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
+    activeConnectionId: 'local',
+  })
+  host.openLibraryFolder.mockResolvedValue({
+    libraryId: VIDEO.id,
+    libraryUuid: 'uuid-video',
+    displayName: 'Video',
+  })
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+  await waitFor(() => expect(active).toBe(PHOTOS.id))
+
+  await act(async () => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  await waitFor(() => expect(active).toBe(VIDEO.id))
+})
+
+test('a library missing from the cached list still becomes active once it appears', async () => {
+  // Registering a folder the server did not previously know adds a library the
+  // SPA's cached list has never seen. `libraryId` only honours a chosen id that
+  // is present in that list, so without a refresh the selection is discarded.
+  const libraries: unknown[] = [PHOTOS]
+  mockApi(libraries)
+  host.loadConnections.mockResolvedValue({
+    connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
+    activeConnectionId: 'local',
+  })
+  host.openLibraryFolder.mockResolvedValue({
+    libraryId: VIDEO.id,
+    libraryUuid: 'uuid-video',
+    displayName: 'Video',
+  })
+  renderApp()
+  await waitFor(() => expect(active).toBe(PHOTOS.id))
+
+  // The newly registered library appears on the server from here on.
+  libraries.push(VIDEO)
+
+  await act(async () => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
+})
+
+test('the real composition: App inside DesktopBootstrap, whose QueryScope is keyed', async () => {
+  // The previous cases render App directly, which omits the keyed QueryScope
+  // that remounts the whole tree when a connection activates. That remount is
+  // the one structural thing the packaged app does and the harness did not.
+  mockApi([PHOTOS, VIDEO])
+  host.loadConnections.mockResolvedValue({
+    connections: [
+      { id: 'remote:http://nas:8000', kind: 'remote', label: 'nas', serverUrl: 'http://nas:8000' },
+    ],
+    activeConnectionId: 'remote:http://nas:8000',
+  })
+  host.openLibraryFolder.mockResolvedValue({
+    libraryId: VIDEO.id,
+    libraryUuid: 'uuid-video',
+    displayName: 'Video',
+  })
+
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <DesktopBootstrap>
+        <App />
+      </DesktopBootstrap>
+    </QueryClientProvider>,
+  )
+  await waitFor(() => expect(active).toBe(PHOTOS.id), { timeout: 3000 })
+
+  await act(async () => {
+    desktopMenu.handler?.('open-library-folder')
+  })
+
+  await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
+})
