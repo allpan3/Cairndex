@@ -1,5 +1,71 @@
 # Project status
 
+## Implemented: unified library add/remove flow (2026-07-22)
+
+Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. No PR and no
+merge — owner-triggered. Four reviewable commits: server endpoints → shell →
+web modal → docs.
+
+**What changed.** Adding a library no longer starts with a question the owner
+should not have to answer. The Create/Register tabs are gone; there is one path
+field and one action, and the server classifies the path
+(`GET /libraries/probe-path`): already registered → select it, an existing
+library → register it under the name it carries, anything else → one
+confirmation prefilled with the folder's basename. A path that does not exist
+yet says so in that same confirmation, which is what replaced the
+create-if-missing checkbox. Libraries can now be **removed**
+(`DELETE /libraries/{id}`), metadata-only in the strict sense: registry row,
+lease release, engine dispose, and nothing on disk.
+
+**The desktop half is a pick/confirm pair.** `pick_library_folder` no longer
+refuses a folder without a manifest; a non-library pick parks the `PathBuf` in a
+single-slot `PendingPick` and returns `{ needs_confirmation, token, folder_name
+}`, and `confirm_picked_library(token, name)` redeems it. This keeps the
+`PickedFolder` invariant intact for a flow that now needs a user round trip
+mid-way: the path waits inside the shell, the web layer holds only an opaque
+token. A superseded token is refused **and leaves the newer pick intact** —
+otherwise a name typed for one folder could create a library at another.
+
+**Three things worth keeping from the build:**
+
+1. **The browser test caught a layout hazard the component tests structurally
+   could not.** The suggestion menu stays open after a selection (to drill down)
+   and sat directly over the primary button — so the click that looked like
+   "Add library" would have selected a suggestion instead. jsdom has no layout,
+   so only Playwright could see it. The action moved beside the field.
+2. **Content query keys are not library-scoped.** The cache is cleared on every
+   library switch instead, so removing the *active* library had to clear it
+   explicitly; without that the next library inherits the removed one's bundles
+   and counts. This is a standing trap for anything that changes the active
+   library outside `changeLibrary`.
+3. **Deregistration releases the lease** (ADR-0018 §3 lists unregistration
+   alongside clean shutdown). Skipping it would leave a folder nobody serves
+   showing a takeover prompt on the next machine to open it. Pinned by mutation.
+
+**Gates.** Backend ruff / ruff format / strict mypy / **595 pytest** (+17).
+Frontend ESLint / Prettier / tsc / **326 Vitest** (+26) / Vite build / **86
+Playwright** (+3, the whole suite including its `@fullstack` partition against a
+real backend). Desktop `cargo fmt --check`, Clippy
+`-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
+`tauri build`. Mutations applied and killed: the lease release in
+`deregister_library`, and the pending-pick token comparison.
+
+**Verified by hand**: the modal was driven in a real browser and captured in
+three states (suggestions with a library badge, the name confirmation, the
+removal confirmation). The first capture found the removal reassurance —
+the sentence saying no files are touched — being ellipsized by the path row's
+`nowrap`; it has its own class now.
+
+**Not verified**: the native picker itself. Driving a macOS folder dialog needs
+assistive access this environment does not have, so the pick→confirm round trip
+is proven at the seams (Rust tests against a real sidecar; web tests against the
+command boundary) but has never been driven end to end through the real dialog.
+That is the one owner-acceptance step for this branch: File → Open Library
+Folder… on a folder that is *not* a library, name it, and confirm it opens.
+
+**Next**: unchanged — plan 3 **D7 (first public release)**, whose only true
+blocker is pinning a static ffmpeg (ADR-0019 §3).
+
 ## Implemented: startup flash root-cause fix via macos-private-api (2026-07-22)
 
 Branch `fix/desktop-startup-flash-root-cause`, based on `main`.
