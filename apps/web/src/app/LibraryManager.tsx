@@ -37,7 +37,12 @@ export function LibraryManager({
 
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
+  // The name for the library being confirmed. Lives here rather than in the
+  // confirmation itself, because the button that submits it is the same button
+  // that asked for it — one row up, and deliberately unmoved.
+  const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const pathFieldRef = useRef<HTMLInputElement>(null)
   // Covers the actions that are not plain mutations — the native picker and the
   // confirm step — which have no `isPending` of their own.
   const [hostBusy, setHostBusy] = useState(false)
@@ -45,6 +50,22 @@ export function LibraryManager({
   const rows = libraries.data ?? []
   const busy =
     hostBusy || create.isPending || register.isPending || probe.isPending || remove.isPending
+
+  // Enter the name step, prefilled with the folder's own name.
+  const askForName = (next: ConfirmState) => {
+    setName(next.folderName)
+    setConfirming(next)
+  }
+
+  // Leave it, putting the caret back where the flow started.
+  const cancelConfirm = () => {
+    setConfirming(null)
+    setError(null)
+    // The path field is remounted by this state change, so focus it afterwards
+    // rather than relying on an `autoFocus` that also fires when the dialog
+    // first opens.
+    requestAnimationFrame(() => pathFieldRef.current?.focus())
+  }
 
   // Resolve one typed path into the single action it implies.
   const submitPath = async () => {
@@ -66,7 +87,7 @@ export function LibraryManager({
         onClose()
         return
       }
-      setConfirming({
+      askForName({
         kind: 'path',
         path: trimmed,
         createFolder: !found.exists,
@@ -90,11 +111,7 @@ export function LibraryManager({
       )
       if (!opened) return // cancelled — nothing changed
       if (opened.needsConfirmation && opened.token) {
-        setConfirming({
-          kind: 'pick',
-          token: opened.token,
-          folderName: opened.folderName ?? '',
-        })
+        askForName({ kind: 'pick', token: opened.token, folderName: opened.folderName ?? '' })
         return
       }
       if (opened.alreadyAvailable) {
@@ -111,19 +128,20 @@ export function LibraryManager({
     }
   }
 
-  const confirmNewLibrary = async (name: string) => {
-    if (!confirming || busy) return
+  const confirmNewLibrary = async (raw: string) => {
+    const chosen = raw.trim()
+    if (!confirming || !chosen || busy) return
     setError(null)
     setHostBusy(true)
     try {
       if (confirming.kind === 'pick') {
         // The shell holds the folder against this token; it never crossed into
         // this layer, and a token a later pick superseded is refused.
-        await confirmPickedLibrary(confirming.token, name)
+        await confirmPickedLibrary(confirming.token, chosen)
       } else {
         const added = await create.mutateAsync({
           root_path: confirming.path,
-          display_name: name,
+          display_name: chosen,
           create_if_missing: confirming.createFolder,
         })
         onSelect?.(added.id)
@@ -174,52 +192,72 @@ export function LibraryManager({
           ))}
         </div>
 
-        {confirming ? (
-          <div className="lib-add">
-            <NewLibraryConfirm
-              key={`${confirming.kind}:${confirming.folderName}`}
-              folderName={confirming.folderName}
-              willCreateFolder={confirming.kind === 'path' && confirming.createFolder}
-              busy={busy}
-              onConfirm={(name) => void confirmNewLibrary(name)}
-              onCancel={() => {
-                setConfirming(null)
-                setError(null)
-              }}
-            />
-            {error && <div className="modal__error">{error}</div>}
-          </div>
-        ) : (
-          <div className="lib-add">
-            <label className="field-label" htmlFor="library-path">
-              Add library
-            </label>
-            {/* One row, so the suggestion menu — which stays open to drill down —
-                drops over the hint text below rather than over the action it
-                would otherwise swallow the click for. */}
-            <div className="lib-add__row">
-              <PathInput value={path} onChange={setPath} onSubmit={() => void submitPath()} />
-              {isDesktopHost() && (
-                <button className="btn" onClick={() => void browse()} disabled={busy}>
+        {/* The confirmation swaps this row's *contents* rather than replacing
+            the section: same label line, same single row, same trailing hint
+            line. The primary button therefore stays exactly where the click
+            that asked for the confirmation left the pointer, and nothing above
+            the row moves. */}
+        <form
+          className="lib-add"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void (confirming ? confirmNewLibrary(name) : submitPath())
+          }}
+        >
+          <label className="field-label" htmlFor={confirming ? 'new-library-name' : 'library-path'}>
+            {confirming ? 'Name' : 'Add library'}
+          </label>
+          {/* One row, so the suggestion menu — which stays open to drill down —
+              drops over the hint text below rather than over the action it
+              would otherwise swallow the click for. */}
+          <div className="lib-add__row">
+            {confirming ? (
+              <input
+                id="new-library-name"
+                className="edit"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                aria-label="Library name"
+                // Focused and selected, so the prefilled folder name is one
+                // keystroke away from being replaced and Enter confirms it.
+                autoFocus
+                onFocus={(event) => event.target.select()}
+                spellCheck={false}
+              />
+            ) : (
+              <PathInput
+                fieldRef={pathFieldRef}
+                value={path}
+                onChange={setPath}
+                onSubmit={() => void submitPath()}
+              />
+            )}
+            {confirming ? (
+              <button type="button" className="btn" onClick={cancelConfirm} disabled={busy}>
+                Cancel
+              </button>
+            ) : (
+              isDesktopHost() && (
+                <button type="button" className="btn" onClick={() => void browse()} disabled={busy}>
                   Browse…
                 </button>
-              )}
-              <button
-                className="btn btn--primary"
-                onClick={() => void submitPath()}
-                disabled={busy || !path.trim()}
-              >
-                Add library
-              </button>
-            </div>
-            <p className="lib-add__hint">
-              An absolute path on the server. An existing library is added as it is; any other
-              folder is offered as a new one.
-            </p>
-
-            {error && <div className="modal__error">{error}</div>}
+              )
+            )}
+            <button
+              className="btn btn--primary"
+              disabled={busy || !(confirming ? name.trim() : path.trim())}
+            >
+              {confirming ? 'Create library' : 'Add library'}
+            </button>
           </div>
-        )}
+          <p className="lib-add__hint">
+            {confirming
+              ? newLibraryAsk(confirming)
+              : 'An absolute path on the server. An existing library is added as it is; any other folder is offered as a new one.'}
+          </p>
+
+          {error && <div className="modal__error">{error}</div>}
+        </form>
       </div>
     </div>
   )
@@ -232,74 +270,25 @@ type ConfirmState =
   // itself never enters this layer (see `mappings::PickedFolder`).
   | { kind: 'pick'; token: string; folderName: string }
 
-/**
- * The "this isn't a library yet" step, shared by both entry paths.
- *
- * Prefilled with the folder's own name, so confirming is one keystroke and
- * renaming is still right there. Rendered inside the manager's modal, and by
- * {@link NewLibraryDialog} on its own for the File menu's picker.
- */
-export function NewLibraryConfirm({
-  folderName,
-  willCreateFolder = false,
-  busy,
-  onConfirm,
-  onCancel,
-}: {
-  folderName: string
-  /** The typed path does not exist yet, so confirming creates the folder too. */
-  willCreateFolder?: boolean
-  busy: boolean
-  onConfirm: (name: string) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = useState(folderName)
-  const trimmed = name.trim()
-
-  return (
-    <form
-      className="lib-confirm"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (trimmed && !busy) onConfirm(trimmed)
-      }}
-    >
-      <p className="lib-confirm__ask">
-        {willCreateFolder
-          ? 'This folder doesn’t exist yet. Create it as a new Cairndex library?'
-          : 'This folder isn’t a Cairndex library. Register it as a new library?'}
-      </p>
-      <label className="field-label" htmlFor="new-library-name">
-        Name
-      </label>
-      <input
-        id="new-library-name"
-        className="edit"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        aria-label="Library name"
-        autoFocus
-        spellCheck={false}
-      />
-      <div className="modal__actions">
-        <span className="toolbar__spacer" />
-        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-        <button className="btn btn--primary" disabled={busy || !trimmed}>
-          {willCreateFolder ? 'Create library' : 'Add library'}
-        </button>
-      </div>
-    </form>
-  )
+/** What confirming will actually do, in one sentence. */
+function newLibraryAsk(target: ConfirmState): string {
+  if (target.kind === 'pick') {
+    return `“${target.folderName}” isn’t a Cairndex library. Confirming creates a new one there.`
+  }
+  if (target.createFolder) {
+    return `${target.path} doesn’t exist yet. Confirming creates the folder and a new library in it.`
+  }
+  return `${target.path} isn’t a Cairndex library. Confirming creates a new one there.`
 }
 
 /**
- * {@link NewLibraryConfirm} as a modal of its own.
+ * The name step as a dialog of its own, for the File → Open Library Folder…
+ * picker.
  *
- * The File → Open Library Folder… path can land on a plain folder from anywhere
- * — including the first-run screen, where no manager is open — so the same
- * question has to be askable without one.
+ * That menu item is reachable from anywhere — including the first-run screen,
+ * where no manager is open — so the same question has to be askable without
+ * one. Inside the manager the question is asked in place instead (see the add
+ * form above), because there the pointer is already on the button.
  */
 export function NewLibraryDialog({
   folderName,
@@ -314,6 +303,9 @@ export function NewLibraryDialog({
   onConfirm: (name: string) => void
   onCancel: () => void
 }) {
+  const [name, setName] = useState(folderName)
+  const trimmed = name.trim()
+
   return (
     <div className="modal-backdrop" onMouseDown={onCancel}>
       <div
@@ -328,13 +320,36 @@ export function NewLibraryDialog({
             ×
           </button>
         </div>
-        <NewLibraryConfirm
-          key={folderName}
-          folderName={folderName}
-          busy={busy}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-        />
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (trimmed && !busy) onConfirm(trimmed)
+          }}
+        >
+          <label className="field-label" htmlFor="picked-library-name">
+            Name
+          </label>
+          <input
+            id="picked-library-name"
+            className="edit"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            aria-label="Library name"
+            autoFocus
+            onFocus={(event) => event.target.select()}
+            spellCheck={false}
+          />
+          <p className="lib-add__hint">{newLibraryAsk({ kind: 'pick', token: '', folderName })}</p>
+          <div className="modal__actions">
+            <span className="toolbar__spacer" />
+            <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn btn--primary" disabled={busy || !trimmed}>
+              Create library
+            </button>
+          </div>
+        </form>
         {error && <div className="modal__error">{error}</div>}
       </div>
     </div>
@@ -428,10 +443,13 @@ function PathInput({
   value,
   onChange,
   onSubmit,
+  fieldRef,
 }: {
   value: string
   onChange: (v: string) => void
   onSubmit: () => void
+  /** Lets the caller put focus back here after leaving the name step. */
+  fieldRef: React.RefObject<HTMLInputElement | null>
 }) {
   const [suggestions, setSuggestions] = useState<PathSuggestion[]>([])
   const [open, setOpen] = useState(false)
@@ -440,7 +458,7 @@ function PathInput({
   // so "below the field" is usually the one direction with no room.
   const [dropUp, setDropUp] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = fieldRef
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -491,7 +509,7 @@ function PathInput({
     const { top, bottom } = field.getBoundingClientRect()
     const below = window.innerHeight - bottom
     setDropUp(below < MENU_MAX_HEIGHT && top > below)
-  }, [open, suggestions])
+  }, [open, suggestions, inputRef])
 
   const accept = (suggestion: PathSuggestion) => {
     // Trailing separator: the next suggestion request then lists this

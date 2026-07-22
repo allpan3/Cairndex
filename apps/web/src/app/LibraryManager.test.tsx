@@ -177,7 +177,7 @@ test('offers a plain folder as a new library named after the folder', async () =
   expect(name).toHaveValue('Holiday Videos')
   expect(screen.getByText(/isn’t a Cairndex library/)).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create library' }))
 
   await waitFor(() => expect(sent('POST', '/api/v1/libraries/create')).toBeTruthy())
   expect(sent('POST', '/api/v1/libraries/create')?.body).toEqual({
@@ -212,10 +212,32 @@ test('the name typed in the confirmation is the name created', async () => {
   fireEvent.change(await screen.findByLabelText('Library name'), {
     target: { value: '  Trips  ' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create library' }))
 
   await waitFor(() => expect(sent('POST', '/api/v1/libraries/create')).toBeTruthy())
   expect(sent('POST', '/api/v1/libraries/create')?.body).toMatchObject({ display_name: 'Trips' })
+})
+
+test('the name step reuses the add row instead of inserting one above it', async () => {
+  // Owner-reported: the confirmation used to appear *above* the form and push
+  // the button somewhere else, so confirming meant hunting for it again. The
+  // step now swaps the row's contents — same label line, same row, same
+  // trailing sentence — so the button stays under the pointer that summoned it.
+  renderManager()
+  const form = screen.getByLabelText('Library path').closest('form') as HTMLFormElement
+  const shapeBefore = [...form.children].map((child) => child.tagName)
+
+  typePath('/srv/Holiday Videos')
+  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  await screen.findByLabelText('Library name')
+
+  expect([...form.children].map((child) => child.tagName)).toEqual(shapeBefore)
+  // The primary action is still the last control in the same row.
+  const row = screen.getByLabelText('Library name').parentElement as HTMLElement
+  expect(row.lastElementChild).toHaveTextContent('Create library')
+  // And the explanation is below the row, not above it.
+  const ask = screen.getByText(/isn’t a Cairndex library/)
+  expect(row.compareDocumentPosition(ask) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 
 test('cancelling the confirmation creates nothing and keeps the typed path', async () => {
