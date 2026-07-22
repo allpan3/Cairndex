@@ -311,11 +311,8 @@ are out of scope.
 
 ### What Cairndex ships today
 
-Cairndex is single-owner software built from source, so the release build is
-**ad-hoc signed** — not Developer ID signed, not notarized. On Apple Silicon the
-linker ad-hoc signs every binary automatically, which is why packaged builds have
-run locally since D1 with no certificate and no Apple Developer Program
-membership. That is the supported model:
+The release build is **ad-hoc signed** — not Developer ID signed, not
+notarized. That is the supported model:
 
 ```bash
 cd apps/desktop
@@ -332,6 +329,55 @@ Build a single target with `npm run tauri build -- --bundles app` (or `dmg`).
 **CI deliberately passes `--bundles app`**: Tauri's DMG bundler drives Finder over
 AppleScript and is a known flake source on headless runners, and CI only needs to
 prove the app compiles and bundles. The DMG is a release/local artifact.
+
+#### `signingIdentity: "-"` is load-bearing — do not remove it
+
+Ad-hoc signing is **not** something the toolchain supplies for free, and
+believing otherwise shipped a broken bundle for several milestones. Two
+different things are involved:
+
+- the **arm64 linker** ad-hoc signs each Mach-O at link time, which is why
+  individual binaries report `flags=0x20002(adhoc,linker-signed)`;
+- the **bundle** must be sealed separately, producing
+  `Contents/_CodeSignature/CodeResources`. Tauri does this only when
+  `bundle.macOS.signingIdentity` is set, and `"-"` is the ad-hoc identity.
+
+Without it, `Cairndex.app` has a signed executable and no resource seal, which
+is *invalid* rather than unsigned:
+
+```text
+Cairndex.app: code has no resources but signature indicates they must be present
+```
+
+An invalid signature fails harder than an absent one, and it is invisible
+locally because Gatekeeper only assesses **quarantined** apps — every
+locally-built copy skips the check. Verify with:
+
+```bash
+codesign --verify --strict src-tauri/target/release/bundle/macos/Cairndex.app
+# → valid on disk / satisfies its Designated Requirement
+```
+
+Tauri signs without `--deep`, so the nested notarized ffmpeg/ffprobe keep their
+own Developer ID signatures rather than being flattened to ad-hoc. See
+[ADR-0019](adr/0019-open-source-distribution-model.md) §4.
+
+#### Checking what a downloader will actually see
+
+A locally-built app carries `com.apple.provenance` but not
+`com.apple.quarantine`, so it opens with no dialog and proves nothing about the
+download path. Reproduce that path without publishing anything:
+
+```bash
+cp -R src-tauri/target/release/bundle/macos/Cairndex.app /tmp/
+xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;$(uuidgen)" \
+  /tmp/Cairndex.app
+spctl -a -vv -t exec /tmp/Cairndex.app
+```
+
+`rejected` is the correct, expected result for an unnotarized app — that is the
+state the README's **Open Anyway** steps clear. Any message about *resources*
+or a malformed signature is a packaging bug, not the Gatekeeper prompt.
 
 ### Installing and updating your local build
 
@@ -411,6 +457,10 @@ spctl --assess --type open --context context:primary-signature -vv \
 # → rejected
 # → source=no usable signature
 ```
+
+`rejected` here means "validly signed, but not by an identity Apple vouches
+for". It is a different and much better failure than the malformed-bundle case
+above — see `signingIdentity: "-"` is load-bearing.
 
 That `rejected` is expected and harmless on the machine that built it; it is what
 another Mac's Gatekeeper reports before the owner approves it once.

@@ -264,9 +264,37 @@ uv run python packaging/build_sidecar.py      # -> packaging/dist/cairndex-sidec
 uv run python packaging/smoke_test.py         # runs the bundle and drives it over HTTP
 ```
 
-Until `packaging/ffmpeg-manifest.json` is populated, build with `--skip-ffmpeg`;
-the sidecar then falls back to a system ffmpeg through `media/tool_paths.py`,
-which is fine on a developer machine and not fine on a user's.
+`packaging/ffmpeg-manifest.json` pins both macOS architectures (ADR-0019 §3).
+**On Linux, build with `--skip-ffmpeg`** — that platform is deliberately
+unpinned, because the build server covering both macOS arches ships a Linux
+variant with `--enable-decklink`, which forces `--enable-nonfree` and cannot be
+redistributed. The sidecar then falls back to a system ffmpeg through
+`media/tool_paths.py`, which is fine on a developer machine and not fine on a
+user's.
+
+Both scripts are checksum-gated, and the gate is deliberately strict:
+`fetch_ffmpeg.py` verifies a download **before** unpacking it, then verifies the
+extracted binary; `build_sidecar.py` re-verifies against the pin for the target
+platform and **refuses to bundle an unpinned binary** rather than warning. Use
+`--platform` on either script to work with an architecture other than the host's.
+
+Re-pinning is a supply-chain decision, not a version bump. Verify four things
+about a candidate build, none of which can be taken from its label:
+
+- **static** — `otool -L` shows only `/usr/lib` and `/System/Library` entries. A
+  Homebrew ffmpeg fails here: it is a thin binary over its own dylib prefix, so
+  a copy runs on the build machine and nowhere else.
+- **redistributable** — `--enable-gpl` is fine, `--enable-nonfree` is fatal. A
+  nonfree build may not be distributed at all, which disqualified the otherwise
+  excellent `eugeneware/ffmpeg-static`.
+- **libx264** — `media/hls.py` needs it for the transcode ladder; only the remux
+  path is `-c:v copy`, so an LGPL build silently loses transcoding.
+- **signature** — staging copies bytes and sets the execute bit, neither of
+  which invalidates a Mach-O signature. Anything that *rewrites* a binary after
+  signing must re-sign it; an invalid signature fails harder than none
+  (ADR-0019 §4).
+
+`tests/test_ffmpeg_manifest.py` covers the ways the gate can fail open.
 
 **Run the smoke test after any dependency change.** The unit suite imports from
 source, where every module is present, so it structurally cannot catch a frozen

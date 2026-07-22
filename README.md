@@ -66,6 +66,49 @@ and pinyin matching in local tag/collection and file pickers are implemented.
 See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
 recommended next tasks.
 
+## Install (macOS desktop app)
+
+> The first public release is still being assembled (plan 3 D7). The steps
+> below describe the artifacts it will publish; there is no download link yet.
+
+Releases publish a `.dmg` per architecture — `aarch64` for Apple Silicon,
+`x64` for Intel. Download the one matching your Mac, open it, and drag
+**Cairndex** to Applications.
+
+### First launch: "Apple could not verify..."
+
+Cairndex is **not signed with an Apple Developer ID**, so the first launch is
+blocked. This is expected, and it is a one-time step:
+
+1. Open Cairndex. macOS refuses and offers only **Done** / **Move to Trash**.
+   Choose **Done** — do not move it to the Trash.
+2. Open **System Settings → Privacy & Security** and scroll to the **Security**
+   section. A line about Cairndex being blocked appears there, with an **Open
+   Anyway** button. It only appears *after* step 1, so do not go looking for it
+   first.
+3. Click **Open Anyway**, authenticate, and confirm **Open Anyway** once more.
+
+Cairndex opens normally from then on. Every later launch, and every update,
+skips this entirely.
+
+Why not just sign it: a Developer ID needs a $99/yr Apple Developer membership,
+and the cost of skipping it is this one dialog. It is recorded as an upgrade
+path rather than a requirement — see
+[ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4. If you would
+rather not do any of this, build from source (below); a locally built app is
+never quarantined and never shows the dialog.
+
+### What is inside the app
+
+The desktop app is self-contained: it bundles the Cairndex server and a static
+`ffmpeg`/`ffprobe`, so opening a library folder on your own Mac needs no
+Python, no Docker, no Homebrew, and no separate ffmpeg install. Pointing the
+app at a server you already run (a NAS, say) works the same as it always has.
+
+The bundled ffmpeg is GPL-licensed and redistributing it carries source
+obligations that Cairndex's own MIT license does not — see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Repository layout
 
 ```text
@@ -159,4 +202,10 @@ single-container production stack.
 
 ## License
 
-All rights reserved.
+Cairndex is released under the [MIT License](LICENSE) (owner decision,
+2026-07-21; [ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
+
+Release artifacts additionally bundle third-party software with its own terms —
+notably a GPL-licensed FFmpeg, whose redistribution obligations are discharged
+in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Building from source
+bundles nothing and is unaffected.
