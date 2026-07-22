@@ -8,6 +8,52 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Changed
+
+- **Adding a library is one flow instead of two.** The Libraries dialog no
+  longer asks whether you are creating or registering: you give a path, and the
+  server reports what is there. A folder already registered is selected, an
+  existing Cairndex library is added under the name it carries, and any other
+  folder — including one that does not exist yet — is offered as a new library
+  with the name prefilled from the folder itself. The separate “create the
+  folder if it doesn't exist” checkbox is gone; the same confirmation says when
+  a folder will be created.
+
+  On the desktop app a **Browse…** button reaches those same outcomes through
+  the native folder picker, and **File → Open Library Folder…** now accepts a
+  folder that is not a library yet, asking for a name instead of refusing.
+  Everything except Browse… behaves identically in the browser, which cannot
+  produce an absolute path on the server.
+
+- **Path autocomplete works from the keyboard.** Down/Up move through the
+  suggestions, Enter takes the highlighted one, Tab completes as far as the
+  suggestions agree, and Escape closes the menu. Taking a suggestion keeps the
+  menu open so one keystroke per level walks into a tree, and directories that
+  are already Cairndex libraries are marked in the list.
+
+### Added
+
+- **Libraries can be removed from a server.** Each row in the Libraries dialog
+  has a Remove action behind a confirmation. Removal is **metadata-only**: it
+  deregisters the library from this server and never touches the folder, its
+  `.cairndex/` package, its `library.db`, or any media. Adding the same folder
+  back later restores the library with all of its metadata, since none of it
+  lives in the server registry. Removing the library you are viewing is
+  allowed; the app falls back to its no-library state.
+
+- `DELETE /api/v1/libraries/{library_id}` — deregisters a library.
+  **Metadata-only, as above**; it performs no filesystem deletion of any kind.
+  It releases that library's ownership lease and closes its database cleanly, so
+  the folder is immediately openable by another machine.
+
+- `GET /api/v1/libraries/probe-path?path=…` — reports whether a path exists, is
+  a Cairndex library, and is already registered, plus the library's own name and
+  the folder's basename. Owner-setup only, like `path-suggestions`, and it
+  creates nothing.
+
+- `GET /api/v1/libraries/path-suggestions` now marks each suggested directory
+  that already carries a `.cairndex/` package.
+
 ### Fixed
 
 - **Desktop startup no longer flashes a white frame.** The root cause was
