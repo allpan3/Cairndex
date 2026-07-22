@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
 import { QueryScope } from '../QueryScope'
+import { NewLibraryDialog } from '../app/LibraryManager'
 import { INCOMPATIBLE_SERVER_ERROR } from './verifyServer'
-import { openLibraryFolder } from './openLibraryFolder'
+import { confirmPickedLibrary, openLibraryFolder } from './openLibraryFolder'
 import {
   activateConnection,
   addRemoteConnection,
@@ -30,6 +31,15 @@ interface SetupState {
   error: string | null
 }
 
+// A folder picked from the File menu during first-run setup, awaiting a name.
+// `token` stands in for the path, which stays inside the shell.
+interface NamingState {
+  token: string
+  folderName: string
+  busy: boolean
+  error: string | null
+}
+
 // Surfaces recoverable desktop bridge failures without hiding the setup UI
 function reportDesktopBridgeError(message: string, error: unknown): void {
   console.error(message, error)
@@ -46,6 +56,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   )
   const [ready, setReady] = useState(false)
   const [setup, setSetup] = useState<SetupState | null>(null)
+  const [naming, setNaming] = useState<NamingState | null>(null)
   const [saving, setSaving] = useState(false)
   const serverInputRef = useRef<HTMLInputElement>(null)
 
@@ -80,7 +91,20 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
             // to have been configured first.
             void openLibraryFolder()
               .then((result) => {
-                if (result.opened) setReady(true)
+                // A folder that is not a library yet needs a name before
+                // anything exists to become ready *for*. App owns that dialog
+                // once the workspace is up, but it is not mounted here, so the
+                // setup screen asks the same question itself.
+                if (result.opened?.needsConfirmation && result.opened.token) {
+                  setNaming({
+                    token: result.opened.token,
+                    folderName: result.opened.folderName ?? '',
+                    busy: false,
+                    error: null,
+                  })
+                } else if (result.opened) {
+                  setReady(true)
+                }
               })
               .catch((error: unknown) => {
                 setSetup((current) => ({
@@ -205,12 +229,43 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     }
   }
 
+  // Names the picked folder, then creates the library and lets the app in. The
+  // shell has been holding the folder since the pick, so cancelling costs
+  // nothing and simply returns to setup.
+  const namingDialog = naming && (
+    <NewLibraryDialog
+      folderName={naming.folderName}
+      busy={naming.busy}
+      error={naming.error}
+      onCancel={() => setNaming(null)}
+      onConfirm={(name) => {
+        setNaming({ ...naming, busy: true, error: null })
+        void confirmPickedLibrary(naming.token, name)
+          .then(() => {
+            setNaming(null)
+            setReady(true)
+          })
+          .catch((error: unknown) => {
+            setNaming((current) =>
+              current ? { ...current, busy: false, error: hostOperationErrorMessage(error) } : null,
+            )
+          })
+      }}
+    />
+  )
+
   // Keyed on the active connection: a switch remounts the whole scope, so the
   // previous server's cache and any request still in flight against it are
   // discarded rather than left to resolve into the new connection's cache
   // (plan 3 §7.1 — library ids are per-server and not globally unique).
   if (ready) return <QueryScope key={activeConnectionId ?? 'initial'}>{children}</QueryScope>
-  if (!setup) return <div className="app-loading">Loading desktop settings…</div>
+  if (!setup)
+    return (
+      <>
+        <div className="app-loading">Loading desktop settings…</div>
+        {namingDialog}
+      </>
+    )
 
   return (
     <main className="desktop-setup">
@@ -250,6 +305,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
           reverse proxy.
         </p>
       </form>
+      {namingDialog}
     </main>
   )
 }
