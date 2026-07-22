@@ -1,12 +1,15 @@
 use std::{
-    sync::atomic::{AtomicBool, AtomicI8, Ordering},
+    sync::{
+        atomic::{AtomicI8, Ordering},
+        Mutex,
+    },
     thread,
     time::Duration,
 };
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, Submenu, SubmenuBuilder},
-    App, AppHandle, Emitter, Manager, Runtime,
+    App, AppHandle, Emitter, Manager, PhysicalPosition, Runtime,
 };
 
 use crate::keymap::{self, ItemSpec, MenuSpec};
@@ -17,19 +20,60 @@ pub(crate) const MENU_EVENT: &str = "cairndex://menu";
 pub(crate) const FULLSCREEN_EVENT: &str = "cairndex://fullscreen";
 const REVEAL_FALLBACK_DELAY: Duration = Duration::from_secs(2);
 
-/// Gates window focus until the renderer confirms its dark document is mounted.
+/// Original placement retained while the renderer paints the window off-screen.
+#[derive(Clone, Copy)]
+struct StartupWindowPlacement {
+    position: PhysicalPosition<i32>,
+    maximized: bool,
+}
+
+/// Tracks whether the startup window is hidden, painting off-screen, or ready.
 #[derive(Default)]
-pub(crate) struct MainWindowReady(AtomicBool);
+enum MainWindowPhase {
+    #[default]
+    Hidden,
+    Priming(StartupWindowPlacement),
+    Ready,
+}
+
+/// Describes how the first reveal must restore the native window.
+enum MainWindowReveal {
+    AlreadyReady,
+    CurrentPosition,
+    Restore(StartupWindowPlacement),
+}
+
+/// Gates focus and retains placement while WKWebView produces its first frame.
+#[derive(Default)]
+pub(crate) struct MainWindowReady(Mutex<MainWindowPhase>);
 
 impl MainWindowReady {
-    // Marks the first renderer acknowledgment and reports whether it won the race
-    fn mark_ready(&self) -> bool {
-        !self.0.swap(true, Ordering::AcqRel)
+    // Starts the off-screen paint phase exactly once
+    fn start_priming(&self, placement: StartupWindowPlacement) -> bool {
+        let mut phase = self.0.lock().expect("startup window state poisoned");
+        if !matches!(*phase, MainWindowPhase::Hidden) {
+            return false;
+        }
+        *phase = MainWindowPhase::Priming(placement);
+        true
     }
 
-    // Reports whether the initial page is safe to expose
+    // Marks startup ready and returns any placement that must be restored
+    fn finish(&self) -> MainWindowReveal {
+        let mut phase = self.0.lock().expect("startup window state poisoned");
+        match std::mem::replace(&mut *phase, MainWindowPhase::Ready) {
+            MainWindowPhase::Hidden => MainWindowReveal::CurrentPosition,
+            MainWindowPhase::Priming(placement) => MainWindowReveal::Restore(placement),
+            MainWindowPhase::Ready => MainWindowReveal::AlreadyReady,
+        }
+    }
+
+    // Reports whether the initial frame is safe to expose
     fn is_ready(&self) -> bool {
-        self.0.load(Ordering::Acquire)
+        matches!(
+            *self.0.lock().expect("startup window state poisoned"),
+            MainWindowPhase::Ready
+        )
     }
 }
 
@@ -223,17 +267,49 @@ pub(crate) fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
         .try_state::<MainWindowReady>()
         .is_some_and(|state| state.is_ready());
     if ready {
-        focus_main_window_now(app);
+        focus_main_window_now(app, None);
     }
+}
+
+// Moves the mounted window off-screen so WebKit can produce real animation frames
+#[tauri::command]
+pub(crate) fn prime_renderer(app: AppHandle) -> bool {
+    let Some(window) = app.get_webview_window("main") else {
+        return false;
+    };
+    let Ok(position) = window.outer_position() else {
+        return false;
+    };
+    let placement = StartupWindowPlacement {
+        position,
+        maximized: window.is_maximized().unwrap_or(false),
+    };
+    let priming = app
+        .try_state::<MainWindowReady>()
+        .is_some_and(|state| state.start_priming(placement));
+    if !priming {
+        return false;
+    }
+
+    if placement.maximized && window.unmaximize().is_err() {
+        return false;
+    }
+    let offscreen = PhysicalPosition::new(-32_000, -32_000);
+    if window.set_position(offscreen).is_err() {
+        return false;
+    }
+    window.show().is_ok()
 }
 
 // Reveals the primary window exactly once after the renderer is ready
 pub(crate) fn reveal_main_window<R: Runtime>(app: &AppHandle<R>) {
-    let first_load = app
+    let reveal = app
         .try_state::<MainWindowReady>()
-        .is_some_and(|state| state.mark_ready());
-    if first_load {
-        focus_main_window_now(app);
+        .map_or(MainWindowReveal::AlreadyReady, |state| state.finish());
+    match reveal {
+        MainWindowReveal::AlreadyReady => {}
+        MainWindowReveal::CurrentPosition => focus_main_window_now(app, None),
+        MainWindowReveal::Restore(placement) => focus_main_window_now(app, Some(placement)),
     }
 }
 
@@ -260,8 +336,19 @@ pub(crate) fn schedule_main_window_reveal_fallback(app: &AppHandle) {
 }
 
 // Shows, restores, and focuses the already-loaded primary window
-fn focus_main_window_now<R: Runtime>(app: &AppHandle<R>) {
+fn focus_main_window_now<R: Runtime>(
+    app: &AppHandle<R>,
+    placement: Option<StartupWindowPlacement>,
+) {
     if let Some(window) = app.get_webview_window("main") {
+        if let Some(placement) = placement {
+            if window.set_position(placement.position).is_err() {
+                let _ = window.center();
+            }
+            if placement.maximized {
+                let _ = window.maximize();
+            }
+        }
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
@@ -270,17 +357,37 @@ fn focus_main_window_now<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(test)]
 mod tests {
-    use super::MainWindowReady;
+    use super::{MainWindowPhase, MainWindowReady, MainWindowReveal, StartupWindowPlacement};
+    use tauri::PhysicalPosition;
 
-    // Pins the one-way readiness transition shared by mount and focus requests
+    // Pins the hidden, off-screen paint, and ready transitions
     #[test]
-    fn main_window_becomes_ready_once() {
+    fn main_window_primes_and_becomes_ready_once() {
         let ready = MainWindowReady::default();
+        let placement = StartupWindowPlacement {
+            position: PhysicalPosition::new(120, 80),
+            maximized: false,
+        };
 
         assert!(!ready.is_ready());
-        assert!(ready.mark_ready());
+        assert!(ready.start_priming(placement));
+        assert!(!ready.start_priming(placement));
+        assert!(matches!(
+            ready.finish(),
+            MainWindowReveal::Restore(restored) if restored.position == placement.position
+        ));
         assert!(ready.is_ready());
-        assert!(!ready.mark_ready());
+        assert!(matches!(ready.finish(), MainWindowReveal::AlreadyReady));
+        assert!(matches!(*ready.0.lock().unwrap(), MainWindowPhase::Ready));
+    }
+
+    // Pins the emergency path when off-screen priming never starts
+    #[test]
+    fn main_window_can_reveal_directly_from_hidden() {
+        let ready = MainWindowReady::default();
+
+        assert!(matches!(ready.finish(), MainWindowReveal::CurrentPosition));
+        assert!(ready.is_ready());
     }
 
     // Pins the native half of the hidden-until-mounted startup contract

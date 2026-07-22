@@ -41,12 +41,16 @@ afterEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset()
 })
 
-test('acknowledges the mounted renderer through the native startup command', async () => {
-  mocks.invoke.mockResolvedValue(undefined)
+test('primes and acknowledges the renderer through native startup commands', async () => {
+  mocks.invoke.mockImplementation((command: string) =>
+    Promise.resolve(command === 'prime_renderer'),
+  )
   const runtime = await createDesktopRuntime()
 
+  await expect(runtime.primeWindowForPaint()).resolves.toBe(true)
   await runtime.revealWindow()
 
+  expect(mocks.invoke).toHaveBeenCalledWith('prime_renderer')
   expect(mocks.invoke).toHaveBeenCalledWith('renderer_ready')
 })
 

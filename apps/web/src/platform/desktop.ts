@@ -186,6 +186,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
   return {
     platform: { ...desktopPlatformBase, startFileDrag: dragGuard.startFileDrag },
     os: detectHostOs(),
+    primeWindowForPaint: () => invoke<boolean>('prime_renderer'),
     revealWindow: () => invoke('renderer_ready'),
     fetch: desktopFetch,
     assetUrl: desktopAssetUrl,
