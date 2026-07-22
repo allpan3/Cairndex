@@ -1979,6 +1979,13 @@ code {
   gap: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
+/* A dialog whose own content pops out of it — the path suggestion menu is
+   absolutely positioned, and `.modal`'s scroll container would clip it to the
+   dialog's edge. Safe here because the only growable part, the library list,
+   scrolls by itself. */
+.modal--menus {
+  overflow: visible;
+}
 .modal--confirm {
   width: min(440px, 92vw);
   gap: 10px;
@@ -4037,7 +4044,12 @@ code {
   padding: 3px 8px;
   font-size: 12px;
 }
+/* The registered list is the only part that scrolls, which is what lets the
+   dialog itself keep `overflow: visible` (see `.modal--menus`). `min-height: 0`
+   so it, rather than the add form, gives up space in a short window. */
 .lib-list {
+  flex: 0 1 auto;
+  min-height: 0;
   max-height: 240px;
   overflow: auto;
   margin-bottom: 14px;
@@ -4105,6 +4117,7 @@ code {
 .path-input__menu {
   position: absolute;
   z-index: 30;
+  top: 100%;
   left: 0;
   right: 0;
   margin-top: 2px;
@@ -4129,6 +4142,14 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* Opens upward when the field is too close to the bottom of the window, which
+   in this dialog is the usual case: the add row is the last thing in it. */
+.path-input__menu--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 2px;
 }
 .path-input__opt:hover,
 .path-input__opt--active {
