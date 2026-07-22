@@ -226,6 +226,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/probe-path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Probe Path
+         * @description Report what an absolute server path is, without creating anything.
+         *
+         *     The add-library form calls this once, on submit, so it can confirm the right
+         *     action for the path: select an already-registered folder, register an
+         *     existing library, or offer to make a plain (or not-yet-existing) folder into
+         *     a new one. Owner-setup only, like ``/path-suggestions``.
+         */
+        get: operations["probe_path_api_v1_libraries_probe_path_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/register": {
         parameters: {
             query?: never;
@@ -254,7 +279,21 @@ export interface paths {
         get: operations["get_library_api_v1_libraries__library_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Deregister Library
+         * @description Remove a library from this server's registry. **Metadata-only.**
+         *
+         *     Deletes the registry row and nothing else: the library folder, its
+         *     ``.cairndex/`` package (manifest, ``library.db``, cache), and every media
+         *     file stay untouched. Adding the same folder back later restores the library
+         *     with all of its metadata, because none of it lives in the registry
+         *     (ADR-0018 §1). This endpoint never deletes files — physical deletion is a
+         *     separate capability that does not exist yet.
+         *
+         *     Removing the library a client is currently viewing is allowed; the client
+         *     falls back to its no-library state.
+         */
+        delete: operations["deregister_library_api_v1_libraries__library_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2961,12 +3000,42 @@ export interface components {
             poll_key: string;
         };
         /**
+         * PathProbeRead
+         * @description What a candidate path is, before anything is created or registered.
+         *
+         *     Drives the single "Add library" step: an already-registered folder is
+         *     selected, an unregistered library is registered, and a plain folder is
+         *     offered as a new library named after itself.
+         */
+        PathProbeRead: {
+            /** Already Registered Id */
+            already_registered_id: string | null;
+            /** Exists */
+            exists: boolean;
+            /** Folder Name */
+            folder_name: string;
+            /** Is Library */
+            is_library: boolean;
+            /** Manifest Display Name */
+            manifest_display_name: string | null;
+        };
+        /**
+         * PathSuggestion
+         * @description One directory autocompletion for the add-library form.
+         */
+        PathSuggestion: {
+            /** Is Library */
+            is_library: boolean;
+            /** Path */
+            path: string;
+        };
+        /**
          * PathSuggestions
          * @description Directory autocompletions for the add-library form (owner setup only).
          */
         PathSuggestions: {
             /** Suggestions */
-            suggestions: string[];
+            suggestions: components["schemas"]["PathSuggestion"][];
         };
         /** PlanGenerateRequest */
         PlanGenerateRequest: {
@@ -3862,6 +3931,37 @@ export interface operations {
             };
         };
     };
+    probe_path_api_v1_libraries_probe_path_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PathProbeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     register_library_api_v1_libraries_register_post: {
         parameters: {
             query?: never;
@@ -3914,6 +4014,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LibraryRead"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deregister_library_api_v1_libraries__library_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
