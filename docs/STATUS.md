@@ -2,9 +2,10 @@
 
 ## Implemented: unified library add/remove flow (2026-07-22)
 
-Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. No PR and no
-merge — owner-triggered. Commits run server endpoints → shell → web modal →
-docs, then a review follow-up and two owner-reported interaction fixes.
+Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. PR opened at
+the owner's request; not merged. Commits run server endpoints → shell → web
+modal → docs, then a review follow-up and four rounds from an owner pass on the
+packaged app.
 
 **What changed.** Adding a library no longer starts with a question the owner
 should not have to answer. The Create/Register tabs are gone; there is one path
@@ -25,6 +26,19 @@ single-slot `PendingPick` and returns `{ needs_confirmation, token, folder_name
 mid-way: the path waits inside the shell, the web layer holds only an opaque
 token. A superseded token is refused **and leaves the newer pick intact** —
 otherwise a name typed for one folder could create a library at another.
+
+**The menu item became the same surface.** File → Open Library Folder… is now
+**Manage Libraries…** (still ⌘O) and opens the dialog instead of jumping to the
+picker, so one surface covers adding, opening, and removing — and it is now
+rendered in the states that replace the workspace (a lease refusal, a locked
+library), which are exactly where switching libraries is what a user wants and
+where the dialog previously did not exist. First-run setup keeps the direct
+picker on purpose: the dialog lists a *server's* libraries and first run has no
+server, which is the situation the picker resolves (ADR-0018's "local libraries
+just work"). That removed App's whole duplicated folder-opening path — naming
+dialog, state, toast, error handling — since the dialog owns all of it. The
+sidebar's `+` became a books glyph for the same reason: the dialog no longer
+only adds.
 
 **Three things worth keeping from the build:**
 
@@ -70,7 +84,10 @@ Playwright** (+7, the whole suite including its `@fullstack` partition against a
 real backend). Desktop `cargo fmt --check`, Clippy
 `-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
 `tauri build`. Mutations applied and killed: the lease release in
-`deregister_library`, and the pending-pick token comparison.
+`deregister_library`, the pending-pick token comparison, the dialog's
+`overflow` opt-out, the menu's upward flip, the capture-phase dismissal, and the
+hint paragraph's reserved height — the last four all layout or event-propagation
+properties that only a browser test can observe.
 
 **Verified by hand**: the modal was driven in a real browser and captured in
 three states (suggestions with a library badge, the name confirmation, the
@@ -79,12 +96,15 @@ the sentence saying no files are touched — being ellipsized by the path row's
 `nowrap`; it has its own class now. The owner then found the clipped menu in
 the running app, which is item 1 above.
 
-**Not verified**: the native picker itself. Driving a macOS folder dialog needs
-assistive access this environment does not have, so the pick→confirm round trip
-is proven at the seams (Rust tests against a real sidecar; web tests against the
-command boundary) but has never been driven end to end through the real dialog.
-That is the one owner-acceptance step for this branch: File → Open Library
-Folder… on a folder that is *not* a library, name it, and confirm it opens.
+**Owner acceptance passed (2026-07-22)** on the packaged app, which is what
+closes the one gap the automated suites structurally cannot reach: driving a
+macOS folder dialog needs assistive access this environment does not have, so
+the pick→confirm round trip was proven only at its seams (Rust tests against a
+real sidecar; web tests against the command boundary). The owner drove the
+native picker on a library folder, a plain folder, and a folder the current
+server already serves, plus the typed-path and removal flows, and reported all
+of them working. The four defects that pass surfaced are items 1 above; each was
+fixed with a browser test that fails without the fix.
 
 **Next**: unchanged — plan 3 **D7 (first public release)**, whose only true
 blocker is pinning a static ffmpeg (ADR-0019 §3).
