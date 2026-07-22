@@ -8,7 +8,44 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **The desktop app now bundles ffmpeg**, so opening a library folder on your
+  own Mac needs no Homebrew, no separate ffmpeg install, and no PATH setup —
+  previously a packaged app fell back to a system ffmpeg that a user might not
+  have. Both Apple Silicon and Intel are pinned (FFmpeg 8.1.2, static, GPLv3,
+  notarized upstream), checksum-verified before they can enter a bundle.
+
+- **`THIRD-PARTY-NOTICES.md`**, covering the bundled FFmpeg's GPL source offer,
+  configure options, and exact binary digests. Cairndex's own code stays MIT;
+  the obligation attaches to the redistributed binary
+  ([ADR-0019](docs/adr/0019-open-source-distribution-model.md) §3). Also flags
+  one unresolved item for the owner: `pillow-heif`'s wheels bundle LGPL
+  `libheif`, whose notice obligations are not yet discharged.
+
+- **A README install section** for the macOS app, covering the one-time
+  "Apple could not verify…" first launch and the System Settings → Privacy &
+  Security → **Open Anyway** step that clears it.
+
+### Fixed
+
+- **The macOS app bundle was invalidly signed, not merely unsigned.** Tauri only
+  runs `codesign` when a signing identity is configured, and none was, so
+  `Cairndex.app` shipped with no `_CodeSignature/CodeResources` — an executable
+  carrying a bundle-style signature with nothing sealing its resources. macOS
+  rejects that as malformed (*"code has no resources but signature indicates
+  they must be present"*), which fails harder than an absent signature and
+  would have met the first person to download a release. It stayed invisible
+  because Gatekeeper only assesses **quarantined** apps, and every build
+  observed so far was local. `signingIdentity: "-"` now ad-hoc signs the
+  bundle; the quarantined verdict is the ordinary `rejected` that **Open
+  Anyway** clears. The nested notarized ffmpeg keeps its own Developer ID
+  signature ([ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
+
 ### Changed
+
+- **The README's license line now matches the repository.** It said "All rights
+  reserved" while `LICENSE` has been MIT since the owner's 2026-07-21 decision.
 
 - **Adding a library is one flow instead of two.** The Libraries dialog no
   longer asks whether you are creating or registering: you give a path, and the
@@ -339,6 +376,8 @@ grouped under `Unreleased` until the first tagged release.
   stdout, refuses to start without its owner token, and releases its ownership
   leases on SIGTERM. The static-ffmpeg source is not yet pinned — choosing it is
   an owner decision (ADR-0019 §3) — so builds currently use `--skip-ffmpeg`.
+  *(Superseded: both macOS architectures are pinned as of the entry at the top
+  of this file. `--skip-ffmpeg` is now the Linux-only path.)*
 
 - **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
   `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback
