@@ -1,9 +1,11 @@
 # Client platform & media experience plans
 
-> Status: **planning documents** (owner-requested, 2026-07-04). Nothing here is
-> implemented. Each plan proposes its own milestones; consequential decisions
-> are gathered in [ADR-0012](../adr/0012-client-platform-strategy.md),
-> **accepted (owner-ratified) 2026-07-04** after review.
+> Status: written as planning documents (owner-requested, 2026-07-04) and now
+> **partly built** — plans 1 and 3 have shipped most of their milestones, plans
+> 2 and 4 have not started. The build order below is the live view; each plan's
+> own milestone table marks what has landed. Consequential decisions are
+> gathered in [ADR-0012](../adr/0012-client-platform-strategy.md), **accepted
+> (owner-ratified) 2026-07-04** after review.
 
 Four major initiatives. The first three were planned together because they
 share most of their server-side media foundations; the fourth (write mode)
@@ -14,6 +16,15 @@ app) → Android client (plan 2 T1–T7)**. Plan 1 M8/M10/M11 moved to the futur
 bucket. A Linux desktop
 app is a stated future want — the desktop shell must be architected for
 cross-platform reuse (plan 3 §2–§3), not as a macOS-only codebase.
+
+Two things have since been inserted ahead of write mode rather than replacing
+anything: the **library ownership lease + local-server sidecar**
+([ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md), accepted
+2026-07-19), because write-mode operations need one server per library; and the
+**first public release** (plan 3 D7), because the owner's decision to open
+source Cairndex and publish prebuilt binaries
+([ADR-0019](../adr/0019-open-source-distribution-model.md), 2026-07-20) made
+shipping a release its own piece of work. Both are in the build order below.
 
 | #   | Plan                                                        | Doc                                                                                   |
 | --- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------- |
@@ -80,9 +91,12 @@ Reuse map:
 - Server releases get git tags once the first external client exists; the
   Android repo pins a minimum server version.
 
-## Cross-cutting server foundations (build once, in this order)
+## Cross-cutting server foundations (build once)
 
-These are the shared prerequisites; plan 1 §3–§6 specifies each in detail.
+These are the shared prerequisites; plan 1 §3–§6 specifies each in detail. All
+are built except **2**, which the owner moved out of the foundations and into
+plan 1 M8 (deferred) — the numbering is kept as written because other documents
+cite these by number.
 
 1. **Probe enrichment** — store _all_ audio/subtitle streams and chapters in
    `tech_metadata`, not just the first audio stream.
@@ -113,27 +127,33 @@ Bearer` accepted alongside the ADR-0010 cookie. Needed by TV (no cookie/
 `api_features` list (`"trickplay"`, `"hls"`, `"progress"`, `"pairing"`, …) so
 older/newer clients degrade gracefully instead of version-matching.
 
-## Recommended build order across all three plans
+## Recommended build order across all four plans
 
-Re-sequenced 2026-07-10 (owner decision, after M1–M7 shipped; the prior
-order is in git history). Current order:
+Re-sequenced 2026-07-10 (owner decision, after M1–M7 shipped; the prior order
+is in git history), then extended as ADR-0018 and ADR-0019 were accepted:
+phase F narrowed to the lease/sidecar work that other documents cite it by, and
+the first public release was inserted as G, pushing write mode and the Android
+client down a letter each. A–F are the ones referenced elsewhere and keep their
+letters. Current order:
 
 | Phase  | Work                                                                                                                    | Why this order                                                                                                                                                                                     |
 | ------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A ✅   | Server foundations 1–7 (probe, storyboards, previews, progress, decisions, HLS)                                         | Shipped as plan 1 M1–M7                                                                                                                                                                            |
 | B ✅   | Web player v2 + image viewer v2 + HLS integration (plan 1 M2–M7)                                                        | Merged through PR #9                                                                                                                                                                               |
-| C      | Plan 1 **M9 player interaction polish**, then **M12 hover video preview** (both recomposed 2026-07-11 — plan 1 §11/§13) | M9 is merged; M12 is implemented on `feat/hover-preview` and remains in review. Every later client inherits the same SPA behavior. A-B loop remains in M11, video adjustments + slideshow deferred |
-| D (in review) | Server: **pairing + device tokens** (plan 2 §4 / T0)                                                              | Implemented on `feat/device-pairing`; pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it                                                                    |
-| E      | **macOS desktop shell** (plan 3 D1–D5)                                                                                  | Owner priority. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3)                                                                    |
-| F (in progress) | **Library ownership lease + local-server sidecar** first ([ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md), accepted 2026-07-19), then **library write mode** (plan 4), re-ordered W0 → W1 → W5. The server-side lease (§2–§4) **and** §6 checkpoint hygiene are implemented on `feat/library-ownership-lease`; the D6 sidecar is next | The lease enforces one server per library, lands server-side first (it hardens the NAS deployment on its own and is a precondition for write-mode operations), then the shell's sidecar + connections model (plan 3 D6) lets local library folders open without server administration. Write mode's driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). W3/W4 (move/trash) follow; W2 waits on M11 (deferred) |
-| G      | **Android client** (plan 2 T1–T7)                                                                                       | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D)                                                                                            |
+| C ✅   | Plan 1 **M9 player interaction polish**, then **M12 hover video preview** (both recomposed 2026-07-11 — plan 1 §11/§13) | Merged as #11 and #12. Every later client inherits the same SPA behavior. A-B loop remains in M11, video adjustments + slideshow deferred                                                          |
+| D ✅   | Server: **pairing + device tokens** (plan 2 §4 / T0)                                                                    | Merged as #13. Pulled ahead of the Android client because the desktop shell's auth (plan 3 D2) reuses it                                                                                           |
+| E ✅   | **macOS desktop shell** (plan 3 D1–D5)                                                                                  | Merged as #15–#21. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3)                                                                 |
+| F ✅   | **Library ownership lease + local-server sidecar** ([ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md), accepted 2026-07-19) — the server-side lease (§2–§4) and §6 checkpoint hygiene, then the plan 3 D6 sidecar | Merged as #27, with the unified library add/remove flow following in #28. The lease enforces one server per library and landed server-side first (it hardens the NAS deployment on its own and is a precondition for write-mode operations); the shell's sidecar + connections model then lets local library folders open without server administration |
+| G (next) | **First public release** (plan 3 D7, [ADR-0019](../adr/0019-open-source-distribution-model.md))                        | Ahead of write mode because it is what makes everything already built reach anyone else, and because D6's bundled sidecar is what created the packaging obligation. The blocker — pinning a static, redistributable ffmpeg — is resolved; the rest is release pipeline and documentation |
+| H      | **Library write mode** (plan 4), re-ordered W0 → W1 → W5                                                                 | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). Needs the phase F lease underneath it. W3/W4 (move/trash) follow; W2 waits on M11 (deferred)   |
+| I      | **Android client** (plan 2 T1–T7)                                                                                       | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D)                                                                                            |
 | Future | Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (exports) + plan 4 W2, Linux/Windows shells, TV wall follow-ups   | Deferred by owner 2026-07-10                                                                                                                                                                       |
 
 Phases are sequenced by dependency, not by strict calendar. Each phase
 decomposes into the milestone slices listed in its plan and lands via normal
 branch/PR discipline.
 
-## Out of scope for all three plans
+## Out of scope for all four plans
 
 - Internet metadata scraping, AI tagging, multi-user RBAC (product anti-goals).
 - iOS/tvOS clients (revisit after Android TV ships).
