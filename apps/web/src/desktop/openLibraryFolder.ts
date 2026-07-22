@@ -1,5 +1,5 @@
 /**
- * The "Open Library Folder…" flow (plan 3 D6.4/D6.5).
+ * The folder-opening flow (plan 3 D6.4/D6.5).
  *
  * Picking a folder, starting the local server, and registering or creating the
  * library all happen inside the shell — the absolute path never reaches this

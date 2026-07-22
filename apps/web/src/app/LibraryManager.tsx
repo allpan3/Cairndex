@@ -282,13 +282,13 @@ function newLibraryAsk(target: ConfirmState): string {
 }
 
 /**
- * The name step as a dialog of its own, for the File → Open Library Folder…
- * picker.
+ * The name step as a dialog of its own, for first-run setup.
  *
- * That menu item is reachable from anywhere — including the first-run screen,
- * where no manager is open — so the same question has to be askable without
- * one. Inside the manager the question is asked in place instead (see the add
- * form above), because there the pointer is already on the button.
+ * Everywhere else the File menu opens the Libraries dialog and the question is
+ * asked in place (see the add form above), because there the pointer is already
+ * on the button. First run is the one state without that dialog — it lists a
+ * server's libraries and there is no server yet — so the menu picks a folder
+ * directly there and this asks the same question on its own.
  */
 export function NewLibraryDialog({
   folderName,

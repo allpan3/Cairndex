@@ -1,14 +1,16 @@
 /**
- * The real "Open Library Folder…" flow, end to end inside App.
+ * The real folder-opening flow, end to end inside App: the File menu opens the
+ * Libraries dialog, and Browse… in that dialog reaches the shell's picker.
  *
  * Deliberately does *not* mock `./desktop/openLibraryFolder` — the previous two
  * attempts at this bug were fixed against a model of the flow rather than the
  * flow itself, and both times the unit tests passed while the app did not. Here
- * only the outermost seam (the Tauri command) is faked, so the connections
- * store, the pending-selection handoff, and App's consumption all really run.
+ * only the outermost seam (the Tauri command) is faked, so the dialog, the
+ * connections store, the pending-selection handoff, and App's consumption all
+ * really run.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import App from './App'
@@ -151,6 +153,18 @@ beforeEach(() => {
   })
 })
 
+// Every case reaches the picker the way a user does: ⌘O opens the Libraries
+// dialog, and Browse… inside it is what calls the shell.
+async function browseForFolder() {
+  await act(async () => {
+    dispatchMenu('manage-libraries')
+  })
+  const browse = await screen.findByRole('button', { name: 'Browse…' })
+  await act(async () => {
+    fireEvent.click(browse)
+  })
+}
+
 function renderApp() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -173,9 +187,7 @@ test('opening an already-registered library switches the app to it', async () =>
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   // `setActiveLibraryId` is what every content query is scoped by, so it is the
   // real answer to "which library is the app on".
@@ -204,9 +216,7 @@ test('opening a second library while the local connection is ALREADY active swit
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
   await waitFor(() => expect(active).toBe(PHOTOS.id))
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   await waitFor(() => expect(active).toBe(VIDEO.id))
 })
@@ -233,9 +243,7 @@ test('a library missing from the cached list still becomes active once it appear
   // The newly registered library appears on the server from here on.
   libraries.push(VIDEO)
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
 })
@@ -268,9 +276,7 @@ test('the real composition: App inside DesktopBootstrap, whose QueryScope is key
   )
   await waitFor(() => expect(active).toBe(PHOTOS.id), { timeout: 3000 })
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
 })
@@ -291,9 +297,7 @@ test('a folder the current server already serves is just selected, not reopened'
   renderApp()
   await waitFor(() => expect(active).toBe(PHOTOS.id))
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   // Selected here, on this server — by portable uuid, since the shell has no
   // id that means anything in this registry.
@@ -307,9 +311,7 @@ test('the shell is told which libraries this server already has', async () => {
   renderApp()
   await waitFor(() => expect(active).toBe(PHOTOS.id))
 
-  await act(async () => {
-    dispatchMenu('open-library-folder')
-  })
+  await browseForFolder()
 
   await waitFor(() => expect(host.openLibraryFolder).toHaveBeenCalled())
 })

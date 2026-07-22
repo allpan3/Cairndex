@@ -9,9 +9,10 @@ const desktopMenu = vi.hoisted(() => ({
   handler: null as ((action: string) => void) | null,
 }))
 
-const openFolder = vi.hoisted(() => ({ run: vi.fn() }))
+const openFolder = vi.hoisted(() => ({ run: vi.fn(), confirm: vi.fn() }))
 vi.mock('./desktop/openLibraryFolder', () => ({
   openLibraryFolder: () => openFolder.run(),
+  confirmPickedLibrary: (token: string, name: string) => openFolder.confirm(token, name),
 }))
 
 vi.mock('./desktop/useDesktopMenu', () => ({
@@ -331,36 +332,23 @@ test('does not fail update when the background storyboard job fails', async () =
   expect(screen.queryByText(/Background job failed/i)).not.toBeInTheDocument()
 })
 
-test('the Open Library Folder menu item works in the running app, not just at setup', async () => {
+test('the Manage Libraries menu item works in the running app, not just at setup', async () => {
   // Regression: this was handled only in DesktopBootstrap, whose menu listener
   // tears down once the workspace mounts (`if (ready) return`). The item stayed
   // enabled and did nothing in the state a user actually spends their time in.
-  // The unit tests missed it because they exercised `openLibraryFolder()`
-  // directly and never the wiring that reaches it.
-  openFolder.run.mockResolvedValue({ opened: null })
+  // The unit tests missed it because they exercised the flow directly and never
+  // the wiring that reaches it.
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
 
   act(() => {
-    desktopMenu.handler?.('open-library-folder')
+    desktopMenu.handler?.('manage-libraries')
   })
 
-  await waitFor(() => expect(openFolder.run).toHaveBeenCalledTimes(1))
-})
-
-test('a failed open reports the reason instead of failing silently', async () => {
-  openFolder.run.mockRejectedValue({
-    code: 'open_failed',
-    message: "'/x' is not a Cairndex library (no marker found)",
-  })
-  mockApi()
-  renderApp()
-  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
-
-  act(() => {
-    desktopMenu.handler?.('open-library-folder')
-  })
-
-  expect(await screen.findByRole('alert')).toHaveTextContent('not a Cairndex library')
+  // The dialog is the whole surface now: adding, opening, and removing.
+  expect(await screen.findByRole('heading', { name: 'Libraries' })).toBeInTheDocument()
+  expect(screen.getByLabelText('Library path')).toBeInTheDocument()
+  // Opening it must not reach the shell on its own — Browse… does that.
+  expect(openFolder.run).not.toHaveBeenCalled()
 })
