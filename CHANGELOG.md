@@ -35,7 +35,9 @@ grouped under `Unreleased` until the first tagged release.
   reachable by keyboard from any state — including the ones that replace the
   workspace, such as a library another server is serving. Browse… inside it is
   the folder picker. First-run setup is the exception: with no server there is
-  no library list to show, so there the item still picks a folder directly.
+  no library list to show, so there the item still picks a folder directly. The
+  sidebar's button for the same dialog is now a stack of books rather than a
+  `+`, since the dialog no longer only adds.
 
 - **Path autocomplete works from the keyboard.** Down/Up move through the
   suggestions, Enter takes the highlighted one, Tab completes as far as the
