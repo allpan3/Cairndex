@@ -31,6 +31,7 @@ import {
   type GroupingStemModes,
   type JobRead,
   type LibraryCreate,
+  type LibraryRead,
   type LibraryRegister,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
@@ -304,7 +305,16 @@ export function useLibraryMutations() {
     // Metadata-only: deregisters the library and touches nothing on disk.
     remove: useMutation({
       mutationFn: (libraryId: string) => deleteLibrary(libraryId),
-      onSuccess: invalidate,
+      onSuccess: (_result, libraryId) => {
+        // Drop the row before refetching. The list is what resolves the active
+        // library, so leaving the removed one in the cache for a round trip
+        // would keep it active — and content queries, just cleared, would
+        // immediately reload against a library this server no longer has.
+        qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+          current?.filter((library) => library.id !== libraryId),
+        )
+        return invalidate()
+      },
     }),
   }
 }
