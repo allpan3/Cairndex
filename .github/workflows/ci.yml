@@ -60,10 +60,12 @@ jobs:
           enable-cache: true
       - name: Sync dependencies
         run: uv sync --frozen
-      # --skip-ffmpeg until ffmpeg-manifest.json is populated; choosing a static
-      # ffmpeg source is an owner decision (ADR-0019 §3). The runner's system
-      # ffmpeg covers the smoke test either way, so this still exercises the
-      # media paths — it just does not yet prove the *bundled* binary works.
+      # --skip-ffmpeg because linux-x86_64 is deliberately unpinned: the builds
+      # that cover both macOS architectures ship a Linux variant with
+      # --enable-decklink, which forces --enable-nonfree and cannot be
+      # redistributed (ADR-0019 §3). Linux is not a release target, so this job
+      # uses the runner's system ffmpeg. Proving the *bundled* binary works is
+      # the macOS job's business, where the pin exists.
       - name: Build the sidecar bundle
         run: uv run python packaging/build_sidecar.py --skip-ffmpeg
       - name: Smoke-test the packaged sidecar
@@ -215,11 +217,30 @@ jobs:
       - name: Sync server dependencies
         run: uv sync --frozen
         working-directory: apps/server
+      # Keyed on the manifest, so a re-pin re-downloads and everything else
+      # reuses ~125 MB of binaries.
+      - name: Cache the pinned static ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: apps/server/packaging/vendor/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/server/packaging/ffmpeg-manifest.json') }}
+      - name: Fetch the pinned static ffmpeg
+        run: uv run python packaging/fetch_ffmpeg.py
+        working-directory: apps/server
       # tauri.conf.json stages this bundle as a resource, so `tauri build`
-      # cannot run without it. --skip-ffmpeg until ffmpeg-manifest.json is
-      # populated (ADR-0019 §3).
+      # cannot run without it. This job builds *with* the bundled ffmpeg, which
+      # is what a release ships — the checksum gate in build_sidecar.py fails
+      # the build if the staged binary is not the pinned one (ADR-0019 §3).
       - name: Build the sidecar bundle
-        run: uv run python packaging/build_sidecar.py --skip-ffmpeg
+        run: uv run python packaging/build_sidecar.py
+        working-directory: apps/server
+      # The Linux `sidecar` job smoke-tests a bundle built with --skip-ffmpeg,
+      # so it exercises the media paths against the runner's system ffmpeg and
+      # cannot fail on a bad bundled binary. This is the only place the shipped
+      # combination — frozen server plus the pinned static ffmpeg — is actually
+      # run (ADR-0019 §2).
+      - name: Smoke-test the packaged sidecar (with the bundled ffmpeg)
+        run: uv run python packaging/smoke_test.py
         working-directory: apps/server
       - name: Rust format check
         run: cargo fmt --check
