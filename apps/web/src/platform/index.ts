@@ -109,6 +109,7 @@ export interface HostLabels {
 interface PlatformRuntime {
   platform: HostPlatform
   os: HostOs
+  revealWindow(): Promise<void>
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   assetUrl(value: string): string
   /**
@@ -183,6 +184,7 @@ const LABELS: Record<HostOs, HostLabels> = {
 const webRuntime: PlatformRuntime = {
   platform: webPlatform,
   os: 'unknown',
+  revealWindow: async () => undefined,
   fetch: (input, init) => globalThis.fetch(input, init),
   assetUrl: (value) => value,
   configureServer: async () => undefined,
@@ -248,6 +250,9 @@ export function initializeHostPlatform(): Promise<HostPlatform> {
 export function getHostPlatform(): HostPlatform {
   return runtime.platform
 }
+
+// Reveals the native window after the renderer has mounted its dark document
+export const revealHostWindow = (): Promise<void> => runtime.revealWindow()
 
 // Returns OS-specific copy without changing the OS-neutral capability interface
 export function getHostLabels(): HostLabels {

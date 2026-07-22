@@ -1,8 +1,9 @@
 import { StrictMode, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { isDesktopHost } from './platform'
+import { initializeHostPlatform, isDesktopHost, revealHostWindow } from './platform'
 import { QueryScope } from './QueryScope'
 
 const root = createRoot(document.getElementById('root')!)
@@ -16,28 +17,49 @@ function renderApp(content: ReactNode): void {
 }
 
 // Replaces a blank webview with an actionable shell-load failure
-function renderDesktopLoadError(error: unknown): void {
+function renderDesktopLoadError(error: unknown): ReactNode {
   console.error('Desktop shell failed to load', error)
-  renderApp(
+  return (
     <QueryScope>
       <main className="app-loading" role="alert">
         The desktop shell could not load. Quit and reopen Cairndex.
       </main>
-    </QueryScope>,
+    </QueryScope>
   )
 }
 
-if (isDesktopHost()) {
-  void import('./desktop/DesktopBootstrap')
-    .then(({ DesktopBootstrap }) => {
-      // DesktopBootstrap owns the scope key: it knows the active connection.
-      renderApp(
-        <DesktopBootstrap>
-          <App />
-        </DesktopBootstrap>,
-      )
+// Reveals the shell on the next renderer task after its dark document is mounted
+function revealDesktopWindowAfterMount(): void {
+  setTimeout(() => {
+    void revealHostWindow().catch((error: unknown) => {
+      console.error('Desktop window could not be revealed', error)
     })
-    .catch(renderDesktopLoadError)
+  }, 0)
+}
+
+// Loads the native bridge, mounts the shell, then acknowledges the dark document
+async function renderDesktopApp(): Promise<void> {
+  let content: ReactNode
+  try {
+    const [{ DesktopBootstrap }] = await Promise.all([
+      import('./desktop/DesktopBootstrap'),
+      initializeHostPlatform(),
+    ])
+    // DesktopBootstrap owns the scope key: it knows the active connection.
+    content = (
+      <DesktopBootstrap>
+        <App />
+      </DesktopBootstrap>
+    )
+  } catch (error) {
+    content = renderDesktopLoadError(error)
+  }
+  flushSync(() => renderApp(content))
+  revealDesktopWindowAfterMount()
+}
+
+if (isDesktopHost()) {
+  void renderDesktopApp()
 } else {
   renderApp(
     <QueryScope>

@@ -1,25 +1,31 @@
 # Project status
 
-## Completed: hidden-until-loaded desktop startup (2026-07-21)
+## Implemented: renderer-acknowledged desktop startup (2026-07-21)
 
 Direct-to-`main` desktop startup follow-up.
 
+- The first implementation revealed the native window at
+  `PageLoadEvent::Finished`, but owner testing still exposed a white frame. That
+  event confirms navigation, not that WKWebView has composited the dark document,
+  so it is no longer the normal reveal trigger.
 - The native main window now starts hidden and is revealed and focused exactly
-  once, after the main webview reports its first completed page load. WKWebView's
-  default white surface is therefore never user-visible.
+  once after React commits the mounted dark shell and a subsequent renderer task
+  invokes `renderer_ready`. The page-load callback only schedules a two-second
+  fail-safe so a renderer failure cannot leave the application invisible.
 - Cold-start deep links and near-simultaneous second launches cannot bypass the
   readiness gate by calling `show()` early; once loaded, their existing restore
   and focus behavior is unchanged.
-- The native `backgroundColor`, inline document background, and CSS background
-  remain aligned dark fallbacks. No macOS private WebKit API was enabled.
-- Desktop format and Clippy pass; all 73 Rust tests pass against the real bundled
-  sidecar. Frontend lint/format/typecheck, all 299 component tests, the production
-  build, and all 80 Playwright tests pass. The packaged `.app` cold-started into
-  the Lex shell, proving the visibility gate does not strand the window hidden;
-  the desktop capture surface samples after launch and cannot independently
-  frame-check the sub-second transition. The default build also completed the
-  `.app` before Tauri's Finder-driven DMG step failed in this environment;
-  `tauri build --bundles app` passes, and both temporary DMG mounts were cleaned.
+- The pre-existing native `backgroundColor`, inline document background, and CSS
+  background remain unchanged. No macOS private WebKit API was enabled.
+- Desktop formatting and Clippy pass; all 73 Rust tests pass against the real
+  bundled sidecar. Frontend lint, formatting, type checking, all 300 component
+  tests, the production build, and all 80 Playwright tests pass.
+- A packaged probe delayed the native fail-safe to ten seconds; the window became
+  available in 1.685 seconds, proving the renderer acknowledgment rather than the
+  fail-safe revealed it. `tauri build --bundles app` passes, and the final rebuilt
+  application is installed. Automated desktop capture samples after launch and
+  cannot prove the sub-second color transition; owner observation remains the
+  decisive visual check.
 
 ## Completed: immediate cover selection feedback (2026-07-21)
 
