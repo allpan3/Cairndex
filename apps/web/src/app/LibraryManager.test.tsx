@@ -355,6 +355,40 @@ test('Tab completes as far as the suggestions agree', async () => {
   expect(input).toHaveValue('/mnt/media-')
 })
 
+test('clicking elsewhere in the dialog dismisses the menu', async () => {
+  // The dialog stops mousedown propagating, so that a click inside it never
+  // reaches the backdrop and closes the whole modal. A dismissal that listened
+  // on the bubble phase therefore never fired for the clicks a user actually
+  // makes to get rid of the menu — every one of them is inside the dialog.
+  suggestions = [{ path: '/mnt/media', is_library: false }]
+  renderManager()
+  const input = screen.getByLabelText('Library path')
+
+  fireEvent.change(input, { target: { value: '/mnt' } })
+  await screen.findByRole('option', { name: /\/mnt\/media/ })
+
+  fireEvent.mouseDown(screen.getByRole('heading', { name: 'Libraries' }))
+
+  expect(screen.queryByRole('listbox')).toBeNull()
+  // Dismissing is not editing: the typed path survives.
+  expect(input).toHaveValue('/mnt')
+})
+
+test('clicking inside the menu keeps it open', async () => {
+  suggestions = [
+    { path: '/mnt/media', is_library: false },
+    { path: '/mnt/music', is_library: false },
+  ]
+  renderManager()
+
+  fireEvent.change(screen.getByLabelText('Library path'), { target: { value: '/mnt' } })
+  const option = await screen.findByRole('option', { name: /\/mnt\/media/ })
+
+  fireEvent.mouseDown(option)
+
+  expect(screen.getByRole('listbox')).toBeInTheDocument()
+})
+
 test('Escape closes the menu without changing the path', async () => {
   suggestions = [{ path: '/mnt/media', is_library: false }]
   renderManager()
