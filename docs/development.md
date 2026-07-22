@@ -88,13 +88,15 @@ local development. On macOS, the package declares local-network use and permits
 cleartext HTTP only in its WKWebView content so an explicitly configured private
 LAN server works; prefer HTTPS for any server outside a trusted private network.
 
-The main window starts hidden and is revealed once, after React synchronously
-commits the dark shell and a subsequent renderer task invokes `renderer_ready`.
-A completed navigation is not a rendering guarantee: `PageLoadEvent::Finished`
-only schedules a two-second fail-safe in case the renderer bridge fails. Startup
-deep links and a second instance may request focus before the renderer
-acknowledgment, but the same readiness gate defers their `show()` call; later
-focus requests behave normally.
+The main window starts hidden. After React synchronously commits the dark shell,
+`prime_renderer` records the restored position and maximized state, moves the
+window far off-screen, and shows it there so WebKit can composite. The renderer
+waits for two real animation frames before `renderer_ready` restores placement
+and focuses the window. A completed navigation is not a rendering guarantee:
+`PageLoadEvent::Finished` only schedules a two-second fail-safe in case the
+renderer bridge or platform positioning fails. Startup deep links and a second
+instance may request focus before the renderer acknowledgment, but the same
+readiness gate defers their `show()` call; later focus requests behave normally.
 The native `backgroundColor`, inline document background, and CSS background
 remain matching dark fallbacks rather than substitutes for the visibility gate.
 
