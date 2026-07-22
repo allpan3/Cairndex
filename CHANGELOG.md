@@ -24,10 +24,18 @@ grouped under `Unreleased` until the first tagged release.
   position — confirms it, so neither the pointer nor the caret has to move.
 
   On the desktop app a **Browse…** button reaches those same outcomes through
-  the native folder picker, and **File → Open Library Folder…** now accepts a
-  folder that is not a library yet, asking for a name instead of refusing.
-  Everything except Browse… behaves identically in the browser, which cannot
-  produce an absolute path on the server.
+  the native folder picker, and it accepts a folder that is not a library yet,
+  asking for a name instead of refusing. Everything except Browse… behaves
+  identically in the browser, which cannot produce an absolute path on the
+  server.
+
+- **File → Open Library Folder… is now File → Manage Libraries…** (still ⌘O).
+  It opens the Libraries dialog rather than jumping straight to the folder
+  picker, so one surface covers adding, opening, and removing, and the dialog is
+  reachable by keyboard from any state — including the ones that replace the
+  workspace, such as a library another server is serving. Browse… inside it is
+  the folder picker. First-run setup is the exception: with no server there is
+  no library list to show, so there the item still picks a folder directly.
 
 - **Path autocomplete works from the keyboard.** Down/Up move through the
   suggestions, Enter takes the highlighted one, Tab completes as far as the

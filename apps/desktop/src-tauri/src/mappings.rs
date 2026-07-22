@@ -434,7 +434,7 @@ pub(crate) fn pick_library_folder<R: Runtime>(
     let Some(selected) = app
         .dialog()
         .file()
-        .set_title("Open Library Folder")
+        .set_title("Choose a Library Folder")
         .blocking_pick_folder()
     else {
         return Ok(None);

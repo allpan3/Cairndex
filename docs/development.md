@@ -386,8 +386,13 @@ It never deletes a folder, a `.cairndex/` package, or a media file — re-adding
 the folder restores the library, because nothing authoritative lives in the
 registry (ADR-0018 §1). Any change here must preserve that.
 
-On desktop, **Browse…** and **File → Open Library Folder…** reach the same three
-outcomes through the native picker. The picked absolute path never crosses into
+On desktop, **File → Manage Libraries…** (⌘O) opens this same dialog, and its
+**Browse…** button reaches the same three outcomes through the native picker.
+First-run setup is the one exception: there is no server there, so the dialog
+has no library list to show and the menu item picks a folder directly —
+`DesktopBootstrap` handles that case and asks for a name in a dialog of its own.
+
+The picked absolute path never crosses into
 the web layer (see the comment above `PickedFolder` in `mappings.rs`): for a
 folder that is not a library yet, the shell parks the path in a single
 pending-pick slot and returns `{ needs_confirmation, token, folder_name }`;

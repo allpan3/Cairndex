@@ -159,6 +159,24 @@ test('cancelling the picker changes nothing', async () => {
   expect(screen.queryByLabelText('Library name')).toBeNull()
 })
 
+test('a failed pick is reported in the dialog, not swallowed', async () => {
+  // This used to be a toast raised by the menu handler. The dialog owns the
+  // whole flow now, so it owns the failure too.
+  openHostFolder.mockRejectedValue({
+    code: 'open_failed',
+    message: "'/x' is not a Cairndex library (no marker found)",
+  })
+  const onClose = vi.fn()
+  renderManager({ onClose })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+
+  expect(await screen.findByText(/not a Cairndex library/)).toBeInTheDocument()
+  // And the dialog stays open, so the reason is readable and retryable.
+  expect(onClose).not.toHaveBeenCalled()
+  expect(screen.getByLabelText('Library path')).toBeInTheDocument()
+})
+
 test('a failed confirmation is reported and the folder can be named again', async () => {
   openHostFolder.mockResolvedValue({ opened: NEEDS_NAME })
   confirmHostPick.mockRejectedValue({
