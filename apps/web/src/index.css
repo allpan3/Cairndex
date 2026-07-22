@@ -3611,6 +3611,11 @@ code {
   min-width: 0;
 }
 .sidebar__library-manage {
+  /* Centres either kind of content this button carries: an inline SVG icon, or
+     the lock emoji beside it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
