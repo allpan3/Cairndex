@@ -85,10 +85,14 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
     void initializeHostPlatform()
       .then(() =>
         listenHostMenu((action) => {
-          if (action === 'open-library-folder') {
+          if (action === 'manage-libraries') {
             // Deliberately reachable from the first-run screen: opening a local
             // folder starts its own server, so it must not require a remote one
             // to have been configured first.
+            //
+            // This is the one state where the item does *not* open the Libraries
+            // dialog: that dialog lists a server's libraries, and here there is
+            // no server — which is the whole situation the picker resolves.
             void openLibraryFolder()
               .then((result) => {
                 // A folder that is not a library yet needs a name before
