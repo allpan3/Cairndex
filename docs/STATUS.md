@@ -1,5 +1,38 @@
 # Project status
 
+## Implemented: startup flash root-cause fix via macos-private-api (2026-07-22)
+
+Branch `fix/desktop-startup-flash-root-cause`, based on `main`.
+
+- Reverted the off-screen priming workaround (`e2ef4c4`): it raced WebKit's
+  compositor using undocumented off-screen rAF behavior that macOS occlusion
+  throttling could legitimately break. The workaround is preserved on branch
+  `archive/startup-offscreen-priming` and in `main` history.
+- Root cause addressed instead: the window `backgroundColor` never affected
+  WKWebView's opaque white backing surface because wry's `drawsBackground`
+  disabling is compiled behind Tauri's `macos-private-api` feature, which was
+  not enabled. Enabling the Cargo feature plus `app.macOSPrivateApi` in
+  `tauri.conf.json` makes the first composited frame dark by construction
+  (ADR-0020). This supersedes the 2026-07-21 note that no private API was
+  enabled.
+- The renderer-acknowledged hidden-until-mounted reveal (below) is retained as
+  content polish with its two-second fail-safe; it is no longer a flash
+  defense.
+- Desktop formatting, Clippy, and all 73 Rust tests pass. Frontend lint,
+  formatting, type checking, all 300 component tests, and the production build
+  pass. Playwright was skipped: no browser-visible behavior changed and the
+  reverted web code returns to its previously gated state.
+- `tauri build --bundles app` passes. The packaged app was launched
+  standalone (after quitting the previously installed instance, which the
+  single-instance plugin otherwise forwards to): it started, rendered the dark
+  shell with the active library at the saved window placement, and stayed
+  stable, confirming the private-API flag pair is consistent. The rebuilt
+  application is installed to `/Applications` and relaunched.
+- Known limitation: automated capture cannot frame-sample the sub-second
+  transition; owner observation across several launches remains the decisive
+  visual check. If MAS distribution ever becomes a goal, ADR-0020 must be
+  revisited.
+
 ## Implemented: renderer-acknowledged desktop startup (2026-07-21)
 
 Direct-to-`main` desktop startup follow-up.

@@ -95,8 +95,11 @@ only schedules a two-second fail-safe in case the renderer bridge fails. Startup
 deep links and a second instance may request focus before the renderer
 acknowledgment, but the same readiness gate defers their `show()` call; later
 focus requests behave normally.
-The native `backgroundColor`, inline document background, and CSS background
-remain matching dark fallbacks rather than substitutes for the visibility gate.
+The reveal gate exists for content polish (the window appears with UI already
+mounted), not as a flash defense: `macos-private-api` plus the window
+`backgroundColor` disables WKWebView's opaque white backing surface, so the
+first composited frame is dark regardless of reveal timing (ADR-0020). The
+inline document background and CSS background remain matching dark fallbacks.
 
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit
