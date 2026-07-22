@@ -109,7 +109,6 @@ export interface HostLabels {
 interface PlatformRuntime {
   platform: HostPlatform
   os: HostOs
-  primeWindowForPaint(): Promise<boolean>
   revealWindow(): Promise<void>
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   assetUrl(value: string): string
@@ -185,7 +184,6 @@ const LABELS: Record<HostOs, HostLabels> = {
 const webRuntime: PlatformRuntime = {
   platform: webPlatform,
   os: 'unknown',
-  primeWindowForPaint: async () => false,
   revealWindow: async () => undefined,
   fetch: (input, init) => globalThis.fetch(input, init),
   assetUrl: (value) => value,
@@ -252,9 +250,6 @@ export function initializeHostPlatform(): Promise<HostPlatform> {
 export function getHostPlatform(): HostPlatform {
   return runtime.platform
 }
-
-// Lets the native window render off-screen before its first visible frame
-export const primeHostWindowForPaint = (): Promise<boolean> => runtime.primeWindowForPaint()
 
 // Reveals the native window after the renderer has mounted its dark document
 export const revealHostWindow = (): Promise<void> => runtime.revealWindow()

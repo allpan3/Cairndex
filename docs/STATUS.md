@@ -8,33 +8,24 @@ Direct-to-`main` desktop startup follow-up.
   `PageLoadEvent::Finished`, but owner testing still exposed a white frame. That
   event confirms navigation, not that WKWebView has composited the dark document,
   so it is no longer the normal reveal trigger.
-- A mounted dark document was still insufficient: owner testing found the flash
-  alternated between launches because a hidden WKWebView may not have submitted
-  its first composited surface before `show()`.
-- The main window now records its restored placement, moves far off-screen, and
-  becomes visible there after React mounts. WebKit can then produce two real
-  animation frames before `renderer_ready` restores the position, maximized
-  state, and focus. The page-load callback only schedules a two-second fail-safe
-  so renderer or positioning failure cannot leave the application invisible.
+- The native main window now starts hidden and is revealed and focused exactly
+  once after React commits the mounted dark shell and a subsequent renderer task
+  invokes `renderer_ready`. The page-load callback only schedules a two-second
+  fail-safe so a renderer failure cannot leave the application invisible.
 - Cold-start deep links and near-simultaneous second launches cannot bypass the
   readiness gate by calling `show()` early; once loaded, their existing restore
   and focus behavior is unchanged.
 - The pre-existing native `backgroundColor`, inline document background, and CSS
   background remain unchanged. No macOS private WebKit API was enabled.
-- Desktop formatting and Clippy pass; all 74 Rust tests pass against the real
+- Desktop formatting and Clippy pass; all 73 Rust tests pass against the real
   bundled sidecar. Frontend lint, formatting, type checking, all 300 component
   tests, the production build, and all 80 Playwright tests pass.
-- Packaged probes delayed the native fail-safe to ten seconds; separate launches
-  became available in 1.538 and 1.058 seconds, proving the off-screen animation
-  frames completed and the renderer acknowledgment—not the fail-safe—restored
-  the window. `tauri build --bundles app` passes, the installed executable matches
-  that artifact, and four installed-app quit/relaunch cycles became available in
-  1.556, 0.877, 0.928, and 0.866 seconds.
-- Non-installed test and backup bundles were renamed from `.app` to recoverable
-  `.app.backup` directories so macOS cannot resolve the shared bundle identifier
-  to an older build. Automated desktop capture still cannot frame-sample the
-  sub-second color transition; repeated owner observation remains the decisive
-  visual check.
+- A packaged probe delayed the native fail-safe to ten seconds; the window became
+  available in 1.685 seconds, proving the renderer acknowledgment rather than the
+  fail-safe revealed it. `tauri build --bundles app` passes, and the final rebuilt
+  application is installed. Automated desktop capture samples after launch and
+  cannot prove the sub-second color transition; owner observation remains the
+  decisive visual check.
 
 ## Completed: immediate cover selection feedback (2026-07-21)
 
