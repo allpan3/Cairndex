@@ -3,8 +3,8 @@
 ## Implemented: unified library add/remove flow (2026-07-22)
 
 Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. No PR and no
-merge — owner-triggered. Four reviewable commits: server endpoints → shell →
-web modal → docs.
+merge — owner-triggered. Five reviewable commits: server endpoints → shell →
+web modal → docs → one review follow-up.
 
 **What changed.** Adding a library no longer starts with a question the owner
 should not have to answer. The Create/Register tabs are gone; there is one path
