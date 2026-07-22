@@ -7,12 +7,18 @@ libraries. Per-library content endpoints already live under
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Response, status
 
 from cairndex.api.deps import RegistryDbSession
-from cairndex.api.schemas.files import PathSuggestions
 from cairndex.registry import services as service
-from cairndex.registry.schemas import LibraryCreate, LibraryRead, LibraryRegister
+from cairndex.registry.schemas import (
+    LibraryCreate,
+    LibraryRead,
+    LibraryRegister,
+    PathProbeRead,
+    PathSuggestion,
+    PathSuggestions,
+)
 
 router = APIRouter(prefix="/libraries", tags=["libraries"])
 
@@ -26,7 +32,32 @@ def list_libraries(db: RegistryDbSession) -> list[LibraryRead]:
 @router.get("/path-suggestions", response_model=PathSuggestions)
 def path_suggestions(path: Annotated[str, Query()] = "") -> PathSuggestions:
     """Directory autocompletions for the add-library form (owner setup only)."""
-    return PathSuggestions(suggestions=service.suggest_paths(path))
+    return PathSuggestions(
+        suggestions=[
+            PathSuggestion(path=item.path, is_library=item.is_library)
+            for item in service.suggest_paths(path)
+        ]
+    )
+
+
+# Also before /{library_id}, for the same reason.
+@router.get("/probe-path", response_model=PathProbeRead)
+def probe_path(db: RegistryDbSession, path: Annotated[str, Query()]) -> PathProbeRead:
+    """Report what an absolute server path is, without creating anything.
+
+    The add-library form calls this once, on submit, so it can confirm the right
+    action for the path: select an already-registered folder, register an
+    existing library, or offer to make a plain (or not-yet-existing) folder into
+    a new one. Owner-setup only, like ``/path-suggestions``.
+    """
+    probe = service.probe_path(db, path)
+    return PathProbeRead(
+        exists=probe.exists,
+        is_library=probe.is_library,
+        already_registered_id=probe.already_registered_id,
+        manifest_display_name=probe.manifest_display_name,
+        folder_name=probe.folder_name,
+    )
 
 
 @router.post("/create", response_model=LibraryRead, status_code=status.HTTP_201_CREATED)
@@ -49,3 +80,21 @@ def register_library(payload: LibraryRegister, db: RegistryDbSession) -> Library
 @router.get("/{library_id}", response_model=LibraryRead)
 def get_library(library_id: str, db: RegistryDbSession) -> LibraryRead:
     return LibraryRead.model_validate(service.get_library(db, library_id))
+
+
+@router.delete("/{library_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deregister_library(library_id: str, db: RegistryDbSession) -> Response:
+    """Remove a library from this server's registry. **Metadata-only.**
+
+    Deletes the registry row and nothing else: the library folder, its
+    ``.cairndex/`` package (manifest, ``library.db``, cache), and every media
+    file stay untouched. Adding the same folder back later restores the library
+    with all of its metadata, because none of it lives in the registry
+    (ADR-0018 §1). This endpoint never deletes files — physical deletion is a
+    separate capability that does not exist yet.
+
+    Removing the library a client is currently viewing is allowed; the client
+    falls back to its no-library state.
+    """
+    service.deregister_library(db, library_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
