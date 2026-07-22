@@ -45,10 +45,16 @@ otherwise a name typed for one folder could create a library at another.
    the dialog stops mousedown propagating (deliberately — that is what keeps a
    click inside it from reaching the backdrop). Every dismissing click is inside
    the dialog, so the listener never fired; it runs in the capture phase now.
-   **The pattern across all three: this dialog's behavior lives in the browser,
+   A fourth, on the same pass, was design rather than defect: the name step
+   replaced the whole add section, so the button that asked for the
+   confirmation moved out from under the pointer. It now swaps the row's
+   contents in place — and holding the row still needed two non-obvious
+   things, since the dialog is vertically centred: buttons that never wrap, and
+   a hint paragraph that reserves two lines whether or not it uses them.
+   **The pattern across all four: this dialog's behavior lives in the browser,
    not in the component.** A component test can prove which handler ran; it
-   cannot prove the handler ever gets the event, or that the element is where it
-   claims to be.
+   cannot prove the handler ever gets the event, that the element is where it
+   claims to be, or that it stayed there.
 2. **Content query keys are not library-scoped.** The cache is cleared on every
    library switch instead, so removing the *active* library had to clear it
    explicitly; without that the next library inherits the removed one's bundles
@@ -59,8 +65,8 @@ otherwise a name typed for one folder could create a library at another.
    showing a takeover prompt on the next machine to open it. Pinned by mutation.
 
 **Gates.** Backend ruff / ruff format / strict mypy / **595 pytest** (+17).
-Frontend ESLint / Prettier / tsc / **328 Vitest** (+28) / Vite build / **89
-Playwright** (+6, the whole suite including its `@fullstack` partition against a
+Frontend ESLint / Prettier / tsc / **329 Vitest** (+29) / Vite build / **90
+Playwright** (+7, the whole suite including its `@fullstack` partition against a
 real backend). Desktop `cargo fmt --check`, Clippy
 `-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
 `tauri build`. Mutations applied and killed: the lease release in
