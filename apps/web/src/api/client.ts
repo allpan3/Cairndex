@@ -21,6 +21,9 @@ export type CollectionStats = components['schemas']['CollectionStats']
 export type LibraryRead = components['schemas']['LibraryRead']
 export type LibraryCreate = components['schemas']['LibraryCreate']
 export type LibraryRegister = components['schemas']['LibraryRegister']
+export type PathSuggestion = components['schemas']['PathSuggestion']
+export type PathSuggestions = components['schemas']['PathSuggestions']
+export type PathProbe = components['schemas']['PathProbeRead']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -475,12 +478,27 @@ export const createLibrary = (payload: LibraryCreate) =>
 export const registerLibrary = (payload: LibraryRegister) =>
   send<LibraryRead>('/api/v1/libraries/register', 'POST', payload)
 
-export function fetchPathSuggestions(path: string, signal?: AbortSignal): Promise<string[]> {
+/**
+ * Deregister a library. **Metadata-only** — the folder, its `.cairndex/`
+ * package, and every media file are left untouched, so adding it back later
+ * restores the library with all of its metadata.
+ */
+export const deleteLibrary = (libraryId: string) =>
+  send<void>(`/api/v1/libraries/${libraryId}`, 'DELETE')
+
+export function fetchPathSuggestions(
+  path: string,
+  signal?: AbortSignal,
+): Promise<PathSuggestion[]> {
   const q = `?path=${encodeURIComponent(path)}`
-  return getJson<{ suggestions: string[] }>(`/api/v1/libraries/path-suggestions${q}`, signal).then(
+  return getJson<PathSuggestions>(`/api/v1/libraries/path-suggestions${q}`, signal).then(
     (r) => r.suggestions,
   )
 }
+
+/** What a candidate path is, so the add flow can confirm the right action. */
+export const probeLibraryPath = (path: string, signal?: AbortSignal) =>
+  getJson<PathProbe>(`/api/v1/libraries/probe-path?path=${encodeURIComponent(path)}`, signal)
 
 // --- Background jobs ----------------------------------------------------------
 export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')

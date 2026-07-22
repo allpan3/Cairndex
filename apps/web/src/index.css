@@ -4066,17 +4066,38 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.lib-row--confirm {
+  background: rgba(251, 191, 36, 0.08);
+}
+/* Wraps, unlike the path line it sits in place of: this is the sentence that
+   says removal touches no files, so it must never be ellipsized away. */
+.lib-row__note {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .lib-add {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
-.lib-add__check {
+/* The path field takes the room; Browse… keeps its natural width beside it. */
+.lib-add__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  margin: 10px 0;
-  font-size: 13px;
-  color: var(--text);
+}
+.lib-add__row .path-input {
+  flex: 1;
+  min-width: 0;
+}
+.lib-add__hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.lib-confirm__ask {
+  margin: 0 0 10px;
+  color: var(--text-strong);
 }
 .path-input {
   position: relative;
@@ -4109,9 +4130,24 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.path-input__opt:hover {
+.path-input__opt:hover,
+.path-input__opt--active {
   background: var(--accent-soft);
   color: var(--text-strong);
+}
+/* Marks a directory that already carries a `.cairndex/` package, so an existing
+   library is visible before it is chosen rather than after an error. */
+.path-input__badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
 }
 
 /* --- Per-library passphrase lock screen (ADR-0010) --- */
