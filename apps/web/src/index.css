@@ -4092,19 +4092,30 @@ code {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
-/* The path field takes the room; Browse… keeps its natural width beside it. */
+/* The field takes the room; the buttons keep their natural width beside it. */
 .lib-add__row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
+/* Never wrap a label onto a second line: the row's height is what keeps the
+   primary button under the pointer across the add → name step. */
+.lib-add__row .btn {
+  white-space: nowrap;
+}
 .lib-add__row .path-input {
   flex: 1;
   min-width: 0;
 }
+/* Two lines' worth of space whether or not the text needs it. The dialog is
+   vertically centred, so a line gained or lost here moves everything above it
+   by half that — including the button the add → name step must leave under the
+   pointer. */
 .lib-add__hint {
   margin: 6px 0 0;
+  min-height: 2.7em;
   font-size: 12px;
+  line-height: 1.35;
   color: var(--text-muted);
 }
 .lib-confirm__ask {

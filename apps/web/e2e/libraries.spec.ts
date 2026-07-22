@@ -130,7 +130,7 @@ test('adds a plain folder as a new library through one confirmation', async ({ p
   const name = page.getByLabel('Library name')
   await expect(name).toHaveValue('media')
   await name.fill('NAS Media')
-  await page.getByRole('button', { name: 'Add library' }).click()
+  await page.getByRole('button', { name: 'Create library' }).click()
 
   // The app transitions into the workspace with the new library selected.
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
@@ -214,6 +214,46 @@ test.describe('the suggestion menu stays on screen', () => {
   }
 })
 
+test('confirming a new library needs no pointer movement', async ({ page }) => {
+  // Owner-reported: the confirmation used to appear above the form and shift
+  // the button away, so the second click meant finding it again. Measured here
+  // rather than described, because "the button moved" is a fact about layout.
+  await mockApi(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByLabel('Library path').fill('/mnt/media')
+
+  const add = page.getByRole('button', { name: 'Add library' })
+  const before = (await add.boundingBox())!
+  const pointer = { x: before.x + before.width / 2, y: before.y + before.height / 2 }
+  await add.click()
+
+  const confirm = page.getByRole('button', { name: 'Create library' })
+  await expect(confirm).toBeVisible()
+  const after = (await confirm.boundingBox())!
+
+  // The row itself does not move: same top, same height. The label changes
+  // width, so only the button's left edge shifts — its right edge is anchored.
+  expect(after.y, 'the add row moved vertically').toBe(before.y)
+  expect(after.height, 'the button changed height').toBe(before.height)
+
+  // And the pointer never left the button: where it was resting is still in it.
+  expect(
+    pointer.x,
+    'the button moved horizontally out from under the pointer',
+  ).toBeGreaterThanOrEqual(after.x)
+  expect(pointer.x).toBeLessThanOrEqual(after.x + after.width)
+  expect(
+    pointer.y,
+    'the button moved vertically out from under the pointer',
+  ).toBeGreaterThanOrEqual(after.y)
+  expect(pointer.y).toBeLessThanOrEqual(after.y + after.height)
+
+  // So a second click at the resting position confirms.
+  await page.mouse.click(pointer.x, pointer.y)
+  await expect(page.locator('.sidebar__library-select')).toContainText('media')
+})
+
 test('a click elsewhere in the dialog dismisses the menu but keeps the dialog', async ({
   page,
 }) => {
@@ -251,7 +291,7 @@ test('removes a library after confirming, and says files are untouched', async (
   await page.getByRole('button', { name: 'Manage libraries' }).click()
   await page.getByLabel('Library path').fill('/mnt/media')
   await page.getByRole('button', { name: 'Add library' }).click()
-  await page.getByRole('button', { name: 'Add library' }).click()
+  await page.getByRole('button', { name: 'Create library' }).click()
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
 
   await page.getByRole('button', { name: 'Manage libraries' }).click()
