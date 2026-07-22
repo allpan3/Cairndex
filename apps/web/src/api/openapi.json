@@ -3662,12 +3662,79 @@
         "title": "PairStartResponse",
         "type": "object"
       },
+      "PathProbeRead": {
+        "description": "What a candidate path is, before anything is created or registered.\n\nDrives the single \"Add library\" step: an already-registered folder is\nselected, an unregistered library is registered, and a plain folder is\noffered as a new library named after itself.",
+        "properties": {
+          "already_registered_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Already Registered Id"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "folder_name": {
+            "title": "Folder Name",
+            "type": "string"
+          },
+          "is_library": {
+            "title": "Is Library",
+            "type": "boolean"
+          },
+          "manifest_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Display Name"
+          }
+        },
+        "required": [
+          "exists",
+          "is_library",
+          "already_registered_id",
+          "manifest_display_name",
+          "folder_name"
+        ],
+        "title": "PathProbeRead",
+        "type": "object"
+      },
+      "PathSuggestion": {
+        "description": "One directory autocompletion for the add-library form.",
+        "properties": {
+          "is_library": {
+            "title": "Is Library",
+            "type": "boolean"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "is_library"
+        ],
+        "title": "PathSuggestion",
+        "type": "object"
+      },
       "PathSuggestions": {
         "description": "Directory autocompletions for the add-library form (owner setup only).",
         "properties": {
           "suggestions": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PathSuggestion"
             },
             "title": "Suggestions",
             "type": "array"
@@ -5868,6 +5935,49 @@
         ]
       }
     },
+    "/api/v1/libraries/probe-path": {
+      "get": {
+        "description": "Report what an absolute server path is, without creating anything.\n\nThe add-library form calls this once, on submit, so it can confirm the right\naction for the path: select an already-registered folder, register an\nexisting library, or offer to make a plain (or not-yet-existing) folder into\na new one. Owner-setup only, like ``/path-suggestions``.",
+        "operationId": "probe_path_api_v1_libraries_probe_path_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathProbeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Probe Path",
+        "tags": [
+          "libraries"
+        ]
+      }
+    },
     "/api/v1/libraries/register": {
       "post": {
         "operationId": "register_library_api_v1_libraries_register_post",
@@ -5910,6 +6020,40 @@
       }
     },
     "/api/v1/libraries/{library_id}": {
+      "delete": {
+        "description": "Remove a library from this server's registry. **Metadata-only.**\n\nDeletes the registry row and nothing else: the library folder, its\n``.cairndex/`` package (manifest, ``library.db``, cache), and every media\nfile stay untouched. Adding the same folder back later restores the library\nwith all of its metadata, because none of it lives in the registry\n(ADR-0018 \u00a71). This endpoint never deletes files \u2014 physical deletion is a\nseparate capability that does not exist yet.\n\nRemoving the library a client is currently viewing is allowed; the client\nfalls back to its no-library state.",
+        "operationId": "deregister_library_api_v1_libraries__library_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deregister Library",
+        "tags": [
+          "libraries"
+        ]
+      },
       "get": {
         "operationId": "get_library_api_v1_libraries__library_id__get",
         "parameters": [

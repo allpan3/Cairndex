@@ -359,8 +359,54 @@ Cairndex now uses the ADR-0008 per-library model:
 - there is no current global content DB, no `storage_roots` content table, and no
   `asset_files.storage_root_id`.
 
+### Adding a library
+
+The Libraries dialog (sidebar `+`) has one **Add library** action. The client
+sends the typed path to `GET /api/v1/libraries/probe-path`, and the answer picks
+the action:
+
+| Probe result                 | What happens                                            |
+| ---------------------------- | ------------------------------------------------------- |
+| `already_registered_id` set  | that library is selected; nothing is created             |
+| `is_library`                 | `POST /libraries/register`, keeping the manifest's name  |
+| neither                      | a confirmation prefilled with `folder_name`, then `POST /libraries/create` (with `create_if_missing` when `exists` is false) |
+
+A present-but-broken `.cairndex/manifest.json` makes the probe fail rather than
+report "not a library" — otherwise the confirmation would offer to build a
+second library over a damaged one.
+
+`GET /libraries/path-suggestions` drives the autocomplete and marks directories
+that already carry a package. Both endpoints are owner-setup surface, at the
+same trust level as each other: they read absolute server paths the owner typed
+and are unrelated to File Browser path safety, which stays library-relative.
+
+**Removal is metadata-only.** `DELETE /api/v1/libraries/{id}` drops the registry
+row, releases that library's ownership lease, and disposes its content engine.
+It never deletes a folder, a `.cairndex/` package, or a media file — re-adding
+the folder restores the library, because nothing authoritative lives in the
+registry (ADR-0018 §1). Any change here must preserve that.
+
+On desktop, **File → Manage Libraries…** (⌘O) opens this same dialog, and its
+**Browse…** button reaches the same three outcomes through the native picker.
+First-run setup is the one exception: there is no server there, so the dialog
+has no library list to show and the menu item picks a folder directly —
+`DesktopBootstrap` handles that case and asks for a name in a dialog of its own.
+
+The picked absolute path never crosses into
+the web layer (see the comment above `PickedFolder` in `mappings.rs`): for a
+folder that is not a library yet, the shell parks the path in a single
+pending-pick slot and returns `{ needs_confirmation, token, folder_name }`;
+`confirm_picked_library(token, name)` redeems it and creates the library through
+the sidecar. A token superseded by a later pick is refused and leaves the newer
+pick intact. Cancelling is simply never calling confirm. The macOS picker's own
+New Folder button covers creating a folder, so the shell adds no folder-creation
+UI. In the browser there is no picker at all: no browser can produce an absolute
+path on the server.
+
+### Manual testing loop
+
 For local manual testing, start the backend and frontend, open the app, use the
-sidebar `+` to create or register a library directory, then run **Update**.
+sidebar `+` to add a library directory, then run **Update**.
 Update scans files, persists a grouping plan, collects ffprobe metadata,
 refreshes the UI, opens grouping review when suggestions exist, and starts
 missing/stale storyboard generation in the background. The maintenance overflow
@@ -378,7 +424,8 @@ after choosing stem sensitivity.
 
 When changing persistence models, update the relevant bootstrap/tests/docs in the
 same branch. Do not assume an Alembic global-content migration chain is still the
-active mechanism unless a new ADR reinstates one.
+active mechanism unless a new ADR reinstates one. Removing a library must stay
+metadata-only; physical deletion is a separate capability that does not exist.
 
 ## Frontend API types (generated from OpenAPI)
 

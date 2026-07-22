@@ -1979,6 +1979,13 @@ code {
   gap: 12px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
 }
+/* A dialog whose own content pops out of it — the path suggestion menu is
+   absolutely positioned, and `.modal`'s scroll container would clip it to the
+   dialog's edge. Safe here because the only growable part, the library list,
+   scrolls by itself. */
+.modal--menus {
+  overflow: visible;
+}
 .modal--confirm {
   width: min(440px, 92vw);
   gap: 10px;
@@ -3604,6 +3611,11 @@ code {
   min-width: 0;
 }
 .sidebar__library-manage {
+  /* Centres either kind of content this button carries: an inline SVG icon, or
+     the lock emoji beside it. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
@@ -4037,7 +4049,12 @@ code {
   padding: 3px 8px;
   font-size: 12px;
 }
+/* The registered list is the only part that scrolls, which is what lets the
+   dialog itself keep `overflow: visible` (see `.modal--menus`). `min-height: 0`
+   so it, rather than the add form, gives up space in a short window. */
 .lib-list {
+  flex: 0 1 auto;
+  min-height: 0;
   max-height: 240px;
   overflow: auto;
   margin-bottom: 14px;
@@ -4066,17 +4083,49 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.lib-row--confirm {
+  background: rgba(251, 191, 36, 0.08);
+}
+/* Wraps, unlike the path line it sits in place of: this is the sentence that
+   says removal touches no files, so it must never be ellipsized away. */
+.lib-row__note {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .lib-add {
   border-top: 1px solid var(--border);
   padding-top: 12px;
 }
-.lib-add__check {
+/* The field takes the room; the buttons keep their natural width beside it. */
+.lib-add__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  margin: 10px 0;
-  font-size: 13px;
-  color: var(--text);
+}
+/* Never wrap a label onto a second line: the row's height is what keeps the
+   primary button under the pointer across the add → name step. */
+.lib-add__row .btn {
+  white-space: nowrap;
+}
+.lib-add__row .path-input {
+  flex: 1;
+  min-width: 0;
+}
+/* Two lines' worth of space whether or not the text needs it. The dialog is
+   vertically centred, so a line gained or lost here moves everything above it
+   by half that — including the button the add → name step must leave under the
+   pointer. */
+.lib-add__hint {
+  margin: 6px 0 0;
+  min-height: 2.7em;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.lib-confirm__ask {
+  margin: 0 0 10px;
+  color: var(--text-strong);
 }
 .path-input {
   position: relative;
@@ -4084,6 +4133,7 @@ code {
 .path-input__menu {
   position: absolute;
   z-index: 30;
+  top: 100%;
   left: 0;
   right: 0;
   margin-top: 2px;
@@ -4109,9 +4159,32 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.path-input__opt:hover {
+/* Opens upward when the field is too close to the bottom of the window, which
+   in this dialog is the usual case: the add row is the last thing in it. */
+.path-input__menu--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+.path-input__opt:hover,
+.path-input__opt--active {
   background: var(--accent-soft);
   color: var(--text-strong);
+}
+/* Marks a directory that already carries a `.cairndex/` package, so an existing
+   library is visible before it is chosen rather than after an error. */
+.path-input__badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
 }
 
 /* --- Per-library passphrase lock screen (ADR-0010) --- */

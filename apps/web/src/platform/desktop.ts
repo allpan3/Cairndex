@@ -16,6 +16,7 @@ import type {
   DeepLinkTarget,
   HostOs,
   HostPlatform,
+  OpenedLibrary,
   PlatformRuntime,
   ReverseMapResult,
   StoredConnections,
@@ -40,6 +41,31 @@ let mediaProxyBaseUrl: string | null = null
 // The sidecar's server-wide bearer while the local connection is active.
 // Never persisted: it is regenerated on every sidecar start.
 let localToken: string | null = null
+
+// The shell's snake_case pick/confirm result, before it is renamed for the SPA
+interface RawOpenedLibrary {
+  needs_confirmation: boolean
+  token: string | null
+  folder_name: string | null
+  already_available: boolean
+  library_id: string
+  library_uuid: string
+  display_name: string | null
+}
+
+// Renames one pick/confirm outcome into the SPA's vocabulary. Shared by both
+// commands so the two can never drift into reporting the same thing differently.
+function toOpenedLibrary(raw: RawOpenedLibrary): OpenedLibrary {
+  return {
+    needsConfirmation: raw.needs_confirmation,
+    token: raw.token,
+    folderName: raw.folder_name,
+    alreadyAvailable: raw.already_available,
+    libraryId: raw.library_id,
+    libraryUuid: raw.library_uuid,
+    displayName: raw.display_name,
+  }
+}
 
 // Maps the browser-reported desktop OS onto the shared label vocabulary
 function detectHostOs(): HostOs {
@@ -209,21 +235,11 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
         info ? { baseUrl: info.base_url, token: info.token } : null,
       ),
     openLibraryFolder: (knownLibraryUuids) =>
-      invoke<{
-        already_available: boolean
-        library_id: string
-        library_uuid: string
-        display_name: string | null
-      } | null>('open_library_folder', { knownLibraryUuids }).then((opened) =>
-        opened
-          ? {
-              alreadyAvailable: opened.already_available,
-              libraryId: opened.library_id,
-              libraryUuid: opened.library_uuid,
-              displayName: opened.display_name,
-            }
-          : null,
+      invoke<RawOpenedLibrary | null>('open_library_folder', { knownLibraryUuids }).then(
+        (opened) => (opened ? toOpenedLibrary(opened) : null),
       ),
+    confirmPickedLibrary: (token, name) =>
+      invoke<RawOpenedLibrary>('confirm_picked_library', { token, name }).then(toOpenedLibrary),
     loadConnections: async () => {
       const store = await settingsStore()
       return (await store.get<StoredConnections>(CONNECTIONS_KEY)) ?? null
