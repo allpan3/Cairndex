@@ -82,7 +82,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            app_menu::prime_renderer,
             app_menu::renderer_ready,
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,

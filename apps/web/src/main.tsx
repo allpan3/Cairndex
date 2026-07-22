@@ -3,12 +3,7 @@ import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import {
-  initializeHostPlatform,
-  isDesktopHost,
-  primeHostWindowForPaint,
-  revealHostWindow,
-} from './platform'
+import { initializeHostPlatform, isDesktopHost, revealHostWindow } from './platform'
 import { QueryScope } from './QueryScope'
 
 const root = createRoot(document.getElementById('root')!)
@@ -33,24 +28,13 @@ function renderDesktopLoadError(error: unknown): ReactNode {
   )
 }
 
-// Paints the mounted shell off-screen before moving its native window into place
-async function revealDesktopWindowAfterPaint(): Promise<void> {
-  try {
-    const primed = await primeHostWindowForPaint()
-    if (primed) {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      })
-    }
-    await revealHostWindow()
-  } catch (error) {
-    console.error('Desktop window could not be revealed', error)
-    try {
-      await revealHostWindow()
-    } catch (fallbackError) {
-      console.error('Desktop window reveal fallback failed', fallbackError)
-    }
-  }
+// Reveals the shell on the next renderer task after its dark document is mounted
+function revealDesktopWindowAfterMount(): void {
+  setTimeout(() => {
+    void revealHostWindow().catch((error: unknown) => {
+      console.error('Desktop window could not be revealed', error)
+    })
+  }, 0)
 }
 
 // Loads the native bridge, mounts the shell, then acknowledges the dark document
@@ -71,7 +55,7 @@ async function renderDesktopApp(): Promise<void> {
     content = renderDesktopLoadError(error)
   }
   flushSync(() => renderApp(content))
-  void revealDesktopWindowAfterPaint()
+  revealDesktopWindowAfterMount()
 }
 
 if (isDesktopHost()) {
