@@ -147,7 +147,8 @@ export function LibraryManager({
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
-        className="modal"
+        // `--menus`: this dialog's suggestion menu must be able to escape it.
+        className="modal modal--menus"
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -395,6 +396,10 @@ function LibraryRow({
   )
 }
 
+// Mirrors `.path-input__menu`'s max-height, plus its offset from the field. Used
+// only to decide which side has room; the menu's real size stays CSS's business.
+const MENU_MAX_HEIGHT = 226
+
 // The longest prefix every suggestion shares, for Tab completion. Empty when the
 // suggestions diverge immediately, in which case there is nothing to complete.
 function longestCommonPrefix(values: string[]): string {
@@ -431,7 +436,11 @@ function PathInput({
   const [suggestions, setSuggestions] = useState<PathSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
+  // Whether the menu opens upward. The add row is the last thing in the modal,
+  // so "below the field" is usually the one direction with no room.
+  const [dropUp, setDropUp] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -464,6 +473,19 @@ function PathInput({
     if (active < 0) return
     menuRef.current?.children[active]?.scrollIntoView({ block: 'nearest' })
   }, [active])
+
+  // Choose the direction with room, measured against the viewport rather than
+  // the modal: the menu is allowed to overhang the dialog, but never the window.
+  // Re-measured on every open and whenever the list changes, since both the
+  // field's position and the menu's height move.
+  useEffect(() => {
+    if (!open || suggestions.length === 0) return
+    const field = inputRef.current
+    if (!field) return
+    const { top, bottom } = field.getBoundingClientRect()
+    const below = window.innerHeight - bottom
+    setDropUp(below < MENU_MAX_HEIGHT && top > below)
+  }, [open, suggestions])
 
   const accept = (suggestion: PathSuggestion) => {
     // Trailing separator: the next suggestion request then lists this
@@ -534,6 +556,7 @@ function PathInput({
   return (
     <div className="path-input" ref={boxRef}>
       <input
+        ref={inputRef}
         id="library-path"
         className="edit"
         value={value}
@@ -554,7 +577,12 @@ function PathInput({
         spellCheck={false}
       />
       {open && suggestions.length > 0 && (
-        <div className="path-input__menu" role="listbox" id="path-suggestions" ref={menuRef}>
+        <div
+          className={`path-input__menu${dropUp ? ' path-input__menu--up' : ''}`}
+          role="listbox"
+          id="path-suggestions"
+          ref={menuRef}
+        >
           {suggestions.map((suggestion, index) => (
             <button
               key={suggestion.path}
