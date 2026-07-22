@@ -10,12 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
-- **Desktop startup reveal now waits for the renderer instead of navigation.**
-  The native main window starts hidden and is revealed only after React commits
-  the mounted shell and crosses a renderer task boundary. Cold-start deep links
-  and near-simultaneous second launches share the readiness gate, while a
-  delayed page-load fallback prevents a broken renderer bridge from leaving the
-  app invisible.
+- **Desktop startup no longer flashes a white frame.** The root cause was
+  WKWebView's opaque white backing surface, which exists until WebKit's
+  compositor paints and is unaffected by document or CSS backgrounds. Enabling
+  Tauri's `macos-private-api` feature lets the configured window
+  `backgroundColor` disable that surface, so the first composited frame is dark
+  by construction (ADR-0020). The earlier off-screen priming workaround was
+  reverted. The native main window still starts hidden and is revealed only
+  after React commits the mounted shell, so the window appears with UI already
+  present; cold-start deep links and near-simultaneous second launches share
+  the readiness gate, while a delayed page-load fallback prevents a broken
+  renderer bridge from leaving the app invisible.
 
 - **Selecting a bundle cover now updates the star immediately.** Bundle metadata
   writes optimistically update the inspector, roll back on failure, and adopt
