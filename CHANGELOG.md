@@ -10,11 +10,12 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
-- **Desktop startup no longer exposes WKWebView's initial white frame.** The
-  native main window starts hidden and is revealed and focused after its first
-  page load finishes. Cold-start deep links and near-simultaneous second
-  launches share the readiness gate, while the existing native, inline, and CSS
-  dark backgrounds remain fallback layers.
+- **Desktop startup reveal now waits for the renderer instead of navigation.**
+  The native main window starts hidden and is revealed only after React commits
+  the mounted shell and crosses a renderer task boundary. Cold-start deep links
+  and near-simultaneous second launches share the readiness gate, while a
+  delayed page-load fallback prevents a broken renderer bridge from leaving the
+  app invisible.
 
 - **Selecting a bundle cover now updates the star immediately.** Bundle metadata
   writes optimistically update the inspector, roll back on failure, and adopt

@@ -1,4 +1,8 @@
-use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
+use std::{
+    sync::atomic::{AtomicBool, AtomicI8, Ordering},
+    thread,
+    time::Duration,
+};
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, Submenu, SubmenuBuilder},
@@ -11,13 +15,14 @@ pub(crate) const MENU_EVENT: &str = "cairndex://menu";
 /// Broadcasts native window fullscreen changes so the viewer's own fullscreen
 /// control cannot show a stale state after the View menu toggled the window.
 pub(crate) const FULLSCREEN_EVENT: &str = "cairndex://fullscreen";
+const REVEAL_FALLBACK_DELAY: Duration = Duration::from_secs(2);
 
-/// Gates window focus until WKWebView has replaced its default white surface.
+/// Gates window focus until the renderer confirms its dark document is mounted.
 #[derive(Default)]
 pub(crate) struct MainWindowReady(AtomicBool);
 
 impl MainWindowReady {
-    // Marks the first completed page load and reports whether it won the race
+    // Marks the first renderer acknowledgment and reports whether it won the race
     fn mark_ready(&self) -> bool {
         !self.0.swap(true, Ordering::AcqRel)
     }
@@ -212,7 +217,7 @@ pub(crate) fn toggle_window_fullscreen(app: AppHandle) -> Result<bool, String> {
     Ok(!fullscreen)
 }
 
-// Restores the primary window after its first page has loaded
+// Restores the primary window after the renderer has exposed it
 pub(crate) fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     let ready = app
         .try_state::<MainWindowReady>()
@@ -222,7 +227,7 @@ pub(crate) fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-// Reveals the primary window exactly once after its first completed page load
+// Reveals the primary window exactly once after the renderer is ready
 pub(crate) fn reveal_main_window<R: Runtime>(app: &AppHandle<R>) {
     let first_load = app
         .try_state::<MainWindowReady>()
@@ -230,6 +235,28 @@ pub(crate) fn reveal_main_window<R: Runtime>(app: &AppHandle<R>) {
     if first_load {
         focus_main_window_now(app);
     }
+}
+
+// Accepts the renderer's post-mount startup acknowledgment
+#[tauri::command]
+pub(crate) fn renderer_ready(app: AppHandle) {
+    reveal_main_window(&app);
+}
+
+// Prevents a broken renderer bridge from leaving the application invisible
+pub(crate) fn schedule_main_window_reveal_fallback(app: &AppHandle) {
+    let ready = app
+        .try_state::<MainWindowReady>()
+        .is_some_and(|state| state.is_ready());
+    if ready {
+        return;
+    }
+
+    let app = app.clone();
+    thread::spawn(move || {
+        thread::sleep(REVEAL_FALLBACK_DELAY);
+        reveal_main_window(&app);
+    });
 }
 
 // Shows, restores, and focuses the already-loaded primary window
@@ -245,7 +272,7 @@ fn focus_main_window_now<R: Runtime>(app: &AppHandle<R>) {
 mod tests {
     use super::MainWindowReady;
 
-    // Pins the one-way readiness transition shared by page load and focus requests
+    // Pins the one-way readiness transition shared by mount and focus requests
     #[test]
     fn main_window_becomes_ready_once() {
         let ready = MainWindowReady::default();
@@ -256,7 +283,7 @@ mod tests {
         assert!(!ready.mark_ready());
     }
 
-    // Pins the native half of the hidden-until-loaded startup contract
+    // Pins the native half of the hidden-until-mounted startup contract
     #[test]
     fn main_window_starts_hidden_with_a_dark_fallback() {
         let config: serde_json::Value =

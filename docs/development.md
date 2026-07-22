@@ -88,13 +88,15 @@ local development. On macOS, the package declares local-network use and permits
 cleartext HTTP only in its WKWebView content so an explicitly configured private
 LAN server works; prefer HTTPS for any server outside a trusted private network.
 
-The main window starts hidden and is revealed once, on the main webview's first
-`PageLoadEvent::Finished`. This prevents WKWebView's default white surface from
-appearing before the dark document canvas. Startup deep links and a second
-instance may request focus before that point, but the same readiness gate defers
-their `show()` call until page load; later focus requests behave normally. The
-native `backgroundColor`, inline document background, and CSS background remain
-matching dark fallbacks rather than substitutes for the visibility gate.
+The main window starts hidden and is revealed once, after React synchronously
+commits the dark shell and a subsequent renderer task invokes `renderer_ready`.
+A completed navigation is not a rendering guarantee: `PageLoadEvent::Finished`
+only schedules a two-second fail-safe in case the renderer bridge fails. Startup
+deep links and a second instance may request focus before the renderer
+acknowledgment, but the same readiness gate defers their `show()` call; later
+focus requests behave normally.
+The native `backgroundColor`, inline document background, and CSS background
+remain matching dark fallbacks rather than substitutes for the visibility gate.
 
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit

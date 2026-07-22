@@ -41,6 +41,15 @@ afterEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset()
 })
 
+test('acknowledges the mounted renderer through the native startup command', async () => {
+  mocks.invoke.mockResolvedValue(undefined)
+  const runtime = await createDesktopRuntime()
+
+  await runtime.revealWindow()
+
+  expect(mocks.invoke).toHaveBeenCalledWith('renderer_ready')
+})
+
 test('synchronizes server-backed native menu availability', async () => {
   mocks.invoke.mockResolvedValue(undefined)
   const runtime = await createDesktopRuntime()
