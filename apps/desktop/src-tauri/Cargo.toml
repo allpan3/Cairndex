@@ -31,7 +31,12 @@ percent-encoding = "2.3.2"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2", features = [] }
+# `macos-private-api` enables wry's `transparent` feature, which is what makes the
+# window `backgroundColor` in tauri.conf.json actually disable WKWebView's opaque
+# white backing surface (private `drawsBackground` KVC key). Without it the webview
+# flashes white on startup regardless of reveal timing (ADR-0020). Incompatible
+# with Mac App Store review; we ship app/dmg bundles only.
+tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
