@@ -3,8 +3,8 @@
 ## Implemented: unified library add/remove flow (2026-07-22)
 
 Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. No PR and no
-merge — owner-triggered. Five reviewable commits: server endpoints → shell →
-web modal → docs → one review follow-up.
+merge — owner-triggered. Seven reviewable commits: server endpoints → shell →
+web modal → docs, then a review follow-up and an owner-reported layout fix.
 
 **What changed.** Adding a library no longer starts with a question the owner
 should not have to answer. The Create/Register tabs are gone; there is one path
@@ -28,11 +28,18 @@ otherwise a name typed for one folder could create a library at another.
 
 **Three things worth keeping from the build:**
 
-1. **The browser test caught a layout hazard the component tests structurally
-   could not.** The suggestion menu stays open after a selection (to drill down)
-   and sat directly over the primary button — so the click that looked like
-   "Add library" would have selected a suggestion instead. jsdom has no layout,
-   so only Playwright could see it. The action moved beside the field.
+1. **Layout is where this feature kept breaking, and jsdom cannot see layout.**
+   Twice: the suggestion menu stays open after a selection (to drill down) and
+   sat over the primary button, so the click that looked like "Add library"
+   would have selected a suggestion — caught by Playwright, fixed by moving the
+   action beside the field. Then the owner reported the menu showing only two
+   rows in the real app: `.modal` is a scroll container, so an absolutely
+   positioned menu is clipped at the dialog's edge, and the add row sits at the
+   dialog's bottom so "below the field" is usually the direction with no room.
+   Fixed with an `overflow: visible` opt-out plus a measured flip above the
+   field. Its first regression test **passed against the bug** — `boundingBox()`
+   reports an element's layout box whether or not an ancestor clips it, so the
+   assertion had to become an `elementFromPoint` hit test at the menu's edges.
 2. **Content query keys are not library-scoped.** The cache is cleared on every
    library switch instead, so removing the *active* library had to clear it
    explicitly; without that the next library inherits the removed one's bundles
@@ -43,8 +50,8 @@ otherwise a name typed for one folder could create a library at another.
    showing a takeover prompt on the next machine to open it. Pinned by mutation.
 
 **Gates.** Backend ruff / ruff format / strict mypy / **595 pytest** (+17).
-Frontend ESLint / Prettier / tsc / **326 Vitest** (+26) / Vite build / **86
-Playwright** (+3, the whole suite including its `@fullstack` partition against a
+Frontend ESLint / Prettier / tsc / **326 Vitest** (+26) / Vite build / **88
+Playwright** (+5, the whole suite including its `@fullstack` partition against a
 real backend). Desktop `cargo fmt --check`, Clippy
 `-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
 `tauri build`. Mutations applied and killed: the lease release in
@@ -54,7 +61,8 @@ real backend). Desktop `cargo fmt --check`, Clippy
 three states (suggestions with a library badge, the name confirmation, the
 removal confirmation). The first capture found the removal reassurance —
 the sentence saying no files are touched — being ellipsized by the path row's
-`nowrap`; it has its own class now.
+`nowrap`; it has its own class now. The owner then found the clipped menu in
+the running app, which is item 1 above.
 
 **Not verified**: the native picker itself. Driving a macOS folder dialog needs
 assistive access this environment does not have, so the pick→confirm round trip
