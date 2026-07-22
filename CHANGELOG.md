@@ -19,6 +19,10 @@ grouped under `Unreleased` until the first tagged release.
   folder if it doesn't exist” checkbox is gone; the same confirmation says when
   a folder will be created.
 
+  Naming a new library happens in place: the path field becomes a name field
+  prefilled with the folder's own name, and the same button — in the same
+  position — confirms it, so neither the pointer nor the caret has to move.
+
   On the desktop app a **Browse…** button reaches those same outcomes through
   the native folder picker, and **File → Open Library Folder…** now accepts a
   folder that is not a library yet, asking for a name instead of refusing.
