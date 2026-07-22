@@ -3,8 +3,8 @@
 ## Implemented: unified library add/remove flow (2026-07-22)
 
 Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. No PR and no
-merge — owner-triggered. Seven reviewable commits: server endpoints → shell →
-web modal → docs, then a review follow-up and an owner-reported layout fix.
+merge — owner-triggered. Commits run server endpoints → shell → web modal →
+docs, then a review follow-up and two owner-reported interaction fixes.
 
 **What changed.** Adding a library no longer starts with a question the owner
 should not have to answer. The Create/Register tabs are gone; there is one path
@@ -40,6 +40,15 @@ otherwise a name typed for one folder could create a library at another.
    field. Its first regression test **passed against the bug** — `boundingBox()`
    reports an element's layout box whether or not an ancestor clips it, so the
    assertion had to become an `elementFromPoint` hit test at the menu's edges.
+   Then a third, from the same owner pass: the menu could not be dismissed by
+   clicking away, because its outside-click listener was on the bubble phase and
+   the dialog stops mousedown propagating (deliberately — that is what keeps a
+   click inside it from reaching the backdrop). Every dismissing click is inside
+   the dialog, so the listener never fired; it runs in the capture phase now.
+   **The pattern across all three: this dialog's behavior lives in the browser,
+   not in the component.** A component test can prove which handler ran; it
+   cannot prove the handler ever gets the event, or that the element is where it
+   claims to be.
 2. **Content query keys are not library-scoped.** The cache is cleared on every
    library switch instead, so removing the *active* library had to clear it
    explicitly; without that the next library inherits the removed one's bundles
@@ -50,8 +59,8 @@ otherwise a name typed for one folder could create a library at another.
    showing a takeover prompt on the next machine to open it. Pinned by mutation.
 
 **Gates.** Backend ruff / ruff format / strict mypy / **595 pytest** (+17).
-Frontend ESLint / Prettier / tsc / **326 Vitest** (+26) / Vite build / **88
-Playwright** (+5, the whole suite including its `@fullstack` partition against a
+Frontend ESLint / Prettier / tsc / **328 Vitest** (+28) / Vite build / **89
+Playwright** (+6, the whole suite including its `@fullstack` partition against a
 real backend). Desktop `cargo fmt --check`, Clippy
 `-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
 `tauri build`. Mutations applied and killed: the lease release in
