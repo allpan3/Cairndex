@@ -29,6 +29,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(lifecycle::ExitGate::default())
         .manage(deeplink::PendingDeepLink::default())
         .manage(sidecar::LocalServer::default())
+        // Holds the one folder awaiting a name, so the picked path can wait out
+        // the confirmation round trip without ever entering the web layer.
+        .manage(sidecar::PendingPick::default())
         .manage(app_menu::MainWindowReady::default())
         // Single-instance must be registered BEFORE the deep-link plugin: on
         // Windows/Linux a deep link launches a *second* process whose argv carries
@@ -100,6 +103,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             mappings::reverse_map_paths,
             media_proxy::configure_media_proxy,
             server_url::normalize_server_url_command,
+            sidecar::confirm_picked_library,
             sidecar::local_server_status,
             sidecar::open_library_folder,
             sidecar::start_local_server,

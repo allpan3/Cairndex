@@ -83,7 +83,6 @@ import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import {
-  activeConnectionLabel,
   connectToServer,
   getConnections,
   getPendingSelectionVersion,
@@ -93,7 +92,6 @@ import {
 } from './desktop/connections'
 import { LibraryAccessNotice } from './app/LibraryAccessNotice'
 import { LibraryOwnershipNotice } from './app/LibraryOwnershipNotice'
-import { openLibraryFolder } from './desktop/openLibraryFolder'
 import { useDeepLink } from './desktop/useDeepLink'
 import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktopMenu'
 import { useJobNotifications } from './desktop/useJobNotifications'
@@ -198,7 +196,6 @@ export default function App() {
     subscribeConnections,
     () => getConnections().activeConnectionId,
   )
-  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
   const [chosenId, setChosenId] = usePersistentState<string | null>(
     libraryStorageKey(activeConnectionId),
     null,
@@ -225,49 +222,38 @@ export default function App() {
     [libraryId, queryClient, setChosenId],
   )
 
-  // "Open Library Folder…" is handled *here* as well as in DesktopBootstrap.
-  // The two cover different states and both are real: the bootstrap's listener
+  // A library was deregistered. Content query keys are not library-scoped — the
+  // active library is module-global and the cache is cleared on every switch —
+  // so the removed library's cached bundles, collections, and counts have to go
+  // with it, or whichever library is shown next inherits them. Clearing the
+  // stored choice lets the list's own fallback pick what to show, including the
+  // empty shell when that was the last library.
+  const forgetRemovedLibrary = useCallback(
+    (removedId: string) => {
+      if (removedId !== libraryId) return
+      setActiveLibraryId(null)
+      resetLibraryContentQueries(queryClient)
+      setChosenId(null)
+    },
+    [libraryId, queryClient, setChosenId],
+  )
+
+  // "Manage Libraries…" is handled *here* as well as in DesktopBootstrap. The
+  // two cover different states and both are real: the bootstrap's listener
   // tears down once the workspace mounts (`if (ready) return`), so handling it
   // only there left the item dead in the running app — which is where a user
   // spends all their time. The menu item is enabled in both states, so both
-  // must listen. (Declared after `libraries`/`changeLibrary` so the closure
-  // reads initialized bindings — the ref-based hook already delivers the
-  // latest render's handler, so this is ordering hygiene, not a behavior fix.)
+  // must listen. What each does differs, though: here the item opens the
+  // Libraries dialog, which is the one surface for adding, opening, and
+  // removing. The bootstrap cannot show that dialog — it lists a server's
+  // libraries and there is no server yet — so it picks a folder directly.
   useDesktopMenu((action) => {
     if (action === 'settings') setSettingsPage('devices')
     else if (action === 'pair-device') setSettingsPage('pair')
-    else if (action === 'open-library-folder') {
-      setOpenFolderError(null)
-      // Tell the shell which libraries this server already serves, so picking a
-      // folder it already has selects it here instead of starting a second
-      // server against the same folder — which the lease would then refuse.
-      void openLibraryFolder(libraries.map((library) => library.library_uuid).filter(Boolean))
-        .then((result) => {
-          // Confirm the action rather than leaving it silent. A folder opens on
-          // the *local* server, which is a different server from any remote one
-          // with its own library list — so "nothing appeared to happen" and
-          // "it opened somewhere you were not looking" are easy to confuse.
-          // Naming both the library and the connection distinguishes them.
-          if (!result.opened) return
-          const name = result.opened.displayName ?? 'library'
-          if (result.opened.alreadyAvailable) {
-            const here = libraries.find(
-              (library) => library.library_uuid === result.opened!.libraryUuid,
-            )
-            if (here) {
-              changeLibrary(here.id)
-              return
-            }
-          }
-          setOpenFolderError(`Opened ${name} on ${activeConnectionLabel()}`)
-        })
-        .catch((error: unknown) => {
-          setOpenFolderError(hostOperationErrorMessage(error))
-        })
-    }
+    else if (action === 'manage-libraries') setManaging(true)
   })
 
-  // "Open Library Folder…" queues its result before activating the connection,
+  // Opening a folder queues its result before activating the connection,
   // because activation remounts this tree. Consumed here on mount rather than
   // read during render: taking it is a side effect, and the take is idempotent
   // (a second run finds nothing, and re-selecting the same library is a no-op),
@@ -330,21 +316,38 @@ export default function App() {
   const deviceHasAccess = libraryId ? hasHostDeviceAccess(libraryId) : false
   useDesktopMenuAvailability(libraryId !== null && auth.isSuccess && !locked)
 
+  // The one surface for adding, opening, and removing libraries. Rendered in
+  // every state the menu item is enabled in — including the ones that replace
+  // the workspace, which are exactly the states (a lease refusal, a locked
+  // library) where switching to another library is what a user wants.
+  const libraryDialog = managing && (
+    <LibraryManager
+      onClose={() => setManaging(false)}
+      onSelect={changeLibrary}
+      onRemoved={forgetRemovedLibrary}
+    />
+  )
+
   if (librariesQuery.isLoading) {
-    return <div className="app-loading">Loading…</div>
+    return (
+      <>
+        <div className="app-loading">Loading…</div>
+        {libraryDialog}
+      </>
+    )
   }
 
   if (!libraryId) {
     // No library yet: show the empty app shell (not a forced dialog) so the
-    // owner can add one from the sidebar "+" when ready. Creating/registering
-    // re-renders into the workspace once the list refreshes.
+    // owner can add one from the sidebar "+" when ready. Adding one re-renders
+    // into the workspace once the list refreshes.
     return (
       <>
         <NoLibraryView
           onManage={() => setManaging(true)}
           onSettings={() => setSettingsPage('devices')}
         />
-        {managing && <LibraryManager onClose={() => setManaging(false)} />}
+        {libraryDialog}
         {settingsPage && (
           <SettingsDialog
             key={settingsPage}
@@ -357,14 +360,6 @@ export default function App() {
       </>
     )
   }
-
-  // Rendered alongside the settings dialog so it appears in every state the
-  // menu item is reachable from, including the ones that replace the workspace.
-  const openFolderNotice = openFolderError && (
-    <div className="mb-toast" role="alert" onClick={() => setOpenFolderError(null)}>
-      {openFolderError}
-    </div>
-  )
 
   const settingsDialog = settingsPage && (
     <SettingsDialog
@@ -403,7 +398,7 @@ export default function App() {
           }
         />
         {settingsDialog}
-        {openFolderNotice}
+        {libraryDialog}
       </>
     )
   }
@@ -413,7 +408,7 @@ export default function App() {
       <>
         <div className="app-loading">Checking library access…</div>
         {settingsDialog}
-        {openFolderNotice}
+        {libraryDialog}
       </>
     )
   }
@@ -440,7 +435,7 @@ export default function App() {
           </button>
         </LibraryAccessNotice>
         {settingsDialog}
-        {openFolderNotice}
+        {libraryDialog}
       </>
     )
   }
@@ -468,7 +463,7 @@ export default function App() {
             </span>
           </LibraryAccessNotice>
           {settingsDialog}
-          {openFolderNotice}
+          {libraryDialog}
         </>
       )
     }
@@ -484,7 +479,7 @@ export default function App() {
           error={lock.unlock.error?.message ?? null}
         />
         {settingsDialog}
-        {openFolderNotice}
+        {libraryDialog}
       </>
     )
   }
@@ -503,9 +498,8 @@ export default function App() {
         canLock={auth.data?.protected === true && getHostPlatform().kind === 'web'}
         onLock={() => lock.lock.mutate()}
       />
-      {managing && <LibraryManager onClose={() => setManaging(false)} />}
+      {libraryDialog}
       {settingsDialog}
-      {openFolderNotice}
     </>
   )
 }

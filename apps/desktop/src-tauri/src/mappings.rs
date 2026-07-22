@@ -184,31 +184,44 @@ fn validate_library_uuid(library_uuid: &str) -> Result<(), MappingError> {
     Ok(())
 }
 
-// Reads and parses a candidate folder's library manifest.
+// Reads a candidate folder's library manifest, or reports that it has none.
 //
-// Split out so discovering an unknown library (`pick_library_folder`) and
-// re-proving a known one (`validate_library_root`) apply exactly the same
-// parsing and the same failure wording — a folder that is "not a Cairndex
-// library" should say so identically whichever path noticed.
-fn read_library_manifest(root: &Path) -> Result<LibraryManifest, MappingError> {
+// A missing manifest is `Ok(None)`, not an error: the folder picker offers to
+// *make* a plain folder into a library, so "there is no marker here" is one of
+// its ordinary answers. A marker that exists but cannot be read or parsed stays
+// an error — treating a damaged library as a plain folder would invite creating
+// a second library on top of it.
+fn read_optional_library_manifest(root: &Path) -> Result<Option<LibraryManifest>, MappingError> {
     let manifest_path = root.join(".cairndex").join("manifest.json");
-    let bytes = fs::read(manifest_path).map_err(|error| {
-        if error.kind() == io::ErrorKind::NotFound {
-            MappingError::new(
-                MappingErrorCode::InvalidManifest,
-                "The selected folder is not a Cairndex library.",
-            )
-        } else {
-            MappingError::new(
+    let bytes = match fs::read(manifest_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => {
+            return Err(MappingError::new(
                 MappingErrorCode::InvalidManifest,
                 "The selected library manifest could not be read.",
-            )
+            ))
         }
-    })?;
-    serde_json::from_slice(&bytes).map_err(|_| {
+    };
+    serde_json::from_slice(&bytes).map(Some).map_err(|_| {
         MappingError::new(
             MappingErrorCode::InvalidManifest,
             "The selected library manifest is invalid.",
+        )
+    })
+}
+
+// Reads and parses a candidate folder's library manifest, requiring one.
+//
+// Defined in terms of the optional read so re-proving a known library
+// (`validate_library_root`) applies exactly the same parsing as discovering an
+// unknown one — a folder that is "not a Cairndex library" should say so
+// identically whichever path noticed.
+fn read_library_manifest(root: &Path) -> Result<LibraryManifest, MappingError> {
+    read_optional_library_manifest(root)?.ok_or_else(|| {
+        MappingError::new(
+            MappingErrorCode::InvalidManifest,
+            "The selected folder is not a Cairndex library.",
         )
     })
 }
@@ -376,36 +389,52 @@ pub(crate) async fn get_library_mapping<R: Runtime>(
     .map_err(|_| MappingError::store_task_failed())?
 }
 
-/// A library folder the user picked, resolved but **not** exposed to the web.
+/// A folder the user picked, resolved but **not** exposed to the web.
 ///
 /// The absolute path stays inside the shell. Handing it to the web layer would
 /// invert plan 3 §5 in the direction that actually matters: `reverse_map_paths`
 /// only echoes paths the web already supplied, whereas this one the shell
 /// *originates*. Once it were in web state nothing could bound where it went —
 /// a connection switch between pick and submit, a query cache, an error toast
-/// printing a request body. `sidecar::open_library_folder` consumes this
-/// in-process instead, so the web layer only ever sees ids.
+/// printing a request body. `sidecar`'s pick and confirm commands consume this
+/// in-process instead, so the web layer only ever sees ids, a display name, and
+/// an opaque token.
 pub(crate) struct PickedFolder {
     pub(crate) root: PathBuf,
+    /// Empty when the folder is not a library yet. Kept flat rather than folding
+    /// the library fields into an enum, because the caller answers "is this
+    /// already a library?" once and then reads whichever fields apply.
     pub(crate) library_uuid: String,
-    /// `None` when the manifest omits it, so the caller can choose its own
-    /// fallback (the folder basename) rather than being handed an empty string
-    /// that has to be tested for.
+    /// `None` when the folder is not a library, or when its manifest omits the
+    /// name — the caller picks its own fallback rather than being handed an
+    /// empty string that has to be tested for.
     pub(crate) display_name: Option<String>,
+    /// The basename, which prefills the name field when a plain folder is about
+    /// to become a library. Empty for a filesystem root, which has none.
+    pub(crate) folder_name: String,
 }
 
-/// Prompt for an existing Cairndex library folder on this machine (plan 3 D6).
+impl PickedFolder {
+    /// Whether the picked folder already carries a `.cairndex/` marker.
+    pub(crate) fn is_library(&self) -> bool {
+        !self.library_uuid.is_empty()
+    }
+}
+
+/// Prompt for a library folder on this machine (plan 3 D6).
 ///
 /// Unlike `validate_library_root` no library is known yet — this *discovers*
 /// one, so the manifest supplies the identity rather than being checked against
-/// an expected one. `Ok(None)` means the user cancelled, which is not an error.
+/// an expected one. A folder with no marker is **not** an error: the unified add
+/// flow offers to make it a library, and refusing here would put that decision
+/// back behind an error message. `Ok(None)` means the user cancelled.
 pub(crate) fn pick_library_folder<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<Option<PickedFolder>, MappingError> {
     let Some(selected) = app
         .dialog()
         .file()
-        .set_title("Open Library Folder")
+        .set_title("Choose a Library Folder")
         .blocking_pick_folder()
     else {
         return Ok(None);
@@ -416,14 +445,36 @@ pub(crate) fn pick_library_folder<R: Runtime>(
             "The selected library folder is not a local filesystem path.",
         )
     })?;
-    let root = canonicalize_root(&selected)?;
-    let manifest = read_library_manifest(&root)?;
+    describe_picked_folder(&selected).map(Some)
+}
+
+/// Resolve and classify a picked folder — everything after the dialog.
+///
+/// Split from [`pick_library_folder`] because the dialog cannot be driven from a
+/// test, and classification is the part with rules worth pinning: what counts as
+/// a library, what a damaged marker does, and what the name field is prefilled
+/// with.
+fn describe_picked_folder(selected: &Path) -> Result<PickedFolder, MappingError> {
+    let root = canonicalize_root(selected)?;
+    let folder_name = root
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let Some(manifest) = read_optional_library_manifest(&root)? else {
+        return Ok(PickedFolder {
+            root,
+            library_uuid: String::new(),
+            display_name: None,
+            folder_name,
+        });
+    };
     validate_library_uuid(&manifest.library_uuid)?;
-    Ok(Some(PickedFolder {
+    Ok(PickedFolder {
         root,
         library_uuid: manifest.library_uuid,
         display_name: manifest.display_name,
-    }))
+        folder_name,
+    })
 }
 
 // Opens a native folder picker, validates manifest identity, then stores the map
@@ -652,8 +703,8 @@ mod tests {
     };
 
     use super::{
-        resolve_verified_path, resolve_within_verified_root, reverse_map_under_root,
-        validate_library_id, validate_library_root, MappingErrorCode,
+        describe_picked_folder, resolve_verified_path, resolve_within_verified_root,
+        reverse_map_under_root, validate_library_id, validate_library_root, MappingErrorCode,
     };
 
     // Canonicalizes a scratch root the way the command does before reverse-mapping
@@ -870,6 +921,94 @@ mod tests {
             .expect_err("swapped library");
 
         assert_eq!(error.code, MappingErrorCode::LibraryMismatch);
+    }
+
+    // --- picking a folder to add (unified add-library flow) ------------------
+    // Everything after the native dialog, which a test cannot drive.
+
+    // Creates a named folder inside the scratch directory, so assertions about
+    // the basename the name field prefills with are about a name we chose.
+    fn named_folder(parent: &TestDir, name: &str) -> PathBuf {
+        let path = parent.path().join(name);
+        fs::create_dir_all(&path).expect("create named folder");
+        path
+    }
+
+    #[test]
+    fn describes_a_picked_library_with_its_own_identity_and_name() {
+        let parent = TestDir::new();
+        let root = named_folder(&parent, "Family Photos");
+        let marker = root.join(".cairndex");
+        fs::create_dir_all(&marker).expect("create marker directory");
+        fs::write(
+            marker.join("manifest.json"),
+            br#"{"library_uuid":"library-one","display_name":"Photos"}"#,
+        )
+        .expect("write manifest");
+
+        let picked = describe_picked_folder(&root).expect("a library folder");
+
+        assert!(picked.is_library());
+        assert_eq!(picked.library_uuid, "library-one");
+        // The library's own name wins over the folder's, so registering adopts
+        // the name it travels with.
+        assert_eq!(picked.display_name.as_deref(), Some("Photos"));
+        assert_eq!(picked.folder_name, "Family Photos");
+    }
+
+    #[test]
+    fn describes_a_plain_folder_instead_of_refusing_it() {
+        // The relaxation the unified add flow needs: a folder with no marker is
+        // an ordinary answer ("offer to make it a library"), not an error.
+        let parent = TestDir::new();
+        let root = named_folder(&parent, "Holiday Videos");
+
+        let picked = describe_picked_folder(&root).expect("a plain folder is not an error");
+
+        assert!(!picked.is_library());
+        assert!(picked.library_uuid.is_empty());
+        assert_eq!(picked.display_name, None);
+        // Prefills the name field, so confirming needs no typing.
+        assert_eq!(picked.folder_name, "Holiday Videos");
+    }
+
+    #[test]
+    fn still_refuses_a_folder_whose_marker_is_damaged() {
+        // Treating a damaged library as a plain folder would offer to create a
+        // second library on top of it.
+        let parent = TestDir::new();
+        let root = named_folder(&parent, "Broken");
+        let marker = root.join(".cairndex");
+        fs::create_dir_all(&marker).expect("create marker directory");
+        fs::write(marker.join("manifest.json"), b"{ not json").expect("write manifest");
+
+        let error = describe_picked_folder(&root).err().expect("damaged marker");
+
+        assert_eq!(error.code, MappingErrorCode::InvalidManifest);
+    }
+
+    #[test]
+    fn still_refuses_a_library_with_no_portable_identity() {
+        let parent = TestDir::new();
+        let root = named_folder(&parent, "Anonymous");
+        let marker = root.join(".cairndex");
+        fs::create_dir_all(&marker).expect("create marker directory");
+        fs::write(marker.join("manifest.json"), br#"{"library_uuid":""}"#).expect("write manifest");
+
+        let error = describe_picked_folder(&root).err().expect("no identity");
+
+        assert_eq!(error.code, MappingErrorCode::InvalidLibraryId);
+    }
+
+    #[test]
+    fn refuses_a_folder_that_is_not_there() {
+        let parent = TestDir::new();
+
+        let error = describe_picked_folder(&parent.path().join("gone"))
+            .err()
+            .expect("missing");
+
+        assert_eq!(error.code, MappingErrorCode::VolumeNotMounted);
     }
 
     // --- drag-in reverse mapping (plan 3 §6) --------------------------------

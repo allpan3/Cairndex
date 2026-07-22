@@ -70,8 +70,8 @@
       "label": "File",
       "items": [
         {
-          "id": "open-library-folder",
-          "label": "Open Library Folder\u2026",
+          "id": "manage-libraries",
+          "label": "Manage Libraries\u2026",
           "accelerator": "CmdOrCtrl+O",
           "browserReserved": true,
           "requires": null,

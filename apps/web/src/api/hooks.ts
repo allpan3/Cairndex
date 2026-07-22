@@ -31,6 +31,7 @@ import {
   type GroupingStemModes,
   type JobRead,
   type LibraryCreate,
+  type LibraryRead,
   type LibraryRegister,
   type SmartCollectionCreate,
   type SmartCollectionUpdate,
@@ -50,6 +51,7 @@ import {
   createSmartCollection,
   deleteBundle,
   deleteCollection,
+  deleteLibrary,
   deleteSmartCollection,
   applyGroupingPlan,
   approveDevicePairing,
@@ -87,6 +89,7 @@ import {
   fetchTags,
   fetchViewCounts,
   previewFilter,
+  probeLibraryPath,
   registerLibrary,
   removeFile,
   repairFile,
@@ -292,6 +295,26 @@ export function useLibraryMutations() {
     register: useMutation({
       mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
       onSuccess: invalidate,
+    }),
+    // Classifies a typed path so the add flow can confirm one action instead of
+    // making the owner choose between "create" and "register" up front. A
+    // mutation rather than a query because it runs on submit, not on keystrokes.
+    probe: useMutation({
+      mutationFn: (path: string) => probeLibraryPath(path),
+    }),
+    // Metadata-only: deregisters the library and touches nothing on disk.
+    remove: useMutation({
+      mutationFn: (libraryId: string) => deleteLibrary(libraryId),
+      onSuccess: (_result, libraryId) => {
+        // Drop the row before refetching. The list is what resolves the active
+        // library, so leaving the removed one in the cache for a round trip
+        // would keep it active — and content queries, just cleared, would
+        // immediately reload against a library this server no longer has.
+        qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+          current?.filter((library) => library.id !== libraryId),
+        )
+        return invalidate()
+      },
     }),
   }
 }

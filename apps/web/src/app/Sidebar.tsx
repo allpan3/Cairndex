@@ -18,6 +18,7 @@ import {
   IconFolder,
   IconFolderQuestion,
   IconGrid,
+  IconLibrary,
   IconLooseStack,
   IconSettings,
   IconTag,
@@ -310,13 +311,15 @@ export function Sidebar({
             🔒
           </button>
         )}
+        {/* Books, not a "+": the dialog behind it also opens and removes
+            libraries, so an add glyph under-describes it. */}
         <button
           className="sidebar__library-manage"
           onClick={onManageLibraries}
           aria-label="Manage libraries"
           title="Manage libraries"
         >
-          +
+          <IconLibrary />
         </button>
       </div>
 

@@ -152,6 +152,21 @@ export const IconLooseStack = () => (
   </Svg>
 )
 
+// Books standing on a shelf, the last one leaning — "Libraries".
+//
+// Books rather than a folder stack on purpose: folders already mean collections
+// everywhere else in this sidebar, and a library is not one of those.
+export const IconLibrary = () => (
+  <Svg>
+    <path d="M4 4v16" />
+    <path d="M9 7v13" />
+    <path d="M14 5v15" />
+    {/* The leaning one is what makes this read as books rather than a bar
+        chart — three upright spines alone do not. */}
+    <path d="m18.5 7 3.5 13" />
+  </Svg>
+)
+
 export const IconFilter = () => (
   <Svg>
     <polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5 22 3" />
