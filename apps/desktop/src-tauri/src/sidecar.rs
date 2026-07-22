@@ -64,6 +64,7 @@ pub(crate) enum SidecarErrorCode {
     DataDirUnavailable,
     TokenGenerationFailed,
     OpenFailed,
+    PickExpired,
 }
 
 #[derive(Debug, Serialize)]
@@ -152,6 +153,61 @@ impl LocalServer {
     #[cfg(test)]
     pub(crate) fn install_for_tests(&self, child: Child, info: LocalServerInfo) {
         *lock_through_poison(&self.running) = Some(Running { child, info });
+    }
+}
+
+/// A folder the user picked that is not a library yet.
+///
+/// Held here, in the shell, because the web layer must never see the path (see
+/// `mappings::PickedFolder`) — but it *does* have to ask the user for a name
+/// before anything is created, and that round trip needs somewhere for the path
+/// to wait. The web layer gets an opaque token instead and hands it back.
+struct Pick {
+    token: String,
+    root: PathBuf,
+}
+
+/// The one pending pick awaiting confirmation.
+///
+/// Deliberately a single slot rather than a map: there is one folder picker and
+/// one modal, so a second pick means the user changed their mind about the
+/// first. Replacing is therefore the correct outcome, and it bounds this state
+/// to exactly one path no matter how many times the picker is opened.
+#[derive(Default)]
+pub(crate) struct PendingPick {
+    slot: Mutex<Option<Pick>>,
+}
+
+impl PendingPick {
+    /// Park a picked path and mint the token that redeems it.
+    fn store(&self, root: PathBuf) -> Result<String, SidecarError> {
+        let token = random_token()?;
+        *lock_through_poison(&self.slot) = Some(Pick {
+            token: token.clone(),
+            root,
+        });
+        Ok(token)
+    }
+
+    /// Redeem a token for the path it was minted for, consuming the slot.
+    ///
+    /// A token that does not match leaves the slot **intact**: the mismatch
+    /// means this token belongs to a pick that has already been superseded, and
+    /// consuming the current one would create a library at a folder the user
+    /// picked later, from a dialog they answered about an earlier one.
+    fn take(&self, token: &str) -> Result<PathBuf, SidecarError> {
+        let mut guard = lock_through_poison(&self.slot);
+        match guard.as_ref() {
+            Some(pick) if pick.token == token => {
+                let root = pick.root.clone();
+                *guard = None;
+                Ok(root)
+            }
+            _ => Err(SidecarError::new(
+                SidecarErrorCode::PickExpired,
+                "That folder selection is no longer available. Choose the folder again.",
+            )),
+        }
     }
 }
 
@@ -436,8 +492,19 @@ pub(crate) async fn stop_local_server<R: Runtime>(app: AppHandle<R>) -> Result<(
 }
 
 /// The outcome of picking a library folder. Ids only — no filesystem path.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub(crate) struct OpenedLibrary {
+    /// `true` when the picked folder is not a library yet, so nothing has been
+    /// created and the web layer must ask for a name and call
+    /// [`confirm_picked_library`]. Every other field except `token` and
+    /// `folder_name` is then empty.
+    pub(crate) needs_confirmation: bool,
+    /// Redeems the parked path in [`confirm_picked_library`]. Only set with
+    /// `needs_confirmation`.
+    pub(crate) token: Option<String>,
+    /// The picked folder's basename, which prefills the name field of the
+    /// confirmation. Only set with `needs_confirmation`.
+    pub(crate) folder_name: Option<String>,
     /// `true` when the caller already has this library on its current server, so
     /// no local server was started and nothing was registered.
     pub(crate) already_available: bool,
@@ -451,11 +518,23 @@ pub(crate) struct OpenedLibrary {
 
 /// Pick a library folder and open it through the local server (plan 3 D6).
 ///
-/// Deliberately one command rather than a pick step plus a register step. The
-/// absolute path never crosses into the web layer: the shell picks it,
-/// validates it, and sends it to the sidecar whose address it reads from its
-/// *own* state — so "could this path reach a remote server?" is not a discipline
-/// to audit but a thing that cannot happen. The web layer receives ids.
+/// Three outcomes, and which one you get depends only on the folder:
+///
+/// - a library the caller's current server already serves → `already_available`,
+///   because starting a local server would register a *second* server against
+///   the same folder, which the ownership lease then correctly refuses, leaving
+///   the user staring at "this library is open on <their own machine>";
+/// - any other library → registered with the local sidecar and opened, as
+///   before;
+/// - a folder that is not a library → parked with a token, for the web layer to
+///   confirm a name and call [`confirm_picked_library`]. Nothing is created
+///   until it does, so cancelling the dialog costs nothing but the parked path,
+///   which the next pick replaces.
+///
+/// The absolute path never crosses into the web layer in any of the three: the
+/// shell picks it, holds it, and sends it to the sidecar whose address it reads
+/// from its *own* state — so "could this path reach a remote server?" is not a
+/// discipline to audit but a thing that cannot happen.
 ///
 /// `Ok(None)` means the user cancelled the picker.
 #[tauri::command]
@@ -470,40 +549,108 @@ pub(crate) async fn open_library_folder<R: Runtime>(
         return Ok(None);
     };
 
-    // The caller already has this library on the server it is connected to, so
-    // starting a local one would register a *second* server against the same
-    // folder — which the ownership lease then correctly refuses, leaving the
-    // user staring at "this library is open on <their own machine>". Report it
-    // instead and let the caller just select what it already has.
+    if !picked.is_library() {
+        let token = app.state::<PendingPick>().store(picked.root)?;
+        return Ok(Some(OpenedLibrary {
+            needs_confirmation: true,
+            token: Some(token),
+            folder_name: Some(picked.folder_name),
+            ..OpenedLibrary::default()
+        }));
+    }
+
     if known_library_uuids
         .iter()
         .any(|uuid| uuid.eq_ignore_ascii_case(&picked.library_uuid))
     {
         return Ok(Some(OpenedLibrary {
             already_available: true,
-            library_id: String::new(),
             library_uuid: picked.library_uuid,
             display_name: picked.display_name,
+            ..OpenedLibrary::default()
         }));
     }
 
     tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<LocalServer>();
-        let info = start_once(&state, || {
-            let binary = binary_path(&app)?;
-            let data = data_dir(&app)?;
-            launch(&binary, &data)
-        })?;
+        let info = start(&app)?;
         let library_id = register_library(&info, &picked.root)?;
         Ok(Some(OpenedLibrary {
-            already_available: false,
             library_id,
             library_uuid: picked.library_uuid,
             display_name: picked.display_name,
+            ..OpenedLibrary::default()
         }))
     })
     .await
     .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?
+}
+
+/// Create a library at the folder a previous pick parked, and open it.
+///
+/// The second half of the non-library pick: the web layer showed the
+/// confirmation, the user named the library, and this redeems the token for the
+/// path the shell has been holding. A stale token — from a pick the user
+/// replaced by picking again — is refused rather than applied to whatever is in
+/// the slot now.
+#[tauri::command]
+pub(crate) async fn confirm_picked_library<R: Runtime>(
+    app: AppHandle<R>,
+    token: String,
+    name: String,
+) -> Result<OpenedLibrary, SidecarError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = app.state::<PendingPick>().take(&token)?;
+        let info = start(&app)?;
+        create_library(&info, &root, &name)
+    })
+    .await
+    .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?
+}
+
+// One client for a single request to the sidecar, with a bound on how long a
+// wedged local server can hold a command open.
+fn http_client() -> Result<reqwest::blocking::Client, SidecarError> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))
+}
+
+/// Create a library at a picked plain folder, through the local server.
+///
+/// The confirm half of the pick/confirm pair. Creation goes to the sidecar, not
+/// to whatever server the web layer happens to be looking at: this path came
+/// from the shell's own picker, so it is only ever meaningful on this machine.
+fn create_library(
+    info: &LocalServerInfo,
+    root: &Path,
+    display_name: &str,
+) -> Result<OpenedLibrary, SidecarError> {
+    let response = http_client()?
+        .post(format!("{}/api/v1/libraries/create", info.base_url))
+        .bearer_auth(&info.token)
+        .json(&serde_json::json!({ "root_path": root, "display_name": display_name }))
+        .send()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+
+    if !response.status().is_success() {
+        // The server's own wording again: it is the layer that knows why (blank
+        // name, unwritable folder, a marker that appeared since the pick).
+        return Err(SidecarError::new(
+            SidecarErrorCode::OpenFailed,
+            server_error_message(response),
+        ));
+    }
+
+    let row: LibraryRow = response
+        .json()
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+    Ok(OpenedLibrary {
+        library_id: row.id,
+        library_uuid: row.library_uuid,
+        display_name: Some(row.name),
+        ..OpenedLibrary::default()
+    })
 }
 
 /// Register a folder with the sidecar, or return the id it already has.
@@ -513,10 +660,7 @@ pub(crate) async fn open_library_folder<R: Runtime>(
 /// answer 409 for it. Lookup-then-create rather than create-then-recover keeps
 /// the common path to one predictable outcome.
 fn register_library(info: &LocalServerInfo, root: &Path) -> Result<String, SidecarError> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+    let client = http_client()?;
 
     let existing: Vec<LibraryRow> = client
         .get(format!("{}/api/v1/libraries", info.base_url))
@@ -544,17 +688,24 @@ fn register_library(info: &LocalServerInfo, root: &Path) -> Result<String, Sidec
     if !response.status().is_success() {
         // Surface the server's own structured message; it is the one that knows
         // why (not a library, missing library.db, unreadable manifest).
-        let detail = response
-            .json::<ServerError>()
-            .map(|body| body.message)
-            .unwrap_or_else(|_| "The local server could not open this folder.".to_string());
-        return Err(SidecarError::new(SidecarErrorCode::OpenFailed, detail));
+        return Err(SidecarError::new(
+            SidecarErrorCode::OpenFailed,
+            server_error_message(response),
+        ));
     }
 
     response
         .json::<LibraryRow>()
         .map(|row| row.id)
         .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))
+}
+
+// Reads the server's structured message, falling back when the body is not one
+fn server_error_message(response: reqwest::blocking::Response) -> String {
+    response
+        .json::<ServerError>()
+        .map(|body| body.message)
+        .unwrap_or_else(|_| "The local server could not open this folder.".to_string())
 }
 
 // Reads the portable uuid again on the blocking thread, so the lookup compares
@@ -572,6 +723,10 @@ fn read_uuid(root: &Path) -> Option<String> {
 struct LibraryRow {
     id: String,
     library_uuid: String,
+    // Only the create path reads it, so a newly created library reports the name
+    // the server actually stored rather than the string the user typed.
+    #[serde(default)]
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -875,6 +1030,156 @@ mod tests {
             terminate(&mut running.child);
         }
         let _ = std::fs::remove_dir_all(&workdir);
+    }
+
+    // --- the pending-pick slot (pick → confirm) -----------------------------
+    // The whole token lifecycle is reachable without a Tauri app or a sidecar,
+    // because the slot is where the safety property lives: a path the shell
+    // originated must only ever be redeemed by the pick that produced it.
+
+    #[test]
+    fn a_stored_pick_is_redeemed_by_its_own_token() {
+        let pending = PendingPick::default();
+        let root = PathBuf::from("/tmp/cairndex-pick");
+
+        let token = pending.store(root.clone()).expect("store");
+
+        assert_eq!(pending.take(&token).expect("take"), root);
+    }
+
+    #[test]
+    fn a_pick_is_redeemed_exactly_once() {
+        // Confirming twice — a double-clicked button, a retried command — must
+        // not create a second library at the same folder.
+        let pending = PendingPick::default();
+        let token = pending
+            .store(PathBuf::from("/tmp/cairndex-pick"))
+            .expect("store");
+
+        assert!(pending.take(&token).is_ok());
+
+        let error = pending.take(&token).expect_err("already consumed");
+        assert_eq!(error.code, SidecarErrorCode::PickExpired);
+    }
+
+    #[test]
+    fn a_stale_token_is_rejected_and_leaves_the_current_pick_alone() {
+        // The case this design exists to prevent: the user picked again, so the
+        // dialog they are answering is about the *old* folder. Redeeming the
+        // stale token must not create a library at the new one.
+        let pending = PendingPick::default();
+        let first = pending
+            .store(PathBuf::from("/tmp/cairndex-first"))
+            .expect("store first");
+        let second_root = PathBuf::from("/tmp/cairndex-second");
+        let second = pending.store(second_root.clone()).expect("store second");
+
+        let error = pending.take(&first).expect_err("superseded token");
+        assert_eq!(error.code, SidecarErrorCode::PickExpired);
+
+        // The newer pick survived the rejected attempt.
+        assert_eq!(pending.take(&second).expect("take second"), second_root);
+    }
+
+    #[test]
+    fn an_unknown_token_is_rejected_when_nothing_is_pending() {
+        let pending = PendingPick::default();
+
+        let error = pending.take("not-a-token").expect_err("nothing pending");
+
+        assert_eq!(error.code, SidecarErrorCode::PickExpired);
+    }
+
+    #[test]
+    fn cancelling_the_confirmation_leaves_the_slot_untouched() {
+        // Cancelling is simply never calling confirm: nothing is created, and
+        // the parked path stays parked until the next pick replaces it.
+        let pending = PendingPick::default();
+        let root = PathBuf::from("/tmp/cairndex-cancelled");
+        let token = pending.store(root.clone()).expect("store");
+
+        // …user closes the dialog; no take happens…
+
+        assert_eq!(pending.take(&token).expect("still redeemable"), root);
+    }
+
+    #[test]
+    fn every_pick_mints_a_distinct_token() {
+        let pending = PendingPick::default();
+
+        let first = pending.store(PathBuf::from("/tmp/a")).expect("store");
+        let second = pending.store(PathBuf::from("/tmp/b")).expect("store");
+
+        assert_ne!(first, second);
+        assert_eq!(first.len(), 64);
+    }
+
+    #[test]
+    fn confirming_a_picked_plain_folder_creates_the_named_library() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let work =
+            std::env::temp_dir().join(format!("cairndex-confirm-test-{}", std::process::id()));
+        let data = work.join("data");
+        let plain = work.join("Holiday Videos");
+        std::fs::create_dir_all(&data).expect("data dir");
+        std::fs::create_dir_all(&plain).expect("plain dir");
+
+        let (mut child, info) = launch(&binary, &data).expect("launch");
+
+        // The confirm step's own work: a plain folder plus a name becomes a
+        // library on the local server, with the name the user gave it.
+        let opened = create_library(&info, &plain, "Holiday Videos").expect("create");
+
+        assert!(!opened.needs_confirmation);
+        assert!(!opened.already_available);
+        assert_eq!(opened.display_name.as_deref(), Some("Holiday Videos"));
+        assert!(!opened.library_id.is_empty());
+        assert!(!opened.library_uuid.is_empty());
+        // It is a real library on disk, and the local server serves it.
+        assert!(plain.join(".cairndex").join("manifest.json").is_file());
+        assert_eq!(
+            register_library(&info, &plain).expect("re-open"),
+            opened.library_id
+        );
+
+        // A second create at the same folder is refused with the server's own
+        // reason rather than quietly making a duplicate.
+        let error = create_library(&info, &plain, "Again").expect_err("already a library");
+        assert!(
+            error.message.contains("already a Cairndex library"),
+            "unhelpful message: {}",
+            error.message
+        );
+
+        terminate(&mut child);
+        let _ = std::fs::remove_dir_all(&work);
+    }
+
+    #[test]
+    fn confirming_with_a_blank_name_reports_the_servers_reason() {
+        let Some(binary) = built_bundle() else {
+            eprintln!("skipping: set {DEV_BINARY_ENV} to a built sidecar bundle");
+            return;
+        };
+        let work = std::env::temp_dir().join(format!("cairndex-blank-name-{}", std::process::id()));
+        let data = work.join("data");
+        let plain = work.join("unnamed");
+        std::fs::create_dir_all(&data).expect("data dir");
+        std::fs::create_dir_all(&plain).expect("plain dir");
+
+        let (mut child, info) = launch(&binary, &data).expect("launch");
+
+        let error = create_library(&info, &plain, "   ").expect_err("blank name");
+
+        assert_eq!(error.code, SidecarErrorCode::OpenFailed);
+        // And nothing was created at the folder.
+        assert!(!plain.join(".cairndex").exists());
+
+        terminate(&mut child);
+        let _ = std::fs::remove_dir_all(&work);
     }
 
     #[test]
