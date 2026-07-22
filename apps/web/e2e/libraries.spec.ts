@@ -214,6 +214,25 @@ test.describe('the suggestion menu stays on screen', () => {
   }
 })
 
+test('a click elsewhere in the dialog dismisses the menu but keeps the dialog', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByLabel('Library path').fill('/mnt')
+  await expect(page.getByRole('option', { name: '/mnt/media' })).toBeVisible()
+
+  await page.getByRole('heading', { name: 'Libraries' }).click()
+
+  await expect(page.getByRole('listbox')).toBeHidden()
+  // The click that dismissed the menu must not also dismiss the dialog: the
+  // dialog swallows it for exactly that reason, which is what made this
+  // dismissal need the capture phase in the first place.
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByLabel('Library path')).toHaveValue('/mnt')
+})
+
 test('adds an existing library folder without asking for a name', async ({ page }) => {
   await mockApi(page, { probeIsLibrary: true })
   await page.goto('/')

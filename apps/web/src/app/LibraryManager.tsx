@@ -464,8 +464,14 @@ function PathInput({
     const onDown = (e: MouseEvent) => {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    // Capture phase, not bubble. The dialog around this input stops mousedown
+    // from propagating — that is how a click inside it avoids reaching the
+    // backdrop and closing the whole modal — so a bubble-phase listener here
+    // never sees a click anywhere in the dialog, which is precisely where a
+    // user clicks to dismiss the menu. Capture runs on the way down, before
+    // anything can stop it.
+    document.addEventListener('mousedown', onDown, true)
+    return () => document.removeEventListener('mousedown', onDown, true)
   }, [])
 
   // Keeps the keyboard-active option visible in the scrolling menu.
