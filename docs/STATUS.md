@@ -1,5 +1,26 @@
 # Project status
 
+## Completed: hidden-until-loaded desktop startup (2026-07-21)
+
+Direct-to-`main` desktop startup follow-up.
+
+- The native main window now starts hidden and is revealed and focused exactly
+  once, after the main webview reports its first completed page load. WKWebView's
+  default white surface is therefore never user-visible.
+- Cold-start deep links and near-simultaneous second launches cannot bypass the
+  readiness gate by calling `show()` early; once loaded, their existing restore
+  and focus behavior is unchanged.
+- The native `backgroundColor`, inline document background, and CSS background
+  remain aligned dark fallbacks. No macOS private WebKit API was enabled.
+- Desktop format and Clippy pass; all 73 Rust tests pass against the real bundled
+  sidecar. Frontend lint/format/typecheck, all 299 component tests, the production
+  build, and all 80 Playwright tests pass. The packaged `.app` cold-started into
+  the Lex shell, proving the visibility gate does not strand the window hidden;
+  the desktop capture surface samples after launch and cannot independently
+  frame-check the sub-second transition. The default build also completed the
+  `.app` before Tauri's Finder-driven DMG step failed in this environment;
+  `tauri build --bundles app` passes, and both temporary DMG mounts were cleaned.
+
 ## Completed: immediate cover selection feedback (2026-07-21)
 
 Direct-to-`main` inspector latency follow-up.

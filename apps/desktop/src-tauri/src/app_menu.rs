@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicI8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItemBuilder, Submenu, SubmenuBuilder},
@@ -11,6 +11,22 @@ pub(crate) const MENU_EVENT: &str = "cairndex://menu";
 /// Broadcasts native window fullscreen changes so the viewer's own fullscreen
 /// control cannot show a stale state after the View menu toggled the window.
 pub(crate) const FULLSCREEN_EVENT: &str = "cairndex://fullscreen";
+
+/// Gates window focus until WKWebView has replaced its default white surface.
+#[derive(Default)]
+pub(crate) struct MainWindowReady(AtomicBool);
+
+impl MainWindowReady {
+    // Marks the first completed page load and reports whether it won the race
+    fn mark_ready(&self) -> bool {
+        !self.0.swap(true, Ordering::AcqRel)
+    }
+
+    // Reports whether the initial page is safe to expose
+    fn is_ready(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
 
 // Maps native menu identifiers to the shared SPA's semantic actions
 pub(crate) fn action_for_id(id: &str) -> Option<&'static str> {
@@ -196,11 +212,63 @@ pub(crate) fn toggle_window_fullscreen(app: AppHandle) -> Result<bool, String> {
     Ok(!fullscreen)
 }
 
-// Restores the primary window when a second process launches
+// Restores the primary window after its first page has loaded
 pub(crate) fn focus_main_window<R: Runtime>(app: &AppHandle<R>) {
+    let ready = app
+        .try_state::<MainWindowReady>()
+        .is_some_and(|state| state.is_ready());
+    if ready {
+        focus_main_window_now(app);
+    }
+}
+
+// Reveals the primary window exactly once after its first completed page load
+pub(crate) fn reveal_main_window<R: Runtime>(app: &AppHandle<R>) {
+    let first_load = app
+        .try_state::<MainWindowReady>()
+        .is_some_and(|state| state.mark_ready());
+    if first_load {
+        focus_main_window_now(app);
+    }
+}
+
+// Shows, restores, and focuses the already-loaded primary window
+fn focus_main_window_now<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MainWindowReady;
+
+    // Pins the one-way readiness transition shared by page load and focus requests
+    #[test]
+    fn main_window_becomes_ready_once() {
+        let ready = MainWindowReady::default();
+
+        assert!(!ready.is_ready());
+        assert!(ready.mark_ready());
+        assert!(ready.is_ready());
+        assert!(!ready.mark_ready());
+    }
+
+    // Pins the native half of the hidden-until-loaded startup contract
+    #[test]
+    fn main_window_starts_hidden_with_a_dark_fallback() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main_window = config["app"]["windows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|window| window["label"] == "main")
+            .unwrap();
+
+        assert_eq!(main_window["visible"], false);
+        assert_eq!(main_window["backgroundColor"], "#141519");
     }
 }

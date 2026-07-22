@@ -29,6 +29,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(lifecycle::ExitGate::default())
         .manage(deeplink::PendingDeepLink::default())
         .manage(sidecar::LocalServer::default())
+        .manage(app_menu::MainWindowReady::default())
         // Single-instance must be registered BEFORE the deep-link plugin: on
         // Windows/Linux a deep link launches a *second* process whose argv carries
         // the URL, and this callback is where that argv is forwarded to the running
@@ -71,6 +72,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 app_menu::broadcast_fullscreen(window.app_handle());
             }
         })
+        // The configured window starts hidden so WKWebView cannot expose its
+        // default white surface before the document's dark canvas exists.
+        .on_page_load(|webview, payload| {
+            if webview.label() == "main"
+                && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+            {
+                app_menu::reveal_main_window(webview.app_handle());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,
@@ -101,7 +111,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             app.set_menu(app_menu::build(app)?)?;
             app_menu::install_handler(app.handle());
-            app_menu::focus_main_window(app.handle());
 
             // macOS delivers deep links as an Apple Event, which can fire before
             // the webview exists. `handle_deep_link` parks whatever arrives so the
