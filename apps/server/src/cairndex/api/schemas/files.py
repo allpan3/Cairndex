@@ -1,15 +1,12 @@
-"""Schemas for library-scoped file operations (fast-add, path suggestions)."""
+"""Schemas for library-scoped file operations (fast-add).
+
+The add-library form's own helper schemas (path suggestions and the path probe)
+live with the registry they belong to, in ``registry.schemas``.
+"""
 
 from pydantic import BaseModel, Field
 
 from cairndex.domain.enums import Grouping
-
-
-class PathSuggestions(BaseModel):
-    """Directory autocompletions for the add-library form (owner setup only)."""
-
-    # The absolute server paths suggested for the typed prefix.
-    suggestions: list[str]
 
 
 class FastAddRequest(BaseModel):

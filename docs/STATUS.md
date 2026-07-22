@@ -1,5 +1,114 @@
 # Project status
 
+## Implemented: unified library add/remove flow (2026-07-22)
+
+Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. PR opened at
+the owner's request; not merged. Commits run server endpoints → shell → web
+modal → docs, then a review follow-up and four rounds from an owner pass on the
+packaged app.
+
+**What changed.** Adding a library no longer starts with a question the owner
+should not have to answer. The Create/Register tabs are gone; there is one path
+field and one action, and the server classifies the path
+(`GET /libraries/probe-path`): already registered → select it, an existing
+library → register it under the name it carries, anything else → one
+confirmation prefilled with the folder's basename. A path that does not exist
+yet says so in that same confirmation, which is what replaced the
+create-if-missing checkbox. Libraries can now be **removed**
+(`DELETE /libraries/{id}`), metadata-only in the strict sense: registry row,
+lease release, engine dispose, and nothing on disk.
+
+**The desktop half is a pick/confirm pair.** `pick_library_folder` no longer
+refuses a folder without a manifest; a non-library pick parks the `PathBuf` in a
+single-slot `PendingPick` and returns `{ needs_confirmation, token, folder_name
+}`, and `confirm_picked_library(token, name)` redeems it. This keeps the
+`PickedFolder` invariant intact for a flow that now needs a user round trip
+mid-way: the path waits inside the shell, the web layer holds only an opaque
+token. A superseded token is refused **and leaves the newer pick intact** —
+otherwise a name typed for one folder could create a library at another.
+
+**The menu item became the same surface.** File → Open Library Folder… is now
+**Manage Libraries…** (still ⌘O) and opens the dialog instead of jumping to the
+picker, so one surface covers adding, opening, and removing — and it is now
+rendered in the states that replace the workspace (a lease refusal, a locked
+library), which are exactly where switching libraries is what a user wants and
+where the dialog previously did not exist. First-run setup keeps the direct
+picker on purpose: the dialog lists a *server's* libraries and first run has no
+server, which is the situation the picker resolves (ADR-0018's "local libraries
+just work"). That removed App's whole duplicated folder-opening path — naming
+dialog, state, toast, error handling — since the dialog owns all of it. The
+sidebar's `+` became a books glyph for the same reason: the dialog no longer
+only adds.
+
+**Three things worth keeping from the build:**
+
+1. **Layout is where this feature kept breaking, and jsdom cannot see layout.**
+   Twice: the suggestion menu stays open after a selection (to drill down) and
+   sat over the primary button, so the click that looked like "Add library"
+   would have selected a suggestion — caught by Playwright, fixed by moving the
+   action beside the field. Then the owner reported the menu showing only two
+   rows in the real app: `.modal` is a scroll container, so an absolutely
+   positioned menu is clipped at the dialog's edge, and the add row sits at the
+   dialog's bottom so "below the field" is usually the direction with no room.
+   Fixed with an `overflow: visible` opt-out plus a measured flip above the
+   field. Its first regression test **passed against the bug** — `boundingBox()`
+   reports an element's layout box whether or not an ancestor clips it, so the
+   assertion had to become an `elementFromPoint` hit test at the menu's edges.
+   Then a third, from the same owner pass: the menu could not be dismissed by
+   clicking away, because its outside-click listener was on the bubble phase and
+   the dialog stops mousedown propagating (deliberately — that is what keeps a
+   click inside it from reaching the backdrop). Every dismissing click is inside
+   the dialog, so the listener never fired; it runs in the capture phase now.
+   A fourth, on the same pass, was design rather than defect: the name step
+   replaced the whole add section, so the button that asked for the
+   confirmation moved out from under the pointer. It now swaps the row's
+   contents in place — and holding the row still needed two non-obvious
+   things, since the dialog is vertically centred: buttons that never wrap, and
+   a hint paragraph that reserves two lines whether or not it uses them.
+   **The pattern across all four: this dialog's behavior lives in the browser,
+   not in the component.** A component test can prove which handler ran; it
+   cannot prove the handler ever gets the event, that the element is where it
+   claims to be, or that it stayed there.
+2. **Content query keys are not library-scoped.** The cache is cleared on every
+   library switch instead, so removing the *active* library had to clear it
+   explicitly; without that the next library inherits the removed one's bundles
+   and counts. This is a standing trap for anything that changes the active
+   library outside `changeLibrary`.
+3. **Deregistration releases the lease** (ADR-0018 §3 lists unregistration
+   alongside clean shutdown). Skipping it would leave a folder nobody serves
+   showing a takeover prompt on the next machine to open it. Pinned by mutation.
+
+**Gates.** Backend ruff / ruff format / strict mypy / **595 pytest** (+17).
+Frontend ESLint / Prettier / tsc / **329 Vitest** (+29) / Vite build / **90
+Playwright** (+7, the whole suite including its `@fullstack` partition against a
+real backend). Desktop `cargo fmt --check`, Clippy
+`-D warnings`, **86 tests** (+13) against the real packaged sidecar, and
+`tauri build`. Mutations applied and killed: the lease release in
+`deregister_library`, the pending-pick token comparison, the dialog's
+`overflow` opt-out, the menu's upward flip, the capture-phase dismissal, and the
+hint paragraph's reserved height — the last four all layout or event-propagation
+properties that only a browser test can observe.
+
+**Verified by hand**: the modal was driven in a real browser and captured in
+three states (suggestions with a library badge, the name confirmation, the
+removal confirmation). The first capture found the removal reassurance —
+the sentence saying no files are touched — being ellipsized by the path row's
+`nowrap`; it has its own class now. The owner then found the clipped menu in
+the running app, which is item 1 above.
+
+**Owner acceptance passed (2026-07-22)** on the packaged app, which is what
+closes the one gap the automated suites structurally cannot reach: driving a
+macOS folder dialog needs assistive access this environment does not have, so
+the pick→confirm round trip was proven only at its seams (Rust tests against a
+real sidecar; web tests against the command boundary). The owner drove the
+native picker on a library folder, a plain folder, and a folder the current
+server already serves, plus the typed-path and removal flows, and reported all
+of them working. The four defects that pass surfaced are items 1 above; each was
+fixed with a browser test that fails without the fix.
+
+**Next**: unchanged — plan 3 **D7 (first public release)**, whose only true
+blocker is pinning a static ffmpeg (ADR-0019 §3).
+
 ## Implemented: startup flash root-cause fix via macos-private-api (2026-07-22)
 
 Branch `fix/desktop-startup-flash-root-cause`, based on `main`.

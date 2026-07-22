@@ -10,7 +10,7 @@ import { actionIdsRequiring, dispatchableActionIds, keymapMenus, shortcutReferen
 // SPA's action types fails here instead of producing a dead menu item.
 const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
   'settings',
-  'open-library-folder',
+  'manage-libraries',
   'pair-device',
   'new-bundle',
   'show-bundles',

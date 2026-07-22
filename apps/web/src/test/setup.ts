@@ -9,3 +9,8 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never)
+
+// Same reason: with no layout there is nothing to scroll, so jsdom leaves
+// scrollIntoView undefined and any keyboard navigation that keeps its active
+// item visible would throw in tests while working in every real browser.
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView ?? function () {}
