@@ -38,8 +38,8 @@ export function LibraryManager({
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Set while a shell command (the native picker, the confirm) is in flight;
-  // those are not mutations, so they have no `isPending` of their own.
+  // Covers the actions that are not plain mutations — the native picker and the
+  // confirm step — which have no `isPending` of their own.
   const [hostBusy, setHostBusy] = useState(false)
 
   const rows = libraries.data ?? []
@@ -114,16 +114,12 @@ export function LibraryManager({
   const confirmNewLibrary = async (name: string) => {
     if (!confirming || busy) return
     setError(null)
+    setHostBusy(true)
     try {
       if (confirming.kind === 'pick') {
-        setHostBusy(true)
-        try {
-          // The shell holds the folder against this token; it never crossed
-          // into this layer, and a token a later pick superseded is refused.
-          await confirmPickedLibrary(confirming.token, name)
-        } finally {
-          setHostBusy(false)
-        }
+        // The shell holds the folder against this token; it never crossed into
+        // this layer, and a token a later pick superseded is refused.
+        await confirmPickedLibrary(confirming.token, name)
       } else {
         const added = await create.mutateAsync({
           root_path: confirming.path,
@@ -135,6 +131,8 @@ export function LibraryManager({
       onClose()
     } catch (failure) {
       setError(confirming.kind === 'pick' ? hostOperationErrorMessage(failure) : messageOf(failure))
+    } finally {
+      setHostBusy(false)
     }
   }
 
