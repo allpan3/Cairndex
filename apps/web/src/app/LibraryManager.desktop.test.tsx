@@ -92,7 +92,7 @@ test('a picked plain folder is named through the same confirmation, prefilled', 
   expect(confirmHostPick).not.toHaveBeenCalled()
 
   fireEvent.change(name, { target: { value: 'Trips' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create library' }))
 
   await waitFor(() => expect(confirmHostPick).toHaveBeenCalledWith('pick-token-1', 'Trips'))
   await waitFor(() => expect(onClose).toHaveBeenCalled())
@@ -169,7 +169,7 @@ test('a failed confirmation is reported and the folder can be named again', asyn
 
   fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
   await screen.findByLabelText('Library name')
-  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Create library' }))
 
   expect(await screen.findByText(/no longer available/)).toBeInTheDocument()
   expect(screen.getByLabelText('Library name')).toBeInTheDocument()
