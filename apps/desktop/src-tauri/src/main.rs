@@ -72,16 +72,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 app_menu::broadcast_fullscreen(window.app_handle());
             }
         })
-        // The configured window starts hidden so WKWebView cannot expose its
-        // default white surface before the document's dark canvas exists.
+        // The renderer normally reveals the hidden window after mounting. This
+        // page-load hook only prevents a broken renderer bridge from stranding it.
         .on_page_load(|webview, payload| {
             if webview.label() == "main"
                 && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
             {
-                app_menu::reveal_main_window(webview.app_handle());
+                app_menu::schedule_main_window_reveal_fallback(webview.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![
+            app_menu::renderer_ready,
             app_menu::set_library_menu_enabled,
             app_menu::set_server_menu_enabled,
             app_menu::set_viewer_menu_enabled,
