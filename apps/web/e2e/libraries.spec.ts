@@ -1,10 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Hermetic mock for creating a library with path autocomplete (ADR-0008).
-// With no libraries, the app shows an empty shell; clicking "+" opens the
-// manager, and creating one transitions into the workspace. No backend required.
+// Hermetic mock of the unified add-library flow (ADR-0008). With no libraries
+// the app shows an empty shell; clicking "+" opens the manager, and adding one
+// transitions into the workspace. No backend required.
 
-async function mockApi(page: Page) {
+async function mockApi(page: Page, options: { probeIsLibrary?: boolean } = {}) {
   const libraries: Array<Record<string, unknown>> = []
 
   await page.route('**/bundles/counts**', (r) =>
@@ -20,18 +20,36 @@ async function mockApi(page: Page) {
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
 
-  // Directory autocomplete.
+  // Directory autocomplete, with one entry already marked as a library.
   await page.route('**/path-suggestions**', (r) =>
-    r.fulfill({ json: { suggestions: ['/mnt/media', '/mnt/music'] } }),
+    r.fulfill({
+      json: {
+        suggestions: [
+          { path: '/mnt/media', is_library: false },
+          { path: '/mnt/music', is_library: true },
+        ],
+      },
+    }),
   )
 
-  // Create a new library.
-  await page.route('**/api/v1/libraries/create', async (r) => {
-    const body = r.request().postDataJSON() as Record<string, unknown>
+  // What the typed path is. The modal asks once, on submit.
+  await page.route('**/probe-path**', (r) =>
+    r.fulfill({
+      json: {
+        exists: true,
+        is_library: options.probeIsLibrary ?? false,
+        already_registered_id: null,
+        manifest_display_name: options.probeIsLibrary ? 'Existing Library' : null,
+        folder_name: 'media',
+      },
+    }),
+  )
+
+  const created = (body: Record<string, unknown>, name: unknown) => {
     const lib = {
       id: 'lib1',
       library_uuid: '01HZZZZZZZZZZZZZZZZZZZZZZZ',
-      name: body.display_name,
+      name,
       root_path: body.root_path,
       status: 'available',
       schema_version: 1,
@@ -40,14 +58,30 @@ async function mockApi(page: Page) {
       last_opened_at: null,
     }
     libraries.push(lib)
-    await r.fulfill({ status: 201, json: lib })
+    return lib
+  }
+
+  await page.route('**/api/v1/libraries/create', async (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>
+    await r.fulfill({ status: 201, json: created(body, body.display_name) })
+  })
+  await page.route('**/api/v1/libraries/register', async (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>
+    await r.fulfill({ status: 201, json: created(body, 'Existing Library') })
+  })
+
+  // Deregistration is metadata-only; the mock just drops the row.
+  await page.route('**/api/v1/libraries/lib1', async (r) => {
+    if (r.request().method() !== 'DELETE') return r.fallback()
+    libraries.length = 0
+    await r.fulfill({ status: 204, body: '' })
   })
 
   // Libraries list (mutable).
   await page.route('**/api/v1/libraries', (r) => r.fulfill({ json: libraries }))
 }
 
-test('creates a library via the path-autocomplete form', async ({ page }) => {
+test('adds a plain folder as a new library through one confirmation', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
 
@@ -55,18 +89,72 @@ test('creates a library via the path-autocomplete form', async ({ page }) => {
   await expect(page.locator('.center')).toContainText('No library yet')
   await page.getByRole('button', { name: 'Manage libraries' }).click()
 
-  // Fill the create form.
-  await page.getByLabel('Library name').fill('NAS Media')
+  // One path field, no create/register choice. Autocomplete marks the folder
+  // that already is a library.
   await page.getByLabel('Library path').fill('/mnt')
+  await expect(page.getByRole('option', { name: '/mnt/music' })).toContainText('library')
   await page.getByRole('option', { name: '/mnt/media' }).click()
-  await expect(page.getByLabel('Library path')).toHaveValue('/mnt/media')
+  await expect(page.getByLabel('Library path')).toHaveValue('/mnt/media/')
 
-  await page.getByRole('button', { name: 'Create library' }).click()
+  await page.getByRole('button', { name: 'Add library' }).click()
 
-  // After creation the app transitions into the workspace with the new library
-  // selected in the sidebar.
+  // Not a library → confirm a name, prefilled with the folder's own.
+  const name = page.getByLabel('Library name')
+  await expect(name).toHaveValue('media')
+  await name.fill('NAS Media')
+  await page.getByRole('button', { name: 'Add library' }).click()
+
+  // The app transitions into the workspace with the new library selected.
   await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
   await expect(page.locator('.sidebar__library-select')).toContainText('NAS Media')
+})
+
+test('walks the suggestion menu with the keyboard alone', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+
+  const path = page.getByLabel('Library path')
+  await path.fill('/mnt')
+  await expect(page.getByRole('option', { name: '/mnt/media' })).toBeVisible()
+
+  await path.press('ArrowDown')
+  await path.press('ArrowDown')
+  await path.press('Enter')
+
+  // Taking a suggestion drills in rather than ending the interaction.
+  await expect(path).toHaveValue('/mnt/music/')
+  await expect(page.getByRole('listbox')).toBeVisible()
+})
+
+test('adds an existing library folder without asking for a name', async ({ page }) => {
+  await mockApi(page, { probeIsLibrary: true })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+
+  await page.getByLabel('Library path').fill('/mnt/music')
+  await page.getByRole('button', { name: 'Add library' }).click()
+
+  // It keeps the name it travels with; no confirmation step appears.
+  await expect(page.locator('.sidebar__library-select')).toContainText('Existing Library')
+})
+
+test('removes a library after confirming, and says files are untouched', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByLabel('Library path').fill('/mnt/media')
+  await page.getByRole('button', { name: 'Add library' }).click()
+  await page.getByRole('button', { name: 'Add library' }).click()
+  await expect(page.locator('.sidebar__library-select')).toHaveValue('lib1')
+
+  await page.getByRole('button', { name: 'Manage libraries' }).click()
+  await page.getByRole('button', { name: 'Remove media' }).click()
+  await expect(page.locator('.lib-row--confirm')).toContainText('files are not touched')
+  await page.getByRole('button', { name: 'Remove', exact: true }).click()
+
+  // Back to the empty shell, which is the no-library state the app already has.
+  await expect(page.locator('.center')).toContainText('No library yet')
 })
 
 test('switching libraries replaces the browser shell without a reload', async ({ page }) => {

@@ -57,6 +57,16 @@ export interface LocalServerInfo {
 /** The outcome of picking a library folder. Ids only — never a path. */
 export interface OpenedLibrary {
   /**
+   * True when the picked folder is not a Cairndex library yet. Nothing has been
+   * created: the shell is holding the path, and the UI must ask for a name and
+   * call `confirmHostPickedLibrary` with `token`. Every other field is empty.
+   */
+  needsConfirmation: boolean
+  /** Redeems the held folder in `confirmHostPickedLibrary`. Opaque — not a path. */
+  token: string | null
+  /** The picked folder's basename, which prefills the name field. */
+  folderName: string | null
+  /**
    * True when the caller's *current* server already has this library, so no
    * local server was started. Opening it locally would register a second server
    * against the same folder, which the ownership lease then refuses — the user
@@ -123,6 +133,7 @@ interface PlatformRuntime {
   startLocalServer(): Promise<LocalServerInfo>
   localServerStatus(): Promise<LocalServerInfo | null>
   openLibraryFolder(knownLibraryUuids: string[]): Promise<OpenedLibrary | null>
+  confirmPickedLibrary(token: string, name: string): Promise<OpenedLibrary>
   loadConnections(): Promise<StoredConnections | null>
   saveConnections(value: StoredConnections): Promise<void>
   hasDeviceToken(): boolean
@@ -194,7 +205,13 @@ const webRuntime: PlatformRuntime = {
     throw new Error('The local server is only available in the desktop app.')
   },
   localServerStatus: async () => null,
+  // The browser cannot produce a server absolute path from a file input, so
+  // there is nothing to pick and nothing to confirm; typed paths cover the
+  // browser entirely.
   openLibraryFolder: async () => null,
+  confirmPickedLibrary: async () => {
+    throw new Error('Choosing a folder is only available in the desktop app.')
+  },
   loadConnections: async () => null,
   saveConnections: async () => undefined,
   hasDeviceToken: () => false,
@@ -324,6 +341,12 @@ export const hostLocalServerStatus = (): Promise<LocalServerInfo | null> =>
 // serves, so a folder it already has is reported rather than opened twice.
 export const openHostLibraryFolder = (knownLibraryUuids: string[]): Promise<OpenedLibrary | null> =>
   runtime.openLibraryFolder(knownLibraryUuids)
+
+// Creates a library at the folder a previous pick is holding, under the name the
+// user confirmed. `token` is the opaque handle from that pick — the path itself
+// stays in the shell.
+export const confirmHostPickedLibrary = (token: string, name: string): Promise<OpenedLibrary> =>
+  runtime.confirmPickedLibrary(token, name)
 
 export const loadHostConnections = (): Promise<StoredConnections | null> =>
   runtime.loadConnections()

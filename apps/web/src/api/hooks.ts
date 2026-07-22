@@ -50,6 +50,7 @@ import {
   createSmartCollection,
   deleteBundle,
   deleteCollection,
+  deleteLibrary,
   deleteSmartCollection,
   applyGroupingPlan,
   approveDevicePairing,
@@ -87,6 +88,7 @@ import {
   fetchTags,
   fetchViewCounts,
   previewFilter,
+  probeLibraryPath,
   registerLibrary,
   removeFile,
   repairFile,
@@ -291,6 +293,17 @@ export function useLibraryMutations() {
     }),
     register: useMutation({
       mutationFn: (payload: LibraryRegister) => registerLibrary(payload),
+      onSuccess: invalidate,
+    }),
+    // Classifies a typed path so the add flow can confirm one action instead of
+    // making the owner choose between "create" and "register" up front. A
+    // mutation rather than a query because it runs on submit, not on keystrokes.
+    probe: useMutation({
+      mutationFn: (path: string) => probeLibraryPath(path),
+    }),
+    // Metadata-only: deregisters the library and touches nothing on disk.
+    remove: useMutation({
+      mutationFn: (libraryId: string) => deleteLibrary(libraryId),
       onSuccess: invalidate,
     }),
   }

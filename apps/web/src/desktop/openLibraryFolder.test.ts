@@ -11,12 +11,13 @@ import {
   takePendingLibrarySelection,
   LOCAL_CONNECTION_ID,
 } from './connections'
-import { openLibraryFolder } from './openLibraryFolder'
+import { confirmPickedLibrary, openLibraryFolder } from './openLibraryFolder'
 import { resetJobNotificationsForTests } from './useJobNotifications'
 
 const configureHostServer = vi.fn<(url: string, options?: unknown) => Promise<void>>()
 const startHostLocalServer = vi.fn<() => Promise<{ baseUrl: string; token: string }>>()
 const openHostLibraryFolder = vi.fn()
+const confirmHostPickedLibrary = vi.fn()
 const loadHostConnections = vi.fn()
 const saveHostConnections = vi.fn()
 const loadHostServerUrl = vi.fn()
@@ -32,6 +33,7 @@ vi.mock('../platform', () => ({
   configureHostServer: (url: string, options?: unknown) => configureHostServer(url, options),
   startHostLocalServer: () => startHostLocalServer(),
   openHostLibraryFolder: () => openHostLibraryFolder(),
+  confirmHostPickedLibrary: (token: string, name: string) => confirmHostPickedLibrary(token, name),
   loadHostConnections: () => loadHostConnections(),
   saveHostConnections: (value: unknown) => saveHostConnections(value),
   loadHostServerUrl: () => loadHostServerUrl(),
@@ -46,7 +48,26 @@ function pendingCount(): string {
   setPendingLibrarySelection(LOCAL_CONNECTION_ID, value)
   return 'queued'
 }
-const OPENED = { libraryId: 'lib-local-1', libraryUuid: 'uuid-1', displayName: 'Photos' }
+const OPENED = {
+  needsConfirmation: false,
+  token: null,
+  folderName: null,
+  alreadyAvailable: false,
+  libraryId: 'lib-local-1',
+  libraryUuid: 'uuid-1',
+  displayName: 'Photos',
+}
+// A picked folder that is not a library yet: the shell is holding it against
+// `token`, and nothing exists until a name is confirmed.
+const NEEDS_NAME = {
+  ...OPENED,
+  needsConfirmation: true,
+  token: 'pick-token-1',
+  folderName: 'Holiday Videos',
+  libraryId: '',
+  libraryUuid: '',
+  displayName: null,
+}
 
 beforeEach(() => {
   resetConnectionsForTests()
@@ -59,6 +80,7 @@ beforeEach(() => {
   loadHostServerUrl.mockResolvedValue(NAS)
   startHostLocalServer.mockResolvedValue({ baseUrl: 'http://127.0.0.1:54321', token: 'local-tok' })
   openHostLibraryFolder.mockResolvedValue(OPENED)
+  confirmHostPickedLibrary.mockResolvedValue(OPENED)
 })
 
 describe('openLibraryFolder', () => {
@@ -178,6 +200,22 @@ describe('openLibraryFolder', () => {
     expect(seen.at(-1)).toBeGreaterThan(0)
   })
 
+  it('changes nothing when the picked folder still needs a name', async () => {
+    // The same rule as a cancelled picker, one step later: nothing has been
+    // created, so nothing may switch until the user has confirmed.
+    await loadConnections()
+    const before = getActiveConnection()?.id
+    openHostLibraryFolder.mockResolvedValue(NEEDS_NAME)
+
+    const result = await openLibraryFolder()
+
+    expect(result.opened).toEqual(NEEDS_NAME)
+    expect(getActiveConnection()?.id).toBe(before)
+    expect(startHostLocalServer).not.toHaveBeenCalled()
+    expect(configureHostServer).not.toHaveBeenCalled()
+    expect(pendingCount()).toBe('empty')
+  })
+
   it('works with no remote server ever configured', async () => {
     // The milestone's premise: a local folder opens without server admin, so
     // this must not depend on a prior connection existing.
@@ -189,5 +227,49 @@ describe('openLibraryFolder', () => {
 
     expect(result.opened).toEqual(OPENED)
     expect(getActiveConnection()?.id).toBe(LOCAL_CONNECTION_ID)
+  })
+})
+
+describe('confirmPickedLibrary', () => {
+  it('creates the library, then activates the local connection and selects it', async () => {
+    await loadConnections()
+
+    const result = await confirmPickedLibrary('pick-token-1', 'Trips')
+
+    expect(confirmHostPickedLibrary).toHaveBeenCalledWith('pick-token-1', 'Trips')
+    expect(result.opened).toEqual(OPENED)
+    expect(getActiveConnection()?.id).toBe(LOCAL_CONNECTION_ID)
+    expect(takePendingLibrarySelection(LOCAL_CONNECTION_ID)).toBe(OPENED.libraryId)
+  })
+
+  it('leaves the previous connection alone when creation fails', async () => {
+    // A stale token, a blank name, an unwritable folder: nothing was created, so
+    // nothing should have moved either.
+    await loadConnections()
+    const remoteId = getConnections().connections[0]!.id
+    confirmHostPickedLibrary.mockRejectedValue({
+      code: 'pick_expired',
+      message: 'That folder selection is no longer available.',
+    })
+
+    await expect(confirmPickedLibrary('stale-token', 'Trips')).rejects.toMatchObject({
+      message: expect.stringContaining('no longer available'),
+    })
+
+    expect(getActiveConnection()?.id).toBe(remoteId)
+    expect(startHostLocalServer).not.toHaveBeenCalled()
+    expect(pendingCount()).toBe('empty')
+  })
+
+  it('queues the selection before activating, as the picker path does', async () => {
+    await loadConnections()
+    const seenAtConfigure: string[] = []
+    configureHostServer.mockImplementation(async () => {
+      seenAtConfigure.push(pendingCount())
+    })
+
+    await confirmPickedLibrary('pick-token-1', 'Trips')
+
+    expect(seenAtConfigure).toEqual(['queued'])
   })
 })

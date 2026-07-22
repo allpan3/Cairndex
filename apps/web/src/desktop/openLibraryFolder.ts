@@ -1,17 +1,19 @@
 /**
  * The "Open Library Folder…" flow (plan 3 D6.4/D6.5).
  *
- * Picking a folder, starting the local server, and registering the folder all
- * happen inside the shell in one command — the absolute path never reaches this
- * layer, only ids. What is left here is the *client* half: point the app at the
- * local connection and select the library that was opened.
+ * Picking a folder, starting the local server, and registering or creating the
+ * library all happen inside the shell — the absolute path never reaches this
+ * layer, only ids and, for a folder that is not a library yet, an opaque token.
+ * What is left here is the *client* half: point the app at the local connection
+ * and select the library that was opened.
  *
  * Ordering matters for the same reason it does in `activateConnection`: the
  * cancellable step runs first, so a user who dismisses the picker has changed
- * nothing at all.
+ * nothing at all. A folder that needs a name is the same rule taken one step
+ * further — nothing switches until the user has confirmed.
  */
 
-import { openHostLibraryFolder, type OpenedLibrary } from '../platform'
+import { confirmHostPickedLibrary, openHostLibraryFolder, type OpenedLibrary } from '../platform'
 import {
   activateConnection,
   ensureLocalConnection,
@@ -27,8 +29,13 @@ export interface OpenLibraryFolderResult {
 /**
  * Prompt for a library folder and make it the active library.
  *
- * Throws with the shell's own message when the folder is not a library, the
- * sidecar cannot start, or the server refuses the registration.
+ * When the picked folder is not a Cairndex library, this returns the
+ * confirmation request untouched: nothing has been created, no server started,
+ * and no connection switched. The caller shows the name dialog and finishes
+ * through {@link confirmPickedLibrary}.
+ *
+ * Throws with the shell's own message when the sidecar cannot start or the
+ * server refuses the registration.
  */
 export async function openLibraryFolder(
   knownLibraryUuids: string[] = [],
@@ -38,12 +45,41 @@ export async function openLibraryFolder(
   const opened = await openHostLibraryFolder(knownLibraryUuids)
   if (!opened) return { opened: null }
 
+  // Not a library yet. The shell is holding the folder against the token; until
+  // the user names it there is nothing to switch to, and cancelling the dialog
+  // must be as free as cancelling the picker was.
+  if (opened.needsConfirmation) return { opened }
+
   // The current server already has it. Starting a local one would make a second
   // server for the same folder, which the lease refuses — so the useful action
   // is simply to select what is already there. The caller resolves the library
   // by uuid, since our id would belong to a registry it is not talking to.
   if (opened.alreadyAvailable) return { opened }
 
+  await adoptOpenedLibrary(opened)
+  return { opened }
+}
+
+/**
+ * Create the library at a picked folder and make it active.
+ *
+ * The second half of a `needsConfirmation` pick. The token — not a path — is
+ * what identifies the folder; the shell refuses one that a later pick has
+ * superseded, so a name typed for one folder can never land on another.
+ */
+export async function confirmPickedLibrary(
+  token: string,
+  name: string,
+): Promise<OpenLibraryFolderResult> {
+  // Creation first, and only then the switch: a failure here (a blank name, an
+  // unwritable folder, a stale token) must leave the current connection alone.
+  const opened = await confirmHostPickedLibrary(token, name)
+  await adoptOpenedLibrary(opened)
+  return { opened }
+}
+
+// Points the app at the local server and queues the library it just opened
+async function adoptOpenedLibrary(opened: OpenedLibrary): Promise<void> {
   await ensureLocalConnection()
 
   // Queued *before* activation, because activating remounts the query scope and
@@ -52,5 +88,4 @@ export async function openLibraryFolder(
   setPendingLibrarySelection(LOCAL_CONNECTION_ID, opened.libraryId)
 
   await activateConnection(LOCAL_CONNECTION_ID)
-  return { opened }
 }
