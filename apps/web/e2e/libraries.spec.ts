@@ -4,8 +4,33 @@ import { expect, test, type Page } from '@playwright/test'
 // the app shows an empty shell; clicking "+" opens the manager, and adding one
 // transitions into the workspace. No backend required.
 
-async function mockApi(page: Page, options: { probeIsLibrary?: boolean } = {}) {
-  const libraries: Array<Record<string, unknown>> = []
+const registered = (id: string, name: string, root: string) => ({
+  id,
+  library_uuid: id,
+  name,
+  root_path: root,
+  status: 'available',
+  schema_version: 1,
+  created_at: 'x',
+  updated_at: 'x',
+  last_opened_at: null,
+})
+
+async function mockApi(
+  page: Page,
+  options: {
+    probeIsLibrary?: boolean
+    manySuggestions?: boolean
+    /** Seeds the list, which is what pushes the add row down the dialog. */
+    startingLibraries?: Array<Record<string, unknown>>
+  } = {},
+) {
+  const libraries: Array<Record<string, unknown>> = [...(options.startingLibraries ?? [])]
+  // A root listing is long enough to fill the menu to its maximum height, which
+  // is when it stops fitting inside the dialog — the real reported case.
+  const long = 'abcdefghijkl'
+    .split('')
+    .map((letter) => ({ path: `/mnt/${letter.repeat(3)}`, is_library: letter === 'c' }))
 
   await page.route('**/bundles/counts**', (r) =>
     r.fulfill({ json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 } }),
@@ -24,10 +49,13 @@ async function mockApi(page: Page, options: { probeIsLibrary?: boolean } = {}) {
   await page.route('**/path-suggestions**', (r) =>
     r.fulfill({
       json: {
-        suggestions: [
-          { path: '/mnt/media', is_library: false },
-          { path: '/mnt/music', is_library: true },
-        ],
+        suggestions: options.manySuggestions
+          ? long
+          : [
+              { path: '/mnt/media', is_library: false },
+              { path: '/mnt/music', is_library: true },
+              { path: '/mnt/movies', is_library: false },
+            ],
       },
     }),
   )
@@ -125,6 +153,65 @@ test('walks the suggestion menu with the keyboard alone', async ({ page }) => {
   // Taking a suggestion drills in rather than ending the interaction.
   await expect(path).toHaveValue('/mnt/music/')
   await expect(page.getByRole('listbox')).toBeVisible()
+})
+
+// The whole menu must be *reachable*, in a real layout. The dialog scrolls its
+// own content, so an absolutely positioned menu is clipped at the dialog's edge
+// unless it opts out — and the add row is the last thing in the dialog, so
+// "below the field" is routinely the direction with no room. Neither fact is
+// visible to a jsdom test, which is why this lives here.
+//
+// The assertion is a hit test, not a bounding box: a clipped element still
+// reports its layout box, which is exactly how a first version of this test
+// passed against the clipping it was written to catch.
+test.describe('the suggestion menu stays on screen', () => {
+  for (const [label, height] of [
+    ['with room below the field', 900],
+    // The reported case: registered libraries push the add row down a short
+    // window, so a full listing below the field would run off the screen.
+    ['with the field near the bottom', 620],
+  ] as const) {
+    test(label, async ({ page }) => {
+      await page.setViewportSize({ width: 1100, height })
+      await mockApi(page, {
+        manySuggestions: true,
+        startingLibraries: [
+          registered('01H', 'lex', '/Volumes/media/library'),
+          registered('01J', 'Demo', '/Users/owner/DemoLibrary'),
+        ],
+      })
+      await page.goto('/')
+      await page.getByRole('button', { name: 'Manage libraries' }).click()
+      await page.getByLabel('Library path').click()
+      await expect(page.getByRole('option', { name: '/mnt/aaa' })).toBeVisible()
+
+      // The menu is on screen at both edges. It scrolls its own overflow, so
+      // this is about the menu, not about every option being drawn at once.
+      const menu = (await page.locator('.path-input__menu').boundingBox())!
+      expect(menu.y, 'the menu starts above the window').toBeGreaterThanOrEqual(0)
+      expect(menu.y + menu.height, 'the menu runs past the window').toBeLessThanOrEqual(height)
+
+      // Both edges of the menu are actually painted where they claim to be: a
+      // dialog that clips leaves its own surface there while the layout box
+      // still reports the full menu.
+      for (const [edge, y] of [
+        ['top', menu.y + 4],
+        ['bottom', menu.y + menu.height - 4],
+      ] as const) {
+        const painted = await page.evaluate(
+          ([x, at]) =>
+            !!document.elementFromPoint(x as number, at as number)?.closest('.path-input__menu'),
+          [menu.x + menu.width / 2, y],
+        )
+        expect(painted, `the menu's ${edge} edge is clipped away`).toBe(true)
+      }
+
+      // And the far end of the list — reached by scrolling the menu itself —
+      // still takes the click.
+      await page.getByRole('option', { name: '/mnt/lll' }).click()
+      await expect(page.getByLabel('Library path')).toHaveValue('/mnt/lll/')
+    })
+  }
 })
 
 test('adds an existing library folder without asking for a name', async ({ page }) => {
