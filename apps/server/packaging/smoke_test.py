@@ -169,8 +169,17 @@ def check(port: int, library_root: Path) -> None:
         f"http://127.0.0.1:{port}/api/v1/libraries/{library_id}/bundles/{bundle_id}/thumbnail"
     )
     req.add_header("Authorization", f"Bearer {TOKEN}")
-    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-        image = resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            image = resp.read()
+    except urllib.error.HTTPError as exc:
+        # Reachable since the bundle carries its own ffmpeg (ADR-0019 §3): a
+        # broken bundled binary surfaces here, and a stack trace would read as a
+        # smoke-test bug rather than as the packaging failure it is.
+        raise SmokeFailure(
+            f"thumbnail failed with HTTP {exc.code} — the bundled ffmpeg may be "
+            f"unusable: {exc.read()[:300]!r}"
+        ) from None
     # Asserting on the bytes, not the status: a frozen Pillow that cannot decode
     # would still let the route answer, just with nothing useful in it.
     if not image.startswith(b"\xff\xd8\xff"):
