@@ -11,11 +11,11 @@ grouped under `Unreleased` until the first tagged release.
 ### Fixed
 
 - **Desktop startup reveal now waits for the renderer instead of navigation.**
-  After React commits the dark shell, the native window is shown far off-screen
-  so WebKit can composite two real animation frames before its saved position is
-  restored. Cold-start deep links and near-simultaneous second launches share
-  the readiness gate, while a delayed page-load fallback prevents a broken
-  renderer bridge from leaving the app invisible.
+  The native main window starts hidden and is revealed only after React commits
+  the mounted shell and crosses a renderer task boundary. Cold-start deep links
+  and near-simultaneous second launches share the readiness gate, while a
+  delayed page-load fallback prevents a broken renderer bridge from leaving the
+  app invisible.
 
 - **Selecting a bundle cover now updates the star immediately.** Bundle metadata
   writes optimistically update the inspector, roll back on failure, and adopt
