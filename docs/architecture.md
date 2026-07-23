@@ -78,9 +78,11 @@ active library's identity-verified root and categorizes into in-library relative
 files (fed to Create Bundle), out-of-library files (echoed back as the dropped
 absolutes the web itself supplied), and a directory count. In-library media seeds
 Create Bundle; the server tolerates and reports by reason any path it can't bundle
-in that batch. Outside files get an in-place-linking explanation — the seam where
-plan 4 W5 copy-into-library attaches, handed exactly those outside absolutes — and
-a dropped folder gets its own message.
+in that batch. Outside files are **copied in** when the library permits writing
+(ADR-0013 §7): `importer.rs` streams each one to the server's import endpoint,
+refusing any path the shell did not itself record from the OS drop event — the
+web layer may name a dropped path, never invent one. A read-only library still
+gets the in-place-linking explanation, and a dropped folder gets its own message.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
@@ -95,10 +97,13 @@ custom-protocol origins by default; `tauri dev` requires an explicit exact
 Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
 library metadata is stored in the shell.
 
-Normal Cairndex operations are metadata-only. The current app does not move,
-rename, delete, or rewrite source files. The only filesystem writes in the
-current product path are owner-initiated library package creation and generated
-cache files under `.cairndex/cache/`.
+Normal Cairndex operations are metadata-only: scanning, grouping, playback, and
+thumbnailing never move, rename, delete, or rewrite source files. Source media
+changes **only** through an explicit, journaled write-mode operation (ADR-0013)
+— rename, New Folder, delete-to-trash, restore, and import — which requires both
+the owner's per-library opt-in and the deployment switch. Everything else that
+touches the disk is owner-initiated library package creation and generated cache
+files under `.cairndex/cache/`.
 
 ## 2. Backend (`apps/server`)
 
@@ -120,7 +125,8 @@ jobs/         in-process worker and job context
 scanning/     scan, fast-add, media classification, fingerprints, repair
 media/        ffprobe/ffmpeg adapters, thumbnails, playback/subtitle helpers
 grouping/     ADR-0009 suggester, plan store, and apply service
-file_ops/     ADR-0013 write mode: gate, path validator, journal, operations
+file_ops/     ADR-0013 write mode: gate, path validator, journal, operations,
+              trash, and streamed imports
 ```
 
 Content endpoints are scoped to one library:

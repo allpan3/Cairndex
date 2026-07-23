@@ -46,9 +46,10 @@ Cairndex library root contains its portable `.cairndex/` package:
 
 The production library mount must be writable because Cairndex creates and
 updates `.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache
-files. This does **not** mean normal app flows mutate source media: the current
-product path remains metadata-only for source files and does not move, rename,
-delete, or rewrite them.
+files. Source media is a separate question: it is untouched by every ordinary
+flow (scanning, grouping, playback, thumbnails), and changes only through an
+explicit write-mode operation, which is **off by default per library** and can be
+disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 
 ### Topology
 
@@ -64,8 +65,8 @@ delete, or rewrite them.
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.
 - **Writable library root**: `MEDIA_HOST_PATH` is mounted at `/storage/media`.
-  The app writes only the `.cairndex/` package and generated cache during the
-  current MVP path; source media operations remain metadata-only.
+  The app writes the `.cairndex/` package and generated cache; it writes source
+  media only through the opt-in write mode described below (ADR-0013).
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
 
