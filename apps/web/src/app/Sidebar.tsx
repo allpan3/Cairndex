@@ -23,6 +23,7 @@ import {
   IconSettings,
   IconTag,
   IconTagQuestion,
+  IconTrash,
 } from './icons'
 import type { DragItem } from './dnd'
 import { dropZone } from './dnd'
@@ -80,7 +81,12 @@ interface SidebarProps {
   onOpenUnbundled?: () => void
   // All Tags is a management surface (mode='tags'), not a bundle browse view.
   onOpenAllTags?: () => void
-  fileScope?: 'browse' | 'unbundled'
+  // The Trash is a Files-surface scope like Unbundled, shown only when write
+  // mode is on: a library that cannot delete has nothing to put in one, and an
+  // always-empty Trash would be a permanent question about a missing feature.
+  onOpenTrash?: () => void
+  writeMode?: boolean
+  fileScope?: 'browse' | 'unbundled' | 'trash'
   counts?: ViewCounts
   collections: CollectionRead[]
   collectionCounts?: Record<string, number>
@@ -159,6 +165,8 @@ export function Sidebar({
   onSelect,
   onOpenUnbundled,
   onOpenAllTags,
+  onOpenTrash,
+  writeMode = false,
   fileScope,
   counts,
   collections,
@@ -454,6 +462,18 @@ export function Sidebar({
             </Fragment>
           )
         })}
+        {writeMode && (
+          <button
+            className={`nav-item${mode === 'file' && fileScope === 'trash' ? ' nav-item--active' : ''}`}
+            onClick={() => onOpenTrash?.()}
+            title="Files deleted from this library, still recoverable"
+          >
+            <span className="nav-item__icon">
+              <IconTrash />
+            </span>
+            <span className="nav-item__label">Trash</span>
+          </button>
+        )}
         {/* All Tags (a management surface, not a browse view) sits at the bottom
             of the system section, below the Unbundled/Missing queues. */}
         <button

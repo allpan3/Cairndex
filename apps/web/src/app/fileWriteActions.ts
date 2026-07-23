@@ -27,6 +27,13 @@ interface PendingRename {
   conflictingName: string
 }
 
+/** Files the owner has asked to delete, awaiting confirmation. */
+export interface PendingDelete {
+  paths: string[]
+  /** How many of them are linked into a bundle — the part worth pausing over. */
+  linkedCount: number
+}
+
 export interface FileWriteActions {
   /** The entry currently being renamed inline, if any. */
   renamingPath: string | null
@@ -42,7 +49,13 @@ export interface FileWriteActions {
   /** The collision prompt, or null. Render with `<ConflictDialog />`. */
   conflict: PendingRename | null
   keepBoth: () => void
+  replace: () => void
   dismissConflict: () => void
+  /** The delete confirmation, or null. Render with `<DeleteDialog />`. */
+  pendingDelete: PendingDelete | null
+  askToDelete: (paths: string[], linkedCount: number) => void
+  confirmDelete: () => void
+  dismissDelete: () => void
 }
 
 export function useFileWriteActions({
@@ -54,10 +67,11 @@ export function useFileWriteActions({
   /** Show a message, with an Undo action when the operation has an inverse. */
   onFlash: (message: string, undo?: () => void) => void
 }): FileWriteActions {
-  const { rename, mkdir, undo } = useFileOperations()
+  const { rename, mkdir, undo, trash } = useFileOperations()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [conflict, setConflict] = useState<PendingRename | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
   const undoLater = (operationId: string) => () => {
     undo.mutate(operationId, {
@@ -66,7 +80,7 @@ export function useFileWriteActions({
     })
   }
 
-  const runRename = (path: string, newName: string, onConflict?: 'suffix') => {
+  const runRename = (path: string, newName: string, onConflict?: 'suffix' | 'replace') => {
     rename.mutate(
       { path, newName, onConflict },
       {
@@ -76,10 +90,13 @@ export function useFileWriteActions({
           onFlash(
             // Say the name it *landed on*: with "keep both" the server chose it,
             // not the owner, and a toast reporting the requested name would be
-            // quietly wrong.
-            settled === newName
-              ? `Renamed to “${settled}”.`
-              : `Renamed to “${settled}” to keep both.`,
+            // quietly wrong. A replace kept the name but displaced a file, which
+            // is the part the owner may want back.
+            settled !== newName
+              ? `Renamed to “${settled}” to keep both.`
+              : onConflict === 'replace'
+                ? `Replaced “${settled}”. The old file is in the trash.`
+                : `Renamed to “${settled}”.`,
             undoLater(result.operation.id),
           )
         },
@@ -124,13 +141,42 @@ export function useFileWriteActions({
         onError: (failure) => onFlash(messageOf(failure)),
       })
     },
-    busy: rename.isPending || mkdir.isPending || undo.isPending,
+    busy: rename.isPending || mkdir.isPending || undo.isPending || trash.isPending,
     conflict,
     keepBoth: () => {
       if (conflict) runRename(conflict.path, conflict.newName, 'suffix')
     },
+    replace: () => {
+      if (conflict) runRename(conflict.path, conflict.newName, 'replace')
+    },
     dismissConflict: () => setConflict(null),
+    pendingDelete,
+    askToDelete: (paths, linkedCount) => {
+      if (paths.length > 0) setPendingDelete({ paths, linkedCount })
+    },
+    confirmDelete: () => {
+      const target = pendingDelete
+      if (!target) return
+      setPendingDelete(null)
+      trash.mutate(target.paths, {
+        onSuccess: (result) => {
+          const count = target.paths.length
+          onFlash(
+            count === 1
+              ? `Moved “${nameOf(target.paths[0] as string)}” to the trash.`
+              : `Moved ${count} items to the trash.`,
+            undoLater(result.operation.id),
+          )
+        },
+        onError: (failure) => onFlash(messageOf(failure)),
+      })
+    },
+    dismissDelete: () => setPendingDelete(null),
   }
+}
+
+function nameOf(path: string): string {
+  return path.split('/').pop() ?? path
 }
 
 function messageOf(failure: unknown): string {
