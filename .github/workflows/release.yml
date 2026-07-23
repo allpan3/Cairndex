@@ -1,6 +1,6 @@
 name: Release
 
-# Plan 3 D7. Builds the macOS desktop app for both architectures and publishes
+# Builds the macOS desktop app for both architectures and publishes
 # them as a draft GitHub release.
 #
 # Why two native jobs rather than one cross-compiling job: the app bundles a
@@ -23,8 +23,12 @@ on:
         required: true
         type: string
 
+# Least privilege: only the publish job writes (it creates the draft release),
+# and it grants itself that below. The build jobs run third-party actions and
+# must not hold a write-capable token they have no use for — upload-artifact
+# needs no `contents` permission at all.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -59,7 +63,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
-      - uses: Swatinem/rust-cache@v2
+      # Non-GitHub-owned actions are pinned by commit SHA in this workflow: it
+      # produces the binaries strangers download, so a repointed tag must not be
+      # able to change what runs here. dtolnay/rust-toolchain stays on @stable
+      # because that moving branch is its version selector, not a code pin.
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: apps/desktop/src-tauri -> target
           key: ${{ matrix.rust_target }}
@@ -82,7 +90,7 @@ jobs:
         working-directory: apps/web
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.11.23"
           enable-cache: true
@@ -132,10 +140,12 @@ jobs:
           codesign --verify --strict --verbose=2 macos/Cairndex.app
           test -f macos/Cairndex.app/Contents/_CodeSignature/CodeResources
 
-      # Every Mach-O in the bundle must be the architecture this job builds for.
-      # The checksum gate cannot see this: it proves the ffmpeg matches the pin
-      # for --platform, not that the shell and sidecar agree with it.
-      - name: Verify every binary is ${{ matrix.arch_suffix }}
+      # The four executables must be the architecture this job builds for. The
+      # checksum gate cannot see this: it proves the ffmpeg matches the pin for
+      # --platform, not that the shell and sidecar agree with it. The bundle's
+      # ~50 Python .so/.dylib files are not listed — their architecture follows
+      # the pinned interpreter's, which the sidecar executable check covers.
+      - name: Verify the executables are ${{ matrix.arch_suffix }}
         working-directory: apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/Cairndex.app/Contents
         run: |
           set -euo pipefail
@@ -153,7 +163,6 @@ jobs:
       # a download page can show, and publish a checksum beside it so a user can
       # verify what they got.
       - name: Stage the artifact
-        id: stage
         working-directory: apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg
         run: |
           set -euo pipefail
@@ -164,7 +173,6 @@ jobs:
           shasum -a 256 "$name" > "$name.sha256"
           mkdir -p "${{ github.workspace }}/release-artifacts"
           cp "$name" "$name.sha256" "${{ github.workspace }}/release-artifacts/"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -176,6 +184,10 @@ jobs:
     name: Draft the release
     needs: build
     runs-on: ubuntu-latest
+    # The one place a write-capable token exists (see the workflow-level
+    # `contents: read`): creating the draft release needs it.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -192,7 +204,7 @@ jobs:
       # because the release artifacts bundle a GPL ffmpeg and the written offer
       # has to travel with them (ADR-0019 §3).
       - name: Draft the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           draft: true

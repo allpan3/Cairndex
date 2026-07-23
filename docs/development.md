@@ -278,7 +278,7 @@ extracted binary; `build_sidecar.py` re-verifies against the pin for the target
 platform and **refuses to bundle an unpinned binary** rather than warning. Use
 `--platform` on either script to work with an architecture other than the host's.
 
-Re-pinning is a supply-chain decision, not a version bump. Verify four things
+Re-pinning is a supply-chain decision, not a version bump. Verify five things
 about a candidate build, none of which can be taken from its label:
 
 - **static** — `otool -L` shows only `/usr/lib` and `/System/Library` entries. A
@@ -293,6 +293,12 @@ about a candidate build, none of which can be taken from its label:
   which invalidates a Mach-O signature. Anything that *rewrites* a binary after
   signing must re-sign it; an invalid signature fails harder than none
   (ADR-0019 §4).
+- **no GPL-incompatible components** — every other statically linked library
+  must be GPL-compatible too, and one is conditionally so: `--enable-openssl`
+  is only redistributable alongside GPL code when OpenSSL is **3.0 or later**
+  (Apache-2.0, compatible with GPLv3 — one reason `--enable-version3` matters);
+  an OpenSSL 1.x build with the same configure line may not be distributed.
+  The pinned builds link OpenSSL 3.6.1 — check the candidate's `versions.txt`.
 
 `tests/test_ffmpeg_manifest.py` covers the ways the gate can fail open, and
 `packaging/` is inside the mypy scope (`uv run mypy src packaging`) because this
