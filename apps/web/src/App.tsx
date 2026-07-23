@@ -25,6 +25,7 @@ import {
   useReorderBundles,
   useReorderCollections,
   useDeploymentWriteMode,
+  useFileOperations,
   useLibraries,
   useLibraryAuth,
   useLibraryOwnership,
@@ -76,6 +77,7 @@ import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
+import { ConflictDialog } from './app/FileWriteDialogs'
 import { Sidebar } from './app/Sidebar'
 import { TrashView } from './app/TrashView'
 import { SettingsDialog } from './app/SettingsDialog'
@@ -84,6 +86,7 @@ import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import { useHostImports } from './desktop/useHostImports'
 import {
   connectToServer,
   getConnections,
@@ -1208,17 +1211,46 @@ function Workspace({
     [],
   )
 
-  // Drag-in (plan 3 §6): files dropped from Finder that resolve inside this
-  // mapped library land in the fast-add flow (Create Bundle); files outside every
-  // root get the "move it in first" explanation. The hook itself ignores drops
-  // while any modal/viewer is open (P0-3). The W5 copy-in flow plugs into the
-  // outside branch (see fileDrop.ts) without reworking this handler.
+  // Drag-in (plan 3 §6 + plan 4 W5): files dropped from Finder that resolve
+  // inside this mapped library land in the fast-add flow (Create Bundle); files
+  // from *outside* it are copied in, which is what write mode made possible.
+  // The hook ignores drops while any modal/viewer is open (P0-3).
+  const fileOperations = useFileOperations()
+  const hostImports = useHostImports({
+    libraryId,
+    // Where a drop lands: the folder on screen when the Files surface is open,
+    // the library root otherwise. Dropping onto a view of a folder and having
+    // the file appear somewhere else would be the wrong kind of surprise.
+    destDir: mode === 'file' && fileScope === 'browse' ? filePath : '',
+    onFlash: showFlash,
+    onImported: (operationId) => ({
+      // Reuses the same undo mutation the File Browser's toasts use, so a
+      // desktop-dropped import is undone by exactly the same path — including
+      // its cache invalidation — as one added through the picker.
+      undo: () =>
+        fileOperations.undo.mutate(operationId, {
+          onSuccess: () => showFlash('Undone.'),
+          onError: (error) =>
+            showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+        }),
+    }),
+  })
+
   useDesktopFileDrop({
     libraryId,
     mappingState,
     reverseMap: reverseMapHostPaths,
     onFastAdd: createBundleFromPaths,
     onFlash: setFlash,
+    // Copy the outside files in, but only when this library actually permits
+    // writing. With write mode off the seam declines and the drop falls back to
+    // the original explanation, which is still the true one for that library.
+    onCopyIntoLibrary: writeMode
+      ? (outsidePaths) => {
+          hostImports.copyIn(outsidePaths)
+          return true
+        }
+      : undefined,
   })
 
   // Right-click empty browser space → create a bundle, or clean up the bundle
@@ -1917,6 +1949,26 @@ function Workspace({
           onClose={() => setAddFilesBundleId(null)}
           onApplied={onManualBundlingApplied}
         />
+      )}
+
+      {hostImports.conflict && (
+        <ConflictDialog
+          name={hostImports.conflict.conflictingName}
+          onKeepBoth={hostImports.keepBoth}
+          onReplace={hostImports.replace}
+          onCancel={hostImports.dismiss}
+          busy={false}
+        />
+      )}
+
+      {hostImports.importing.length > 0 && (
+        <div className="mb-toast" role="status">
+          Copying{' '}
+          {hostImports.importing.length === 1
+            ? hostImports.importing[0]
+            : `${hostImports.importing.length} files`}
+          …
+        </div>
       )}
 
       {flash && (
