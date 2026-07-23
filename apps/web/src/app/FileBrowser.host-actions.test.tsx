@@ -23,6 +23,13 @@ vi.mock('../api/hooks', async () => {
       isFetchingNextPage: false,
       isLoading: false,
     }),
+    // The write affordances are inert in these tests (no `writeMode` prop), but
+    // the hook is still called, so it needs mutations that exist.
+    useFileOperations: () => ({
+      rename: { mutate: vi.fn(), isPending: false },
+      mkdir: { mutate: vi.fn(), isPending: false },
+      undo: { mutate: vi.fn(), isPending: false },
+    }),
   }
 })
 
