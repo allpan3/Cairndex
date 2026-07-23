@@ -169,6 +169,37 @@ class TestBundleArchitecture:
         assert bs.macho_arch(binary) is None
 
 
+class TestForbiddenLibraries:
+    """A copyleft library must fail the build, not a licence review after release.
+
+    The PyInstaller spec excludes `pillow_heif`, but an exclude only covers the
+    package it names — a future dependency vendoring the same encoder elsewhere
+    would sail past it.
+    """
+
+    def test_libx265_fails_the_build(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(bs, "BUNDLE", tmp_path)
+        (tmp_path / "_internal").mkdir()
+        (tmp_path / "_internal" / "libx265.216.dylib").write_bytes(b"gpl")
+        with pytest.raises(SystemExit, match="must not ship"):
+            bs.check_no_forbidden_libraries()
+
+    def test_a_clean_bundle_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(bs, "BUNDLE", tmp_path)
+        (tmp_path / "libheif.1.23.0.dylib").write_bytes(b"lgpl, and fine")
+        (tmp_path / "ffmpeg").write_bytes(b"gpl, but bundled on purpose")
+        bs.check_no_forbidden_libraries()
+
+    def test_bundled_ffmpeg_is_not_caught(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ffmpeg is GPL too, and ships deliberately with a source offer."""
+        monkeypatch.setattr(bs, "BUNDLE", tmp_path)
+        (tmp_path / "ffmpeg").write_bytes(b"x")
+        (tmp_path / "ffprobe").write_bytes(b"x")
+        bs.check_no_forbidden_libraries()
+
+
 class TestArchiveExtraction:
     def _zip(self, path: Path, members: dict[str, bytes]) -> Path:
         buffer = io.BytesIO()

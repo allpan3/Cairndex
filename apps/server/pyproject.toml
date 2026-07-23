@@ -12,7 +12,13 @@ dependencies = [
     "alembic>=1.13",
     "python-ulid>=2.7",
     "pillow>=12.3.0",
-    "pillow-heif>=1.4.0",
+    # Decode-only HEIF, deliberately NOT `pillow-heif` (ADR-0019 §3,
+    # THIRD-PARTY-NOTICES.md). Same maintainer and codebase; the difference is
+    # that pillow-heif's wheel bundles libx265 (GPL-2.0+) for encoding and
+    # libheif names it in a load command, so importing it pulls GPL code into
+    # this process. Cairndex only ever decodes HEIC, so that encoder was 8.6 MB
+    # of copyleft obligation buying nothing.
+    "pi-heif>=1.4.0",
 ]
 
 [dependency-groups]
@@ -22,6 +28,11 @@ dev = [
     "pytest>=8.3",
     "httpx>=0.27",
     "pyinstaller>=6.21.0",
+    # Encoder-capable HEIF, for generating the smoke test's HEIC fixture only.
+    # Development-only on purpose: dev dependencies are not distributed, the
+    # fixture is written by the test process rather than the frozen sidecar, and
+    # the PyInstaller spec excludes this package so it cannot reach a bundle.
+    "pillow-heif>=1.4.0",
 ]
 
 [build-system]

@@ -64,11 +64,16 @@ def is_current_preview(
 
 # Import and configure Pillow only when a preview actually needs generation
 def _image_module() -> tuple[Any, Any, type[Exception], type[Exception], type[Warning]]:
+    # `pi_heif`, not `pillow_heif`: same maintainer and codebase, but
+    # decode-only. pillow-heif's wheel bundles libx265 (GPL-2.0+) for encoding,
+    # and libheif names it in a load command rather than a lazy dlopen — so
+    # importing it would pull GPL code into this process for an encoder nothing
+    # here calls. See THIRD-PARTY-NOTICES.md.
     try:
+        from pi_heif import register_heif_opener  # type: ignore[import-untyped]
         from PIL import Image, ImageOps, UnidentifiedImageError
-        from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
     except ImportError as exc:
-        raise PreviewError("Pillow and pillow-heif are required for image previews") from exc
+        raise PreviewError("Pillow and pi-heif are required for image previews") from exc
     register_heif_opener()
     return (
         Image,

@@ -116,6 +116,23 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **HEIC decoding moved from `pillow-heif` to `pi-heif`, removing a GPL
+  library from the app.** `pillow-heif`'s wheel bundles **libx265**
+  (GPL-2.0-or-later) for encoding, and libheif names it in a load command rather
+  than a lazy `dlopen`, so importing it pulled GPL code into the sidecar
+  process. Cairndex only ever decodes HEIC, so that encoder was 8.6 MB of
+  copyleft obligation buying nothing. `pi-heif` is the same maintainer and
+  codebase, decode-only, and bundles libheif + libde265 (both LGPL) with no
+  x265. No user-visible change — HEIC viewing is decoding — and the app dropped
+  from 213 MB to 196 MB.
+
+  `pillow-heif` stays as a development dependency for generating the smoke
+  test's HEIC fixture, which needs an encoder. That is enforced rather than
+  assumed: the PyInstaller spec excludes the package, and `build_sidecar.py`
+  now fails the build if `libx265` appears in a bundle at all — an exclude only
+  covers the package it names, so a future dependency vendoring the same
+  encoder would otherwise slip through.
+
 - **The README's license line now matches the repository.** It said "All rights
   reserved" while `LICENSE` has been MIT since the owner's 2026-07-21 decision.
 
