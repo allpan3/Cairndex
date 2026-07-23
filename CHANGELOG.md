@@ -49,6 +49,23 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
+- **CI runs ~65% fewer billable minutes.** Measured over 30 days, one job —
+  `Desktop shell (macOS)` — was 1,570 of 2,691 billable minutes, because the
+  repository is private and macOS bills at 10×. Documentation-only changes now
+  run nothing (about half this repository's commits touch only docs), and the
+  desktop jobs run on pull requests rather than again on the push that merges
+  them. `workflow_dispatch` runs the full matrix on demand, and the macOS job
+  has a 30-minute timeout so a hung Tauri build cannot sit for GitHub's
+  six-hour default at 10×. Trade-off: a direct-to-main *code* commit gets no
+  desktop build.
+
+- **Fixed a flaky packaged-sidecar smoke test.** It asserted on
+  `bundles?limit=1` — whichever of three differently-formatted fixtures sorted
+  first — and failed intermittently with `thumbnail is not a JPEG (296 bytes)`,
+  including twice on `main`. It now pins the assertion to the JPEG fixture. What
+  produced those 296 bytes is still unexplained and is recorded as an open
+  question in the test.
+
 - **Fetched ffmpeg binaries are stored per platform** under
   `packaging/vendor/ffmpeg/<platform>/`. They previously shared one directory,
   so building both architectures meant each fetch silently overwrote the other's

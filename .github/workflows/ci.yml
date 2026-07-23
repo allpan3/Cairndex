@@ -1,14 +1,39 @@
 name: CI
 
+# Cost shapes this file. The repository is private, so macOS minutes bill at
+# **10x** Linux, and `Desktop shell (macOS)` alone was 1,570 of the 2,691
+# billable minutes measured over the 30 days to 2026-07-23 — 58% of everything.
+# The two rules below came from that measurement, not from taste:
+#
+#   1. Documentation-only changes run nothing. Nothing here validates prose, and
+#      roughly half of this repository's commits touch only docs.
+#   2. The expensive desktop jobs run on pull requests, not on the push that
+#      merges them. Merging re-ran a macOS build that had just passed on the
+#      same code, which was close to half the macOS spend.
+#
+# `workflow_dispatch` is the escape hatch: run the full matrix by hand against
+# any ref when you want it.
 on:
   push:
     branches: [main]
+    paths-ignore: &docs_only
+      - "docs/**"
+      - "**/*.md"
+      - LICENSE
+      - THIRD-PARTY-NOTICES.md
+      - .gitignore
   pull_request:
+    paths-ignore: *docs_only
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# The desktop jobs below carry `if: github.event_name != 'push'` — written out
+# per job rather than hoisted into `env:`, because a job-level `if:` cannot read
+# the `env` context and would silently evaluate to false, skipping them always.
 
 jobs:
   backend:
@@ -132,6 +157,10 @@ jobs:
   desktop-linux:
     name: Desktop Rust (Ubuntu)
     runs-on: ubuntu-latest
+    # Paired with desktop-macos on purpose (AGENTS.md: desktop changes keep both
+    # green), so it follows the same trigger rule. Cheap on its own, but running
+    # it where its partner does not would report half an answer.
+    if: github.event_name != 'push'
     defaults:
       run:
         working-directory: apps/desktop/src-tauri
@@ -182,6 +211,13 @@ jobs:
   desktop-macos:
     name: Desktop shell (macOS)
     runs-on: macos-latest
+    # 58% of all billable minutes (measured 30d to 2026-07-23), because macOS
+    # bills at 10x. Runs where the code is actually reviewed — pull requests and
+    # manual dispatch — not again on the merge push that follows a green PR.
+    if: github.event_name != 'push'
+    # A hung Tauri build must not sit for GitHub's default six hours at 10x.
+    # Observed cold-cache wall time is ~4.5 minutes.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: apps/desktop/src-tauri
