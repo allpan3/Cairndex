@@ -123,12 +123,32 @@ Pydantic, pydantic-settings and python-ulid are MIT, uvicorn is BSD-3-Clause,
 and Pillow is MIT-CMU. The authoritative set is `apps/server/pyproject.toml`
 plus its lockfile.
 
-**One item is unresolved and should be confirmed before the first release.**
-`pillow-heif` — which is what makes HEIC files viewable at all — declares
-`BSD-3-Clause`, but its published metadata also carries a GPLv2 classifier, and
-its binary wheels bundle **libheif**, which is LGPL-3.0-or-later. LGPL
-redistribution is workable (Cairndex does not modify libheif, and the wheel
-ships it as a separate shared library), but it carries its own relinking and
-notice obligations that this file does not yet discharge. Flagged rather than
-assumed away, in keeping with ADR-0019 §3: this is a recorded constraint, not
-legal advice.
+### `pillow-heif` ships a GPL encoder — unresolved, and it gates a release
+
+`pillow-heif` is what makes HEIC files viewable. Its **binary wheel** carries
+three native libraries, established by inspecting the wheel rather than by
+reading its metadata:
+
+| Library | Version | License | Role |
+| --- | --- | --- | --- |
+| libheif | 1.23.0 | LGPL-3.0-or-later | HEIF container |
+| libde265 | 0.2.0 | LGPL-3.0-or-later | HEVC **decoder** |
+| **libx265** | 216 | **GPL-2.0-or-later** | HEVC **encoder** |
+
+`libheif` names `libx265` in a load command, not a lazy `dlopen`, so importing
+`pillow_heif` loads GPL code into the sidecar process. All three ship inside
+`Cairndex.app`; x265 alone is **8.6 MB**.
+
+The package declares `BSD-3-Clause` while also publishing a **GPLv2**
+classifier. That is not a metadata error — it is the maintainer accurately
+describing the wheel, and the sibling package `pi-heif` (same codebase,
+decode-only) publishes an **LGPLv3** classifier instead, precisely because it
+omits x265.
+
+**Cairndex never encodes HEIC.** `media/previews.py` calls
+`register_heif_opener()` and nothing else; the only HEIF write anywhere is a
+smoke-test fixture, generated in the test process rather than in the shipped
+bundle. So the GPL component here is an encoder the product does not use.
+
+This is recorded as a constraint, not legal advice (ADR-0019 §3), and it is
+unresolved pending an owner decision — see `docs/STATUS.md`.
