@@ -58,6 +58,33 @@ npm run build             # production SPA build
 CI keeps the frontend job Node-only and runs `@fullstack` Playwright tests in a
 separate job that provisions the locked backend environment and ffmpeg.
 
+### What CI runs, and when
+
+The repository is private, so **macOS minutes bill at 10× Linux**. Measured over
+the 30 days to 2026-07-23: 2,691 billable minutes, of which
+`Desktop shell (macOS)` alone was **1,570 — 58% of everything**, across 38 runs
+averaging ~4 wall minutes each. Two rules follow from that, and both are in
+`.github/workflows/ci.yml`:
+
+- **Documentation-only changes run nothing.** `paths-ignore` covers `docs/**`,
+  `**/*.md`, `LICENSE` and `.gitignore`. Nothing in CI validates prose, and
+  roughly half this repository's commits touch only docs. A commit that changes
+  docs *and* code still runs everything — the filter skips only when every
+  changed file matches.
+- **The desktop jobs run on pull requests, not on the merge push.** Merging a
+  green PR used to re-run the same macOS build against the same code. A
+  direct-to-main *code* commit therefore gets backend, frontend, sidecar and
+  Docker coverage but no desktop build; run the workflow by hand
+  (`gh workflow run CI --ref <ref>`) when that matters.
+
+`desktop-macos` also carries `timeout-minutes: 30` so a hung Tauri build cannot
+sit for GitHub's six-hour default at 10×.
+
+If you need to check the spend, the per-run billing endpoint reports zeroes for
+recent runs; job start/finish timestamps are reliable, so compute it from
+`/repos/{owner}/{repo}/actions/runs/{id}/jobs` — round each job up to the minute
+and multiply macOS by 10.
+
 ## Desktop (`apps/desktop`)
 
 The Tauri 2 shell hosts the same `apps/web` Vite development server and

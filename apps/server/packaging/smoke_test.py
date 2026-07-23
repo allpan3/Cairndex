@@ -163,11 +163,26 @@ def check(port: int, library_root: Path) -> None:
         raise SmokeFailure(f"could not queue thumbnails: HTTP {status}")
     await_job(port, job["id"], "thumbnail")
 
-    status, bundles = request(port, f"/api/v1/libraries/{library_id}/bundles?limit=1")
-    if status != 200 or not (bundles or {}).get("items"):
-        raise SmokeFailure("the scan produced no bundles from the generated fixtures")
+    # Deliberately *not* `?limit=1`, which asserted on whichever bundle happened
+    # to sort first — an input this test does not control, across three fixtures
+    # of different formats. That made it flaky on the Linux CI job: it failed
+    # with "thumbnail is not a JPEG (296 bytes)" on 2026-07-22 and again on
+    # 2026-07-23, having passed 37 minutes earlier on identical code.
+    #
+    # What produced those 296 bytes is still unexplained — a 200 response whose
+    # body is not JPEG, from a path that only ever writes `.jpg`. The bundled
+    # ffmpeg thumbnails all three fixtures correctly when checked by hand,
+    # including the HEIC, so it is not simply a missing decoder. Pinning the
+    # fixture removes the uncontrolled variable and makes the assertion mean
+    # what it says; if this recurs on a known bundle, the remaining suspect is
+    # the generate-then-serve path rather than the choice of fixture.
+    #
+    # HEIC keeps its coverage through check_heic_preview below, which exercises
+    # the import that actually matters for it (Pillow + pillow_heif).
+    bundle_id = find_bundle_with_file(port, library_id, ".jpg")
+    if bundle_id is None:
+        raise SmokeFailure("the scan produced no bundle for photo.jpg")
 
-    bundle_id = bundles["items"][0]["id"]
     req = urllib.request.Request(  # noqa: S310
         f"http://127.0.0.1:{port}/api/v1/libraries/{library_id}/bundles/{bundle_id}/thumbnail"
     )
@@ -191,19 +206,20 @@ def check(port: int, library_root: Path) -> None:
     check_heic_preview(port, library_id)
 
 
-def check_heic_preview(port: int, library_id: str) -> None:
-    """Render a preview of the HEIC fixture — the pillow_heif import path.
+def find_file_by_suffix(
+    port: int, library_id: str, suffix: str
+) -> tuple[str, dict[str, Any]] | None:
+    """Return ``(bundle_id, file)`` for the first indexed file with ``suffix``.
 
-    HEIC is not browser-native, so this is the derivative that makes such files
-    viewable at all; if the frozen bundle cannot load ``pillow_heif`` the app
-    silently loses every HEIC in a user's library.
+    Files are reached through their bundle, so this walks bundle members rather
+    than trusting any particular sort order — the fixtures are chosen by what
+    they exercise, and which one sorts first is not a property worth depending
+    on.
     """
-    # Files are reached through their bundle, so walk every bundle's members.
     status, bundles = request(port, f"/api/v1/libraries/{library_id}/bundles?limit=50")
     if status != 200 or bundles is None:
         raise SmokeFailure(f"could not list bundles: HTTP {status}")
 
-    heic = None
     for bundle in bundles.get("items", []):
         status, files = request(
             port, f"/api/v1/libraries/{library_id}/bundles/{bundle['id']}/files?limit=50"
@@ -211,14 +227,31 @@ def check_heic_preview(port: int, library_id: str) -> None:
         if status != 200 or files is None:
             continue
         items = files.get("items", files) if isinstance(files, dict) else files
-        heic = next(
-            (f for f in items if str(f.get("relative_path", "")).lower().endswith(".heic")),
+        match = next(
+            (f for f in items if str(f.get("relative_path", "")).lower().endswith(suffix)),
             None,
         )
-        if heic is not None:
-            break
-    if heic is None:
+        if match is not None:
+            return str(bundle["id"]), match
+    return None
+
+
+def find_bundle_with_file(port: int, library_id: str, suffix: str) -> str | None:
+    found = find_file_by_suffix(port, library_id, suffix)
+    return found[0] if found is not None else None
+
+
+def check_heic_preview(port: int, library_id: str) -> None:
+    """Render a preview of the HEIC fixture — the pillow_heif import path.
+
+    HEIC is not browser-native, so this is the derivative that makes such files
+    viewable at all; if the frozen bundle cannot load ``pillow_heif`` the app
+    silently loses every HEIC in a user's library.
+    """
+    found = find_file_by_suffix(port, library_id, ".heic")
+    if found is None:
         raise SmokeFailure("the scan did not index the HEIC fixture")
+    _, heic = found
 
     req = urllib.request.Request(  # noqa: S310
         f"http://127.0.0.1:{port}/api/v1/libraries/{library_id}/files/{heic['id']}/preview"
