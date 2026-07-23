@@ -1,10 +1,83 @@
 # Project status
 
-> **Current position:** phase H — plan 4 library write mode. **W0 (the gate) is
-> implemented** on `feat/write-mode-w0-gate` and awaiting the owner's review;
-> **W1 (journal + rename/mkdir) is next**. One D7 verification item is
-> deliberately deferred behind write mode (an owner pass on a genuinely
-> downloaded build); it is not a blocker for anything in phase H.
+> **Current position:** phase H — plan 4 library write mode. **W0 (gate) and W1
+> (journal + rename/New Folder) are implemented** on `feat/write-mode-w0-gate`;
+> the owner asked for a single PR covering the whole write-mode track, so the
+> branch keeps accumulating. **W5 (import external) is next.** One D7
+> verification item is deliberately deferred behind write mode (an owner pass on
+> a genuinely downloaded build); it is not a blocker for anything in phase H.
+
+## Implemented: plan 4 W1 — the journal, rename and New Folder (2026-07-23)
+
+Same branch as W0. The first operations that actually touch files, and the
+machinery that makes them safe to have.
+
+**The invariant W1 exists to deliver:** a rename performed *by* Cairndex needs
+no repair, ever. The `os.rename` and the `AssetFile.relative_path` update happen
+in one operation, so `AssetFile.id` is preserved by construction and bundle
+membership, covers, subtitle links, notes, ratings and cache identity survive
+without anything having to infer what happened. ADR-0006's moved-file repair
+stays underneath as the backstop for changes made *outside* the app.
+
+**The journal is intent-before-action.** A `pending` row in `library.db` is
+committed *before* the filesystem is touched; the content rows and the `done`
+status then land in one transaction. A crash in between leaves a `pending` row
+that the reconciler settles on next library open by reading the filesystem —
+source gone + destination present means finish the metadata side, the reverse
+means it never happened, and **anything else is left alone and marked failed**
+rather than guessed at. The reconciler never raises: a library that cannot be
+reconciled must still open, or a recoverable disagreement becomes a lost
+library.
+
+**Two narrowings against the plan, both deliberate.**
+
+1. **`replace` is not in the collision enum.** ADR-0013 defines it as journaled
+   trash-then-write, precisely so Replace is never a byte-level overwrite. The
+   trash is W4. Implementing the word before the mechanism would ship the one
+   collision answer with no way back, so W1 offers `fail | skip | suffix` and
+   the dialog says Keep both / Cancel. Adding the member later is additive for
+   every client. **This has a sequencing consequence for W5** (import, which the
+   owner put next, ahead of W4): it will meet the same wall. Either import
+   offers the two safe answers, or W4 moves ahead of it — a decision worth
+   making at the start of W5, not in the dialog.
+2. **The validator refuses more than the ADR listed:** `.cairndex/` from both
+   directions (a rename in there would corrupt the library through an
+   ordinary-looking operation), dot-leading names (File Browser hides them, so
+   creating one looks exactly like the operation failing), and trailing-dot
+   names (POSIX keeps them, Windows and some SMB servers silently drop them, so
+   one file ends up answering to two names that disagree).
+
+**Undo is the journal's, not the UI's.** Each completed operation's toast
+carries the inverse the journal recorded; applying it flips the row to `undone`
+rather than deleting it, and the inverse rename does *not* leave a second entry
+pretending to be a user action. A `mkdir` undo refuses a folder that is no
+longer empty — at that point removing it would be a delete, not an undo.
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**696 passed**, +55 across `test_file_ops.py` and `test_file_ops_api.py`:
+validator rejections on both source and destination, `.cairndex` and
+symlink-escape refusals, directory-subtree renames matched on segments, cover
+and membership survival, all three collision policies, the linked-row conflict
+caught *before* the file moves, an OS-level failure journaled as failed, undo
+round trips, and four crash-recovery cases including the ambiguous one).
+Web Prettier, ESLint, `tsc -b`, full Vitest (**342 passed**, +8), the Vite
+build. OpenAPI and `schema.d.ts` regenerated.
+
+**Manually verified against a real dev server and a scratch library**, because
+this is the milestone where tests alone are not enough: rename through the
+context menu (inline editor opens with the stem selected, not the extension),
+the listing refreshing, the Undo toast reversing it on disk *and* flipping the
+journal row to `undone`, the collision dialog appearing with both files
+untouched, New Folder creating a real directory — and, last, a planted
+interrupted operation (filesystem half done, `pending` row committed, metadata
+half missing) being reconciled to `done` on the next server start. Scratch
+library deregistered and deleted afterwards.
+
+One thing worth recording for whoever automates this next: driving the inline
+editor needed a dispatched `keydown`, because the automation harness's synthetic
+Return did not reach React's synthetic event as `Enter`. That is a harness
+quirk, not an app defect — the same interaction works from a real keyboard and
+is covered by the Vitest suite.
 
 ## Implemented: plan 4 W0 — the write-mode gate (2026-07-23)
 
