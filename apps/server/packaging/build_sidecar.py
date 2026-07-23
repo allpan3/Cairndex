@@ -99,6 +99,38 @@ def check_bundle_arch(target_platform: str) -> None:
     print(f"  sidecar architecture: {built}", flush=True)
 
 
+# Native libraries that must never end up in a published bundle, and why. These
+# are copyleft components that arrive as a side effect of a Python wheel rather
+# than by choice — the kind of thing a dependency bump reintroduces silently.
+# ffmpeg is deliberately absent: it is GPL, it is bundled on purpose, and
+# THIRD-PARTY-NOTICES.md carries its source offer (ADR-0019 §3).
+FORBIDDEN_LIBRARIES = {
+    "libx265": (
+        "GPL-2.0+ HEVC encoder, pulled in by pillow-heif's wheel. Cairndex only "
+        "decodes HEIC, so depend on pi-heif (decode-only) instead."
+    ),
+}
+
+
+def check_no_forbidden_libraries() -> None:
+    """Fail the build if a copyleft native library reached the bundle.
+
+    The PyInstaller spec excludes ``pillow_heif``, but an exclude only covers the
+    package it names. A future dependency that vendors the same encoder under a
+    different parent would sail past it, and the failure would surface as a
+    licence problem in something already published rather than as a build error.
+    """
+    for path in BUNDLE.rglob("*"):
+        if not path.is_file():
+            continue
+        for stem, reason in FORBIDDEN_LIBRARIES.items():
+            if path.name.startswith(stem):
+                raise SystemExit(
+                    f"{path.relative_to(BUNDLE)} must not ship: {reason}\n"
+                    "See THIRD-PARTY-NOTICES.md."
+                )
+
+
 def stage_media_tools(source: Path, target_platform: str) -> None:
     """Copy the static ffmpeg/ffprobe into the bundle, checksum-verified.
 
@@ -164,6 +196,7 @@ def main() -> int:
     print(f"building sidecar bundle for {target_platform}...", flush=True)
     run_pyinstaller()
     check_bundle_arch(target_platform)
+    check_no_forbidden_libraries()
 
     if args.skip_ffmpeg:
         print("  skipping ffmpeg staging (--skip-ffmpeg)", flush=True)

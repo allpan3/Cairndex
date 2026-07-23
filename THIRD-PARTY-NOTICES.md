@@ -120,35 +120,39 @@ dependencies (PyInstaller one-dir; ADR-0019 §2), under
 `Cairndex.app/Contents/Resources/cairndex-sidecar/`. The interpreter is under
 the PSF License and the direct dependencies are permissive: FastAPI, SQLAlchemy,
 Pydantic, pydantic-settings and python-ulid are MIT, uvicorn is BSD-3-Clause,
-and Pillow is MIT-CMU. The authoritative set is `apps/server/pyproject.toml`
-plus its lockfile.
+Pillow is MIT-CMU, and `pi-heif` is BSD-3-Clause (its bundled native libraries
+are covered separately below). The authoritative set is
+`apps/server/pyproject.toml` plus its lockfile.
 
-### `pillow-heif` ships a GPL encoder — unresolved, and it gates a release
+## HEIF decoding (`pi-heif`) — bundled in the macOS desktop app
 
-`pillow-heif` is what makes HEIC files viewable. Its **binary wheel** carries
-three native libraries, established by inspecting the wheel rather than by
-reading its metadata:
+HEIC files are made viewable by `pi-heif`, whose wheel bundles two native
+libraries. Both ship inside `Cairndex.app/Contents/Resources/cairndex-sidecar/`:
 
 | Library | Version | License | Role |
 | --- | --- | --- | --- |
 | libheif | 1.23.0 | LGPL-3.0-or-later | HEIF container |
-| libde265 | 0.2.0 | LGPL-3.0-or-later | HEVC **decoder** |
-| **libx265** | 216 | **GPL-2.0-or-later** | HEVC **encoder** |
+| libde265 | 0.2.0 | LGPL-3.0-or-later | HEVC decoder |
 
-`libheif` names `libx265` in a load command, not a lazy `dlopen`, so importing
-`pillow_heif` loads GPL code into the sidecar process. All three ship inside
-`Cairndex.app`; x265 alone is **8.6 MB**.
+They are loaded as separate shared libraries and are not modified, which is the
+ordinary LGPL §4 case. Their corresponding sources are published at
+<https://github.com/strukturag/libheif> and
+<https://github.com/strukturag/libde265> at the versions above, and the same
+three-year written offer stated for FFmpeg applies to them.
 
-The package declares `BSD-3-Clause` while also publishing a **GPLv2**
-classifier. That is not a metadata error — it is the maintainer accurately
-describing the wheel, and the sibling package `pi-heif` (same codebase,
-decode-only) publishes an **LGPLv3** classifier instead, precisely because it
-omits x265.
+**Why `pi-heif` and not `pillow-heif`** (same maintainer, same codebase): the
+`pillow-heif` wheel additionally bundles **libx265**, an HEVC *encoder* under
+**GPL-2.0-or-later**, and `libheif` names it in a load command rather than a
+lazy `dlopen` — so importing it pulls GPL code into the sidecar process. That is
+also why `pillow-heif` publishes a **GPLv2** classifier alongside its
+`BSD-3-Clause` declaration, while `pi-heif` publishes **LGPLv3**; the
+classifiers describe the wheels accurately.
 
-**Cairndex never encodes HEIC.** `media/previews.py` calls
-`register_heif_opener()` and nothing else; the only HEIF write anywhere is a
-smoke-test fixture, generated in the test process rather than in the shipped
-bundle. So the GPL component here is an encoder the product does not use.
+Cairndex only ever decodes HEIC — `media/previews.py` calls
+`register_heif_opener()` and nothing else — so that encoder was 8.6 MB of
+copyleft obligation buying nothing. `pillow-heif` remains a **development**
+dependency, because writing the smoke test's HEIC fixture needs an encoder; it
+runs in the test process, the PyInstaller spec excludes the package, and
+`build_sidecar.py` fails the build if `libx265` appears in a bundle at all.
 
-This is recorded as a constraint, not legal advice (ADR-0019 §3), and it is
-unresolved pending an owner decision — see `docs/STATUS.md`.
+This records constraints, not legal advice (ADR-0019 §3).

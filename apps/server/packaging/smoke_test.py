@@ -114,6 +114,12 @@ def write_fixtures(library_root: Path) -> None:
     the packaged app" would be an assumption rather than a test.
     """
     from PIL import Image
+
+    # `pillow_heif` here, `pi_heif` in the app: writing a HEIC needs an encoder,
+    # and the encoder is exactly what Cairndex refuses to ship (its libx265 is
+    # GPL — THIRD-PARTY-NOTICES.md). This runs in the *test* process against the
+    # development environment, never inside the frozen bundle, so the fixture
+    # costs the shipped app nothing. The spec's `excludes` enforces that.
     from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
 
     Image.new("RGB", (640, 480), (200, 80, 40)).save(library_root / "photo.jpg", "JPEG")

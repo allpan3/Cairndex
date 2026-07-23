@@ -26,9 +26,16 @@
 # thing that actually protects this bundle — a smoke test that runs it — by
 # making a future genuine gap look already handled.
 #
-# `pillow_heif` was the one real candidate, since `media/previews.py` imports it
+# `pi_heif` was the one real candidate, since `media/previews.py` imports it
 # inside a function. It also proved unnecessary, and the smoke test now renders
-# a HEIC preview to keep that honest: excluding `pillow_heif` fails the test.
+# a HEIC preview to keep that honest: excluding `pi_heif` fails the test.
+#
+# `pillow_heif` is in `excludes` below and must stay there. It is installed as a
+# development dependency (the smoke test needs an encoder to write its HEIC
+# fixture), and its wheel bundles libx265 — GPL-2.0-or-later — which libheif
+# names in a load command. Letting it into a bundle would put a copyleft
+# encoder, which nothing in Cairndex calls, into a published binary. The
+# exclude is what makes "dev-only" a fact rather than an intention.
 #
 # If a new dependency ever does need an entry here, the smoke test is what will
 # say so. Add the entry with the failure it fixes named in a comment.
@@ -44,7 +51,7 @@ analysis = Analysis(
     # Trimming what a media server will never use. alembic is a development
     # migration tool (the registry and library DBs bootstrap with create_all),
     # and the rest are test/tooling imports pulled in transitively.
-    excludes=["tkinter", "pytest", "mypy", "ruff", "alembic", "IPython"],
+    excludes=["tkinter", "pytest", "mypy", "ruff", "alembic", "IPython", "pillow_heif"],
     noarchive=False,
 )
 
