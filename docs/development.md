@@ -60,30 +60,32 @@ separate job that provisions the locked backend environment and ffmpeg.
 
 ### What CI runs, and when
 
-The repository is private, so **macOS minutes bill at 10× Linux**. Measured over
-the 30 days to 2026-07-23: 2,691 billable minutes, of which
-`Desktop shell (macOS)` alone was **1,570 — 58% of everything**, across 38 runs
-averaging ~4 wall minutes each. Two rules follow from that, and both are in
-`.github/workflows/ci.yml`:
+Every job runs on every push and pull request, except that
+**documentation-only changes run nothing**: `paths-ignore` in
+`.github/workflows/ci.yml` covers `docs/**`, `**/*.md`, `LICENSE` and
+`.gitignore`. Nothing here validates prose, and roughly half this repository's
+commits touch only docs. A commit that changes docs *and* code still runs
+everything — the filter skips only when every changed file matches.
+`workflow_dispatch` runs the full matrix by hand against any ref.
 
-- **Documentation-only changes run nothing.** `paths-ignore` covers `docs/**`,
-  `**/*.md`, `LICENSE` and `.gitignore`. Nothing in CI validates prose, and
-  roughly half this repository's commits touch only docs. A commit that changes
-  docs *and* code still runs everything — the filter skips only when every
-  changed file matches.
-- **The desktop jobs run on pull requests, not on the merge push.** Merging a
-  green PR used to re-run the same macOS build against the same code. A
-  direct-to-main *code* commit therefore gets backend, frontend, sidecar and
-  Docker coverage but no desktop build; run the workflow by hand
-  (`gh workflow run CI --ref <ref>`) when that matters.
+`desktop-macos` carries `timeout-minutes: 30` against an observed ~4.5-minute
+cold-cache build, so a hung Tauri bundler cannot occupy a runner for GitHub's
+six-hour default.
 
-`desktop-macos` also carries `timeout-minutes: 30` so a hung Tauri build cannot
-sit for GitHub's six-hour default at 10×.
+#### A note on runner cost
 
-If you need to check the spend, the per-run billing endpoint reports zeroes for
-recent runs; job start/finish timestamps are reliable, so compute it from
+The repository is **public** (since 2026-07-23), so standard GitHub-hosted
+runners — `ubuntu-latest` and `macos-latest` among them — are free and
+unmetered. This matters if that ever changes: while the repo was private, macOS
+billed at **10× Linux**, and `Desktop shell (macOS)` alone was 1,570 of 2,691
+billable minutes over 30 days — 58% of everything. Larger runners (`-large`,
+`-xlarge`) are billed even on public repositories, so reaching for one is a cost
+decision rather than a capacity one.
+
+If you ever need to measure spend, the per-run billing endpoint reports zeroes
+for recent runs; job start/finish timestamps are reliable, so compute it from
 `/repos/{owner}/{repo}/actions/runs/{id}/jobs` — round each job up to the minute
-and multiply macOS by 10.
+and apply the OS multiplier.
 
 ## Desktop (`apps/desktop`)
 
