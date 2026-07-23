@@ -43,12 +43,14 @@ state we cannot determine is the last one that should gain the ability to move
 files.
 
 Verification at this commit: backend Ruff, `ruff format --check`, mypy, full
-pytest (**640 passed**, +13 new write-mode cases covering both gates, the
+pytest (**641 passed**, +13 new write-mode cases covering both gates, the
 passphrase re-auth and its generic 401, the locked-library single-prompt path,
 the corrupt-manifest refusal, and a pre-ADR-0013 registry gaining the column
 additively and defaulting to off); web Prettier, ESLint, `tsc -b`, full Vitest
-(**334 passed**, +5 Library Manager cases), and the Vite build. OpenAPI and
-`schema.d.ts` regenerated. Manually verified against a real dev server and a
+(**334 passed**, +5 Library Manager cases), the Vite build, and the browser-only
+Playwright partition (**87 passed**). OpenAPI and `schema.d.ts` regenerated. The
+desktop gates were not run and did not need to be: no Rust changed, and the
+toggle lives in the shared `apps/web` build the shell already hosts. Manually verified against a real dev server and a
 scratch library: the toggle, its explanation step, the accent-on state, and the
 flag surviving in the registry — then turned back off and the scratch library
 deregistered.
