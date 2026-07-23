@@ -12,6 +12,7 @@ from cairndex.core.errors import (
     MediaProcessingError,
     NotFoundError,
     ValidationError,
+    WriteModeDisabledError,
 )
 
 # Domain error -> HTTP status. Anything not listed falls back to 400.
@@ -20,6 +21,7 @@ _STATUS_BY_TYPE: list[tuple[type[DomainError], int]] = [
     (InvalidDeviceTokenError, 401),
     (AuthRequiredError, 401),
     (DeviceScopeError, 403),
+    (WriteModeDisabledError, 403),
     (CapacityError, 429),
     (MediaProcessingError, 500),
     (ConflictError, 409),
