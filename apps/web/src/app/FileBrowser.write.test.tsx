@@ -14,6 +14,7 @@ import { FileBrowser } from './FileBrowser'
 const rename = vi.fn()
 const mkdir = vi.fn()
 const undo = vi.fn()
+const trashMutate = vi.fn()
 
 const FOLDER: FileBrowserEntry = {
   name: 'Season 1',
@@ -68,6 +69,7 @@ vi.mock('../api/hooks', () => ({
     rename: { mutate: rename, isPending: false },
     mkdir: { mutate: mkdir, isPending: false },
     undo: { mutate: undo, isPending: false },
+    trash: { mutate: trashMutate, isPending: false },
   }),
 }))
 
@@ -248,4 +250,95 @@ test('a failed operation reports the reason and offers no undo', async () => {
   await waitFor(() => expect(flashes).toHaveLength(1))
   expect(flashes[0]?.message).toBe('Write mode is off for this library.')
   expect(flashes[0]?.undo).toBeUndefined()
+})
+
+// --- trash (ADR-0013 §3.2) ---------------------------------------------------
+
+test('deleting says where the files go, and names the bundle impact', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Move to Trash'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Move to Trash' })
+  // The honest thing to confirm is *where it goes*, not "are you sure".
+  expect(dialog).toHaveTextContent('can be put back until you empty it')
+  // ep1.mkv is linked, so the bundle consequence is stated rather than implied.
+  expect(dialog).toHaveTextContent('part of a bundle')
+  expect(trashMutate).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }))
+
+  expect(trashMutate).toHaveBeenCalledWith(['Show/ep1.mkv'], expect.anything())
+  const handlers = trashMutate.mock.calls[0]?.[1] as { onSuccess: (result: unknown) => void }
+  handlers.onSuccess({ path: 'Show/ep1.mkv', operation: { id: 'op-9' }, files_updated: 1 })
+
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Moved “ep1.mkv” to the trash.')
+  // A deletion is undoable like everything else — the toast is where that shows.
+  flashes[0]?.undo?.()
+  expect(undo).toHaveBeenCalledWith('op-9', expect.anything())
+})
+
+test('cancelling a delete sends nothing', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Move to Trash'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+  expect(trashMutate).not.toHaveBeenCalled()
+})
+
+test('a folder is deleted whole, in one operation', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('Move to Trash'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Move to Trash' }))
+
+  expect(trashMutate).toHaveBeenCalledWith(['Show/Season 1'], expect.anything())
+})
+
+test('Replace is offered, and says it is recoverable', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+  const field = screen.getByLabelText('Rename ep1.mkv')
+  fireEvent.change(field, { target: { value: 'ep2.mkv' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+  const handlers = rename.mock.calls[0]?.[1] as { onError: (failure: unknown) => void }
+  handlers.onError(new PathConflictError('exists', 'ep2.mkv', 'Show/ep2.mkv'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Name already in use' })
+  // The word "Replace" is only honest because of what the sentence promises.
+  expect(dialog).toHaveTextContent('moves the existing file to this library’s trash first')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+
+  expect(rename).toHaveBeenNthCalledWith(
+    2,
+    { path: 'Show/ep1.mkv', newName: 'ep2.mkv', onConflict: 'replace' },
+    expect.anything(),
+  )
+
+  const second = rename.mock.calls[1]?.[1] as { onSuccess: (result: unknown) => void }
+  second.onSuccess({
+    path: 'Show/ep2.mkv',
+    operation: { id: 'op-4' },
+    files_updated: 1,
+    skipped: false,
+  })
+
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Replaced “ep2.mkv”. The old file is in the trash.')
+})
+
+test('a read-only library offers no delete', () => {
+  renderBrowser(false)
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+
+  expect(screen.queryByText('Move to Trash')).toBeNull()
 })

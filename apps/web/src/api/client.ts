@@ -28,6 +28,9 @@ export type WriteModeRead = components['schemas']['WriteModeRead']
 export type FileOperationRead = components['schemas']['FileOperationRead']
 export type FileOperationResult = components['schemas']['FileOperationResult']
 export type ConflictPolicy = components['schemas']['ConflictPolicy']
+export type TrashRead = components['schemas']['TrashRead']
+export type TrashedOperation = components['schemas']['TrashedOperationRead']
+export type EmptyTrashResult = components['schemas']['EmptyTrashResult']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -564,6 +567,24 @@ export const makeDirectory = (path: string) =>
 /** Apply an operation's inverse — the Undo behind a completed toast. */
 export const undoFileOperation = (operationId: string) =>
   sendFileOp<FileOperationResult>(`${lib()}/file-ops/${operationId}/undo`, {})
+
+/** Move files and folders into the library's trash. Never unlinks. */
+export const trashEntries = (paths: string[]) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/trash`, { paths })
+
+/** Everything currently recoverable, newest deletion first. */
+export const fetchTrash = (signal?: AbortSignal) =>
+  getJson<TrashRead>(`${lib()}/file-ops/trash`, signal)
+
+/** Put one deletion's entries back where they came from. */
+export const restoreTrashed = (operationId: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/trash/restore/${operationId}`, {})
+
+/** Permanently delete trashed entries. The one write-mode action with no undo. */
+export const emptyTrash = (olderThanDays?: number) =>
+  sendFileOp<EmptyTrashResult>(`${lib()}/file-ops/trash/empty`, {
+    older_than_days: olderThanDays ?? null,
+  })
 
 // --- Library write mode (ADR-0013) -------------------------------------------
 /**

@@ -77,6 +77,7 @@ import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
 import { Sidebar } from './app/Sidebar'
+import { TrashView } from './app/TrashView'
 import { SettingsDialog } from './app/SettingsDialog'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
@@ -679,7 +680,7 @@ function Workspace({
   const [mode, setMode] = useState<AppMode>('collection')
   // The Files surface has two scopes: browse the directory tree, or the flat
   // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
-  const [fileScope, setFileScope] = useState<'browse' | 'unbundled'>('browse')
+  const [fileScope, setFileScope] = useState<'browse' | 'unbundled' | 'trash'>('browse')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileBrowserEntry | null>(null)
   // A file to highlight after "Locate in File Browser" (until the user navigates
@@ -1478,6 +1479,12 @@ function Workspace({
             setFileScope('unbundled')
             setFileEntry(null)
           }}
+          writeMode={writeMode}
+          onOpenTrash={() => {
+            setMode('file')
+            setFileScope('trash')
+            setFileEntry(null)
+          }}
           onOpenAllTags={() => {
             setMode('tags')
             clearSelection()
@@ -1546,10 +1553,12 @@ function Workspace({
       <div className="center">
         {mode === 'tags' ? (
           <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
+        ) : mode === 'file' && fileScope === 'trash' ? (
+          <TrashView onFlash={showFlash} />
         ) : mode === 'file' ? (
           <FileBrowser
             libraryName={libraryName}
-            scope={fileScope}
+            scope={fileScope === 'unbundled' ? 'unbundled' : 'browse'}
             path={filePath}
             selectedPath={locatedPath ?? fileEntry?.relative_path ?? null}
             onNavigate={(path) => {
