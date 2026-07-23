@@ -21,6 +21,11 @@ grouped under `Unreleased` until the first tagged release.
   freezes the interpreter that runs it and has no cross-compile mode — an Intel
   artifact needs an Intel builder.
 
+  The workflow runs least-privilege: the build jobs hold a read-only token
+  (only the publish job can write, to create the draft), and non-GitHub-owned
+  actions are pinned by commit SHA, since this workflow produces the binaries
+  strangers download and a repointed tag must not change what runs in it.
+
 - **The desktop app now bundles ffmpeg**, so opening a library folder on your
   own Mac needs no Homebrew, no separate ffmpeg install, and no PATH setup —
   previously a packaged app fell back to a system ffmpeg that a user might not

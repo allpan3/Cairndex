@@ -124,6 +124,27 @@ clean launch with the sidecar spawning. The arm64 DMG was built (97 MB from a
 non-obvious shell steps — the `file`/`sed` architecture assertion and the
 staging/checksum step — were run verbatim against those real artifacts.
 
+**A second review round hardened the workflow** (2026-07-23). The release jobs
+held a write-capable `GITHUB_TOKEN` they never use — `permissions: contents:
+write` was declared at workflow level, so it reached the build jobs and every
+third-party action they run. The workflow is now `contents: read` with the
+write grant scoped to the `publish` job alone, and the non-GitHub-owned actions
+(`softprops/action-gh-release`, `Swatinem/rust-cache`, `astral-sh/setup-uv`)
+are pinned by commit SHA rather than by movable tag — this workflow produces
+the binaries strangers download, so a repointed tag must not be able to change
+what runs in it. Notably, `Swatinem/rust-cache`'s moving `v2` already pointed
+past its latest release (an unreleased commit); the pin is the released v2.9.1.
+`dtolnay/rust-toolchain` stays on `@stable` because that branch name is its
+toolchain selector, not a code version. Smaller items from the same round: the
+arch-verify step's comment claimed "every Mach-O" while checking the four
+executables (the ~50 Python `.so` files follow the pinned interpreter, which
+the sidecar check covers — the comment now says so), a dead step output was
+removed, `macho_arch` reads 8 bytes instead of the whole 10 MB executable, and
+the re-pin checklist in `development.md` gained its missing fifth property:
+GPL-compatible components, i.e. OpenSSL must be ≥ 3.0 (Apache-2.0) for
+`--enable-openssl` to be redistributable alongside GPL — the pinned builds
+link 3.6.1.
+
 **Next**, in order:
 1. **A real run of `release.yml`.** It triggers on tags, so nothing has executed
    it; the runner labels, the cache paths, and `softprops/action-gh-release` are
