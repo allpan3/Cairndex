@@ -44,6 +44,10 @@ python_version = "3.12"
 mypy_path = "src"
 strict = true
 warn_unused_ignores = true
+# `packaging/` is in scope because it decides what goes into a published
+# binary — ffmpeg_manifest.py is the checksum gate (ADR-0019 §3). It sat
+# outside the gate at first simply because the gate named `src`.
+files = ["src", "packaging"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
