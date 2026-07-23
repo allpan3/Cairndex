@@ -54,6 +54,7 @@ import {
   deleteCollection,
   deleteLibrary,
   deleteSmartCollection,
+  emptyTrash,
   applyGroupingPlan,
   approveDevicePairing,
   enqueueProbe,
@@ -89,12 +90,14 @@ import {
   fetchTagGroupTags,
   fetchTagGroups,
   fetchTags,
+  fetchTrash,
   fetchViewCounts,
   makeDirectory,
   previewFilter,
   probeLibraryPath,
   registerLibrary,
   renameEntry,
+  restoreTrashed,
   removeFile,
   repairFile,
   revokeDevice,
@@ -120,6 +123,7 @@ import {
   updateBundle,
   updateBundleCursor,
   updateFile,
+  trashEntries,
   undoFileOperation,
   updateSmartCollection,
 } from './client'
@@ -382,12 +386,7 @@ export function useWriteModeMutation() {
  */
 export function useFileOperations() {
   const qc = useQueryClient()
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ['file-browser'] })
-    // A rename repoints linked rows, so anything that renders a path is stale.
-    for (const key of ['browse', 'bundle-files', 'unbundled-files', 'file-ops'])
-      qc.invalidateQueries({ queryKey: [key] })
-  }
+  const refresh = () => invalidateAfterFileOperation(qc)
   return {
     rename: useMutation({
       mutationFn: ({
@@ -409,7 +408,58 @@ export function useFileOperations() {
       mutationFn: (operationId: string) => undoFileOperation(operationId),
       onSuccess: refresh,
     }),
+    trash: useMutation({
+      mutationFn: (paths: string[]) => trashEntries(paths),
+      onSuccess: refresh,
+    }),
   }
+}
+
+// Everything a file operation can change: the listing it happened in, the views
+// that render paths or counts, the journal, and the trash.
+function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of [
+    'file-browser',
+    'browse',
+    'view-counts',
+    'bundle-files',
+    'unbundled-files',
+    'file-ops',
+    'trash',
+  ])
+    qc.invalidateQueries({ queryKey: [key] })
+}
+
+/** Everything currently recoverable from this library's trash. */
+export function useTrash() {
+  return useQuery({
+    queryKey: ['trash'],
+    queryFn: ({ signal }) => fetchTrash(signal),
+  })
+}
+
+/**
+ * Put one deletion back.
+ *
+ * Invalidates the same surfaces a delete does, because a restore is a delete
+ * running backwards: the files reappear in the File Browser, their rows go back
+ * to `available`, and any bundle they belong to is whole again.
+ */
+export function useRestoreFromTrash() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (operationId: string) => restoreTrashed(operationId),
+    onSuccess: () => invalidateAfterFileOperation(qc),
+  })
+}
+
+/** Empty the trash for good. */
+export function useEmptyTrash() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (olderThanDays?: number) => emptyTrash(olderThanDays),
+    onSuccess: () => invalidateAfterFileOperation(qc),
+  })
 }
 
 // --- Per-library passphrase lock (ADR-0010) ----------------------------------

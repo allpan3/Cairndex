@@ -10,7 +10,7 @@ import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
 import { useFileWriteActions } from './fileWriteActions'
-import { ConflictDialog, NameEditor } from './FileWriteDialogs'
+import { ConflictDialog, DeleteDialog, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -318,6 +318,8 @@ function FileList({
     onSelectEntry(entry)
     const items: MenuEntry[] = [
       { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
+      // A folder's own delete takes everything inside it, in one operation.
+      { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
     ]
     if (canCreateFolder) items.push({ label: 'New Folder', onClick: write.startNewFolder })
     menu.open(e, items)
@@ -364,6 +366,10 @@ function FileList({
           label: 'Rename…',
           onClick: () => write.startRename(targets[0] as string),
         })
+      writeItems.push({
+        label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
+        onClick: () => write.askToDelete(targets, linkedCount(targets)),
+      })
       if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
       if (writeItems.length > 0) items.push(null, ...writeItems)
     }
@@ -378,14 +384,29 @@ function FileList({
     menu.open(e, [{ label: 'New Folder', onClick: write.startNewFolder }])
   }
 
-  // F2 (and Enter, the macOS convention) renames the single selected entry.
+  // How many of these paths a bundle is built on — the part of a delete worth
+  // pausing over, and the one thing the confirmation can say that a file
+  // manager's could not.
+  const linkedCount = (paths: string[]): number =>
+    visible.filter((entry) => paths.includes(entry.relative_path) && entry.linked).length
+
+  // F2 (and Enter, the macOS convention) renames the single selected entry;
+  // Delete / ⌘⌫ moves the selection to the trash.
   const listKeyDown = (e: React.KeyboardEvent) => {
     if (!writeMode || write.renamingPath || write.creatingFolder) return
-    if (e.key !== 'F2' && e.key !== 'Enter') return
-    const only = selected.size === 1 ? [...selected][0] : null
-    if (!only) return
-    e.preventDefault()
-    write.startRename(only)
+    if (e.key === 'F2' || e.key === 'Enter') {
+      const only = selected.size === 1 ? [...selected][0] : null
+      if (!only) return
+      e.preventDefault()
+      write.startRename(only)
+      return
+    }
+    if (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey))) {
+      if (selected.size === 0) return
+      e.preventDefault()
+      const paths = [...selected]
+      write.askToDelete(paths, linkedCount(paths))
+    }
   }
 
   // Drag-out targets: the whole file selection when dragging a selected file in a
@@ -661,7 +682,18 @@ function FileList({
           <ConflictDialog
             name={write.conflict.conflictingName}
             onKeepBoth={write.keepBoth}
+            onReplace={write.replace}
             onCancel={write.dismissConflict}
+            busy={write.busy}
+          />
+        )}
+
+        {write.pendingDelete && (
+          <DeleteDialog
+            paths={write.pendingDelete.paths}
+            linkedCount={write.pendingDelete.linkedCount}
+            onConfirm={write.confirmDelete}
+            onCancel={write.dismissDelete}
             busy={write.busy}
           />
         )}
