@@ -68,12 +68,16 @@ recommended next tasks.
 
 ## Install (macOS desktop app)
 
-> The first public release is still being assembled (plan 3 D7). The steps
-> below describe the artifacts it will publish; there is no download link yet.
+> No release has been published yet (plan 3 D7). The pipeline that builds these
+> artifacts exists; the steps below describe what it publishes.
 
 Releases publish a `.dmg` per architecture — `aarch64` for Apple Silicon,
-`x64` for Intel. Download the one matching your Mac, open it, and drag
-**Cairndex** to Applications.
+`x64` for Intel — each with a `.sha256` beside it. Download the one matching
+your Mac, open it, and drag **Cairndex** to Applications.
+
+```bash
+shasum -a 256 -c Cairndex_<version>_<arch>.dmg.sha256
+```
 
 ### First launch: "Apple could not verify..."
 

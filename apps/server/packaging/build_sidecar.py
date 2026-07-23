@@ -26,6 +26,7 @@ from ffmpeg_manifest import (
     current_platform,
     pins_for,
     sha256,
+    vendor_dir,
 )
 
 PACKAGING_DIR = Path(__file__).resolve().parent
@@ -53,6 +54,48 @@ def run_pyinstaller() -> None:
         cwd=PACKAGING_DIR,
         check=True,
     )
+
+
+# Mach-O 64-bit header: magic, then cputype. Enough to name an architecture
+# without shelling out to `file`.
+_MACHO_MAGIC_64 = b"\xcf\xfa\xed\xfe"
+_CPU_TYPES = {0x0100000C: "arm64", 0x01000007: "x86_64"}
+
+
+def macho_arch(binary: Path) -> str | None:
+    """Return ``arm64``/``x86_64``, or None if this is not a thin 64-bit Mach-O."""
+    header = binary.read_bytes()[:8]
+    if len(header) < 8 or header[:4] != _MACHO_MAGIC_64:
+        return None
+    return _CPU_TYPES.get(int.from_bytes(header[4:8], "little"))
+
+
+def check_bundle_arch(target_platform: str) -> None:
+    """Refuse a bundle whose architecture is not the one being built for.
+
+    The checksum gate cannot see this. It verifies that the *ffmpeg* matches the
+    pin for ``--platform``, so staging Intel ffmpeg beside an arm64 sidecar
+    passes every digest check and produces an app that dies on launch. This is
+    the mistake a two-architecture matrix makes — one job on the wrong runner,
+    or a `--platform` flag standing in for an interpreter it cannot change.
+
+    Skipped on anything that is not a macOS build; Linux ELF has no stake here.
+    """
+    if not target_platform.startswith("macos-"):
+        return
+    executable = BUNDLE / "cairndex-sidecar"
+    built = macho_arch(executable)
+    expected = target_platform.removeprefix("macos-")
+    if built is None:
+        print(f"  warning: cannot read an architecture from {executable.name}", flush=True)
+        return
+    if built != expected:
+        raise SystemExit(
+            f"sidecar is {built} but --platform says {expected}.\n"
+            "PyInstaller freezes the interpreter that runs it, so build this under an "
+            f"{expected} Python rather than passing a flag."
+        )
+    print(f"  sidecar architecture: {built}", flush=True)
 
 
 def stage_media_tools(source: Path, target_platform: str) -> None:
@@ -96,8 +139,8 @@ def main() -> int:
     parser.add_argument(
         "--ffmpeg-dir",
         type=Path,
-        default=PACKAGING_DIR / "vendor" / "ffmpeg",
-        help="directory holding static ffmpeg and ffprobe binaries",
+        default=None,
+        help="directory holding static ffmpeg and ffprobe (default: the platform's vendor dir)",
     )
     parser.add_argument(
         "--skip-ffmpeg",
@@ -111,14 +154,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    print("building sidecar bundle...", flush=True)
+    # PyInstaller freezes the interpreter running it, so the bundle's
+    # architecture is this process's — never a cross-compile. `--platform` picks
+    # which pin to verify against, so an Intel build means running this script
+    # under an Intel Python, not passing a flag.
+    target_platform = args.platform or current_platform()
+
+    print(f"building sidecar bundle for {target_platform}...", flush=True)
     run_pyinstaller()
+    check_bundle_arch(target_platform)
 
     if args.skip_ffmpeg:
         print("  skipping ffmpeg staging (--skip-ffmpeg)", flush=True)
     else:
         try:
-            stage_media_tools(args.ffmpeg_dir, args.platform or current_platform())
+            stage_media_tools(args.ffmpeg_dir or vendor_dir(target_platform), target_platform)
         except ManifestError as exc:
             print(exc, file=sys.stderr)
             return 1

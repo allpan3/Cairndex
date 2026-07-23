@@ -30,10 +30,10 @@ from ffmpeg_manifest import (
     current_platform,
     pins_for,
     sha256,
+    vendor_dir,
 )
 
 PACKAGING_DIR = Path(__file__).resolve().parent
-VENDOR = PACKAGING_DIR / "vendor" / "ffmpeg"
 USER_AGENT = "cairndex-packaging/1.0 (+https://github.com/allpan3/cairndex)"
 
 
@@ -88,8 +88,8 @@ def verify(path: Path, expected: str, what: str) -> None:
         )
 
 
-def fetch(pin: Pin, workdir: Path) -> Path:
-    target = VENDOR / pin.tool
+def fetch(pin: Pin, workdir: Path, vendor: Path) -> Path:
+    target = vendor / pin.tool
     if target.is_file() and sha256(target) == pin.sha256:
         print(f"  {pin.tool}: already present and verified", flush=True)
         return target
@@ -122,13 +122,14 @@ def main() -> int:
         print(exc, file=sys.stderr)
         return 1
 
-    VENDOR.mkdir(parents=True, exist_ok=True)
+    vendor = vendor_dir(target_platform)
+    vendor.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="cairndex-ffmpeg-") as tmp:
         workdir = Path(tmp)
         for tool in MEDIA_TOOLS:
-            fetch(pins[tool], workdir)
+            fetch(pins[tool], workdir, vendor)
 
-    print(f"static media tools ready in {VENDOR}", flush=True)
+    print(f"{target_platform} media tools ready in {vendor}", flush=True)
     return 0
 
 

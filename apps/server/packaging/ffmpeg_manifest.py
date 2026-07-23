@@ -23,6 +23,7 @@ JsonObject = dict[str, Any]
 
 PACKAGING_DIR = Path(__file__).resolve().parent
 MANIFEST = PACKAGING_DIR / "ffmpeg-manifest.json"
+VENDOR = PACKAGING_DIR / "vendor" / "ffmpeg"
 
 MEDIA_TOOLS = ("ffmpeg", "ffprobe")
 
@@ -46,6 +47,16 @@ class Pin:
     @property
     def is_archive(self) -> bool:
         return self.archive_member is not None
+
+
+def vendor_dir(target: str) -> Path:
+    """Where ``target``'s fetched binaries live.
+
+    Scoped by platform because a release builds both macOS architectures, and a
+    shared directory would mean each fetch silently overwrote the other's
+    binaries — with the same filenames and no way to tell them apart.
+    """
+    return VENDOR / target
 
 
 def current_platform() -> str:
