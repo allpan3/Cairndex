@@ -64,7 +64,8 @@ _CPU_TYPES = {0x0100000C: "arm64", 0x01000007: "x86_64"}
 
 def macho_arch(binary: Path) -> str | None:
     """Return ``arm64``/``x86_64``, or None if this is not a thin 64-bit Mach-O."""
-    header = binary.read_bytes()[:8]
+    with binary.open("rb") as handle:
+        header = handle.read(8)
     if len(header) < 8 or header[:4] != _MACHO_MAGIC_64:
         return None
     return _CPU_TYPES.get(int.from_bytes(header[4:8], "little"))
