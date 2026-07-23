@@ -94,11 +94,18 @@ def _reconcile_file_operations(maker: sessionmaker[Session], root: Path) -> None
     and database into a library the user cannot reach at all, and the scanner's
     moved-file repair remains available for exactly this state.
     """
+    from cairndex.file_ops.imports import sweep_staging
     from cairndex.file_ops.reconcile import reconcile_pending
 
     try:
         with maker() as session:
             reconcile_pending(session, root)
+        # Partial uploads left by a crash (ADR-0013 §7). Swept here rather than
+        # on a timer because they can be large, and because this is the first
+        # moment we know nothing is still writing to them.
+        removed = sweep_staging(root)
+        if removed:
+            logger.info("removed %d abandoned partial upload(s) from %s", removed, root)
     except Exception:
         logger.exception("file-operation reconciliation failed for %s", root)
 

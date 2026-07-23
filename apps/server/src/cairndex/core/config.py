@@ -127,6 +127,14 @@ class Settings(BaseSettings):
     # should be able to turn writing on through the UI at all.
     write_mode: Literal["allowed", "disabled"] = "allowed"
 
+    # Largest single file that may be imported into a library (ADR-0013 §7),
+    # in bytes. ``0`` means no limit, which is the default: a legitimate import
+    # here is a whole video file, and a cap generous enough never to reject one
+    # would not be protecting anything on the single-owner LAN this is built
+    # for. Set it on a deployment where the API is reachable by anyone whose
+    # disk usage you would not want to underwrite.
+    import_max_bytes: int = 0
+
     # Directory of the built frontend (apps/web/dist). When set and present the
     # backend serves the SPA so a single production container ships both halves
     # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.

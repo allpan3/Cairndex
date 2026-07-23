@@ -244,3 +244,156 @@ def test_replace_is_offered_as_a_collision_policy(
     assert [entry["original_path"] for op in listing["operations"] for entry in op["entries"]] == [
         "old.mkv"
     ]
+
+
+# --- import (ADR-0013 §7, plan 4 W5) -----------------------------------------
+def _import(
+    client: TestClient, library_id: str, body: bytes, filename: str, **params: object
+) -> Response:
+    query = {"filename": filename, **params}
+    return client.post(
+        f"/api/v1/libraries/{library_id}/file-ops/import",
+        params=query,
+        content=body,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+
+
+def test_import_writes_the_body_into_the_library(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    imported = _import(client, writable, b"movie bytes", "clip.mkv")
+
+    assert imported.status_code == 201, imported.text
+    body = imported.json()
+    assert body["path"] == "clip.mkv"
+    assert body["size_bytes"] == len(b"movie bytes")
+    assert (library_root / "clip.mkv").read_bytes() == b"movie bytes"
+    # Nothing left behind in staging.
+    assert list((library_root / ".cairndex" / "tmp").iterdir()) == []
+
+
+def test_import_targets_a_subfolder(client: TestClient, writable: str, library_root: Path) -> None:
+    (library_root / "Show").mkdir()
+
+    imported = _import(client, writable, b"x", "ep1.mkv", dest_dir="Show")
+
+    assert imported.json()["path"] == "Show/ep1.mkv"
+    assert (library_root / "Show/ep1.mkv").is_file()
+
+
+def test_import_is_gated(client: TestClient, library_id: str, library_root: Path) -> None:
+    refused = _import(client, library_id, b"x", "clip.mkv")
+
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "write_mode_disabled"
+    assert not (library_root / "clip.mkv").exists()
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"filename": "../escape.mkv"},
+        {"filename": ".hidden"},
+        {"filename": "sub/nested.mkv"},
+        {"filename": "ok.mkv", "dest_dir": ".cairndex"},
+        {"filename": "ok.mkv", "dest_dir": "../outside"},
+    ],
+)
+def test_import_rejects_unsafe_destinations(
+    client: TestClient, writable: str, library_root: Path, params: dict[str, str]
+) -> None:
+    filename = params.pop("filename")
+
+    refused = _import(client, writable, b"x", filename, **params)
+
+    assert refused.status_code == 422
+    assert (library_root / ".cairndex" / "manifest.json").is_file()
+
+
+def test_import_collision_asks_before_reading_the_body(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    """The check is up front so a 60 GB upload is not spent discovering the
+    name was taken."""
+    (library_root / "clip.mkv").write_bytes(b"original")
+
+    refused = _import(client, writable, b"new bytes", "clip.mkv")
+
+    assert refused.status_code == 409
+    assert refused.json()["details"]["code"] == "path_conflict"
+    assert (library_root / "clip.mkv").read_bytes() == b"original"
+
+    kept_both = _import(client, writable, b"new bytes", "clip.mkv", on_conflict="suffix")
+    assert kept_both.json()["path"] == "clip (2).mkv"
+    assert (library_root / "clip (2).mkv").read_bytes() == b"new bytes"
+
+
+def test_import_replace_trashes_the_file_it_displaces(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    """The reason W4 moved ahead of W5: import can offer a real Replace."""
+    (library_root / "clip.mkv").write_bytes(b"original")
+
+    replaced = _import(client, writable, b"better", "clip.mkv", on_conflict="replace")
+
+    assert replaced.status_code == 201
+    assert (library_root / "clip.mkv").read_bytes() == b"better"
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    assert [e["original_path"] for op in listing["operations"] for e in op["entries"]] == [
+        "clip.mkv"
+    ]
+
+
+def test_import_skip_leaves_the_existing_file_alone(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    (library_root / "clip.mkv").write_bytes(b"original")
+
+    skipped = _import(client, writable, b"new", "clip.mkv", on_conflict="skip")
+
+    assert skipped.json()["skipped"] is True
+    assert (library_root / "clip.mkv").read_bytes() == b"original"
+
+
+def test_import_can_link_what_it_added(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    imported = _import(client, writable, b"movie", "clip.mkv", link=True)
+
+    assert imported.json()["files_updated"] == 1
+    listed = client.get(f"/api/v1/libraries/{writable}/file-browser/entries").json()
+    entry = next(e for e in listed["entries"] if e["name"] == "clip.mkv")
+    assert entry["linked"] is True
+
+
+def test_undoing_an_import_deletes_it_to_the_trash(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    """Undo must never be the one action in the app that destroys something."""
+    imported = _import(client, writable, b"movie", "clip.mkv").json()
+
+    undone = client.post(
+        f"/api/v1/libraries/{writable}/file-ops/{imported['operation']['id']}/undo"
+    )
+
+    assert undone.status_code == 200
+    assert not (library_root / "clip.mkv").exists()
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    assert [e["original_path"] for op in listing["operations"] for e in op["entries"]] == [
+        "clip.mkv"
+    ]
+
+
+def test_an_empty_upload_is_refused_and_leaves_nothing(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    refused = _import(client, writable, b"", "clip.mkv")
+
+    assert refused.status_code == 422
+    assert not (library_root / "clip.mkv").exists()
+    assert list((library_root / ".cairndex" / "tmp").iterdir()) == []
+    # The attempt is recorded as failed rather than vanishing.
+    history = client.get(f"/api/v1/libraries/{writable}/file-ops").json()["operations"]
+    assert history[0]["op"] == "import"
+    assert history[0]["status"] == "failed"
