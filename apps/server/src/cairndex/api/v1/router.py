@@ -4,6 +4,7 @@ from cairndex.api.v1 import (
     auth,
     bundles,
     devices,
+    file_ops,
     filters,
     grouping,
     health,
@@ -47,3 +48,5 @@ router.include_router(playback.router)
 router.include_router(playback_sessions.router)
 router.include_router(grouping.router)
 router.include_router(manual_bundling.router)
+# Guarded file operations (ADR-0013 W1+). Content-scoped and write-gated.
+router.include_router(file_ops.router)

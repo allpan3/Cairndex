@@ -72,6 +72,7 @@ def get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session
         # Create/populate the FTS5 search index + maintenance triggers if missing.
         ensure_search_schema(engine)
         maker = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+        _reconcile_file_operations(maker, Path(library.root_path))
         _cache[library.id] = _Cached(
             db_path=db_path,
             engine=engine,
@@ -79,6 +80,27 @@ def get_library_sessionmaker(library: RegisteredLibrary) -> sessionmaker[Session
             last_used=time.monotonic(),
         )
         return maker
+
+
+def _reconcile_file_operations(maker: sessionmaker[Session], root: Path) -> None:
+    """Settle write operations interrupted by a crash (ADR-0013 §3.1).
+
+    On open, because that is the first moment after a crash when someone is
+    looking at the library again — and it costs one indexed query against a
+    table that is empty on every library that has never been written to.
+
+    Deliberately swallows everything: a library that cannot be reconciled must
+    still open. The alternative turns a recoverable disagreement between disk
+    and database into a library the user cannot reach at all, and the scanner's
+    moved-file repair remains available for exactly this state.
+    """
+    from cairndex.file_ops.reconcile import reconcile_pending
+
+    try:
+        with maker() as session:
+            reconcile_pending(session, root)
+    except Exception:
+        logger.exception("file-operation reconciliation failed for %s", root)
 
 
 def dispose_library_engine(library_id: str) -> None:

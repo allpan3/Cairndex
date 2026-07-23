@@ -1,9 +1,15 @@
 """Guarded file operations inside a library root (ADR-0013, plan 4).
 
 Everything in this package can touch real files, so it all sits behind the
-write-mode gate in ``gate.py``. The gate is the whole of milestone W0; the
-operation journal, path validator, and the operations themselves land in later
-slices and import from here.
+write-mode gate in ``gate.py`` (W0). The pieces, in the order an operation meets
+them:
+
+* ``gate`` — may this library be written to at all?
+* ``paths`` — is this path/name safe, inside the root, and outside ``.cairndex``?
+* ``conflicts`` — the destination is taken; fail, skip, or keep both?
+* ``journal`` — record the intent, then the outcome;
+* ``operations`` — rename and New Folder (W1); move/trash/import follow;
+* ``reconcile`` — settle anything a crash interrupted, on the next open.
 """
 
 from cairndex.file_ops.gate import (
