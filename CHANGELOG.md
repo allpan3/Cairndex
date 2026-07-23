@@ -11,15 +11,16 @@ grouped under `Unreleased` until the first tagged release.
 ### Added
 
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
-  manual dispatch — builds the macOS app for Apple Silicon and Intel, smoke-tests
-  each packaged sidecar against its bundled ffmpeg, and attaches both DMGs, a
-  `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` to a **draft** release.
-  Publishing stays a human decision. Each job refuses to continue on an invalid
-  bundle signature or a binary of the wrong architecture.
+  manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
+  packaged sidecar against its bundled ffmpeg, and attaches the DMG, its
+  `.sha256`, and `THIRD-PARTY-NOTICES.md` to a **draft** release. Publishing
+  stays a human decision. The job refuses to continue on an invalid bundle
+  signature or a binary of the wrong architecture.
 
-  Two native jobs rather than one cross-compiling job, because PyInstaller
-  freezes the interpreter that runs it and has no cross-compile mode — an Intel
-  artifact needs an Intel builder.
+  **Apple Silicon only.** An Intel job was built and proven first, then dropped
+  after the v0.1.0 run: it is not needed, and it was ~4× slower at every
+  compile-bound step on minutes billed at 10×. Intel remains pinned and locally
+  buildable — restoring the artifact is one commented matrix entry.
 
   The workflow runs least-privilege: the build jobs hold a read-only token
   (only the publish job can write, to create the draft), and non-GitHub-owned
