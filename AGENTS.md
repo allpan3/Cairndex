@@ -170,7 +170,7 @@ Backend gates, from `apps/server`:
 ```bash
 uv run ruff check
 uv run ruff format --check
-uv run mypy src
+uv run mypy src packaging
 uv run pytest
 ```
 
