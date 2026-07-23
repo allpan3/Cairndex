@@ -150,3 +150,32 @@ class GroupingPlanStatus(StrEnum):
     APPLIED = "applied"
     SUPERSEDED = "superseded"
     CANCELLED = "cancelled"
+
+
+# --- Guarded file operations (ADR-0013, plan 4) ------------------------------
+class FileOpType(StrEnum):
+    """Kind of guarded file operation recorded in the journal.
+
+    Only the operations that exist are listed. Later slices add ``move``,
+    ``trash``/``restore`` (W3/W4) and ``import``/``save_new`` (W5/W2); the
+    journal stores the value as text, so adding one needs no migration.
+    """
+
+    RENAME = "rename"
+    MKDIR = "mkdir"
+
+
+class FileOpStatus(StrEnum):
+    """Lifecycle of a journaled file operation (ADR-0013 §3.1).
+
+    ``pending`` is written *before* the filesystem is touched, so a crash
+    mid-operation is discoverable rather than silent: the reconciler on the next
+    library open decides whether the operation completed (finish the metadata
+    side) or never happened (``failed``). ``undone`` records that the inverse
+    was applied, keeping the history honest rather than deleting the row.
+    """
+
+    PENDING = "pending"
+    DONE = "done"
+    FAILED = "failed"
+    UNDONE = "undone"

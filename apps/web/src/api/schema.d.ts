@@ -907,6 +907,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operations
+         * @description Newest-first history of what write mode has done to this library.
+         *
+         *     Readable without write mode: turning the capability off must not hide what
+         *     it did while it was on.
+         */
+        get: operations["list_operations_api_v1_libraries__library_id__file_ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/mkdir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Directory
+         * @description Create one new directory. Its parent must already exist.
+         */
+        post: operations["make_directory_api_v1_libraries__library_id__file_ops_mkdir_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename Entry
+         * @description Rename one file or directory, carrying its metadata with it.
+         *
+         *     The rename and the `AssetFile.relative_path` update happen together, so
+         *     every id — and therefore every bundle membership, cover, subtitle link and
+         *     cached thumbnail — survives by construction rather than by later repair.
+         *     Renaming a directory repoints everything beneath it in the same operation.
+         *
+         *     A destination that already exists answers 409 `conflict`, which the client
+         *     turns into the Replace / Skip / Keep both prompt and re-issues with an
+         *     explicit `on_conflict`.
+         */
+        post: operations["rename_entry_api_v1_libraries__library_id__file_ops_rename_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Operation
+         * @description Apply an operation's inverse — the Undo behind every completed toast.
+         *
+         *     Only a completed operation can be undone, and only once; the journal row is
+         *     marked `undone` rather than deleted, so the history still explains how the
+         *     library reached its current shape.
+         */
+        post: operations["undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file/preview": {
         parameters: {
             query?: never;
@@ -1821,6 +1917,11 @@ export interface paths {
          *     a missing passphrase and a wrong one are indistinguishable. Enabling on a
          *     deployment configured read-only is refused with 403 ``write_mode_disabled``.
          *     Disabling is always permitted for an authorized caller.
+         *
+         *     A correct passphrase authorizes the request on its own, in place of an
+         *     unlocked session: it *is* the library's credential, and demanding a live
+         *     unlock as well would leave a locked library unable to gain write mode
+         *     without first being opened somewhere else — for one prompt, two prompts.
          */
         put: operations["set_write_mode_api_v1_libraries__library_id__write_mode_put"];
         post?: never;
@@ -2264,6 +2365,12 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /**
+         * ConflictPolicy
+         * @description Caller's answer to a path collision, chosen before or after the 409.
+         * @enum {string}
+         */
+        ConflictPolicy: "fail" | "skip" | "suffix";
         /** ContinueWatchingItem */
         ContinueWatchingItem: {
             /** Cover Key */
@@ -2533,6 +2640,74 @@ export interface components {
             sequence: number;
             /** Source */
             source?: string | null;
+        };
+        /**
+         * FileOpStatus
+         * @description Lifecycle of a journaled file operation (ADR-0013 §3.1).
+         *
+         *     ``pending`` is written *before* the filesystem is touched, so a crash
+         *     mid-operation is discoverable rather than silent: the reconciler on the next
+         *     library open decides whether the operation completed (finish the metadata
+         *     side) or never happened (``failed``). ``undone`` records that the inverse
+         *     was applied, keeping the history honest rather than deleting the row.
+         * @enum {string}
+         */
+        FileOpStatus: "pending" | "done" | "failed" | "undone";
+        /**
+         * FileOpType
+         * @description Kind of guarded file operation recorded in the journal.
+         *
+         *     Only the operations that exist are listed. Later slices add ``move``,
+         *     ``trash``/``restore`` (W3/W4) and ``import``/``save_new`` (W5/W2); the
+         *     journal stores the value as text, so adding one needs no migration.
+         * @enum {string}
+         */
+        FileOpType: "rename" | "mkdir";
+        /**
+         * FileOperationPage
+         * @description Newest-first page of the journal.
+         */
+        FileOperationPage: {
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Operations */
+            operations: components["schemas"]["FileOperationRead"][];
+        };
+        /**
+         * FileOperationRead
+         * @description One journal entry, as the history view and Undo need it.
+         */
+        FileOperationRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            op: components["schemas"]["FileOpType"];
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            status: components["schemas"]["FileOpStatus"];
+        };
+        /**
+         * FileOperationResult
+         * @description What an operation did, for the toast that offers to undo it.
+         */
+        FileOperationResult: {
+            /** Files Updated */
+            files_updated: number;
+            operation: components["schemas"]["FileOperationRead"];
+            /** Path */
+            path: string;
+            /** Skipped */
+            skipped: boolean;
         };
         /** FileRead */
         FileRead: {
@@ -2883,6 +3058,14 @@ export interface components {
          * @enum {string}
          */
         LibraryStatus: "available" | "unavailable";
+        /**
+         * MakeDirectoryRequest
+         * @description Create one new directory at a library-relative path.
+         */
+        MakeDirectoryRequest: {
+            /** Path */
+            path: string;
+        };
         /** ManualBundleResultRead */
         ManualBundleResultRead: {
             /** Bundle Id */
@@ -3325,6 +3508,18 @@ export interface components {
             role: components["schemas"]["FileRole"];
             /** Sequence */
             sequence: number;
+        };
+        /**
+         * RenameRequest
+         * @description Rename one file or directory in place.
+         */
+        RenameRequest: {
+            /** New Name */
+            new_name: string;
+            /** @default fail */
+            on_conflict: components["schemas"]["ConflictPolicy"];
+            /** Path */
+            path: string;
         };
         /** SetIdsRequest */
         SetIdsRequest: {
@@ -5723,6 +5918,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileBrowserListingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operations_api_v1_libraries__library_id__file_ops_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    make_directory_api_v1_libraries__library_id__file_ops_mkdir_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MakeDirectoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_entry_api_v1_libraries__library_id__file_ops_rename_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
                 };
             };
             /** @description Validation Error */
