@@ -262,12 +262,18 @@ backing out. `AGENTS.md` gains the matching rule — releasing is owner-triggere
 like opening a PR, and a tag with a published release must never be moved.
 
 **Next**, in order:
-2. **An owner pass on a genuinely downloaded build.** The `xattr` reproduction
-   is faithful to the quarantine bit, but only a real download proves the whole
-   path.
-3. **The `pillow-heif` / libheif LGPL question** flagged in
+1. **The `pillow-heif` / libheif LGPL question** flagged in
    `THIRD-PARTY-NOTICES.md` — its wheels bundle LGPL `libheif`, whose notice
-   obligations that file does not yet discharge. Owner decision territory.
+   obligations that file does not yet discharge. Owner decision territory, and
+   now the gating one: the repository is public, so a release genuinely conveys
+   those binaries to strangers rather than hypothetically.
+2. **An owner pass on a genuinely downloaded build**, which needs a release to
+   exist. The `xattr` reproduction is faithful to the quarantine bit and the
+   published artifact was verified after a real `gh release download`, but a
+   browser round trip is the last unobserved step.
+
+After those, D7 closes and the build order moves to **phase H — plan 4 library
+write mode**, W0 → W1 → W5.
 
 Unchanged and still open from D6: the lease redirect landing on the target
 server's first library, and `localStorage` being undefined in jsdom.
