@@ -24,6 +24,7 @@ export type LibraryRegister = components['schemas']['LibraryRegister']
 export type PathSuggestion = components['schemas']['PathSuggestion']
 export type PathSuggestions = components['schemas']['PathSuggestions']
 export type PathProbe = components['schemas']['PathProbeRead']
+export type WriteModeRead = components['schemas']['WriteModeRead']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -499,6 +500,55 @@ export function fetchPathSuggestions(
 /** What a candidate path is, so the add flow can confirm the right action. */
 export const probeLibraryPath = (path: string, signal?: AbortSignal) =>
   getJson<PathProbe>(`/api/v1/libraries/probe-path?path=${encodeURIComponent(path)}`, signal)
+
+// --- Library write mode (ADR-0013) -------------------------------------------
+/**
+ * Thrown when enabling write mode needs the library's passphrase — either
+ * because it was not supplied or because it was wrong. The server answers both
+ * identically on purpose, so this carries no more than "ask again".
+ */
+export class PassphraseRequiredError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PassphraseRequiredError'
+  }
+}
+
+export const fetchWriteMode = (libraryId: string, signal?: AbortSignal) =>
+  getJson<WriteModeRead>(`/api/v1/libraries/${libraryId}/write-mode`, signal)
+
+/**
+ * Turn guarded file operations on or off for one library.
+ *
+ * Its own sender rather than `send`, because the 401 here is a *prompt*, not a
+ * failure: the caller re-asks for the passphrase and retries. `passphrase` also
+ * stands in for an unlocked session, so a locked library costs one prompt
+ * rather than two.
+ */
+export async function setLibraryWriteMode(
+  libraryId: string,
+  enabled: boolean,
+  passphrase?: string,
+): Promise<WriteModeRead> {
+  const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/write-mode`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, passphrase: passphrase ?? null }),
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      detail = apiErrorDetail(await response.json())
+    } catch {
+      /* non-JSON body */
+    }
+    if (response.status === 401) {
+      throw new PassphraseRequiredError(detail || "This library's passphrase is required.")
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as WriteModeRead
+}
 
 // --- Background jobs ----------------------------------------------------------
 export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.auth import is_protected, verify_passphrase
+from cairndex.auth import is_protected
 from cairndex.core.config import get_settings
 from cairndex.core.errors import AuthRequiredError, WriteModeDisabledError
 from cairndex.registry import services as registry_service
@@ -89,13 +89,14 @@ def set_write_mode(
     library_id: str,
     *,
     enabled: bool,
-    passphrase: str | None = None,
+    passphrase_verified: bool = False,
 ) -> WriteModeState:
-    """Turn write mode on or off for one library, re-authenticating on the way on.
+    """Turn write mode on or off for one library.
 
-    The caller has already been authorized for this library (an unlocked
-    session or a paired device token); ``passphrase`` is the extra re-auth that
-    enabling on a protected library requires.
+    The caller has already been authorized for this library. ``passphrase_verified``
+    reports whether they *also* presented the library's passphrase on this
+    request — the extra re-auth that enabling a protected library requires. The
+    secret itself stays in the API layer and never reaches here.
     """
     library = registry_service.get_library(registry, library_id)
     root = Path(library.root_path)
@@ -106,9 +107,7 @@ def set_write_mode(
                 "This server is configured read-only; write mode cannot be enabled.",
                 details={"reason": "deployment"},
             )
-        if is_protected(root) and not (
-            passphrase is not None and verify_passphrase(root, passphrase)
-        ):
+        if is_protected(root) and not passphrase_verified:
             # Generic on purpose, exactly like unlocking: never distinguish a
             # missing passphrase from a wrong one, and never log either.
             raise AuthRequiredError("Enabling write mode requires this library's passphrase.")
