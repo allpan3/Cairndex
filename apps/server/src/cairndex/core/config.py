@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     # a machine's last sync ever shipped a mid-write state. Set to 0 to disable.
     sqlite_snapshot_interval: float = 86400.0
 
+    # --- Library write mode (ADR-0013) --------------------------------------
+    # Deployment master switch for guarded file operations inside a library root.
+    # ``allowed`` (the default) means the per-library opt-in toggle is what
+    # decides; ``disabled`` forces every library read-only no matter what its
+    # registry flag says, for a hardened or shared deployment where nobody
+    # should be able to turn writing on through the UI at all.
+    write_mode: Literal["allowed", "disabled"] = "allowed"
+
     # Directory of the built frontend (apps/web/dist). When set and present the
     # backend serves the SPA so a single production container ships both halves
     # (docs/deployment.md). Unset in dev — Vite serves the frontend separately.
@@ -187,6 +195,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"invalid CORS origin: {origin!r}")
             normalized.append(f"{parsed.scheme}://{parsed.netloc.lower()}")
         return normalized
+
+    def deployment_allows_write_mode(self) -> bool:
+        """Whether per-library write mode may be enabled on this deployment."""
+        return self.write_mode == "allowed"
 
     def resolved_database_url(self) -> str:
         if self.database_url is not None:

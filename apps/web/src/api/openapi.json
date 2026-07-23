@@ -2819,13 +2819,18 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "write_mode": {
+            "title": "Write Mode",
+            "type": "string"
           }
         },
         "required": [
           "status",
           "app_name",
           "environment",
-          "api_features"
+          "api_features",
+          "write_mode"
         ],
         "title": "HealthStatus",
         "type": "object"
@@ -3172,6 +3177,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "write_mode_enabled": {
+            "title": "Write Mode Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3181,6 +3190,7 @@
           "root_path",
           "status",
           "schema_version",
+          "write_mode_enabled",
           "created_at",
           "updated_at",
           "last_opened_at"
@@ -5401,6 +5411,61 @@
           "unbundled"
         ],
         "title": "ViewCounts",
+        "type": "object"
+      },
+      "WriteModeRead": {
+        "description": "The write-mode state of one library, and why it is what it is.",
+        "properties": {
+          "allowed_by_deployment": {
+            "title": "Allowed By Deployment",
+            "type": "boolean"
+          },
+          "effective": {
+            "title": "Effective",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "requires_passphrase": {
+            "title": "Requires Passphrase",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "allowed_by_deployment",
+          "effective",
+          "requires_passphrase"
+        ],
+        "title": "WriteModeRead",
+        "type": "object"
+      },
+      "WriteModeUpdate": {
+        "description": "Turn write mode on or off for one library.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "passphrase": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passphrase"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WriteModeUpdate",
         "type": "object"
       }
     }
@@ -14710,6 +14775,164 @@
         "summary": "Update Tag",
         "tags": [
           "tags"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/write-mode": {
+      "get": {
+        "description": "Report whether guarded file operations are permitted for this library.",
+        "operationId": "get_write_mode_api_v1_libraries__library_id__write_mode_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteModeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Write Mode",
+        "tags": [
+          "write mode"
+        ]
+      },
+      "put": {
+        "description": "Turn write mode on or off.\n\nEnabling a passphrase-protected library needs that passphrase in the body \u2014\na one-time re-auth on the capability change, answered with a generic 401 so\na missing passphrase and a wrong one are indistinguishable. Enabling on a\ndeployment configured read-only is refused with 403 ``write_mode_disabled``.\nDisabling is always permitted for an authorized caller.",
+        "operationId": "set_write_mode_api_v1_libraries__library_id__write_mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteModeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteModeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Write Mode",
+        "tags": [
+          "write mode"
         ]
       }
     }

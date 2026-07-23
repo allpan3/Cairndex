@@ -18,6 +18,7 @@ from cairndex.api.v1 import (
     smart_collections,
     tag_groups,
     tags,
+    write_mode,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -28,6 +29,9 @@ router.include_router(jobs.router)
 # Per-library auth (reachable while locked — the way to unlock; not content-gated).
 router.include_router(auth.router)
 router.include_router(devices.router)
+# Per-library write-mode gate (ADR-0013). Registry state, so it sits with the
+# other non-content per-library routes rather than behind the content gate.
+router.include_router(write_mode.router)
 # Ownership lease (ADR-0018). Reachable while the mount gate is refusing —
 # it is how a client finds out who holds the library and offers a takeover.
 router.include_router(ownership.router)

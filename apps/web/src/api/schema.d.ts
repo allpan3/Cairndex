@@ -1800,6 +1800,36 @@ export interface paths {
         patch: operations["update_tag_api_v1_libraries__library_id__tags__tag_id__patch"];
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/write-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Write Mode
+         * @description Report whether guarded file operations are permitted for this library.
+         */
+        get: operations["get_write_mode_api_v1_libraries__library_id__write_mode_get"];
+        /**
+         * Set Write Mode
+         * @description Turn write mode on or off.
+         *
+         *     Enabling a passphrase-protected library needs that passphrase in the body —
+         *     a one-time re-auth on the capability change, answered with a generic 401 so
+         *     a missing passphrase and a wrong one are indistinguishable. Enabling on a
+         *     deployment configured read-only is refused with 403 ``write_mode_disabled``.
+         *     Disabling is always permitted for an authorized caller.
+         */
+        put: operations["set_write_mode_api_v1_libraries__library_id__write_mode_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2700,6 +2730,8 @@ export interface components {
             environment: string;
             /** Status */
             status: string;
+            /** Write Mode */
+            write_mode: string;
         };
         /** JobRead */
         JobRead: {
@@ -2830,6 +2862,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Write Mode Enabled */
+            write_mode_enabled: boolean;
         };
         /**
          * LibraryRegister
@@ -3562,6 +3596,30 @@ export interface components {
             uncategorized: number;
             /** Untagged */
             untagged: number;
+        };
+        /**
+         * WriteModeRead
+         * @description The write-mode state of one library, and why it is what it is.
+         */
+        WriteModeRead: {
+            /** Allowed By Deployment */
+            allowed_by_deployment: boolean;
+            /** Effective */
+            effective: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Requires Passphrase */
+            requires_passphrase: boolean;
+        };
+        /**
+         * WriteModeUpdate
+         * @description Turn write mode on or off for one library.
+         */
+        WriteModeUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /** Passphrase */
+            passphrase?: string | null;
         };
     };
     responses: never;
@@ -7789,6 +7847,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_write_mode_api_v1_libraries__library_id__write_mode_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteModeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_write_mode_api_v1_libraries__library_id__write_mode_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WriteModeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteModeRead"];
                 };
             };
             /** @description Validation Error */
