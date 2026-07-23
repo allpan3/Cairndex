@@ -1,0 +1,251 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, expect, test, vi } from 'vitest'
+
+import { PathConflictError, type FileBrowserEntry } from '../api/client'
+import { hostLabelsFor } from '../platform'
+import { FileBrowser } from './FileBrowser'
+
+// The File Browser's write affordances (ADR-0013 W1): inline rename, New
+// Folder, the collision prompt, and the Undo a completed operation offers.
+// Everything below the hook is mocked — what matters here is the interaction,
+// and the operations themselves are covered by the server's own tests.
+
+const rename = vi.fn()
+const mkdir = vi.fn()
+const undo = vi.fn()
+
+const FOLDER: FileBrowserEntry = {
+  name: 'Season 1',
+  relative_path: 'Show/Season 1',
+  kind: 'directory',
+  size_bytes: null,
+  modified_at: null,
+  created_at: null,
+  extension: null,
+  mime_type: null,
+  media_kind: null,
+  supported: false,
+  linked: false,
+  bundle_id: null,
+  file_id: null,
+  container: null,
+  video_codec: null,
+  audio_codec: null,
+  duration: null,
+  resume_position: null,
+  unbundled: false,
+}
+
+const FILE: FileBrowserEntry = {
+  ...FOLDER,
+  name: 'ep1.mkv',
+  relative_path: 'Show/ep1.mkv',
+  kind: 'file',
+  extension: 'mkv',
+  media_kind: 'video',
+  supported: true,
+  linked: true,
+}
+
+vi.mock('../api/hooks', () => ({
+  useFileBrowser: () => ({
+    data: { entries: [FOLDER, FILE], missing_files_updated: 0, path: 'Show' },
+    dataUpdatedAt: 1,
+    error: null,
+    isError: false,
+    isLoading: false,
+  }),
+  useUnbundledFiles: () => ({
+    data: { pages: [] },
+    error: null,
+    hasNextPage: false,
+    isError: false,
+    isFetchingNextPage: false,
+    isLoading: false,
+  }),
+  useFileOperations: () => ({
+    rename: { mutate: rename, isPending: false },
+    mkdir: { mutate: mkdir, isPending: false },
+    undo: { mutate: undo, isPending: false },
+  }),
+}))
+
+let flashes: { message: string; undo?: () => void }[]
+
+function renderBrowser(writeMode = true) {
+  flashes = []
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <FileBrowser
+        libraryName="Media"
+        scope="browse"
+        path="Show"
+        selectedPath={null}
+        onNavigate={() => undefined}
+        onSelectEntry={() => undefined}
+        onAddToBundle={() => undefined}
+        onCreateBundle={() => undefined}
+        hostLabels={hostLabelsFor('macos')}
+        writeMode={writeMode}
+        onFlash={(message, undoAction) => flashes.push({ message, undo: undoAction })}
+      />
+    </QueryClientProvider>,
+  )
+}
+
+const row = (name: string) => screen.getByText(name).closest('[data-relpath]') as HTMLElement
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+test('a read-only library looks exactly as it did before write mode existed', () => {
+  renderBrowser(false)
+
+  expect(screen.queryByRole('button', { name: 'New Folder' })).toBeNull()
+
+  fireEvent.contextMenu(row('Season 1'))
+  // A directory's context menu only exists because Rename does; without write
+  // mode there is nothing to put in it.
+  expect(screen.queryByText('Rename…')).toBeNull()
+})
+
+test('renaming a file sends the new name and offers to undo it', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+
+  const field = screen.getByLabelText('Rename ep1.mkv')
+  fireEvent.change(field, { target: { value: 'Episode 1.mkv' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+
+  expect(rename).toHaveBeenCalledWith(
+    { path: 'Show/ep1.mkv', newName: 'Episode 1.mkv', onConflict: undefined },
+    expect.anything(),
+  )
+
+  // Report what the server settled on, and hand back its inverse.
+  const handlers = rename.mock.calls[0]?.[1] as { onSuccess: (result: unknown) => void }
+  handlers.onSuccess({
+    path: 'Show/Episode 1.mkv',
+    operation: { id: 'op-1' },
+    files_updated: 1,
+    skipped: false,
+  })
+
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Renamed to “Episode 1.mkv”.')
+  flashes[0]?.undo?.()
+  expect(undo).toHaveBeenCalledWith('op-1', expect.anything())
+})
+
+test('Escape abandons a rename without sending anything', () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+  const field = screen.getByLabelText('Rename ep1.mkv')
+  fireEvent.change(field, { target: { value: 'oops.mkv' } })
+  fireEvent.keyDown(field, { key: 'Escape' })
+
+  expect(rename).not.toHaveBeenCalled()
+  expect(screen.queryByLabelText('Rename ep1.mkv')).toBeNull()
+})
+
+test('an unchanged name is not a rename', () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+  fireEvent.keyDown(screen.getByLabelText('Rename ep1.mkv'), { key: 'Enter' })
+
+  expect(rename).not.toHaveBeenCalled()
+})
+
+test('directories can be renamed too', () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('Rename…'))
+  const field = screen.getByLabelText('Rename Season 1')
+  fireEvent.change(field, { target: { value: 'Series 1' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+
+  expect(rename).toHaveBeenCalledWith(
+    { path: 'Show/Season 1', newName: 'Series 1', onConflict: undefined },
+    expect.anything(),
+  )
+})
+
+test('a collision asks instead of failing, and keeping both re-issues the rename', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+  const field = screen.getByLabelText('Rename ep1.mkv')
+  fireEvent.change(field, { target: { value: 'ep2.mkv' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+
+  const handlers = rename.mock.calls[0]?.[1] as { onError: (failure: unknown) => void }
+  handlers.onError(new PathConflictError('exists', 'ep2.mkv', 'Show/ep2.mkv'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Name already in use' })
+  expect(dialog).toHaveTextContent('“ep2.mkv” already exists here')
+  // The point of the default policy: the file has not moved while we ask.
+  expect(rename).toHaveBeenCalledTimes(1)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Keep both' }))
+
+  expect(rename).toHaveBeenNthCalledWith(
+    2,
+    { path: 'Show/ep1.mkv', newName: 'ep2.mkv', onConflict: 'suffix' },
+    expect.anything(),
+  )
+
+  const second = rename.mock.calls[1]?.[1] as { onSuccess: (result: unknown) => void }
+  second.onSuccess({
+    path: 'Show/ep2 (2).mkv',
+    operation: { id: 'op-2' },
+    files_updated: 1,
+    skipped: false,
+  })
+
+  // The toast names what it *landed on*, not what was asked for.
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Renamed to “ep2 (2).mkv” to keep both.')
+})
+
+test('New Folder creates it inside the directory being browsed', async () => {
+  renderBrowser()
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  const field = screen.getByLabelText('New folder name')
+  fireEvent.change(field, { target: { value: 'Extras' } })
+  fireEvent.keyDown(field, { key: 'Enter' })
+
+  expect(mkdir).toHaveBeenCalledWith('Show/Extras', expect.anything())
+
+  const handlers = mkdir.mock.calls[0]?.[1] as { onSuccess: (result: unknown) => void }
+  handlers.onSuccess({ path: 'Show/Extras', operation: { id: 'op-3' }, files_updated: 0 })
+
+  await waitFor(() => expect(flashes[0]?.message).toBe('Created “Extras”.'))
+  flashes[0]?.undo?.()
+  expect(undo).toHaveBeenCalledWith('op-3', expect.anything())
+})
+
+test('a failed operation reports the reason and offers no undo', async () => {
+  renderBrowser()
+
+  fireEvent.click(screen.getByRole('button', { name: 'New Folder' }))
+  fireEvent.keyDown(screen.getByLabelText('New folder name'), { key: 'Enter' })
+
+  const handlers = mkdir.mock.calls[0]?.[1] as { onError: (failure: unknown) => void }
+  handlers.onError(new Error('Write mode is off for this library.'))
+
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Write mode is off for this library.')
+  expect(flashes[0]?.undo).toBeUndefined()
+})

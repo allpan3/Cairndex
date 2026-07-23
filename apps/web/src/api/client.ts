@@ -25,6 +25,9 @@ export type PathSuggestion = components['schemas']['PathSuggestion']
 export type PathSuggestions = components['schemas']['PathSuggestions']
 export type PathProbe = components['schemas']['PathProbeRead']
 export type WriteModeRead = components['schemas']['WriteModeRead']
+export type FileOperationRead = components['schemas']['FileOperationRead']
+export type FileOperationResult = components['schemas']['FileOperationResult']
+export type ConflictPolicy = components['schemas']['ConflictPolicy']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -500,6 +503,67 @@ export function fetchPathSuggestions(
 /** What a candidate path is, so the add flow can confirm the right action. */
 export const probeLibraryPath = (path: string, signal?: AbortSignal) =>
   getJson<PathProbe>(`/api/v1/libraries/probe-path?path=${encodeURIComponent(path)}`, signal)
+
+// --- Guarded file operations (ADR-0013 W1) -----------------------------------
+/**
+ * Thrown when a write operation's destination is already taken.
+ *
+ * Its own class because a collision is a *question*, not a failure: the caller
+ * shows Skip / Keep both and re-issues with an explicit policy. `name` is what
+ * the dialog needs to name the thing in the way.
+ */
+export class PathConflictError extends Error {
+  // Not `name`: that is `Error`'s own field, and this is the *entry's* name.
+  entryName: string
+  path: string
+
+  constructor(message: string, entryName: string, path: string) {
+    super(message)
+    this.name = 'PathConflictError'
+    this.entryName = entryName
+    this.path = path
+  }
+}
+
+async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
+  const response = await hostFetch(resolveApiUrl(url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!response.ok) {
+    let payload: unknown = null
+    try {
+      payload = await response.json()
+    } catch {
+      /* non-JSON body */
+    }
+    const detail = apiErrorDetail(payload)
+    const details = (payload as { details?: { code?: string; name?: string; path?: string } })
+      ?.details
+    if (response.status === 409 && details?.code === 'path_conflict') {
+      throw new PathConflictError(detail, details.name ?? '', details.path ?? '')
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as T
+}
+
+/** Rename one file or directory in place, carrying its metadata with it. */
+export const renameEntry = (path: string, newName: string, onConflict?: ConflictPolicy) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/rename`, {
+    path,
+    new_name: newName,
+    on_conflict: onConflict ?? 'fail',
+  })
+
+/** Create one new directory; its parent must already exist. */
+export const makeDirectory = (path: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/mkdir`, { path })
+
+/** Apply an operation's inverse — the Undo behind a completed toast. */
+export const undoFileOperation = (operationId: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/${operationId}/undo`, {})
 
 // --- Library write mode (ADR-0013) -------------------------------------------
 /**
