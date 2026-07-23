@@ -2,28 +2,97 @@
   "_comment": [
     "Pinned static ffmpeg/ffprobe builds for the desktop sidecar (ADR-0019 §3).",
     "",
-    "Empty on purpose: choosing where these binaries come from is a supply-chain",
-    "and licensing decision for the project owner, not something to inherit from",
-    "whatever a build script happened to hardcode. Any practical static ffmpeg",
-    "includes libx264 and is therefore GPL, so publishing it carries source-offer",
-    "obligations (ADR-0019 §3).",
+    "Checksums are per-platform because a release ships both Apple Silicon and",
+    "Intel artifacts, and the two architectures are different binaries. Each tool",
+    "pins two digests: `archive_sha256` is checked before the download is",
+    "unpacked, `sha256` is checked on the extracted binary and re-checked by",
+    "build_sidecar.py before it is allowed into a bundle.",
     "",
-    "A package-manager ffmpeg will NOT work: Homebrew's is a thin binary over a",
-    "large dylib closure under its own prefix, so a copy runs on the build",
-    "machine and nowhere else. The build must be genuinely static.",
+    "Omit `archive_member` when a URL serves the binary directly rather than a",
+    "zip containing it.",
     "",
-    "To populate: pick a source, download it, record the URL and sha256 here,",
-    "then run `python packaging/fetch_ffmpeg.py`. build_sidecar.py refuses to",
-    "bundle a binary whose checksum does not match this file.",
+    "What was verified for the pinned macOS builds (2026-07-22), rather than",
+    "taken from the label:",
+    "  - genuinely static: `otool -L` lists only /usr/lib and /System/Library",
+    "    entries, so there is no third-party dylib closure to leave behind. A",
+    "    package-manager ffmpeg fails exactly here — Homebrew's is a thin binary",
+    "    over its own prefix, so a copy runs on the build machine and nowhere",
+    "    else.",
+    "  - redistributable: `--enable-gpl --enable-version3` with NO",
+    "    `--enable-nonfree`. This is the check that disqualified the popular",
+    "    eugeneware/ffmpeg-static builds, which are static and well-maintained but",
+    "    carry `--enable-nonfree` and therefore may not be distributed at all.",
+    "  - `--enable-libx264`, which media/hls.py needs for the transcode ladder;",
+    "    only the remux path is `-c:v copy`, so an LGPL build would silently lose",
+    "    transcoding.",
+    "  - signed and notarized (Developer ID: Martin Riedl, KU3N25YGLU), which is",
+    "    stronger than the ad-hoc signature ADR-0019 §4 treats as the floor.",
+    "    Staging copies bytes and sets the execute bit, neither of which",
+    "    invalidates a Mach-O signature — but anything that later rewrites these",
+    "    binaries must re-sign them.",
     "",
-    "Until this is populated, build with --skip-ffmpeg; the sidecar then falls",
-    "back to a system ffmpeg via media/tool_paths.py, which works on a developer",
-    "machine but not on a user's."
+    "linux-x86_64 is deliberately unpinned. The same builder's Linux artifacts add",
+    "`--enable-decklink`, which forces `--enable-nonfree` and makes them",
+    "non-redistributable; and Linux is not a release target (plan 3 D7 ships",
+    "Apple Silicon + Intel). The container deployment is unaffected — it uses the",
+    "image's own ffmpeg (ADR-0005). Build with --skip-ffmpeg on Linux; the",
+    "sidecar then falls back to a system ffmpeg via media/tool_paths.py.",
+    "",
+    "To refresh a pin: pick the build, verify the four properties above, record",
+    "the URLs and both digests here, then run `python packaging/fetch_ffmpeg.py`."
   ],
-  "platforms": {
-    "macos-arm64": { "ffmpeg": null, "ffprobe": null },
-    "macos-x86_64": { "ffmpeg": null, "ffprobe": null },
-    "linux-x86_64": { "ffmpeg": null, "ffprobe": null }
+  "source": {
+    "name": "Martin Riedl FFmpeg Build Server",
+    "homepage": "https://ffmpeg.martin-riedl.de/",
+    "ffmpeg_version": "8.1.2",
+    "license": "GPL-3.0-or-later",
+    "_components_comment": [
+      "Committed rather than linked. The GPL source offer in THIRD-PARTY-NOTICES.md",
+      "runs three years, and it cannot depend on a third-party server still serving",
+      "these files then. Each records its build's exact configure line and the",
+      "version of every statically linked component.",
+      "",
+      "One file per architecture because the configure lines differ (`--prefix`);",
+      "the component versions themselves are identical between the two."
+    ],
+    "components": {
+      "macos-arm64": "ffmpeg-build-info/macos-arm64-8.1.2-versions.txt",
+      "macos-x86_64": "ffmpeg-build-info/macos-x86_64-8.1.2-versions.txt"
+    },
+    "components_upstream": {
+      "macos-arm64": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/versions.txt",
+      "macos-x86_64": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/versions.txt"
+    }
   },
-  "sha256": {}
+  "platforms": {
+    "macos-arm64": {
+      "ffmpeg": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/ffmpeg.zip",
+        "archive_member": "ffmpeg",
+        "archive_sha256": "ef1aa60006c7b77ce170c1608c08d8e4ba1c30c5746f2ac986ded932d0ac2c3c",
+        "sha256": "eaf91238e104dd0e262bc6510e25061855cc99a6955a721b0ac99660d58c473d"
+      },
+      "ffprobe": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/ffprobe.zip",
+        "archive_member": "ffprobe",
+        "archive_sha256": "c39787f4af7a3932502d2d48db6f6feaaa836b48a73ef78c32cc3285df61dfaf",
+        "sha256": "ed9dc5871914b466b96b402c9ec0ba68ce4f836e72faa464b1b4e279835bd4a6"
+      }
+    },
+    "macos-x86_64": {
+      "ffmpeg": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/ffmpeg.zip",
+        "archive_member": "ffmpeg",
+        "archive_sha256": "a52ef43883f44c219766d4b3bdde4e635b35465d0b704c01c3a0566b59775df9",
+        "sha256": "1ca59dda73668c59898a0b305afd8a88817a989187f222ec62d64e775d614d23"
+      },
+      "ffprobe": {
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/ffprobe.zip",
+        "archive_member": "ffprobe",
+        "archive_sha256": "5408ca588c8c72b0dde3afe676d0a7acf25ef97e55ae6eba5c7bede1cda42695",
+        "sha256": "bdb6aff0f1f414382effd97040f7862dc85e67996ac296cb4288beed0e06498f"
+      }
+    },
+    "linux-x86_64": { "ffmpeg": null, "ffprobe": null }
+  }
 }

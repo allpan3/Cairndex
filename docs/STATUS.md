@@ -1,5 +1,171 @@
 # Project status
 
+## In progress: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
+
+Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Pushed and
+merged through a PR at the owner's request (2026-07-23), after two review
+rounds on the branch — the last engineering commit is `aeafed6` (workflow
+hardening), and this handoff commit is the branch tip. The engineering half of
+D7 is complete; everything that remains is owner-gated and listed under
+**Next** below. The one unresolved decision is item 3 there (`pillow-heif` /
+libheif LGPL notices).
+
+**The blocker is resolved: ffmpeg is pinned.** Both macOS architectures now pin
+FFmpeg 8.1.2 from the Martin Riedl build server. The choice was made by
+verification rather than by reputation, and the check that decided it was
+licensing, not staticness: the obvious candidate — `eugeneware/ffmpeg-static`,
+static, current, widely used — carries `--enable-nonfree` and therefore **may
+not be redistributed at all**, which is fatal for a milestone whose entire point
+is publishing binaries. The same builder's *Linux* artifacts fail the same way
+(`--enable-decklink` forces nonfree), so `linux-x86_64` stays deliberately
+unpinned and documented; it is not a release target, and the container path uses
+the image's own ffmpeg. What was verified on the pinned builds, none of it taken
+from a label: a clean `otool -L` closure, `--enable-gpl --enable-version3` with
+no nonfree, `--enable-libx264` (the HLS ladder needs it), and — a bonus — a
+notarized Developer ID signature.
+
+**A latent bug fell out of the manifest work.** Checksums were a flat
+`{tool: sha256}` map, which cannot express two architectures. The moment a
+release shipped both, one arch's digest would have "verified" the other's
+binary. Pins are per-platform now, and `build_sidecar.py` refuses an unpinned
+binary rather than bundling it with a warning — that code runs at the point
+where a binary becomes part of something published.
+
+**The quarantined-build check found a real defect, which is why that item
+existed.** `Cairndex.app` shipped with no `Contents/_CodeSignature/CodeResources`:
+Tauri only runs `codesign` when a `signingIdentity` is configured and none was,
+so the app had a linker-ad-hoc-signed executable and no resource seal. macOS
+rejects that as *malformed* — "code has no resources but signature indicates
+they must be present" — which is worse than being unsigned, and is precisely the
+failure ADR-0019 §4 warned about while asserting the invariant already held. It
+was invisible because Gatekeeper only assesses **quarantined** apps and every
+build ever observed was local. Setting `com.apple.quarantine` by hand on a local
+build reproduced the download path in seconds. Fixed with
+`signingIdentity: "-"`; Tauri signs without `--deep`, so the nested notarized
+ffmpeg keeps its Developer ID signature, and the quarantined verdict is now the
+ordinary `rejected` that Open Anyway clears.
+
+**Also landed:** `THIRD-PARTY-NOTICES.md` with the GPL written source offer,
+configure options and exact binary digests; a README install section for the
+Open Anyway first launch; and a correction to the README's license line, which
+said "All rights reserved" while `LICENSE` has been MIT since 2026-07-21.
+
+**Four review findings fixed on the same branch.**
+
+1. *The README promised updates would skip the Gatekeeper walk.* They will not.
+   There is no updater, so an update is a fresh quarantined download, and an
+   ad-hoc signature has no stable identity for macOS to carry the approval
+   across — the CDHash changes every build. The section now says the step
+   repeats per version, and ADR-0019 §4 carries the same amendment, since
+   "cost paid on every release" is a materially different trade from "cost paid
+   once" for the Developer ID decision.
+2. *The smoke test could pass while proving the opposite.* It set
+   `CAIRNDEX_FFMPEG_PATH` and trusted the sidecar to honour it, but
+   `media/tool_paths.py` falls back to PATH discovery when a configured binary
+   is not executable — correct for the app, wrong for the one run that exists to
+   prove the bundled binary works. On this machine (Homebrew ffmpeg on PATH) a
+   lost execute bit would have passed. It now refuses a non-executable bundled
+   binary, and a bundle staging one media tool without the other.
+3. *The GPL offer leaned on a third-party server and covered one architecture.*
+   Both `versions.txt` files are committed under `packaging/ffmpeg-build-info/`
+   and referenced from the manifest; the notices file no longer presents the
+   arm64 configure line as if it were both.
+4. *`packaging/` was outside every typing gate*, because the gate named `src` —
+   leaving the checksum gate that decides what may be published unchecked. It is
+   now in scope (`mypy src packaging`, also set as `files` in pyproject), the
+   five pre-existing `smoke_test.py` errors are fixed too, and
+   `ffmpeg_manifest.py` validates field types as it reads them rather than
+   trusting the JSON's shape.
+
+**Gates.** Backend ruff / ruff format / **strict mypy over `src` + `packaging`**
+(146 files) / **625 pytest** (+30, all in the new `test_ffmpeg_manifest.py`,
+covering the ways the checksum gate can fail open — malformed pins, vendor
+scoping, and Mach-O architecture reading).
+Desktop `cargo fmt --check`, Clippy `-D warnings`, **86 tests** against the real
+packaged sidecar, and `tauri build`. Web build run to produce the Tauri
+frontend; no web source changed, so the web unit/e2e suites were not re-run.
+
+**Verified by hand, end to end:** fetched the pinned binaries, confirmed the
+Developer ID signatures survive download → extract → stage → bundle, built the
+213 MB app, installed it, and launched it with the sidecar spawning from inside
+the bundle. The packaged smoke test passes against the *bundled* ffmpeg — and
+that was proven rather than assumed by sabotaging the bundled binary and
+confirming the smoke test fails (it did, though only with a raw traceback; it
+now reports the failure in its own words).
+
+**The release pipeline exists, and both architectures are built and verified.**
+`.github/workflows/release.yml` triggers on a `v*` tag or manual dispatch,
+builds each architecture on its own native runner, smoke-tests each packaged
+sidecar against its bundled ffmpeg, and drafts a release carrying both DMGs, a
+`.sha256` beside each, and `THIRD-PARTY-NOTICES.md`. Publishing stays a human
+decision.
+
+*Native jobs rather than cross-compilation, and this is not a preference.* The
+Rust half cross-compiles fine with `--target`; the sidecar does not, because
+PyInstaller freezes the interpreter that runs it and has no cross-compile mode.
+So the matrix pins `uv sync --python cpython-3.12-macos-<arch>-none` — that line
+is what decides the sidecar's architecture. `--platform` selects which checksum
+pin to verify against and *cannot* change what was frozen, which is a trap worth
+naming: staging a correctly-pinned Intel ffmpeg beside an arm64 sidecar passes
+every digest check and produces an app that dies on launch. `build_sidecar.py`
+now reads the frozen executable's Mach-O header and refuses the mismatch
+(verified: exit 1 with a message naming the fix).
+
+Two things the two-architecture work surfaced. Fetched binaries all landed in
+one `vendor/ffmpeg/` directory with identical filenames, so building both arches
+meant each fetch silently clobbered the other — the vendor path is
+platform-scoped now. And the Intel runner label is `macos-15-intel`; the old
+free `macos-13` image is retired, so if Intel runners go away the fallback is
+dropping the artifact, not cross-compiling.
+
+**CI cannot be run from here, so the pipeline's logic was verified on this
+machine instead**, which is stronger than it sounds: the whole Intel path was
+executed end to end. An x86_64 CPython and the `x86_64-apple-darwin` Rust target
+produced an Intel sidecar (arch-checked), its smoke test passed under Rosetta
+against the Intel ffmpeg, and `tauri build --target x86_64-apple-darwin` yielded
+a 294 MB app whose every Mach-O — shell, sidecar, ffmpeg, ffprobe — is x86_64,
+with a valid bundle signature, the expected `rejected` quarantine verdict, and a
+clean launch with the sidecar spawning. The arm64 DMG was built (97 MB from a
+213 MB app), mounted, and the app inside it verified. The workflow's two
+non-obvious shell steps — the `file`/`sed` architecture assertion and the
+staging/checksum step — were run verbatim against those real artifacts.
+
+**A second review round hardened the workflow** (2026-07-23). The release jobs
+held a write-capable `GITHUB_TOKEN` they never use — `permissions: contents:
+write` was declared at workflow level, so it reached the build jobs and every
+third-party action they run. The workflow is now `contents: read` with the
+write grant scoped to the `publish` job alone, and the non-GitHub-owned actions
+(`softprops/action-gh-release`, `Swatinem/rust-cache`, `astral-sh/setup-uv`)
+are pinned by commit SHA rather than by movable tag — this workflow produces
+the binaries strangers download, so a repointed tag must not be able to change
+what runs in it. Notably, `Swatinem/rust-cache`'s moving `v2` already pointed
+past its latest release (an unreleased commit); the pin is the released v2.9.1.
+`dtolnay/rust-toolchain` stays on `@stable` because that branch name is its
+toolchain selector, not a code version. Smaller items from the same round: the
+arch-verify step's comment claimed "every Mach-O" while checking the four
+executables (the ~50 Python `.so` files follow the pinned interpreter, which
+the sidecar check covers — the comment now says so), a dead step output was
+removed, `macho_arch` reads 8 bytes instead of the whole 10 MB executable, and
+the re-pin checklist in `development.md` gained its missing fifth property:
+GPL-compatible components, i.e. OpenSSL must be ≥ 3.0 (Apache-2.0) for
+`--enable-openssl` to be redistributable alongside GPL — the pinned builds
+link 3.6.1.
+
+**Next**, in order:
+1. **A real run of `release.yml`.** It triggers on tags, so nothing has executed
+   it; the runner labels, the cache paths, and `softprops/action-gh-release` are
+   unproven in CI even though every build step they wrap has been run by hand.
+   Needs a tag, which is the owner's call.
+2. **An owner pass on a genuinely downloaded build.** The `xattr` reproduction
+   is faithful to the quarantine bit, but only a real download proves the whole
+   path.
+3. **The `pillow-heif` / libheif LGPL question** flagged in
+   `THIRD-PARTY-NOTICES.md` — its wheels bundle LGPL `libheif`, whose notice
+   obligations that file does not yet discharge. Owner decision territory.
+
+Unchanged and still open from D6: the lease redirect landing on the target
+server's first library, and `localStorage` being undefined in jsdom.
+
 ## Implemented: unified library add/remove flow (2026-07-22)
 
 Branch `feat/unified-library-manager`, based on `main` at `2efddeb`. PR opened at
@@ -669,6 +835,8 @@ licensing decision for the owner (ADR-0019 §3), and any practical static build 
 GPL. Until it is populated, builds use `--skip-ffmpeg` and the sidecar falls back
 to a system ffmpeg via `media/tool_paths.py`. That works on a developer machine
 and **not** on a user's, so this blocks a real release, not D6.3.
+*(Resolved 2026-07-22 in D7 — see the entry at the top of this file. Both macOS
+architectures are pinned; `--skip-ffmpeg` is now the Linux-only path.)*
 
 ### Landed: sidecar lifecycle in the shell (D6.3)
 

@@ -8,7 +8,96 @@ grouped under `Unreleased` until the first tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
+  manual dispatch — builds the macOS app for Apple Silicon and Intel, smoke-tests
+  each packaged sidecar against its bundled ffmpeg, and attaches both DMGs, a
+  `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` to a **draft** release.
+  Publishing stays a human decision. Each job refuses to continue on an invalid
+  bundle signature or a binary of the wrong architecture.
+
+  Two native jobs rather than one cross-compiling job, because PyInstaller
+  freezes the interpreter that runs it and has no cross-compile mode — an Intel
+  artifact needs an Intel builder.
+
+  The workflow runs least-privilege: the build jobs hold a read-only token
+  (only the publish job can write, to create the draft), and non-GitHub-owned
+  actions are pinned by commit SHA, since this workflow produces the binaries
+  strangers download and a repointed tag must not change what runs in it.
+
+- **The desktop app now bundles ffmpeg**, so opening a library folder on your
+  own Mac needs no Homebrew, no separate ffmpeg install, and no PATH setup —
+  previously a packaged app fell back to a system ffmpeg that a user might not
+  have. Both Apple Silicon and Intel are pinned (FFmpeg 8.1.2, static, GPLv3,
+  notarized upstream), checksum-verified before they can enter a bundle.
+
+- **`THIRD-PARTY-NOTICES.md`**, covering the bundled FFmpeg's GPL source offer,
+  configure options, and exact binary digests. Cairndex's own code stays MIT;
+  the obligation attaches to the redistributed binary
+  ([ADR-0019](docs/adr/0019-open-source-distribution-model.md) §3). Also flags
+  one unresolved item for the owner: `pillow-heif`'s wheels bundle LGPL
+  `libheif`, whose notice obligations are not yet discharged.
+
+- **A README install section** for the macOS app, covering the
+  "Apple could not verify…" first launch and the System Settings → Privacy &
+  Security → **Open Anyway** step that clears it — including that the step
+  **repeats on every update**, since without an updater each update is a fresh
+  quarantined download and an ad-hoc signature gives macOS no stable identity to
+  carry the approval across.
+
+### Internal
+
+- **Fetched ffmpeg binaries are stored per platform** under
+  `packaging/vendor/ffmpeg/<platform>/`. They previously shared one directory,
+  so building both architectures meant each fetch silently overwrote the other's
+  binaries — same filenames, no way to tell them apart.
+
+- **`build_sidecar.py` verifies the bundle's architecture.** The checksum gate
+  proves the *ffmpeg* matches the pin for `--platform`; it cannot see an arm64
+  sidecar staged with a correctly-pinned Intel ffmpeg, which passes every digest
+  check and produces an app that dies on launch. That is the mistake a
+  two-architecture matrix makes, so the build now reads the frozen executable's
+  Mach-O header and refuses a mismatch.
+
+- **The packaged smoke test can no longer pass by accident.** It set
+  `CAIRNDEX_FFMPEG_PATH` to the bundled binary and trusted the sidecar to use
+  it, but `media/tool_paths.py` falls back to PATH discovery when a configured
+  binary is not executable — so a lost execute bit would have let the run pass
+  against a developer's Homebrew ffmpeg while claiming to prove the bundled one.
+  It now fails on a bundled binary that is present but not executable, and on a
+  bundle that stages one media tool without the other.
+
+- **`packaging/` is inside the type-checking gate** (`mypy src packaging`). It
+  was outside only because the gate named `src`, which left the checksum gate
+  that decides what may be published unchecked. `ffmpeg_manifest.py` now
+  validates field types as it reads them, so a digest that arrives as a number
+  is a named error rather than a comparison that can never match.
+
+- **The GPL corresponding-source record is committed, not linked.** Each
+  architecture's configure line and full component version list now live in
+  `packaging/ffmpeg-build-info/`; the three-year offer no longer depends on a
+  third-party build server still serving those files.
+
+### Fixed
+
+- **The macOS app bundle was invalidly signed, not merely unsigned.** Tauri only
+  runs `codesign` when a signing identity is configured, and none was, so
+  `Cairndex.app` shipped with no `_CodeSignature/CodeResources` — an executable
+  carrying a bundle-style signature with nothing sealing its resources. macOS
+  rejects that as malformed (*"code has no resources but signature indicates
+  they must be present"*), which fails harder than an absent signature and
+  would have met the first person to download a release. It stayed invisible
+  because Gatekeeper only assesses **quarantined** apps, and every build
+  observed so far was local. `signingIdentity: "-"` now ad-hoc signs the
+  bundle; the quarantined verdict is the ordinary `rejected` that **Open
+  Anyway** clears. The nested notarized ffmpeg keeps its own Developer ID
+  signature ([ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
+
 ### Changed
+
+- **The README's license line now matches the repository.** It said "All rights
+  reserved" while `LICENSE` has been MIT since the owner's 2026-07-21 decision.
 
 - **Adding a library is one flow instead of two.** The Libraries dialog no
   longer asks whether you are creating or registering: you give a path, and the
@@ -339,6 +428,8 @@ grouped under `Unreleased` until the first tagged release.
   stdout, refuses to start without its owner token, and releases its ownership
   leases on SIGTERM. The static-ffmpeg source is not yet pinned — choosing it is
   an owner decision (ADR-0019 §3) — so builds currently use `--skip-ffmpeg`.
+  *(Superseded: both macOS architectures are pinned as of the entry at the top
+  of this file. `--skip-ffmpeg` is now the Linux-only path.)*
 
 - **Server groundwork for the desktop local-server sidecar (Plan 3 D6).**
   `CAIRNDEX_LOCAL_TOKEN` puts the server in *sidecar mode*, requiring a loopback

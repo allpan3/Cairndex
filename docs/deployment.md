@@ -311,11 +311,8 @@ are out of scope.
 
 ### What Cairndex ships today
 
-Cairndex is single-owner software built from source, so the release build is
-**ad-hoc signed** — not Developer ID signed, not notarized. On Apple Silicon the
-linker ad-hoc signs every binary automatically, which is why packaged builds have
-run locally since D1 with no certificate and no Apple Developer Program
-membership. That is the supported model:
+The release build is **ad-hoc signed** — not Developer ID signed, not
+notarized. That is the supported model:
 
 ```bash
 cd apps/desktop
@@ -332,6 +329,55 @@ Build a single target with `npm run tauri build -- --bundles app` (or `dmg`).
 **CI deliberately passes `--bundles app`**: Tauri's DMG bundler drives Finder over
 AppleScript and is a known flake source on headless runners, and CI only needs to
 prove the app compiles and bundles. The DMG is a release/local artifact.
+
+#### `signingIdentity: "-"` is load-bearing — do not remove it
+
+Ad-hoc signing is **not** something the toolchain supplies for free, and
+believing otherwise shipped a broken bundle for several milestones. Two
+different things are involved:
+
+- the **arm64 linker** ad-hoc signs each Mach-O at link time, which is why
+  individual binaries report `flags=0x20002(adhoc,linker-signed)`;
+- the **bundle** must be sealed separately, producing
+  `Contents/_CodeSignature/CodeResources`. Tauri does this only when
+  `bundle.macOS.signingIdentity` is set, and `"-"` is the ad-hoc identity.
+
+Without it, `Cairndex.app` has a signed executable and no resource seal, which
+is *invalid* rather than unsigned:
+
+```text
+Cairndex.app: code has no resources but signature indicates they must be present
+```
+
+An invalid signature fails harder than an absent one, and it is invisible
+locally because Gatekeeper only assesses **quarantined** apps — every
+locally-built copy skips the check. Verify with:
+
+```bash
+codesign --verify --strict src-tauri/target/release/bundle/macos/Cairndex.app
+# → valid on disk / satisfies its Designated Requirement
+```
+
+Tauri signs without `--deep`, so the nested notarized ffmpeg/ffprobe keep their
+own Developer ID signatures rather than being flattened to ad-hoc. See
+[ADR-0019](adr/0019-open-source-distribution-model.md) §4.
+
+#### Checking what a downloader will actually see
+
+A locally-built app carries `com.apple.provenance` but not
+`com.apple.quarantine`, so it opens with no dialog and proves nothing about the
+download path. Reproduce that path without publishing anything:
+
+```bash
+cp -R src-tauri/target/release/bundle/macos/Cairndex.app /tmp/
+xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;$(uuidgen)" \
+  /tmp/Cairndex.app
+spctl -a -vv -t exec /tmp/Cairndex.app
+```
+
+`rejected` is the correct, expected result for an unnotarized app — that is the
+state the README's **Open Anyway** steps clear. Any message about *resources*
+or a malformed signature is a packaging bug, not the Gatekeeper prompt.
 
 ### Installing and updating your local build
 
@@ -411,6 +457,10 @@ spctl --assess --type open --context context:primary-signature -vv \
 # → rejected
 # → source=no usable signature
 ```
+
+`rejected` here means "validly signed, but not by an identity Apple vouches
+for". It is a different and much better failure than the malformed-bundle case
+above — see `signingIdentity: "-"` is load-bearing.
 
 That `rejected` is expected and harmless on the machine that built it; it is what
 another Mac's Gatekeeper reports before the owner approves it once.
@@ -577,6 +627,64 @@ Notes for when this is picked up:
   [plan 3 §3](plans/03-macos-desktop-app.md)): the repository is private with no
   releases, and Tauri's updater fetches release assets over plain HTTPS, so it
   would require embedding a token in the shipped app.
+
+### Cutting a release (plan 3 D7)
+
+`.github/workflows/release.yml` runs on a `v*` tag, or on manual dispatch with a
+tag as input. It builds both architectures, then attaches the DMGs to a **draft**
+release — publishing stays a human decision.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+# then review the draft release and publish it
+```
+
+Each build job fetches the pinned ffmpeg for its architecture, builds and
+smoke-tests the sidecar, builds the app and DMG, and refuses to continue on a
+bad bundle signature or a binary of the wrong architecture. The draft carries
+both `.dmg` files, a `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` —
+which has to travel with the artifacts, since they bundle a GPL ffmpeg.
+
+**Two native jobs, not one cross-compiling job.** The Rust half cross-compiles
+fine with `--target`, but the sidecar is a PyInstaller bundle, and PyInstaller
+freezes *the interpreter that runs it* — it has no cross-compile mode. So an
+Intel artifact needs an Intel builder, which is why the matrix pins
+`uv sync --python cpython-3.12-macos-<arch>-none` rather than leaving the
+interpreter to the runner's default. `--platform` on `build_sidecar.py` selects
+which checksum pin to verify against; it cannot change what got frozen, and the
+script refuses a bundle whose architecture disagrees with it.
+
+The Intel runner label is `macos-15-intel`; the old free `macos-13` Intel image
+is retired. If Intel runners become unavailable, the fallback is to drop the
+Intel artifact, not to cross-compile.
+
+#### Building the other architecture locally
+
+Useful for reproducing a release-job failure without pushing a tag. On an Apple
+Silicon Mac with Rosetta, an Intel build is:
+
+```bash
+rustup target add x86_64-apple-darwin
+uv python install cpython-3.12-macos-x86_64-none
+
+cd apps/server
+uv run python packaging/fetch_ffmpeg.py --platform macos-x86_64
+UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --frozen \
+  --python cpython-3.12-macos-x86_64-none
+.venv-x86_64/bin/python packaging/build_sidecar.py --platform macos-x86_64
+
+cd ../desktop
+npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
+```
+
+The sidecar build must run from the x86_64 environment's own interpreter —
+`uv run` would pick the default arm64 one and the architecture check would stop
+the build. Fetched binaries are stored per platform under
+`packaging/vendor/ffmpeg/<platform>/`, so both architectures coexist instead of
+overwriting each other. Note that `packaging/dist/cairndex-sidecar` is a single
+path that `tauri.conf.json` stages as a resource, so building both architectures
+on one machine means rebuilding the sidecar between them.
 
 ### Linux and Windows
 

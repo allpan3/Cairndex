@@ -99,6 +99,18 @@ Corrected here rather than left standing.
   — and it is a documentation problem, not an engineering one. Revisit when the
   friction is actually costing users, not on principle.
 
+  **Amendment (2026-07-22, D7): the cost recurs per update, not per install.**
+  "First-launch dialog" understated it. There is no updater, so every update is
+  a fresh download — quarantined again — and an ad-hoc signature has no stable
+  identity for macOS to carry the previous approval across; the CDHash changes
+  every build. So the Open Anyway walk repeats on every version a user
+  installs. That does not overturn the decision (a $99/yr membership still buys
+  only the removal of a documented dialog), but it changes the shape of the
+  trade: the cost is paid on every release rather than once, and it grows with
+  release frequency rather than with user count. Revisit if Cairndex starts
+  shipping updates often enough that the repetition, not the first encounter,
+  is what users complain about.
+
   **Ad-hoc signing is an invariant that already holds — not a task.** Apple
   Silicon kills any mach-O without a valid signature, and the toolchain handles
   this without being asked: the arm64 linker ad-hoc signs at link time
@@ -116,6 +128,33 @@ Corrected here rather than left standing.
   launched a locally-built app carrying `com.apple.provenance` but no
   `com.apple.quarantine`, which is precisely why it opened with no dialog. What
   an actual downloader sees needs a real browser round-trip to confirm — D7.
+
+  **Correction (2026-07-22, D7): the invariant did not hold at the bundle
+  level, and this ADR's own warning is what it broke on.** The measurement
+  above was of individual Mach-O files, and every one of them was indeed
+  ad-hoc signed. The *bundle* was not: Tauri only runs `codesign` when a
+  `signingIdentity` is configured, and none was, so `Cairndex.app` shipped with
+  no `Contents/_CodeSignature/CodeResources`. A bundle whose executable carries
+  a bundle-style signature but has no resource seal is **invalid**, not
+  unsigned — `codesign --verify` and `spctl` both refuse it with *"code has no
+  resources but signature indicates they must be present"*. That is exactly the
+  "an invalid signature fails harder than an absent one" case, reached without
+  any post-signing build step.
+
+  It stayed invisible because Gatekeeper assessment only runs on a quarantined
+  app, and every build observed so far was local. Applying
+  `com.apple.quarantine` to a locally built copy — what a browser download
+  sets — surfaced it immediately, which is the cheap version of the "real
+  browser round-trip" this section was waiting on.
+
+  Fixed by setting `signingIdentity: "-"` in `tauri.conf.json`, so the bundler
+  ad-hoc signs the bundle itself. Tauri signs without `--deep`, so the nested
+  notarized ffmpeg binaries keep their own Developer ID signatures. The
+  quarantined verdict is now a plain `rejected` — the ordinary
+  unsigned-app state that **Open Anyway** clears, rather than a malformed
+  bundle. So §4's conclusion stands (Developer ID remains an upgrade path);
+  what changes is that ad-hoc signing is a build setting that must be present,
+  not a property the toolchain supplies for free.
 
 - **ffmpeg pinning is greenlit** (owner, 2026-07-21). It was written up as an
   owner decision because it hardcodes a third-party trust choice into the repo,

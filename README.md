@@ -66,6 +66,59 @@ and pinyin matching in local tag/collection and file pickers are implemented.
 See [docs/STATUS.md](docs/STATUS.md) for the current milestone, known gaps, and
 recommended next tasks.
 
+## Install (macOS desktop app)
+
+> No release has been published yet (plan 3 D7). The pipeline that builds these
+> artifacts exists; the steps below describe what it publishes.
+
+Releases publish a `.dmg` per architecture — `aarch64` for Apple Silicon,
+`x64` for Intel — each with a `.sha256` beside it. Download the one matching
+your Mac, open it, and drag **Cairndex** to Applications.
+
+```bash
+shasum -a 256 -c Cairndex_<version>_<arch>.dmg.sha256
+```
+
+### First launch: "Apple could not verify..."
+
+Cairndex is **not signed with an Apple Developer ID**, so the first launch is
+blocked:
+
+1. Open Cairndex. macOS refuses and offers only **Done** / **Move to Trash**.
+   Choose **Done** — do not move it to the Trash.
+2. Open **System Settings → Privacy & Security** and scroll to the **Security**
+   section. A line about Cairndex being blocked appears there, with an **Open
+   Anyway** button. It only appears *after* step 1, so do not go looking for it
+   first.
+3. Click **Open Anyway**, authenticate, and confirm **Open Anyway** once more.
+
+Cairndex opens normally from then on — until you update it.
+
+**Every update repeats these steps.** That is not a bug and not a stale
+approval you can clear: a new download is quarantined again, and because
+Cairndex is ad-hoc signed rather than signed with a stable identity, each build
+has a different code signature that macOS has no way to carry your previous
+approval across. Expect the dialog once per version you install.
+
+Why not just sign it: a Developer ID needs a $99/yr Apple Developer membership.
+The trade is recorded as an upgrade path rather than a requirement — see
+[ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4 — and this
+per-update repetition is the main argument on the other side of it, since the
+cost is paid on every release rather than once. If you would rather not do any
+of it, build from source (below); a locally built app is never quarantined and
+never shows the dialog.
+
+### What is inside the app
+
+The desktop app is self-contained: it bundles the Cairndex server and a static
+`ffmpeg`/`ffprobe`, so opening a library folder on your own Mac needs no
+Python, no Docker, no Homebrew, and no separate ffmpeg install. Pointing the
+app at a server you already run (a NAS, say) works the same as it always has.
+
+The bundled ffmpeg is GPL-licensed and redistributing it carries source
+obligations that Cairndex's own MIT license does not — see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Repository layout
 
 ```text
@@ -159,4 +212,10 @@ single-container production stack.
 
 ## License
 
-All rights reserved.
+Cairndex is released under the [MIT License](LICENSE) (owner decision,
+2026-07-21; [ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4).
+
+Release artifacts additionally bundle third-party software with its own terms —
+notably a GPL-licensed FFmpeg, whose redistribution obligations are discharged
+in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Building from source
+bundles nothing and is unaffected.
