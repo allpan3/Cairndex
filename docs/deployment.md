@@ -260,6 +260,21 @@ under `.cairndex/cache/` are reproducible and can usually be regenerated, and
 it is not a substitute for an off-box backup, since it travels with (and dies
 with) the library folder.
 
+**`.cairndex/trash/` holds real user data** (ADR-0013 §3.2) — deleted files that
+have not been permanently removed yet. It is not derived and cannot be
+regenerated, so a backup that skips it can turn "I can still get that back" into
+"it is gone". Two consequences worth planning for:
+
+- **It grows.** A deletion is a rename, so the bytes stay in the library until
+  someone empties the trash; a library's on-disk size does not drop when files
+  are deleted. The Trash view shows the total, and Empty Trash is what actually
+  reclaims the space.
+- **It inflates incremental backups**, because a deleted file *moves* rather
+  than disappearing, and most backup tools will treat that as new data at the
+  new path. If that matters more to you than recoverability, exclude
+  `.cairndex/trash/` deliberately — and know that you are choosing to lose
+  whatever is in it at restore time.
+
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
 online backup API and integrity-checks it:
 

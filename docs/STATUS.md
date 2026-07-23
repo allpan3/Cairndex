@@ -1,11 +1,84 @@
 # Project status
 
-> **Current position:** phase H — plan 4 library write mode. **W0 (gate) and W1
-> (journal + rename/New Folder) are implemented** on `feat/write-mode-w0-gate`;
-> the owner asked for a single PR covering the whole write-mode track, so the
-> branch keeps accumulating. **W5 (import external) is next.** One D7
+> **Current position:** phase H — plan 4 library write mode. **W0 (gate), W1
+> (journal + rename/New Folder) and W4 (trash + Replace) are implemented** on
+> `feat/write-mode-w0-gate`; the owner asked for a single PR covering the whole
+> write-mode track, so the branch keeps accumulating. **W5 (import external) is
+> next**, and now arrives with all four collision answers available. One D7
 > verification item is deliberately deferred behind write mode (an owner pass on
 > a genuinely downloaded build); it is not a blocker for anything in phase H.
+
+## Implemented: plan 4 W4 — trash-first deletion and Replace (2026-07-23)
+
+Same branch. **Moved ahead of W5 at the owner's request** after W1 surfaced the
+dependency: Replace is defined as trash-then-write, so import could not offer
+the full Eagle/Finder prompt until the trash existed. It does now.
+
+**Deletion is a rename, not an unlink.** Entries move to
+`.cairndex/trash/{op_id}/files/<original path>`. That layout is doing three
+jobs: same filesystem means the move is instant and atomic whatever the file's
+size; inside `.cairndex/` means it is already invisible to scanning and travels
+with the library (ADR-0008); one directory per operation means a deleted folder
+restores as a folder, without reconstructing its shape from a manifest.
+
+**Restoring is lossless because nothing was ever recreated.** The `AssetFile`
+row is kept and flipped to a new `trashed` availability, so the id — and with
+it the bundle membership, cover, subtitle links and cache identity — is the
+same row coming back.
+
+**Three decisions worth carrying into W3/W5.**
+
+1. **A trashed row's `relative_path` moves *into* the trash**, rather than
+   staying at the original path. `relative_path` means "where the bytes are",
+   and after a delete they really are in there. The consequence that matters:
+   the original path stops being occupied, so something else can take it —
+   which is exactly what Replace needs, and what the uniqueness constraint
+   would otherwise have blocked.
+2. **`trashed` is deliberately not `missing`.** Missing means "we do not know
+   where this went" and belongs to the repair machinery; trashed means "we put
+   it there". The scanner's missing sweep skips trashed rows — without that, the
+   first scan after any deletion would empty the Trash view into Missing Files
+   and make every restore look like a repair.
+3. **A Replace files its displaced file as an ordinary `trash` operation of its
+   own**, and the rename records `replaced_operation_id`. The first attempt
+   recorded it as a footnote inside the rename's payload, and the Trash view
+   could not see it — a file the UI called permanently gone while it sat
+   recoverable on disk. Making it a real deletion fixed the listing, restore,
+   and Empty Trash in one change instead of three.
+
+**The reconciler now settles a deletion partially**, and it is the only
+operation that does. A crash halfway through a multi-path delete leaves some
+entries in the trash; failing the whole operation would leave them there with
+nothing listing them — invisible and unrestorable. So whatever reached the trash
+is recorded and the deletion completes; what did not move is simply still in
+place.
+
+**Empty Trash is the one action in write mode with no way back**, and the UI
+says so in those words, with the amount of space it will reclaim. There is no
+automatic expiry; retention (`older_than_days`) exists in the service and is not
+yet wired to a schedule.
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**718 passed**, +22 covering the trash round trip with cover survival,
+directory subtree deletion as one operation, nested-path de-duplication,
+whole-or-nothing restore refusal, restore into a folder that no longer exists,
+Empty Trash deleting rows and bytes, retention, the scanner's trashed skip,
+Replace's trash-then-write, undoing a Replace restoring both files, and two
+interrupted-deletion reconciliation cases). Web Prettier, ESLint, `tsc -b`, full
+Vitest (**352 passed**, +10), the Vite build.
+
+**Manually verified end to end** against a real dev server and a scratch
+library: delete a linked file (the confirmation names the bundle impact), the
+Trash view listing it with its original path, Put back restoring it, Replace
+displacing the old file into the trash while the new bytes take the path,
+undoing that Replace bringing **both** files back, and — the one that would have
+been silent — a full scan after a deletion reporting `missing: 0` rather than
+sweeping the trashed file into Missing Files. Scratch library deregistered and
+deleted afterwards.
+
+**Not included, and the smallest thing left in W4:** the bundle-level "Delete
+bundle and trash its N files" action. It is a Bundle Browser affordance rather
+than a trash mechanism — everything it needs now exists server-side.
 
 ## Implemented: plan 4 W1 — the journal, rename and New Folder (2026-07-23)
 
