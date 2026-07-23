@@ -1,8 +1,14 @@
 # Project status
 
-## In progress: plan 3 D7 — first public release (2026-07-22)
+## In progress: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
 
-Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Not a PR.
+Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Pushed and
+merged through a PR at the owner's request (2026-07-23), after two review
+rounds on the branch — the last engineering commit is `aeafed6` (workflow
+hardening), and this handoff commit is the branch tip. The engineering half of
+D7 is complete; everything that remains is owner-gated and listed under
+**Next** below. The one unresolved decision is item 3 there (`pillow-heif` /
+libheif LGPL notices).
 
 **The blocker is resolved: ffmpeg is pinned.** Both macOS architectures now pin
 FFmpeg 8.1.2 from the Martin Riedl build server. The choice was made by
