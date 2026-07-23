@@ -152,11 +152,49 @@ GPL-compatible components, i.e. OpenSSL must be ≥ 3.0 (Apache-2.0) for
 link 3.6.1.
 
 **`v0.1.0` was tagged and the release workflow run at the owner's request
-(2026-07-23).** The tag is annotated, points at `34ab2e0` (the D7 merge), and
-matches the `0.1.0` in `tauri.conf.json` — which matters because artifact names
-come from the config, not the tag, and nothing enforces that they agree. The
-push triggered the workflow; `macos-15-intel` accepted its job, which settles
-the open question about whether that runner label is usable here.
+(2026-07-23), and it passed on both architectures.** The tag is annotated,
+points at `34ab2e0` (the D7 merge), and matches the `0.1.0` in
+`tauri.conf.json` — which matters because artifact names come from the config,
+not the tag, and nothing enforces that they agree.
+
+Every gate the workflow adds fired for real: the packaged smoke test against the
+bundled ffmpeg, the bundle-signature assertion, and the per-binary architecture
+check. `macos-15-intel` accepted its job, settling the open question about that
+runner label.
+
+**Intel was then dropped from the pipeline** (owner, 2026-07-23), and the run's
+own numbers are why it was worth measuring before deciding: arm64 finished in
+**7m02s**, while Intel was still in its app+DMG step at **10m+**, having already
+taken 98s to freeze the sidecar against arm64's 24s. Roughly 4× slower at every
+compile-bound step, on minutes billed at 10×, for an artifact that is not
+needed. The matrix keeps its single entry and carries the removed one as a
+comment; `macos-x86_64` stays pinned, the architecture checks still cover it,
+and the documented local Intel build still works — so the artifact is one
+uncommented block away, not a rebuild.
+
+The Intel DMG built successfully before the decision landed, so it was **removed
+from the draft** rather than shipped: offering an Intel build once and never
+again would strand those users at v0.1.0 with no upgrade path, and it would make
+the arm64-only wording in the README and notices false on its first outing. It
+is recoverable until 2026-10-21 from the run's `cairndex-x64` artifact if that
+call should be reversed.
+
+**The published artifact was verified as a downloader gets it.** Downloaded from
+the draft with `gh release download`, checksum matched what CI computed, DMG
+mounted, the app inside carried a valid signature and a working bundled
+FFmpeg 8.1.2. Applying `com.apple.quarantine` to it produced Gatekeeper
+`rejected` and the app **did not launch** — which is the README's install
+section being necessary, demonstrated rather than assumed. A genuine
+browser-download pass is still the owner's to do.
+
+Two workflow gaps this run exposed, both fixed:
+- **No `timeout-minutes`**, so a wedged Tauri DMG bundler (it drives Finder over
+  AppleScript, the documented reason CI skips DMG) could have burned hours of
+  10×-billed minutes against GitHub's 6-hour default. Now 45.
+- **Cancelling one matrix leg would have skipped `publish` entirely** (`needs:
+  build`), losing the draft release along with the successful arm64 artifact.
+  That is why the Intel leg was left to finish rather than cancelled when the
+  decision to drop it came mid-run.
 
 The procedure is now a runbook in `docs/deployment.md` (*Cutting a release*):
 pre-tag version bumps, tagging, watching, reviewing the draft, publishing, and
