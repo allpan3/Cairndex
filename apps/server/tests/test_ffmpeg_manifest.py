@@ -161,6 +161,32 @@ class TestArchiveExtraction:
             extract_member(archive, "ffmpeg", tmp_path / "ffmpeg")
 
 
+class TestMalformedManifest:
+    """Field types are checked, not assumed — this module decides what ships."""
+
+    @pytest.mark.parametrize("bad", [123, ["a" * 64], {}, ""])
+    def test_a_digest_that_is_not_a_string_is_refused(self, bad: object) -> None:
+        # Never a silent comparison against something that can never match.
+        manifest = _manifest(**{"macos-arm64": {"ffmpeg": _entry(sha256=bad), "ffprobe": _entry()}})
+        with pytest.raises(fm.ManifestError, match="sha256"):
+            fm.pins_for("macos-arm64", manifest)
+
+    def test_a_non_object_platform_entry_is_refused(self) -> None:
+        with pytest.raises(fm.ManifestError, match="must be a JSON object"):
+            fm.pins_for("macos-arm64", _manifest(**{"macos-arm64": "ffmpeg.zip"}))
+
+    def test_a_non_object_tool_entry_is_refused(self) -> None:
+        manifest = _manifest(**{"macos-arm64": {"ffmpeg": "https://x.test/f", "ffprobe": _entry()}})
+        with pytest.raises(fm.ManifestError, match="must be a JSON object"):
+            fm.pins_for("macos-arm64", manifest)
+
+    def test_invalid_json_names_the_file(self, tmp_path: Path) -> None:
+        broken = tmp_path / "ffmpeg-manifest.json"
+        broken.write_text("{not json", encoding="utf-8")
+        with pytest.raises(fm.ManifestError, match="not valid JSON"):
+            fm.load(broken)
+
+
 class TestManifestFileShape:
     def test_is_valid_json_with_a_source_record(self) -> None:
         """The source block is what the GPL offer in the release notes refers to."""
@@ -169,3 +195,18 @@ class TestManifestFileShape:
         assert source["ffmpeg_version"]
         assert source["license"].startswith("GPL")
         assert source["homepage"].startswith("https://")
+
+    def test_component_manifests_are_committed_not_just_linked(self) -> None:
+        """The GPL offer runs three years; it cannot depend on a third-party host.
+
+        Both architectures, because their configure lines differ.
+        """
+        manifest = json.loads(fm.MANIFEST.read_text(encoding="utf-8"))
+        components = manifest["source"]["components"]
+        assert set(components) == {"macos-arm64", "macos-x86_64"}
+        for target, relative in components.items():
+            path = fm.PACKAGING_DIR / relative
+            assert path.is_file(), f"{target} component list is missing at {relative}"
+            text = path.read_text(encoding="utf-8")
+            assert "--enable-libx264" in text
+            assert "x264" in text
