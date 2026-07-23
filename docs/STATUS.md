@@ -262,11 +262,34 @@ backing out. `AGENTS.md` gains the matching rule — releasing is owner-triggere
 like opening a PR, and a tag with a published release must never be moved.
 
 **Next**, in order:
-1. **The `pillow-heif` / libheif LGPL question** flagged in
-   `THIRD-PARTY-NOTICES.md` — its wheels bundle LGPL `libheif`, whose notice
-   obligations that file does not yet discharge. Owner decision territory, and
-   now the gating one: the repository is public, so a release genuinely conveys
-   those binaries to strangers rather than hypothetically.
+1. **The HEIC dependency's licensing — investigated 2026-07-23, now an owner
+   decision with a recommended answer.** It is worse and simpler than first
+   flagged. `pillow-heif`'s wheel bundles libheif (LGPL-3.0+), libde265
+   (LGPL-3.0+) **and libx265 (GPL-2.0+)**, and libheif names x265 in a load
+   command rather than a lazy `dlopen`, so importing it pulls GPL code into the
+   sidecar process. All three ship inside `Cairndex.app`; x265 alone is 8.6 MB.
+   Its declared `BSD-3-Clause` alongside a **GPLv2** classifier is not a
+   metadata error — the maintainer is describing the wheel accurately.
+
+   **Cairndex never encodes HEIC**: `media/previews.py` calls
+   `register_heif_opener()` and nothing else, and the only HEIF write in the
+   repository is a smoke-test fixture generated in the test process, outside the
+   bundle. The GPL component is an encoder the product does not use.
+
+   **Recommended: swap the runtime dependency to `pi-heif` 1.4.0** — same
+   maintainer, same codebase, decode-only, and its wheel carries libheif +
+   libde265 with **no x265** (verified by inspecting it). Verified as a drop-in:
+   `from pi_heif import register_heif_opener` is the identical symbol, it
+   decoded the HEIC fixture and re-encoded to WebP exactly as `previews.py`
+   does, and `save(..., "HEIF")` correctly fails. That removes the GPL
+   obligation entirely, drops the notices question from copyleft to LGPL notice
+   text, and takes 8.6 MB off the app.
+
+   One consequence, not a blocker: the smoke test generates its HEIC fixture
+   with an encoder, so `pillow-heif` would move to a **dev-only** dependency
+   (dev deps are not distributed, and the fixture is written by the test
+   process, not the frozen sidecar). The alternative is committing a small
+   synthetic HEIC as a test asset.
 2. **An owner pass on a genuinely downloaded build**, which needs a release to
    exist. The `xattr` reproduction is faithful to the quarantine bit and the
    published artifact was verified after a real `gh release download`, but a
