@@ -1,5 +1,48 @@
 # Project status
 
+> **Current position:** plan 3 **D7 closed 2026-07-23** at the owner's request.
+> The build order moves to **phase H — plan 4 library write mode**, starting at
+> **W0**. One D7 verification item is deliberately deferred behind write mode
+> (an owner pass on a genuinely downloaded build); it is not a blocker for
+> anything in phase H.
+
+## Closed: plan 3 D7 — first public release (2026-07-23)
+
+Closed on the owner's instruction, with one item carried rather than claimed.
+
+**What D7 delivered.** A pinned static ffmpeg for both macOS architectures,
+chosen by verification rather than reputation — the licensing check disqualified
+the obvious candidate. A tag-triggered release workflow that drafts a release
+with a DMG, its checksum and the GPL notices, **proven by a real `v0.1.0` run
+that went green on both architectures**. A README install section covering the
+Open Anyway first launch, including that it repeats on every update. A GPL
+written source offer whose configure lines and component versions are committed
+rather than linked, so the three-year term does not depend on a third-party
+host.
+
+**Two defects that only building it could have found**, both fixed:
+- The app bundle shipped an **invalid** signature — a signed executable with no
+  `_CodeSignature` resource seal, which macOS rejects harder than an unsigned
+  one. Invisible locally, because Gatekeeper only assesses quarantined apps.
+- The HEIC dependency linked a **GPL x265 encoder** into the sidecar process for
+  a codec path Cairndex never calls. Swapped to decode-only `pi-heif`, with a
+  spec exclude and a build gate so it cannot return.
+
+**Deferred behind write mode (owner, 2026-07-23):** an owner pass on a genuinely
+downloaded build. Everything short of a browser round trip is verified — the
+published artifact was downloaded, its checksum matched, the DMG mounted, and a
+quarantined copy produced the expected Gatekeeper block and refused to launch.
+The `v0.1.0` tag and draft release were deleted after the pipeline was proven;
+re-tagging is a two-minute job whenever a real release is wanted, and
+`docs/deployment.md` carries the runbook.
+
+**Next recommended task: plan 4 W0** — the write-mode gate. Registry flag, env
+master switch, structured 403, Library Manager toggle with re-auth when a
+passphrase is set, and the AGENTS.md/CLAUDE.md safety-wording amendments that
+[ADR-0013](adr/0013-library-write-mode.md) requires. It is the milestone that
+makes every later write operation refusable by default, so it lands before any
+of them.
+
 ## Done: CI cost reduction (2026-07-23)
 
 Merged to `main` directly at the owner's request. Prompted by the Actions budget
@@ -60,15 +103,18 @@ thumbnails all three fixtures correctly when driven by hand, including the HEIC,
 so a missing decoder is not the answer. If it recurs on a pinned fixture, the
 remaining suspect is the generate-then-serve path.
 
-## In progress: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
+## Historical detail: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
 
 Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Pushed and
 merged through a PR at the owner's request (2026-07-23), after two review
 rounds on the branch — the last engineering commit is `aeafed6` (workflow
-hardening), and this handoff commit is the branch tip. The engineering half of
-D7 is complete; everything that remains is owner-gated and listed under
-**Next** below. The one unresolved decision is item 3 there (`pillow-heif` /
-libheif LGPL notices).
+hardening).
+
+*This section is the working record of the branch, kept for the reasoning in it.
+D7 is closed; the summary is at the top of this file. Two things it describes as
+open were resolved after it was written: the release workflow was run for real
+at `v0.1.0`, and the `pillow-heif` licensing question was investigated and
+settled by swapping to `pi-heif`.*
 
 **The blocker is resolved: ffmpeg is pinned.** Both macOS architectures now pin
 FFmpeg 8.1.2 from the Martin Riedl build server. The choice was made by
