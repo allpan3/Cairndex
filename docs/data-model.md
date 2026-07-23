@@ -331,8 +331,9 @@ rather than guessed at.
 and this table must not grow a column per operation. For `rename` it carries
 `source`, `destination`, and — once finished — `files_updated`; for `mkdir`,
 `destination`; for `trash`, the requested `paths` and the resulting `entries`
-(each with `original_path`, `stored_path`, `file_id`, `is_directory`). It is
-also what Undo reads to apply the inverse.
+(each with `original_path`, `stored_path`, `file_id`, `is_directory`); for
+`import`, the `destination`, `filename` and `size_bytes` written. It is also
+what Undo reads to apply the inverse.
 
 **The journal is the trash's index.** A `trash` row still in `done` has not been
 restored (`undone`) or permanently deleted (`emptied`), so listing the trash is

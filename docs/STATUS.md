@@ -1,12 +1,69 @@
 # Project status
 
-> **Current position:** phase H — plan 4 library write mode. **W0 (gate), W1
-> (journal + rename/New Folder) and W4 (trash + Replace) are implemented** on
-> `feat/write-mode-w0-gate`; the owner asked for a single PR covering the whole
-> write-mode track, so the branch keeps accumulating. **W5 (import external) is
-> next**, and now arrives with all four collision answers available. One D7
-> verification item is deliberately deferred behind write mode (an owner pass on
-> a genuinely downloaded build); it is not a blocker for anything in phase H.
+> **Current position:** phase H — plan 4 library write mode, on
+> `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
+> request). **W0, W1 and W4 are complete; W5 is complete server-side and in the
+> browser, and still needs its desktop bridge** — see the W5 entry below, which
+> is the recommended next task because it is the owner's driving use case. One
+> D7 verification item is deliberately deferred behind write mode (an owner pass
+> on a genuinely downloaded build); it is not a blocker for anything in phase H.
+
+## Implemented (partly): plan 4 W5 — importing external files (2026-07-23)
+
+Same branch. The only path by which bytes from outside a library ever enter it.
+
+**Two deviations from plan 4 §6, both deliberate.**
+
+1. **Raw body, not multipart.** The caller already holds a `File` (browser) or
+   an open file handle (shell); both stream as a request body with no encoding
+   step, and it keeps `python-multipart` out of the dependency list for a
+   request that is ~100% payload. Metadata rides in the query string.
+2. **One file per request.** A twelve-file drop is twelve imports. That is what
+   makes per-file progress, per-file collision answers and per-file undo
+   possible; batching would have made all three worse in exchange for a round
+   trip.
+
+**Nothing is held in memory.** The body is written in 1 MB chunks to
+`.cairndex/tmp/{op_id}.part` — inside the package, so it is on the *same
+filesystem as the destination* and the final step is a rename rather than a
+second full copy. Verified with a 3 MB file: byte-identical sha256, empty
+staging directory afterwards. The size limit is enforced *while streaming*
+rather than from a `Content-Length`, because trusting the client about the
+number you are limiting is not a limit.
+
+**Failure paths are the interesting part**, and all leave nothing behind: an
+over-limit upload, an empty body, a destination that stops being valid mid-flight
+— each discards the partial file and records a `failed` journal row. A crash
+leaves a `.part` that the next library open sweeps, next to the journal
+reconciler. Undo of an import moves the file to the **trash**, not an unlink, so
+undo is never the one action in the app that destroys something.
+
+**The collision prompt is finally complete**, which is what the W4-before-W5
+reorder bought: import can offer Replace, and it means trash-then-write.
+A collision mid-batch asks and then resumes the remainder, with the answer
+applied only to the file it was about — a later collision still asks.
+
+**What is missing, and it is the owner's driving use case: the desktop drag-in.**
+`onCopyIntoLibrary` is still unwired, so dragging from Finder onto the packaged
+app still shows the "move these into its folder first" explanation. The reason
+is structural rather than an oversight: Tauri's `dragDropEnabled` intercepts an
+OS drop **before** the webview sees it, so the browser drop handler built here
+never fires in the shell; the drop arrives as absolute paths, and the web layer
+cannot read those paths by design (plan 3 §5). Closing it needs a Rust command
+that streams a local file to the import endpoint using the shell's existing
+server URL and bearer credential — `media_proxy.rs` already holds both, so the
+pieces exist. **This should be the next task in the track.**
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**736 passed**, +18: chunked streaming, subfolder targeting, the gate, five
+unsafe-destination rejections, collision-before-upload, Replace-into-trash,
+skip, linking, undo-to-trash, the empty body, the streaming size limit, and the
+staging sweep). Web Prettier, ESLint, `tsc -b`, full Vitest (**356 passed**,
++4: destination is the browsed folder, sequential uploads, a mid-batch collision
+resuming, and a read-only library having no way in), the Vite build.
+Manually verified against a real dev server: a 3 MB import byte-for-byte, the
+`Add Files…` picker path end to end with its toast and Undo, and undo landing
+the file in the trash. Scratch library removed.
 
 ## Implemented: plan 4 W4 — trash-first deletion and Replace (2026-07-23)
 
