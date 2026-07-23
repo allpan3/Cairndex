@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { type LibraryRead, type PathSuggestion, fetchPathSuggestions } from '../api/client'
-import { useLibraries, useLibraryMutations } from '../api/hooks'
+import {
+  type LibraryRead,
+  type PathSuggestion,
+  PassphraseRequiredError,
+  fetchPathSuggestions,
+} from '../api/client'
+import {
+  useDeploymentWriteMode,
+  useLibraries,
+  useLibraryMutations,
+  useWriteModeMutation,
+} from '../api/hooks'
 import { confirmPickedLibrary, openLibraryFolder } from '../desktop/openLibraryFolder'
 import { hostOperationErrorMessage, isDesktopHost } from '../platform'
 
@@ -34,6 +44,7 @@ export function LibraryManager({
 }) {
   const libraries = useLibraries()
   const { create, register, probe, remove } = useLibraryMutations()
+  const writeModeAllowed = useDeploymentWriteMode()
 
   const [path, setPath] = useState('')
   const [confirming, setConfirming] = useState<ConfirmState | null>(null)
@@ -187,6 +198,7 @@ export function LibraryManager({
               key={library.id}
               library={library}
               busy={busy}
+              writeModeAllowed={writeModeAllowed}
               onRemove={() => removeLibrary(library.id)}
             />
           ))}
@@ -359,16 +371,21 @@ export function NewLibraryDialog({
 function LibraryRow({
   library,
   busy,
+  writeModeAllowed,
   onRemove,
 }: {
   library: LibraryRead
   busy: boolean
+  /** The deployment master switch (ADR-0013 §1); false forces read-only. */
+  writeModeAllowed: boolean
   onRemove: () => void
 }) {
-  const [confirming, setConfirming] = useState(false)
+  // At most one of the two confirmations is open, because they ask about the
+  // same row and both replace it.
+  const [asking, setAsking] = useState<'remove' | 'write-mode' | null>(null)
   const available = library.status === 'available'
 
-  if (confirming) {
+  if (asking === 'remove') {
     return (
       <div className="lib-row lib-row--confirm">
         <div className="lib-row__main">
@@ -380,7 +397,7 @@ function LibraryRow({
             The folder and its files are not touched. You can add it back later.
           </span>
         </div>
-        <button className="btn btn--sm" onClick={() => setConfirming(false)} disabled={busy}>
+        <button className="btn btn--sm" onClick={() => setAsking(null)} disabled={busy}>
           Cancel
         </button>
         <button className="btn btn--sm btn--danger" onClick={onRemove} disabled={busy}>
@@ -388,6 +405,10 @@ function LibraryRow({
         </button>
       </div>
     )
+  }
+
+  if (asking === 'write-mode') {
+    return <EnableWriteMode library={library} onDone={() => setAsking(null)} />
   }
 
   return (
@@ -399,15 +420,145 @@ function LibraryRow({
       <span className={`badge ${available ? 'badge--ok' : 'badge--warn'}`}>
         {available ? 'available' : 'unavailable'}
       </span>
+      <WriteModeToggle
+        library={library}
+        busy={busy}
+        allowed={writeModeAllowed}
+        onEnable={() => setAsking('write-mode')}
+      />
       <button
         className="btn btn--sm"
-        onClick={() => setConfirming(true)}
+        onClick={() => setAsking('remove')}
         disabled={busy}
         aria-label={`Remove ${library.name}`}
       >
         Remove
       </button>
     </div>
+  )
+}
+
+const WRITE_MODE_BLOCKED_HINT =
+  'This server is configured read-only (CAIRNDEX_WRITE_MODE=disabled), so write mode cannot be turned on here.'
+
+/**
+ * The write-mode switch for one library (ADR-0013 §1).
+ *
+ * Turning it **off** is immediate: giving up a capability needs no
+ * confirmation. Turning it **on** goes through `EnableWriteMode`, which says
+ * what it unlocks and collects the passphrase when the library has one.
+ *
+ * When the deployment forbids write mode the control is disabled and explains
+ * why rather than disappearing — a missing switch reads as a missing feature,
+ * and the owner would go looking for it in the wrong place.
+ */
+function WriteModeToggle({
+  library,
+  busy,
+  allowed,
+  onEnable,
+}: {
+  library: LibraryRead
+  busy: boolean
+  allowed: boolean
+  onEnable: () => void
+}) {
+  const writeMode = useWriteModeMutation()
+  const enabled = library.write_mode_enabled
+  const blocked = !allowed && !enabled
+
+  return (
+    <button
+      className={`btn btn--sm${enabled && allowed ? ' btn--active' : ''}`}
+      onClick={() =>
+        enabled ? writeMode.mutate({ libraryId: library.id, enabled: false }) : onEnable()
+      }
+      disabled={busy || writeMode.isPending || blocked}
+      aria-pressed={enabled}
+      title={blocked ? WRITE_MODE_BLOCKED_HINT : undefined}
+      aria-label={`Write mode for ${library.name}`}
+    >
+      {/* An enabled flag the deployment is overriding is stated as exactly
+          that, rather than silently rendered as off. */}
+      Write mode: {enabled ? (allowed ? 'on' : 'on (blocked)') : 'off'}
+    </button>
+  )
+}
+
+/**
+ * The enable step: what write mode unlocks, and the passphrase when required.
+ *
+ * The passphrase field appears only after the server asks for it, so an
+ * unprotected library is one click and a protected one is never guessed at.
+ * The same 401 covers a wrong passphrase, which is why the field stays open
+ * with a message instead of collapsing the step.
+ */
+function EnableWriteMode({ library, onDone }: { library: LibraryRead; onDone: () => void }) {
+  const writeMode = useWriteModeMutation()
+  const [passphrase, setPassphrase] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const enable = () => {
+    setError(null)
+    writeMode.mutate(
+      { libraryId: library.id, enabled: true, passphrase: passphrase ?? undefined },
+      {
+        onSuccess: onDone,
+        onError: (failure) => {
+          if (failure instanceof PassphraseRequiredError) {
+            setError(
+              passphrase === null
+                ? null // First ask: the field's own label is the explanation.
+                : 'That passphrase was not accepted.',
+            )
+            setPassphrase(passphrase ?? '')
+            return
+          }
+          setError(messageOf(failure))
+        },
+      },
+    )
+  }
+
+  return (
+    <form
+      className="lib-row lib-row--confirm"
+      onSubmit={(event) => {
+        event.preventDefault()
+        enable()
+      }}
+    >
+      <div className="lib-row__main">
+        <span className="lib-row__name">Turn on write mode for “{library.name}”?</span>
+        <span className="lib-row__note">
+          Cairndex will be able to create, rename, move, and trash files inside this folder. Every
+          operation is recorded and can be undone, and deleted files go to the library’s trash
+          rather than disappearing.
+        </span>
+        {passphrase !== null && (
+          <input
+            className="edit"
+            type="password"
+            value={passphrase}
+            onChange={(event) => setPassphrase(event.target.value)}
+            aria-label={`Passphrase for ${library.name}`}
+            placeholder="Library passphrase"
+            autoFocus
+            autoComplete="current-password"
+          />
+        )}
+        {error && <span className="lib-row__note">{error}</span>}
+      </div>
+      <button type="button" className="btn btn--sm" onClick={onDone} disabled={writeMode.isPending}>
+        Cancel
+      </button>
+      <button
+        className="btn btn--sm btn--primary"
+        disabled={writeMode.isPending || passphrase === ''}
+      >
+        Turn on
+      </button>
+    </form>
   )
 }
 

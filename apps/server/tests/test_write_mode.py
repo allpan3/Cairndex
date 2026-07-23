@@ -182,7 +182,7 @@ def test_enabling_a_protected_library_re_prompts(
 ) -> None:
     protected = _make_library(tmp_path, registry_session, "protected", passphrase="open-sesame")
 
-    # Locked: not even readable, let alone changeable.
+    # Locked: not even readable, let alone changeable without the passphrase.
     assert gated_client.get(f"/api/v1/libraries/{protected}/write-mode").status_code == 401
     assert _set(gated_client, protected, enabled=True).status_code == 401
 
@@ -208,6 +208,22 @@ def test_enabling_a_protected_library_re_prompts(
     right = _set(gated_client, protected, enabled=True, passphrase="open-sesame")
     assert right.status_code == 200
     assert _gated(gated_client, protected).status_code == 200
+
+
+def test_the_passphrase_authorizes_a_locked_library_on_its_own(
+    gated_client: TestClient, registry_session: Session, tmp_path: Path
+) -> None:
+    """No unlock in this session, one prompt, and it works — otherwise enabling
+    write mode on a locked library would cost two passphrase prompts."""
+    protected = _make_library(tmp_path, registry_session, "never-unlocked", passphrase="pw")
+
+    enabled = _set(gated_client, protected, enabled=True, passphrase="pw")
+
+    assert enabled.status_code == 200
+    assert enabled.json()["effective"] is True
+    # The library is still locked for content — this authorized one request, not
+    # a session.
+    assert gated_client.get(f"/api/v1/libraries/{protected}/bundles/browse").status_code == 401
 
 
 def test_disabling_never_asks_for_the_passphrase(

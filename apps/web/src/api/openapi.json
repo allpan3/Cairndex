@@ -14853,7 +14853,7 @@
         ]
       },
       "put": {
-        "description": "Turn write mode on or off.\n\nEnabling a passphrase-protected library needs that passphrase in the body \u2014\na one-time re-auth on the capability change, answered with a generic 401 so\na missing passphrase and a wrong one are indistinguishable. Enabling on a\ndeployment configured read-only is refused with 403 ``write_mode_disabled``.\nDisabling is always permitted for an authorized caller.",
+        "description": "Turn write mode on or off.\n\nEnabling a passphrase-protected library needs that passphrase in the body \u2014\na one-time re-auth on the capability change, answered with a generic 401 so\na missing passphrase and a wrong one are indistinguishable. Enabling on a\ndeployment configured read-only is refused with 403 ``write_mode_disabled``.\nDisabling is always permitted for an authorized caller.\n\nA correct passphrase authorizes the request on its own, in place of an\nunlocked session: it *is* the library's credential, and demanding a live\nunlock as well would leave a locked library unable to gain write mode\nwithout first being opened somewhere else \u2014 for one prompt, two prompts.",
         "operationId": "set_write_mode_api_v1_libraries__library_id__write_mode_put",
         "parameters": [
           {

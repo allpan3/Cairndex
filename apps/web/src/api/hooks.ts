@@ -79,6 +79,7 @@ import {
   fetchFacets,
   fetchFileBrowserEntries,
   fetchFileRepairCandidate,
+  fetchHealth,
   fetchLibraries,
   fetchPlaybackManifest,
   fetchContinueWatching,
@@ -109,6 +110,7 @@ import {
   setBundleCollections,
   setBundleTags,
   setCoverFrame,
+  setLibraryWriteMode,
   suggestBundleFromFiles,
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
@@ -317,6 +319,51 @@ export function useLibraryMutations() {
       },
     }),
   }
+}
+
+// --- Library write mode (ADR-0013) -------------------------------------------
+/**
+ * The deployment's write-mode master switch, from `/health`.
+ *
+ * Server configuration, not user data: it cannot change while the app is open,
+ * so it is fetched once and never refetched. `undefined` while it loads, which
+ * the caller treats as "not allowed yet" — a toggle that flickers enabled
+ * before the answer arrives is worse than one that arrives enabled.
+ */
+export function useDeploymentWriteMode() {
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: ({ signal }) => fetchHealth(signal),
+    staleTime: Infinity,
+  })
+  return health.data?.write_mode === 'allowed'
+}
+
+/** Turn guarded file operations on or off for one library. */
+export function useWriteModeMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      libraryId,
+      enabled,
+      passphrase,
+    }: {
+      libraryId: string
+      enabled: boolean
+      passphrase?: string
+    }) => setLibraryWriteMode(libraryId, enabled, passphrase),
+    onSuccess: (state, { libraryId }) => {
+      // Patch the row rather than only invalidating: the listing is what the
+      // manager renders from, and a refetch round trip would show the old
+      // state for long enough to look like the click did nothing.
+      qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+        current?.map((library) =>
+          library.id === libraryId ? { ...library, write_mode_enabled: state.enabled } : library,
+        ),
+      )
+      return qc.invalidateQueries({ queryKey: ['libraries'] })
+    },
+  })
 }
 
 // --- Per-library passphrase lock (ADR-0010) ----------------------------------
