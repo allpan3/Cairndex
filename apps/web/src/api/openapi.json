@@ -36,9 +36,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "target_bundle_id"
-        ],
+        "required": ["target_bundle_id"],
         "title": "AddFilesRequest",
         "type": "object"
       },
@@ -71,10 +69,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "AndNode",
         "type": "object"
       },
@@ -107,10 +102,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "AndNode",
         "type": "object"
       },
@@ -136,11 +128,7 @@
             "title": "Title"
           }
         },
-        "required": [
-          "proposal_id",
-          "title",
-          "reason"
-        ],
+        "required": ["proposal_id", "title", "reason"],
         "title": "ApplyConflictRead",
         "type": "object"
       },
@@ -272,14 +260,7 @@
             "title": "Title"
           }
         },
-        "required": [
-          "index",
-          "codec",
-          "channels",
-          "language",
-          "title",
-          "default"
-        ],
+        "required": ["index", "codec", "channels", "language", "title", "default"],
         "title": "AudioStreamRead",
         "type": "object"
       },
@@ -295,10 +276,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "protected",
-          "unlocked"
-        ],
+        "required": ["protected", "unlocked"],
         "title": "AuthStatus",
         "type": "object"
       },
@@ -309,9 +287,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "updated"
-        ],
+        "required": ["updated"],
         "title": "BatchResult",
         "type": "object"
       },
@@ -354,9 +330,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_ids"
-        ],
+        "required": ["bundle_ids"],
         "title": "BatchUpdate",
         "type": "object"
       },
@@ -453,12 +427,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total",
-          "offset",
-          "limit"
-        ],
+        "required": ["items", "total", "offset", "limit"],
         "title": "BundleBrowsePage",
         "type": "object"
       },
@@ -478,28 +447,17 @@
           },
           "order": {
             "default": "asc",
-            "enum": [
-              "asc",
-              "desc"
-            ],
+            "enum": ["asc", "desc"],
             "title": "Order",
             "type": "string"
           },
           "sort": {
-            "enum": [
-              "date_added",
-              "title",
-              "rating",
-              "size",
-              "file_count"
-            ],
+            "enum": ["date_added", "title", "rating", "size", "file_count"],
             "title": "Sort",
             "type": "string"
           }
         },
-        "required": [
-          "sort"
-        ],
+        "required": ["sort"],
         "title": "BundleCleanupOrder",
         "type": "object"
       },
@@ -517,10 +475,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_id",
-          "collection_ids"
-        ],
+        "required": ["bundle_id", "collection_ids"],
         "title": "BundleCollections",
         "type": "object"
       },
@@ -576,9 +531,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file_id"
-        ],
+        "required": ["file_id"],
         "title": "BundleCursorRead",
         "type": "object"
       },
@@ -590,9 +543,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file_id"
-        ],
+        "required": ["file_id"],
         "title": "BundleCursorUpdate",
         "type": "object"
       },
@@ -617,11 +568,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "proposed_title",
-          "roles",
-          "additional"
-        ],
+        "required": ["proposed_title", "roles", "additional"],
         "title": "BundleDraftResponse",
         "type": "object"
       },
@@ -746,21 +693,12 @@
             "type": "array"
           }
         },
-        "required": [
-          "ordered_ids"
-        ],
+        "required": ["ordered_ids"],
         "title": "BundleReorder",
         "type": "object"
       },
       "BundleSort": {
-        "enum": [
-          "date_added",
-          "title",
-          "rating",
-          "size",
-          "file_count",
-          "manual"
-        ],
+        "enum": ["date_added", "title", "rating", "size", "file_count", "manual"],
         "title": "BundleSort",
         "type": "string"
       },
@@ -1043,10 +981,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_id",
-          "tag_ids"
-        ],
+        "required": ["bundle_id", "tag_ids"],
         "title": "BundleTags",
         "type": "object"
       },
@@ -1161,10 +1096,7 @@
         "properties": {
           "order": {
             "default": "asc",
-            "enum": [
-              "asc",
-              "desc"
-            ],
+            "enum": ["asc", "desc"],
             "title": "Order",
             "type": "string"
           }
@@ -1192,9 +1124,7 @@
             "title": "Parent Id"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "CollectionCreate",
         "type": "object"
       },
@@ -1295,9 +1225,7 @@
             "title": "Parent Id"
           }
         },
-        "required": [
-          "ordered_ids"
-        ],
+        "required": ["ordered_ids"],
         "title": "CollectionReorder",
         "type": "object"
       },
@@ -1317,11 +1245,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "direct_bundles",
-          "total_bundles",
-          "subcollections"
-        ],
+        "required": ["direct_bundles", "total_bundles", "subcollections"],
         "title": "CollectionStats",
         "type": "object"
       },
@@ -1379,11 +1303,7 @@
       },
       "ConflictPolicy": {
         "description": "Caller's answer to a path collision, chosen before or after the 409.",
-        "enum": [
-          "fail",
-          "skip",
-          "suffix"
-        ],
+        "enum": ["fail", "skip", "suffix", "replace"],
         "title": "ConflictPolicy",
         "type": "string"
       },
@@ -1678,12 +1598,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total",
-          "offset",
-          "limit"
-        ],
+        "required": ["items", "total", "offset", "limit"],
         "title": "ContinueWatchingPage",
         "type": "object"
       },
@@ -1709,11 +1624,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "file_id",
-          "position_s",
-          "duration_s"
-        ],
+        "required": ["file_id", "position_s", "duration_s"],
         "title": "ContinueWatchingProgressRead",
         "type": "object"
       },
@@ -1728,9 +1639,7 @@
             "type": "object"
           }
         },
-        "required": [
-          "counts"
-        ],
+        "required": ["counts"],
         "title": "CountsResponse",
         "type": "object"
       },
@@ -1742,9 +1651,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "time"
-        ],
+        "required": ["time"],
         "title": "CoverFrameUpdate",
         "type": "object"
       },
@@ -1857,15 +1764,38 @@
             "title": "Revoked At"
           }
         },
-        "required": [
-          "id",
-          "name",
-          "library_ids",
-          "created_at",
-          "last_used_at",
-          "revoked_at"
-        ],
+        "required": ["id", "name", "library_ids", "created_at", "last_used_at", "revoked_at"],
         "title": "DeviceRead",
+        "type": "object"
+      },
+      "EmptyTrashRequest": {
+        "description": "Permanently delete trashed entries. The one operation with no undo.",
+        "properties": {
+          "older_than_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Older Than Days"
+          }
+        },
+        "title": "EmptyTrashRequest",
+        "type": "object"
+      },
+      "EmptyTrashResult": {
+        "properties": {
+          "operations_emptied": {
+            "title": "Operations Emptied",
+            "type": "integer"
+          }
+        },
+        "required": ["operations_emptied"],
+        "title": "EmptyTrashResult",
         "type": "object"
       },
       "FacetRequest": {
@@ -1989,9 +1919,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "paths"
-        ],
+        "required": ["paths"],
         "title": "FastAddRequest",
         "type": "object"
       },
@@ -2015,20 +1943,13 @@
             "type": "integer"
           }
         },
-        "required": [
-          "bundles_created",
-          "files_linked",
-          "skipped"
-        ],
+        "required": ["bundles_created", "files_linked", "skipped"],
         "title": "FastAddResponse",
         "type": "object"
       },
       "FileAvailability": {
-        "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).",
-        "enum": [
-          "available",
-          "missing"
-        ],
+        "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).\n\n``trashed`` is the third state, added by write mode (ADR-0013 \u00a73.2): the\nfile has been moved into the library's own trash and is recoverable. It is\ndeliberately **not** ``missing`` \u2014 missing means \"we do not know where this\nwent\", which is the scanner's problem to solve, whereas trashed means \"we\nput it there, and here is how to put it back\". Surfaces that require a\nreadable file already test for ``available``, so they exclude it for free;\nthe Missing Files view tests for ``missing``, so a trashed file does not\nappear there either.",
+        "enum": ["available", "missing", "trashed"],
         "title": "FileAvailability",
         "type": "string"
       },
@@ -2246,11 +2167,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "path",
-          "entries",
-          "missing_files_updated"
-        ],
+        "required": ["path", "entries", "missing_files_updated"],
         "title": "FileBrowserListingRead",
         "type": "object"
       },
@@ -2319,31 +2236,19 @@
             "title": "Source"
           }
         },
-        "required": [
-          "relative_path",
-          "role",
-          "media_kind"
-        ],
+        "required": ["relative_path", "role", "media_kind"],
         "title": "FileLink",
         "type": "object"
       },
       "FileOpStatus": {
         "description": "Lifecycle of a journaled file operation (ADR-0013 \u00a73.1).\n\n``pending`` is written *before* the filesystem is touched, so a crash\nmid-operation is discoverable rather than silent: the reconciler on the next\nlibrary open decides whether the operation completed (finish the metadata\nside) or never happened (``failed``). ``undone`` records that the inverse\nwas applied, keeping the history honest rather than deleting the row.",
-        "enum": [
-          "pending",
-          "done",
-          "failed",
-          "undone"
-        ],
+        "enum": ["pending", "done", "failed", "undone", "emptied"],
         "title": "FileOpStatus",
         "type": "string"
       },
       "FileOpType": {
-        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. Later slices add ``move``,\n``trash``/``restore`` (W3/W4) and ``import``/``save_new`` (W5/W2); the\njournal stores the value as text, so adding one needs no migration.",
-        "enum": [
-          "rename",
-          "mkdir"
-        ],
+        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. Later slices add ``move`` (W3)\nand ``import``/``save_new`` (W5/W2); the journal stores the value as text,\nso adding one needs no migration.\n\nThere is no ``restore`` member: restoring is not a new operation, it is the\noriginal ``trash`` row being undone, which is why the trash can be listed by\nreading the journal for `trash` rows that are still ``done``.",
+        "enum": ["rename", "mkdir", "trash"],
         "title": "FileOpType",
         "type": "string"
       },
@@ -2369,10 +2274,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "operations",
-          "next_cursor"
-        ],
+        "required": ["operations", "next_cursor"],
         "title": "FileOperationPage",
         "type": "object"
       },
@@ -2423,15 +2325,7 @@
             "$ref": "#/components/schemas/FileOpStatus"
           }
         },
-        "required": [
-          "id",
-          "op",
-          "status",
-          "payload",
-          "error",
-          "created_at",
-          "finished_at"
-        ],
+        "required": ["id", "op", "status", "payload", "error", "created_at", "finished_at"],
         "title": "FileOperationRead",
         "type": "object"
       },
@@ -2454,12 +2348,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "operation",
-          "path",
-          "files_updated",
-          "skipped"
-        ],
+        "required": ["operation", "path", "files_updated", "skipped"],
         "title": "FileOperationResult",
         "type": "object"
       },
@@ -2618,9 +2507,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "ordered_ids"
-        ],
+        "required": ["ordered_ids"],
         "title": "FileReorder",
         "type": "object"
       },
@@ -2665,9 +2552,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "replacement_file_id"
-        ],
+        "required": ["replacement_file_id"],
         "title": "FileRepairRequest",
         "type": "object"
       },
@@ -2711,13 +2596,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file_id",
-          "relative_path",
-          "media_kind",
-          "confidence",
-          "reason"
-        ],
+        "required": ["file_id", "relative_path", "media_kind", "confidence", "reason"],
         "title": "FileSuggestionRead",
         "type": "object"
       },
@@ -2731,9 +2610,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "suggestions"
-        ],
+        "required": ["suggestions"],
         "title": "FileSuggestionsResponse",
         "type": "object"
       },
@@ -2872,9 +2749,7 @@
             "$ref": "#/components/schemas/FilterExpression-Input"
           }
         },
-        "required": [
-          "filter"
-        ],
+        "required": ["filter"],
         "title": "FilterPreviewRequest",
         "type": "object"
       },
@@ -2885,50 +2760,31 @@
             "type": "integer"
           }
         },
-        "required": [
-          "count"
-        ],
+        "required": ["count"],
         "title": "FilterPreviewResponse",
         "type": "object"
       },
       "Grouping": {
         "description": "How fast-add groups selected files into bundles.",
-        "enum": [
-          "per_file",
-          "single_bundle"
-        ],
+        "enum": ["per_file", "single_bundle"],
         "title": "Grouping",
         "type": "string"
       },
       "GroupingPlanStatus": {
         "description": "Lifecycle of a durable grouping plan (ADR-0009).\n\nA plan is a snapshot of suggestions: ``open`` until the user applies it\n(``applied``), regeneration ``superseded`` it, or it was ``cancelled``.",
-        "enum": [
-          "open",
-          "applied",
-          "superseded",
-          "cancelled"
-        ],
+        "enum": ["open", "applied", "superseded", "cancelled"],
         "title": "GroupingPlanStatus",
         "type": "string"
       },
       "GroupingSource": {
         "description": "What produced a bundle's current grouping (ADR-0009).\n\n``legacy`` backfills bundles created before grouping state existed (they are\ntreated as already confirmed). ``scan_suggestion`` marks provisional bundles\nstaged by a scan; ``manual``/``fast_add``/``import`` mark groupings the user\ndecided directly, so they confirm immediately.",
-        "enum": [
-          "legacy",
-          "scan_suggestion",
-          "manual",
-          "fast_add",
-          "import"
-        ],
+        "enum": ["legacy", "scan_suggestion", "manual", "fast_add", "import"],
         "title": "GroupingSource",
         "type": "string"
       },
       "GroupingState": {
         "description": "Whether a bundle's grouping is a confirmed user decision (ADR-0009).\n\nScan discovers files and stages them in ``provisional`` bundles; only an\nexplicit user action (review/apply, fast-add, manual create) confirms a\ngrouping. Confirmed groupings are durable and win over heuristics on\nre-scan \u2014 they are never silently re-split, merged, or retitled.",
-        "enum": [
-          "provisional",
-          "confirmed"
-        ],
+        "enum": ["provisional", "confirmed"],
         "title": "GroupingState",
         "type": "string"
       },
@@ -2971,13 +2827,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "status",
-          "app_name",
-          "environment",
-          "api_features",
-          "write_mode"
-        ],
+        "required": ["status", "app_name", "environment", "api_features", "write_mode"],
         "title": "HealthStatus",
         "type": "object"
       },
@@ -3118,24 +2968,13 @@
       },
       "JobStatus": {
         "description": "Lifecycle state of a background job.",
-        "enum": [
-          "queued",
-          "running",
-          "succeeded",
-          "failed",
-          "cancelled"
-        ],
+        "enum": ["queued", "running", "succeeded", "failed", "cancelled"],
         "title": "JobStatus",
         "type": "string"
       },
       "JobType": {
         "description": "Kind of background job (AGENTS.md \u00a74.10/\u00a75.2).",
-        "enum": [
-          "scan",
-          "probe",
-          "thumbnail",
-          "storyboard"
-        ],
+        "enum": ["scan", "probe", "thumbnail", "storyboard"],
         "title": "JobType",
         "type": "string"
       },
@@ -3210,10 +3049,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "root_path",
-          "display_name"
-        ],
+        "required": ["root_path", "display_name"],
         "title": "LibraryCreate",
         "type": "object"
       },
@@ -3268,12 +3104,7 @@
             ]
           }
         },
-        "required": [
-          "library_id",
-          "state",
-          "mountable",
-          "can_take_over"
-        ],
+        "required": ["library_id", "state", "mountable", "can_take_over"],
         "title": "LibraryOwnershipRead",
         "type": "object"
       },
@@ -3353,18 +3184,13 @@
             "type": "string"
           }
         },
-        "required": [
-          "root_path"
-        ],
+        "required": ["root_path"],
         "title": "LibraryRegister",
         "type": "object"
       },
       "LibraryStatus": {
         "description": "Whether a registered library's root/marker is currently reachable.\n\nServer-registry state (ADR-0008), distinct from a library's own content\nmetadata. ``unavailable`` means the root path or ``.cairndex`` marker\ncould not be found when last probed (e.g. an offline NAS mount).",
-        "enum": [
-          "available",
-          "unavailable"
-        ],
+        "enum": ["available", "unavailable"],
         "title": "LibraryStatus",
         "type": "string"
       },
@@ -3377,9 +3203,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "title": "MakeDirectoryRequest",
         "type": "object"
       },
@@ -3426,25 +3250,13 @@
             "type": "integer"
           }
         },
-        "required": [
-          "bundle_id",
-          "files_added",
-          "bundles_removed",
-          "subtitles_linked",
-          "created"
-        ],
+        "required": ["bundle_id", "files_added", "bundles_removed", "subtitles_linked", "created"],
         "title": "ManualBundleResultRead",
         "type": "object"
       },
       "MediaKind": {
         "description": "Coarse media classification, independent of the in-bundle role.",
-        "enum": [
-          "video",
-          "image",
-          "subtitle",
-          "audio",
-          "other"
-        ],
+        "enum": ["video", "image", "subtitle", "audio", "other"],
         "title": "MediaKind",
         "type": "string"
       },
@@ -3474,10 +3286,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "child"
-        ],
+        "required": ["op", "child"],
         "title": "NotNode",
         "type": "object"
       },
@@ -3507,10 +3316,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "child"
-        ],
+        "required": ["op", "child"],
         "title": "NotNode",
         "type": "object"
       },
@@ -3543,10 +3349,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "OrNode",
         "type": "object"
       },
@@ -3579,10 +3382,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "op",
-          "children"
-        ],
+        "required": ["op", "children"],
         "title": "OrNode",
         "type": "object"
       },
@@ -3607,9 +3407,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[BundleRead]",
         "type": "object"
       },
@@ -3634,9 +3432,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[CollectionRead]",
         "type": "object"
       },
@@ -3661,9 +3457,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[JobRead]",
         "type": "object"
       },
@@ -3688,9 +3482,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[TagGroupRead]",
         "type": "object"
       },
@@ -3715,9 +3507,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "Page[TagRead]",
         "type": "object"
       },
@@ -3736,10 +3526,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "pair_code",
-          "library_ids"
-        ],
+        "required": ["pair_code", "library_ids"],
         "title": "PairApproveRequest",
         "type": "object"
       },
@@ -3752,9 +3539,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "poll_key"
-        ],
+        "required": ["poll_key"],
         "title": "PairPollRequest",
         "type": "object"
       },
@@ -3775,10 +3560,7 @@
             "title": "Library Ids"
           },
           "status": {
-            "enum": [
-              "pending",
-              "approved"
-            ],
+            "enum": ["pending", "approved"],
             "title": "Status",
             "type": "string"
           },
@@ -3794,9 +3576,7 @@
             "title": "Token"
           }
         },
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "PairPollResponse",
         "type": "object"
       },
@@ -3809,9 +3589,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "device_name"
-        ],
+        "required": ["device_name"],
         "title": "PairStartRequest",
         "type": "object"
       },
@@ -3826,10 +3604,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "pair_code",
-          "poll_key"
-        ],
+        "required": ["pair_code", "poll_key"],
         "title": "PairStartResponse",
         "type": "object"
       },
@@ -3893,10 +3668,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "path",
-          "is_library"
-        ],
+        "required": ["path", "is_library"],
         "title": "PathSuggestion",
         "type": "object"
       },
@@ -3911,9 +3683,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "suggestions"
-        ],
+        "required": ["suggestions"],
         "title": "PathSuggestions",
         "type": "object"
       },
@@ -4181,11 +3951,7 @@
             "title": "Title"
           }
         },
-        "required": [
-          "start",
-          "end",
-          "title"
-        ],
+        "required": ["start", "end", "title"],
         "title": "PlaybackChapter",
         "type": "object"
       },
@@ -4228,9 +3994,7 @@
             "title": "Max Height"
           }
         },
-        "required": [
-          "caps"
-        ],
+        "required": ["caps"],
         "title": "PlaybackDecisionRequest",
         "type": "object"
       },
@@ -4348,10 +4112,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "bundle_id",
-          "videos"
-        ],
+        "required": ["bundle_id", "videos"],
         "title": "PlaybackManifest",
         "type": "object"
       },
@@ -4377,11 +4138,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "position_s",
-          "duration_s",
-          "completed"
-        ],
+        "required": ["position_s", "duration_s", "completed"],
         "title": "PlaybackProgressRead",
         "type": "object"
       },
@@ -4403,9 +4160,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "position_s"
-        ],
+        "required": ["position_s"],
         "title": "PlaybackProgressUpdate",
         "type": "object"
       },
@@ -4459,9 +4214,7 @@
             "title": "Start S"
           }
         },
-        "required": [
-          "caps"
-        ],
+        "required": ["caps"],
         "title": "PlaybackSessionCreate",
         "type": "object"
       },
@@ -4480,11 +4233,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "session_id",
-          "playlist_url",
-          "kind"
-        ],
+        "required": ["session_id", "playlist_url", "kind"],
         "title": "PlaybackSessionCreated",
         "type": "object"
       },
@@ -4499,10 +4248,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "playlist_url"
-        ],
+        "required": ["id", "playlist_url"],
         "title": "PlaybackSessionRef",
         "type": "object"
       },
@@ -4526,10 +4272,7 @@
             "title": "Value"
           }
         },
-        "required": [
-          "field",
-          "operator"
-        ],
+        "required": ["field", "operator"],
         "title": "PredicateNode",
         "type": "object"
       },
@@ -4540,9 +4283,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "create_new_bundle"
-        ],
+        "required": ["create_new_bundle"],
         "title": "ProposalDestinationUpdate",
         "type": "object"
       },
@@ -4558,10 +4299,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "target_proposal_id",
-          "target_index"
-        ],
+        "required": ["target_proposal_id", "target_index"],
         "title": "ProposalFileMove",
         "type": "object"
       },
@@ -4583,21 +4321,13 @@
             "type": "integer"
           }
         },
-        "required": [
-          "asset_file_id",
-          "relative_path",
-          "proposed_role",
-          "sequence"
-        ],
+        "required": ["asset_file_id", "relative_path", "proposed_role", "sequence"],
         "title": "ProposalFileRead",
         "type": "object"
       },
       "ProposalKind": {
         "description": "Whether a grouping proposal makes a bundle or a logical container (ADR-0009).\n\n``container`` is a logical-collection suggestion (its members are the bundles\nproposed inside it), never a filesystem-synced rule.",
-        "enum": [
-          "bundle",
-          "container"
-        ],
+        "enum": ["bundle", "container"],
         "title": "ProposalKind",
         "type": "string"
       },
@@ -4715,9 +4445,7 @@
             "title": "Parent Proposal Id"
           }
         },
-        "required": [
-          "parent_proposal_id"
-        ],
+        "required": ["parent_proposal_id"],
         "title": "ProposalReparent",
         "type": "object"
       },
@@ -4730,9 +4458,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "title"
-        ],
+        "required": ["title"],
         "title": "ProposalUpdate",
         "type": "object"
       },
@@ -4754,12 +4480,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "file_id",
-          "relative_path",
-          "role",
-          "sequence"
-        ],
+        "required": ["file_id", "relative_path", "role", "sequence"],
         "title": "ProposedRoleRead",
         "type": "object"
       },
@@ -4782,10 +4503,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "path",
-          "new_name"
-        ],
+        "required": ["path", "new_name"],
         "title": "RenameRequest",
         "type": "object"
       },
@@ -4799,9 +4517,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "ids"
-        ],
+        "required": ["ids"],
         "title": "SetIdsRequest",
         "type": "object"
       },
@@ -4815,9 +4531,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "tag_ids"
-        ],
+        "required": ["tag_ids"],
         "title": "SetTagsRequest",
         "type": "object"
       },
@@ -4853,10 +4567,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name",
-          "filter"
-        ],
+        "required": ["name", "filter"],
         "title": "SmartCollectionCreate",
         "type": "object"
       },
@@ -4990,11 +4701,7 @@
       },
       "StemMode": {
         "description": "Sensitivity used by grouping-plan stem matching.",
-        "enum": [
-          "narrow",
-          "balanced",
-          "wide"
-        ],
+        "enum": ["narrow", "balanced", "wide"],
         "title": "StemMode",
         "type": "string"
       },
@@ -5054,16 +4761,7 @@
             "title": "Src"
           }
         },
-        "required": [
-          "id",
-          "language",
-          "label",
-          "format",
-          "is_default",
-          "is_forced",
-          "kind",
-          "src"
-        ],
+        "required": ["id", "language", "label", "format", "is_default", "is_forced", "kind", "src"],
         "title": "SubtitleTrackRead",
         "type": "object"
       },
@@ -5122,14 +4820,7 @@
         "type": "object"
       },
       "SystemView": {
-        "enum": [
-          "all",
-          "recent",
-          "uncategorized",
-          "untagged",
-          "missing",
-          "unbundled"
-        ],
+        "enum": ["all", "recent", "uncategorized", "untagged", "missing", "unbundled"],
         "title": "SystemView",
         "type": "string"
       },
@@ -5165,9 +4856,7 @@
             "title": "Parent Id"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "TagCreate",
         "type": "object"
       },
@@ -5180,9 +4869,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "TagGroupCreate",
         "type": "object"
       },
@@ -5211,13 +4898,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "name",
-          "sort_order",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "name", "sort_order", "created_at", "updated_at"],
         "title": "TagGroupRead",
         "type": "object"
       },
@@ -5235,10 +4916,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "group_id",
-          "tag_ids"
-        ],
+        "required": ["group_id", "tag_ids"],
         "title": "TagGroupTags",
         "type": "object"
       },
@@ -5419,9 +5097,7 @@
             "title": "Started At"
           }
         },
-        "required": [
-          "running"
-        ],
+        "required": ["running"],
         "title": "TakeoverRead",
         "type": "object"
       },
@@ -5451,12 +5127,7 @@
             "title": "Title"
           }
         },
-        "required": [
-          "bundle_id",
-          "title",
-          "confidence",
-          "reason"
-        ],
+        "required": ["bundle_id", "title", "confidence", "reason"],
         "title": "TargetSuggestionRead",
         "type": "object"
       },
@@ -5470,10 +5141,116 @@
             "type": "array"
           }
         },
-        "required": [
-          "suggestions"
-        ],
+        "required": ["suggestions"],
         "title": "TargetSuggestionsResponse",
+        "type": "object"
+      },
+      "TrashRead": {
+        "description": "Everything currently recoverable, newest deletion first.",
+        "properties": {
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/TrashedOperationRead"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": ["operations", "size_bytes"],
+        "title": "TrashRead",
+        "type": "object"
+      },
+      "TrashRequest": {
+        "description": "Move files and/or directories into the library's trash.",
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": ["paths"],
+        "title": "TrashRequest",
+        "type": "object"
+      },
+      "TrashedEntryRead": {
+        "description": "One entry sitting in the trash, and where it would go back to.",
+        "properties": {
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
+          },
+          "is_directory": {
+            "title": "Is Directory",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "original_path": {
+            "title": "Original Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "required": ["original_path", "name", "file_id", "is_directory", "size_bytes"],
+        "title": "TrashedEntryRead",
+        "type": "object"
+      },
+      "TrashedOperationRead": {
+        "description": "One deletion, restorable as a unit.",
+        "properties": {
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/TrashedEntryRead"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          }
+        },
+        "required": ["operation_id", "deleted_at", "entries"],
+        "title": "TrashedOperationRead",
         "type": "object"
       },
       "UnbundledFilesPage": {
@@ -5499,12 +5276,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total",
-          "offset",
-          "limit"
-        ],
+        "required": ["items", "total", "offset", "limit"],
         "title": "UnbundledFilesPage",
         "type": "object"
       },
@@ -5516,9 +5288,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "passphrase"
-        ],
+        "required": ["passphrase"],
         "title": "UnlockRequest",
         "type": "object"
       },
@@ -5554,11 +5324,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError",
         "type": "object"
       },
@@ -5589,14 +5355,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "all",
-          "recent",
-          "uncategorized",
-          "untagged",
-          "missing",
-          "unbundled"
-        ],
+        "required": ["all", "recent", "uncategorized", "untagged", "missing", "unbundled"],
         "title": "ViewCounts",
         "type": "object"
       },
@@ -5620,12 +5379,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "enabled",
-          "allowed_by_deployment",
-          "effective",
-          "requires_passphrase"
-        ],
+        "required": ["enabled", "allowed_by_deployment", "effective", "requires_passphrase"],
         "title": "WriteModeRead",
         "type": "object"
       },
@@ -5649,9 +5403,7 @@
             "title": "Passphrase"
           }
         },
-        "required": [
-          "enabled"
-        ],
+        "required": ["enabled"],
         "title": "WriteModeUpdate",
         "type": "object"
       }
@@ -5712,10 +5464,7 @@
           }
         },
         "summary": "List Devices",
-        "tags": [
-          "auth",
-          "devices"
-        ]
+        "tags": ["auth", "devices"]
       }
     },
     "/api/v1/auth/devices/{device_id}": {
@@ -5765,10 +5514,7 @@
           }
         },
         "summary": "Revoke Device",
-        "tags": [
-          "auth",
-          "devices"
-        ]
+        "tags": ["auth", "devices"]
       }
     },
     "/api/v1/auth/pair/approve": {
@@ -5819,10 +5565,7 @@
           }
         },
         "summary": "Approve Pairing",
-        "tags": [
-          "auth",
-          "devices"
-        ]
+        "tags": ["auth", "devices"]
       }
     },
     "/api/v1/auth/pair/poll": {
@@ -5862,10 +5605,7 @@
           }
         },
         "summary": "Poll Pairing",
-        "tags": [
-          "auth",
-          "devices"
-        ]
+        "tags": ["auth", "devices"]
       }
     },
     "/api/v1/auth/pair/start": {
@@ -5905,10 +5645,7 @@
           }
         },
         "summary": "Start Pairing",
-        "tags": [
-          "auth",
-          "devices"
-        ]
+        "tags": ["auth", "devices"]
       }
     },
     "/api/v1/health": {
@@ -5927,9 +5664,7 @@
           }
         },
         "summary": "Get Health",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/api/v1/jobs": {
@@ -5988,9 +5723,7 @@
           }
         },
         "summary": "List Jobs",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/jobs/{job_id}": {
@@ -6030,9 +5763,7 @@
           }
         },
         "summary": "Get Job",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/jobs/{job_id}/cancel": {
@@ -6072,9 +5803,7 @@
           }
         },
         "summary": "Cancel Job",
-        "tags": [
-          "jobs"
-        ]
+        "tags": ["jobs"]
       }
     },
     "/api/v1/libraries": {
@@ -6097,9 +5826,7 @@
           }
         },
         "summary": "List Libraries",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/create": {
@@ -6138,9 +5865,7 @@
           }
         },
         "summary": "Create Library",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/path-suggestions": {
@@ -6182,9 +5907,7 @@
           }
         },
         "summary": "Path Suggestions",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/probe-path": {
@@ -6225,9 +5948,7 @@
           }
         },
         "summary": "Probe Path",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/register": {
@@ -6266,9 +5987,7 @@
           }
         },
         "summary": "Register Library",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/{library_id}": {
@@ -6302,9 +6021,7 @@
           }
         },
         "summary": "Deregister Library",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       },
       "get": {
         "operationId": "get_library_api_v1_libraries__library_id__get",
@@ -6342,9 +6059,7 @@
           }
         },
         "summary": "Get Library",
-        "tags": [
-          "libraries"
-        ]
+        "tags": ["libraries"]
       }
     },
     "/api/v1/libraries/{library_id}/auth/lock": {
@@ -6400,9 +6115,7 @@
           }
         },
         "summary": "Lock",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/libraries/{library_id}/auth/status": {
@@ -6474,9 +6187,7 @@
           }
         },
         "summary": "Auth Status",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/libraries/{library_id}/auth/unlock": {
@@ -6542,9 +6253,7 @@
           }
         },
         "summary": "Unlock",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles": {
@@ -6644,9 +6353,7 @@
           }
         },
         "summary": "List Bundles",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "operationId": "create_bundle_api_v1_libraries__library_id__bundles_post",
@@ -6726,9 +6433,7 @@
           }
         },
         "summary": "Create Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/batch": {
@@ -6810,9 +6515,7 @@
           }
         },
         "summary": "Batch Update",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/browse": {
@@ -6978,9 +6681,7 @@
           }
         },
         "summary": "Browse Bundles",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "description": "Browse with a filter AST \u2014 the shared path for toolbar filters and\nSmart Collections. Equivalent to GET /browse when ``filter`` is null.",
@@ -7061,9 +6762,7 @@
           }
         },
         "summary": "Browse Bundles Filtered",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/cleanup-order": {
@@ -7139,9 +6838,7 @@
           }
         },
         "summary": "Cleanup Bundle Order",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/counts": {
@@ -7213,9 +6910,7 @@
           }
         },
         "summary": "Bundle View Counts",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/reorder": {
@@ -7291,9 +6986,7 @@
           }
         },
         "summary": "Reorder Bundles",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}": {
@@ -7367,9 +7060,7 @@
           }
         },
         "summary": "Delete Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "get": {
         "operationId": "get_bundle_api_v1_libraries__library_id__bundles__bundle_id__get",
@@ -7448,9 +7139,7 @@
           }
         },
         "summary": "Get Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "patch": {
         "operationId": "update_bundle_api_v1_libraries__library_id__bundles__bundle_id__patch",
@@ -7557,9 +7246,7 @@
           }
         },
         "summary": "Update Bundle",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/collections": {
@@ -7640,9 +7327,7 @@
           }
         },
         "summary": "Get Collections",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "put": {
         "operationId": "set_collections_api_v1_libraries__library_id__bundles__bundle_id__collections_put",
@@ -7731,9 +7416,7 @@
           }
         },
         "summary": "Set Collections",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/cursor": {
@@ -7824,9 +7507,7 @@
           }
         },
         "summary": "Update Bundle Cursor",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
@@ -7911,9 +7592,7 @@
           }
         },
         "summary": "List Files",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "post": {
         "operationId": "add_file_api_v1_libraries__library_id__bundles__bundle_id__files_post",
@@ -8002,9 +7681,7 @@
           }
         },
         "summary": "Add File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/order": {
@@ -8099,9 +7776,7 @@
           }
         },
         "summary": "Reorder Files",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}": {
@@ -8184,9 +7859,7 @@
           }
         },
         "summary": "Remove File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "patch": {
         "operationId": "update_file_api_v1_libraries__library_id__bundles__bundle_id__files__file_id__patch",
@@ -8302,9 +7975,7 @@
           }
         },
         "summary": "Update File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair": {
@@ -8404,9 +8075,7 @@
           }
         },
         "summary": "Repair File",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/repair-candidate": {
@@ -8504,9 +8173,7 @@
           }
         },
         "summary": "Get File Repair Candidate",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files/{file_id}/thumbnail": {
@@ -8594,9 +8261,7 @@
           }
         },
         "summary": "Get File Thumbnail",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/playback": {
@@ -8677,9 +8342,7 @@
           }
         },
         "summary": "Playback Manifest",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/tags": {
@@ -8760,9 +8423,7 @@
           }
         },
         "summary": "Get Tags",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       },
       "put": {
         "operationId": "set_tags_api_v1_libraries__library_id__bundles__bundle_id__tags_put",
@@ -8851,9 +8512,7 @@
           }
         },
         "summary": "Set Tags",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/thumbnail": {
@@ -8933,9 +8592,7 @@
           }
         },
         "summary": "Get Bundle Thumbnail",
-        "tags": [
-          "bundles"
-        ]
+        "tags": ["bundles"]
       }
     },
     "/api/v1/libraries/{library_id}/collections": {
@@ -9035,9 +8692,7 @@
           }
         },
         "summary": "List Collections",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       },
       "post": {
         "operationId": "create_collection_api_v1_libraries__library_id__collections_post",
@@ -9117,9 +8772,7 @@
           }
         },
         "summary": "Create Collection",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/cleanup-order": {
@@ -9195,9 +8848,7 @@
           }
         },
         "summary": "Cleanup Collection Order",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/counts": {
@@ -9269,9 +8920,7 @@
           }
         },
         "summary": "Collection Counts",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/reorder": {
@@ -9358,9 +9007,7 @@
           }
         },
         "summary": "Reorder Collections",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}": {
@@ -9445,9 +9092,7 @@
           }
         },
         "summary": "Delete Collection",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       },
       "get": {
         "operationId": "get_collection_api_v1_libraries__library_id__collections__collection_id__get",
@@ -9526,9 +9171,7 @@
           }
         },
         "summary": "Get Collection",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       },
       "patch": {
         "operationId": "update_collection_api_v1_libraries__library_id__collections__collection_id__patch",
@@ -9635,9 +9278,7 @@
           }
         },
         "summary": "Update Collection",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}/stats": {
@@ -9719,9 +9360,7 @@
           }
         },
         "summary": "Get Collection Stats",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}/thumbnail": {
@@ -9801,9 +9440,7 @@
           }
         },
         "summary": "Get Collection Thumbnail",
-        "tags": [
-          "library-collections"
-        ]
+        "tags": ["library-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/continue-watching": {
@@ -9898,9 +9535,7 @@
           }
         },
         "summary": "Continue Watching",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/fast-add": {
@@ -9982,9 +9617,7 @@
           }
         },
         "summary": "Fast Add Files",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/file": {
@@ -10064,9 +9697,7 @@
           }
         },
         "summary": "Serve File",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/file-browser/entries": {
@@ -10155,9 +9786,7 @@
           }
         },
         "summary": "List File Browser Entries",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/file-ops": {
@@ -10258,9 +9887,7 @@
           }
         },
         "summary": "List Operations",
-        "tags": [
-          "file-ops"
-        ]
+        "tags": ["file-ops"]
       }
     },
     "/api/v1/libraries/{library_id}/file-ops/mkdir": {
@@ -10343,9 +9970,7 @@
           }
         },
         "summary": "Make Directory",
-        "tags": [
-          "file-ops"
-        ]
+        "tags": ["file-ops"]
       }
     },
     "/api/v1/libraries/{library_id}/file-ops/rename": {
@@ -10428,9 +10053,326 @@
           }
         },
         "summary": "Rename Entry",
-        "tags": [
-          "file-ops"
-        ]
+        "tags": ["file-ops"]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash": {
+      "get": {
+        "description": "List everything currently recoverable.\n\nReadable without write mode, like the journal: what is *in* the trash is\npart of the library's state, and hiding it when the capability is off would\nmake files look permanently gone when they are not.",
+        "operationId": "read_trash_api_v1_libraries__library_id__file_ops_trash_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Trash",
+        "tags": ["file-ops"]
+      },
+      "post": {
+        "description": "Move files and folders into the library's trash \u2014 never unlink them.\n\nThe entries are renamed into `.cairndex/trash/{operation_id}/`, which is on\nthe same filesystem (so it is instant even for large videos) and inside the\nlibrary package (so it travels with it). Linked rows keep their ids and\nbecome `trashed`, which is why restoring is lossless rather than a re-scan.",
+        "operationId": "trash_entries_api_v1_libraries__library_id__file_ops_trash_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrashRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trash Entries",
+        "tags": ["file-ops"]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash/empty": {
+      "post": {
+        "description": "Permanently delete trashed entries and their metadata rows.\n\n**The only operation in write mode with no way back.** Everything else \u2014\nrename, New Folder, delete, even Replace \u2014 is recoverable until this runs.",
+        "operationId": "empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyTrashRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyTrashResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Empty Trash",
+        "tags": ["file-ops"]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash/restore/{operation_id}": {
+      "post": {
+        "description": "Put one deletion's entries back where they came from.\n\nRefused as a whole if anything now occupies one of those paths: half a\nrestore would leave the owner to work out which files came back.",
+        "operationId": "restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore From Trash",
+        "tags": ["file-ops"]
       }
     },
     "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
@@ -10512,9 +10454,7 @@
           }
         },
         "summary": "Undo Operation",
-        "tags": [
-          "file-ops"
-        ]
+        "tags": ["file-ops"]
       }
     },
     "/api/v1/libraries/{library_id}/file/preview": {
@@ -10546,11 +10486,7 @@
             "required": false,
             "schema": {
               "default": 1600,
-              "enum": [
-                640,
-                1600,
-                2560
-              ],
+              "enum": [640, 1600, 2560],
               "title": "Size",
               "type": "integer"
             }
@@ -10609,9 +10545,7 @@
           }
         },
         "summary": "Serve File Preview",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/content": {
@@ -10691,9 +10625,7 @@
           }
         },
         "summary": "File Content",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/cover-frame": {
@@ -10775,9 +10707,7 @@
           }
         },
         "summary": "Clear Cover Frame",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       },
       "post": {
         "description": "Persist a video cover timestamp and regenerate only its cached thumbnail.",
@@ -10867,9 +10797,7 @@
           }
         },
         "summary": "Set Cover Frame",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-decision": {
@@ -10961,9 +10889,7 @@
           }
         },
         "summary": "Playback Decision",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions": {
@@ -11055,9 +10981,7 @@
           }
         },
         "summary": "Create Playback Session",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}": {
@@ -11141,9 +11065,7 @@
           }
         },
         "summary": "Delete Playback Session",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/teardown": {
@@ -11227,9 +11149,7 @@
           }
         },
         "summary": "Beacon Teardown Playback Session",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/playback-sessions/{session_id}/{artifact}": {
@@ -11327,9 +11247,7 @@
           }
         },
         "summary": "Playback Session Artifact",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/preview": {
@@ -11361,11 +11279,7 @@
             "required": false,
             "schema": {
               "default": 1600,
-              "enum": [
-                640,
-                1600,
-                2560
-              ],
+              "enum": [640, 1600, 2560],
               "title": "Size",
               "type": "integer"
             }
@@ -11424,9 +11338,7 @@
           }
         },
         "summary": "File Preview",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/progress": {
@@ -11517,9 +11429,7 @@
           }
         },
         "summary": "Beacon Progress",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       },
       "put": {
         "operationId": "update_progress_api_v1_libraries__library_id__files__file_id__progress_put",
@@ -11608,9 +11518,7 @@
           }
         },
         "summary": "Update Progress",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/storyboard.vtt": {
@@ -11690,9 +11598,7 @@
           }
         },
         "summary": "Storyboard Vtt",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/storyboard/{sheet_name}.jpg": {
@@ -11781,9 +11687,7 @@
           }
         },
         "summary": "Storyboard Sheet",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/stream": {
@@ -11863,9 +11767,7 @@
           }
         },
         "summary": "Stream File",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/filters/facets": {
@@ -11948,9 +11850,7 @@
           }
         },
         "summary": "Facets",
-        "tags": [
-          "filters"
-        ]
+        "tags": ["filters"]
       }
     },
     "/api/v1/libraries/{library_id}/filters/preview": {
@@ -12032,9 +11932,7 @@
           }
         },
         "summary": "Preview",
-        "tags": [
-          "filters"
-        ]
+        "tags": ["filters"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans": {
@@ -12110,9 +12008,7 @@
           }
         },
         "summary": "List Plans",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       },
       "post": {
         "description": "Suggest a grouping for the current library and store it as the active\nplan (superseding any earlier open plan).\n\nManual and scan-triggered generation share the same durable boundary:\nconfirmed bundles stay settled regardless of collection membership, while\nstill-unbundled files and new additions remain eligible.",
@@ -12200,9 +12096,7 @@
           }
         },
         "summary": "Generate Plan",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}": {
@@ -12283,9 +12177,7 @@
           }
         },
         "summary": "Get Plan",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/apply": {
@@ -12383,9 +12275,7 @@
           }
         },
         "summary": "Apply Plan",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}": {
@@ -12486,9 +12376,7 @@
           }
         },
         "summary": "Update Proposal",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/destination": {
@@ -12589,9 +12477,7 @@
           }
         },
         "summary": "Update Proposal Destination",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/files/{asset_file_id}/move": {
@@ -12705,9 +12591,7 @@
           }
         },
         "summary": "Move Proposal File",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
@@ -12808,9 +12692,7 @@
           }
         },
         "summary": "Reparent Proposal",
-        "tags": [
-          "grouping"
-        ]
+        "tags": ["grouping"]
       }
     },
     "/api/v1/libraries/{library_id}/jobs/probe": {
@@ -12850,9 +12732,7 @@
           }
         },
         "summary": "Enqueue Probe",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/jobs/scan": {
@@ -12892,9 +12772,7 @@
           }
         },
         "summary": "Enqueue Scan",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/jobs/storyboards": {
@@ -12934,9 +12812,7 @@
           }
         },
         "summary": "Enqueue Storyboards",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/jobs/thumbnails": {
@@ -12976,9 +12852,7 @@
           }
         },
         "summary": "Enqueue Thumbnails",
-        "tags": [
-          "library-files"
-        ]
+        "tags": ["library-files"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/add-files": {
@@ -13061,9 +12935,7 @@
           }
         },
         "summary": "Add Files To Bundle",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/bundles/{bundle_id}/suggest-files": {
@@ -13155,9 +13027,7 @@
           }
         },
         "summary": "Suggest Files For Bundle",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/create-bundle": {
@@ -13240,9 +13110,7 @@
           }
         },
         "summary": "Create Bundle From Files",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/create-empty-bundle": {
@@ -13325,9 +13193,7 @@
           }
         },
         "summary": "Create Empty Bundle",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/suggest-bundle": {
@@ -13410,9 +13276,7 @@
           }
         },
         "summary": "Suggest Bundle From Files",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/suggest-targets": {
@@ -13495,9 +13359,7 @@
           }
         },
         "summary": "Suggest Targets",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/manual-bundling/unbundled-files": {
@@ -13593,9 +13455,7 @@
           }
         },
         "summary": "List Unbundled Files",
-        "tags": [
-          "manual-bundling"
-        ]
+        "tags": ["manual-bundling"]
       }
     },
     "/api/v1/libraries/{library_id}/ownership": {
@@ -13636,9 +13496,7 @@
           }
         },
         "summary": "Get Ownership",
-        "tags": [
-          "ownership"
-        ]
+        "tags": ["ownership"]
       }
     },
     "/api/v1/libraries/{library_id}/ownership/takeover": {
@@ -13679,9 +13537,7 @@
           }
         },
         "summary": "Take Over",
-        "tags": [
-          "ownership"
-        ]
+        "tags": ["ownership"]
       }
     },
     "/api/v1/libraries/{library_id}/smart-collections": {
@@ -13757,9 +13613,7 @@
           }
         },
         "summary": "List Smart Collections",
-        "tags": [
-          "smart-collections"
-        ]
+        "tags": ["smart-collections"]
       },
       "post": {
         "operationId": "create_smart_collection_api_v1_libraries__library_id__smart_collections_post",
@@ -13839,9 +13693,7 @@
           }
         },
         "summary": "Create Smart Collection",
-        "tags": [
-          "smart-collections"
-        ]
+        "tags": ["smart-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/smart-collections/{smart_collection_id}": {
@@ -13915,9 +13767,7 @@
           }
         },
         "summary": "Delete Smart Collection",
-        "tags": [
-          "smart-collections"
-        ]
+        "tags": ["smart-collections"]
       },
       "get": {
         "operationId": "get_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__get",
@@ -13996,9 +13846,7 @@
           }
         },
         "summary": "Get Smart Collection",
-        "tags": [
-          "smart-collections"
-        ]
+        "tags": ["smart-collections"]
       },
       "patch": {
         "operationId": "update_smart_collection_api_v1_libraries__library_id__smart_collections__smart_collection_id__patch",
@@ -14105,9 +13953,7 @@
           }
         },
         "summary": "Update Smart Collection",
-        "tags": [
-          "smart-collections"
-        ]
+        "tags": ["smart-collections"]
       }
     },
     "/api/v1/libraries/{library_id}/subtitles/{track_id}/vtt": {
@@ -14187,9 +14033,7 @@
           }
         },
         "summary": "Subtitle Vtt",
-        "tags": [
-          "playback"
-        ]
+        "tags": ["playback"]
       }
     },
     "/api/v1/libraries/{library_id}/tag-groups": {
@@ -14289,9 +14133,7 @@
           }
         },
         "summary": "List Tag Groups",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "post": {
         "operationId": "create_tag_group_api_v1_libraries__library_id__tag_groups_post",
@@ -14371,9 +14213,7 @@
           }
         },
         "summary": "Create Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/libraries/{library_id}/tag-groups/{group_id}": {
@@ -14447,9 +14287,7 @@
           }
         },
         "summary": "Delete Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "get": {
         "operationId": "get_tag_group_api_v1_libraries__library_id__tag_groups__group_id__get",
@@ -14528,9 +14366,7 @@
           }
         },
         "summary": "Get Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "patch": {
         "operationId": "update_tag_group_api_v1_libraries__library_id__tag_groups__group_id__patch",
@@ -14619,9 +14455,7 @@
           }
         },
         "summary": "Update Tag Group",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/libraries/{library_id}/tag-groups/{group_id}/tags": {
@@ -14702,9 +14536,7 @@
           }
         },
         "summary": "Get Group Tags",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       },
       "put": {
         "operationId": "set_group_tags_api_v1_libraries__library_id__tag_groups__group_id__tags_put",
@@ -14793,9 +14625,7 @@
           }
         },
         "summary": "Set Group Tags",
-        "tags": [
-          "tag-groups"
-        ]
+        "tags": ["tag-groups"]
       }
     },
     "/api/v1/libraries/{library_id}/tags": {
@@ -14895,9 +14725,7 @@
           }
         },
         "summary": "List Tags",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "post": {
         "operationId": "create_tag_api_v1_libraries__library_id__tags_post",
@@ -14977,9 +14805,7 @@
           }
         },
         "summary": "Create Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     },
     "/api/v1/libraries/{library_id}/tags/counts": {
@@ -15051,9 +14877,7 @@
           }
         },
         "summary": "Tag Counts",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     },
     "/api/v1/libraries/{library_id}/tags/{tag_id}": {
@@ -15127,9 +14951,7 @@
           }
         },
         "summary": "Delete Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "get": {
         "operationId": "get_tag_api_v1_libraries__library_id__tags__tag_id__get",
@@ -15208,9 +15030,7 @@
           }
         },
         "summary": "Get Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       },
       "patch": {
         "operationId": "update_tag_api_v1_libraries__library_id__tags__tag_id__patch",
@@ -15317,9 +15137,7 @@
           }
         },
         "summary": "Update Tag",
-        "tags": [
-          "tags"
-        ]
+        "tags": ["tags"]
       }
     },
     "/api/v1/libraries/{library_id}/write-mode": {
@@ -15392,9 +15210,7 @@
           }
         },
         "summary": "Get Write Mode",
-        "tags": [
-          "write mode"
-        ]
+        "tags": ["write mode"]
       },
       "put": {
         "description": "Turn write mode on or off.\n\nEnabling a passphrase-protected library needs that passphrase in the body \u2014\na one-time re-auth on the capability change, answered with a generic 401 so\na missing passphrase and a wrong one are indistinguishable. Enabling on a\ndeployment configured read-only is refused with 403 ``write_mode_disabled``.\nDisabling is always permitted for an authorized caller.\n\nA correct passphrase authorizes the request on its own, in place of an\nunlocked session: it *is* the library's credential, and demanding a live\nunlock as well would leave a locked library unable to gain write mode\nwithout first being opened somewhere else \u2014 for one prompt, two prompts.",
@@ -15475,9 +15291,7 @@
           }
         },
         "summary": "Set Write Mode",
-        "tags": [
-          "write mode"
-        ]
+        "tags": ["write mode"]
       }
     }
   }

@@ -53,6 +53,52 @@ class FileOperationResult(BaseModel):
     skipped: bool
 
 
+class TrashRequest(BaseModel):
+    """Move files and/or directories into the library's trash."""
+
+    paths: list[str] = Field(min_length=1)
+
+
+class EmptyTrashRequest(BaseModel):
+    """Permanently delete trashed entries. The one operation with no undo."""
+
+    # Keep deletions newer than this many days. Omitted = empty everything,
+    # which is what pressing the button means.
+    older_than_days: int | None = Field(default=None, ge=1)
+
+
+class TrashedEntryRead(BaseModel):
+    """One entry sitting in the trash, and where it would go back to."""
+
+    original_path: str
+    name: str
+    file_id: str | None
+    is_directory: bool
+    # Present only while the bytes are still there; null if something removed
+    # them behind our back.
+    size_bytes: int | None
+
+
+class TrashedOperationRead(BaseModel):
+    """One deletion, restorable as a unit."""
+
+    operation_id: str
+    deleted_at: datetime | None
+    entries: list[TrashedEntryRead]
+
+
+class TrashRead(BaseModel):
+    """Everything currently recoverable, newest deletion first."""
+
+    operations: list[TrashedOperationRead]
+    # Bytes the trash occupies — what emptying it gives back.
+    size_bytes: int
+
+
+class EmptyTrashResult(BaseModel):
+    operations_emptied: int
+
+
 class FileOperationPage(BaseModel):
     """Newest-first page of the journal."""
 

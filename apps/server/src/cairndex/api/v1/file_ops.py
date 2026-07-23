@@ -1,28 +1,39 @@
-"""Guarded file operations inside a library root (ADR-0013 §4, plan 4 W1).
+"""Guarded file operations inside a library root (ADR-0013 §4, plan 4 W1/W4).
 
-Every route here declares ``WriteModeRequired`` alongside its session, so the
-gate is a property of the route rather than something each handler remembers to
-check: a library with write mode off answers 403 ``write_mode_disabled`` before
-any handler code runs.
+Every *write* route here declares ``WriteModeRequired`` alongside its session,
+so the gate is a property of the route rather than something each handler
+remembers to check: a library with write mode off answers 403
+``write_mode_disabled`` before any handler code runs.
 
-W1 ships the two operations that create no risk of losing bytes — rename and New
-Folder — plus Undo and the journal history. Move, trash, and import follow in
-later slices and attach here.
+Two routes deliberately do **not** declare it — the journal listing and the
+trash listing. Both describe state the library already has, and hiding them
+when the capability is off would make past operations invisible and trashed
+files look permanently gone. Reading what happened is not writing.
+
+Rename, New Folder, delete-to-trash, restore, Empty Trash, and Undo are here;
+move (W3) and import (W5) attach the same way.
 """
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import LibrarySession, WriteModeRequired
 from cairndex.api.schemas.file_ops import (
+    EmptyTrashRequest,
+    EmptyTrashResult,
     FileOperationPage,
     FileOperationRead,
     FileOperationResult,
     MakeDirectoryRequest,
     RenameRequest,
+    TrashedEntryRead,
+    TrashedOperationRead,
+    TrashRead,
+    TrashRequest,
 )
-from cairndex.file_ops import journal, operations
+from cairndex.file_ops import journal, operations, trash
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -70,6 +81,85 @@ def make_directory(
 ) -> FileOperationResult:
     """Create one new directory. Its parent must already exist."""
     return _result(operations.make_directory(db, library_root_for_session(db), path=payload.path))
+
+
+@router.post("/trash", response_model=FileOperationResult)
+def trash_entries(
+    payload: TrashRequest, db: LibrarySession, _gate: WriteModeRequired
+) -> FileOperationResult:
+    """Move files and folders into the library's trash — never unlink them.
+
+    The entries are renamed into `.cairndex/trash/{operation_id}/`, which is on
+    the same filesystem (so it is instant even for large videos) and inside the
+    library package (so it travels with it). Linked rows keep their ids and
+    become `trashed`, which is why restoring is lossless rather than a re-scan.
+    """
+    return _result(operations.trash_paths(db, library_root_for_session(db), paths=payload.paths))
+
+
+@router.get("/trash", response_model=TrashRead)
+def read_trash(db: LibrarySession) -> TrashRead:
+    """List everything currently recoverable.
+
+    Readable without write mode, like the journal: what is *in* the trash is
+    part of the library's state, and hiding it when the capability is off would
+    make files look permanently gone when they are not.
+    """
+    root = library_root_for_session(db)
+    return TrashRead(
+        operations=[
+            TrashedOperationRead(
+                operation_id=operation.id,
+                deleted_at=operation.finished_at,
+                entries=[
+                    TrashedEntryRead(
+                        original_path=entry.original_path,
+                        name=entry.original_path.rsplit("/", 1)[-1],
+                        file_id=entry.file_id,
+                        is_directory=entry.is_directory,
+                        size_bytes=_size_of(root / entry.stored_path),
+                    )
+                    for entry in entries
+                ],
+            )
+            for operation, entries in operations.list_trash(db)
+        ],
+        size_bytes=trash.size_on_disk(root),
+    )
+
+
+@router.post("/trash/restore/{operation_id}", response_model=FileOperationResult)
+def restore_from_trash(
+    operation_id: str, db: LibrarySession, _gate: WriteModeRequired
+) -> FileOperationResult:
+    """Put one deletion's entries back where they came from.
+
+    Refused as a whole if anything now occupies one of those paths: half a
+    restore would leave the owner to work out which files came back.
+    """
+    return _result(operations.restore(db, library_root_for_session(db), operation_id=operation_id))
+
+
+@router.post("/trash/empty", response_model=EmptyTrashResult)
+def empty_trash(
+    payload: EmptyTrashRequest, db: LibrarySession, _gate: WriteModeRequired
+) -> EmptyTrashResult:
+    """Permanently delete trashed entries and their metadata rows.
+
+    **The only operation in write mode with no way back.** Everything else —
+    rename, New Folder, delete, even Replace — is recoverable until this runs.
+    """
+    emptied = operations.empty_trash(
+        db, library_root_for_session(db), older_than_days=payload.older_than_days
+    )
+    return EmptyTrashResult(operations_emptied=emptied)
+
+
+def _size_of(path: Path) -> int | None:
+    try:
+        return path.stat().st_size if path.is_file() else None
+    except OSError:
+        return None
 
 
 @router.post("/{operation_id}/undo", response_model=FileOperationResult)

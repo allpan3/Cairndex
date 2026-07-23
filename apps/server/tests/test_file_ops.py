@@ -5,7 +5,9 @@ a real on-disk library package and real files — the whole point of these tests
 is what happens on the filesystem, so nothing here is mocked.
 """
 
+import json
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -14,12 +16,21 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
-from cairndex.domain.enums import FileOpStatus, FileOpType, FileRole, MediaKind
+from cairndex.core.time import utcnow
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileOpStatus,
+    FileOpType,
+    FileRole,
+    MediaKind,
+)
 from cairndex.file_ops import journal, operations
 from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.file_ops.paths import suffixed_name, validate_name
 from cairndex.file_ops.reconcile import reconcile_pending
+from cairndex.file_ops.trash import stored_relative_path
 from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
+from cairndex.scanning.scanner import _mark_missing
 
 
 def _touch(root: Path, relative: str, content: bytes = b"x") -> Path:
@@ -493,3 +504,307 @@ def test_reconciler_is_a_no_op_on_a_library_that_was_never_written_to(
 ) -> None:
     assert reconcile_pending(session, library_root).total == 0
     assert session.scalar(select(FileOperation).limit(1)) is None
+
+
+# --- trash (ADR-0013 §3.2) ---------------------------------------------------
+def _trashed_bytes(root: Path) -> list[Path]:
+    """Every file currently sitting in the library's trash."""
+    return sorted(p for p in (root / ".cairndex" / "trash").rglob("*") if p.is_file())
+
+
+def test_trashing_a_file_moves_it_and_keeps_its_row(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Show/ep1.mkv", b"payload")
+    file = _link(session, "Show/ep1.mkv")
+    original_id = file.id
+
+    result = operations.trash_paths(session, library_root, paths=["Show/ep1.mkv"])
+
+    # Gone from where it was, but not gone.
+    assert not (library_root / "Show/ep1.mkv").exists()
+    stored = library_root / f".cairndex/trash/{result.operation.id}/files/Show/ep1.mkv"
+    assert stored.read_bytes() == b"payload"
+
+    session.refresh(file)
+    assert file.id == original_id  # the whole reason restore is lossless
+    assert file.availability is FileAvailability.TRASHED
+    # The path follows the bytes, which is what frees the original path.
+    assert file.relative_path == stored_relative_path(result.operation.id, "Show/ep1.mkv")
+
+
+def test_trashing_writes_a_readable_note_beside_the_files(
+    session: Session, library_root: Path
+) -> None:
+    """For the case where someone opens the package without Cairndex."""
+    _touch(library_root, "a.mkv")
+    result = operations.trash_paths(session, library_root, paths=["a.mkv"])
+
+    meta = json.loads(
+        (library_root / f".cairndex/trash/{result.operation.id}/meta.json").read_text()
+    )
+
+    assert meta["operation_id"] == result.operation.id
+    assert [entry["original_path"] for entry in meta["entries"]] == ["a.mkv"]
+
+
+def test_trashing_a_directory_takes_its_subtree_as_one_operation(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Show/S01/ep1.mkv")
+    _touch(library_root, "Show/S01/ep2.mkv")
+    inside_a = _link(session, "Show/S01/ep1.mkv")
+    inside_b = _link(session, "Show/S01/ep2.mkv")
+
+    result = operations.trash_paths(session, library_root, paths=["Show/S01"])
+
+    assert not (library_root / "Show/S01").exists()
+    assert result.files_updated == 2
+    for row in (inside_a, inside_b):
+        session.refresh(row)
+        assert row.availability is FileAvailability.TRASHED
+    # One operation, so restoring is one action rather than two decisions.
+    assert len(journal.list_operations(session, limit=10)) == 1
+
+
+def test_trashing_a_folder_and_something_inside_it_is_one_move(
+    session: Session, library_root: Path
+) -> None:
+    """An ordinary multi-select. The child must not be trashed twice — the
+    second move would fail on a path the first one already took away."""
+    _touch(library_root, "Show/S01/ep1.mkv")
+
+    result = operations.trash_paths(session, library_root, paths=["Show/S01", "Show/S01/ep1.mkv"])
+
+    assert result.operation.payload["paths"] == ["Show/S01"]
+    assert (
+        library_root / f".cairndex/trash/{result.operation.id}/files/Show/S01/ep1.mkv"
+    ).is_file()
+
+
+def test_restore_puts_everything_back_with_its_metadata(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Show/ep1.mkv", b"payload")
+    file = _link(session, "Show/ep1.mkv")
+    bundle = session.get(AssetBundle, file.bundle_id)
+    assert bundle is not None
+    bundle.cover_file_id = file.id
+    session.commit()
+    trashed = operations.trash_paths(session, library_root, paths=["Show/ep1.mkv"])
+
+    restored = operations.restore(session, library_root, operation_id=trashed.operation.id)
+
+    assert restored.files_updated == 1
+    assert (library_root / "Show/ep1.mkv").read_bytes() == b"payload"
+    session.refresh(file)
+    session.refresh(bundle)
+    assert file.availability is FileAvailability.AVAILABLE
+    assert file.relative_path == "Show/ep1.mkv"
+    assert bundle.cover_file_id == file.id  # the round trip loses nothing
+    # The trash directory is tidied up rather than left as an empty shell.
+    assert not (library_root / f".cairndex/trash/{trashed.operation.id}").exists()
+
+
+def test_restoring_a_directory_restores_its_contents(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Show/S01/ep1.mkv")
+    _touch(library_root, "Show/S01/ep2.mkv")
+    inside = _link(session, "Show/S01/ep1.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["Show/S01"])
+
+    operations.restore(session, library_root, operation_id=trashed.operation.id)
+
+    assert (library_root / "Show/S01/ep1.mkv").is_file()
+    assert (library_root / "Show/S01/ep2.mkv").is_file()
+    session.refresh(inside)
+    assert inside.relative_path == "Show/S01/ep1.mkv"
+    assert inside.availability is FileAvailability.AVAILABLE
+
+
+def test_restore_is_refused_whole_when_the_path_is_taken(
+    session: Session, library_root: Path
+) -> None:
+    """Half a restore is worse than none: the owner would have to work out
+    which files came back."""
+    _touch(library_root, "a.mkv", b"original")
+    _touch(library_root, "b.mkv", b"other")
+    trashed = operations.trash_paths(session, library_root, paths=["a.mkv", "b.mkv"])
+    _touch(library_root, "a.mkv", b"something new")
+
+    with pytest.raises(ConflictError):
+        operations.restore(session, library_root, operation_id=trashed.operation.id)
+
+    # Nothing moved — b.mkv is still in the trash, waiting.
+    assert (library_root / "a.mkv").read_bytes() == b"something new"
+    assert not (library_root / "b.mkv").exists()
+
+
+def test_restoring_a_file_whose_folder_is_gone_recreates_the_folder(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Show/ep1.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["Show/ep1.mkv"])
+    (library_root / "Show").rmdir()
+
+    operations.restore(session, library_root, operation_id=trashed.operation.id)
+
+    assert (library_root / "Show/ep1.mkv").is_file()
+
+
+def test_undo_of_a_deletion_is_the_restore(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["a.mkv"])
+
+    operations.undo(session, library_root, operation_id=trashed.operation.id)
+
+    assert (library_root / "a.mkv").is_file()
+    assert session.get(FileOperation, trashed.operation.id).status is FileOpStatus.UNDONE
+
+
+def test_a_trashed_file_is_not_missing(session: Session, library_root: Path) -> None:
+    """The distinction the whole state exists for: missing means "we do not know
+    where this went"; trashed means "we put it there". A scan must not confuse
+    the two, or the Trash view empties into Missing Files."""
+    _touch(library_root, "a.mkv")
+    file = _link(session, "a.mkv")
+    operations.trash_paths(session, library_root, paths=["a.mkv"])
+
+    changed = _mark_missing([file], keep=set())
+
+    assert changed == 0
+    assert file.availability is FileAvailability.TRASHED
+
+
+def test_empty_trash_is_the_one_way_door(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv")
+    file = _link(session, "a.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["a.mkv"])
+    file_id = file.id
+
+    emptied = operations.empty_trash(session, library_root)
+
+    assert emptied == 1
+    assert _trashed_bytes(library_root) == []
+    # Metadata deletion happens here and only here.
+    assert session.get(AssetFile, file_id) is None
+    assert session.get(FileOperation, trashed.operation.id).status is FileOpStatus.EMPTIED
+    assert operations.list_trash(session) == []
+
+
+def test_empty_trash_can_keep_recent_deletions(session: Session, library_root: Path) -> None:
+    _touch(library_root, "old.mkv")
+    _touch(library_root, "new.mkv")
+    old = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    new = operations.trash_paths(session, library_root, paths=["new.mkv"])
+    old.operation.finished_at = utcnow() - timedelta(days=40)
+    session.commit()
+
+    emptied = operations.empty_trash(session, library_root, older_than_days=30)
+
+    assert emptied == 1
+    assert [op.id for op, _ in operations.list_trash(session)] == [new.operation.id]
+
+
+def test_an_emptied_deletion_cannot_be_restored(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["a.mkv"])
+    operations.empty_trash(session, library_root)
+
+    with pytest.raises(ConflictError):
+        operations.restore(session, library_root, operation_id=trashed.operation.id)
+
+
+# --- replace, which the trash is what makes safe (ADR-0013 §3.3) -------------
+def test_replace_trashes_the_displaced_file_rather_than_overwriting_it(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "new.mkv", b"the better copy")
+    _touch(library_root, "old.mkv", b"the original")
+    displaced = _link(session, "old.mkv")
+
+    result = operations.rename(
+        session,
+        library_root,
+        path="new.mkv",
+        new_name="old.mkv",
+        on_conflict=ConflictPolicy.REPLACE,
+    )
+
+    assert (library_root / "old.mkv").read_bytes() == b"the better copy"
+    session.refresh(displaced)
+    assert displaced.availability is FileAvailability.TRASHED
+    # Recorded as an ordinary deletion of its own, so it shows up in the Trash
+    # view, restores on its own, and is emptied by the same sweep as the rest.
+    trashed = operations.list_trash(session)
+    assert [entry.original_path for _op, entries in trashed for entry in entries] == ["old.mkv"]
+    assert result.operation.payload["replaced_operation_id"] == trashed[0][0].id
+    assert (library_root / f".cairndex/trash/{trashed[0][0].id}/files/old.mkv").read_bytes() == (
+        b"the original"
+    )
+
+
+def test_undoing_a_replace_puts_both_files_back(session: Session, library_root: Path) -> None:
+    """Otherwise the owner is left with neither file where they expected it —
+    recoverable, but silently."""
+    _touch(library_root, "new.mkv", b"the better copy")
+    _touch(library_root, "old.mkv", b"the original")
+    displaced = _link(session, "old.mkv")
+
+    result = operations.rename(
+        session,
+        library_root,
+        path="new.mkv",
+        new_name="old.mkv",
+        on_conflict=ConflictPolicy.REPLACE,
+    )
+    operations.undo(session, library_root, operation_id=result.operation.id)
+
+    assert (library_root / "old.mkv").read_bytes() == b"the original"
+    assert (library_root / "new.mkv").read_bytes() == b"the better copy"
+    session.refresh(displaced)
+    assert displaced.availability is FileAvailability.AVAILABLE
+    assert displaced.relative_path == "old.mkv"
+
+
+def test_reconciler_completes_a_deletion_that_was_interrupted_halfway(
+    session: Session, library_root: Path
+) -> None:
+    """The one operation reconciled *partially*, because it is the one that can
+    be partially done. Failing it whole would leave the moved file in the trash
+    with nothing listing it — invisible and unrestorable."""
+    _touch(library_root, "moved.mkv", b"payload")
+    _touch(library_root, "not-moved.mkv")
+    moved_row = _link(session, "moved.mkv")
+    still_here = _link(session, "not-moved.mkv")
+    row = _interrupted(session, FileOpType.TRASH, {"paths": ["moved.mkv", "not-moved.mkv"]})
+    # Only the first path made it into the trash before the crash.
+    stored = library_root / f".cairndex/trash/{row.id}/files/moved.mkv"
+    stored.parent.mkdir(parents=True)
+    (library_root / "moved.mkv").rename(stored)
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (1, 0)
+    session.refresh(row)
+    session.refresh(moved_row)
+    session.refresh(still_here)
+    assert row.status is FileOpStatus.DONE
+    assert moved_row.availability is FileAvailability.TRASHED
+    # The one that never moved is untouched, and still on disk.
+    assert still_here.availability is FileAvailability.AVAILABLE
+    assert (library_root / "not-moved.mkv").is_file()
+    # And what did move is restorable, which is the whole point.
+    operations.restore(session, library_root, operation_id=row.id)
+    assert (library_root / "moved.mkv").read_bytes() == b"payload"
+
+
+def test_reconciler_fails_a_deletion_that_never_started(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "a.mkv")
+    row = _interrupted(session, FileOpType.TRASH, {"paths": ["a.mkv"]})
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (0, 1)
+    session.refresh(row)
+    assert row.status is FileOpStatus.FAILED
+    assert (library_root / "a.mkv").is_file()
