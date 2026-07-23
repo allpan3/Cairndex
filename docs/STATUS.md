@@ -72,8 +72,9 @@ said "All rights reserved" while `LICENSE` has been MIT since 2026-07-21.
    trusting the JSON's shape.
 
 **Gates.** Backend ruff / ruff format / **strict mypy over `src` + `packaging`**
-(146 files) / **620 pytest** (+25, all in the new `test_ffmpeg_manifest.py`,
-covering the ways the checksum gate can fail open — including malformed pins).
+(146 files) / **625 pytest** (+30, all in the new `test_ffmpeg_manifest.py`,
+covering the ways the checksum gate can fail open — malformed pins, vendor
+scoping, and Mach-O architecture reading).
 Desktop `cargo fmt --check`, Clippy `-D warnings`, **86 tests** against the real
 packaged sidecar, and `tauri build`. Web build run to produce the Tauri
 frontend; no web source changed, so the web unit/e2e suites were not re-run.
@@ -86,10 +87,48 @@ that was proven rather than assumed by sabotaging the bundled binary and
 confirming the smoke test fails (it did, though only with a raw traceback; it
 now reports the failure in its own words).
 
+**The release pipeline exists, and both architectures are built and verified.**
+`.github/workflows/release.yml` triggers on a `v*` tag or manual dispatch,
+builds each architecture on its own native runner, smoke-tests each packaged
+sidecar against its bundled ffmpeg, and drafts a release carrying both DMGs, a
+`.sha256` beside each, and `THIRD-PARTY-NOTICES.md`. Publishing stays a human
+decision.
+
+*Native jobs rather than cross-compilation, and this is not a preference.* The
+Rust half cross-compiles fine with `--target`; the sidecar does not, because
+PyInstaller freezes the interpreter that runs it and has no cross-compile mode.
+So the matrix pins `uv sync --python cpython-3.12-macos-<arch>-none` — that line
+is what decides the sidecar's architecture. `--platform` selects which checksum
+pin to verify against and *cannot* change what was frozen, which is a trap worth
+naming: staging a correctly-pinned Intel ffmpeg beside an arm64 sidecar passes
+every digest check and produces an app that dies on launch. `build_sidecar.py`
+now reads the frozen executable's Mach-O header and refuses the mismatch
+(verified: exit 1 with a message naming the fix).
+
+Two things the two-architecture work surfaced. Fetched binaries all landed in
+one `vendor/ffmpeg/` directory with identical filenames, so building both arches
+meant each fetch silently clobbered the other — the vendor path is
+platform-scoped now. And the Intel runner label is `macos-15-intel`; the old
+free `macos-13` image is retired, so if Intel runners go away the fallback is
+dropping the artifact, not cross-compiling.
+
+**CI cannot be run from here, so the pipeline's logic was verified on this
+machine instead**, which is stronger than it sounds: the whole Intel path was
+executed end to end. An x86_64 CPython and the `x86_64-apple-darwin` Rust target
+produced an Intel sidecar (arch-checked), its smoke test passed under Rosetta
+against the Intel ffmpeg, and `tauri build --target x86_64-apple-darwin` yielded
+a 294 MB app whose every Mach-O — shell, sidecar, ffmpeg, ffprobe — is x86_64,
+with a valid bundle signature, the expected `rejected` quarantine verdict, and a
+clean launch with the sidecar spawning. The arm64 DMG was built (97 MB from a
+213 MB app), mounted, and the app inside it verified. The workflow's two
+non-obvious shell steps — the `file`/`sed` architecture assertion and the
+staging/checksum step — were run verbatim against those real artifacts.
+
 **Next**, in order:
-1. **Release artifacts + workflow** — a `release` job producing per-architecture
-   DMGs (Apple Silicon + Intel). The Intel side is unexercised: its pin is
-   verified and it runs under Rosetta here, but nothing has built an x86_64 app.
+1. **A real run of `release.yml`.** It triggers on tags, so nothing has executed
+   it; the runner labels, the cache paths, and `softprops/action-gh-release` are
+   unproven in CI even though every build step they wrap has been run by hand.
+   Needs a tag, which is the owner's call.
 2. **An owner pass on a genuinely downloaded build.** The `xattr` reproduction
    is faithful to the quarantine bit, but only a real download proves the whole
    path.
