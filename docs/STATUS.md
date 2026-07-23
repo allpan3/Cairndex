@@ -2,11 +2,66 @@
 
 > **Current position:** phase H — plan 4 library write mode, on
 > `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
-> request). **W0, W1 and W4 are complete; W5 is complete server-side and in the
-> browser, and still needs its desktop bridge** — see the W5 entry below, which
-> is the recommended next task because it is the owner's driving use case. One
-> D7 verification item is deliberately deferred behind write mode (an owner pass
-> on a genuinely downloaded build); it is not a blocker for anything in phase H.
+> request). **W0, W1, W4 and W5 are complete**, including the desktop drag-in
+> that write mode was built for. **W3 (move) is the recommended next task** —
+> smaller than planned, since W1/W4/W5 built most of its machinery; W2 stays
+> blocked on plan 1 M11, and W6 closes the track. Two things still need the
+> owner: a pass on a genuinely downloaded build (deferred from D7), and a pass
+> on the **native Finder drag gesture** on a packaged build, which cannot be
+> automated here.
+
+## Implemented: plan 4 W5 desktop bridge — Finder drag-in (2026-07-23)
+
+Same branch. The thing write mode was built for: dragging media from Finder onto
+the app copies it in.
+
+**Why it needed Rust at all.** Tauri's `dragDropEnabled` intercepts an OS drop
+*before* the webview sees it, so the browser-side upload flow never fires in the
+shell — the drop arrives as absolute paths, and a webview cannot turn an
+absolute path into a readable `File`. `importer.rs` streams the file to the
+import endpoint from a file handle, so a 60 GB video costs constant memory on
+both ends.
+
+**The security shape is the part worth reviewing.** A command that reads a
+caller-named path and posts its contents to a server is a materially bigger
+capability than anything the shell had before — `reverse_map_paths` already
+accepts absolute paths from the web layer, but statting a path leaks its
+existence while uploading one leaks its contents. Two rules bound it:
+
+1. **Only paths the user actually dropped.** The shell records each drop's paths
+   from the *window event* — its own observation, not the webview's report — and
+   refuses to upload anything it has not seen. Comparison is canonicalized, so a
+   symlink cannot smuggle a different file past a matching string, and each drop
+   replaces the last rather than accumulating a growing allowlist.
+2. **The destination is not the caller's to choose.** Server URL and bearer come
+   from the media proxy's own configuration via a shared `target_for`, which
+   applies the *same* per-library token scoping the media relay does — shared
+   rather than re-derived so the rule cannot be changed in one place and
+   forgotten in the other.
+
+**The drop keeps every rule the browser path has**: one file at a time, a
+collision asks with the full Replace / Keep both prompt, the answer applies only
+to the file it was about, and each import is undoable on its own. Files already
+inside the library still link in place, so a mixed drop does the right thing
+with both halves. Where they land: the folder on screen when the Files surface
+is open, the library root otherwise.
+
+Verification: desktop `cargo fmt --check`, Clippy `-D warnings`, **91 unit
+tests** (+5: only-dropped-paths, drop replacement, a non-existent path, and the
+import URL preserving a base path and defaulting to `fail`), and a release
+`npm run tauri build` producing `Cairndex.app` and its DMG. Web Prettier,
+ESLint, `tsc -b`, full Vitest (**364 passed**, +8 covering the sequential loop,
+a mid-batch collision resuming with the answer scoped to one file, dismissal,
+the Tauri error shape, and the destination folder), the Vite build.
+
+**Still needs the owner: the native drag gesture on a packaged build.** Same
+limitation as plan 3 D4 — a real Finder drag cannot be driven from here. The
+command underneath it is unit-tested and the app builds; what is unverified is
+the gesture.
+
+**Two stale claims corrected in the same change**, because they became untrue
+here rather than gradually: `docs/architecture.md` and `docs/deployment.md` both
+still said the app never moves, renames, deletes or rewrites source files.
 
 ## Implemented (partly): plan 4 W5 — importing external files (2026-07-23)
 
