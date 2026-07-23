@@ -53,6 +53,36 @@ grouped under `Unreleased` until the first tagged release.
   are absolute paths, `..`, symlinks pointing outside the library, and names
   that a Windows or SMB client would silently mangle.
 
+- **Write mode — delete to a trash, and Replace** (plan 4 W4). **Deleting never
+  unlinks.** Files and folders move into the library's own trash, and a new
+  **Trash** view in the sidebar puts them back. Because the move is a rename
+  within the same folder, it is instant whatever the file's size, and because
+  the trash lives inside `.cairndex/` it travels with the library — copy the
+  folder to another machine and its trash comes too.
+
+  A restored file is the *same* file: same id, same bundle, same cover, same
+  subtitles, same thumbnails. Deleting a folder takes everything in it as one
+  deletion, and Put back returns the whole thing in one action rather than file
+  by file.
+
+  **Replace now exists**, in the rename collision prompt, and it is not an
+  overwrite: the file being replaced is moved to the trash first, so the choice
+  stays reversible. Undoing a Replace brings back *both* files. This is why the
+  trash was built before the button was offered.
+
+  **Empty Trash is the only action in write mode with no way back** — it says so,
+  and names the amount of space it will reclaim. Deleted files are kept until
+  then; there is no automatic expiry.
+
+  Two smaller things that matter more than they sound: a trashed file is **not**
+  reported as *missing*, so scanning does not confuse "you deleted this" with
+  "this vanished"; and the trash is still readable when write mode is switched
+  off, because turning a capability off should not make files look permanently
+  gone when they are not.
+
+  **Back up `.cairndex/trash/`** — it holds real files, not derived data. See
+  `docs/deployment.md`.
+
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
   packaged sidecar against its bundled ffmpeg, and attaches the DMG, its

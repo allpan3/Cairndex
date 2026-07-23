@@ -133,13 +133,12 @@ destination; destination parent must exist (or be created by the same
   - Note: this prompt is about **path collisions**. Content-duplicate
     detection at import (Eagle's other trigger for the same dialog) remains
     deferred per the product brief.
-  - **Sequencing consequence, found building W1:** `replace` cannot exist
-    before the trash does, because *being* trash-then-write is what makes it
-    safe. W1 therefore ships `fail | skip | suffix` only, and the client shows
-    Keep both / Cancel. W5 (import) arrives before W4 (trash) in the owner's
-    re-ordering, so **W5 will face the same limitation** — either it offers the
-    two safe answers too, or W4's trash moves ahead of it. Worth deciding when
-    W5 starts rather than discovering at the dialog.
+  - **Sequencing consequence, found building W1 and resolved by the owner:**
+    `replace` cannot exist before the trash does, because *being*
+    trash-then-write is what makes it safe. W1 shipped `fail | skip | suffix`
+    only. Rather than have W5's import inherit that gap, the owner moved **W4
+    ahead of W5** (2026-07-23), so Replace landed with the trash and import
+    arrives with all four answers available.
 - Cross-device moves inside one root (nested mounts, rare): `rename()` EXDEV
   → copy + size/quick-fingerprint verify + unlink, journaled as two phases.
 - Case-only renames on case-insensitive filesystems (SMB from macOS): two-step
@@ -253,9 +252,13 @@ temp-file staging, partial-upload cleanup).
 | W1 ✅ | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast. **Landed 2026-07-23.** Two deviations from §3.3, both narrowing: `replace` is **not** in the collision enum yet — the ADR defines it as trash-then-write, so it cannot be implemented recoverably until W4, and naming it earlier would promise a way back that does not exist (the UI offers Keep both / Cancel). And the validator additionally refuses `.cairndex/` from both directions, plus dot-leading and trailing-dot names |
 | W2 | Save exports to library | §5 (`save_new`), Export-dialog "Save into library…", link/role/set-cover — lands after plan 1 M11 |
 | W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File Browser, collision policy, plan/preview for multi-item |
-| W4 | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view, bundle "delete with files" |
+| W4 ✅ | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view. **Landed 2026-07-23**, moved ahead of W5 by the owner so import gets a real Replace. Two design points worth carrying forward: a trashed row's `relative_path` moves *into* the trash (which is what frees the original path for Replace), and a Replace files its displaced file as an ordinary `trash` operation of its own rather than a footnote in the rename — that is what puts it in the Trash view and makes undoing a Replace restore both files. **Not included:** bundle "delete with files", which is a Bundle Browser affordance rather than a trash mechanism and is now the smallest remaining piece of W4 |
 | W5 | Import external | §6 upload op; plan 3 drag-in copy flow lights up |
 | W6 | Hardening | EXDEV/case-only edge cases, retention config, journal history UI, deployment/backup docs, perf pass on bulk ops |
+
+Owner re-sequenced 2026-07-10, and again 2026-07-23 to **W0 → W1 → W4 → W5**
+(see §3.3: Replace has to have somewhere to put the file it displaces). The
+original 2026-07-10 note follows.
 
 Owner re-sequenced 2026-07-10 (milestone ids kept stable, order changed):
 build **W0 → W1 → W5** first — the driving use case is dragging media from
