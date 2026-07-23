@@ -169,6 +169,39 @@ def test_renaming_a_directory_repoints_every_row_beneath_it(
     assert sibling.relative_path == "Show/S01 extras/behind.mkv"
 
 
+def test_renaming_a_directory_treats_like_wildcards_in_its_name_as_literals(
+    session: Session, library_root: Path
+) -> None:
+    """``_`` and ``%`` are LIKE wildcards, but in a path they are just characters.
+
+    Without escaping, renaming ``my_show`` selects ``myxshow/…`` too (``_``
+    matches any one character) and the repoint slices the bystander's path into
+    garbage — a row corrupted for a file that never moved.
+    """
+    _touch(library_root, "my_show/ep1.mkv")
+    _touch(library_root, "myxshow/other.mkv")
+    _touch(library_root, "100% legit/real.mkv")
+    _touch(library_root, "100 percent legit/decoy.mkv")
+    inside = _link(session, "my_show/ep1.mkv")
+    bystander = _link(session, "myxshow/other.mkv")
+    percent_inside = _link(session, "100% legit/real.mkv")
+    percent_bystander = _link(session, "100 percent legit/decoy.mkv")
+
+    underscore = operations.rename(session, library_root, path="my_show", new_name="My Show")
+    percent = operations.rename(session, library_root, path="100% legit", new_name="Legit")
+
+    assert underscore.files_updated == 1
+    assert percent.files_updated == 1
+    session.refresh(inside)
+    session.refresh(bystander)
+    session.refresh(percent_inside)
+    session.refresh(percent_bystander)
+    assert inside.relative_path == "My Show/ep1.mkv"
+    assert bystander.relative_path == "myxshow/other.mkv"
+    assert percent_inside.relative_path == "Legit/real.mkv"
+    assert percent_bystander.relative_path == "100 percent legit/decoy.mkv"
+
+
 def test_rename_of_an_unlinked_file_is_still_a_rename(session: Session, library_root: Path) -> None:
     _touch(library_root, "loose.mkv")
 

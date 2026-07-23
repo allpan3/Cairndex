@@ -48,19 +48,23 @@ def _linked_rows_under(session: Session, relative_path: str) -> list[AssetFile]:
     """Every linked row at ``relative_path`` or beneath it, as a directory.
 
     Segment-aware: ``Show/S01`` matches ``Show/S01/ep1.mkv`` but never
-    ``Show/S01 extras/…``. The indexed ``directory_path`` narrows the scan for
-    the common case; the exact-path row is fetched alongside it because a file
-    is not under its own directory prefix.
+    ``Show/S01 extras/…``. ``autoescape`` matters: a path is LIKE-pattern data,
+    and an unescaped ``_`` or ``%`` in a directory's own name would sweep
+    sibling trees into the rename. The Python re-check keeps the SQL a pure
+    narrowing step — no row is repointed on the pattern's say-so alone.
     """
     prefix = f"{relative_path}/"
-    return list(
-        session.scalars(
-            select(AssetFile).where(
-                (AssetFile.relative_path == relative_path)
-                | (AssetFile.relative_path.startswith(prefix))
-            )
+    rows = session.scalars(
+        select(AssetFile).where(
+            (AssetFile.relative_path == relative_path)
+            | (AssetFile.relative_path.startswith(prefix, autoescape=True))
         )
     )
+    return [
+        row
+        for row in rows
+        if row.relative_path == relative_path or row.relative_path.startswith(prefix)
+    ]
 
 
 def repoint_linked_rows(session: Session, *, source: str, destination: str) -> int:
