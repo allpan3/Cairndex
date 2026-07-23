@@ -6,15 +6,16 @@ default of refusing outright:
 
 - ``fail`` (default) — a structured 409 the client turns into that prompt;
 - ``skip`` — do nothing, report it;
-- ``suffix`` — "keep both", picking ``name (2)`` and counting up.
+- ``suffix`` — "keep both", picking ``name (2)`` and counting up;
+- ``replace`` — **trash-then-write**, never a byte-level overwrite.
 
-``replace`` is deliberately **absent** rather than stubbed. ADR-0013 defines it
-as *journaled trash-then-write* — the existing file moves into
-``.cairndex/trash/`` before the incoming one takes the path — precisely so that
-Replace never becomes a byte-level overwrite. The trash lands in W4, and until
-it does there is no way to implement Replace that is recoverable, so offering
-the word would be promising something the code cannot honour. Adding the member
-later is additive for every client.
+``replace`` waited for the trash (W4) rather than being stubbed earlier,
+because being trash-then-write is the whole of what makes it safe: the existing
+entry moves into ``.cairndex/trash/`` **under the incoming operation's own id**,
+so undoing that operation puts it back, and until Empty Trash the replaced file
+is still there. This module decides *that* a replacement is needed; the
+operation performs it, because only the operation has a journal row to file the
+displaced entry under.
 """
 
 import os
@@ -37,6 +38,7 @@ class ConflictPolicy(StrEnum):
     FAIL = "fail"
     SKIP = "skip"
     SUFFIX = "suffix"
+    REPLACE = "replace"
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,8 @@ class Settlement:
     skip: bool = False
     # The name changed to avoid a collision, so the UI can say which one it used.
     renamed: bool = False
+    # Something is in the way and must be trashed first (never overwritten).
+    replace: bool = False
 
 
 def resolve_collision(
@@ -68,6 +72,9 @@ def resolve_collision(
 
     if policy is ConflictPolicy.SKIP:
         return Settlement(relative_path=relative_path, skip=True)
+
+    if policy is ConflictPolicy.REPLACE:
+        return Settlement(relative_path=relative_path, replace=True)
 
     if policy is ConflictPolicy.SUFFIX:
         for attempt in range(2, _MAX_SUFFIX_ATTEMPTS + 2):

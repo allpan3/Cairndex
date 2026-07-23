@@ -979,6 +979,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-ops/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Trash
+         * @description List everything currently recoverable.
+         *
+         *     Readable without write mode, like the journal: what is *in* the trash is
+         *     part of the library's state, and hiding it when the capability is off would
+         *     make files look permanently gone when they are not.
+         */
+        get: operations["read_trash_api_v1_libraries__library_id__file_ops_trash_get"];
+        put?: never;
+        /**
+         * Trash Entries
+         * @description Move files and folders into the library's trash — never unlink them.
+         *
+         *     The entries are renamed into `.cairndex/trash/{operation_id}/`, which is on
+         *     the same filesystem (so it is instant even for large videos) and inside the
+         *     library package (so it travels with it). Linked rows keep their ids and
+         *     become `trashed`, which is why restoring is lossless rather than a re-scan.
+         */
+        post: operations["trash_entries_api_v1_libraries__library_id__file_ops_trash_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Empty Trash
+         * @description Permanently delete trashed entries and their metadata rows.
+         *
+         *     **The only operation in write mode with no way back.** Everything else —
+         *     rename, New Folder, delete, even Replace — is recoverable until this runs.
+         */
+        post: operations["empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/trash/restore/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore From Trash
+         * @description Put one deletion's entries back where they came from.
+         *
+         *     Refused as a whole if anything now occupies one of those paths: half a
+         *     restore would leave the owner to work out which files came back.
+         */
+        post: operations["restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
         parameters: {
             query?: never;
@@ -2370,7 +2449,7 @@ export interface components {
          * @description Caller's answer to a path collision, chosen before or after the 409.
          * @enum {string}
          */
-        ConflictPolicy: "fail" | "skip" | "suffix";
+        ConflictPolicy: "fail" | "skip" | "suffix" | "replace";
         /** ContinueWatchingItem */
         ContinueWatchingItem: {
             /** Cover Key */
@@ -2504,6 +2583,19 @@ export interface components {
             revoked_at: string | null;
         };
         /**
+         * EmptyTrashRequest
+         * @description Permanently delete trashed entries. The one operation with no undo.
+         */
+        EmptyTrashRequest: {
+            /** Older Than Days */
+            older_than_days?: number | null;
+        };
+        /** EmptyTrashResult */
+        EmptyTrashResult: {
+            /** Operations Emptied */
+            operations_emptied: number;
+        };
+        /**
          * FacetRequest
          * @description Faceted counts over the current browse scope, for the toolbar filter
          *     popovers. The scope mirrors a browse request (view/collection/search plus a
@@ -2568,9 +2660,18 @@ export interface components {
         /**
          * FileAvailability
          * @description File presence on disk. Distinct from metadata deletion (ADR-0002).
+         *
+         *     ``trashed`` is the third state, added by write mode (ADR-0013 §3.2): the
+         *     file has been moved into the library's own trash and is recoverable. It is
+         *     deliberately **not** ``missing`` — missing means "we do not know where this
+         *     went", which is the scanner's problem to solve, whereas trashed means "we
+         *     put it there, and here is how to put it back". Surfaces that require a
+         *     readable file already test for ``available``, so they exclude it for free;
+         *     the Missing Files view tests for ``missing``, so a trashed file does not
+         *     appear there either.
          * @enum {string}
          */
-        FileAvailability: "available" | "missing";
+        FileAvailability: "available" | "missing" | "trashed";
         /** FileBrowserEntryRead */
         FileBrowserEntryRead: {
             /** Audio Codec */
@@ -2652,17 +2753,21 @@ export interface components {
          *     was applied, keeping the history honest rather than deleting the row.
          * @enum {string}
          */
-        FileOpStatus: "pending" | "done" | "failed" | "undone";
+        FileOpStatus: "pending" | "done" | "failed" | "undone" | "emptied";
         /**
          * FileOpType
          * @description Kind of guarded file operation recorded in the journal.
          *
-         *     Only the operations that exist are listed. Later slices add ``move``,
-         *     ``trash``/``restore`` (W3/W4) and ``import``/``save_new`` (W5/W2); the
-         *     journal stores the value as text, so adding one needs no migration.
+         *     Only the operations that exist are listed. Later slices add ``move`` (W3)
+         *     and ``import``/``save_new`` (W5/W2); the journal stores the value as text,
+         *     so adding one needs no migration.
+         *
+         *     There is no ``restore`` member: restoring is not a new operation, it is the
+         *     original ``trash`` row being undone, which is why the trash can be listed by
+         *     reading the journal for `trash` rows that are still ``done``.
          * @enum {string}
          */
-        FileOpType: "rename" | "mkdir";
+        FileOpType: "rename" | "mkdir" | "trash";
         /**
          * FileOperationPage
          * @description Newest-first page of the journal.
@@ -3743,6 +3848,52 @@ export interface components {
         TargetSuggestionsResponse: {
             /** Suggestions */
             suggestions: components["schemas"]["TargetSuggestionRead"][];
+        };
+        /**
+         * TrashRead
+         * @description Everything currently recoverable, newest deletion first.
+         */
+        TrashRead: {
+            /** Operations */
+            operations: components["schemas"]["TrashedOperationRead"][];
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * TrashRequest
+         * @description Move files and/or directories into the library's trash.
+         */
+        TrashRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * TrashedEntryRead
+         * @description One entry sitting in the trash, and where it would go back to.
+         */
+        TrashedEntryRead: {
+            /** File Id */
+            file_id: string | null;
+            /** Is Directory */
+            is_directory: boolean;
+            /** Name */
+            name: string;
+            /** Original Path */
+            original_path: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+        };
+        /**
+         * TrashedOperationRead
+         * @description One deletion, restorable as a unit.
+         */
+        TrashedOperationRead: {
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Entries */
+            entries: components["schemas"]["TrashedEntryRead"][];
+            /** Operation Id */
+            operation_id: string;
         };
         /**
          * UnbundledFilesPage
@@ -6026,6 +6177,155 @@ export interface operations {
                 "application/json": components["schemas"]["RenameRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_trash_api_v1_libraries__library_id__file_ops_trash_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_entries_api_v1_libraries__library_id__file_ops_trash_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyTrashRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmptyTrashResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
