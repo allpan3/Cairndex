@@ -483,6 +483,19 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
             files_updated=result.files_updated,
         )
 
+    if operation.op is FileOpType.IMPORT:
+        # Undoing an import deletes the file it created — to the trash, not with
+        # an unlink, so "undo" is never the one action in the app that destroys
+        # something. If the import replaced a file, that one comes back too.
+        relative = operation.payload["destination"]
+        if os.path.lexists(root / relative):
+            trash_paths(session, root, paths=[relative])
+        replaced_id = operation.payload.get("replaced_operation_id")
+        if replaced_id:
+            restore(session, root, operation_id=str(replaced_id))
+        journal.mark_undone(session, operation)
+        return OperationResult(operation=operation, path=relative, files_updated=0)
+
     if operation.op is FileOpType.MKDIR:
         relative = operation.payload["destination"]
         target = resolve_writable(root, relative)

@@ -10,14 +10,14 @@ trash listing. Both describe state the library already has, and hiding them
 when the capability is off would make past operations invisible and trashed
 files look permanently gone. Reading what happened is not writing.
 
-Rename, New Folder, delete-to-trash, restore, Empty Trash, and Undo are here;
-move (W3) and import (W5) attach the same way.
+Rename, New Folder, import, delete-to-trash, restore, Empty Trash, and Undo
+are here; move (W3) attaches the same way.
 """
 
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, Request, status
 
 from cairndex.api.deps import LibrarySession, WriteModeRequired
 from cairndex.api.schemas.file_ops import (
@@ -26,6 +26,7 @@ from cairndex.api.schemas.file_ops import (
     FileOperationPage,
     FileOperationRead,
     FileOperationResult,
+    ImportResultRead,
     MakeDirectoryRequest,
     RenameRequest,
     TrashedEntryRead,
@@ -33,7 +34,8 @@ from cairndex.api.schemas.file_ops import (
     TrashRead,
     TrashRequest,
 )
-from cairndex.file_ops import journal, operations, trash
+from cairndex.file_ops import imports, journal, operations, trash
+from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
 
@@ -81,6 +83,46 @@ def make_directory(
 ) -> FileOperationResult:
     """Create one new directory. Its parent must already exist."""
     return _result(operations.make_directory(db, library_root_for_session(db), path=payload.path))
+
+
+@router.post("/import", response_model=ImportResultRead, status_code=status.HTTP_201_CREATED)
+async def import_file(
+    request: Request,
+    db: LibrarySession,
+    _gate: WriteModeRequired,
+    dest_dir: Annotated[str, Query()] = "",
+    filename: Annotated[str, Query(min_length=1, max_length=255)] = "",
+    on_conflict: Annotated[ConflictPolicy, Query()] = ConflictPolicy.FAIL,
+    link: Annotated[bool, Query()] = False,
+) -> ImportResultRead:
+    """Stream one external file into this library — the only way bytes enter it.
+
+    **The body is the file**, raw, with the metadata in query parameters.
+    Deliberately not multipart: the caller already has an open file handle or a
+    `File` object, both of which stream as a body without an encoding step, and
+    it keeps the server free of a form-parsing dependency for a request that is
+    99.99% payload. One file per request, so each import gets its own progress,
+    its own collision answer, and its own undo.
+
+    The server never reads a path the client names — it cannot: there is no path
+    in this request, only bytes.
+    """
+    result = await imports.import_stream(
+        db,
+        library_root_for_session(db),
+        dest_dir=dest_dir,
+        filename=filename,
+        body=request.stream(),
+        on_conflict=on_conflict,
+        link=link,
+    )
+    return ImportResultRead(
+        operation=FileOperationRead.model_validate(result.operation.operation),
+        path=result.operation.path,
+        files_updated=result.operation.files_updated,
+        skipped=result.operation.skipped,
+        size_bytes=result.size_bytes,
+    )
 
 
 @router.post("/trash", response_model=FileOperationResult)

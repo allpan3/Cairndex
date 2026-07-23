@@ -930,6 +930,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-ops/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import File
+         * @description Stream one external file into this library — the only way bytes enter it.
+         *
+         *     **The body is the file**, raw, with the metadata in query parameters.
+         *     Deliberately not multipart: the caller already has an open file handle or a
+         *     `File` object, both of which stream as a body without an encoding step, and
+         *     it keeps the server free of a form-parsing dependency for a request that is
+         *     99.99% payload. One file per request, so each import gets its own progress,
+         *     its own collision answer, and its own undo.
+         *
+         *     The server never reads a path the client names — it cannot: there is no path
+         *     in this request, only bytes.
+         */
+        post: operations["import_file_api_v1_libraries__library_id__file_ops_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file-ops/mkdir": {
         parameters: {
             query?: never;
@@ -2758,16 +2788,16 @@ export interface components {
          * FileOpType
          * @description Kind of guarded file operation recorded in the journal.
          *
-         *     Only the operations that exist are listed. Later slices add ``move`` (W3)
-         *     and ``import``/``save_new`` (W5/W2); the journal stores the value as text,
-         *     so adding one needs no migration.
+         *     Only the operations that exist are listed. ``move`` (W3) and ``save_new``
+         *     (W2) follow; the journal stores the value as text, so adding one needs no
+         *     migration.
          *
          *     There is no ``restore`` member: restoring is not a new operation, it is the
          *     original ``trash`` row being undone, which is why the trash can be listed by
          *     reading the journal for `trash` rows that are still ``done``.
          * @enum {string}
          */
-        FileOpType: "rename" | "mkdir" | "trash";
+        FileOpType: "rename" | "mkdir" | "trash" | "import";
         /**
          * FileOperationPage
          * @description Newest-first page of the journal.
@@ -3012,6 +3042,21 @@ export interface components {
             status: string;
             /** Write Mode */
             write_mode: string;
+        };
+        /**
+         * ImportResultRead
+         * @description An import, plus what actually arrived.
+         */
+        ImportResultRead: {
+            /** Files Updated */
+            files_updated: number;
+            operation: components["schemas"]["FileOperationRead"];
+            /** Path */
+            path: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Skipped */
+            skipped: boolean;
         };
         /** JobRead */
         JobRead: {
@@ -6107,6 +6152,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileOperationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_file_api_v1_libraries__library_id__file_ops_import_post: {
+        parameters: {
+            query?: {
+                dest_dir?: string;
+                filename?: string;
+                on_conflict?: components["schemas"]["ConflictPolicy"];
+                link?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResultRead"];
                 };
             };
             /** @description Validation Error */
