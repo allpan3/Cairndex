@@ -83,6 +83,28 @@ grouped under `Unreleased` until the first tagged release.
   **Back up `.cairndex/trash/`** — it holds real files, not derived data. See
   `docs/deployment.md`.
 
+- **Write mode — copying files in** (plan 4 W5). **Add Files…** in the File
+  Browser toolbar, and dragging files from your desktop onto the listing, copy
+  them into the folder you are looking at and link them, ready to bundle. This
+  is the only way files from outside a library ever get into one.
+
+  Files upload one at a time rather than all at once — six parallel uploads
+  share the same bandwidth six ways, so everything finishes late instead of the
+  first files finishing early. A name that is already taken asks, with the full
+  Replace / Keep both choice, and answering carries on with the rest of the
+  batch rather than abandoning it. Each file gets its own **Undo**, which moves
+  it to the trash rather than deleting it.
+
+  Nothing is held in memory: the upload streams to a staging file inside the
+  library and is renamed into place, so importing a 60 GB video costs 60 GB of
+  disk **in the library** and almost no RAM. An interrupted upload leaves a
+  partial file that the next library open removes. `CAIRNDEX_IMPORT_MAX_BYTES`
+  caps a single file if you want one; by default there is no limit.
+
+  **Not yet: dragging from Finder onto the desktop app.** That path goes through
+  the shell rather than the browser, and still explains that files must be moved
+  into the library folder first. Everything underneath it now exists.
+
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
   packaged sidecar against its bundled ffmpeg, and attaches the DMG, its

@@ -87,6 +87,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 | `CAIRNDEX_WRITE_MODE`              | `allowed`       | Deployment master switch for guarded file operations (ADR-0013). `allowed` lets the per-library opt-in decide; `disabled` forces every library read-only.          |
+| `CAIRNDEX_IMPORT_MAX_BYTES`        | `0`             | Largest single file that may be uploaded into a library. `0` = no limit.                                                                                          |
 
 **Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
 binaries explicitly. Unset, they are resolved from `PATH` and then from the
@@ -131,6 +132,17 @@ from the API entirely. The passphrase check here is not rate-limited, matching
 the unlock endpoint; argon2's cost is the only brake on guessing, which is
 another reason a shared deployment wants the master switch rather than the
 per-library one.
+
+**Importing files** (ADR-0013 §7): with write mode on, files can be copied into
+a library over the API — the one way outside bytes ever enter one. The upload is
+streamed to `.cairndex/tmp/` and renamed into place, so a large import needs
+**free space inside the library volume**, not on the server's app-data disk, and
+a crash leaves a `.part` file that the next library open removes.
+`CAIRNDEX_IMPORT_MAX_BYTES` caps a single file; it defaults to `0` (no limit),
+because the legitimate case here is a whole video and any cap generous enough
+never to reject one would not be protecting anything on a single-owner LAN. Set
+it on a deployment whose API is reachable by anyone whose disk usage you would
+not want to underwrite.
 
 **Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
 short hostname) is the human-readable name another machine shows when it asks
