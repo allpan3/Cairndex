@@ -1377,6 +1377,16 @@
         "title": "CollectionUpdate",
         "type": "object"
       },
+      "ConflictPolicy": {
+        "description": "Caller's answer to a path collision, chosen before or after the 409.",
+        "enum": [
+          "fail",
+          "skip",
+          "suffix"
+        ],
+        "title": "ConflictPolicy",
+        "type": "string"
+      },
       "ContinueWatchingItem": {
         "properties": {
           "cover_key": {
@@ -2317,6 +2327,142 @@
         "title": "FileLink",
         "type": "object"
       },
+      "FileOpStatus": {
+        "description": "Lifecycle of a journaled file operation (ADR-0013 \u00a73.1).\n\n``pending`` is written *before* the filesystem is touched, so a crash\nmid-operation is discoverable rather than silent: the reconciler on the next\nlibrary open decides whether the operation completed (finish the metadata\nside) or never happened (``failed``). ``undone`` records that the inverse\nwas applied, keeping the history honest rather than deleting the row.",
+        "enum": [
+          "pending",
+          "done",
+          "failed",
+          "undone"
+        ],
+        "title": "FileOpStatus",
+        "type": "string"
+      },
+      "FileOpType": {
+        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. Later slices add ``move``,\n``trash``/``restore`` (W3/W4) and ``import``/``save_new`` (W5/W2); the\njournal stores the value as text, so adding one needs no migration.",
+        "enum": [
+          "rename",
+          "mkdir"
+        ],
+        "title": "FileOpType",
+        "type": "string"
+      },
+      "FileOperationPage": {
+        "description": "Newest-first page of the journal.",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/FileOperationRead"
+            },
+            "title": "Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations",
+          "next_cursor"
+        ],
+        "title": "FileOperationPage",
+        "type": "object"
+      },
+      "FileOperationRead": {
+        "description": "One journal entry, as the history view and Undo need it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/FileOpType"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileOpStatus"
+          }
+        },
+        "required": [
+          "id",
+          "op",
+          "status",
+          "payload",
+          "error",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "FileOperationRead",
+        "type": "object"
+      },
+      "FileOperationResult": {
+        "description": "What an operation did, for the toast that offers to undo it.",
+        "properties": {
+          "files_updated": {
+            "title": "Files Updated",
+            "type": "integer"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/FileOperationRead"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "path",
+          "files_updated",
+          "skipped"
+        ],
+        "title": "FileOperationResult",
+        "type": "object"
+      },
       "FileRead": {
         "properties": {
           "availability": {
@@ -3221,6 +3367,21 @@
         ],
         "title": "LibraryStatus",
         "type": "string"
+      },
+      "MakeDirectoryRequest": {
+        "description": "Create one new directory at a library-relative path.",
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "MakeDirectoryRequest",
+        "type": "object"
       },
       "ManualBundleResultRead": {
         "properties": {
@@ -4600,6 +4761,32 @@
           "sequence"
         ],
         "title": "ProposedRoleRead",
+        "type": "object"
+      },
+      "RenameRequest": {
+        "description": "Rename one file or directory in place.",
+        "properties": {
+          "new_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "New Name",
+            "type": "string"
+          },
+          "on_conflict": {
+            "$ref": "#/components/schemas/ConflictPolicy",
+            "default": "fail"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "new_name"
+        ],
+        "title": "RenameRequest",
         "type": "object"
       },
       "SetIdsRequest": {
@@ -9970,6 +10157,363 @@
         "summary": "List File Browser Entries",
         "tags": [
           "library-files"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops": {
+      "get": {
+        "description": "Newest-first history of what write mode has done to this library.\n\nReadable without write mode: turning the capability off must not hide what\nit did while it was on.",
+        "operationId": "list_operations_api_v1_libraries__library_id__file_ops_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Operations",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/mkdir": {
+      "post": {
+        "description": "Create one new directory. Its parent must already exist.",
+        "operationId": "make_directory_api_v1_libraries__library_id__file_ops_mkdir_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeDirectoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Directory",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/rename": {
+      "post": {
+        "description": "Rename one file or directory, carrying its metadata with it.\n\nThe rename and the `AssetFile.relative_path` update happen together, so\nevery id \u2014 and therefore every bundle membership, cover, subtitle link and\ncached thumbnail \u2014 survives by construction rather than by later repair.\nRenaming a directory repoints everything beneath it in the same operation.\n\nA destination that already exists answers 409 `conflict`, which the client\nturns into the Replace / Skip / Keep both prompt and re-issues with an\nexplicit `on_conflict`.",
+        "operationId": "rename_entry_api_v1_libraries__library_id__file_ops_rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Entry",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
+      "post": {
+        "description": "Apply an operation's inverse \u2014 the Undo behind every completed toast.\n\nOnly a completed operation can be undone, and only once; the journal row is\nmarked `undone` rather than deleted, so the history still explains how the\nlibrary reached its current shape.",
+        "operationId": "undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Operation",
+        "tags": [
+          "file-ops"
         ]
       }
     },
