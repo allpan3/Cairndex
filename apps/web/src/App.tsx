@@ -24,6 +24,7 @@ import {
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
+  useDeploymentWriteMode,
   useLibraries,
   useLibraryAuth,
   useLibraryOwnership,
@@ -644,11 +645,30 @@ function Workspace({
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // Transient success banner after a manual bundling action.
   const [flash, setFlash] = useState<string | null>(null)
+  // The Undo behind a completed file operation (ADR-0013 §3.1), when the toast
+  // has one. Cleared with the message it belongs to, so an expired toast can
+  // never leave a stale inverse behind a button.
+  const [flashUndo, setFlashUndo] = useState<(() => void) | null>(null)
   useEffect(() => {
     if (flash === null) return
-    const t = setTimeout(() => setFlash(null), 4000)
+    // An offer to undo is worth reading twice; a plain confirmation is not.
+    const t = setTimeout(
+      () => {
+        setFlash(null)
+        setFlashUndo(null)
+      },
+      flashUndo ? 8000 : 4000,
+    )
     return () => clearTimeout(t)
-  }, [flash])
+  }, [flash, flashUndo])
+
+  // Show a message, optionally with the action that reverses what it reports.
+  const showFlash = useCallback((message: string, undo?: () => void) => {
+    setFlash(message)
+    // Stored as a thunk: `setState` calls a bare function argument instead of
+    // storing it, which would fire the undo the moment it was offered.
+    setFlashUndo(undo ? () => undo : null)
+  }, [])
 
   // Report the total still missing after scan reconciliation, including old misses
   const reportScanComplete = useCallback((missingTotal: number) => {
@@ -810,6 +830,12 @@ function Workspace({
   const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
+  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
+  // per-library opt-in and the deployment master switch. Either one off means
+  // the File Browser looks exactly as it did before write mode existed.
+  const writeModeAllowed = useDeploymentWriteMode()
+  const writeMode =
+    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
 
   const activeSmartCollection =
     smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
@@ -1542,6 +1568,8 @@ function Workspace({
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
             onStartFileDrag={onStartFileDrag}
+            writeMode={writeMode}
+            onFlash={showFlash}
           />
         ) : (
           <>
@@ -1885,6 +1913,18 @@ function Workspace({
       {flash && (
         <div className="mb-toast" role="status">
           {flash}
+          {flashUndo && (
+            <button
+              className="btn btn--sm mb-toast__action"
+              onClick={() => {
+                flashUndo()
+                setFlash(null)
+                setFlashUndo(null)
+              }}
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
 

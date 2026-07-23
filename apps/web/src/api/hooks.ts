@@ -18,6 +18,7 @@ import {
   type CleanupSort,
   type CollectionCreate,
   type CollectionRead,
+  type ConflictPolicy,
   type SortOrder,
   type FacetParams,
   type FilePatch,
@@ -89,9 +90,11 @@ import {
   fetchTagGroups,
   fetchTags,
   fetchViewCounts,
+  makeDirectory,
   previewFilter,
   probeLibraryPath,
   registerLibrary,
+  renameEntry,
   removeFile,
   repairFile,
   revokeDevice,
@@ -117,6 +120,7 @@ import {
   updateBundle,
   updateBundleCursor,
   updateFile,
+  undoFileOperation,
   updateSmartCollection,
 } from './client'
 
@@ -364,6 +368,48 @@ export function useWriteModeMutation() {
       return qc.invalidateQueries({ queryKey: ['libraries'] })
     },
   })
+}
+
+// --- Guarded file operations (ADR-0013 W1) -----------------------------------
+/**
+ * Rename / New Folder / Undo, with the listing refreshed after each.
+ *
+ * Every mutation invalidates the File Browser rather than patching it: a rename
+ * can change an entry's sort position, a collision policy can settle on a
+ * different name than the one asked for, and a directory rename moves rows the
+ * client never saw. The listing is cheap and the server is the authority on all
+ * three.
+ */
+export function useFileOperations() {
+  const qc = useQueryClient()
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['file-browser'] })
+    // A rename repoints linked rows, so anything that renders a path is stale.
+    for (const key of ['browse', 'bundle-files', 'unbundled-files', 'file-ops'])
+      qc.invalidateQueries({ queryKey: [key] })
+  }
+  return {
+    rename: useMutation({
+      mutationFn: ({
+        path,
+        newName,
+        onConflict,
+      }: {
+        path: string
+        newName: string
+        onConflict?: ConflictPolicy
+      }) => renameEntry(path, newName, onConflict),
+      onSuccess: refresh,
+    }),
+    mkdir: useMutation({
+      mutationFn: (path: string) => makeDirectory(path),
+      onSuccess: refresh,
+    }),
+    undo: useMutation({
+      mutationFn: (operationId: string) => undoFileOperation(operationId),
+      onSuccess: refresh,
+    }),
+  }
 }
 
 // --- Per-library passphrase lock (ADR-0010) ----------------------------------
