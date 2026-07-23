@@ -53,6 +53,14 @@ class FileOperationResult(BaseModel):
     skipped: bool
 
 
+class ImportResultRead(FileOperationResult):
+    """An import, plus what actually arrived."""
+
+    # Bytes written. The caller can check it against what it sent — the one
+    # end-to-end confirmation a streamed upload can offer.
+    size_bytes: int
+
+
 class TrashRequest(BaseModel):
     """Move files and/or directories into the library's trash."""
 

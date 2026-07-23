@@ -5,8 +5,10 @@ a real on-disk library package and real files — the whole point of these tests
 is what happens on the filesystem, so nothing here is mocked.
 """
 
+import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +16,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from cairndex.core.config import get_settings
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
 from cairndex.core.time import utcnow
@@ -24,7 +27,7 @@ from cairndex.domain.enums import (
     FileRole,
     MediaKind,
 )
-from cairndex.file_ops import journal, operations
+from cairndex.file_ops import imports, journal, operations
 from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.file_ops.paths import suffixed_name, validate_name
 from cairndex.file_ops.reconcile import reconcile_pending
@@ -808,3 +811,69 @@ def test_reconciler_fails_a_deletion_that_never_started(
     session.refresh(row)
     assert row.status is FileOpStatus.FAILED
     assert (library_root / "a.mkv").is_file()
+
+
+# --- import (ADR-0013 §7, plan 4 W5) -----------------------------------------
+async def _body(*chunks: bytes) -> AsyncIterator[bytes]:
+    for chunk in chunks:
+        yield chunk
+
+
+def test_import_streams_in_chunks_without_holding_the_file(
+    session: Session, library_root: Path
+) -> None:
+    result = asyncio.run(
+        imports.import_stream(
+            session,
+            library_root,
+            dest_dir="",
+            filename="clip.mkv",
+            body=_body(b"part one ", b"part two"),
+        )
+    )
+
+    assert result.size_bytes == len(b"part one part two")
+    assert (library_root / "clip.mkv").read_bytes() == b"part one part two"
+
+
+def test_import_over_the_size_limit_is_refused_and_cleans_up(
+    session: Session, library_root: Path
+) -> None:
+    """The limit has to be enforced *while* streaming — checking a
+    Content-Length would trust the client about the thing being limited."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("CAIRNDEX_IMPORT_MAX_BYTES", "10")
+        get_settings.cache_clear()
+        try:
+            with pytest.raises(ValidationError):
+                asyncio.run(
+                    imports.import_stream(
+                        session,
+                        library_root,
+                        dest_dir="",
+                        filename="big.mkv",
+                        body=_body(b"x" * 8, b"y" * 8),
+                    )
+                )
+        finally:
+            get_settings.cache_clear()
+
+    assert not (library_root / "big.mkv").exists()
+    # The partial upload is gone, not left occupying the space it was refused.
+    assert list(imports.staging_dir(library_root).iterdir()) == []
+    assert journal.list_operations(session, limit=5)[0].status is FileOpStatus.FAILED
+
+
+def test_staging_sweep_removes_abandoned_partial_uploads(library_root: Path) -> None:
+    staging = imports.staging_dir(library_root)
+    staging.mkdir(parents=True)
+    (staging / "01ABANDONED.part").write_bytes(b"half a video")
+
+    removed = imports.sweep_staging(library_root)
+
+    assert removed == 1
+    assert list(staging.iterdir()) == []
+
+
+def test_staging_sweep_is_quiet_when_nothing_was_ever_imported(library_root: Path) -> None:
+    assert imports.sweep_staging(library_root) == 0

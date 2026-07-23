@@ -106,6 +106,19 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
     if operation.op is FileOpType.TRASH:
         return _settle_trash(session, root, operation)
 
+    if operation.op is FileOpType.IMPORT:
+        # An import is pending only if the process died while bytes were still
+        # arriving — the file is renamed into place and marked done in one
+        # breath at the end. So the destination existing means it finished;
+        # otherwise a `.part` file is all there is, and the staging sweep on the
+        # same library open removes it.
+        destination = operation.payload.get("destination")
+        if destination and os.path.lexists(resolve_writable(root, destination)):
+            journal.finish(session, operation, reconciled=True)
+            return True
+        journal.fail(session, operation, "interrupted before the upload finished")
+        return False
+
     journal.fail(session, operation, f"cannot reconcile a {operation.op.value} operation")
     return False
 
