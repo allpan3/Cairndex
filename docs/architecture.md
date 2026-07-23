@@ -573,7 +573,9 @@ File Browser path previews use a path-hash cache key plus a stat-derived quick
 fingerprint because the file need not be linked into a bundle. The endpoint
 serves current derivatives with `Cache-Control: public, max-age=31536000,
 immutable`. Browser-native raster images can downscale from the original;
-HEIC/HEIF, TIFF, and BMP use Pillow plus pillow-heif. PSD is not advertised as
+HEIC/HEIF, TIFF, and BMP use Pillow plus `pi-heif` (decode-only by design —
+its `pillow-heif` sibling bundles a GPL encoder Cairndex never calls; see
+THIRD-PARTY-NOTICES.md). PSD is not advertised as
 openable until a tested decoder path exists. These dependencies are kept out of
 normal request paths until a preview must be generated and were added to unlock
 non-browser image formats and sized preview delivery for all clients, including

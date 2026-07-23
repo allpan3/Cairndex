@@ -261,41 +261,43 @@ pre-tag version bumps, tagging, watching, reviewing the draft, publishing, and
 backing out. `AGENTS.md` gains the matching rule — releasing is owner-triggered
 like opening a PR, and a tag with a published release must never be moved.
 
+**Done: no GPL library is linked into the app any more** (2026-07-23). The last
+open D7 item turned out worse than flagged and then resolved cleanly.
+`pillow-heif`'s wheel bundles libheif (LGPL-3.0+), libde265 (LGPL-3.0+) **and
+libx265 (GPL-2.0+)**, and libheif names x265 in a load command rather than a
+lazy `dlopen` — so importing it pulled GPL code into the sidecar process. Its
+`BSD-3-Clause` declaration alongside a **GPLv2** classifier is not a metadata
+error, as an earlier note here guessed: the maintainer is describing the wheel
+accurately, and the decode-only sibling publishes **LGPLv3** for the same
+reason.
+
+Cairndex only ever decodes HEIC, so that encoder was 8.6 MB of copyleft
+obligation buying nothing. The runtime dependency is now **`pi-heif` 1.4.0** —
+same maintainer, same codebase, decode-only. Verified as a drop-in before
+switching: identical `register_heif_opener` symbol, decoded the HEIC fixture and
+re-encoded to WebP exactly as `previews.py` does, and `save(..., "HEIF")`
+correctly fails.
+
+`pillow-heif` stays as a **dev-only** dependency because writing the smoke
+test's HEIC fixture needs an encoder — and "dev-only" is enforced rather than
+intended: the PyInstaller spec excludes the package, and `build_sidecar.py`
+fails the build if `libx265` appears anywhere in a bundle. That second gate
+exists because an exclude only covers the package it names; a future dependency
+vendoring the same encoder elsewhere would sail past it. Both are covered by
+tests, and the gate was confirmed to fire against a planted file.
+
+Result: the shipped app carries libheif + libde265 (both LGPL, ordinary §4
+case), no x265, and dropped from 213 MB to **196 MB**. HEIC previews verified
+end to end through the repacked sidecar.
+
 **Next**, in order:
-1. **The HEIC dependency's licensing — investigated 2026-07-23, now an owner
-   decision with a recommended answer.** It is worse and simpler than first
-   flagged. `pillow-heif`'s wheel bundles libheif (LGPL-3.0+), libde265
-   (LGPL-3.0+) **and libx265 (GPL-2.0+)**, and libheif names x265 in a load
-   command rather than a lazy `dlopen`, so importing it pulls GPL code into the
-   sidecar process. All three ship inside `Cairndex.app`; x265 alone is 8.6 MB.
-   Its declared `BSD-3-Clause` alongside a **GPLv2** classifier is not a
-   metadata error — the maintainer is describing the wheel accurately.
-
-   **Cairndex never encodes HEIC**: `media/previews.py` calls
-   `register_heif_opener()` and nothing else, and the only HEIF write in the
-   repository is a smoke-test fixture generated in the test process, outside the
-   bundle. The GPL component is an encoder the product does not use.
-
-   **Recommended: swap the runtime dependency to `pi-heif` 1.4.0** — same
-   maintainer, same codebase, decode-only, and its wheel carries libheif +
-   libde265 with **no x265** (verified by inspecting it). Verified as a drop-in:
-   `from pi_heif import register_heif_opener` is the identical symbol, it
-   decoded the HEIC fixture and re-encoded to WebP exactly as `previews.py`
-   does, and `save(..., "HEIF")` correctly fails. That removes the GPL
-   obligation entirely, drops the notices question from copyleft to LGPL notice
-   text, and takes 8.6 MB off the app.
-
-   One consequence, not a blocker: the smoke test generates its HEIC fixture
-   with an encoder, so `pillow-heif` would move to a **dev-only** dependency
-   (dev deps are not distributed, and the fixture is written by the test
-   process, not the frozen sidecar). The alternative is committing a small
-   synthetic HEIC as a test asset.
-2. **An owner pass on a genuinely downloaded build**, which needs a release to
+1. **An owner pass on a genuinely downloaded build**, which needs a release to
    exist. The `xattr` reproduction is faithful to the quarantine bit and the
    published artifact was verified after a real `gh release download`, but a
-   browser round trip is the last unobserved step.
+   browser round trip is the last unobserved step. Worth a fresh `v0.1.0` now
+   that the repository is public and the licensing question is closed.
 
-After those, D7 closes and the build order moves to **phase H — plan 4 library
+After that, D7 closes and the build order moves to **phase H — plan 4 library
 write mode**, W0 → W1 → W5.
 
 Unchanged and still open from D6: the lease redirect landing on the target

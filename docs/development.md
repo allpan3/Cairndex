@@ -350,7 +350,7 @@ source, where every module is present, so it structurally cannot catch a frozen
 bundle missing a dynamically resolved import — that only surfaces when the code
 path first runs. The smoke test drives the real binary through the paths where
 that actually happens: SQLAlchemy's sqlite dialect, the job worker, Pillow
-thumbnails, a HEIC preview (`media/previews.py` imports `pillow_heif` inside a
+thumbnails, a HEIC preview (`media/previews.py` imports `pi_heif` inside a
 function), and SIGTERM releasing the ownership lease. CI runs it on every push.
 
 `hiddenimports` in `cairndex-sidecar.spec` is **empty, and that was measured**.
