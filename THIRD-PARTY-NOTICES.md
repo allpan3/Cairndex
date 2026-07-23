@@ -37,8 +37,11 @@ which is what makes it redistributable at all.
 
 ### Configure options
 
+Both architectures are built with the same options, differing only in
+`--prefix` (`/Volumes/ffmpeg_arm64/out` and `/Volumes/ffmpeg_amd64/out`):
+
 ```text
---prefix=/Volumes/ffmpeg_arm64/out --pkg-config-flags=--static
+--prefix=/Volumes/ffmpeg_<arch>/out --pkg-config-flags=--static
 --extra-version='https://www.martin-riedl.de' --enable-gray --enable-libxml2
 --enable-version3 --enable-gpl --enable-openssl --enable-libfreetype
 --enable-fontconfig --enable-libharfbuzz --enable-libsnappy --enable-libsrt
@@ -49,7 +52,17 @@ which is what makes it redistributable at all.
 --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libtheora
 ```
 
-Reproduce it from any bundled copy with:
+The verbatim line for each architecture, plus the version of every statically
+linked component, is committed in this repository:
+
+- [`apps/server/packaging/ffmpeg-build-info/macos-arm64-8.1.2-versions.txt`](apps/server/packaging/ffmpeg-build-info/macos-arm64-8.1.2-versions.txt)
+- [`apps/server/packaging/ffmpeg-build-info/macos-x86_64-8.1.2-versions.txt`](apps/server/packaging/ffmpeg-build-info/macos-x86_64-8.1.2-versions.txt)
+
+These are committed rather than linked on purpose: the offer below runs three
+years, and it must not depend on a third-party server still serving those files
+then.
+
+Reproduce either from a bundled copy with:
 
 ```bash
 /Applications/Cairndex.app/Contents/Resources/cairndex-sidecar/ffmpeg -buildconf
@@ -74,15 +87,23 @@ recorded in that manifest.
 
 The corresponding source for the FFmpeg version above is FFmpeg 8.1.2 as
 published at <https://ffmpeg.org/releases/> (`ffmpeg-8.1.2.tar.xz`), configured
-with the options listed above. The versions of every statically linked
-component are published alongside the binaries as `versions.txt` — the pinned
-copy is linked from `ffmpeg-manifest.json`.
+with the options listed above, against the component versions recorded in the
+committed `versions.txt` files.
 
 For three years from the date you received a Cairndex release artifact, the
 Cairndex project will provide, on request and for no more than the cost of
 physically performing source distribution, a complete machine-readable copy of
 the corresponding source for the FFmpeg binaries in that artifact. Open an
 issue at <https://github.com/allpan3/cairndex/issues> to request it.
+
+Everything needed to answer that request — the exact FFmpeg version, each
+architecture's configure line, and every component version — is in this
+repository rather than only on the upstream build server, so the offer stays
+fulfillable for its full term regardless of what that server does. The one
+thing not mirrored here is the upstream FFmpeg source tarball itself, which is
+distributed by the FFmpeg project; should <https://ffmpeg.org/releases/> ever
+stop carrying 8.1.2, honouring the offer means supplying that tarball from an
+archived copy.
 
 ---
 

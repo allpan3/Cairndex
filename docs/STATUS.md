@@ -44,12 +44,39 @@ configure options and exact binary digests; a README install section for the
 Open Anyway first launch; and a correction to the README's license line, which
 said "All rights reserved" while `LICENSE` has been MIT since 2026-07-21.
 
-**Gates.** Backend ruff / ruff format / strict mypy / **612 pytest** (+17, all
-in the new `test_ffmpeg_manifest.py`, covering the ways the checksum gate can
-fail open). Desktop `cargo fmt --check`, Clippy `-D warnings`, **86 tests**
-against the real packaged sidecar, and `tauri build`. Web build run to produce
-the Tauri frontend; no web source changed, so the web unit/e2e suites were not
-re-run.
+**Four review findings fixed on the same branch.**
+
+1. *The README promised updates would skip the Gatekeeper walk.* They will not.
+   There is no updater, so an update is a fresh quarantined download, and an
+   ad-hoc signature has no stable identity for macOS to carry the approval
+   across — the CDHash changes every build. The section now says the step
+   repeats per version, and ADR-0019 §4 carries the same amendment, since
+   "cost paid on every release" is a materially different trade from "cost paid
+   once" for the Developer ID decision.
+2. *The smoke test could pass while proving the opposite.* It set
+   `CAIRNDEX_FFMPEG_PATH` and trusted the sidecar to honour it, but
+   `media/tool_paths.py` falls back to PATH discovery when a configured binary
+   is not executable — correct for the app, wrong for the one run that exists to
+   prove the bundled binary works. On this machine (Homebrew ffmpeg on PATH) a
+   lost execute bit would have passed. It now refuses a non-executable bundled
+   binary, and a bundle staging one media tool without the other.
+3. *The GPL offer leaned on a third-party server and covered one architecture.*
+   Both `versions.txt` files are committed under `packaging/ffmpeg-build-info/`
+   and referenced from the manifest; the notices file no longer presents the
+   arm64 configure line as if it were both.
+4. *`packaging/` was outside every typing gate*, because the gate named `src` —
+   leaving the checksum gate that decides what may be published unchecked. It is
+   now in scope (`mypy src packaging`, also set as `files` in pyproject), the
+   five pre-existing `smoke_test.py` errors are fixed too, and
+   `ffmpeg_manifest.py` validates field types as it reads them rather than
+   trusting the JSON's shape.
+
+**Gates.** Backend ruff / ruff format / **strict mypy over `src` + `packaging`**
+(146 files) / **620 pytest** (+25, all in the new `test_ffmpeg_manifest.py`,
+covering the ways the checksum gate can fail open — including malformed pins).
+Desktop `cargo fmt --check`, Clippy `-D warnings`, **86 tests** against the real
+packaged sidecar, and `tauri build`. Web build run to produce the Tauri
+frontend; no web source changed, so the web unit/e2e suites were not re-run.
 
 **Verified by hand, end to end:** fetched the pinned binaries, confirmed the
 Developer ID signatures survive download → extract → stage → bundle, built the

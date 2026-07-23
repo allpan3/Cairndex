@@ -99,6 +99,18 @@ Corrected here rather than left standing.
   — and it is a documentation problem, not an engineering one. Revisit when the
   friction is actually costing users, not on principle.
 
+  **Amendment (2026-07-22, D7): the cost recurs per update, not per install.**
+  "First-launch dialog" understated it. There is no updater, so every update is
+  a fresh download — quarantined again — and an ad-hoc signature has no stable
+  identity for macOS to carry the previous approval across; the CDHash changes
+  every build. So the Open Anyway walk repeats on every version a user
+  installs. That does not overturn the decision (a $99/yr membership still buys
+  only the removal of a documented dialog), but it changes the shape of the
+  trade: the cost is paid on every release rather than once, and it grows with
+  release frequency rather than with user count. Revisit if Cairndex starts
+  shipping updates often enough that the repetition, not the first encounter,
+  is what users complain about.
+
   **Ad-hoc signing is an invariant that already holds — not a task.** Apple
   Silicon kills any mach-O without a valid signature, and the toolchain handles
   this without being asked: the arm64 linker ad-hoc signs at link time

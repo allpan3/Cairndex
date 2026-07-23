@@ -46,7 +46,23 @@
     "homepage": "https://ffmpeg.martin-riedl.de/",
     "ffmpeg_version": "8.1.2",
     "license": "GPL-3.0-or-later",
-    "components": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/versions.txt"
+    "_components_comment": [
+      "Committed rather than linked. The GPL source offer in THIRD-PARTY-NOTICES.md",
+      "runs three years, and it cannot depend on a third-party server still serving",
+      "these files then. Each records its build's exact configure line and the",
+      "version of every statically linked component.",
+      "",
+      "One file per architecture because the configure lines differ (`--prefix`);",
+      "the component versions themselves are identical between the two."
+    ],
+    "components": {
+      "macos-arm64": "ffmpeg-build-info/macos-arm64-8.1.2-versions.txt",
+      "macos-x86_64": "ffmpeg-build-info/macos-x86_64-8.1.2-versions.txt"
+    },
+    "components_upstream": {
+      "macos-arm64": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/versions.txt",
+      "macos-x86_64": "https://ffmpeg.martin-riedl.de/download/macos/amd64/1783018342_8.1.2/versions.txt"
+    }
   },
   "platforms": {
     "macos-arm64": {

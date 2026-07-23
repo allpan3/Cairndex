@@ -27,7 +27,7 @@ Checks (run from `apps/server`):
 ```bash
 uv run ruff format --check .   # formatting
 uv run ruff check .            # linting
-uv run mypy src                # type checking
+uv run mypy src packaging      # type checking (packaging/ gates what ships)
 uv run pytest                  # tests
 ```
 
@@ -294,7 +294,21 @@ about a candidate build, none of which can be taken from its label:
   signing must re-sign it; an invalid signature fails harder than none
   (ADR-0019 §4).
 
-`tests/test_ffmpeg_manifest.py` covers the ways the gate can fail open.
+`tests/test_ffmpeg_manifest.py` covers the ways the gate can fail open, and
+`packaging/` is inside the mypy scope (`uv run mypy src packaging`) because this
+code decides what goes into a published binary.
+
+The smoke test **refuses to run against a half-staged or non-executable bundled
+ffmpeg**, rather than letting the sidecar fall back. `media/tool_paths.py`
+deliberately falls back to PATH discovery when a configured binary is not
+executable — right for the app, wrong for the one run that is supposed to prove
+the bundled binary works, since on any developer Mac with Homebrew ffmpeg the
+fallback would pass while proving the opposite.
+
+The GPL source offer in `THIRD-PARTY-NOTICES.md` runs three years, so each
+build's configure line and component versions are **committed** under
+`packaging/ffmpeg-build-info/` rather than linked upstream. Re-pinning means
+committing the new `versions.txt` for both architectures alongside the digests.
 
 **Run the smoke test after any dependency change.** The unit suite imports from
 source, where every module is present, so it structurally cannot catch a frozen
