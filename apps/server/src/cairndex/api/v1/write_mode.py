@@ -15,7 +15,7 @@ from fastapi import APIRouter, Cookie, Header
 
 from cairndex.api.deps import RegistryDbSession, authorize_library
 from cairndex.api.schemas.write_mode import WriteModeRead, WriteModeUpdate
-from cairndex.auth import SESSION_COOKIE
+from cairndex.auth import SESSION_COOKIE, verify_passphrase
 from cairndex.file_ops import gate
 from cairndex.registry import services as registry_service
 
@@ -75,12 +75,22 @@ def set_write_mode(
     a missing passphrase and a wrong one are indistinguishable. Enabling on a
     deployment configured read-only is refused with 403 ``write_mode_disabled``.
     Disabling is always permitted for an authorized caller.
+
+    A correct passphrase authorizes the request on its own, in place of an
+    unlocked session: it *is* the library's credential, and demanding a live
+    unlock as well would leave a locked library unable to gain write mode
+    without first being opened somewhere else — for one prompt, two prompts.
     """
-    _authorize(registry, library_id, session, authorization)
+    library = registry_service.get_library(registry, library_id)
+    verified = payload.passphrase is not None and verify_passphrase(
+        Path(library.root_path), payload.passphrase
+    )
+    if not verified:
+        _authorize(registry, library_id, session, authorization)
     state = gate.set_write_mode(
         registry,
         library_id,
         enabled=payload.enabled,
-        passphrase=payload.passphrase,
+        passphrase_verified=verified,
     )
     return _read(state)

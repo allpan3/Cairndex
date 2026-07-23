@@ -8,6 +8,13 @@
       "port": 5173,
       "autoPort": true,
       "cwd": "apps/web"
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "cairndex.main:app", "--reload", "--port", "8000"],
+      "port": 8000,
+      "cwd": "apps/server"
     }
   ]
 }

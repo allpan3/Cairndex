@@ -2280,6 +2280,12 @@ code {
   color: #ff6b6b;
   border-color: #5a2b2b;
 }
+/* A toggle that is currently on (aria-pressed). Reads as engaged without the
+   weight of `--primary`, which is reserved for the action a dialog commits to. */
+.btn--active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .btn--compact {
   padding: 3px 8px;
   font-size: 12px;
@@ -4092,6 +4098,12 @@ code {
   display: block;
   font-size: 12px;
   color: var(--text-muted);
+}
+/* The write-mode passphrase re-prompt (ADR-0013 §1), inline in the row it
+   belongs to. Bounded so it does not push the row's buttons off the edge. */
+.lib-row__main .edit {
+  margin-top: 6px;
+  max-width: 240px;
 }
 .lib-add {
   border-top: 1px solid var(--border);
