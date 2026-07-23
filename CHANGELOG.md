@@ -23,9 +23,33 @@ grouped under `Unreleased` until the first tagged release.
   one unresolved item for the owner: `pillow-heif`'s wheels bundle LGPL
   `libheif`, whose notice obligations are not yet discharged.
 
-- **A README install section** for the macOS app, covering the one-time
+- **A README install section** for the macOS app, covering the
   "Apple could not verify…" first launch and the System Settings → Privacy &
-  Security → **Open Anyway** step that clears it.
+  Security → **Open Anyway** step that clears it — including that the step
+  **repeats on every update**, since without an updater each update is a fresh
+  quarantined download and an ad-hoc signature gives macOS no stable identity to
+  carry the approval across.
+
+### Internal
+
+- **The packaged smoke test can no longer pass by accident.** It set
+  `CAIRNDEX_FFMPEG_PATH` to the bundled binary and trusted the sidecar to use
+  it, but `media/tool_paths.py` falls back to PATH discovery when a configured
+  binary is not executable — so a lost execute bit would have let the run pass
+  against a developer's Homebrew ffmpeg while claiming to prove the bundled one.
+  It now fails on a bundled binary that is present but not executable, and on a
+  bundle that stages one media tool without the other.
+
+- **`packaging/` is inside the type-checking gate** (`mypy src packaging`). It
+  was outside only because the gate named `src`, which left the checksum gate
+  that decides what may be published unchecked. `ffmpeg_manifest.py` now
+  validates field types as it reads them, so a digest that arrives as a number
+  is a named error rather than a comparison that can never match.
+
+- **The GPL corresponding-source record is committed, not linked.** Each
+  architecture's configure line and full component version list now live in
+  `packaging/ffmpeg-build-info/`; the three-year offer no longer depends on a
+  third-party build server still serving those files.
 
 ### Fixed
 

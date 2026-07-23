@@ -32,6 +32,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 PACKAGING_DIR = Path(__file__).resolve().parent
 DEFAULT_BUNDLE = PACKAGING_DIR / "dist" / "cairndex-sidecar" / "cairndex-sidecar"
@@ -45,7 +46,9 @@ class SmokeFailure(RuntimeError):
     pass
 
 
-def request(port: int, path: str, *, method: str = "GET", body: dict | None = None) -> tuple:
+def request(
+    port: int, path: str, *, method: str = "GET", body: dict[str, Any] | None = None
+) -> tuple[int, Any]:
     """Return ``(status, parsed_json_or_none)``; never raises for an HTTP error."""
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(  # noqa: S310 — fixed loopback URL
@@ -70,12 +73,12 @@ def anonymous_status(port: int, path: str) -> int:
     req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")  # noqa: S310
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
-            return resp.status
+            return int(resp.status)
     except urllib.error.HTTPError as exc:
-        return exc.code
+        return int(exc.code)
 
 
-def wait_for_port(process: subprocess.Popen, log: Path) -> int:
+def wait_for_port(process: "subprocess.Popen[bytes]", log: Path) -> int:
     """Read the announced port from the sidecar's stdout."""
     deadline = time.monotonic() + STARTUP_TIMEOUT
     while time.monotonic() < deadline:
@@ -111,7 +114,7 @@ def write_fixtures(library_root: Path) -> None:
     the packaged app" would be an assumption rather than a test.
     """
     from PIL import Image
-    from pillow_heif import register_heif_opener
+    from pillow_heif import register_heif_opener  # type: ignore[import-untyped]
 
     Image.new("RGB", (640, 480), (200, 80, 40)).save(library_root / "photo.jpg", "JPEG")
     Image.new("RGB", (320, 240), (20, 120, 200)).save(library_root / "shot.png", "PNG")
@@ -265,10 +268,31 @@ def main() -> int:
             "CAIRNDEX_SQLITE_MAINTENANCE_INTERVAL": "5",
             "CAIRNDEX_SQLITE_IDLE_CHECKPOINT_AFTER": "1",
         }
-        bundled_ffmpeg = args.bundle.parent / "ffmpeg"
-        if bundled_ffmpeg.is_file():
-            env["CAIRNDEX_FFMPEG_PATH"] = str(bundled_ffmpeg)
-            env["CAIRNDEX_FFPROBE_PATH"] = str(args.bundle.parent / "ffprobe")
+        # A --skip-ffmpeg bundle has neither tool and runs against the system
+        # ffmpeg; a full bundle has both. One of the two is a packaging bug.
+        media_tools = {tool: args.bundle.parent / tool for tool in ("ffmpeg", "ffprobe")}
+        staged = {tool: path for tool, path in media_tools.items() if path.is_file()}
+        if staged and len(staged) != len(media_tools):
+            missing = ", ".join(sorted(set(media_tools) - set(staged)))
+            print(f"bundle stages some media tools but not {missing}", file=sys.stderr)
+            return 1
+
+        for tool, binary in staged.items():
+            # media/tool_paths.py deliberately falls back to PATH discovery when a
+            # configured binary is not executable, logging a warning and no more.
+            # That is right for the app — a packaging slip should not disable media
+            # work outright — but it is wrong here: this run is the only proof that
+            # the *bundled* binary works, and on any developer Mac with a Homebrew
+            # ffmpeg the fallback would let it pass while proving the opposite.
+            if not os.access(binary, os.X_OK):
+                print(
+                    f"bundled {tool} exists but is not executable: {binary}\n"
+                    "The sidecar would fall back to a system ffmpeg, so this run would "
+                    "prove nothing about what ships.",
+                    file=sys.stderr,
+                )
+                return 1
+            env[f"CAIRNDEX_{tool.upper()}_PATH"] = str(binary)
 
         with log.open("wb") as sink:
             # `--watch-parent` because that is how the shell actually runs it,

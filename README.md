@@ -78,7 +78,7 @@ Releases publish a `.dmg` per architecture — `aarch64` for Apple Silicon,
 ### First launch: "Apple could not verify..."
 
 Cairndex is **not signed with an Apple Developer ID**, so the first launch is
-blocked. This is expected, and it is a one-time step:
+blocked:
 
 1. Open Cairndex. macOS refuses and offers only **Done** / **Move to Trash**.
    Choose **Done** — do not move it to the Trash.
@@ -88,15 +88,21 @@ blocked. This is expected, and it is a one-time step:
    first.
 3. Click **Open Anyway**, authenticate, and confirm **Open Anyway** once more.
 
-Cairndex opens normally from then on. Every later launch, and every update,
-skips this entirely.
+Cairndex opens normally from then on — until you update it.
 
-Why not just sign it: a Developer ID needs a $99/yr Apple Developer membership,
-and the cost of skipping it is this one dialog. It is recorded as an upgrade
-path rather than a requirement — see
-[ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4. If you would
-rather not do any of this, build from source (below); a locally built app is
-never quarantined and never shows the dialog.
+**Every update repeats these steps.** That is not a bug and not a stale
+approval you can clear: a new download is quarantined again, and because
+Cairndex is ad-hoc signed rather than signed with a stable identity, each build
+has a different code signature that macOS has no way to carry your previous
+approval across. Expect the dialog once per version you install.
+
+Why not just sign it: a Developer ID needs a $99/yr Apple Developer membership.
+The trade is recorded as an upgrade path rather than a requirement — see
+[ADR-0019](docs/adr/0019-open-source-distribution-model.md) §4 — and this
+per-update repetition is the main argument on the other side of it, since the
+cost is paid on every release rather than once. If you would rather not do any
+of it, build from source (below); a locally built app is never quarantined and
+never shows the dialog.
 
 ### What is inside the app
 
