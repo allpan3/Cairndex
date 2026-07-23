@@ -59,7 +59,7 @@ Do not implement several major milestones in one unreviewable patch.
 
 ## Safety rules
 
-- Never rename, move, overwrite, or delete original media during metadata-only milestones.
+- Never rename, move, overwrite, or delete original media except through an explicit, journaled write-mode operation (ADR-0013) — per-library opt-in, deployment-permitted, and recorded before the filesystem is touched. Everything outside that path stays metadata-only.
 - Validate every path against the active library root.
 - Never trust a client-supplied absolute path.
 - Do not full-hash large files on the request path.
