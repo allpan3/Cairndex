@@ -216,6 +216,8 @@ Every PR should include problem and scope, design summary, screenshots/video for
 
 Never force-push `main`. Force-push only non-main branches and use `--force-with-lease`.
 
+**Releasing is owner-triggered, like opening a PR.** Do not create or push a `v*` tag unless the owner asks for one: the tag is what builds and publishes artifacts to other people, and it spends billed macOS CI minutes. Never move or delete a tag that has a **published** release — downloaded checksums would stop matching; ship a new version instead. The full procedure, including pre-tag version bumps and how to back out a draft, is in [`docs/deployment.md`](docs/deployment.md) under *Cutting a release*.
+
 ## Documentation discipline
 
 Documentation is part of implementation, not an optional cleanup step.

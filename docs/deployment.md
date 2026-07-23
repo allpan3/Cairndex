@@ -634,17 +634,86 @@ Notes for when this is picked up:
 tag as input. It builds both architectures, then attaches the DMGs to a **draft**
 release — publishing stays a human decision.
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-# then review the draft release and publish it
-```
-
 Each build job fetches the pinned ffmpeg for its architecture, builds and
 smoke-tests the sidecar, builds the app and DMG, and refuses to continue on a
 bad bundle signature or a binary of the wrong architecture. The draft carries
 both `.dmg` files, a `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` —
 which has to travel with the artifacts, since they bundle a GPL ffmpeg.
+
+#### The procedure
+
+**1. Before tagging.** The tag is the input to everything below, and a tag that
+is wrong is more annoying to undo than to get right.
+
+- `apps/desktop/src-tauri/tauri.conf.json` and `apps/desktop/package.json` carry
+  the version, and **the artifact names come from `tauri.conf.json`, not from
+  the tag**. Nothing enforces that they agree, so a `v0.2.0` tag on a
+  `0.1.0` config silently produces `Cairndex_0.1.0_*.dmg`. Bump both first.
+- `CHANGELOG.md` — move `Unreleased` entries under the new version.
+- Gates green on `main` (`AGENTS.md`), since the tag is what gets built.
+
+**2. Tag and push.** Annotated, so the tag carries its own description:
+
+```bash
+git tag -a v0.1.0 -m "v0.1.0 — <summary>"
+git push origin v0.1.0
+```
+
+The push triggers the workflow. Do **not** also dispatch it manually — that
+would build the same tag twice, and macOS minutes are the expensive kind (see
+the cost note below). `workflow_dispatch` is for re-running a tag that already
+exists, after fixing a workflow-level failure.
+
+**3. Watch the run.**
+
+```bash
+gh run list --workflow=Release --limit 1
+gh run watch <run-id> --exit-status
+```
+
+**4. Review the draft** at `gh release view v0.1.0 --web`. Both DMGs, both
+`.sha256` files, and `THIRD-PARTY-NOTICES.md` should be attached. Download the
+DMG for your own Mac and actually open it — the workflow proves the bundle is
+signed and correctly architected, but only a real download carries
+`com.apple.quarantine`, which is the one thing local builds never reproduce.
+
+**5. Publish** when satisfied:
+
+```bash
+gh release edit v0.1.0 --draft=false
+```
+
+#### Backing out
+
+A draft release is not visible to anyone, so a bad build costs nothing but
+minutes — delete the draft and the tag, fix, and re-tag:
+
+```bash
+gh release delete v0.1.0 --yes --cleanup-tag   # removes the draft and the tag
+# or, if no release object exists yet:
+git push origin --delete v0.1.0 && git tag -d v0.1.0
+```
+
+Once a release is **published**, do not re-point the tag. People may already
+have the artifacts, and a moved tag makes their checksums lie. Ship a new
+version instead.
+
+#### Cost
+
+macOS runners are billed at **10× the Linux rate**, and this workflow uses two
+of them for full release builds (Rust `--release`, PyInstaller, DMG). On a
+private repository that comes out of the account's included minutes; on a public
+repository standard runners are free. Worth knowing before re-running a release
+to fix a typo in the notes — edit the draft instead.
+
+#### A release on a private repo reaches nobody
+
+[ADR-0019](adr/0019-open-source-distribution-model.md)'s premise is publishing
+prebuilt binaries to people who are not the author. While the repository is
+private, a published release is still only visible to people with repo access,
+so the pipeline can be exercised end to end but the distribution goal is not
+met. Making the repository public is a separate owner decision, not something a
+release performs.
 
 **Two native jobs, not one cross-compiling job.** The Rust half cross-compiles
 fine with `--target`, but the sidecar is a PyInstaller bundle, and PyInstaller
