@@ -4563,3 +4563,18 @@ code {
   max-height: 160px;
   overflow: auto;
 }
+
+/* --- Copy files in (ADR-0013 §7) ------------------------------------------ */
+/* The whole listing is the drop target, not a separate zone: the folder being
+   browsed is where the files go, so the folder's own body is the honest edge. */
+.file-browser__body--dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+.file-importing {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-size: 12px;
+}

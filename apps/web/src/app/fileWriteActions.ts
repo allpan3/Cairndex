@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { PathConflictError } from '../api/client'
+import { PathConflictError, type ConflictPolicy } from '../api/client'
 import { useFileOperations } from '../api/hooks'
 
 /**
@@ -19,13 +19,18 @@ import { useFileOperations } from '../api/hooks'
  *   inverse exact rather than best-effort — the toast is where that shows up.
  */
 
-/** A rename waiting on the owner's answer to a collision. */
-interface PendingRename {
-  path: string
-  newName: string
-  /** The name already in the way, as the server reported it. */
-  conflictingName: string
-}
+/**
+ * An operation paused on a name that is already taken.
+ *
+ * One type for both operations that can hit one, because the *question* is
+ * identical — "something is already called that; what should happen?" — and so
+ * is the dialog. Only the resumption differs, which is what `kind` selects.
+ */
+type PendingConflict =
+  | { kind: 'rename'; path: string; newName: string; conflictingName: string }
+  // An import carries the files it had not reached yet, so answering resumes
+  // the batch rather than abandoning everything after the collision.
+  | { kind: 'import'; file: File; remaining: File[]; conflictingName: string }
 
 /** Files the owner has asked to delete, awaiting confirmation. */
 export interface PendingDelete {
@@ -47,10 +52,14 @@ export interface FileWriteActions {
   submitNewFolder: (name: string) => void
   busy: boolean
   /** The collision prompt, or null. Render with `<ConflictDialog />`. */
-  conflict: PendingRename | null
+  conflict: PendingConflict | null
   keepBoth: () => void
   replace: () => void
   dismissConflict: () => void
+  /** Copy external files into the directory being browsed. */
+  importFiles: (files: File[]) => void
+  /** Names still uploading, in order — the progress the UI renders. */
+  importing: string[]
   /** The delete confirmation, or null. Render with `<DeleteDialog />`. */
   pendingDelete: PendingDelete | null
   askToDelete: (paths: string[], linkedCount: number) => void
@@ -67,11 +76,12 @@ export function useFileWriteActions({
   /** Show a message, with an Undo action when the operation has an inverse. */
   onFlash: (message: string, undo?: () => void) => void
 }): FileWriteActions {
-  const { rename, mkdir, undo, trash } = useFileOperations()
+  const { rename, mkdir, undo, trash, importOne } = useFileOperations()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
-  const [conflict, setConflict] = useState<PendingRename | null>(null)
+  const [conflict, setConflict] = useState<PendingConflict | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [importing, setImporting] = useState<string[]>([])
 
   const undoLater = (operationId: string) => () => {
     undo.mutate(operationId, {
@@ -102,7 +112,12 @@ export function useFileWriteActions({
         },
         onError: (failure) => {
           if (failure instanceof PathConflictError) {
-            setConflict({ path, newName, conflictingName: failure.entryName || newName })
+            setConflict({
+              kind: 'rename',
+              path,
+              newName,
+              conflictingName: failure.entryName || newName,
+            })
             return
           }
           setConflict(null)
@@ -141,14 +156,15 @@ export function useFileWriteActions({
         onError: (failure) => onFlash(messageOf(failure)),
       })
     },
-    busy: rename.isPending || mkdir.isPending || undo.isPending || trash.isPending,
+    busy:
+      rename.isPending ||
+      mkdir.isPending ||
+      undo.isPending ||
+      trash.isPending ||
+      importOne.isPending,
     conflict,
-    keepBoth: () => {
-      if (conflict) runRename(conflict.path, conflict.newName, 'suffix')
-    },
-    replace: () => {
-      if (conflict) runRename(conflict.path, conflict.newName, 'replace')
-    },
+    keepBoth: () => answerConflict('suffix'),
+    replace: () => answerConflict('replace'),
     dismissConflict: () => setConflict(null),
     pendingDelete,
     askToDelete: (paths, linkedCount) => {
@@ -172,6 +188,63 @@ export function useFileWriteActions({
       })
     },
     dismissDelete: () => setPendingDelete(null),
+    importing,
+    importFiles: (files) => {
+      if (files.length > 0) void runImports(files)
+    },
+  }
+
+  /** Answer the open collision and carry on where the operation left off. */
+  function answerConflict(policy: 'suffix' | 'replace'): void {
+    if (!conflict) return
+    setConflict(null)
+    if (conflict.kind === 'rename') {
+      runRename(conflict.path, conflict.newName, policy)
+      return
+    }
+    void runImports([conflict.file, ...conflict.remaining], policy)
+  }
+
+  /**
+   * Copy files in, one request at a time.
+   *
+   * Sequential on purpose: six parallel uploads split the same bandwidth six
+   * ways, so everything finishes late instead of the first files finishing
+   * early — and a collision prompt arriving mid-flight would be about a file
+   * the owner has already stopped thinking about. `policy` applies to the file
+   * that collided; the rest carry on with the default so a later collision
+   * still asks.
+   */
+  async function runImports(files: File[], policy?: ConflictPolicy): Promise<void> {
+    for (const [index, file] of files.entries()) {
+      setImporting((current) => [...current, file.name])
+      try {
+        const result = await importOne.mutateAsync({
+          file,
+          destDir: currentPath,
+          onConflict: index === 0 ? policy : undefined,
+        })
+        onFlash(
+          result.skipped
+            ? `Skipped “${file.name}” — something with that name is already here.`
+            : `Copied “${nameOf(result.path)}” into the library.`,
+          result.skipped ? undefined : undoLater(result.operation.id),
+        )
+      } catch (failure) {
+        if (failure instanceof PathConflictError) {
+          setConflict({
+            kind: 'import',
+            file,
+            remaining: files.slice(index + 1),
+            conflictingName: failure.entryName || file.name,
+          })
+          return
+        }
+        onFlash(messageOf(failure))
+      } finally {
+        setImporting((current) => current.filter((name) => name !== file.name))
+      }
+    }
   }
 }
 

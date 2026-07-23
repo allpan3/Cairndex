@@ -252,6 +252,9 @@ function FileList({
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // Whether an OS drag is currently over the listing, for the drop cue.
+  const [dropActive, setDropActive] = useState(false)
 
   // Client-side filter (by name) + sort. Directories stay grouped ahead of
   // files (file-manager convention; folders are the navigational containers,
@@ -384,6 +387,23 @@ function FileList({
     menu.open(e, [{ label: 'New Folder', onClick: write.startNewFolder }])
   }
 
+  // Dropping files from the desktop copies them into the folder being browsed.
+  // Only *files* — `dataTransfer.items` cannot expand a dropped folder without
+  // recursion, which the server has no batch endpoint for yet.
+  const onDragOverFiles = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault() // required, or the browser opens the file instead
+    e.dataTransfer.dropEffect = 'copy'
+    setDropActive(true)
+  }
+
+  const onDropFiles = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    setDropActive(false)
+    write.importFiles([...e.dataTransfer.files])
+  }
+
   // How many of these paths a bundle is built on — the part of a delete worth
   // pausing over, and the one thing the confirmation can say that a file
   // manager's could not.
@@ -485,14 +505,36 @@ function FileList({
         <span className="toolbar__spacer" />
 
         {canCreateFolder && (
-          <button
-            className="btn btn--sm"
-            onClick={write.startNewFolder}
-            disabled={write.busy}
-            title="Create a folder in this directory"
-          >
-            New Folder
-          </button>
+          <>
+            <button
+              className="btn btn--sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={write.busy}
+              title="Copy files from this computer into this folder"
+            >
+              Add Files…
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              aria-hidden="true"
+              onChange={(event) => {
+                write.importFiles([...(event.target.files ?? [])])
+                // Reset, so choosing the same file twice in a row still fires.
+                event.target.value = ''
+              }}
+            />
+            <button
+              className="btn btn--sm"
+              onClick={write.startNewFolder}
+              disabled={write.busy}
+              title="Create a folder in this directory"
+            >
+              New Folder
+            </button>
+          </>
         )}
 
         <input
@@ -562,15 +604,26 @@ function FileList({
       </div>
 
       <div
-        className={`file-browser__body${marqueeRect ? ' file-browser__body--dragging' : ''}`}
+        className={`file-browser__body${marqueeRect ? ' file-browser__body--dragging' : ''}${
+          dropActive ? ' file-browser__body--dropping' : ''
+        }`}
         ref={setScrollEl}
         onMouseDown={onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={listKeyDown}
+        onDragOver={canCreateFolder ? onDragOverFiles : undefined}
+        onDragLeave={canCreateFolder ? () => setDropActive(false) : undefined}
+        onDrop={canCreateFolder ? onDropFiles : undefined}
         // Focusable so F2/Enter reach the list without stealing the tab order
         // from the toolbar controls above it.
         tabIndex={-1}
       >
+        {write.importing.length > 0 && (
+          <div className="file-importing" role="status">
+            Copying{' '}
+            {write.importing.length === 1 ? write.importing[0] : `${write.importing.length} files`}…
+          </div>
+        )}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
