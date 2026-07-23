@@ -700,20 +700,20 @@ version instead.
 
 #### Cost
 
-macOS runners are billed at **10× the Linux rate**, and this workflow uses two
-of them for full release builds (Rust `--release`, PyInstaller, DMG). On a
-private repository that comes out of the account's included minutes; on a public
-repository standard runners are free. Worth knowing before re-running a release
-to fix a typo in the notes — edit the draft instead.
+The repository is public (since 2026-07-23), so the standard runners this
+workflow uses are free and unmetered. It was not always so: while it was
+private, macOS billed at **10× the Linux rate** for a job doing a full release
+build (Rust `--release`, PyInstaller, DMG). If the repository ever goes private
+again, re-running a release to fix a typo in the notes becomes an expensive way
+to do it — edit the draft instead.
 
-#### A release on a private repo reaches nobody
+#### Distribution actually works now
 
 [ADR-0019](adr/0019-open-source-distribution-model.md)'s premise is publishing
-prebuilt binaries to people who are not the author. While the repository is
-private, a published release is still only visible to people with repo access,
-so the pipeline can be exercised end to end but the distribution goal is not
-met. Making the repository public is a separate owner decision, not something a
-release performs.
+prebuilt binaries to people who are not the author, and that premise only came
+true when the repository went public on 2026-07-23. Before then the pipeline
+could be exercised end to end while the distribution goal went unmet, because a
+release is visible only to people who can see the repository.
 
 #### Why there is no Intel artifact
 

@@ -49,15 +49,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Internal
 
-- **CI runs ~65% fewer billable minutes.** Measured over 30 days, one job —
-  `Desktop shell (macOS)` — was 1,570 of 2,691 billable minutes, because the
-  repository is private and macOS bills at 10×. Documentation-only changes now
-  run nothing (about half this repository's commits touch only docs), and the
-  desktop jobs run on pull requests rather than again on the push that merges
-  them. `workflow_dispatch` runs the full matrix on demand, and the macOS job
-  has a 30-minute timeout so a hung Tauri build cannot sit for GitHub's
-  six-hour default at 10×. Trade-off: a direct-to-main *code* commit gets no
-  desktop build.
+- **Documentation-only changes no longer run CI.** `paths-ignore` covers
+  `docs/**`, `**/*.md`, `LICENSE` and `.gitignore`; a commit touching docs *and*
+  code still runs everything. About half this repository's commits touch only
+  docs, and nothing in CI validates prose. `workflow_dispatch` runs the full
+  matrix on demand, and `desktop-macos` gained a 30-minute timeout so a hung
+  Tauri build cannot occupy a runner for GitHub's six-hour default.
+
+  A companion change restricting the desktop jobs to pull requests was reverted
+  the same day: the repository went public, standard runners became free, and
+  the restriction had been a pure cost trade that cost coverage on
+  direct-to-main commits.
 
 - **Fixed a flaky packaged-sidecar smoke test.** It asserted on
   `bundles?limit=1` — whichever of three differently-formatted fixtures sorted
