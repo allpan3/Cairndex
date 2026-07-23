@@ -31,6 +31,7 @@ export type ConflictPolicy = components['schemas']['ConflictPolicy']
 export type TrashRead = components['schemas']['TrashRead']
 export type TrashedOperation = components['schemas']['TrashedOperationRead']
 export type EmptyTrashResult = components['schemas']['EmptyTrashResult']
+export type ImportResult = components['schemas']['ImportResultRead']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -567,6 +568,51 @@ export const makeDirectory = (path: string) =>
 /** Apply an operation's inverse — the Undo behind a completed toast. */
 export const undoFileOperation = (operationId: string) =>
   sendFileOp<FileOperationResult>(`${lib()}/file-ops/${operationId}/undo`, {})
+
+/**
+ * Stream one external file into the library (ADR-0013 §7).
+ *
+ * The `File`/`Blob` is the request body — no multipart, no base64, no copy in
+ * memory: the browser streams it straight off disk. Metadata rides in the query
+ * string because the body is spoken for.
+ */
+export async function importFile(
+  file: File,
+  options: {
+    destDir?: string
+    filename?: string
+    onConflict?: ConflictPolicy
+    link?: boolean
+  } = {},
+): Promise<ImportResult> {
+  const query = new URLSearchParams({
+    dest_dir: options.destDir ?? '',
+    filename: options.filename ?? file.name,
+    on_conflict: options.onConflict ?? 'fail',
+    link: String(options.link ?? true),
+  })
+  const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+  if (!response.ok) {
+    let payload: unknown = null
+    try {
+      payload = await response.json()
+    } catch {
+      /* non-JSON body */
+    }
+    const detail = apiErrorDetail(payload)
+    const details = (payload as { details?: { code?: string; name?: string; path?: string } })
+      ?.details
+    if (response.status === 409 && details?.code === 'path_conflict') {
+      throw new PathConflictError(detail, details.name ?? file.name, details.path ?? '')
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as ImportResult
+}
 
 /** Move files and folders into the library's trash. Never unlinks. */
 export const trashEntries = (paths: string[]) =>
