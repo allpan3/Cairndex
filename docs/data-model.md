@@ -299,6 +299,35 @@ membership changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
 that snapshot; omitting a directory selects the balanced default.
 
+### `file_operations`
+
+The guarded-write journal (ADR-0013 §3.1): `id`, `op`, `status`, `payload`
+(JSON), `error`, `created_at`, `finished_at`. In the **library** DB, not the
+registry, so the history travels with the library the way the operations'
+effects do.
+
+`status` moves `pending` → `done` | `failed`, or `done` → `undone`. The
+`pending` row is written **and committed before the filesystem is touched**;
+the content rows and the `done` status are then written in one transaction, so
+metadata and status can never disagree. A crash in between leaves a `pending`
+row that the reconciler settles on the next library open by looking at the
+filesystem: source gone and destination present means the operation happened
+(finish the metadata side), source present and destination absent means it did
+not (`failed`), and anything else is left to the scanner's moved-file repair
+rather than guessed at.
+
+`payload` is JSON rather than columns because each verb has a different shape
+and this table must not grow a column per operation. For `rename` it carries
+`source`, `destination`, and — once finished — `files_updated`; for `mkdir`,
+`destination`. It is also what Undo reads to apply the inverse.
+
+Renaming updates `AssetFile.relative_path` (and the derived `directory_path`)
+in the same transaction, **preserving `AssetFile.id`**, which is what carries
+bundle membership, covers, subtitle links, notes, ratings, and cache identity
+across the rename. A directory rename repoints every row beneath it, matched on
+path segments in Python — a SQL `LIKE 'Show/S01%'` rewrite would also sweep up
+`Show/S01 extras/`.
+
 ## Registry database
 
 The registry DB lives at `{CAIRNDEX_DATA_DIR}/registry.db` and is server-local

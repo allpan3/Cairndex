@@ -120,7 +120,7 @@ jobs/         in-process worker and job context
 scanning/     scan, fast-add, media classification, fingerprints, repair
 media/        ffprobe/ffmpeg adapters, thumbnails, playback/subtitle helpers
 grouping/     ADR-0009 suggester, plan store, and apply service
-file_ops/     ADR-0013 write-mode gate; guarded file operations land here
+file_ops/     ADR-0013 write mode: gate, path validator, journal, operations
 ```
 
 Content endpoints are scoped to one library:
@@ -138,6 +138,10 @@ Content endpoints are scoped to one library:
   `library.db`. Endpoints that *use* the capability declare the
   `require_write_mode` dependency, which answers 403 `write_mode_disabled` when
   either the library's flag or `CAIRNDEX_WRITE_MODE` says no.
+- `/api/v1/libraries/{id}/file-ops/…` are the guarded write operations
+  themselves — `rename`, `mkdir`, `{op}/undo`, and the journal listing. All but
+  the listing declare the gate; the listing does not, because turning the
+  capability off must not hide what it did while it was on.
 
 A `LibrarySession` dependency resolves `{library_id}` through the registry,
 refuses unknown/unavailable libraries, opens the matching `.cairndex/library.db`,
