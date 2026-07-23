@@ -1,13 +1,13 @@
 name: Release
 
-# Builds the macOS desktop app for both architectures and publishes
-# them as a draft GitHub release.
+# Builds the macOS desktop app and publishes it as a draft GitHub release.
 #
-# Why two native jobs rather than one cross-compiling job: the app bundles a
-# PyInstaller sidecar (ADR-0019 §2), and PyInstaller freezes the interpreter
-# that runs it — it cannot cross-compile. An Intel bundle therefore needs an
-# Intel builder. The Rust half *could* cross-compile with `--target`, but that
-# only moves the problem to the half that cannot.
+# Apple Silicon only since v0.1.0 (owner, 2026-07-23). If an architecture is
+# ever added back, it needs its own native job rather than a `--target` flag:
+# the app bundles a PyInstaller sidecar (ADR-0019 §2), and PyInstaller freezes
+# the interpreter that runs it, so it has no cross-compile mode. The Rust half
+# *could* cross-compile, but that only moves the problem to the half that
+# cannot. See the commented matrix entry below.
 #
 # The release is created as a **draft**: the artifacts are built and attached,
 # and publishing stays a human decision (AGENTS.md — releasing is the owner's
@@ -34,9 +34,15 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
+    # macOS minutes bill at 10x, and the app+DMG step is compile-bound with no
+    # progress output, so a wedged Tauri DMG bundler (it drives Finder over
+    # AppleScript — the documented reason CI skips DMG) would otherwise burn
+    # hours against the default 6-hour limit before anything killed it. The
+    # v0.1.0 run took 7 minutes end to end on a cold cache.
+    timeout-minutes: 45
     strategy:
-      # Both artifacts are wanted independently; a failure on one architecture
-      # should still leave the other's build to inspect.
+      # Kept a matrix with one entry on purpose: re-adding an architecture is a
+      # block of five values, not a restructuring of the job.
       fail-fast: false
       matrix:
         include:
@@ -46,15 +52,20 @@ jobs:
             platform: macos-arm64
             uv_python: cpython-3.12-macos-aarch64-none
             arch_suffix: aarch64
-          # `macos-*-intel` is the Intel label; the older free `macos-13` image
-          # is retired. If this label ever disappears, the fallback is not a
-          # cross-compile (see the note above) but dropping the Intel artifact.
-          - label: Intel (x86_64)
-            runner: macos-15-intel
-            rust_target: x86_64-apple-darwin
-            platform: macos-x86_64
-            uv_python: cpython-3.12-macos-x86_64-none
-            arch_suffix: x64
+          # Intel was dropped after the v0.1.0 run (owner, 2026-07-23): it is not
+          # needed, and that runner is roughly 4x slower at the compile-bound
+          # steps (98s vs 24s to freeze the same sidecar), on 10x-billed minutes.
+          # Nothing else was removed to make this happen — macos-x86_64 is still
+          # pinned in ffmpeg-manifest.json and the local Intel build procedure in
+          # docs/deployment.md still works — so restoring it means putting this
+          # entry back:
+          #
+          #   - label: Intel (x86_64)
+          #     runner: macos-15-intel        # verified usable 2026-07-23
+          #     rust_target: x86_64-apple-darwin
+          #     platform: macos-x86_64
+          #     uv_python: cpython-3.12-macos-x86_64-none
+          #     arch_suffix: x64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -216,8 +227,9 @@ jobs:
           body: |
             ## Install
 
-            Download the `.dmg` for your Mac — `aarch64` for Apple Silicon,
-            `x64` for Intel — open it, and drag **Cairndex** to Applications.
+            **Apple Silicon Macs only.** Download the `.dmg`, open it, and drag
+            **Cairndex** to Applications. There is no Intel build; on an Intel
+            Mac, build from source (see `docs/deployment.md`).
 
             Cairndex is not signed with an Apple Developer ID, so the first
             launch is blocked. Open it once, choose **Done**, then go to

@@ -73,12 +73,18 @@ Reproduce either from a bundled copy with:
 `apps/server/packaging/ffmpeg-manifest.json` is the authoritative pin. As of
 FFmpeg 8.1.2:
 
-| Platform | Tool | SHA-256 of the binary |
-| --- | --- | --- |
-| macOS arm64 | ffmpeg | `eaf91238e104dd0e262bc6510e25061855cc99a6955a721b0ac99660d58c473d` |
-| macOS arm64 | ffprobe | `ed9dc5871914b466b96b402c9ec0ba68ce4f836e72faa464b1b4e279835bd4a6` |
-| macOS x86_64 | ffmpeg | `1ca59dda73668c59898a0b305afd8a88817a989187f222ec62d64e775d614d23` |
-| macOS x86_64 | ffprobe | `bdb6aff0f1f414382effd97040f7862dc85e67996ac296cb4288beed0e06498f` |
+| Platform | Tool | SHA-256 of the binary | In releases? |
+| --- | --- | --- | --- |
+| macOS arm64 | ffmpeg | `eaf91238e104dd0e262bc6510e25061855cc99a6955a721b0ac99660d58c473d` | yes |
+| macOS arm64 | ffprobe | `ed9dc5871914b466b96b402c9ec0ba68ce4f836e72faa464b1b4e279835bd4a6` | yes |
+| macOS x86_64 | ffmpeg | `1ca59dda73668c59898a0b305afd8a88817a989187f222ec62d64e775d614d23` | no — pinned only |
+| macOS x86_64 | ffprobe | `bdb6aff0f1f414382effd97040f7862dc85e67996ac296cb4288beed0e06498f` | no — pinned only |
+
+Releases have shipped Apple Silicon only since v0.1.0, so the x86_64 rows are a
+pin rather than something distributed — they apply to an Intel app you build
+yourself. The obligations below attach to whatever a given artifact actually
+contains; they are stated for both because the pin makes either possible, and
+the corresponding source is the same either way.
 
 Upstream download URLs, archive checksums, and the component version list are
 recorded in that manifest.

@@ -631,14 +631,14 @@ Notes for when this is picked up:
 ### Cutting a release (plan 3 D7)
 
 `.github/workflows/release.yml` runs on a `v*` tag, or on manual dispatch with a
-tag as input. It builds both architectures, then attaches the DMGs to a **draft**
-release — publishing stays a human decision.
+tag as input. It builds **Apple Silicon only**, then attaches the DMG to a
+**draft** release — publishing stays a human decision.
 
-Each build job fetches the pinned ffmpeg for its architecture, builds and
-smoke-tests the sidecar, builds the app and DMG, and refuses to continue on a
-bad bundle signature or a binary of the wrong architecture. The draft carries
-both `.dmg` files, a `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` —
-which has to travel with the artifacts, since they bundle a GPL ffmpeg.
+The build job fetches the pinned ffmpeg, builds and smoke-tests the sidecar,
+builds the app and DMG, and refuses to continue on a bad bundle signature or a
+binary of the wrong architecture. The draft carries the `.dmg`, its `.sha256`,
+and `THIRD-PARTY-NOTICES.md` — which has to travel with the artifact, since it
+bundles a GPL ffmpeg.
 
 #### The procedure
 
@@ -715,18 +715,29 @@ so the pipeline can be exercised end to end but the distribution goal is not
 met. Making the repository public is a separate owner decision, not something a
 release performs.
 
-**Two native jobs, not one cross-compiling job.** The Rust half cross-compiles
-fine with `--target`, but the sidecar is a PyInstaller bundle, and PyInstaller
-freezes *the interpreter that runs it* — it has no cross-compile mode. So an
-Intel artifact needs an Intel builder, which is why the matrix pins
-`uv sync --python cpython-3.12-macos-<arch>-none` rather than leaving the
-interpreter to the runner's default. `--platform` on `build_sidecar.py` selects
-which checksum pin to verify against; it cannot change what got frozen, and the
-script refuses a bundle whose architecture disagrees with it.
+#### Why there is no Intel artifact
 
-The Intel runner label is `macos-15-intel`; the old free `macos-13` Intel image
-is retired. If Intel runners become unavailable, the fallback is to drop the
-Intel artifact, not to cross-compile.
+Intel was dropped after the v0.1.0 run (owner, 2026-07-23). It is not needed,
+and it was the expensive half: on that run the Intel runner took 98s to freeze
+the sidecar against arm64's 24s — roughly 4× slower at every compile-bound step,
+on minutes billed at 10×.
+
+Dropping it removed one matrix entry and nothing else. `macos-x86_64` is still
+pinned in `ffmpeg-manifest.json`, the architecture checks still cover it, and
+the local Intel build below still produces a working app. Restoring the artifact
+means uncommenting the matrix entry in `release.yml`, which keeps the five
+values it needs — including the `macos-15-intel` runner label, verified usable
+on 2026-07-23. The old free `macos-13` Intel image is retired, so that label is
+the only Intel option.
+
+**Any architecture needs its own native job; `--target` alone is not enough.**
+The Rust half cross-compiles fine, but the sidecar is a PyInstaller bundle, and
+PyInstaller freezes *the interpreter that runs it* — it has no cross-compile
+mode. That is why the matrix pins `uv sync --python
+cpython-3.12-macos-<arch>-none` rather than leaving the interpreter to the
+runner's default. `--platform` on `build_sidecar.py` selects which checksum pin
+to verify against; it cannot change what got frozen, and the script refuses a
+bundle whose architecture disagrees with it.
 
 #### Building the other architecture locally
 

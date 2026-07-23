@@ -71,13 +71,17 @@ recommended next tasks.
 > No release has been published yet (plan 3 D7). The pipeline that builds these
 > artifacts exists; the steps below describe what it publishes.
 
-Releases publish a `.dmg` per architecture — `aarch64` for Apple Silicon,
-`x64` for Intel — each with a `.sha256` beside it. Download the one matching
-your Mac, open it, and drag **Cairndex** to Applications.
+Releases publish a `.dmg` for **Apple Silicon**, with a `.sha256` beside it.
+Download it, open it, and drag **Cairndex** to Applications.
 
 ```bash
-shasum -a 256 -c Cairndex_<version>_<arch>.dmg.sha256
+shasum -a 256 -c Cairndex_<version>_aarch64.dmg.sha256
 ```
+
+**On an Intel Mac, build from source** — see
+[docs/deployment.md](docs/deployment.md). There is no prebuilt Intel artifact;
+everything needed to produce one is still in the repository (the Intel ffmpeg is
+pinned, and the build is documented), it is simply not built for each release.
 
 ### First launch: "Apple could not verify..."
 
