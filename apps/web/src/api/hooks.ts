@@ -92,6 +92,7 @@ import {
   fetchTags,
   fetchTrash,
   fetchViewCounts,
+  importFile,
   makeDirectory,
   previewFilter,
   probeLibraryPath,
@@ -410,6 +411,21 @@ export function useFileOperations() {
     }),
     trash: useMutation({
       mutationFn: (paths: string[]) => trashEntries(paths),
+      onSuccess: refresh,
+    }),
+    // One mutation per file rather than per batch: each import gets its own
+    // collision answer and its own undo, which is only possible if each is its
+    // own request (see the server's `import_stream`).
+    importOne: useMutation({
+      mutationFn: ({
+        file,
+        destDir,
+        onConflict,
+      }: {
+        file: File
+        destDir: string
+        onConflict?: ConflictPolicy
+      }) => importFile(file, { destDir, onConflict, link: true }),
       onSuccess: refresh,
     }),
   }
