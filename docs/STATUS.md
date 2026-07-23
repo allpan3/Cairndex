@@ -1,5 +1,55 @@
 # Project status
 
+## Done: CI cost reduction (2026-07-23)
+
+Merged to `main` directly at the owner's request. Prompted by the Actions budget
+being ~90% consumed for the month, and driven by measurement rather than
+instinct — the intuitive suspect (the release workflow) turned out to be 10% of
+the bill.
+
+**Where the minutes actually went**, 30 days to 2026-07-23, computed from job
+timestamps because the per-run billing endpoint reports zeroes:
+
+| | billable min | share |
+| --- | ---: | ---: |
+| `CI / Desktop shell (macOS)` | 1,570 | 58% |
+| all other CI jobs combined | 860 | 32% |
+| `Release` (one-off, both arches) | 261 | 10% |
+| **total** | **2,691** | |
+
+One job was 58% of everything, because the repository is private and macOS bills
+at **10×**. Two facts made it worse: roughly **half of this repository's commits
+touch only documentation** (12 of the last 25), and CI ran on both
+`pull_request` *and* the `push` that merged it — so a green PR's macOS build was
+immediately re-run against identical code.
+
+**Two changes, both in `ci.yml`:** `paths-ignore` for docs-only changes, and the
+two desktop jobs restricted to pull requests and manual dispatch. Projected
+against the measured baseline: CI **2,430 → ~855 min/month, a 65% cut**, with
+`Release` down to ~80 and only when a tag is pushed. `workflow_dispatch` is the
+escape hatch, and `desktop-macos` gained `timeout-minutes: 30` so a hung Tauri
+build cannot sit for GitHub's six-hour default at 10×.
+
+The trade, stated plainly: a **direct-to-main code commit gets no desktop
+build**. Feature work goes through PRs where the desktop jobs do run, and
+direct-to-main is reserved for docs and maintenance, so the gap is narrow — but
+it is real, not a free win.
+
+**A pre-existing flake surfaced along the way**, and it belongs in this entry
+because a flake costs a whole re-run. The packaged sidecar smoke test asserted
+on `bundles?limit=1` — whichever of three differently-formatted fixtures sorted
+first — and failed with `thumbnail is not a JPEG (296 bytes)` on 2026-07-22 and
+again on 2026-07-23, having passed 37 minutes earlier on identical code. Not a
+D7 regression. It now pins the assertion to the JPEG fixture, removing the
+uncontrolled variable.
+
+**What produced those 296 bytes is still unexplained**, and that is recorded in
+the code as an open question rather than papered over: a 200 response whose body
+is not JPEG, from a path that only ever writes `.jpg`. The bundled ffmpeg
+thumbnails all three fixtures correctly when driven by hand, including the HEIC,
+so a missing decoder is not the answer. If it recurs on a pinned fixture, the
+remaining suspect is the generate-then-serve path.
+
 ## In progress: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
 
 Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Pushed and
