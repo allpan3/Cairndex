@@ -151,11 +151,19 @@ GPL-compatible components, i.e. OpenSSL must be ≥ 3.0 (Apache-2.0) for
 `--enable-openssl` to be redistributable alongside GPL — the pinned builds
 link 3.6.1.
 
+**`v0.1.0` was tagged and the release workflow run at the owner's request
+(2026-07-23).** The tag is annotated, points at `34ab2e0` (the D7 merge), and
+matches the `0.1.0` in `tauri.conf.json` — which matters because artifact names
+come from the config, not the tag, and nothing enforces that they agree. The
+push triggered the workflow; `macos-15-intel` accepted its job, which settles
+the open question about whether that runner label is usable here.
+
+The procedure is now a runbook in `docs/deployment.md` (*Cutting a release*):
+pre-tag version bumps, tagging, watching, reviewing the draft, publishing, and
+backing out. `AGENTS.md` gains the matching rule — releasing is owner-triggered
+like opening a PR, and a tag with a published release must never be moved.
+
 **Next**, in order:
-1. **A real run of `release.yml`.** It triggers on tags, so nothing has executed
-   it; the runner labels, the cache paths, and `softprops/action-gh-release` are
-   unproven in CI even though every build step they wrap has been run by hand.
-   Needs a tag, which is the owner's call.
 2. **An owner pass on a genuinely downloaded build.** The `xattr` reproduction
    is faithful to the quarantine bit, but only a real download proves the whole
    path.
