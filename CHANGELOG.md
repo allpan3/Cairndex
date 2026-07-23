@@ -10,6 +10,23 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Write mode — the gate** ([ADR-0013](docs/adr/0013-library-write-mode.md),
+  plan 4 W0). Cairndex can be given permission to create, rename, move, and
+  trash files inside one library root. **Nothing writes yet**; this is the
+  switch every later operation will have to get past, landed on its own so the
+  default answer is no before there is anything to say no to.
+
+  Two switches must agree. Yours, per library, in **Libraries → Write mode**,
+  off by default and stored in the server registry rather than the library
+  package — so a library copied to another machine arrives read-only instead of
+  carrying permission with it. And the operator's, `CAIRNDEX_WRITE_MODE`
+  (`allowed` by default, `disabled` forcing every library read-only). Turning it
+  on for a passphrase-protected library asks for that passphrase again; turning
+  it off never does, because giving up a capability is always safe.
+
+  Write endpoints will answer `403 write_mode_disabled`, naming which of the two
+  gates refused — the fixes are different, and one of them may not be yours.
+
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
   packaged sidecar against its bundled ffmpeg, and attaches the DMG, its

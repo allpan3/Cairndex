@@ -43,7 +43,7 @@ These are repeated here because violating them can corrupt user data or derail t
 - The primary user-facing object in Bundle Browser is an Asset Bundle, not a file.
 - Collections are logical groupings; collection membership must never move files on disk.
 - File Browser is scoped to the active library root and must never become an unrestricted server filesystem browser.
-- Existing source media must not be renamed, moved, overwritten, or deleted during metadata-only milestones.
+- Existing source media must not be renamed, moved, overwritten, or deleted **except through an explicit, journaled write-mode operation** (ADR-0013): one the owner opted into per library, that the deployment permits, and that records its intent before touching the filesystem. Metadata-only remains the default posture for everything else — scans, grouping, playback, thumbnails, exports — and a write-mode gate is never a licence for an unjournaled write.
 - A Cairndex library is a root directory with `.cairndex/{manifest.json,library.db,cache/}`; content metadata belongs in the library DB, while the server registry is runtime state.
 - Store file locations as library-relative paths. Do not reintroduce content `storage_roots` or `asset_files.storage_root_id` without a new ADR.
 - Preserve `AssetFile.id` during moved-file repair so bundle membership, covers, subtitles, notes, ratings, and cache identity survive path changes.
