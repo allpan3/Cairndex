@@ -120,6 +120,7 @@ jobs/         in-process worker and job context
 scanning/     scan, fast-add, media classification, fingerprints, repair
 media/        ffprobe/ffmpeg adapters, thumbnails, playback/subtitle helpers
 grouping/     ADR-0009 suggester, plan store, and apply service
+file_ops/     ADR-0013 write-mode gate; guarded file operations land here
 ```
 
 Content endpoints are scoped to one library:
@@ -132,6 +133,11 @@ Content endpoints are scoped to one library:
   selected library's `library.db` and library root.
 - `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
   queue.
+- `GET|PUT /api/v1/libraries/{id}/write-mode` is registry-level too (ADR-0013):
+  it changes a server-side flag and reads the manifest, but never opens
+  `library.db`. Endpoints that *use* the capability declare the
+  `require_write_mode` dependency, which answers 403 `write_mode_disabled` when
+  either the library's flag or `CAIRNDEX_WRITE_MODE` says no.
 
 A `LibrarySession` dependency resolves `{library_id}` through the registry,
 refuses unknown/unavailable libraries, opens the matching `.cairndex/library.db`,
@@ -236,7 +242,8 @@ ownership lease (§4.1) and `library.db.bak` its sync-heal snapshot (§4.2).
 The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
 
 - `registered_libraries`: known library roots, manifest paths, availability,
-  schema version, and last-opened timestamps;
+  schema version, last-opened timestamps, and the per-library write-mode opt-in
+  (ADR-0013 — registry state precisely so a copied library arrives read-only);
 - `job_queue`: scan/probe/thumbnail jobs, progress, cancellation, terminal state,
   and result payloads;
 - `server_identity`: this install's persistent `server_uuid` and machine name,

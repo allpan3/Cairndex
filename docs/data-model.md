@@ -309,8 +309,15 @@ runtime state. It is not portable library metadata and has its own
 
 `id`, `library_uuid` (copied from the library manifest, unique), `name`,
 `root_path` (absolute, normalized, unique), `manifest_path`, `status`,
-`schema_version`, timestamps, `last_opened_at`. One row per known
-`<root>/.cairndex/` library package.
+`schema_version`, `write_mode_enabled`, timestamps, `last_opened_at`. One row per
+known `<root>/.cairndex/` library package.
+
+`write_mode_enabled` (default false) is the owner's per-library opt-in to
+guarded file operations (ADR-0013). It lives here rather than in the portable
+manifest **on purpose**: a library copied to another server must arrive
+read-only, never carrying write permission with it. `CAIRNDEX_WRITE_MODE=disabled`
+overrides it deployment-wide. Registries created before ADR-0013 gain the column
+additively, defaulting to off.
 
 ### `job_queue`
 

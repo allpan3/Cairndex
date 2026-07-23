@@ -242,7 +242,7 @@ temp-file staging, partial-upload cleanup).
 
 | # | Slice | Contents |
 |---|-------|----------|
-| W0 | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013 |
+| W0 ✅ | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013. **Landed 2026-07-23** — one clarification against the design: the passphrase presented to `PUT /write-mode` authorizes that request *by itself*, standing in for an unlocked session, so enabling a locked library costs one prompt rather than two. It authorizes the one request, not the session; the library stays locked for content |
 | W1 | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast |
 | W2 | Save exports to library | §5 (`save_new`), Export-dialog "Save into library…", link/role/set-cover — lands after plan 1 M11 |
 | W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File Browser, collision policy, plan/preview for multi-item |

@@ -1,10 +1,62 @@
 # Project status
 
-> **Current position:** plan 3 **D7 closed 2026-07-23** at the owner's request.
-> The build order moves to **phase H — plan 4 library write mode**, starting at
-> **W0**. One D7 verification item is deliberately deferred behind write mode
-> (an owner pass on a genuinely downloaded build); it is not a blocker for
-> anything in phase H.
+> **Current position:** phase H — plan 4 library write mode. **W0 (the gate) is
+> implemented** on `feat/write-mode-w0-gate` and awaiting the owner's review;
+> **W1 (journal + rename/mkdir) is next**. One D7 verification item is
+> deliberately deferred behind write mode (an owner pass on a genuinely
+> downloaded build); it is not a blocker for anything in phase H.
+
+## Implemented: plan 4 W0 — the write-mode gate (2026-07-23)
+
+Branch `feat/write-mode-w0-gate`, based on `main` at `36e5108`. Not merged; no
+PR opened (owner-triggered). Three commits: the D7/phase-H docs already in the
+working tree, the server gate, then the web toggle, with this documentation
+slice on top.
+
+**What landed is a refusal, not a capability.** Nothing in Cairndex writes to a
+library yet. W0 exists so that the answer is already *no* before there is
+anything to say no to — every W1+ endpoint declares one dependency and inherits
+a structured `403 write_mode_disabled` it cannot forget to check.
+
+**Two switches, answering to two different people.** `CAIRNDEX_WRITE_MODE`
+(`allowed` | `disabled`) belongs to whoever runs the server and can force every
+library read-only. `registered_libraries.write_mode_enabled` belongs to the
+owner, defaults off, and lives in the **registry** rather than the portable
+manifest — so a library copied to another machine arrives read-only instead of
+carrying permission with it (ADR-0013 §1, ADR-0008 portability). The refusal
+names which gate said no, in `details.reason`, because the two have different
+fixes and one of them may not be the user's to apply.
+
+**One clarification against the plan, worth recording.** ADR-0013 says enabling
+requires an unlocked session *and* re-prompts for the passphrase. Implemented
+literally, a locked library would cost two passphrase prompts to enable — one to
+unlock, one to re-auth — for no security gain. So a correct passphrase presented
+to `PUT /write-mode` authorizes that request **by itself**. It authorizes the one
+request and not the session: the library stays locked for content afterwards,
+which a test asserts. Disabling never asks for anything, deliberately — a
+forgotten passphrase must not be able to strand a library in a writable state.
+
+**The manifest still reads as protected when it is unreadable** (`is_protected`
+fails closed), which means a library with a corrupt manifest cannot have write
+mode turned on at all. That is the right failure: the one library whose auth
+state we cannot determine is the last one that should gain the ability to move
+files.
+
+Verification at this commit: backend Ruff, `ruff format --check`, mypy, full
+pytest (**640 passed**, +13 new write-mode cases covering both gates, the
+passphrase re-auth and its generic 401, the locked-library single-prompt path,
+the corrupt-manifest refusal, and a pre-ADR-0013 registry gaining the column
+additively and defaulting to off); web Prettier, ESLint, `tsc -b`, full Vitest
+(**334 passed**, +5 Library Manager cases), and the Vite build. OpenAPI and
+`schema.d.ts` regenerated. Manually verified against a real dev server and a
+scratch library: the toggle, its explanation step, the accent-on state, and the
+flag surviving in the registry — then turned back off and the scratch library
+deregistered.
+
+**Next: W1** — the `file_operations` journal, the path validator, collision
+policies, the reconciler on library open, and File Browser inline rename + New
+Folder with an Undo toast. W5 (import external, the Finder drag-in driver)
+follows W1.
 
 ## Closed: plan 3 D7 — first public release (2026-07-23)
 
@@ -4336,11 +4388,12 @@ dialogs).
   already-linked unique quick-fingerprint replacement are implemented. Arbitrary
   cross-filesystem/content-changed repair and duplicate/copy handling remain
   future work.
-- File Browser is read-only. Write mode, reveal/open-with-default-app, and desktop
-  helper/Tauri integration are not yet implemented but are now **planned and
-  design-ratified**: library write mode in `docs/plans/04-library-write-mode.md`
-  (ADR-0013, accepted), and the macOS desktop/host-handoff path in
-  `docs/plans/03-macos-desktop-app.md` (ADR-0012, accepted).
+- File Browser is read-only. _(Superseded in part, 2026-07-23: plan 4 **W0**
+  landed the write-mode gate, so a library can now be **given** permission to be
+  written to — but no operation exists that uses it yet, so the File Browser
+  itself is unchanged. The desktop/host-handoff path is in
+  `docs/plans/03-macos-desktop-app.md`, ADR-0012 accepted; reveal /
+  open-with-default-app remain unimplemented.)_
 - Remux/transcode fallback and embedded subtitle extraction are deferred —
   scheduled as plan 1 M6/M7 (HLS sessions) and M8 (subtitle upgrade); see
   `docs/plans/01-web-media-player-and-viewer.md`.
@@ -4377,7 +4430,8 @@ dialogs).
 ## Unresolved decisions
 
 - Authentication mechanism: shared owner secret vs. per-user accounts.
-- Native/desktop host integration design for `open with default app`, reveal in
-  file manager, and future File Browser write mode.
+- Native/desktop host integration design for `open with default app` and reveal
+  in file manager. _(File Browser write mode is no longer unresolved: ADR-0013
+  settled the design and plan 4 W0 shipped its gate.)_
 - Cache policy for future large transcodes: portable inside-library cache vs.
   server-local cache.

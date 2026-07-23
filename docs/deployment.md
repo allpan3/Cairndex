@@ -86,6 +86,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_MAX_SESSIONS`  | `2`             | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use.                     |
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
+| `CAIRNDEX_WRITE_MODE`              | `allowed`       | Deployment master switch for guarded file operations (ADR-0013). `allowed` lets the per-library opt-in decide; `disabled` forces every library read-only.          |
 
 **Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
 binaries explicitly. Unset, they are resolved from `PATH` and then from the
@@ -105,6 +106,17 @@ ADR-0015 device pairing instead. The token authenticates the shell, not the
 owner: a library with a passphrase stays locked until it is actually unlocked,
 unlike a paired device token, because the local token is minted with no approval
 ceremony.
+
+**Write mode** (ADR-0013): Cairndex may create, rename, move, and trash files
+inside a library root only when **two** switches agree. `CAIRNDEX_WRITE_MODE`
+(default `allowed`) is yours; setting it to `disabled` forces every library
+read-only and makes the per-library toggle un-flippable, which is what a shared
+or hardened deployment wants. The second switch is the owner's per-library
+opt-in, stored in the **registry** and off by default — deliberately not in the
+portable library package, so copying a library to another server never carries
+write permission with it, and a library that arrives on a new server arrives
+read-only. Enabling a library that has an ADR-0010 passphrase re-prompts for it.
+Nothing outside this path writes to a library's files.
 
 **Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
 short hostname) is the human-readable name another machine shows when it asks
