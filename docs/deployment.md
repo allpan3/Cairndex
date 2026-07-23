@@ -118,6 +118,20 @@ write permission with it, and a library that arrives on a new server arrives
 read-only. Enabling a library that has an ADR-0010 passphrase re-prompts for it.
 Nothing outside this path writes to a library's files.
 
+**Who can flip the per-library switch.** An **unprotected** library has no
+credential in front of it, so anything that can reach the API can turn its write
+mode on — the same posture as everything else about an unprotected library
+(setting its passphrase in the first place included). That is fine on the single
+-owner LAN Cairndex is built for, and it is exactly the reason the product
+refuses to call direct internet exposure supported. If a server is reachable by
+anyone you would not hand a delete key to, use one of the two guards that do
+exist: set an ADR-0010 passphrase on the library, which makes enabling write mode
+require it, or set `CAIRNDEX_WRITE_MODE=disabled`, which takes the decision away
+from the API entirely. The passphrase check here is not rate-limited, matching
+the unlock endpoint; argon2's cost is the only brake on guessing, which is
+another reason a shared deployment wants the master switch rather than the
+per-library one.
+
 **Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
 short hostname) is the human-readable name another machine shows when it asks
 whether to take a library over, so it is worth setting to something recognizable
