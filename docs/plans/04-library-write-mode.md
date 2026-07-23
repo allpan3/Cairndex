@@ -133,6 +133,13 @@ destination; destination parent must exist (or be created by the same
   - Note: this prompt is about **path collisions**. Content-duplicate
     detection at import (Eagle's other trigger for the same dialog) remains
     deferred per the product brief.
+  - **Sequencing consequence, found building W1:** `replace` cannot exist
+    before the trash does, because *being* trash-then-write is what makes it
+    safe. W1 therefore ships `fail | skip | suffix` only, and the client shows
+    Keep both / Cancel. W5 (import) arrives before W4 (trash) in the owner's
+    re-ordering, so **W5 will face the same limitation** — either it offers the
+    two safe answers too, or W4's trash moves ahead of it. Worth deciding when
+    W5 starts rather than discovering at the dialog.
 - Cross-device moves inside one root (nested mounts, rare): `rename()` EXDEV
   → copy + size/quick-fingerprint verify + unlink, journaled as two phases.
 - Case-only renames on case-insensitive filesystems (SMB from macOS): two-step
@@ -243,7 +250,7 @@ temp-file staging, partial-upload cleanup).
 | # | Slice | Contents |
 |---|-------|----------|
 | W0 ✅ | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013. **Landed 2026-07-23** — one clarification against the design: the passphrase presented to `PUT /write-mode` authorizes that request *by itself*, standing in for an unlocked session, so enabling a locked library costs one prompt rather than two. It authorizes the one request, not the session; the library stays locked for content |
-| W1 | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast |
+| W1 ✅ | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast. **Landed 2026-07-23.** Two deviations from §3.3, both narrowing: `replace` is **not** in the collision enum yet — the ADR defines it as trash-then-write, so it cannot be implemented recoverably until W4, and naming it earlier would promise a way back that does not exist (the UI offers Keep both / Cancel). And the validator additionally refuses `.cairndex/` from both directions, plus dot-leading and trailing-dot names |
 | W2 | Save exports to library | §5 (`save_new`), Export-dialog "Save into library…", link/role/set-cover — lands after plan 1 M11 |
 | W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File Browser, collision policy, plan/preview for multi-item |
 | W4 | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view, bundle "delete with files" |

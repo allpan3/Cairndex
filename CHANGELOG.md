@@ -24,8 +24,34 @@ grouped under `Unreleased` until the first tagged release.
   on for a passphrase-protected library asks for that passphrase again; turning
   it off never does, because giving up a capability is always safe.
 
-  Write endpoints will answer `403 write_mode_disabled`, naming which of the two
+  Write endpoints answer `403 write_mode_disabled`, naming which of the two
   gates refused — the fixes are different, and one of them may not be yours.
+
+- **Write mode — rename and New Folder** (plan 4 W1). The first operations that
+  actually touch files. In the File Browser: **Rename…** from the context menu
+  or <kbd>F2</kbd>, editing the name in place; **New Folder** in the toolbar and
+  the empty-space menu. Every completed operation offers **Undo**.
+
+  **Renaming through Cairndex never needs repair.** The rename and the stored
+  path change together, so the file keeps its identity — bundle membership,
+  cover, subtitle links, notes, ratings and cached thumbnails all survive, and a
+  renamed folder carries everything inside it. That is the difference from
+  renaming in Finder, where the scanner has to work out afterwards what moved
+  where.
+
+  **Every operation is journaled before it happens**, in the library itself, so
+  the history travels with it. If the server dies mid-operation, the next open
+  looks at the disk and either finishes the job or marks it failed — it never
+  guesses, and never leaves a file whose recorded location is quietly wrong.
+
+  A name that is already taken **asks** rather than failing: nothing has moved
+  when the prompt appears, and *Keep both* adds `(2)`. Replace is deliberately
+  not offered yet — it is defined as move-the-old-one-to-the-trash first, and
+  the trash arrives in a later slice; until then there would be no way back.
+
+  Renaming into or out of the library's own `.cairndex/` folder is refused, as
+  are absolute paths, `..`, symlinks pointing outside the library, and names
+  that a Windows or SMB client would silently mangle.
 
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
