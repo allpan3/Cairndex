@@ -175,6 +175,12 @@ def test_invalid_deployment_switch_is_rejected_at_startup() -> None:
 def test_health_reports_the_deployment_switch(gated_client: TestClient) -> None:
     assert gated_client.get("/api/v1/health").json()["write_mode"] == "allowed"
 
+    # The value clients actually branch on: a read-only deployment must be
+    # visible before anything is attempted, so the UI can explain rather than
+    # let the owner discover it by being refused.
+    with _deployment_write_mode("disabled"):
+        assert gated_client.get("/api/v1/health").json()["write_mode"] == "disabled"
+
 
 # --- passphrase re-auth (ADR-0010 + ADR-0013) --------------------------------
 def test_enabling_a_protected_library_re_prompts(
