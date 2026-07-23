@@ -23,17 +23,27 @@ touch only documentation** (12 of the last 25), and CI ran on both
 `pull_request` *and* the `push` that merged it — so a green PR's macOS build was
 immediately re-run against identical code.
 
-**Two changes, both in `ci.yml`:** `paths-ignore` for docs-only changes, and the
-two desktop jobs restricted to pull requests and manual dispatch. Projected
-against the measured baseline: CI **2,430 → ~855 min/month, a 65% cut**, with
-`Release` down to ~80 and only when a tag is pushed. `workflow_dispatch` is the
-escape hatch, and `desktop-macos` gained `timeout-minutes: 30` so a hung Tauri
-build cannot sit for GitHub's six-hour default at 10×.
+**Two changes went in, and one came straight back out.** `paths-ignore` for
+docs-only changes stays — it is worth having for feedback latency regardless of
+money, and it alone accounts for roughly half the runs. Restricting the desktop
+jobs to pull requests was reverted within the hour: **the owner made the
+repository public**, standard GitHub-hosted runners (including `macos-latest`)
+became free and unmetered, and that restriction had been a pure cost trade that
+bought nothing while costing desktop coverage on every direct-to-main commit.
 
-The trade, stated plainly: a **direct-to-main code commit gets no desktop
-build**. Feature work goes through PRs where the desktop jobs do run, and
-direct-to-main is reserved for docs and maintenance, so the gap is narrow — but
-it is real, not a free win.
+The lesson worth keeping is about sequencing, not CI: a measured, correct
+optimisation was obsoleted by a one-click change to the constraint it optimised
+against. The measurement was not wasted — it is what found the flake and the
+missing timeout below, both of which stand on their own — but the cost analysis
+had a shorter shelf life than the work it justified.
+
+`desktop-macos` keeps `timeout-minutes: 30` against an observed ~4.5-minute
+build: free runner time is still finite runner time, and a hung Tauri bundler
+should not hold one for six hours.
+
+**Going public also closes the ADR-0019 gap** flagged during D7: a release can
+now actually reach people who are not the author, which was the premise of
+publishing prebuilt binaries in the first place.
 
 **A pre-existing flake surfaced along the way**, and it belongs in this entry
 because a flake costs a whole re-run. The packaged sidecar smoke test asserted
