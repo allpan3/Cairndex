@@ -101,9 +101,16 @@ grouped under `Unreleased` until the first tagged release.
   partial file that the next library open removes. `CAIRNDEX_IMPORT_MAX_BYTES`
   caps a single file if you want one; by default there is no limit.
 
-  **Not yet: dragging from Finder onto the desktop app.** That path goes through
-  the shell rather than the browser, and still explains that files must be moved
-  into the library folder first. Everything underneath it now exists.
+  **Dragging from Finder into the desktop app now copies files in** — the thing
+  write mode was built for. Drop media anywhere in the window and it lands in
+  the folder you are looking at (or the library root), gets linked, and is ready
+  to bundle. Files already inside the library still link in place as before, so
+  a mixed drop does the right thing with both halves.
+
+  The app will only ever upload a file **you dropped on it**: the shell records
+  each drop itself and refuses anything else, so nothing can talk it into
+  reading a file from elsewhere on your disk. Large files stream straight from
+  disk to server without being loaded into memory at either end.
 
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
