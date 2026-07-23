@@ -628,6 +628,64 @@ Notes for when this is picked up:
   releases, and Tauri's updater fetches release assets over plain HTTPS, so it
   would require embedding a token in the shipped app.
 
+### Cutting a release (plan 3 D7)
+
+`.github/workflows/release.yml` runs on a `v*` tag, or on manual dispatch with a
+tag as input. It builds both architectures, then attaches the DMGs to a **draft**
+release — publishing stays a human decision.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+# then review the draft release and publish it
+```
+
+Each build job fetches the pinned ffmpeg for its architecture, builds and
+smoke-tests the sidecar, builds the app and DMG, and refuses to continue on a
+bad bundle signature or a binary of the wrong architecture. The draft carries
+both `.dmg` files, a `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` —
+which has to travel with the artifacts, since they bundle a GPL ffmpeg.
+
+**Two native jobs, not one cross-compiling job.** The Rust half cross-compiles
+fine with `--target`, but the sidecar is a PyInstaller bundle, and PyInstaller
+freezes *the interpreter that runs it* — it has no cross-compile mode. So an
+Intel artifact needs an Intel builder, which is why the matrix pins
+`uv sync --python cpython-3.12-macos-<arch>-none` rather than leaving the
+interpreter to the runner's default. `--platform` on `build_sidecar.py` selects
+which checksum pin to verify against; it cannot change what got frozen, and the
+script refuses a bundle whose architecture disagrees with it.
+
+The Intel runner label is `macos-15-intel`; the old free `macos-13` Intel image
+is retired. If Intel runners become unavailable, the fallback is to drop the
+Intel artifact, not to cross-compile.
+
+#### Building the other architecture locally
+
+Useful for reproducing a release-job failure without pushing a tag. On an Apple
+Silicon Mac with Rosetta, an Intel build is:
+
+```bash
+rustup target add x86_64-apple-darwin
+uv python install cpython-3.12-macos-x86_64-none
+
+cd apps/server
+uv run python packaging/fetch_ffmpeg.py --platform macos-x86_64
+UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --frozen \
+  --python cpython-3.12-macos-x86_64-none
+.venv-x86_64/bin/python packaging/build_sidecar.py --platform macos-x86_64
+
+cd ../desktop
+npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
+```
+
+The sidecar build must run from the x86_64 environment's own interpreter —
+`uv run` would pick the default arm64 one and the architecture check would stop
+the build. Fetched binaries are stored per platform under
+`packaging/vendor/ffmpeg/<platform>/`, so both architectures coexist instead of
+overwriting each other. Note that `packaging/dist/cairndex-sidecar` is a single
+path that `tauri.conf.json` stages as a resource, so building both architectures
+on one machine means rebuilding the sidecar between them.
+
 ### Linux and Windows
 
 Out of scope for v1 but kept cheap by the cross-platform rules in plan 3 §2.1.

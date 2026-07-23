@@ -19,6 +19,7 @@ import pytest
 PACKAGING_DIR = Path(__file__).resolve().parents[1] / "packaging"
 sys.path.insert(0, str(PACKAGING_DIR))
 
+import build_sidecar as bs  # noqa: E402
 import ffmpeg_manifest as fm  # noqa: E402
 from fetch_ffmpeg import extract_member  # noqa: E402
 
@@ -126,6 +127,46 @@ class TestPlatformNaming:
     def test_current_platform_is_a_manifest_key(self) -> None:
         manifest = fm.load()
         assert fm.current_platform() in manifest["platforms"]
+
+
+class TestVendorScoping:
+    """A release builds both architectures; their downloads share filenames."""
+
+    def test_each_platform_gets_its_own_directory(self) -> None:
+        arm = fm.vendor_dir("macos-arm64")
+        intel = fm.vendor_dir("macos-x86_64")
+        assert arm != intel
+        assert arm.name == "macos-arm64"
+        assert arm.parent == intel.parent
+
+    def test_vendor_dirs_stay_under_packaging(self) -> None:
+        assert fm.VENDOR.is_relative_to(fm.PACKAGING_DIR)
+        assert fm.vendor_dir("macos-arm64").is_relative_to(fm.VENDOR)
+
+
+class TestBundleArchitecture:
+    """`--platform` selects a pin; it cannot change what PyInstaller froze."""
+
+    def test_reads_arm64_and_x86_64_mach_o_headers(self, tmp_path: Path) -> None:
+        cases = {"arm64": 0x0100000C, "x86_64": 0x01000007}
+        for name, cputype in cases.items():
+            binary = tmp_path / name
+            binary.write_bytes(b"\xcf\xfa\xed\xfe" + cputype.to_bytes(4, "little") + b"\x00" * 24)
+            assert bs.macho_arch(binary) == name
+
+    def test_non_macho_is_not_guessed_at(self, tmp_path: Path) -> None:
+        # A Linux ELF or a truncated file must report unknown, not a wrong arch.
+        elf = tmp_path / "elf"
+        elf.write_bytes(b"\x7fELF" + b"\x00" * 28)
+        assert bs.macho_arch(elf) is None
+        short = tmp_path / "short"
+        short.write_bytes(b"\xcf\xfa")
+        assert bs.macho_arch(short) is None
+
+    def test_unknown_cpu_type_is_unknown(self, tmp_path: Path) -> None:
+        binary = tmp_path / "ppc"
+        binary.write_bytes(b"\xcf\xfa\xed\xfe" + (0x12345678).to_bytes(4, "little") + b"\x00" * 24)
+        assert bs.macho_arch(binary) is None
 
 
 class TestArchiveExtraction:

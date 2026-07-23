@@ -218,12 +218,13 @@ jobs:
         run: uv sync --frozen
         working-directory: apps/server
       # Keyed on the manifest, so a re-pin re-downloads and everything else
-      # reuses ~125 MB of binaries.
+      # reuses ~125 MB of binaries. The vendor directory is platform-scoped, so
+      # this key and path name the same architecture the runner builds.
       - name: Cache the pinned static ffmpeg
         uses: actions/cache@v4
         with:
-          path: apps/server/packaging/vendor/ffmpeg
-          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/server/packaging/ffmpeg-manifest.json') }}
+          path: apps/server/packaging/vendor/ffmpeg/macos-arm64
+          key: ffmpeg-macos-arm64-${{ hashFiles('apps/server/packaging/ffmpeg-manifest.json') }}
       - name: Fetch the pinned static ffmpeg
         run: uv run python packaging/fetch_ffmpeg.py
         working-directory: apps/server

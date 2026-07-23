@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
+  manual dispatch — builds the macOS app for Apple Silicon and Intel, smoke-tests
+  each packaged sidecar against its bundled ffmpeg, and attaches both DMGs, a
+  `.sha256` beside each, and `THIRD-PARTY-NOTICES.md` to a **draft** release.
+  Publishing stays a human decision. Each job refuses to continue on an invalid
+  bundle signature or a binary of the wrong architecture.
+
+  Two native jobs rather than one cross-compiling job, because PyInstaller
+  freezes the interpreter that runs it and has no cross-compile mode — an Intel
+  artifact needs an Intel builder.
+
 - **The desktop app now bundles ffmpeg**, so opening a library folder on your
   own Mac needs no Homebrew, no separate ffmpeg install, and no PATH setup —
   previously a packaged app fell back to a system ffmpeg that a user might not
@@ -31,6 +42,18 @@ grouped under `Unreleased` until the first tagged release.
   carry the approval across.
 
 ### Internal
+
+- **Fetched ffmpeg binaries are stored per platform** under
+  `packaging/vendor/ffmpeg/<platform>/`. They previously shared one directory,
+  so building both architectures meant each fetch silently overwrote the other's
+  binaries — same filenames, no way to tell them apart.
+
+- **`build_sidecar.py` verifies the bundle's architecture.** The checksum gate
+  proves the *ffmpeg* matches the pin for `--platform`; it cannot see an arm64
+  sidecar staged with a correctly-pinned Intel ffmpeg, which passes every digest
+  check and produces an app that dies on launch. That is the mistake a
+  two-architecture matrix makes, so the build now reads the frozen executable's
+  Mach-O header and refuses a mismatch.
 
 - **The packaged smoke test can no longer pass by accident.** It set
   `CAIRNDEX_FFMPEG_PATH` to the bundled binary and trusted the sidecar to use
