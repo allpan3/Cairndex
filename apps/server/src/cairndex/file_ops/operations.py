@@ -15,6 +15,7 @@ path *segments*, and ``LIKE 'Show%'`` would happily also match ``Showcase/``.
 
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
 from sqlalchemy import select
@@ -22,8 +23,9 @@ from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path
-from cairndex.domain.enums import FileOpStatus, FileOpType
-from cairndex.file_ops import journal
+from cairndex.core.time import utcnow
+from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
+from cairndex.file_ops import journal, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
 from cairndex.persistence.models import AssetFile, FileOperation
@@ -140,13 +142,32 @@ def rename(
         destination = resolve_writable(root, target_relative, what="destination")
     except PathSafetyError as error:
         raise ValidationError(str(error)) from error
-    _ensure_no_linked_conflict(session, target_relative)
+    if not settled.replace:
+        _ensure_no_linked_conflict(session, target_relative)
 
     operation = journal.begin(
         session,
         op=FileOpType.RENAME,
         payload={"source": source_relative, "destination": target_relative},
     )
+    if settled.replace:
+        # Trash-then-write (ADR-0013 §3.3): the displaced entry is deleted to the
+        # trash *as its own trash operation*, and this rename records which one.
+        # Making it a real deletion rather than a footnote in the rename's
+        # payload is what puts it in the Trash view, restorable on its own, and
+        # emptied by the same sweep as everything else — one concept, one code
+        # path. Undoing this rename restores that operation.
+        try:
+            displaced = trash_paths(session, root, paths=[target_relative])
+            journal.finish_payload(session, operation, replaced_operation_id=displaced.operation.id)
+        except (OSError, ConflictError) as error:
+            journal.fail(
+                session,
+                operation,
+                _os_error_message(error) if isinstance(error, OSError) else str(error),
+            )
+            raise ConflictError(f"Could not move the existing {name!r} to the trash.") from error
+
     try:
         _rename_on_disk(source, destination)
     except OSError as error:
@@ -199,6 +220,229 @@ def make_directory(session: Session, root: Path, *, path: str) -> OperationResul
     return OperationResult(operation=operation, path=relative, files_updated=0)
 
 
+def mark_rows_trashed(
+    session: Session, operation_id: str, entry: trash.TrashedEntry
+) -> list[trash.TrashedEntry]:
+    """Flip every linked row at or under a trashed path, keeping their ids.
+
+    Each row's ``relative_path`` moves to its location inside the trash, because
+    that is where the bytes now are — and because leaving the original path
+    occupied would stop anything else taking it, which is precisely what Replace
+    needs to do next.
+    """
+    rows = _linked_rows_under(session, entry.original_path)
+    if not rows:
+        return [entry]
+
+    recorded: list[trash.TrashedEntry] = []
+    for row in rows:
+        original = row.relative_path
+        row.relative_path = trash.stored_relative_path(operation_id, original)
+        row.availability = FileAvailability.TRASHED
+        recorded.append(
+            trash.TrashedEntry(
+                original_path=original,
+                stored_path=row.relative_path,
+                file_id=row.id,
+                is_directory=False,
+            )
+        )
+    session.flush()
+    # A trashed directory is one entry for the filesystem and N for the metadata:
+    # restoring moves the directory back in one rename, but every row underneath
+    # has to be repointed, so both are recorded.
+    return [entry, *recorded] if entry.is_directory else recorded
+
+
+def trash_paths(session: Session, root: Path, *, paths: list[str]) -> OperationResult:
+    """Move files and directories into the library's trash (ADR-0013 §3.2).
+
+    Never unlinks. Every id, bundle membership, cover, subtitle link and cache
+    entry survives, so restore is lossless — the row stays, flipped to
+    ``trashed``. A directory is trashed whole, under one operation, preserving
+    its shape for restore.
+    """
+    if not paths:
+        raise ValidationError("nothing to move to the trash")
+
+    targets: list[str] = []
+    for raw in paths:
+        try:
+            relative = _normalized(raw, what="path")
+            resolved = resolve_writable(root, relative, what="path")
+        except PathSafetyError as error:
+            raise ValidationError(str(error)) from error
+        if not os.path.lexists(resolved):
+            raise NotFoundError(f"{relative!r} does not exist.")
+        targets.append(relative)
+
+    # Deleting a folder and something inside it in one gesture is an ordinary
+    # multi-select. Dropping the children keeps the trash a faithful tree and
+    # stops the second move failing on a path the first one already took away.
+    targets = _drop_nested(targets)
+
+    operation = journal.begin(session, op=FileOpType.TRASH, payload={"paths": targets})
+    entries: list[trash.TrashedEntry] = []
+    try:
+        for relative in targets:
+            moved = trash.move_into_trash(root, operation_id=operation.id, original_path=relative)
+            entries.extend(mark_rows_trashed(session, operation.id, moved))
+    except OSError as error:
+        journal.fail(session, operation, _os_error_message(error))
+        raise ConflictError("Could not move everything to the trash.") from error
+    trash.write_meta(root, operation_id=operation.id, entries=entries)
+
+    journal.finish(
+        session,
+        operation,
+        entries=[entry.as_payload() for entry in entries],
+        files_updated=sum(1 for entry in entries if entry.file_id),
+    )
+    return OperationResult(
+        operation=operation,
+        path=targets[0],
+        files_updated=sum(1 for entry in entries if entry.file_id),
+    )
+
+
+def restore(session: Session, root: Path, *, operation_id: str) -> OperationResult:
+    """Put a trashed operation's entries back where they came from."""
+    operation = journal.get_operation(session, operation_id)
+    if operation is None or operation.op is not FileOpType.TRASH:
+        raise NotFoundError(f"trashed operation {operation_id!r} not found")
+    if operation.status is not FileOpStatus.DONE:
+        raise ConflictError(f"This deletion is {operation.status.value} and cannot be restored.")
+
+    entries = [trash.entry_from_payload(item) for item in operation.payload.get("entries", [])]
+    restored = _restore_entries(session, root, entries)
+
+    trash.prune_operation_dir(root, operation_id)
+    journal.mark_undone(session, operation)
+    return OperationResult(
+        operation=operation,
+        path=entries[0].original_path if entries else "",
+        files_updated=restored,
+    )
+
+
+def _restore_entries(session: Session, root: Path, entries: list[trash.TrashedEntry]) -> int:
+    """Move entries back and re-point their rows. Shared by restore and undo."""
+    _ensure_restorable(session, root, entries)
+
+    for entry in _directories_first(entries):
+        if not os.path.lexists(root / entry.stored_path):
+            continue  # already back, e.g. carried by its restored parent directory
+        try:
+            trash.restore_from_trash(root, entry)
+        except OSError as error:
+            raise ConflictError(f"Could not restore {entry.original_path!r}.") from error
+
+    restored = 0
+    for entry in entries:
+        if entry.file_id is None:
+            continue
+        row = session.get(AssetFile, entry.file_id)
+        if row is None:
+            continue
+        row.relative_path = entry.original_path
+        row.availability = FileAvailability.AVAILABLE
+        restored += 1
+    session.flush()
+    return restored
+
+
+def empty_trash(session: Session, root: Path, *, older_than_days: int | None = None) -> int:
+    """Unlink trashed entries for good and drop their rows. The one-way door.
+
+    Returns the number of operations emptied. ``older_than_days`` keeps recent
+    deletions — the retention sweep — and defaults to emptying everything,
+    because that is what pressing Empty Trash means.
+    """
+    cutoff = (
+        utcnow() - timedelta(days=older_than_days)
+        if older_than_days is not None and older_than_days > 0
+        else None
+    )
+    emptied = 0
+    for operation in journal.trashed_operations(session):
+        finished = operation.finished_at
+        if cutoff is not None and finished is not None and finished > cutoff:
+            continue
+        entries = [trash.entry_from_payload(item) for item in operation.payload.get("entries", [])]
+        for entry in entries:
+            trash.delete_permanently(root, entry)
+            if entry.file_id is None:
+                continue
+            row = session.get(AssetFile, entry.file_id)
+            if row is not None:
+                # Metadata deletion, finally — separate from the physical
+                # unlink above, and reached only through this explicit action
+                # (AGENTS.md: metadata removal and file deletion stay distinct).
+                session.delete(row)
+        trash.prune_operation_dir(root, operation.id)
+        operation.status = FileOpStatus.EMPTIED
+        emptied += 1
+    session.commit()
+    return emptied
+
+
+def list_trash(session: Session) -> list[tuple[FileOperation, list[trash.TrashedEntry]]]:
+    """Everything currently recoverable, newest deletion first."""
+    return [
+        (operation, [trash.entry_from_payload(e) for e in operation.payload.get("entries", [])])
+        for operation in journal.trashed_operations(session)
+    ]
+
+
+def _drop_nested(paths: list[str]) -> list[str]:
+    """Remove paths already covered by an ancestor in the same request."""
+    ordered = sorted(dict.fromkeys(paths))
+    kept: list[str] = []
+    for path in ordered:
+        if any(path == parent or path.startswith(f"{parent}/") for parent in kept):
+            continue
+        kept.append(path)
+    return kept
+
+
+def _directories_first(entries: list[trash.TrashedEntry]) -> list[trash.TrashedEntry]:
+    """Restore a directory before the files recorded inside it.
+
+    Moving the directory back carries its contents in one rename; the file
+    entries are then already home and skipped. The reverse order would restore
+    files into a path their parent is about to take.
+    """
+    return sorted(entries, key=lambda entry: (not entry.is_directory, entry.original_path))
+
+
+def _ensure_restorable(session: Session, root: Path, entries: list[trash.TrashedEntry]) -> None:
+    """Refuse a restore whose destination is occupied, before moving anything.
+
+    Half a restore is worse than none: the owner would have to work out which
+    files came back. Checked against both the filesystem and the linked rows,
+    because either can hold the path.
+    """
+    for entry in _directories_first(entries):
+        destination = root / entry.original_path
+        if os.path.lexists(destination):
+            # A file inside a directory that is itself being restored is fine —
+            # its parent brought it back already.
+            if any(
+                other.is_directory and entry.original_path.startswith(f"{other.original_path}/")
+                for other in entries
+            ):
+                continue
+            raise ConflictError(
+                f"Something is already at {entry.original_path!r}. "
+                "Rename or move it, then restore again."
+            )
+        taken = session.scalar(
+            select(AssetFile.id).where(AssetFile.relative_path == entry.original_path)
+        )
+        if taken is not None and taken != entry.file_id:
+            raise ConflictError(f"Another file is already recorded at {entry.original_path!r}.")
+
+
 def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     """Apply an operation's inverse and mark it undone (ADR-0013 §3.1).
 
@@ -212,6 +456,10 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     if operation.status is not FileOpStatus.DONE:
         raise ConflictError(f"This operation is {operation.status.value} and cannot be undone.")
 
+    if operation.op is FileOpType.TRASH:
+        # Undoing a deletion *is* restoring it — same inverse, same journal row.
+        return restore(session, root, operation_id=operation_id)
+
     if operation.op is FileOpType.RENAME:
         result = rename(
             session,
@@ -222,6 +470,12 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
         # The inverse rename journaled an operation of its own; the honest
         # history is "this was undone", not "two renames happened".
         session.delete(result.operation)
+        # A Replace deleted something to the trash first. Undoing the rename
+        # without restoring it would leave the owner with neither file where
+        # they expected it — recoverable, but silently.
+        replaced_id = operation.payload.get("replaced_operation_id")
+        if replaced_id:
+            restore(session, root, operation_id=str(replaced_id))
         journal.mark_undone(session, operation)
         return OperationResult(
             operation=operation,

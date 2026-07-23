@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 from sqlalchemy.orm import Session
 
 from cairndex.file_ops import gate
@@ -23,7 +24,7 @@ def writable(registry_session: Session, library_id: str) -> str:
     return library_id
 
 
-def _rename(client: TestClient, library_id: str, **payload: object) -> object:
+def _rename(client: TestClient, library_id: str, **payload: object) -> Response:
     return client.post(f"/api/v1/libraries/{library_id}/file-ops/rename", json=payload)
 
 
@@ -153,3 +154,93 @@ def test_history_pages_newest_first(client: TestClient, writable: str, library_r
 
     assert [entry["payload"]["destination"] for entry in second["operations"]] == ["folder-0"]
     assert second["next_cursor"] is None
+
+
+# --- trash (ADR-0013 §3.2) ---------------------------------------------------
+def _trash(client: TestClient, library_id: str, *paths: str) -> Response:
+    return client.post(
+        f"/api/v1/libraries/{library_id}/file-ops/trash", json={"paths": list(paths)}
+    )
+
+
+def test_delete_moves_to_the_trash_and_restores(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    (library_root / "a.mkv").write_bytes(b"payload")
+
+    deleted = _trash(client, writable, "a.mkv")
+
+    assert deleted.status_code == 200, deleted.text
+    assert not (library_root / "a.mkv").exists()
+
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    assert [entry["name"] for op in listing["operations"] for entry in op["entries"]] == ["a.mkv"]
+    assert listing["size_bytes"] == len(b"payload")
+
+    operation_id = listing["operations"][0]["operation_id"]
+    restored = client.post(f"/api/v1/libraries/{writable}/file-ops/trash/restore/{operation_id}")
+
+    assert restored.status_code == 200
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+    assert client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()["operations"] == []
+
+
+def test_trash_routes_are_gated_but_reading_the_trash_is_not(
+    client: TestClient, registry_session: Session, writable: str, library_root: Path
+) -> None:
+    (library_root / "a.mkv").write_bytes(b"x")
+    _trash(client, writable, "a.mkv")
+    gate.set_write_mode(registry_session, writable, enabled=False)
+    registry_session.commit()
+
+    # Still visible: files in the trash are not gone, and saying otherwise
+    # because a switch was flipped would be a lie about the library's contents.
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash")
+    assert listing.status_code == 200
+    assert len(listing.json()["operations"]) == 1
+
+    operation_id = listing.json()["operations"][0]["operation_id"]
+    assert _trash(client, writable, "b.mkv").status_code == 403
+    assert (
+        client.post(
+            f"/api/v1/libraries/{writable}/file-ops/trash/restore/{operation_id}"
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(f"/api/v1/libraries/{writable}/file-ops/trash/empty", json={}).status_code
+        == 403
+    )
+
+
+def test_empty_trash_reports_what_it_removed(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    (library_root / "a.mkv").write_bytes(b"x")
+    (library_root / "b.mkv").write_bytes(b"y")
+    _trash(client, writable, "a.mkv")
+    _trash(client, writable, "b.mkv")
+
+    emptied = client.post(f"/api/v1/libraries/{writable}/file-ops/trash/empty", json={})
+
+    assert emptied.status_code == 200
+    assert emptied.json() == {"operations_emptied": 2}
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    assert listing == {"operations": [], "size_bytes": 0}
+
+
+def test_replace_is_offered_as_a_collision_policy(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    (library_root / "new.mkv").write_bytes(b"better")
+    (library_root / "old.mkv").write_bytes(b"original")
+
+    replaced = _rename(client, writable, path="new.mkv", new_name="old.mkv", on_conflict="replace")
+
+    assert replaced.status_code == 200, replaced.text
+    assert (library_root / "old.mkv").read_bytes() == b"better"
+    # Recoverable: the displaced file is in the trash, filed under this operation.
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    assert [entry["original_path"] for op in listing["operations"] for entry in op["entries"]] == [
+        "old.mkv"
+    ]

@@ -30,6 +30,13 @@ CACHE_DIR = "cache"
 # only thing both can observe.
 LOCKS_DIR = "locks"
 LEASE_NAME = "active-owner.json"
+# Trash for guarded deletions (ADR-0013 §3.2). Inside the package, not the host
+# OS trash: the server runs in containers and on NAS mounts where a per-mount
+# trash is unreliable or absent, and an in-package trash travels with the
+# library when it is copied or moved, which is the ADR-0008 portability
+# guarantee applied to deletions. Already excluded from scans and grouping,
+# because everything under `.cairndex/` is.
+TRASH_DIR = "trash"
 # Portable derived-cache categories. Writers resolve their target under
 # ``cache_dir(root)/<category>`` (ADR-0008 phase 8): thumbnails and converted
 # WebVTT subtitles land here; storyboards are reserved for later.
@@ -69,6 +76,10 @@ def cache_dir(root: Path) -> Path:
 
 def locks_dir(root: Path) -> Path:
     return marker_dir(root) / LOCKS_DIR
+
+
+def trash_dir(root: Path) -> Path:
+    return marker_dir(root) / TRASH_DIR
 
 
 def lease_path(root: Path) -> Path:

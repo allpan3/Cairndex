@@ -51,6 +51,20 @@ def finish(session: Session, operation: FileOperation, **payload_updates: Any) -
     return operation
 
 
+def finish_payload(
+    session: Session, operation: FileOperation, **payload_updates: Any
+) -> FileOperation:
+    """Record part of what an operation did, without ending it.
+
+    Used when an operation has more than one durable step — Replace trashes the
+    displaced entry *before* writing — so that a crash in between still leaves
+    the journal knowing where the first step put things.
+    """
+    operation.payload = {**operation.payload, **payload_updates}
+    session.commit()
+    return operation
+
+
 def fail(session: Session, operation: FileOperation, error: str) -> FileOperation:
     """Mark an operation failed, in the same words the caller was given."""
     # Roll back whatever half-applied metadata the failure interrupted before
@@ -90,6 +104,23 @@ def pending_operations(session: Session) -> list[FileOperation]:
 
 def get_operation(session: Session, operation_id: str) -> FileOperation | None:
     return session.get(FileOperation, operation_id)
+
+
+def trashed_operations(session: Session) -> list[FileOperation]:
+    """Deletions whose entries are still recoverable, newest first.
+
+    The Trash view *is* this query: a `trash` row that is still `done` has not
+    been restored (`undone`) or permanently deleted (`emptied`), so the journal
+    is the trash's index and no second table is needed to track it.
+    """
+    return list(
+        session.scalars(
+            select(FileOperation)
+            .where(FileOperation.op == FileOpType.TRASH)
+            .where(FileOperation.status == FileOpStatus.DONE)
+            .order_by(FileOperation.id.desc())
+        )
+    )
 
 
 def list_operations(
