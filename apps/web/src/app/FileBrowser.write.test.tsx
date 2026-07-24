@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { PathConflictError, type FileBrowserEntry } from '../api/client'
@@ -15,6 +15,7 @@ const rename = vi.fn()
 const mkdir = vi.fn()
 const undo = vi.fn()
 const trashMutate = vi.fn()
+const moveMutate = vi.fn()
 const importOne = vi.fn()
 
 const FOLDER: FileBrowserEntry = {
@@ -71,6 +72,7 @@ vi.mock('../api/hooks', () => ({
     mkdir: { mutate: mkdir, isPending: false },
     undo: { mutate: undo, isPending: false },
     trash: { mutate: trashMutate, isPending: false },
+    move: { mutate: moveMutate, isPending: false },
     importOne: { mutateAsync: importOne, isPending: false },
   }),
 }))
@@ -476,4 +478,87 @@ test('a partly failed delete reports what it could not take', async () => {
   await waitFor(() => expect(flashes).toHaveLength(1))
   expect(flashes[0]?.message).toBe('Moved “ep1.mkv” to the trash. “locked.mkv” could not be moved.')
   expect(flashes[0]?.undo).toBeDefined()
+})
+
+test('Move to… picks a destination folder and reports where it landed', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Move to…'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Move to' })
+  // Descend into a real folder from the library's own tree, then commit.
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Season 1' }))
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Move here' }))
+
+  expect(moveMutate).toHaveBeenCalledWith(
+    { paths: ['Show/ep1.mkv'], destDir: 'Show/Season 1', onConflict: undefined },
+    expect.anything(),
+  )
+
+  const handlers = moveMutate.mock.calls[0]?.[1] as { onSuccess: (result: unknown) => void }
+  handlers.onSuccess({
+    path: 'Show/Season 1/ep1.mkv',
+    operation: { id: 'op-m' },
+    files_updated: 1,
+    skipped: false,
+    failed_paths: [],
+  })
+
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  // The toast names the folder it landed in, and a move is undoable.
+  expect(flashes[0]?.message).toBe('Moved “ep1.mkv” to “Season 1”.')
+  flashes[0]?.undo?.()
+  expect(undo).toHaveBeenCalledWith('op-m', expect.anything())
+})
+
+test('a folder cannot be moved into itself, so the picker never offers it', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('Move to…'))
+
+  const dialog = await screen.findByRole('dialog', { name: 'Move to' })
+  // The only folder in the tree is the one being moved, so there is nowhere to
+  // descend — the library root is the one place left to put it.
+  expect(within(dialog).queryByRole('button', { name: 'Season 1' })).toBeNull()
+  expect(dialog).toHaveTextContent('No subfolders here')
+
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Move to Library root' }))
+
+  expect(moveMutate).toHaveBeenCalledWith(
+    { paths: ['Show/Season 1'], destDir: '', onConflict: undefined },
+    expect.anything(),
+  )
+})
+
+test('a move collision asks, and Replace re-issues the whole batch', async () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Move to…'))
+  const dialog = await screen.findByRole('dialog', { name: 'Move to' })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Move to Library root' }))
+
+  const handlers = moveMutate.mock.calls[0]?.[1] as { onError: (failure: unknown) => void }
+  handlers.onError(new PathConflictError('exists', 'ep1.mkv', 'ep1.mkv'))
+
+  const prompt = await screen.findByRole('dialog', { name: 'Name already in use' })
+  expect(prompt).toHaveTextContent('moves the existing file to this library’s trash first')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+
+  // One request for the batch, re-issued with the chosen policy applied to all.
+  expect(moveMutate).toHaveBeenNthCalledWith(
+    2,
+    { paths: ['Show/ep1.mkv'], destDir: '', onConflict: 'replace' },
+    expect.anything(),
+  )
+})
+
+test('a read-only library offers no way to move', () => {
+  renderBrowser(false)
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  expect(screen.queryByText('Move to…')).toBeNull()
 })

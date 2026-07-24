@@ -31,12 +31,20 @@ type PendingConflict =
   // An import carries the files it had not reached yet, so answering resumes
   // the batch rather than abandoning everything after the collision.
   | { kind: 'import'; file: File; remaining: File[]; conflictingName: string }
+  // A move is one request for the whole selection, so the answer applies to the
+  // batch (the Eagle/Finder "apply to all") and re-issues it in one call.
+  | { kind: 'move'; paths: string[]; destDir: string; conflictingName: string }
 
 /** Files the owner has asked to delete, awaiting confirmation. */
 export interface PendingDelete {
   paths: string[]
   /** How many of them are linked into a bundle — the part worth pausing over. */
   linkedCount: number
+}
+
+/** Entries the owner has asked to move, awaiting a destination directory. */
+export interface PendingMove {
+  paths: string[]
 }
 
 export interface FileWriteActions {
@@ -65,6 +73,11 @@ export interface FileWriteActions {
   askToDelete: (paths: string[], linkedCount: number) => void
   confirmDelete: () => void
   dismissDelete: () => void
+  /** The destination picker, or null. Render with `<DirectoryPicker />`. */
+  pendingMove: PendingMove | null
+  askToMove: (paths: string[]) => void
+  moveTo: (destDir: string) => void
+  dismissMove: () => void
 }
 
 export function useFileWriteActions({
@@ -76,11 +89,12 @@ export function useFileWriteActions({
   /** Show a message, with an Undo action when the operation has an inverse. */
   onFlash: (message: string, undo?: () => void) => void
 }): FileWriteActions {
-  const { rename, mkdir, undo, trash, importOne } = useFileOperations()
+  const { rename, mkdir, undo, trash, move, importOne } = useFileOperations()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [conflict, setConflict] = useState<PendingConflict | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
   const [importing, setImporting] = useState<string[]>([])
 
   const undoLater = (operationId: string) => () => {
@@ -127,6 +141,52 @@ export function useFileWriteActions({
     )
   }
 
+  const runMove = (paths: string[], destDir: string, onConflict?: 'suffix' | 'replace') => {
+    move.mutate(
+      { paths, destDir, onConflict },
+      {
+        onSuccess: (result) => {
+          setConflict(null)
+          const where = destName(destDir)
+          if (result.skipped) {
+            // Everything asked for was already in that directory or skipped.
+            onFlash(`Nothing to move — already in ${where}.`)
+            return
+          }
+          const failed = result.failed_paths ?? []
+          const moved = paths.length - failed.length
+          const movedMessage =
+            moved === 1
+              ? `Moved “${nameOf(result.path)}” to ${where}.`
+              : `Moved ${moved} items to ${where}.`
+          onFlash(
+            failed.length === 0
+              ? movedMessage
+              : `${movedMessage} ${
+                  failed.length === 1
+                    ? `“${nameOf(failed[0] as string)}” could not be moved.`
+                    : `${failed.length} items could not be moved.`
+                }`,
+            undoLater(result.operation.id),
+          )
+        },
+        onError: (failure) => {
+          if (failure instanceof PathConflictError) {
+            setConflict({
+              kind: 'move',
+              paths,
+              destDir,
+              conflictingName: failure.entryName || nameOf(paths[0] ?? ''),
+            })
+            return
+          }
+          setConflict(null)
+          onFlash(messageOf(failure))
+        },
+      },
+    )
+  }
+
   return {
     renamingPath,
     startRename: (path) => {
@@ -161,6 +221,7 @@ export function useFileWriteActions({
       mkdir.isPending ||
       undo.isPending ||
       trash.isPending ||
+      move.isPending ||
       importOne.isPending,
     conflict,
     keepBoth: () => answerConflict('suffix'),
@@ -201,6 +262,17 @@ export function useFileWriteActions({
       })
     },
     dismissDelete: () => setPendingDelete(null),
+    pendingMove,
+    askToMove: (paths) => {
+      if (paths.length > 0) setPendingMove({ paths })
+    },
+    moveTo: (destDir) => {
+      const target = pendingMove
+      if (!target) return
+      setPendingMove(null)
+      runMove(target.paths, destDir)
+    },
+    dismissMove: () => setPendingMove(null),
     importing,
     importFiles: (files) => {
       if (files.length > 0) void runImports(files)
@@ -213,6 +285,10 @@ export function useFileWriteActions({
     setConflict(null)
     if (conflict.kind === 'rename') {
       runRename(conflict.path, conflict.newName, policy)
+      return
+    }
+    if (conflict.kind === 'move') {
+      runMove(conflict.paths, conflict.destDir, policy)
       return
     }
     void runImports([conflict.file, ...conflict.remaining], policy)
@@ -263,6 +339,11 @@ export function useFileWriteActions({
 
 function nameOf(path: string): string {
   return path.split('/').pop() ?? path
+}
+
+/** How a destination directory reads in a toast — its name, or the root. */
+function destName(destDir: string): string {
+  return destDir ? `“${nameOf(destDir)}”` : 'the library root'
 }
 
 function messageOf(failure: unknown): string {

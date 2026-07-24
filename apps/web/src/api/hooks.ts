@@ -94,6 +94,7 @@ import {
   fetchViewCounts,
   importFile,
   makeDirectory,
+  moveEntries,
   previewFilter,
   probeLibraryPath,
   registerLibrary,
@@ -411,6 +412,18 @@ export function useFileOperations() {
     }),
     trash: useMutation({
       mutationFn: (paths: string[]) => trashEntries(paths),
+      onSuccess: refresh,
+    }),
+    move: useMutation({
+      mutationFn: ({
+        paths,
+        destDir,
+        onConflict,
+      }: {
+        paths: string[]
+        destDir: string
+        onConflict?: ConflictPolicy
+      }) => moveEntries(paths, destDir, onConflict),
       onSuccess: refresh,
     }),
     // One mutation per file rather than per batch: each import gets its own
