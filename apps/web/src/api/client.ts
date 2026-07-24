@@ -24,6 +24,14 @@ export type LibraryRegister = components['schemas']['LibraryRegister']
 export type PathSuggestion = components['schemas']['PathSuggestion']
 export type PathSuggestions = components['schemas']['PathSuggestions']
 export type PathProbe = components['schemas']['PathProbeRead']
+export type WriteModeRead = components['schemas']['WriteModeRead']
+export type FileOperationRead = components['schemas']['FileOperationRead']
+export type FileOperationResult = components['schemas']['FileOperationResult']
+export type ConflictPolicy = components['schemas']['ConflictPolicy']
+export type TrashRead = components['schemas']['TrashRead']
+export type TrashedOperation = components['schemas']['TrashedOperationRead']
+export type EmptyTrashResult = components['schemas']['EmptyTrashResult']
+export type ImportResult = components['schemas']['ImportResultRead']
 export type JobRead = components['schemas']['JobRead']
 export type AuthStatus = components['schemas']['AuthStatus']
 export type DeviceRead = components['schemas']['DeviceRead']
@@ -499,6 +507,193 @@ export function fetchPathSuggestions(
 /** What a candidate path is, so the add flow can confirm the right action. */
 export const probeLibraryPath = (path: string, signal?: AbortSignal) =>
   getJson<PathProbe>(`/api/v1/libraries/probe-path?path=${encodeURIComponent(path)}`, signal)
+
+// --- Guarded file operations (ADR-0013 W1) -----------------------------------
+/**
+ * Thrown when a write operation's destination is already taken.
+ *
+ * Its own class because a collision is a *question*, not a failure: the caller
+ * shows Skip / Keep both and re-issues with an explicit policy. `name` is what
+ * the dialog needs to name the thing in the way.
+ */
+export class PathConflictError extends Error {
+  // Not `name`: that is `Error`'s own field, and this is the *entry's* name.
+  entryName: string
+  path: string
+
+  constructor(message: string, entryName: string, path: string) {
+    super(message)
+    this.name = 'PathConflictError'
+    this.entryName = entryName
+    this.path = path
+  }
+}
+
+async function sendFileOp<T>(url: string, body: unknown): Promise<T> {
+  const response = await hostFetch(resolveApiUrl(url), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!response.ok) {
+    let payload: unknown = null
+    try {
+      payload = await response.json()
+    } catch {
+      /* non-JSON body */
+    }
+    const detail = apiErrorDetail(payload)
+    const details = (payload as { details?: { code?: string; name?: string; path?: string } })
+      ?.details
+    if (response.status === 409 && details?.code === 'path_conflict') {
+      throw new PathConflictError(detail, details.name ?? '', details.path ?? '')
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as T
+}
+
+/** Rename one file or directory in place, carrying its metadata with it. */
+export const renameEntry = (path: string, newName: string, onConflict?: ConflictPolicy) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/rename`, {
+    path,
+    new_name: newName,
+    on_conflict: onConflict ?? 'fail',
+  })
+
+/** Create one new directory; its parent must already exist. */
+export const makeDirectory = (path: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/mkdir`, { path })
+
+/** Apply an operation's inverse — the Undo behind a completed toast. */
+export const undoFileOperation = (operationId: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/${operationId}/undo`, {})
+
+/**
+ * Stream one external file into the library (ADR-0013 §7).
+ *
+ * The `File`/`Blob` is the request body — no multipart, no base64, no copy in
+ * memory: the browser streams it straight off disk. Metadata rides in the query
+ * string because the body is spoken for.
+ */
+export async function importFile(
+  file: File,
+  options: {
+    destDir?: string
+    filename?: string
+    onConflict?: ConflictPolicy
+    link?: boolean
+  } = {},
+): Promise<ImportResult> {
+  const query = new URLSearchParams({
+    dest_dir: options.destDir ?? '',
+    filename: options.filename ?? file.name,
+    on_conflict: options.onConflict ?? 'fail',
+    link: String(options.link ?? true),
+  })
+  const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  })
+  if (!response.ok) {
+    let payload: unknown = null
+    try {
+      payload = await response.json()
+    } catch {
+      /* non-JSON body */
+    }
+    const detail = apiErrorDetail(payload)
+    const details = (payload as { details?: { code?: string; name?: string; path?: string } })
+      ?.details
+    if (response.status === 409 && details?.code === 'path_conflict') {
+      throw new PathConflictError(detail, details.name ?? file.name, details.path ?? '')
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as ImportResult
+}
+
+/** Move files and folders into the library's trash. Never unlinks. */
+export const trashEntries = (paths: string[]) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/trash`, { paths })
+
+/**
+ * Move files and folders into another directory, carrying their metadata.
+ *
+ * The whole selection is one operation with one undo. A collision answers 409
+ * `path_conflict` before anything moves, which the caller turns into the
+ * Replace / Skip / Keep both prompt and re-issues with an explicit policy.
+ */
+export const moveEntries = (paths: string[], destDir: string, onConflict?: ConflictPolicy) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/move`, {
+    paths,
+    dest_dir: destDir,
+    on_conflict: onConflict ?? 'fail',
+  })
+
+/** Everything currently recoverable, newest deletion first. */
+export const fetchTrash = (signal?: AbortSignal) =>
+  getJson<TrashRead>(`${lib()}/file-ops/trash`, signal)
+
+/** Put one deletion's entries back where they came from. */
+export const restoreTrashed = (operationId: string) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/trash/restore/${operationId}`, {})
+
+/** Permanently delete trashed entries. The one write-mode action with no undo. */
+export const emptyTrash = (olderThanDays?: number) =>
+  sendFileOp<EmptyTrashResult>(`${lib()}/file-ops/trash/empty`, {
+    older_than_days: olderThanDays ?? null,
+  })
+
+// --- Library write mode (ADR-0013) -------------------------------------------
+/**
+ * Thrown when enabling write mode needs the library's passphrase — either
+ * because it was not supplied or because it was wrong. The server answers both
+ * identically on purpose, so this carries no more than "ask again".
+ */
+export class PassphraseRequiredError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PassphraseRequiredError'
+  }
+}
+
+export const fetchWriteMode = (libraryId: string, signal?: AbortSignal) =>
+  getJson<WriteModeRead>(`/api/v1/libraries/${libraryId}/write-mode`, signal)
+
+/**
+ * Turn guarded file operations on or off for one library.
+ *
+ * Its own sender rather than `send`, because the 401 here is a *prompt*, not a
+ * failure: the caller re-asks for the passphrase and retries. `passphrase` also
+ * stands in for an unlocked session, so a locked library costs one prompt
+ * rather than two.
+ */
+export async function setLibraryWriteMode(
+  libraryId: string,
+  enabled: boolean,
+  passphrase?: string,
+): Promise<WriteModeRead> {
+  const response = await hostFetch(resolveApiUrl(`/api/v1/libraries/${libraryId}/write-mode`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, passphrase: passphrase ?? null }),
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      detail = apiErrorDetail(await response.json())
+    } catch {
+      /* non-JSON body */
+    }
+    if (response.status === 401) {
+      throw new PassphraseRequiredError(detail || "This library's passphrase is required.")
+    }
+    throw new Error(detail || `Request failed (HTTP ${response.status})`)
+  }
+  return (await response.json()) as WriteModeRead
+}
 
 // --- Background jobs ----------------------------------------------------------
 export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')

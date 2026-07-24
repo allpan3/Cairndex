@@ -133,6 +133,12 @@ destination; destination parent must exist (or be created by the same
   - Note: this prompt is about **path collisions**. Content-duplicate
     detection at import (Eagle's other trigger for the same dialog) remains
     deferred per the product brief.
+  - **Sequencing consequence, found building W1 and resolved by the owner:**
+    `replace` cannot exist before the trash does, because *being*
+    trash-then-write is what makes it safe. W1 shipped `fail | skip | suffix`
+    only. Rather than have W5's import inherit that gap, the owner moved **W4
+    ahead of W5** (2026-07-23), so Replace landed with the trash and import
+    arrives with all four answers available.
 - Cross-device moves inside one root (nested mounts, rare): `rename()` EXDEV
   → copy + size/quick-fingerprint verify + unlink, journaled as two phases.
 - Case-only renames on case-insensitive filesystems (SMB from macOS): two-step
@@ -208,15 +214,32 @@ flow, not a hack: the cover chain already prefers an explicit
 
 ## 6. Importing external files (enables desktop drag-in copy)
 
-`import` op — multipart upload into a validated destination directory
-(+ optional immediate fast-add/link). This is what upgrades plan 3 §6's
-drag-in from "explain that files must already be in a library" to an
-optional **"Copy into library…"** flow (the desktop shell streams the
-local file to the server; the server never reaches out to client paths).
-Path collisions here surface the same **Replace / Skip / Keep both**
-prompt (§3.3/§4) — the classic Eagle import dialog. Kept as the last
-slice: creation-only but the widest new surface (upload size limits,
-temp-file staging, partial-upload cleanup).
+`import` op — a streamed upload into a validated destination directory
+(+ optional immediate fast-add/link). The server never reaches out to client
+paths: there is no path in the request, only bytes. Path collisions surface the
+same **Replace / Skip / Keep both** prompt (§3.3/§4) — the classic Eagle import
+dialog, complete now that W4 gave Replace somewhere to put what it displaces.
+Creation-only but the widest new surface (upload size limits, temp-file staging,
+partial-upload cleanup).
+
+**The desktop drag-in goes through the shell**, because Tauri's
+`dragDropEnabled` intercepts an OS drop *before* the webview sees it: the drop
+arrives as absolute paths, and the web layer cannot read those paths by design
+(plan 3 §5). `importer.rs` streams the file to the import endpoint using the
+media proxy's own server URL and bearer.
+
+Two rules keep that command from becoming "the web layer can read any file on
+the disk and post it somewhere":
+
+1. **Only paths the user actually dropped.** The shell records each OS drop's
+   paths from the *window event*, not from the webview's report, and refuses to
+   upload anything it has not seen (canonicalized, so a symlink cannot smuggle a
+   different file past a matching string). The web layer already receives those
+   absolute paths from `reverse_map_paths` — but statting a path leaks its
+   existence, while uploading one leaks its contents, so the second capability
+   needs the tighter gate.
+2. **The destination is not the caller's to choose**, so an upload cannot be
+   pointed at a server of someone else's picking.
 
 ## 7. File Browser UI (write affordances)
 
@@ -242,13 +265,17 @@ temp-file staging, partial-upload cleanup).
 
 | # | Slice | Contents |
 |---|-------|----------|
-| W0 | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013 |
-| W1 | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast |
+| W0 ✅ | Gate | Registry flag + env master switch + structured 403 + Library Manager toggle (re-auth when passphrase set); amend AGENTS.md/CLAUDE.md safety wording per ADR-0013. **Landed 2026-07-23** — one clarification against the design: the passphrase presented to `PUT /write-mode` authorizes that request *by itself*, standing in for an unlocked session, so enabling a locked library costs one prompt rather than two. It authorizes the one request, not the session; the library stays locked for content |
+| W1 ✅ | Journal + rename/mkdir | `file_operations` table, op service + validator + collision policies (§3.3), reconciler-on-open, File Browser inline rename + New Folder, Undo toast. **Landed 2026-07-23.** Two deviations from §3.3, both narrowing: `replace` is **not** in the collision enum yet — the ADR defines it as trash-then-write, so it cannot be implemented recoverably until W4, and naming it earlier would promise a way back that does not exist (the UI offers Keep both / Cancel). And the validator additionally refuses `.cairndex/` from both directions, plus dot-leading and trailing-dot names |
 | W2 | Save exports to library | §5 (`save_new`), Export-dialog "Save into library…", link/role/set-cover — lands after plan 1 M11 |
-| W3 | Move | Single + batch-job move, Move-to… dialog, drag-move in File Browser, collision policy, plan/preview for multi-item |
-| W4 | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view, bundle "delete with files" |
-| W5 | Import external | §6 upload op; plan 3 drag-in copy flow lights up |
+| W3 ✅ | Move | Multi-path move as one journal operation, Move-to… destination picker, collision policy (Replace/Skip/Keep both), reconcile + undo. **Landed 2026-07-23** — smaller than sketched, because W1's rename and W4's trash-then-write already built most of the machinery (a move is a rename that changes the parent, not the name). **Not included, all W6:** drag-move onto a directory row (the File Browser's marquee + drag-*out* system makes internal drag-*move* a slice of its own — the dialog delivers the capability), the multi-item plan/preview endpoint, and the `file_ops_batch` job for bulk moves (moves run synchronously like trash and import, collisions surfacing as a 409 rather than a preview). One safety narrowing: two selected items that would share a destination name are refused rather than auto-suffixed |
+| W4 ✅ | Trash | §3.2 trash/restore/empty, `trashed` availability, Trash view. **Landed 2026-07-23**, moved ahead of W5 by the owner so import gets a real Replace. Two design points worth carrying forward: a trashed row's `relative_path` moves *into* the trash (which is what frees the original path for Replace), and a Replace files its displaced file as an ordinary `trash` operation of its own rather than a footnote in the rename — that is what puts it in the Trash view and makes undoing a Replace restore both files. **Not included:** bundle "delete with files", which is a Bundle Browser affordance rather than a trash mechanism and is now the smallest remaining piece of W4 |
+| W5 ✅ | Import external | §6 upload op; plan 3 drag-in copy flow lights up. **Server + browser landed 2026-07-23.** Deviation from §6: the body is the **raw file**, not multipart — the caller already holds a `File` or a file handle, both of which stream without an encoding step, and it adds no form-parsing dependency (`python-multipart`) for a request that is almost entirely payload. One file per request, which is what gives each import its own progress, collision answer and undo. **Desktop bridge landed 2026-07-23**: a Rust command streams a dropped file to the endpoint. Its security shape is the interesting part — the shell records each OS drop's paths itself and refuses to upload one it did not see, because the web layer holding a path it may name is fine for statting and not fine for uploading contents |
 | W6 | Hardening | EXDEV/case-only edge cases, retention config, journal history UI, deployment/backup docs, perf pass on bulk ops |
+
+Owner re-sequenced 2026-07-10, and again 2026-07-23 to **W0 → W1 → W4 → W5**
+(see §3.3: Replace has to have somewhere to put the file it displaces). The
+original 2026-07-10 note follows.
 
 Owner re-sequenced 2026-07-10 (milestone ids kept stable, order changed):
 build **W0 → W1 → W5** first — the driving use case is dragging media from

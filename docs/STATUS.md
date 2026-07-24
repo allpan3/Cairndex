@@ -1,5 +1,534 @@
 # Project status
 
+> **Current position:** phase H — plan 4 library write mode, on
+> `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
+> request). **W0, W1, W3, W4 and W5 are complete**, including the desktop
+> drag-in that write mode was built for; five review findings across five
+> rounds (W0 through the final PR pass) are fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
+> its one deferred piece is drag-move onto a directory row (see the entry
+> immediately below). W2 stays blocked on plan 1 M11, and W6 closes the track.
+> Two things still need the owner: a pass on a genuinely downloaded build
+> (deferred from D7), and a pass on the **native Finder drag gesture** on a
+> packaged build, which cannot be automated here.
+
+## Fixed: a non-empty trash vanished from the UI with write mode off (2026-07-24)
+
+The final owner review of PR #30 (whole-track pass: the move-undo fix verified,
+the desktop importer's drop-allowlist and token scoping reviewed, all three
+suites re-run clean) found one inconsistency worth fixing before merge: **the
+sidebar's Trash entry rendered only while write mode was on**, while the server
+deliberately keeps `GET /file-ops/trash` readable without it — its docstring
+names hiding the trash as exactly the wrong outcome, because files an owner
+deleted must never *look* permanently gone. Delete files, flip write mode off
+(or have the deployment flip it), and the Trash view disappeared with the files
+still in it.
+
+Now the entry shows when write mode is on **or the trash holds anything** (a
+cheap peek query that runs only with write mode off, kept fresh by the same
+invalidation as every file operation), and `TrashView` goes read-only without
+write mode: contents and original paths visible, a note explaining why, Put
+back and Empty Trash present but disabled — a control that disappears reads as
+a file that cannot come back. A library that never deleted anything still shows
+no entry. Verified end-to-end against a live dev server (trash a file, disable
+write mode, observe the entry, the note, and both buttons disabled). Web **372
+passed** (+3: the App-level visibility policy both ways, and the read-only
+view). The review's two hardening notes — the importer's unescaped `library_id`
+interpolation and the duplicate-basename progress-list nit — are W6.
+
+## Fixed: move-undo could silently overwrite a newcomer (2026-07-23)
+
+An owner review of W3 found one real bug in the move-undo path, and confirmed
+the three earlier fixes generalized correctly to move (the `skipped` guard and
+`_ensure_replacement_restorable` both run for `MOVE` before anything touches the
+disk).
+
+**The bug: undoing a move silently overwrote whatever now sat at the vacated
+path.** The `MOVE` branch of `undo` called `_rename_on_disk(destination, source)`
+with no occupancy check on the source, and POSIX `rename` clobbers its target
+silently. Reproduced: move `a.mkv` into `sub/`, drop a *new* `a.mkv` at the root
+(an import, a Finder copy, a re-download), press Undo — the undo succeeded and the
+newcomer's bytes were gone, not trashed, not journaled, not errored. It was the
+only data-destroying path in write mode that is not Empty Trash, and it was a
+toast-button away. Every neighboring inverse already guards against exactly this:
+undo-of-rename answers 409 through the collision policy, and `restore` runs
+`_ensure_restorable` first. Move was the one that skipped it.
+
+The fix mirrors `_ensure_restorable`: a new `_ensure_move_reversible` checks every
+entry's source path — against both the filesystem and the linked rows — before
+moving anything, and refuses the whole undo with a clear message naming the
+occupied path. All-or-nothing, up front, like restore. It also absorbs the
+metadata echo the review noted (a linked newcomer would have hit the unique
+constraint *after* the bytes were destroyed) and most of the mid-undo `OSError`
+window (the occupied-source case was its main non-error trigger). Backend
+**766 passed** (+3 regression tests, each confirmed to fail against the old code).
+
+**Two non-blocking observations from the same review are left as known
+limitations**, both manual-recovery and neither data-losing: (1) a Replace entry
+whose *own* rename then fails leaves its displaced file in the trash as its own
+operation — visible and restorable there — but the failed entry drops out of the
+move payload, so undo will not bring it back automatically; (2) a crash mid-batch
+loses the `replaced_operation_id` association for the same reason (it is written
+at `finish`), so a reconciled replacing-move has the same manual-recovery story.
+Both are W6 alongside the move batch job.
+
+## Implemented: plan 4 W3 — move (2026-07-23)
+
+Same branch. Move turned out **smaller than the plan sketched**, because W1's
+rename and W4's trash had already built its machinery: a move is a rename that
+changes the parent instead of the name, so it reuses `_rename_on_disk`,
+`repoint_linked_rows`, the collision policies, and trash-then-write Replace
+almost wholesale.
+
+**Server.** `operations.move` takes a list of paths and one destination
+directory and records the whole selection as **one journal `MOVE` operation
+with one undo**. The shape that mattered:
+
+- **Collisions are resolved before the disk is touched.** A `fail` answer moves
+  nothing and returns the same 409 `path_conflict` rename does, so the client
+  can ask; `skip`/`suffix`/`replace` settle per entry. Replace files its
+  displaced file as its own trash operation, recorded *per moved entry* (a
+  batch can displace more than one), which is why undo restores every one of
+  them and refuses up front if any was already emptied.
+- **A per-file `OSError` is tolerated like a partly-failed delete** — the
+  entries that moved are recorded, the rest reported in `failed_paths` — and for
+  the same reason: failing the whole operation would point already-moved files
+  at paths that no longer hold them, and the reconciler only inspects `pending`
+  rows so nothing would notice.
+- **Two selected items that would share a destination name are refused** before
+  anything moves, rather than allowed to clobber on disk — the one outcome the
+  "never overwrite original media" rule forbids. (Auto-suffixing within a batch
+  is a W6 refinement.)
+- **Reconcile and undo both walk the entries.** Reconcile completes whatever
+  actually reached the disk (partial, like a delete); undo moves each entry back
+  in reverse — a directory before anything that rode out inside it — and
+  restores any displaced file once its path is free again. A directory refuses
+  to move into its own subtree.
+
+**Web.** A **Move to… destination picker** (`DirectoryPicker`) reached from the
+context menu on files, directories, and multi-selections. It navigates the
+library's own directory tree one level at a time — a breadcrumb plus the
+subfolders at each level — so the destination is always a real, in-root folder
+the owner can see rather than a typed path. The folders being moved are removed
+from the tree, because a folder cannot be moved into itself. A collision raises
+the shared Replace / Skip / Keep both prompt, applied to the whole batch (the
+Eagle/Finder "apply to all") and re-issued in one call. Verified against a real
+dev server: the picker renders, the breadcrumb descends the tree, and the moved
+folder is correctly excluded from it.
+
+**Deferred, and the one piece of W3 that did not land: drag-move onto a
+directory row.** The File Browser's drag system is already intricate — a
+rubber-band marquee interleaved with native file-promise drag-*out* to the OS —
+and wiring an internal drag-*move* target correctly alongside it is a slice of
+its own. The dialog delivers the capability; drag is a second gesture for the
+same thing, and folding it into the existing DnD deserves its own change rather
+than riding on this one. Also not built here, and consistent with how W4/W5
+shipped: the multi-item plan/preview endpoint (§4) and the `file_ops_batch`
+job for bulk moves (§3.4) — moves run synchronously like trash and import, and
+collisions surface as a 409 rather than a preview step. Both are W6.
+
+**Tests.** Backend **763 passed** (+20: move round-trips, directory-subtree
+moves, the collision policies, batch undo, the partial-failure and
+same-name-clobber guards, reconcile partial/never-happened, plus three API-level
+move tests). Web **369 passed** (+4 move-flow component tests). All static gates
+clean; OpenAPI and `schema.d.ts` regenerated for `POST /file-ops/move`.
+
+## Fixed: three write-mode review findings (2026-07-23)
+
+An owner review of W4/W5 found three real bugs, all mine, none covered by the
+743 tests that were passing. Each now has a regression test that was confirmed
+to fail against the old code before the fix went in.
+
+**1. A partly failed delete stranded files invisibly.** When an `OSError` hit
+partway through a multi-path delete, `journal.fail` rolled the row updates back
+and marked the operation failed — while the entries moved *before* the failure
+were already inside `.cairndex/trash/{op_id}/`. The trash listing only shows
+`done` operations, restore refuses a failed one, and Empty Trash never prunes
+it: the files were gone from their original path and reachable by nothing.
+
+That is precisely the state `_settle_trash` was written to prevent, and the
+lesson is the interesting part: **the reconciler only ever inspects `pending`
+rows**, so it could not have caught this. The crash-shaped version of the bug
+was handled; the mid-request version recreated it three lines away. `trash_paths`
+now does what the reconciler does — completes for what moved, reports the rest
+in a new `failed_paths` field, and only fails outright when nothing moved at all.
+Real trigger: a multi-select delete where one item hits a permissions error on an
+SMB/NAS mount.
+
+**2. Undoing a *skipped* import trashed the innocent file.** A skipped import
+finishes `done` with its destination pointing at the file that was already
+there — the one it deliberately did not overwrite. Undo saw a file at the
+destination and moved it to the trash. Undo now refuses a skipped operation,
+and the same guard covers a skipped rename, whose no-op journal row now records
+`skipped` for consistency.
+
+**3. Undo of a Replace after Empty Trash half-executed.** The inverse rename ran
+first, *then* the restore raised 409 because the trash op had been emptied — so
+`mark_undone` never ran: the file was renamed back on disk while the journal
+still advertised the operation as undoable, and a second attempt 404'd on the
+now-missing source. Both undo paths (rename and import) now check the replaced
+operation's status **before touching the disk** and refuse with a clear reason.
+The choice was refuse-entirely over proceed-partially: a half-undo with no way
+to finish is worse than a clear no.
+
+**Also fixed, from the same review's non-blocking observation:** a crash mid-
+upload for a Replace import was reconciled as `done` because its destination
+existed — that being the *old* file, still in place. The staging `.part` file is
+the evidence that settles it, and reconciliation already runs before the sweep
+that removes it, so it was there to be read all along.
+
+Verified against a real dev server as well as in tests: a delete where the
+second path is unwritable now leaves the first in the Trash view and restorable,
+and both undo refusals leave the files exactly where they were.
+
+Backend **743 passed** (+7), web **365 passed** (+1, the partial-failure
+message), all static gates clean, OpenAPI and `schema.d.ts` regenerated for the
+new `failed_paths` field.
+
+## Implemented: plan 4 W5 desktop bridge — Finder drag-in (2026-07-23)
+
+Same branch. The thing write mode was built for: dragging media from Finder onto
+the app copies it in.
+
+**Why it needed Rust at all.** Tauri's `dragDropEnabled` intercepts an OS drop
+*before* the webview sees it, so the browser-side upload flow never fires in the
+shell — the drop arrives as absolute paths, and a webview cannot turn an
+absolute path into a readable `File`. `importer.rs` streams the file to the
+import endpoint from a file handle, so a 60 GB video costs constant memory on
+both ends.
+
+**The security shape is the part worth reviewing.** A command that reads a
+caller-named path and posts its contents to a server is a materially bigger
+capability than anything the shell had before — `reverse_map_paths` already
+accepts absolute paths from the web layer, but statting a path leaks its
+existence while uploading one leaks its contents. Two rules bound it:
+
+1. **Only paths the user actually dropped.** The shell records each drop's paths
+   from the *window event* — its own observation, not the webview's report — and
+   refuses to upload anything it has not seen. Comparison is canonicalized, so a
+   symlink cannot smuggle a different file past a matching string, and each drop
+   replaces the last rather than accumulating a growing allowlist.
+2. **The destination is not the caller's to choose.** Server URL and bearer come
+   from the media proxy's own configuration via a shared `target_for`, which
+   applies the *same* per-library token scoping the media relay does — shared
+   rather than re-derived so the rule cannot be changed in one place and
+   forgotten in the other.
+
+**The drop keeps every rule the browser path has**: one file at a time, a
+collision asks with the full Replace / Keep both prompt, the answer applies only
+to the file it was about, and each import is undoable on its own. Files already
+inside the library still link in place, so a mixed drop does the right thing
+with both halves. Where they land: the folder on screen when the Files surface
+is open, the library root otherwise.
+
+Verification: desktop `cargo fmt --check`, Clippy `-D warnings`, **91 unit
+tests** (+5: only-dropped-paths, drop replacement, a non-existent path, and the
+import URL preserving a base path and defaulting to `fail`), and a release
+`npm run tauri build` producing `Cairndex.app` and its DMG. Web Prettier,
+ESLint, `tsc -b`, full Vitest (**364 passed**, +8 covering the sequential loop,
+a mid-batch collision resuming with the answer scoped to one file, dismissal,
+the Tauri error shape, and the destination folder), the Vite build.
+
+**Still needs the owner: the native drag gesture on a packaged build.** Same
+limitation as plan 3 D4 — a real Finder drag cannot be driven from here. The
+command underneath it is unit-tested and the app builds; what is unverified is
+the gesture.
+
+**Two stale claims corrected in the same change**, because they became untrue
+here rather than gradually: `docs/architecture.md` and `docs/deployment.md` both
+still said the app never moves, renames, deletes or rewrites source files.
+
+## Implemented (partly): plan 4 W5 — importing external files (2026-07-23)
+
+Same branch. The only path by which bytes from outside a library ever enter it.
+
+**Two deviations from plan 4 §6, both deliberate.**
+
+1. **Raw body, not multipart.** The caller already holds a `File` (browser) or
+   an open file handle (shell); both stream as a request body with no encoding
+   step, and it keeps `python-multipart` out of the dependency list for a
+   request that is ~100% payload. Metadata rides in the query string.
+2. **One file per request.** A twelve-file drop is twelve imports. That is what
+   makes per-file progress, per-file collision answers and per-file undo
+   possible; batching would have made all three worse in exchange for a round
+   trip.
+
+**Nothing is held in memory.** The body is written in 1 MB chunks to
+`.cairndex/tmp/{op_id}.part` — inside the package, so it is on the *same
+filesystem as the destination* and the final step is a rename rather than a
+second full copy. Verified with a 3 MB file: byte-identical sha256, empty
+staging directory afterwards. The size limit is enforced *while streaming*
+rather than from a `Content-Length`, because trusting the client about the
+number you are limiting is not a limit.
+
+**Failure paths are the interesting part**, and all leave nothing behind: an
+over-limit upload, an empty body, a destination that stops being valid mid-flight
+— each discards the partial file and records a `failed` journal row. A crash
+leaves a `.part` that the next library open sweeps, next to the journal
+reconciler. Undo of an import moves the file to the **trash**, not an unlink, so
+undo is never the one action in the app that destroys something.
+
+**The collision prompt is finally complete**, which is what the W4-before-W5
+reorder bought: import can offer Replace, and it means trash-then-write.
+A collision mid-batch asks and then resumes the remainder, with the answer
+applied only to the file it was about — a later collision still asks.
+
+**What is missing, and it is the owner's driving use case: the desktop drag-in.**
+`onCopyIntoLibrary` is still unwired, so dragging from Finder onto the packaged
+app still shows the "move these into its folder first" explanation. The reason
+is structural rather than an oversight: Tauri's `dragDropEnabled` intercepts an
+OS drop **before** the webview sees it, so the browser drop handler built here
+never fires in the shell; the drop arrives as absolute paths, and the web layer
+cannot read those paths by design (plan 3 §5). Closing it needs a Rust command
+that streams a local file to the import endpoint using the shell's existing
+server URL and bearer credential — `media_proxy.rs` already holds both, so the
+pieces exist. **This should be the next task in the track.**
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**736 passed**, +18: chunked streaming, subfolder targeting, the gate, five
+unsafe-destination rejections, collision-before-upload, Replace-into-trash,
+skip, linking, undo-to-trash, the empty body, the streaming size limit, and the
+staging sweep). Web Prettier, ESLint, `tsc -b`, full Vitest (**356 passed**,
++4: destination is the browsed folder, sequential uploads, a mid-batch collision
+resuming, and a read-only library having no way in), the Vite build.
+Manually verified against a real dev server: a 3 MB import byte-for-byte, the
+`Add Files…` picker path end to end with its toast and Undo, and undo landing
+the file in the trash. Scratch library removed.
+
+## Implemented: plan 4 W4 — trash-first deletion and Replace (2026-07-23)
+
+Same branch. **Moved ahead of W5 at the owner's request** after W1 surfaced the
+dependency: Replace is defined as trash-then-write, so import could not offer
+the full Eagle/Finder prompt until the trash existed. It does now.
+
+**Deletion is a rename, not an unlink.** Entries move to
+`.cairndex/trash/{op_id}/files/<original path>`. That layout is doing three
+jobs: same filesystem means the move is instant and atomic whatever the file's
+size; inside `.cairndex/` means it is already invisible to scanning and travels
+with the library (ADR-0008); one directory per operation means a deleted folder
+restores as a folder, without reconstructing its shape from a manifest.
+
+**Restoring is lossless because nothing was ever recreated.** The `AssetFile`
+row is kept and flipped to a new `trashed` availability, so the id — and with
+it the bundle membership, cover, subtitle links and cache identity — is the
+same row coming back.
+
+**Three decisions worth carrying into W3/W5.**
+
+1. **A trashed row's `relative_path` moves *into* the trash**, rather than
+   staying at the original path. `relative_path` means "where the bytes are",
+   and after a delete they really are in there. The consequence that matters:
+   the original path stops being occupied, so something else can take it —
+   which is exactly what Replace needs, and what the uniqueness constraint
+   would otherwise have blocked.
+2. **`trashed` is deliberately not `missing`.** Missing means "we do not know
+   where this went" and belongs to the repair machinery; trashed means "we put
+   it there". The scanner's missing sweep skips trashed rows — without that, the
+   first scan after any deletion would empty the Trash view into Missing Files
+   and make every restore look like a repair.
+3. **A Replace files its displaced file as an ordinary `trash` operation of its
+   own**, and the rename records `replaced_operation_id`. The first attempt
+   recorded it as a footnote inside the rename's payload, and the Trash view
+   could not see it — a file the UI called permanently gone while it sat
+   recoverable on disk. Making it a real deletion fixed the listing, restore,
+   and Empty Trash in one change instead of three.
+
+**The reconciler now settles a deletion partially**, and it is the only
+operation that does. A crash halfway through a multi-path delete leaves some
+entries in the trash; failing the whole operation would leave them there with
+nothing listing them — invisible and unrestorable. So whatever reached the trash
+is recorded and the deletion completes; what did not move is simply still in
+place.
+
+**Empty Trash is the one action in write mode with no way back**, and the UI
+says so in those words, with the amount of space it will reclaim. There is no
+automatic expiry; retention (`older_than_days`) exists in the service and is not
+yet wired to a schedule.
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**718 passed**, +22 covering the trash round trip with cover survival,
+directory subtree deletion as one operation, nested-path de-duplication,
+whole-or-nothing restore refusal, restore into a folder that no longer exists,
+Empty Trash deleting rows and bytes, retention, the scanner's trashed skip,
+Replace's trash-then-write, undoing a Replace restoring both files, and two
+interrupted-deletion reconciliation cases). Web Prettier, ESLint, `tsc -b`, full
+Vitest (**352 passed**, +10), the Vite build.
+
+**Manually verified end to end** against a real dev server and a scratch
+library: delete a linked file (the confirmation names the bundle impact), the
+Trash view listing it with its original path, Put back restoring it, Replace
+displacing the old file into the trash while the new bytes take the path,
+undoing that Replace bringing **both** files back, and — the one that would have
+been silent — a full scan after a deletion reporting `missing: 0` rather than
+sweeping the trashed file into Missing Files. Scratch library deregistered and
+deleted afterwards.
+
+**Not included, and the smallest thing left in W4:** the bundle-level "Delete
+bundle and trash its N files" action. It is a Bundle Browser affordance rather
+than a trash mechanism — everything it needs now exists server-side.
+
+## Implemented: plan 4 W1 — the journal, rename and New Folder (2026-07-23)
+
+Same branch as W0. The first operations that actually touch files, and the
+machinery that makes them safe to have.
+
+**The invariant W1 exists to deliver:** a rename performed *by* Cairndex needs
+no repair, ever. The `os.rename` and the `AssetFile.relative_path` update happen
+in one operation, so `AssetFile.id` is preserved by construction and bundle
+membership, covers, subtitle links, notes, ratings and cache identity survive
+without anything having to infer what happened. ADR-0006's moved-file repair
+stays underneath as the backstop for changes made *outside* the app.
+
+**The journal is intent-before-action.** A `pending` row in `library.db` is
+committed *before* the filesystem is touched; the content rows and the `done`
+status then land in one transaction. A crash in between leaves a `pending` row
+that the reconciler settles on next library open by reading the filesystem —
+source gone + destination present means finish the metadata side, the reverse
+means it never happened, and **anything else is left alone and marked failed**
+rather than guessed at. The reconciler never raises: a library that cannot be
+reconciled must still open, or a recoverable disagreement becomes a lost
+library.
+
+**Two narrowings against the plan, both deliberate.**
+
+1. **`replace` is not in the collision enum.** ADR-0013 defines it as journaled
+   trash-then-write, precisely so Replace is never a byte-level overwrite. The
+   trash is W4. Implementing the word before the mechanism would ship the one
+   collision answer with no way back, so W1 offers `fail | skip | suffix` and
+   the dialog says Keep both / Cancel. Adding the member later is additive for
+   every client. **This has a sequencing consequence for W5** (import, which the
+   owner put next, ahead of W4): it will meet the same wall. Either import
+   offers the two safe answers, or W4 moves ahead of it — a decision worth
+   making at the start of W5, not in the dialog.
+2. **The validator refuses more than the ADR listed:** `.cairndex/` from both
+   directions (a rename in there would corrupt the library through an
+   ordinary-looking operation), dot-leading names (File Browser hides them, so
+   creating one looks exactly like the operation failing), and trailing-dot
+   names (POSIX keeps them, Windows and some SMB servers silently drop them, so
+   one file ends up answering to two names that disagree).
+
+**Undo is the journal's, not the UI's.** Each completed operation's toast
+carries the inverse the journal recorded; applying it flips the row to `undone`
+rather than deleting it, and the inverse rename does *not* leave a second entry
+pretending to be a user action. A `mkdir` undo refuses a folder that is no
+longer empty — at that point removing it would be a delete, not an undo.
+
+Verification: backend Ruff, `ruff format --check`, mypy, full pytest
+(**696 passed**, +55 across `test_file_ops.py` and `test_file_ops_api.py`:
+validator rejections on both source and destination, `.cairndex` and
+symlink-escape refusals, directory-subtree renames matched on segments, cover
+and membership survival, all three collision policies, the linked-row conflict
+caught *before* the file moves, an OS-level failure journaled as failed, undo
+round trips, and four crash-recovery cases including the ambiguous one).
+Web Prettier, ESLint, `tsc -b`, full Vitest (**342 passed**, +8), the Vite
+build. OpenAPI and `schema.d.ts` regenerated.
+
+**Manually verified against a real dev server and a scratch library**, because
+this is the milestone where tests alone are not enough: rename through the
+context menu (inline editor opens with the stem selected, not the extension),
+the listing refreshing, the Undo toast reversing it on disk *and* flipping the
+journal row to `undone`, the collision dialog appearing with both files
+untouched, New Folder creating a real directory — and, last, a planted
+interrupted operation (filesystem half done, `pending` row committed, metadata
+half missing) being reconciled to `done` on the next server start. Scratch
+library deregistered and deleted afterwards.
+
+One thing worth recording for whoever automates this next: driving the inline
+editor needed a dispatched `keydown`, because the automation harness's synthetic
+Return did not reach React's synthetic event as `Enter`. That is a harness
+quirk, not an app defect — the same interaction works from a real keyboard and
+is covered by the Vitest suite.
+
+## Implemented: plan 4 W0 — the write-mode gate (2026-07-23)
+
+Branch `feat/write-mode-w0-gate`, based on `main` at `36e5108`. Not merged; no
+PR opened (owner-triggered). Three commits: the D7/phase-H docs already in the
+working tree, the server gate, then the web toggle, with this documentation
+slice on top.
+
+**What landed is a refusal, not a capability.** Nothing in Cairndex writes to a
+library yet. W0 exists so that the answer is already *no* before there is
+anything to say no to — every W1+ endpoint declares one dependency and inherits
+a structured `403 write_mode_disabled` it cannot forget to check.
+
+**Two switches, answering to two different people.** `CAIRNDEX_WRITE_MODE`
+(`allowed` | `disabled`) belongs to whoever runs the server and can force every
+library read-only. `registered_libraries.write_mode_enabled` belongs to the
+owner, defaults off, and lives in the **registry** rather than the portable
+manifest — so a library copied to another machine arrives read-only instead of
+carrying permission with it (ADR-0013 §1, ADR-0008 portability). The refusal
+names which gate said no, in `details.reason`, because the two have different
+fixes and one of them may not be the user's to apply.
+
+**One clarification against the plan, worth recording.** ADR-0013 says enabling
+requires an unlocked session *and* re-prompts for the passphrase. Implemented
+literally, a locked library would cost two passphrase prompts to enable — one to
+unlock, one to re-auth — for no security gain. So a correct passphrase presented
+to `PUT /write-mode` authorizes that request **by itself**. It authorizes the one
+request and not the session: the library stays locked for content afterwards,
+which a test asserts. Disabling never asks for anything, deliberately — a
+forgotten passphrase must not be able to strand a library in a writable state.
+
+**The manifest still reads as protected when it is unreadable** (`is_protected`
+fails closed), which means a library with a corrupt manifest cannot have write
+mode turned on at all. That is the right failure: the one library whose auth
+state we cannot determine is the last one that should gain the ability to move
+files.
+
+Verification at this commit: backend Ruff, `ruff format --check`, mypy, full
+pytest (**641 passed**, +13 new write-mode cases covering both gates, the
+passphrase re-auth and its generic 401, the locked-library single-prompt path,
+the corrupt-manifest refusal, and a pre-ADR-0013 registry gaining the column
+additively and defaulting to off); web Prettier, ESLint, `tsc -b`, full Vitest
+(**334 passed**, +5 Library Manager cases), the Vite build, and the browser-only
+Playwright partition (**87 passed**). OpenAPI and `schema.d.ts` regenerated. The
+desktop gates were not run and did not need to be: no Rust changed, and the
+toggle lives in the shared `apps/web` build the shell already hosts. Manually verified against a real dev server and a
+scratch library: the toggle, its explanation step, the accent-on state, and the
+flag surviving in the registry — then turned back off and the scratch library
+deregistered.
+
+**Next: W1** — the `file_operations` journal, the path validator, collision
+policies, the reconciler on library open, and File Browser inline rename + New
+Folder with an Undo toast. W5 (import external, the Finder drag-in driver)
+follows W1.
+
+## Closed: plan 3 D7 — first public release (2026-07-23)
+
+Closed on the owner's instruction, with one item carried rather than claimed.
+
+**What D7 delivered.** A pinned static ffmpeg for both macOS architectures,
+chosen by verification rather than reputation — the licensing check disqualified
+the obvious candidate. A tag-triggered release workflow that drafts a release
+with a DMG, its checksum and the GPL notices, **proven by a real `v0.1.0` run
+that went green on both architectures**. A README install section covering the
+Open Anyway first launch, including that it repeats on every update. A GPL
+written source offer whose configure lines and component versions are committed
+rather than linked, so the three-year term does not depend on a third-party
+host.
+
+**Two defects that only building it could have found**, both fixed:
+- The app bundle shipped an **invalid** signature — a signed executable with no
+  `_CodeSignature` resource seal, which macOS rejects harder than an unsigned
+  one. Invisible locally, because Gatekeeper only assesses quarantined apps.
+- The HEIC dependency linked a **GPL x265 encoder** into the sidecar process for
+  a codec path Cairndex never calls. Swapped to decode-only `pi-heif`, with a
+  spec exclude and a build gate so it cannot return.
+
+**Deferred behind write mode (owner, 2026-07-23):** an owner pass on a genuinely
+downloaded build. Everything short of a browser round trip is verified — the
+published artifact was downloaded, its checksum matched, the DMG mounted, and a
+quarantined copy produced the expected Gatekeeper block and refused to launch.
+The `v0.1.0` tag and draft release were deleted after the pipeline was proven;
+re-tagging is a two-minute job whenever a real release is wanted, and
+`docs/deployment.md` carries the runbook.
+
+**Next recommended task: plan 4 W0** — the write-mode gate. Registry flag, env
+master switch, structured 403, Library Manager toggle with re-auth when a
+passphrase is set, and the AGENTS.md/CLAUDE.md safety-wording amendments that
+[ADR-0013](adr/0013-library-write-mode.md) requires. It is the milestone that
+makes every later write operation refusable by default, so it lands before any
+of them.
+
 ## Done: CI cost reduction (2026-07-23)
 
 Merged to `main` directly at the owner's request. Prompted by the Actions budget
@@ -60,15 +589,18 @@ thumbnails all three fixtures correctly when driven by hand, including the HEIC,
 so a missing decoder is not the answer. If it recurs on a pinned fixture, the
 remaining suspect is the generate-then-serve path.
 
-## In progress: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
+## Historical detail: plan 3 D7 — first public release (2026-07-22 → 2026-07-23)
 
 Branch `feat/d7-first-public-release`, based on `main` at `e588ae1`. Pushed and
 merged through a PR at the owner's request (2026-07-23), after two review
 rounds on the branch — the last engineering commit is `aeafed6` (workflow
-hardening), and this handoff commit is the branch tip. The engineering half of
-D7 is complete; everything that remains is owner-gated and listed under
-**Next** below. The one unresolved decision is item 3 there (`pillow-heif` /
-libheif LGPL notices).
+hardening).
+
+*This section is the working record of the branch, kept for the reasoning in it.
+D7 is closed; the summary is at the top of this file. Two things it describes as
+open were resolved after it was written: the release workflow was run for real
+at `v0.1.0`, and the `pillow-heif` licensing question was investigated and
+settled by swapping to `pi-heif`.*
 
 **The blocker is resolved: ffmpeg is pinned.** Both macOS architectures now pin
 FFmpeg 8.1.2 from the Martin Riedl build server. The choice was made by
@@ -4290,11 +4822,12 @@ dialogs).
   already-linked unique quick-fingerprint replacement are implemented. Arbitrary
   cross-filesystem/content-changed repair and duplicate/copy handling remain
   future work.
-- File Browser is read-only. Write mode, reveal/open-with-default-app, and desktop
-  helper/Tauri integration are not yet implemented but are now **planned and
-  design-ratified**: library write mode in `docs/plans/04-library-write-mode.md`
-  (ADR-0013, accepted), and the macOS desktop/host-handoff path in
-  `docs/plans/03-macos-desktop-app.md` (ADR-0012, accepted).
+- File Browser is read-only. _(Superseded in part, 2026-07-23: plan 4 **W0**
+  landed the write-mode gate, so a library can now be **given** permission to be
+  written to — but no operation exists that uses it yet, so the File Browser
+  itself is unchanged. The desktop/host-handoff path is in
+  `docs/plans/03-macos-desktop-app.md`, ADR-0012 accepted; reveal /
+  open-with-default-app remain unimplemented.)_
 - Remux/transcode fallback and embedded subtitle extraction are deferred —
   scheduled as plan 1 M6/M7 (HLS sessions) and M8 (subtitle upgrade); see
   `docs/plans/01-web-media-player-and-viewer.md`.
@@ -4331,7 +4864,8 @@ dialogs).
 ## Unresolved decisions
 
 - Authentication mechanism: shared owner secret vs. per-user accounts.
-- Native/desktop host integration design for `open with default app`, reveal in
-  file manager, and future File Browser write mode.
+- Native/desktop host integration design for `open with default app` and reveal
+  in file manager. _(File Browser write mode is no longer unresolved: ADR-0013
+  settled the design and plan 4 W0 shipped its gate.)_
 - Cache policy for future large transcodes: portable inside-library cache vs.
   server-local cache.

@@ -18,6 +18,7 @@ import {
   type CleanupSort,
   type CollectionCreate,
   type CollectionRead,
+  type ConflictPolicy,
   type SortOrder,
   type FacetParams,
   type FilePatch,
@@ -53,6 +54,7 @@ import {
   deleteCollection,
   deleteLibrary,
   deleteSmartCollection,
+  emptyTrash,
   applyGroupingPlan,
   approveDevicePairing,
   enqueueProbe,
@@ -79,6 +81,7 @@ import {
   fetchFacets,
   fetchFileBrowserEntries,
   fetchFileRepairCandidate,
+  fetchHealth,
   fetchLibraries,
   fetchPlaybackManifest,
   fetchContinueWatching,
@@ -87,10 +90,16 @@ import {
   fetchTagGroupTags,
   fetchTagGroups,
   fetchTags,
+  fetchTrash,
   fetchViewCounts,
+  importFile,
+  makeDirectory,
+  moveEntries,
   previewFilter,
   probeLibraryPath,
   registerLibrary,
+  renameEntry,
+  restoreTrashed,
   removeFile,
   repairFile,
   revokeDevice,
@@ -109,12 +118,15 @@ import {
   setBundleCollections,
   setBundleTags,
   setCoverFrame,
+  setLibraryWriteMode,
   suggestBundleFromFiles,
   suggestTargetBundles,
   suggestUnbundledFilesForBundle,
   updateBundle,
   updateBundleCursor,
   updateFile,
+  trashEntries,
+  undoFileOperation,
   updateSmartCollection,
 } from './client'
 
@@ -317,6 +329,167 @@ export function useLibraryMutations() {
       },
     }),
   }
+}
+
+// --- Library write mode (ADR-0013) -------------------------------------------
+/**
+ * The deployment's write-mode master switch, from `/health`.
+ *
+ * Server configuration, not user data: it cannot change while the app is open,
+ * so it is fetched once and never refetched. `undefined` while it loads, which
+ * the caller treats as "not allowed yet" — a toggle that flickers enabled
+ * before the answer arrives is worse than one that arrives enabled.
+ */
+export function useDeploymentWriteMode() {
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: ({ signal }) => fetchHealth(signal),
+    staleTime: Infinity,
+  })
+  return health.data?.write_mode === 'allowed'
+}
+
+/** Turn guarded file operations on or off for one library. */
+export function useWriteModeMutation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      libraryId,
+      enabled,
+      passphrase,
+    }: {
+      libraryId: string
+      enabled: boolean
+      passphrase?: string
+    }) => setLibraryWriteMode(libraryId, enabled, passphrase),
+    onSuccess: (state, { libraryId }) => {
+      // Patch the row rather than only invalidating: the listing is what the
+      // manager renders from, and a refetch round trip would show the old
+      // state for long enough to look like the click did nothing.
+      qc.setQueryData<LibraryRead[]>(['libraries'], (current) =>
+        current?.map((library) =>
+          library.id === libraryId ? { ...library, write_mode_enabled: state.enabled } : library,
+        ),
+      )
+      return qc.invalidateQueries({ queryKey: ['libraries'] })
+    },
+  })
+}
+
+// --- Guarded file operations (ADR-0013 W1) -----------------------------------
+/**
+ * Rename / New Folder / Undo, with the listing refreshed after each.
+ *
+ * Every mutation invalidates the File Browser rather than patching it: a rename
+ * can change an entry's sort position, a collision policy can settle on a
+ * different name than the one asked for, and a directory rename moves rows the
+ * client never saw. The listing is cheap and the server is the authority on all
+ * three.
+ */
+export function useFileOperations() {
+  const qc = useQueryClient()
+  const refresh = () => invalidateAfterFileOperation(qc)
+  return {
+    rename: useMutation({
+      mutationFn: ({
+        path,
+        newName,
+        onConflict,
+      }: {
+        path: string
+        newName: string
+        onConflict?: ConflictPolicy
+      }) => renameEntry(path, newName, onConflict),
+      onSuccess: refresh,
+    }),
+    mkdir: useMutation({
+      mutationFn: (path: string) => makeDirectory(path),
+      onSuccess: refresh,
+    }),
+    undo: useMutation({
+      mutationFn: (operationId: string) => undoFileOperation(operationId),
+      onSuccess: refresh,
+    }),
+    trash: useMutation({
+      mutationFn: (paths: string[]) => trashEntries(paths),
+      onSuccess: refresh,
+    }),
+    move: useMutation({
+      mutationFn: ({
+        paths,
+        destDir,
+        onConflict,
+      }: {
+        paths: string[]
+        destDir: string
+        onConflict?: ConflictPolicy
+      }) => moveEntries(paths, destDir, onConflict),
+      onSuccess: refresh,
+    }),
+    // One mutation per file rather than per batch: each import gets its own
+    // collision answer and its own undo, which is only possible if each is its
+    // own request (see the server's `import_stream`).
+    importOne: useMutation({
+      mutationFn: ({
+        file,
+        destDir,
+        onConflict,
+      }: {
+        file: File
+        destDir: string
+        onConflict?: ConflictPolicy
+      }) => importFile(file, { destDir, onConflict, link: true }),
+      onSuccess: refresh,
+    }),
+  }
+}
+
+// Everything a file operation can change: the listing it happened in, the views
+// that render paths or counts, the journal, and the trash.
+function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of [
+    'file-browser',
+    'browse',
+    'view-counts',
+    'bundle-files',
+    'unbundled-files',
+    'file-ops',
+    'trash',
+  ])
+    qc.invalidateQueries({ queryKey: [key] })
+}
+
+/** Everything currently recoverable from this library's trash. */
+export function useTrash(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['trash'],
+    queryFn: ({ signal }) => fetchTrash(signal),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+/**
+ * Put one deletion back.
+ *
+ * Invalidates the same surfaces a delete does, because a restore is a delete
+ * running backwards: the files reappear in the File Browser, their rows go back
+ * to `available`, and any bundle they belong to is whole again.
+ */
+export function useRestoreFromTrash() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (operationId: string) => restoreTrashed(operationId),
+    onSuccess: () => invalidateAfterFileOperation(qc),
+  })
+}
+
+/** Empty the trash for good. */
+export function useEmptyTrash() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (olderThanDays?: number) => emptyTrash(olderThanDays),
+    onSuccess: () => invalidateAfterFileOperation(qc),
+  })
 }
 
 // --- Per-library passphrase lock (ADR-0010) ----------------------------------

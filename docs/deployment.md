@@ -46,9 +46,10 @@ Cairndex library root contains its portable `.cairndex/` package:
 
 The production library mount must be writable because Cairndex creates and
 updates `.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache
-files. This does **not** mean normal app flows mutate source media: the current
-product path remains metadata-only for source files and does not move, rename,
-delete, or rewrite them.
+files. Source media is a separate question: it is untouched by every ordinary
+flow (scanning, grouping, playback, thumbnails), and changes only through an
+explicit write-mode operation, which is **off by default per library** and can be
+disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 
 ### Topology
 
@@ -64,8 +65,8 @@ delete, or rewrite them.
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.
 - **Writable library root**: `MEDIA_HOST_PATH` is mounted at `/storage/media`.
-  The app writes only the `.cairndex/` package and generated cache during the
-  current MVP path; source media operations remain metadata-only.
+  The app writes the `.cairndex/` package and generated cache; it writes source
+  media only through the opt-in write mode described below (ADR-0013).
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
 
@@ -86,6 +87,8 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_TRANSCODE_MAX_SESSIONS`  | `2`             | Max concurrent interactive HLS remux/transcode sessions (ADR-0014). Starting one beyond this returns HTTP 429. Raise for multi-video-wall use.                     |
 | `CAIRNDEX_TRANSCODE_IDLE_TIMEOUT`  | `60`            | Seconds without a playlist/segment fetch before an HLS session is killed and its transcode dir deleted.                                                            |
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
+| `CAIRNDEX_WRITE_MODE`              | `allowed`       | Deployment master switch for guarded file operations (ADR-0013). `allowed` lets the per-library opt-in decide; `disabled` forces every library read-only.          |
+| `CAIRNDEX_IMPORT_MAX_BYTES`        | `0`             | Largest single file that may be uploaded into a library. `0` = no limit.                                                                                          |
 
 **Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
 binaries explicitly. Unset, they are resolved from `PATH` and then from the
@@ -105,6 +108,42 @@ ADR-0015 device pairing instead. The token authenticates the shell, not the
 owner: a library with a passphrase stays locked until it is actually unlocked,
 unlike a paired device token, because the local token is minted with no approval
 ceremony.
+
+**Write mode** (ADR-0013): Cairndex may create, rename, move, and trash files
+inside a library root only when **two** switches agree. `CAIRNDEX_WRITE_MODE`
+(default `allowed`) is yours; setting it to `disabled` forces every library
+read-only and makes the per-library toggle un-flippable, which is what a shared
+or hardened deployment wants. The second switch is the owner's per-library
+opt-in, stored in the **registry** and off by default — deliberately not in the
+portable library package, so copying a library to another server never carries
+write permission with it, and a library that arrives on a new server arrives
+read-only. Enabling a library that has an ADR-0010 passphrase re-prompts for it.
+Nothing outside this path writes to a library's files.
+
+**Who can flip the per-library switch.** An **unprotected** library has no
+credential in front of it, so anything that can reach the API can turn its write
+mode on — the same posture as everything else about an unprotected library
+(setting its passphrase in the first place included). That is fine on the single
+-owner LAN Cairndex is built for, and it is exactly the reason the product
+refuses to call direct internet exposure supported. If a server is reachable by
+anyone you would not hand a delete key to, use one of the two guards that do
+exist: set an ADR-0010 passphrase on the library, which makes enabling write mode
+require it, or set `CAIRNDEX_WRITE_MODE=disabled`, which takes the decision away
+from the API entirely. The passphrase check here is not rate-limited, matching
+the unlock endpoint; argon2's cost is the only brake on guessing, which is
+another reason a shared deployment wants the master switch rather than the
+per-library one.
+
+**Importing files** (ADR-0013 §7): with write mode on, files can be copied into
+a library over the API — the one way outside bytes ever enter one. The upload is
+streamed to `.cairndex/tmp/` and renamed into place, so a large import needs
+**free space inside the library volume**, not on the server's app-data disk, and
+a crash leaves a `.part` file that the next library open removes.
+`CAIRNDEX_IMPORT_MAX_BYTES` caps a single file; it defaults to `0` (no limit),
+because the legitimate case here is a whole video and any cap generous enough
+never to reject one would not be protecting anything on a single-owner LAN. Set
+it on a deployment whose API is reachable by anyone whose disk usage you would
+not want to underwrite.
 
 **Ownership lease** (ADR-0018): `CAIRNDEX_MACHINE_NAME` (default: the host's
 short hostname) is the human-readable name another machine shows when it asks
@@ -233,6 +272,21 @@ under `.cairndex/cache/` are reproducible and can usually be regenerated, and
 `.cairndex/library.db.bak` is the in-library sync-heal snapshot described above —
 it is not a substitute for an off-box backup, since it travels with (and dies
 with) the library folder.
+
+**`.cairndex/trash/` holds real user data** (ADR-0013 §3.2) — deleted files that
+have not been permanently removed yet. It is not derived and cannot be
+regenerated, so a backup that skips it can turn "I can still get that back" into
+"it is gone". Two consequences worth planning for:
+
+- **It grows.** A deletion is a rename, so the bytes stay in the library until
+  someone empties the trash; a library's on-disk size does not drop when files
+  are deleted. The Trash view shows the total, and Empty Trash is what actually
+  reclaims the space.
+- **It inflates incremental backups**, because a deleted file *moves* rather
+  than disappearing, and most backup tools will treat that as new data at the
+  new path. If that matters more to you than recoverability, exclude
+  `.cairndex/trash/` deliberately — and know that you are choosing to lose
+  whatever is in it at restore time.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
 online backup API and integrity-checks it:

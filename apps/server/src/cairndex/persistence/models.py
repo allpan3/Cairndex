@@ -40,6 +40,8 @@ from sqlalchemy.orm import Session as OrmSession
 
 from cairndex.domain.enums import (
     FileAvailability,
+    FileOpStatus,
+    FileOpType,
     FileRole,
     GroupingPlanStatus,
     GroupingSource,
@@ -576,3 +578,41 @@ class GroupingProposalFile(Base):
     sequence: Mapped[int] = mapped_column(Integer, default=0)
 
     proposal: Mapped[GroupingProposal] = relationship(back_populates="files")
+
+
+class FileOperation(Base):
+    """One guarded file operation, journaled before it happens (ADR-0013 §3.1).
+
+    Lives in ``library.db`` rather than the registry, so the history travels
+    with the library the way the operations' *effects* do — a library carried to
+    another machine arrives knowing what was done to it.
+
+    The protocol is intent-before-action: insert ``pending`` **and commit**,
+    touch the filesystem, then update content rows and mark ``done`` in one
+    transaction. A crash between the second and third steps leaves a ``pending``
+    row, which the reconciler on next open resolves by looking at the
+    filesystem. Without the row, that same crash would leave a file whose real
+    location silently disagrees with its ``relative_path`` — recoverable only by
+    a scan, and only as a *guess* about what happened.
+
+    ``payload`` carries the operation's parameters and its inverse (the paths
+    Undo would restore), as JSON rather than columns because each operation kind
+    has a different shape and this table must not grow a column per verb.
+    """
+
+    __tablename__ = "file_operations"
+
+    id: Mapped[UlidPk]
+    op: Mapped[FileOpType] = mapped_column(Enum(FileOpType, native_enum=False, length=16))
+    status: Mapped[FileOpStatus] = mapped_column(
+        Enum(FileOpStatus, native_enum=False, length=16),
+        default=FileOpStatus.PENDING,
+        index=True,  # the reconciler's only query: pending rows for this library
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Why a failed operation failed, in the same words the caller was given.
+    # Never a filesystem path outside the library (AGENTS.md logging rules).
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[CreatedAt]
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

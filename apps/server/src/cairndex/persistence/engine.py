@@ -72,7 +72,13 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
 )
 
-_ADDITIVE_CONTENT_TABLES: tuple[str, ...] = ("playback_progress", "bundle_cursors")
+_ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (
+    "playback_progress",
+    "bundle_cursors",
+    # ADR-0013: a library that predates write mode gains an empty journal, which
+    # is the correct starting history — nothing has been done to it yet.
+    "file_operations",
+)
 
 
 def ensure_content_indexes(engine: Engine) -> None:

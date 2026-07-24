@@ -24,8 +24,11 @@ import {
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
+  useDeploymentWriteMode,
+  useFileOperations,
   useLibraries,
   useLibraryAuth,
+  useTrash,
   useLibraryOwnership,
   useStartTakeover,
   useLibraryLock,
@@ -75,13 +78,16 @@ import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
+import { ConflictDialog } from './app/FileWriteDialogs'
 import { Sidebar } from './app/Sidebar'
+import { TrashView } from './app/TrashView'
 import { SettingsDialog } from './app/SettingsDialog'
 import { SmartCollectionEditor } from './app/SmartCollectionEditor'
 import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import { useHostImports } from './desktop/useHostImports'
 import {
   connectToServer,
   getConnections,
@@ -644,11 +650,30 @@ function Workspace({
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // Transient success banner after a manual bundling action.
   const [flash, setFlash] = useState<string | null>(null)
+  // The Undo behind a completed file operation (ADR-0013 §3.1), when the toast
+  // has one. Cleared with the message it belongs to, so an expired toast can
+  // never leave a stale inverse behind a button.
+  const [flashUndo, setFlashUndo] = useState<(() => void) | null>(null)
   useEffect(() => {
     if (flash === null) return
-    const t = setTimeout(() => setFlash(null), 4000)
+    // An offer to undo is worth reading twice; a plain confirmation is not.
+    const t = setTimeout(
+      () => {
+        setFlash(null)
+        setFlashUndo(null)
+      },
+      flashUndo ? 8000 : 4000,
+    )
     return () => clearTimeout(t)
-  }, [flash])
+  }, [flash, flashUndo])
+
+  // Show a message, optionally with the action that reverses what it reports.
+  const showFlash = useCallback((message: string, undo?: () => void) => {
+    setFlash(message)
+    // Stored as a thunk: `setState` calls a bare function argument instead of
+    // storing it, which would fire the undo the moment it was offered.
+    setFlashUndo(undo ? () => undo : null)
+  }, [])
 
   // Report the total still missing after scan reconciliation, including old misses
   const reportScanComplete = useCallback((missingTotal: number) => {
@@ -659,7 +684,7 @@ function Workspace({
   const [mode, setMode] = useState<AppMode>('collection')
   // The Files surface has two scopes: browse the directory tree, or the flat
   // "Unbundled" to-bundle queue (a cross-library list of not-yet-bundled files).
-  const [fileScope, setFileScope] = useState<'browse' | 'unbundled'>('browse')
+  const [fileScope, setFileScope] = useState<'browse' | 'unbundled' | 'trash'>('browse')
   const [filePath, setFilePath] = useState('')
   const [fileEntry, setFileEntry] = useState<FileBrowserEntry | null>(null)
   // A file to highlight after "Locate in File Browser" (until the user navigates
@@ -810,6 +835,18 @@ function Workspace({
   const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
+  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
+  // per-library opt-in and the deployment master switch. Either one off means
+  // the File Browser looks exactly as it did before write mode existed.
+  const writeModeAllowed = useDeploymentWriteMode()
+  const writeMode =
+    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
+  // The sidebar's Trash entry outlives the capability: with write mode off, a
+  // non-empty trash still lists (read-only), because files an owner deleted must
+  // never *look* permanently gone. The peek query runs only when write mode is
+  // off — on, the entry shows unconditionally and the listing is TrashView's job.
+  const trashPeek = useTrash({ enabled: !writeMode && libraryId !== null })
+  const showTrash = writeMode || (trashPeek.data?.operations ?? []).length > 0
 
   const activeSmartCollection =
     smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
@@ -1181,17 +1218,46 @@ function Workspace({
     [],
   )
 
-  // Drag-in (plan 3 §6): files dropped from Finder that resolve inside this
-  // mapped library land in the fast-add flow (Create Bundle); files outside every
-  // root get the "move it in first" explanation. The hook itself ignores drops
-  // while any modal/viewer is open (P0-3). The W5 copy-in flow plugs into the
-  // outside branch (see fileDrop.ts) without reworking this handler.
+  // Drag-in (plan 3 §6 + plan 4 W5): files dropped from Finder that resolve
+  // inside this mapped library land in the fast-add flow (Create Bundle); files
+  // from *outside* it are copied in, which is what write mode made possible.
+  // The hook ignores drops while any modal/viewer is open (P0-3).
+  const fileOperations = useFileOperations()
+  const hostImports = useHostImports({
+    libraryId,
+    // Where a drop lands: the folder on screen when the Files surface is open,
+    // the library root otherwise. Dropping onto a view of a folder and having
+    // the file appear somewhere else would be the wrong kind of surprise.
+    destDir: mode === 'file' && fileScope === 'browse' ? filePath : '',
+    onFlash: showFlash,
+    onImported: (operationId) => ({
+      // Reuses the same undo mutation the File Browser's toasts use, so a
+      // desktop-dropped import is undone by exactly the same path — including
+      // its cache invalidation — as one added through the picker.
+      undo: () =>
+        fileOperations.undo.mutate(operationId, {
+          onSuccess: () => showFlash('Undone.'),
+          onError: (error) =>
+            showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+        }),
+    }),
+  })
+
   useDesktopFileDrop({
     libraryId,
     mappingState,
     reverseMap: reverseMapHostPaths,
     onFastAdd: createBundleFromPaths,
     onFlash: setFlash,
+    // Copy the outside files in, but only when this library actually permits
+    // writing. With write mode off the seam declines and the drop falls back to
+    // the original explanation, which is still the true one for that library.
+    onCopyIntoLibrary: writeMode
+      ? (outsidePaths) => {
+          hostImports.copyIn(outsidePaths)
+          return true
+        }
+      : undefined,
   })
 
   // Right-click empty browser space → create a bundle, or clean up the bundle
@@ -1452,6 +1518,12 @@ function Workspace({
             setFileScope('unbundled')
             setFileEntry(null)
           }}
+          showTrash={showTrash}
+          onOpenTrash={() => {
+            setMode('file')
+            setFileScope('trash')
+            setFileEntry(null)
+          }}
           onOpenAllTags={() => {
             setMode('tags')
             clearSelection()
@@ -1520,10 +1592,12 @@ function Workspace({
       <div className="center">
         {mode === 'tags' ? (
           <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
+        ) : mode === 'file' && fileScope === 'trash' ? (
+          <TrashView writeMode={writeMode} onFlash={showFlash} />
         ) : mode === 'file' ? (
           <FileBrowser
             libraryName={libraryName}
-            scope={fileScope}
+            scope={fileScope === 'unbundled' ? 'unbundled' : 'browse'}
             path={filePath}
             selectedPath={locatedPath ?? fileEntry?.relative_path ?? null}
             onNavigate={(path) => {
@@ -1542,6 +1616,8 @@ function Workspace({
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
             onStartFileDrag={onStartFileDrag}
+            writeMode={writeMode}
+            onFlash={showFlash}
           />
         ) : (
           <>
@@ -1882,9 +1958,41 @@ function Workspace({
         />
       )}
 
+      {hostImports.conflict && (
+        <ConflictDialog
+          name={hostImports.conflict.conflictingName}
+          onKeepBoth={hostImports.keepBoth}
+          onReplace={hostImports.replace}
+          onCancel={hostImports.dismiss}
+          busy={false}
+        />
+      )}
+
+      {hostImports.importing.length > 0 && (
+        <div className="mb-toast" role="status">
+          Copying{' '}
+          {hostImports.importing.length === 1
+            ? hostImports.importing[0]
+            : `${hostImports.importing.length} files`}
+          …
+        </div>
+      )}
+
       {flash && (
         <div className="mb-toast" role="status">
           {flash}
+          {flashUndo && (
+            <button
+              className="btn btn--sm mb-toast__action"
+              onClick={() => {
+                flashUndo()
+                setFlash(null)
+                setFlashUndo(null)
+              }}
+            >
+              Undo
+            </button>
+          )}
         </div>
       )}
 

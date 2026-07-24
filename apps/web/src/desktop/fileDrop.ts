@@ -23,10 +23,11 @@ export const DROP_PENDING_MESSAGE =
 // surface.
 export const DROP_BLOCKED_MESSAGE = 'Close the open dialog before dragging files in.'
 
-// Every dropped file is outside the library. Cairndex links files in place, so they
-// must be moved in first (or, once plan 4 W5 lands, copied in — see onCopyIntoLibrary).
+// Every dropped file is outside the library, and this library cannot be written
+// to — so copying them in is not available and linking in place is not possible.
+// With write mode on, `onCopyIntoLibrary` handles these and this never shows.
 export const DROP_OUTSIDE_MESSAGE =
-  'Cairndex links files already inside this library — move these into its folder first, then drag them in.'
+  'Cairndex links files already inside this library — move these into its folder first, or turn on write mode for it to copy files in.'
 
 // A dropped folder — folders aren't recursed in this milestone, so the files inside
 // must be dragged in directly.
@@ -58,16 +59,18 @@ export interface FileDropRouting {
   onFastAdd: (relativePaths: string[]) => void
   onFlash: (message: string) => void
   /**
-   * Plan 4 W5 seam. Dropping files from *outside* the library is the owner's
-   * driving use case for write mode: W5 will replace the explanation with a
-   * "Copy into library…" flow that streams the local files to the server's
-   * journaled write path. It is handed **exactly the outside absolute paths**
+   * The copy-in flow (plan 4 W5). Dropping files from *outside* the library is
+   * the owner's driving use case for write mode: the shell streams each local
+   * file to the server's journaled import endpoint. Supplied only when the
+   * library actually permits writing — otherwise the explanation below is still
+   * the true answer. It is handed **exactly the outside absolute paths**
    * (`result.outside`) — the un-addable file portion of every drop, whether the
    * drop was all-outside or the outside remainder of a mixed drop whose in-library
    * media already went to fast-add — plus the full reverse-map `result` for
    * context. Returning true means the seam handled those files (no explanation for
    * them). Dropped folders are never offered to the seam (they can't be copied
-   * without recursion). Intentionally absent in D4, so only the explanation shows.
+   * without recursion). Absent in a browser and for a read-only library, where
+   * only the explanation shows.
    */
   onCopyIntoLibrary?: (outsidePaths: string[], result: ReverseMapResult) => boolean
 }

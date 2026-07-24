@@ -12,6 +12,7 @@ from cairndex.auth import SESSION_COOKIE, requires_unlock
 from cairndex.auth.local_token import is_local_owner_token
 from cairndex.core.errors import AuthRequiredError, InvalidDeviceTokenError, NotFoundError
 from cairndex.domain.enums import LibraryStatus
+from cairndex.file_ops import gate as write_mode_gate
 from cairndex.ownership import get_lease_manager
 from cairndex.persistence.engine import get_session as _get_session
 from cairndex.registry import device_tokens as token_service
@@ -256,6 +257,21 @@ def get_library_access(
 
 
 LibraryAccessDep = Annotated[LibraryAccess, Depends(get_library_access)]
+
+
+def require_write_mode(library_id: str, registry: RegistryDbSession) -> None:
+    """Refuse a guarded file operation on a read-only library (ADR-0013 §1).
+
+    Declared alongside ``LibrarySession`` on every write endpoint, so the gate
+    is a property of the route rather than something each handler remembers to
+    check. It runs on the registry, not the library DB: the flag is server
+    runtime state and the refusal must not depend on opening content.
+    """
+    write_mode_gate.ensure_write_mode(registry, library_id)
+
+
+# Declare on a route to gate it behind write mode; the value itself is unused.
+WriteModeRequired = Annotated[None, Depends(require_write_mode)]
 
 
 # Optimistic-concurrency precondition (ADR-0008 phase 9). A client sends the
