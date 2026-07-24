@@ -176,11 +176,24 @@ export function useFileWriteActions({
       setPendingDelete(null)
       trash.mutate(target.paths, {
         onSuccess: (result) => {
-          const count = target.paths.length
+          // A delete can partly fail — one file of a multi-select hitting a
+          // permissions error on a share. The rest still moved, so this is a
+          // success that names what it could not take rather than an error
+          // that would leave the owner guessing which is which.
+          const failed = result.failed_paths ?? []
+          const moved = target.paths.length - failed.length
+          const movedMessage =
+            moved === 1
+              ? `Moved “${nameOf((result.path || target.paths[0]) as string)}” to the trash.`
+              : `Moved ${moved} items to the trash.`
           onFlash(
-            count === 1
-              ? `Moved “${nameOf(target.paths[0] as string)}” to the trash.`
-              : `Moved ${count} items to the trash.`,
+            failed.length === 0
+              ? movedMessage
+              : `${movedMessage} ${
+                  failed.length === 1
+                    ? `“${nameOf(failed[0] as string)}” could not be moved.`
+                    : `${failed.length} items could not be moved.`
+                }`,
             undoLater(result.operation.id),
           )
         },

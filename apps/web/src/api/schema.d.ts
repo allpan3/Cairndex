@@ -2836,6 +2836,11 @@ export interface components {
          * @description What an operation did, for the toast that offers to undo it.
          */
         FileOperationResult: {
+            /**
+             * Failed Paths
+             * @default []
+             */
+            failed_paths: string[];
             /** Files Updated */
             files_updated: number;
             operation: components["schemas"]["FileOperationRead"];
@@ -3048,6 +3053,11 @@ export interface components {
          * @description An import, plus what actually arrived.
          */
         ImportResultRead: {
+            /**
+             * Failed Paths
+             * @default []
+             */
+            failed_paths: string[];
             /** Files Updated */
             files_updated: number;
             operation: components["schemas"]["FileOperationRead"];
