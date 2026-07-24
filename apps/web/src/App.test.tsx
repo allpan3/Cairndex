@@ -45,6 +45,8 @@ function mockApi(
     storyboardStatus?: 'succeeded' | 'failed'
     locked?: boolean
     authError?: number
+    /** Deletions in the library's trash — recoverable even with write mode off. */
+    trashOperations?: unknown[]
   } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
@@ -53,6 +55,8 @@ function mockApi(
     vi.fn((url: string, init?: RequestInit) => {
       let body: unknown = {}
       if (url.endsWith('/api/v1/libraries')) body = libraries
+      else if (url.includes('/file-ops/trash'))
+        body = { operations: options.trashOperations ?? [], size_bytes: 0 }
       else if (url.endsWith('/auth/status') && options.authError)
         return Promise.resolve({
           ok: false,
@@ -256,6 +260,23 @@ test('shows the empty state when there are no bundles', async () => {
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Nothing here yet.')).toBeInTheDocument())
+})
+
+test('a non-empty trash stays reachable when write mode is off', async () => {
+  // LIBRARY has write_mode_enabled: false — but a deletion from an earlier
+  // write-mode session is still recoverable, so the entry must not vanish.
+  mockApi([LIBRARY], {
+    trashOperations: [{ operation_id: 'op-1', deleted_at: '2026-07-23T10:00:00Z', entries: [] }],
+  })
+  renderApp()
+  expect(await screen.findByRole('button', { name: 'Trash' })).toBeInTheDocument()
+})
+
+test('a library that never deleted anything shows no Trash entry', async () => {
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Nothing here yet.')).toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: 'Trash' })).not.toBeInTheDocument()
 })
 
 test('shows the empty shell (not a forced dialog) when no library exists', async () => {

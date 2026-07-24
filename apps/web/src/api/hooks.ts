@@ -460,10 +460,11 @@ function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
 }
 
 /** Everything currently recoverable from this library's trash. */
-export function useTrash() {
+export function useTrash(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['trash'],
     queryFn: ({ signal }) => fetchTrash(signal),
+    enabled: options?.enabled ?? true,
   })
 }
 

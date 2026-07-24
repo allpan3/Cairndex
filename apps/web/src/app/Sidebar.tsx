@@ -81,11 +81,14 @@ interface SidebarProps {
   onOpenUnbundled?: () => void
   // All Tags is a management surface (mode='tags'), not a bundle browse view.
   onOpenAllTags?: () => void
-  // The Trash is a Files-surface scope like Unbundled, shown only when write
-  // mode is on: a library that cannot delete has nothing to put in one, and an
-  // always-empty Trash would be a permanent question about a missing feature.
+  // The Trash is a Files-surface scope like Unbundled. Shown when write mode is
+  // on *or* the trash holds anything: turning write mode off must not make
+  // trashed files look permanently gone (they are still recoverable, and the
+  // server keeps the listing readable for exactly that reason). A library that
+  // never deleted anything still shows no entry — an always-empty Trash would
+  // be a permanent question about a missing feature.
   onOpenTrash?: () => void
-  writeMode?: boolean
+  showTrash?: boolean
   fileScope?: 'browse' | 'unbundled' | 'trash'
   counts?: ViewCounts
   collections: CollectionRead[]
@@ -166,7 +169,7 @@ export function Sidebar({
   onOpenUnbundled,
   onOpenAllTags,
   onOpenTrash,
-  writeMode = false,
+  showTrash = false,
   fileScope,
   counts,
   collections,
@@ -462,7 +465,7 @@ export function Sidebar({
             </Fragment>
           )
         })}
-        {writeMode && (
+        {showTrash && (
           <button
             className={`nav-item${mode === 'file' && fileScope === 'trash' ? ' nav-item--active' : ''}`}
             onClick={() => onOpenTrash?.()}

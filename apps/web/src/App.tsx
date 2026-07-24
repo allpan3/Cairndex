@@ -28,6 +28,7 @@ import {
   useFileOperations,
   useLibraries,
   useLibraryAuth,
+  useTrash,
   useLibraryOwnership,
   useStartTakeover,
   useLibraryLock,
@@ -840,6 +841,12 @@ function Workspace({
   const writeModeAllowed = useDeploymentWriteMode()
   const writeMode =
     writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
+  // The sidebar's Trash entry outlives the capability: with write mode off, a
+  // non-empty trash still lists (read-only), because files an owner deleted must
+  // never *look* permanently gone. The peek query runs only when write mode is
+  // off — on, the entry shows unconditionally and the listing is TrashView's job.
+  const trashPeek = useTrash({ enabled: !writeMode && libraryId !== null })
+  const showTrash = writeMode || (trashPeek.data?.operations ?? []).length > 0
 
   const activeSmartCollection =
     smartCollections.data?.find((sc) => sc.id === selection.smartCollectionId) ?? null
@@ -1511,7 +1518,7 @@ function Workspace({
             setFileScope('unbundled')
             setFileEntry(null)
           }}
-          writeMode={writeMode}
+          showTrash={showTrash}
           onOpenTrash={() => {
             setMode('file')
             setFileScope('trash')
@@ -1586,7 +1593,7 @@ function Workspace({
         {mode === 'tags' ? (
           <AllTagsPage onApplyTagFilter={applyTagFilterGlobally} />
         ) : mode === 'file' && fileScope === 'trash' ? (
-          <TrashView onFlash={showFlash} />
+          <TrashView writeMode={writeMode} onFlash={showFlash} />
         ) : mode === 'file' ? (
           <FileBrowser
             libraryName={libraryName}
