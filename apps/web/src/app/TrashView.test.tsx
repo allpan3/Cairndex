@@ -46,12 +46,12 @@ const FULL: TrashRead = {
 
 let flashes: string[]
 
-function renderTrash() {
+function renderTrash(writeMode = true) {
   flashes = []
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
-      <TrashView onFlash={(message) => flashes.push(message)} />
+      <TrashView writeMode={writeMode} onFlash={(message) => flashes.push(message)} />
     </QueryClientProvider>,
   )
 }
@@ -109,6 +109,20 @@ test('cancelling the empty confirmation deletes nothing', () => {
 
   expect(empty).not.toHaveBeenCalled()
   expect(screen.getByRole('button', { name: 'Empty Trash…' })).toBeInTheDocument()
+})
+
+test('with write mode off the trash is readable but not actionable', () => {
+  renderTrash(false)
+
+  // The contents stay visible — turning the capability off must never make
+  // trashed files look permanently gone (the server keeps the listing readable
+  // for exactly this case).
+  expect(screen.getByText('Show/S01/ep1.mkv')).toBeInTheDocument()
+  expect(screen.getByText(/restoring needs it back on/)).toBeInTheDocument()
+  // The write actions stay visible but disabled: a control that disappears
+  // reads as a file that cannot come back.
+  expect(screen.getByRole('button', { name: 'Put back' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Empty Trash…' })).toBeDisabled()
 })
 
 test('an empty trash explains itself rather than showing a bare blank', () => {

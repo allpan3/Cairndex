@@ -3,13 +3,37 @@
 > **Current position:** phase H — plan 4 library write mode, on
 > `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
 > request). **W0, W1, W3, W4 and W5 are complete**, including the desktop
-> drag-in that write mode was built for, and three earlier review findings are
-> fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
+> drag-in that write mode was built for; five review findings across five
+> rounds (W0 through the final PR pass) are fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
 > its one deferred piece is drag-move onto a directory row (see the entry
 > immediately below). W2 stays blocked on plan 1 M11, and W6 closes the track.
 > Two things still need the owner: a pass on a genuinely downloaded build
 > (deferred from D7), and a pass on the **native Finder drag gesture** on a
 > packaged build, which cannot be automated here.
+
+## Fixed: a non-empty trash vanished from the UI with write mode off (2026-07-24)
+
+The final owner review of PR #30 (whole-track pass: the move-undo fix verified,
+the desktop importer's drop-allowlist and token scoping reviewed, all three
+suites re-run clean) found one inconsistency worth fixing before merge: **the
+sidebar's Trash entry rendered only while write mode was on**, while the server
+deliberately keeps `GET /file-ops/trash` readable without it — its docstring
+names hiding the trash as exactly the wrong outcome, because files an owner
+deleted must never *look* permanently gone. Delete files, flip write mode off
+(or have the deployment flip it), and the Trash view disappeared with the files
+still in it.
+
+Now the entry shows when write mode is on **or the trash holds anything** (a
+cheap peek query that runs only with write mode off, kept fresh by the same
+invalidation as every file operation), and `TrashView` goes read-only without
+write mode: contents and original paths visible, a note explaining why, Put
+back and Empty Trash present but disabled — a control that disappears reads as
+a file that cannot come back. A library that never deleted anything still shows
+no entry. Verified end-to-end against a live dev server (trash a file, disable
+write mode, observe the entry, the note, and both buttons disabled). Web **372
+passed** (+3: the App-level visibility policy both ways, and the read-only
+view). The review's two hardening notes — the importer's unescaped `library_id`
+interpolation and the duplicate-basename progress-list nit — are W6.
 
 ## Fixed: move-undo could silently overwrite a newcomer (2026-07-23)
 

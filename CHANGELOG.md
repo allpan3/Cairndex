@@ -95,8 +95,10 @@ grouped under `Unreleased` until the first tagged release.
 
   Two smaller things that matter more than they sound: a trashed file is **not**
   reported as *missing*, so scanning does not confuse "you deleted this" with
-  "this vanished"; and the trash is still readable when write mode is switched
-  off, because turning a capability off should not make files look permanently
+  "this vanished"; and the trash stays visible when write mode is switched
+  off — the sidebar entry remains as long as anything is in it and the view
+  turns read-only, with Put back and Empty Trash waiting for write mode to come
+  back — because turning a capability off should not make files look permanently
   gone when they are not.
 
   **Back up `.cairndex/trash/`** — it holds real files, not derived data. See
