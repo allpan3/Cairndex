@@ -618,6 +618,20 @@ export async function importFile(
 export const trashEntries = (paths: string[]) =>
   sendFileOp<FileOperationResult>(`${lib()}/file-ops/trash`, { paths })
 
+/**
+ * Move files and folders into another directory, carrying their metadata.
+ *
+ * The whole selection is one operation with one undo. A collision answers 409
+ * `path_conflict` before anything moves, which the caller turns into the
+ * Replace / Skip / Keep both prompt and re-issues with an explicit policy.
+ */
+export const moveEntries = (paths: string[], destDir: string, onConflict?: ConflictPolicy) =>
+  sendFileOp<FileOperationResult>(`${lib()}/file-ops/move`, {
+    paths,
+    dest_dir: destDir,
+    on_conflict: onConflict ?? 'fail',
+  })
+
 /** Everything currently recoverable, newest deletion first. */
 export const fetchTrash = (signal?: AbortSignal) =>
   getJson<TrashRead>(`${lib()}/file-ops/trash`, signal)

@@ -10,7 +10,7 @@ import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
 import { useFileWriteActions } from './fileWriteActions'
-import { ConflictDialog, DeleteDialog, NameEditor } from './FileWriteDialogs'
+import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -321,6 +321,7 @@ function FileList({
     onSelectEntry(entry)
     const items: MenuEntry[] = [
       { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
+      { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
       // A folder's own delete takes everything inside it, in one operation.
       { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
     ]
@@ -369,6 +370,13 @@ function FileList({
           label: 'Rename…',
           onClick: () => write.startRename(targets[0] as string),
         })
+      // Move takes the whole selection, directories included — unlike bundling,
+      // which is a files-only action.
+      const moveTargets = selectionTargets(entry.relative_path, selected)
+      writeItems.push({
+        label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
+        onClick: () => write.askToMove(moveTargets),
+      })
       writeItems.push({
         label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
         onClick: () => write.askToDelete(targets, linkedCount(targets)),
@@ -747,6 +755,15 @@ function FileList({
             linkedCount={write.pendingDelete.linkedCount}
             onConfirm={write.confirmDelete}
             onCancel={write.dismissDelete}
+            busy={write.busy}
+          />
+        )}
+
+        {write.pendingMove && (
+          <DirectoryPicker
+            moving={write.pendingMove.paths}
+            onChoose={write.moveTo}
+            onCancel={write.dismissMove}
             busy={write.busy}
           />
         )}
