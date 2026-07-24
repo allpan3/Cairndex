@@ -30,6 +30,7 @@ vi.mock('../api/hooks', async () => {
       mkdir: { mutate: vi.fn(), isPending: false },
       undo: { mutate: vi.fn(), isPending: false },
       trash: { mutate: vi.fn(), isPending: false },
+      move: { mutate: vi.fn(), isPending: false },
       importOne: { mutateAsync: vi.fn(), isPending: false },
     }),
   }

@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { useFileBrowser } from '../api/hooks'
+
 /**
  * The collision prompt (ADR-0013 §3.3) — Finder's and Eagle's three answers.
  *
@@ -118,6 +120,112 @@ export function DeleteDialog({
           </button>
           <button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>
             Move to Trash
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The destination picker for Move to… (ADR-0013 §7, plan 4 W3).
+ *
+ * Navigates the library's own directory tree one level at a time — the same
+ * listing the File Browser shows — rather than a free-text path, so the
+ * destination is always a real, in-root directory the owner can see. The
+ * folders being moved are removed from the list: a folder cannot be moved into
+ * itself, and offering to descend into one would only lead to that dead end.
+ * Choosing the directory an item already sits in is harmless — the server
+ * reports it moved nothing.
+ */
+export function DirectoryPicker({
+  moving,
+  onChoose,
+  onCancel,
+  busy,
+}: {
+  /** Library-relative paths being moved, excluded from the tree. */
+  moving: string[]
+  onChoose: (destDir: string) => void
+  onCancel: () => void
+  busy: boolean
+}) {
+  const [here, setHere] = useState('')
+  const { data, isLoading } = useFileBrowser(here || null)
+  const excluded = new Set(moving)
+  const subdirs = (data?.entries ?? [])
+    .filter((entry) => entry.kind === 'directory' && !excluded.has(entry.relative_path))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const crumbs = here ? here.split('/') : []
+  const count = moving.length
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onCancel}>
+      <div
+        className="modal modal--narrow"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Move to"
+      >
+        <div className="modal__head">
+          <h2>{count === 1 ? 'Move to…' : `Move ${count} items to…`}</h2>
+        </div>
+        <nav className="dir-picker__crumbs" aria-label="Destination folder">
+          <button
+            type="button"
+            className="dir-picker__crumb"
+            onClick={() => setHere('')}
+            disabled={busy || here === ''}
+          >
+            Library
+          </button>
+          {crumbs.map((segment, index) => (
+            <span key={crumbs.slice(0, index + 1).join('/')}>
+              <span className="dir-picker__sep"> / </span>
+              <button
+                type="button"
+                className="dir-picker__crumb"
+                onClick={() => setHere(crumbs.slice(0, index + 1).join('/'))}
+                disabled={busy || index === crumbs.length - 1}
+              >
+                {segment}
+              </button>
+            </span>
+          ))}
+        </nav>
+        <ul className="dir-picker__list">
+          {isLoading ? (
+            <li className="dir-picker__empty">Loading…</li>
+          ) : subdirs.length === 0 ? (
+            <li className="dir-picker__empty">No subfolders here.</li>
+          ) : (
+            subdirs.map((entry) => (
+              <li key={entry.relative_path}>
+                <button
+                  type="button"
+                  className="dir-picker__row"
+                  onClick={() => setHere(entry.relative_path)}
+                  disabled={busy}
+                >
+                  {entry.name}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+        <div className="modal__actions">
+          <span className="toolbar__spacer" />
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => onChoose(here)}
+            disabled={busy}
+          >
+            {here ? `Move here` : 'Move to Library root'}
           </button>
         </div>
       </div>
