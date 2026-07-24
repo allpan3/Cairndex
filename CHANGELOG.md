@@ -10,6 +10,129 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Write mode — the gate** ([ADR-0013](docs/adr/0013-library-write-mode.md),
+  plan 4 W0). Cairndex can be given permission to create, rename, move, and
+  trash files inside one library root. **Nothing writes yet**; this is the
+  switch every later operation will have to get past, landed on its own so the
+  default answer is no before there is anything to say no to.
+
+  Two switches must agree. Yours, per library, in **Libraries → Write mode**,
+  off by default and stored in the server registry rather than the library
+  package — so a library copied to another machine arrives read-only instead of
+  carrying permission with it. And the operator's, `CAIRNDEX_WRITE_MODE`
+  (`allowed` by default, `disabled` forcing every library read-only). Turning it
+  on for a passphrase-protected library asks for that passphrase again; turning
+  it off never does, because giving up a capability is always safe.
+
+  Write endpoints answer `403 write_mode_disabled`, naming which of the two
+  gates refused — the fixes are different, and one of them may not be yours.
+
+- **Write mode — rename and New Folder** (plan 4 W1). The first operations that
+  actually touch files. In the File Browser: **Rename…** from the context menu
+  or <kbd>F2</kbd>, editing the name in place; **New Folder** in the toolbar and
+  the empty-space menu. Every completed operation offers **Undo**.
+
+  **Renaming through Cairndex never needs repair.** The rename and the stored
+  path change together, so the file keeps its identity — bundle membership,
+  cover, subtitle links, notes, ratings and cached thumbnails all survive, and a
+  renamed folder carries everything inside it. That is the difference from
+  renaming in Finder, where the scanner has to work out afterwards what moved
+  where.
+
+  **Every operation is journaled before it happens**, in the library itself, so
+  the history travels with it. If the server dies mid-operation, the next open
+  looks at the disk and either finishes the job or marks it failed — it never
+  guesses, and never leaves a file whose recorded location is quietly wrong.
+
+  A name that is already taken **asks** rather than failing: nothing has moved
+  when the prompt appears, and *Keep both* adds `(2)`. Replace is deliberately
+  not offered yet — it is defined as move-the-old-one-to-the-trash first, and
+  the trash arrives in a later slice; until then there would be no way back.
+
+  Renaming into or out of the library's own `.cairndex/` folder is refused, as
+  are absolute paths, `..`, symlinks pointing outside the library, and names
+  that a Windows or SMB client would silently mangle.
+
+- **Write mode — move** (plan 4 W3). **Move to…** from the File Browser context
+  menu — on one file, one folder, or a whole selection — opens a picker that
+  walks the library's own folders one level at a time, so the destination is a
+  real folder you can see rather than a path you type. The folders you are
+  moving are left out of it, because a folder cannot go inside itself.
+
+  **Moving through Cairndex never needs repair either.** Like a rename, the file
+  moves and its recorded location change together, so every id survives — a
+  moved folder carries its whole subtree, its bundles, covers and subtitle links
+  intact. The whole selection is one action with **one Undo**. A name already
+  taken in the destination **asks** — Replace / Skip / Keep both, applied to the
+  batch — before anything moves; Replace sends the file it displaces to the
+  trash, so it too is recoverable. If one file of a batch cannot be moved (a
+  permissions wall on a share), the rest still move and the toast says which one
+  stayed behind.
+
+  *Not yet:* dragging entries onto a folder to move them — the menu is the way
+  in for now.
+
+- **Write mode — delete to a trash, and Replace** (plan 4 W4). **Deleting never
+  unlinks.** Files and folders move into the library's own trash, and a new
+  **Trash** view in the sidebar puts them back. Because the move is a rename
+  within the same folder, it is instant whatever the file's size, and because
+  the trash lives inside `.cairndex/` it travels with the library — copy the
+  folder to another machine and its trash comes too.
+
+  A restored file is the *same* file: same id, same bundle, same cover, same
+  subtitles, same thumbnails. Deleting a folder takes everything in it as one
+  deletion, and Put back returns the whole thing in one action rather than file
+  by file.
+
+  **Replace now exists**, in the rename collision prompt, and it is not an
+  overwrite: the file being replaced is moved to the trash first, so the choice
+  stays reversible. Undoing a Replace brings back *both* files. This is why the
+  trash was built before the button was offered.
+
+  **Empty Trash is the only action in write mode with no way back** — it says so,
+  and names the amount of space it will reclaim. Deleted files are kept until
+  then; there is no automatic expiry.
+
+  Two smaller things that matter more than they sound: a trashed file is **not**
+  reported as *missing*, so scanning does not confuse "you deleted this" with
+  "this vanished"; and the trash stays visible when write mode is switched
+  off — the sidebar entry remains as long as anything is in it and the view
+  turns read-only, with Put back and Empty Trash waiting for write mode to come
+  back — because turning a capability off should not make files look permanently
+  gone when they are not.
+
+  **Back up `.cairndex/trash/`** — it holds real files, not derived data. See
+  `docs/deployment.md`.
+
+- **Write mode — copying files in** (plan 4 W5). **Add Files…** in the File
+  Browser toolbar, and dragging files from your desktop onto the listing, copy
+  them into the folder you are looking at and link them, ready to bundle. This
+  is the only way files from outside a library ever get into one.
+
+  Files upload one at a time rather than all at once — six parallel uploads
+  share the same bandwidth six ways, so everything finishes late instead of the
+  first files finishing early. A name that is already taken asks, with the full
+  Replace / Keep both choice, and answering carries on with the rest of the
+  batch rather than abandoning it. Each file gets its own **Undo**, which moves
+  it to the trash rather than deleting it.
+
+  Nothing is held in memory: the upload streams to a staging file inside the
+  library and is renamed into place, so importing a 60 GB video costs 60 GB of
+  disk **in the library** and almost no RAM. An interrupted upload leaves a
+  partial file that the next library open removes. `CAIRNDEX_IMPORT_MAX_BYTES`
+  caps a single file if you want one; by default there is no limit.
+
+  **Dragging from Finder into the desktop app now copies files in** — the thing
+  write mode was built for. Drop media anywhere in the window and it lands in
+  the folder you are looking at (or the library root), gets linked, and is ready
+  to bundle. Files already inside the library still link in place as before, so
+  a mixed drop does the right thing with both halves.
+
+  The app will only ever upload a file **you dropped on it**: the shell records
+  each drop itself and refuses anything else, so nothing can talk it into
+  reading a file from elsewhere on your disk. Large files stream straight from
+  disk to server without being loaded into memory at either end.
+
 - **A release pipeline** (`.github/workflows/release.yml`). A `v*` tag — or a
   manual dispatch — builds the macOS app for Apple Silicon, smoke-tests the
   packaged sidecar against its bundled ffmpeg, and attaches the DMG, its

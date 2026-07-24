@@ -341,10 +341,19 @@ def scan_library(
 
 
 def _mark_missing(files: Iterable[AssetFile], keep: frozenset[str] | set[str]) -> int:
-    """Mark files whose path was not seen this scan as missing (not deleted)."""
+    """Mark files whose path was not seen this scan as missing (not deleted).
+
+    Trashed files are skipped (ADR-0013 §3.2). Their bytes live under
+    ``.cairndex/trash/``, which the scan ignores, so they are never "seen" — but
+    they are not lost, they were deliberately put there, and flipping them to
+    missing would empty the Trash view into Missing Files and make restore look
+    like repair.
+    """
     count = 0
     for f in files:
-        if f.relative_path not in keep and f.availability != FileAvailability.MISSING:
+        if f.availability in (FileAvailability.MISSING, FileAvailability.TRASHED):
+            continue
+        if f.relative_path not in keep:
             f.availability = FileAvailability.MISSING
             count += 1
     return count

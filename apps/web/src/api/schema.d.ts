@@ -907,6 +907,241 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Operations
+         * @description Newest-first history of what write mode has done to this library.
+         *
+         *     Readable without write mode: turning the capability off must not hide what
+         *     it did while it was on.
+         */
+        get: operations["list_operations_api_v1_libraries__library_id__file_ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import File
+         * @description Stream one external file into this library — the only way bytes enter it.
+         *
+         *     **The body is the file**, raw, with the metadata in query parameters.
+         *     Deliberately not multipart: the caller already has an open file handle or a
+         *     `File` object, both of which stream as a body without an encoding step, and
+         *     it keeps the server free of a form-parsing dependency for a request that is
+         *     99.99% payload. One file per request, so each import gets its own progress,
+         *     its own collision answer, and its own undo.
+         *
+         *     The server never reads a path the client names — it cannot: there is no path
+         *     in this request, only bytes.
+         */
+        post: operations["import_file_api_v1_libraries__library_id__file_ops_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/mkdir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make Directory
+         * @description Create one new directory. Its parent must already exist.
+         */
+        post: operations["make_directory_api_v1_libraries__library_id__file_ops_mkdir_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Entries
+         * @description Move files and directories into another directory, carrying their metadata.
+         *
+         *     Like rename, the filesystem move and the `AssetFile.relative_path` update
+         *     happen together, so every id — and therefore every bundle membership, cover,
+         *     subtitle link and cached thumbnail — survives by construction. Moving a
+         *     directory repoints everything beneath it in the same operation.
+         *
+         *     The whole multi-select is one journal operation with one undo. A destination
+         *     that already holds something answers 409 `conflict` before anything moves,
+         *     which the client turns into the Replace / Skip / Keep both prompt and
+         *     re-issues with an explicit `on_conflict`.
+         */
+        post: operations["move_entries_api_v1_libraries__library_id__file_ops_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename Entry
+         * @description Rename one file or directory, carrying its metadata with it.
+         *
+         *     The rename and the `AssetFile.relative_path` update happen together, so
+         *     every id — and therefore every bundle membership, cover, subtitle link and
+         *     cached thumbnail — survives by construction rather than by later repair.
+         *     Renaming a directory repoints everything beneath it in the same operation.
+         *
+         *     A destination that already exists answers 409 `conflict`, which the client
+         *     turns into the Replace / Skip / Keep both prompt and re-issues with an
+         *     explicit `on_conflict`.
+         */
+        post: operations["rename_entry_api_v1_libraries__library_id__file_ops_rename_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Trash
+         * @description List everything currently recoverable.
+         *
+         *     Readable without write mode, like the journal: what is *in* the trash is
+         *     part of the library's state, and hiding it when the capability is off would
+         *     make files look permanently gone when they are not.
+         */
+        get: operations["read_trash_api_v1_libraries__library_id__file_ops_trash_get"];
+        put?: never;
+        /**
+         * Trash Entries
+         * @description Move files and folders into the library's trash — never unlink them.
+         *
+         *     The entries are renamed into `.cairndex/trash/{operation_id}/`, which is on
+         *     the same filesystem (so it is instant even for large videos) and inside the
+         *     library package (so it travels with it). Linked rows keep their ids and
+         *     become `trashed`, which is why restoring is lossless rather than a re-scan.
+         */
+        post: operations["trash_entries_api_v1_libraries__library_id__file_ops_trash_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Empty Trash
+         * @description Permanently delete trashed entries and their metadata rows.
+         *
+         *     **The only operation in write mode with no way back.** Everything else —
+         *     rename, New Folder, delete, even Replace — is recoverable until this runs.
+         */
+        post: operations["empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/trash/restore/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore From Trash
+         * @description Put one deletion's entries back where they came from.
+         *
+         *     Refused as a whole if anything now occupies one of those paths: half a
+         *     restore would leave the owner to work out which files came back.
+         */
+        post: operations["restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Operation
+         * @description Apply an operation's inverse — the Undo behind every completed toast.
+         *
+         *     Only a completed operation can be undone, and only once; the journal row is
+         *     marked `undone` rather than deleted, so the history still explains how the
+         *     library reached its current shape.
+         */
+        post: operations["undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file/preview": {
         parameters: {
             query?: never;
@@ -1800,6 +2035,41 @@ export interface paths {
         patch: operations["update_tag_api_v1_libraries__library_id__tags__tag_id__patch"];
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/write-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Write Mode
+         * @description Report whether guarded file operations are permitted for this library.
+         */
+        get: operations["get_write_mode_api_v1_libraries__library_id__write_mode_get"];
+        /**
+         * Set Write Mode
+         * @description Turn write mode on or off.
+         *
+         *     Enabling a passphrase-protected library needs that passphrase in the body —
+         *     a one-time re-auth on the capability change, answered with a generic 401 so
+         *     a missing passphrase and a wrong one are indistinguishable. Enabling on a
+         *     deployment configured read-only is refused with 403 ``write_mode_disabled``.
+         *     Disabling is always permitted for an authorized caller.
+         *
+         *     A correct passphrase authorizes the request on its own, in place of an
+         *     unlocked session: it *is* the library's credential, and demanding a live
+         *     unlock as well would leave a locked library unable to gain write mode
+         *     without first being opened somewhere else — for one prompt, two prompts.
+         */
+        put: operations["set_write_mode_api_v1_libraries__library_id__write_mode_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2234,6 +2504,12 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /**
+         * ConflictPolicy
+         * @description Caller's answer to a path collision, chosen before or after the 409.
+         * @enum {string}
+         */
+        ConflictPolicy: "fail" | "skip" | "suffix" | "replace";
         /** ContinueWatchingItem */
         ContinueWatchingItem: {
             /** Cover Key */
@@ -2367,6 +2643,19 @@ export interface components {
             revoked_at: string | null;
         };
         /**
+         * EmptyTrashRequest
+         * @description Permanently delete trashed entries. The one operation with no undo.
+         */
+        EmptyTrashRequest: {
+            /** Older Than Days */
+            older_than_days?: number | null;
+        };
+        /** EmptyTrashResult */
+        EmptyTrashResult: {
+            /** Operations Emptied */
+            operations_emptied: number;
+        };
+        /**
          * FacetRequest
          * @description Faceted counts over the current browse scope, for the toolbar filter
          *     popovers. The scope mirrors a browse request (view/collection/search plus a
@@ -2431,9 +2720,18 @@ export interface components {
         /**
          * FileAvailability
          * @description File presence on disk. Distinct from metadata deletion (ADR-0002).
+         *
+         *     ``trashed`` is the third state, added by write mode (ADR-0013 §3.2): the
+         *     file has been moved into the library's own trash and is recoverable. It is
+         *     deliberately **not** ``missing`` — missing means "we do not know where this
+         *     went", which is the scanner's problem to solve, whereas trashed means "we
+         *     put it there, and here is how to put it back". Surfaces that require a
+         *     readable file already test for ``available``, so they exclude it for free;
+         *     the Missing Files view tests for ``missing``, so a trashed file does not
+         *     appear there either.
          * @enum {string}
          */
-        FileAvailability: "available" | "missing";
+        FileAvailability: "available" | "missing" | "trashed";
         /** FileBrowserEntryRead */
         FileBrowserEntryRead: {
             /** Audio Codec */
@@ -2503,6 +2801,82 @@ export interface components {
             sequence: number;
             /** Source */
             source?: string | null;
+        };
+        /**
+         * FileOpStatus
+         * @description Lifecycle of a journaled file operation (ADR-0013 §3.1).
+         *
+         *     ``pending`` is written *before* the filesystem is touched, so a crash
+         *     mid-operation is discoverable rather than silent: the reconciler on the next
+         *     library open decides whether the operation completed (finish the metadata
+         *     side) or never happened (``failed``). ``undone`` records that the inverse
+         *     was applied, keeping the history honest rather than deleting the row.
+         * @enum {string}
+         */
+        FileOpStatus: "pending" | "done" | "failed" | "undone" | "emptied";
+        /**
+         * FileOpType
+         * @description Kind of guarded file operation recorded in the journal.
+         *
+         *     Only the operations that exist are listed. ``save_new`` (W2) follows; the
+         *     journal stores the value as text, so adding one needs no migration.
+         *
+         *     There is no ``restore`` member: restoring is not a new operation, it is the
+         *     original ``trash`` row being undone, which is why the trash can be listed by
+         *     reading the journal for `trash` rows that are still ``done``.
+         * @enum {string}
+         */
+        FileOpType: "rename" | "mkdir" | "trash" | "import" | "move";
+        /**
+         * FileOperationPage
+         * @description Newest-first page of the journal.
+         */
+        FileOperationPage: {
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Operations */
+            operations: components["schemas"]["FileOperationRead"][];
+        };
+        /**
+         * FileOperationRead
+         * @description One journal entry, as the history view and Undo need it.
+         */
+        FileOperationRead: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            op: components["schemas"]["FileOpType"];
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            status: components["schemas"]["FileOpStatus"];
+        };
+        /**
+         * FileOperationResult
+         * @description What an operation did, for the toast that offers to undo it.
+         */
+        FileOperationResult: {
+            /**
+             * Failed Paths
+             * @default []
+             */
+            failed_paths: string[];
+            /** Files Updated */
+            files_updated: number;
+            operation: components["schemas"]["FileOperationRead"];
+            /** Path */
+            path: string;
+            /** Skipped */
+            skipped: boolean;
         };
         /** FileRead */
         FileRead: {
@@ -2700,6 +3074,28 @@ export interface components {
             environment: string;
             /** Status */
             status: string;
+            /** Write Mode */
+            write_mode: string;
+        };
+        /**
+         * ImportResultRead
+         * @description An import, plus what actually arrived.
+         */
+        ImportResultRead: {
+            /**
+             * Failed Paths
+             * @default []
+             */
+            failed_paths: string[];
+            /** Files Updated */
+            files_updated: number;
+            operation: components["schemas"]["FileOperationRead"];
+            /** Path */
+            path: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Skipped */
+            skipped: boolean;
         };
         /** JobRead */
         JobRead: {
@@ -2830,6 +3226,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Write Mode Enabled */
+            write_mode_enabled: boolean;
         };
         /**
          * LibraryRegister
@@ -2849,6 +3247,14 @@ export interface components {
          * @enum {string}
          */
         LibraryStatus: "available" | "unavailable";
+        /**
+         * MakeDirectoryRequest
+         * @description Create one new directory at a library-relative path.
+         */
+        MakeDirectoryRequest: {
+            /** Path */
+            path: string;
+        };
         /** ManualBundleResultRead */
         ManualBundleResultRead: {
             /** Bundle Id */
@@ -2888,6 +3294,21 @@ export interface components {
          * @enum {string}
          */
         MediaKind: "video" | "image" | "subtitle" | "audio" | "other";
+        /**
+         * MoveRequest
+         * @description Move one or more files/directories into another directory.
+         */
+        MoveRequest: {
+            /**
+             * Dest Dir
+             * @default
+             */
+            dest_dir: string;
+            /** @default fail */
+            on_conflict: components["schemas"]["ConflictPolicy"];
+            /** Paths */
+            paths: string[];
+        };
         /** NotNode */
         "NotNode-Input": {
             /** Child */
@@ -3292,6 +3713,18 @@ export interface components {
             /** Sequence */
             sequence: number;
         };
+        /**
+         * RenameRequest
+         * @description Rename one file or directory in place.
+         */
+        RenameRequest: {
+            /** New Name */
+            new_name: string;
+            /** @default fail */
+            on_conflict: components["schemas"]["ConflictPolicy"];
+            /** Path */
+            path: string;
+        };
         /** SetIdsRequest */
         SetIdsRequest: {
             /** Ids */
@@ -3516,6 +3949,52 @@ export interface components {
             suggestions: components["schemas"]["TargetSuggestionRead"][];
         };
         /**
+         * TrashRead
+         * @description Everything currently recoverable, newest deletion first.
+         */
+        TrashRead: {
+            /** Operations */
+            operations: components["schemas"]["TrashedOperationRead"][];
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * TrashRequest
+         * @description Move files and/or directories into the library's trash.
+         */
+        TrashRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * TrashedEntryRead
+         * @description One entry sitting in the trash, and where it would go back to.
+         */
+        TrashedEntryRead: {
+            /** File Id */
+            file_id: string | null;
+            /** Is Directory */
+            is_directory: boolean;
+            /** Name */
+            name: string;
+            /** Original Path */
+            original_path: string;
+            /** Size Bytes */
+            size_bytes: number | null;
+        };
+        /**
+         * TrashedOperationRead
+         * @description One deletion, restorable as a unit.
+         */
+        TrashedOperationRead: {
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Entries */
+            entries: components["schemas"]["TrashedEntryRead"][];
+            /** Operation Id */
+            operation_id: string;
+        };
+        /**
          * UnbundledFilesPage
          * @description A flat, cross-library page of not-yet-bundled files (the provisional
          *     scan rows), shaped like File Browser entries so one file row renders both.
@@ -3562,6 +4041,30 @@ export interface components {
             uncategorized: number;
             /** Untagged */
             untagged: number;
+        };
+        /**
+         * WriteModeRead
+         * @description The write-mode state of one library, and why it is what it is.
+         */
+        WriteModeRead: {
+            /** Allowed By Deployment */
+            allowed_by_deployment: boolean;
+            /** Effective */
+            effective: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Requires Passphrase */
+            requires_passphrase: boolean;
+        };
+        /**
+         * WriteModeUpdate
+         * @description Turn write mode on or off for one library.
+         */
+        WriteModeUpdate: {
+            /** Enabled */
+            enabled: boolean;
+            /** Passphrase */
+            passphrase?: string | null;
         };
     };
     responses: never;
@@ -5665,6 +6168,386 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FileBrowserListingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_operations_api_v1_libraries__library_id__file_ops_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_file_api_v1_libraries__library_id__file_ops_import_post: {
+        parameters: {
+            query?: {
+                dest_dir?: string;
+                filename?: string;
+                on_conflict?: components["schemas"]["ConflictPolicy"];
+                link?: boolean;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResultRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    make_directory_api_v1_libraries__library_id__file_ops_mkdir_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MakeDirectoryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_entries_api_v1_libraries__library_id__file_ops_move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_entry_api_v1_libraries__library_id__file_ops_rename_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_trash_api_v1_libraries__library_id__file_ops_trash_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trash_entries_api_v1_libraries__library_id__file_ops_trash_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyTrashRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmptyTrashResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                operation_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
                 };
             };
             /** @description Validation Error */
@@ -7789,6 +8672,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_write_mode_api_v1_libraries__library_id__write_mode_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteModeRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_write_mode_api_v1_libraries__library_id__write_mode_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WriteModeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WriteModeRead"];
                 };
             };
             /** @description Validation Error */

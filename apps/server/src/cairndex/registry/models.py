@@ -37,6 +37,11 @@ class RegisteredLibrary(RegistryBase):
     )
     # The library DB's schema/format version, as recorded in the manifest.
     schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    # Guarded file operations inside this library's root (ADR-0013), default off.
+    # Deliberately registry state rather than manifest state: copying a library
+    # to another server must never carry write permission with it. The
+    # deployment switch ``CAIRNDEX_WRITE_MODE`` can override this to read-only.
+    write_mode_enabled: Mapped[bool] = mapped_column(default=False)
 
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]

@@ -14,6 +14,7 @@ import type { DesktopMenuAction } from '../desktop/types'
 import { createDragGuard } from './dragGuard'
 import type {
   DeepLinkTarget,
+  HostImportOutcome,
   HostOs,
   HostPlatform,
   OpenedLibrary,
@@ -335,6 +336,13 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     },
     reverseMapPaths: (libraryId, paths) =>
       invoke<ReverseMapResult>('reverse_map_paths', { libraryId, paths }),
+    importDroppedFile: ({ libraryId, path, destDir, onConflict }) =>
+      invoke<HostImportOutcome>('import_dropped_file', {
+        libraryId,
+        path,
+        destDir,
+        onConflict: onConflict ?? null,
+      }),
     listenFileDrop: (handler) =>
       // Tauri delivers OS file drops as a native webview event (dragDropEnabled),
       // carrying the real absolute paths; internal DOM drag-and-drop is untouched.

@@ -437,6 +437,25 @@ fn targets_running_sidecar(local: &LocalServer, server_url: &str, token: Option<
     candidate == sidecar && token == info.token
 }
 
+impl MediaProxy {
+    /// The server and bearer that may be used for one library, or None.
+    ///
+    /// Exposes the *same* decision the relay makes for a media request (above):
+    /// the credential is attached only when it authorizes the whole server or
+    /// explicitly grants this library. Shared rather than re-derived so a change
+    /// to the scoping rule cannot be applied in one place and forgotten in the
+    /// other — the import path (`importer.rs`) uploads with this.
+    pub(crate) fn target_for(&self, library_id: &str) -> Option<(Url, Option<String>)> {
+        let guard = self.config.read().ok()?;
+        let config = guard.as_ref()?;
+        let token = config
+            .token
+            .clone()
+            .filter(|_| config.server_scoped_token || config.library_ids.contains(library_id));
+        Some((config.server_url.clone(), token))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

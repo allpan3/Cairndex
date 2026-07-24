@@ -132,6 +132,17 @@ unlinked filesystem entry is the moved file. Scan reconciliation performs
 automatic high-confidence repair; the explicit Missing Files action handles a
 unique replacement that is already linked.
 
+`availability` has a third value, `trashed` (ADR-0013 §3.2), which no scan or
+access check ever sets or clears — only a guarded delete and its restore do.
+The distinction it draws is the point: `missing` means *we do not know where
+this went*, which is the repair machinery's problem, while `trashed` means *we
+put it there, and here is how to put it back*. So scan reconciliation skips
+trashed rows rather than sweeping them into `missing`, which would empty the
+Trash view into Missing Files and make a restore look like a repair. A trashed
+row's `relative_path` points at its location **inside** `.cairndex/trash/`,
+because that is where the bytes are — which also frees the original path for
+something else to take, exactly as Replace needs.
+
 The scanner ignores hidden paths (`.cairndex`, dotfiles/dot-directories, and a
 small denylist such as `.DS_Store`, `__pycache__`, `node_modules`, `Thumbs.db`).
 A rescan also deletes scan-created provisional rows that point at now-ignored
@@ -299,6 +310,45 @@ membership changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
 that snapshot; omitting a directory selects the balanced default.
 
+### `file_operations`
+
+The guarded-write journal (ADR-0013 §3.1): `id`, `op`, `status`, `payload`
+(JSON), `error`, `created_at`, `finished_at`. In the **library** DB, not the
+registry, so the history travels with the library the way the operations'
+effects do.
+
+`status` moves `pending` → `done` | `failed`, or `done` → `undone`. The
+`pending` row is written **and committed before the filesystem is touched**;
+the content rows and the `done` status are then written in one transaction, so
+metadata and status can never disagree. A crash in between leaves a `pending`
+row that the reconciler settles on the next library open by looking at the
+filesystem: source gone and destination present means the operation happened
+(finish the metadata side), source present and destination absent means it did
+not (`failed`), and anything else is left to the scanner's moved-file repair
+rather than guessed at.
+
+`payload` is JSON rather than columns because each verb has a different shape
+and this table must not grow a column per operation. For `rename` it carries
+`source`, `destination`, and — once finished — `files_updated`; for `mkdir`,
+`destination`; for `trash`, the requested `paths` and the resulting `entries`
+(each with `original_path`, `stored_path`, `file_id`, `is_directory`); for
+`import`, the `destination`, `filename` and `size_bytes` written. It is also
+what Undo reads to apply the inverse.
+
+**The journal is the trash's index.** A `trash` row still in `done` has not been
+restored (`undone`) or permanently deleted (`emptied`), so listing the trash is
+one query against this table and no second table has to be kept in step with it.
+A Replace records `replaced_operation_id` pointing at the `trash` row for the
+file it displaced — so the displaced file appears in the Trash view like any
+other deletion, and undoing the rename restores it.
+
+Renaming updates `AssetFile.relative_path` (and the derived `directory_path`)
+in the same transaction, **preserving `AssetFile.id`**, which is what carries
+bundle membership, covers, subtitle links, notes, ratings, and cache identity
+across the rename. A directory rename repoints every row beneath it, matched on
+path segments in Python — a SQL `LIKE 'Show/S01%'` rewrite would also sweep up
+`Show/S01 extras/`.
+
 ## Registry database
 
 The registry DB lives at `{CAIRNDEX_DATA_DIR}/registry.db` and is server-local
@@ -309,8 +359,15 @@ runtime state. It is not portable library metadata and has its own
 
 `id`, `library_uuid` (copied from the library manifest, unique), `name`,
 `root_path` (absolute, normalized, unique), `manifest_path`, `status`,
-`schema_version`, timestamps, `last_opened_at`. One row per known
-`<root>/.cairndex/` library package.
+`schema_version`, `write_mode_enabled`, timestamps, `last_opened_at`. One row per
+known `<root>/.cairndex/` library package.
+
+`write_mode_enabled` (default false) is the owner's per-library opt-in to
+guarded file operations (ADR-0013). It lives here rather than in the portable
+manifest **on purpose**: a library copied to another server must arrive
+read-only, never carrying write permission with it. `CAIRNDEX_WRITE_MODE=disabled`
+overrides it deployment-wide. Registries created before ADR-0013 gain the column
+additively, defaulting to off.
 
 ### `job_queue`
 

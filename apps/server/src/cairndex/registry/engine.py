@@ -23,11 +23,16 @@ from cairndex.registry.base import RegistryBase
 # Additive columns the registry may gain over time. ``create_all`` only creates
 # missing *tables*, never alters an existing one, and the registry deliberately
 # has no migration chain (it is regenerable runtime state) — but dropping it
-# would lose registered libraries. So we additively add any missing nullable
-# columns to long-lived tables. Each entry is (table, column, SQLite type).
+# would lose registered libraries. So we additively add any missing columns to
+# long-lived tables. Each entry is (table, column, SQLite type + default): a
+# NOT NULL column needs a constant DEFAULT, which is what makes SQLite's
+# single-pass ADD COLUMN legal on a table that already has rows.
 _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("job_queue", "phase", "VARCHAR(32)"),
     ("job_queue", "message", "TEXT"),
+    # ADR-0013: an existing registry row predates write mode and must come back
+    # read-only, which is exactly what defaulting to 0 gives.
+    ("registered_libraries", "write_mode_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 

@@ -68,6 +68,7 @@ const library: LibraryRead = {
   root_path: '/server/media',
   status: 'available',
   schema_version: 1,
+  write_mode_enabled: false,
   created_at: '2026-07-18T00:00:00Z',
   updated_at: '2026-07-18T00:00:00Z',
   last_opened_at: null,
