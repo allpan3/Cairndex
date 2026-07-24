@@ -95,6 +95,20 @@ class DeviceScopeError(DomainError):
     code = "device_scope_forbidden"
 
 
+class WriteModeDisabledError(DomainError):
+    """A guarded file operation was requested on a read-only library (ADR-0013).
+
+    Not an authentication problem — the caller is authorized, the *capability*
+    is off — so it maps to 403 rather than 401. ``details`` reports which of the
+    two gates refused, because the fixes differ: a per-library toggle the owner
+    can flip in the UI, versus a deployment-wide ``CAIRNDEX_WRITE_MODE=disabled``
+    that only whoever runs the server can change. The UI greys write actions
+    rather than hiding them, and this is what it explains in the tooltip.
+    """
+
+    code = "write_mode_disabled"
+
+
 class LibraryLeaseError(ConflictError):
     """Base for ownership-lease refusals (ADR-0018). Maps to 409.
 

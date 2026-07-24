@@ -2280,6 +2280,12 @@ code {
   color: #ff6b6b;
   border-color: #5a2b2b;
 }
+/* A toggle that is currently on (aria-pressed). Reads as engaged without the
+   weight of `--primary`, which is reserved for the action a dialog commits to. */
+.btn--active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .btn--compact {
   padding: 3px 8px;
   font-size: 12px;
@@ -3976,6 +3982,31 @@ code {
   flex: 0 1 auto;
   overflow: hidden;
 }
+/* --- Inline rename / New Folder (ADR-0013 W1) ----------------------------- */
+/* Sized to the row it replaces so committing a name does not make the list
+   jump — the entry is in the same place before and after being renamed. */
+.file-row__rename {
+  flex: 1 1 auto;
+  min-width: 6em;
+  padding: 2px 6px;
+  font-size: inherit;
+}
+.card__meta .file-row__rename {
+  width: 100%;
+}
+/* The unnamed new folder sits above the listing: it has no position in the
+   current sort until it has a name, and inventing one would move it on commit. */
+.file-newfolder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.modal--narrow {
+  width: min(420px, 92vw);
+}
 .file-row__type,
 .file-row__modified {
   color: var(--text-muted);
@@ -4092,6 +4123,12 @@ code {
   display: block;
   font-size: 12px;
   color: var(--text-muted);
+}
+/* The write-mode passphrase re-prompt (ADR-0013 §1), inline in the row it
+   belongs to. Bounded so it does not push the row's buttons off the edge. */
+.lib-row__main .edit {
+  margin-top: 6px;
+  max-width: 240px;
 }
 .lib-add {
   border-top: 1px solid var(--border);
@@ -4340,6 +4377,12 @@ code {
   font-size: 12px;
   color: var(--text-muted);
 }
+/* The Undo beside a completed file operation (ADR-0013 §3.1). Inline with the
+   message rather than below it: the toast is one line and one decision. */
+.mb-toast__action {
+  margin-left: 12px;
+  vertical-align: middle;
+}
 .mb-toast {
   position: fixed;
   left: 50%;
@@ -4444,4 +4487,150 @@ code {
   font-size: 13px;
   color: var(--text);
   cursor: pointer;
+}
+
+/* --- Trash view (ADR-0013 §3.2) ------------------------------------------- */
+/* Grouped by deletion, because a deletion is what Put back acts on: trashing a
+   folder of forty episodes is one decision, and undoing it is one too. */
+.trash-list {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.trash-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.trash-group__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.trash-group__icon {
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+}
+.trash-group__when {
+  color: var(--text-strong);
+}
+.trash-group__count,
+.trash-row__path {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.trash-row {
+  display: grid;
+  grid-template-columns: minmax(8em, 1fr) minmax(0, 2fr) 6em;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+}
+.trash-row__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The original location, which is what a user checks before pressing Put back.
+   Monospace and truncated from the left would be nicer; ellipsis is enough. */
+.trash-row__path {
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Empty Trash is the one action with no way back, so its confirmation states
+   the consequence inline rather than hiding behind a generic "Are you sure?". */
+.trash__warning {
+  color: #ff6b6b;
+  font-size: 12px;
+}
+.trash-preview {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+/* --- Move to… destination picker (ADR-0013 §7, plan 4 W3) ----------------- */
+.dir-picker__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.dir-picker__crumb {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.dir-picker__crumb:disabled {
+  color: var(--text);
+  cursor: default;
+}
+.dir-picker__sep {
+  color: var(--text-muted);
+}
+.dir-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.dir-picker__row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 8px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.dir-picker__row::before {
+  content: '📁';
+  margin-right: 8px;
+}
+.dir-picker__row:hover {
+  background: var(--bg-2);
+}
+.dir-picker__empty {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* --- Copy files in (ADR-0013 §7) ------------------------------------------ */
+/* The whole listing is the drop target, not a separate zone: the folder being
+   browsed is where the files go, so the folder's own body is the honest edge. */
+.file-browser__body--dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+.file-importing {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-size: 12px;
 }

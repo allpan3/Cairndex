@@ -23,6 +23,7 @@ const MOVIES: LibraryRead = {
   root_path: '/srv/movies',
   status: 'available',
   schema_version: 1,
+  write_mode_enabled: false,
   created_at: '2026-07-22T00:00:00Z',
   updated_at: '2026-07-22T00:00:00Z',
   last_opened_at: null,
@@ -46,6 +47,11 @@ let requests: Recorded[]
 let libraries: LibraryRead[]
 let probe: PathProbe
 let suggestions: PathSuggestion[]
+// The deployment master switch (ADR-0013 §1), as `/health` reports it.
+let deploymentWriteMode: 'allowed' | 'disabled'
+// The passphrase the stubbed server will accept, or null for an unlocked
+// library that needs none. Anything else gets the same generic 401.
+let requiredPassphrase: string | null
 
 // Routes the API surface this modal touches; every request is recorded so a test
 // can assert what was *not* sent as easily as what was.
@@ -74,6 +80,37 @@ function stubApi() {
       if (url === '/api/v1/libraries/create')
         return reply(201, { ...MOVIES, id: 'lib-created', name: 'Created' })
       if (url === '/api/v1/libraries') return reply(200, libraries)
+      if (url === '/api/v1/health')
+        return reply(200, {
+          status: 'ok',
+          app_name: 'Cairndex',
+          environment: 'test',
+          api_features: ['pairing', 'progress'],
+          write_mode: deploymentWriteMode,
+        })
+      if (url.endsWith('/write-mode') && method === 'PUT') {
+        const body = (init?.body ? JSON.parse(String(init.body)) : {}) as {
+          enabled?: boolean
+          passphrase?: string | null
+        }
+        if (body.enabled && requiredPassphrase !== null && body.passphrase !== requiredPassphrase) {
+          return reply(401, { code: 'auth_required', message: 'Passphrase required.' })
+        }
+        // The registry now holds the new flag, so the listing this modal
+        // refetches must agree — otherwise the test would only ever prove the
+        // optimistic patch, and a server that ignored the write would pass.
+        libraries = libraries.map((library) =>
+          url.includes(library.id)
+            ? { ...library, write_mode_enabled: body.enabled ?? false }
+            : library,
+        )
+        return reply(200, {
+          enabled: body.enabled ?? false,
+          allowed_by_deployment: deploymentWriteMode === 'allowed',
+          effective: (body.enabled ?? false) && deploymentWriteMode === 'allowed',
+          requires_passphrase: requiredPassphrase !== null,
+        })
+      }
       if (method === 'DELETE') return reply(204)
       throw new Error(`unexpected request: ${method} ${url}`)
     }),
@@ -85,6 +122,8 @@ beforeEach(() => {
   libraries = [MOVIES]
   probe = PLAIN_FOLDER
   suggestions = []
+  deploymentWriteMode = 'allowed'
+  requiredPassphrase = null
   vi.clearAllMocks()
   stubApi()
 })
@@ -445,4 +484,101 @@ test('the browser has no Browse… button, because it cannot produce a server pa
   renderManager()
 
   expect(screen.queryByRole('button', { name: 'Browse…' })).toBeNull()
+})
+
+// --- write mode (ADR-0013 §1) ------------------------------------------------
+
+const writeModeButton = () => screen.getByRole('button', { name: 'Write mode for Movies' })
+
+test('turning write mode on says what it unlocks before it does it', async () => {
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false'))
+
+  fireEvent.click(writeModeButton())
+
+  // Nothing has been sent yet — the explanation comes first.
+  expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')).toBeUndefined()
+  expect(screen.getByText(/create, rename, move, and trash files/)).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  await waitFor(() => expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')).toBeTruthy())
+  expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')?.body).toEqual({
+    enabled: true,
+    passphrase: null,
+  })
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+})
+
+test('a protected library is asked for its passphrase, and told when it is wrong', async () => {
+  requiredPassphrase = 'open-sesame'
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toBeInTheDocument())
+
+  fireEvent.click(writeModeButton())
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  // The field appears only once the server has asked for it: an unprotected
+  // library must not be prompted for a passphrase it does not have.
+  const field = await screen.findByLabelText('Passphrase for Movies')
+  expect(screen.queryByText(/not accepted/)).toBeNull()
+
+  fireEvent.change(field, { target: { value: 'guess' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  expect(await screen.findByText(/not accepted/)).toBeInTheDocument()
+  expect(writeModeButton).toThrow() // still in the confirm step, not enabled
+
+  fireEvent.change(screen.getByLabelText('Passphrase for Movies'), {
+    target: { value: 'open-sesame' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Turn on' }))
+
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+  const attempts = requests.filter((request) => request.url.endsWith('/write-mode'))
+  expect(attempts.map((request) => request.body?.passphrase)).toEqual([
+    null,
+    'guess',
+    'open-sesame',
+  ])
+})
+
+test('turning write mode off is immediate and never asks for anything', async () => {
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  requiredPassphrase = 'open-sesame'
+  renderManager()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'true'))
+
+  fireEvent.click(writeModeButton())
+
+  await waitFor(() => expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')).toBeTruthy())
+  expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')?.body).toEqual({
+    enabled: false,
+    passphrase: null,
+  })
+  expect(screen.queryByLabelText('Passphrase for Movies')).toBeNull()
+  await waitFor(() => expect(writeModeButton()).toHaveAttribute('aria-pressed', 'false'))
+})
+
+test('a read-only deployment disables the toggle and explains why', async () => {
+  deploymentWriteMode = 'disabled'
+  renderManager()
+
+  await waitFor(() => expect(writeModeButton()).toBeDisabled())
+  expect(writeModeButton()).toHaveAttribute('title', expect.stringContaining('CAIRNDEX_WRITE_MODE'))
+
+  fireEvent.click(writeModeButton())
+
+  expect(sent('PUT', '/api/v1/libraries/lib-movies/write-mode')).toBeUndefined()
+})
+
+test('a library left on while the deployment forbids it says so rather than reading as off', async () => {
+  deploymentWriteMode = 'disabled'
+  libraries = [{ ...MOVIES, write_mode_enabled: true }]
+  renderManager()
+
+  const toggle = await screen.findByRole('button', { name: 'Write mode for Movies' })
+  await waitFor(() => expect(toggle).toHaveTextContent('on (blocked)'))
+  // Still turn-off-able: the library's own flag is the owner's to clear.
+  expect(toggle).toBeEnabled()
 })

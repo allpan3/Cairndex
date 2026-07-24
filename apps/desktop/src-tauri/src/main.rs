@@ -6,6 +6,8 @@ mod deeplink;
 mod dragout;
 // Saves server-generated export artifacts through the native save dialog
 mod exports;
+// Streams dropped external files into a library through the server's import API
+mod importer;
 // Embeds the SPA-owned keymap table that defines the native menu
 mod keymap;
 // Flushes webview state before every application-level exit path
@@ -33,6 +35,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // the confirmation round trip without ever entering the web layer.
         .manage(sidecar::PendingPick::default())
         .manage(app_menu::MainWindowReady::default())
+        // The paths from the most recent OS drop. Recorded by the shell so that
+        // an upload can only ever be asked for a file the user actually dropped
+        // (see `importer`), never one the web layer names on its own.
+        .manage(importer::DroppedFiles::default())
         // Single-instance must be registered BEFORE the deep-link plugin: on
         // Windows/Linux a deep link launches a *second* process whose argv carries
         // the URL, and this callback is where that argv is forwarded to the running
@@ -74,6 +80,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if matches!(event, tauri::WindowEvent::Resized(_)) {
                 app_menu::broadcast_fullscreen(window.app_handle());
             }
+            // Record what was dropped *here*, in the shell, rather than trusting
+            // the webview to report it back later. The webview receives the same
+            // drop through its own event and drives the flow; this is only the
+            // record of what the user actually put on the window.
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                importer::remember_drop(&window.state::<importer::DroppedFiles>(), paths);
+            }
         })
         // The renderer normally reveals the hidden window after mounting. This
         // page-load hook only prevents a broken renderer bridge from stranding it.
@@ -92,6 +105,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app_menu::toggle_window_fullscreen,
             deeplink::take_pending_deep_link,
             exports::save_export_file,
+            importer::import_dropped_file,
             dragout::start_file_drag,
             host::open_file,
             host::reveal_file,

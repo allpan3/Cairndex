@@ -1377,6 +1377,17 @@
         "title": "CollectionUpdate",
         "type": "object"
       },
+      "ConflictPolicy": {
+        "description": "Caller's answer to a path collision, chosen before or after the 409.",
+        "enum": [
+          "fail",
+          "skip",
+          "suffix",
+          "replace"
+        ],
+        "title": "ConflictPolicy",
+        "type": "string"
+      },
       "ContinueWatchingItem": {
         "properties": {
           "cover_key": {
@@ -1858,6 +1869,38 @@
         "title": "DeviceRead",
         "type": "object"
       },
+      "EmptyTrashRequest": {
+        "description": "Permanently delete trashed entries. The one operation with no undo.",
+        "properties": {
+          "older_than_days": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Older Than Days"
+          }
+        },
+        "title": "EmptyTrashRequest",
+        "type": "object"
+      },
+      "EmptyTrashResult": {
+        "properties": {
+          "operations_emptied": {
+            "title": "Operations Emptied",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operations_emptied"
+        ],
+        "title": "EmptyTrashResult",
+        "type": "object"
+      },
       "FacetRequest": {
         "description": "Faceted counts over the current browse scope, for the toolbar filter\npopovers. The scope mirrors a browse request (view/collection/search plus a\nbase filter), but the base ``filter`` must exclude the facet category being\nshown so a category's own selections don't shrink its own counts.",
         "properties": {
@@ -2014,10 +2057,11 @@
         "type": "object"
       },
       "FileAvailability": {
-        "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).",
+        "description": "File presence on disk. Distinct from metadata deletion (ADR-0002).\n\n``trashed`` is the third state, added by write mode (ADR-0013 \u00a73.2): the\nfile has been moved into the library's own trash and is recoverable. It is\ndeliberately **not** ``missing`` \u2014 missing means \"we do not know where this\nwent\", which is the scanner's problem to solve, whereas trashed means \"we\nput it there, and here is how to put it back\". Surfaces that require a\nreadable file already test for ``available``, so they exclude it for free;\nthe Missing Files view tests for ``missing``, so a trashed file does not\nappear there either.",
         "enum": [
           "available",
-          "missing"
+          "missing",
+          "trashed"
         ],
         "title": "FileAvailability",
         "type": "string"
@@ -2315,6 +2359,154 @@
           "media_kind"
         ],
         "title": "FileLink",
+        "type": "object"
+      },
+      "FileOpStatus": {
+        "description": "Lifecycle of a journaled file operation (ADR-0013 \u00a73.1).\n\n``pending`` is written *before* the filesystem is touched, so a crash\nmid-operation is discoverable rather than silent: the reconciler on the next\nlibrary open decides whether the operation completed (finish the metadata\nside) or never happened (``failed``). ``undone`` records that the inverse\nwas applied, keeping the history honest rather than deleting the row.",
+        "enum": [
+          "pending",
+          "done",
+          "failed",
+          "undone",
+          "emptied"
+        ],
+        "title": "FileOpStatus",
+        "type": "string"
+      },
+      "FileOpType": {
+        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. ``save_new`` (W2) follows; the\njournal stores the value as text, so adding one needs no migration.\n\nThere is no ``restore`` member: restoring is not a new operation, it is the\noriginal ``trash`` row being undone, which is why the trash can be listed by\nreading the journal for `trash` rows that are still ``done``.",
+        "enum": [
+          "rename",
+          "mkdir",
+          "trash",
+          "import",
+          "move"
+        ],
+        "title": "FileOpType",
+        "type": "string"
+      },
+      "FileOperationPage": {
+        "description": "Newest-first page of the journal.",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/FileOperationRead"
+            },
+            "title": "Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations",
+          "next_cursor"
+        ],
+        "title": "FileOperationPage",
+        "type": "object"
+      },
+      "FileOperationRead": {
+        "description": "One journal entry, as the history view and Undo need it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/FileOpType"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileOpStatus"
+          }
+        },
+        "required": [
+          "id",
+          "op",
+          "status",
+          "payload",
+          "error",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "FileOperationRead",
+        "type": "object"
+      },
+      "FileOperationResult": {
+        "description": "What an operation did, for the toast that offers to undo it.",
+        "properties": {
+          "failed_paths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Paths",
+            "type": "array"
+          },
+          "files_updated": {
+            "title": "Files Updated",
+            "type": "integer"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/FileOperationRead"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "path",
+          "files_updated",
+          "skipped"
+        ],
+        "title": "FileOperationResult",
         "type": "object"
       },
       "FileRead": {
@@ -2819,15 +3011,61 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "write_mode": {
+            "title": "Write Mode",
+            "type": "string"
           }
         },
         "required": [
           "status",
           "app_name",
           "environment",
-          "api_features"
+          "api_features",
+          "write_mode"
         ],
         "title": "HealthStatus",
+        "type": "object"
+      },
+      "ImportResultRead": {
+        "description": "An import, plus what actually arrived.",
+        "properties": {
+          "failed_paths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Paths",
+            "type": "array"
+          },
+          "files_updated": {
+            "title": "Files Updated",
+            "type": "integer"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/FileOperationRead"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "operation",
+          "path",
+          "files_updated",
+          "skipped",
+          "size_bytes"
+        ],
+        "title": "ImportResultRead",
         "type": "object"
       },
       "JobRead": {
@@ -3172,6 +3410,10 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "write_mode_enabled": {
+            "title": "Write Mode Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3181,6 +3423,7 @@
           "root_path",
           "status",
           "schema_version",
+          "write_mode_enabled",
           "created_at",
           "updated_at",
           "last_opened_at"
@@ -3211,6 +3454,21 @@
         ],
         "title": "LibraryStatus",
         "type": "string"
+      },
+      "MakeDirectoryRequest": {
+        "description": "Create one new directory at a library-relative path.",
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "MakeDirectoryRequest",
+        "type": "object"
       },
       "ManualBundleResultRead": {
         "properties": {
@@ -3276,6 +3534,33 @@
         ],
         "title": "MediaKind",
         "type": "string"
+      },
+      "MoveRequest": {
+        "description": "Move one or more files/directories into another directory.",
+        "properties": {
+          "dest_dir": {
+            "default": "",
+            "title": "Dest Dir",
+            "type": "string"
+          },
+          "on_conflict": {
+            "$ref": "#/components/schemas/ConflictPolicy",
+            "default": "fail"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "MoveRequest",
+        "type": "object"
       },
       "NotNode-Input": {
         "additionalProperties": false,
@@ -4592,6 +4877,32 @@
         "title": "ProposedRoleRead",
         "type": "object"
       },
+      "RenameRequest": {
+        "description": "Rename one file or directory in place.",
+        "properties": {
+          "new_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "New Name",
+            "type": "string"
+          },
+          "on_conflict": {
+            "$ref": "#/components/schemas/ConflictPolicy",
+            "default": "fail"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "new_name"
+        ],
+        "title": "RenameRequest",
+        "type": "object"
+      },
       "SetIdsRequest": {
         "properties": {
           "ids": {
@@ -5279,6 +5590,129 @@
         "title": "TargetSuggestionsResponse",
         "type": "object"
       },
+      "TrashRead": {
+        "description": "Everything currently recoverable, newest deletion first.",
+        "properties": {
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/TrashedOperationRead"
+            },
+            "title": "Operations",
+            "type": "array"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operations",
+          "size_bytes"
+        ],
+        "title": "TrashRead",
+        "type": "object"
+      },
+      "TrashRequest": {
+        "description": "Move files and/or directories into the library's trash.",
+        "properties": {
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "TrashRequest",
+        "type": "object"
+      },
+      "TrashedEntryRead": {
+        "description": "One entry sitting in the trash, and where it would go back to.",
+        "properties": {
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Id"
+          },
+          "is_directory": {
+            "title": "Is Directory",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "original_path": {
+            "title": "Original Path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          }
+        },
+        "required": [
+          "original_path",
+          "name",
+          "file_id",
+          "is_directory",
+          "size_bytes"
+        ],
+        "title": "TrashedEntryRead",
+        "type": "object"
+      },
+      "TrashedOperationRead": {
+        "description": "One deletion, restorable as a unit.",
+        "properties": {
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/TrashedEntryRead"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "deleted_at",
+          "entries"
+        ],
+        "title": "TrashedOperationRead",
+        "type": "object"
+      },
       "UnbundledFilesPage": {
         "description": "A flat, cross-library page of not-yet-bundled files (the provisional\nscan rows), shaped like File Browser entries so one file row renders both.",
         "properties": {
@@ -5401,6 +5835,61 @@
           "unbundled"
         ],
         "title": "ViewCounts",
+        "type": "object"
+      },
+      "WriteModeRead": {
+        "description": "The write-mode state of one library, and why it is what it is.",
+        "properties": {
+          "allowed_by_deployment": {
+            "title": "Allowed By Deployment",
+            "type": "boolean"
+          },
+          "effective": {
+            "title": "Effective",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "requires_passphrase": {
+            "title": "Requires Passphrase",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "allowed_by_deployment",
+          "effective",
+          "requires_passphrase"
+        ],
+        "title": "WriteModeRead",
+        "type": "object"
+      },
+      "WriteModeUpdate": {
+        "description": "Turn write mode on or off for one library.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "passphrase": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passphrase"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "WriteModeUpdate",
         "type": "object"
       }
     }
@@ -9905,6 +10394,891 @@
         "summary": "List File Browser Entries",
         "tags": [
           "library-files"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops": {
+      "get": {
+        "description": "Newest-first history of what write mode has done to this library.\n\nReadable without write mode: turning the capability off must not hide what\nit did while it was on.",
+        "operationId": "list_operations_api_v1_libraries__library_id__file_ops_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Operations",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/import": {
+      "post": {
+        "description": "Stream one external file into this library \u2014 the only way bytes enter it.\n\n**The body is the file**, raw, with the metadata in query parameters.\nDeliberately not multipart: the caller already has an open file handle or a\n`File` object, both of which stream as a body without an encoding step, and\nit keeps the server free of a form-parsing dependency for a request that is\n99.99% payload. One file per request, so each import gets its own progress,\nits own collision answer, and its own undo.\n\nThe server never reads a path the client names \u2014 it cannot: there is no path\nin this request, only bytes.",
+        "operationId": "import_file_api_v1_libraries__library_id__file_ops_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dest_dir",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Dest Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filename",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Filename",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "on_conflict",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ConflictPolicy",
+              "default": "fail"
+            }
+          },
+          {
+            "in": "query",
+            "name": "link",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Link",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResultRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import File",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/mkdir": {
+      "post": {
+        "description": "Create one new directory. Its parent must already exist.",
+        "operationId": "make_directory_api_v1_libraries__library_id__file_ops_mkdir_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeDirectoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Make Directory",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/move": {
+      "post": {
+        "description": "Move files and directories into another directory, carrying their metadata.\n\nLike rename, the filesystem move and the `AssetFile.relative_path` update\nhappen together, so every id \u2014 and therefore every bundle membership, cover,\nsubtitle link and cached thumbnail \u2014 survives by construction. Moving a\ndirectory repoints everything beneath it in the same operation.\n\nThe whole multi-select is one journal operation with one undo. A destination\nthat already holds something answers 409 `conflict` before anything moves,\nwhich the client turns into the Replace / Skip / Keep both prompt and\nre-issues with an explicit `on_conflict`.",
+        "operationId": "move_entries_api_v1_libraries__library_id__file_ops_move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Entries",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/rename": {
+      "post": {
+        "description": "Rename one file or directory, carrying its metadata with it.\n\nThe rename and the `AssetFile.relative_path` update happen together, so\nevery id \u2014 and therefore every bundle membership, cover, subtitle link and\ncached thumbnail \u2014 survives by construction rather than by later repair.\nRenaming a directory repoints everything beneath it in the same operation.\n\nA destination that already exists answers 409 `conflict`, which the client\nturns into the Replace / Skip / Keep both prompt and re-issues with an\nexplicit `on_conflict`.",
+        "operationId": "rename_entry_api_v1_libraries__library_id__file_ops_rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Entry",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash": {
+      "get": {
+        "description": "List everything currently recoverable.\n\nReadable without write mode, like the journal: what is *in* the trash is\npart of the library's state, and hiding it when the capability is off would\nmake files look permanently gone when they are not.",
+        "operationId": "read_trash_api_v1_libraries__library_id__file_ops_trash_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Trash",
+        "tags": [
+          "file-ops"
+        ]
+      },
+      "post": {
+        "description": "Move files and folders into the library's trash \u2014 never unlink them.\n\nThe entries are renamed into `.cairndex/trash/{operation_id}/`, which is on\nthe same filesystem (so it is instant even for large videos) and inside the\nlibrary package (so it travels with it). Linked rows keep their ids and\nbecome `trashed`, which is why restoring is lossless rather than a re-scan.",
+        "operationId": "trash_entries_api_v1_libraries__library_id__file_ops_trash_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrashRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trash Entries",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash/empty": {
+      "post": {
+        "description": "Permanently delete trashed entries and their metadata rows.\n\n**The only operation in write mode with no way back.** Everything else \u2014\nrename, New Folder, delete, even Replace \u2014 is recoverable until this runs.",
+        "operationId": "empty_trash_api_v1_libraries__library_id__file_ops_trash_empty_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyTrashRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmptyTrashResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Empty Trash",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/trash/restore/{operation_id}": {
+      "post": {
+        "description": "Put one deletion's entries back where they came from.\n\nRefused as a whole if anything now occupies one of those paths: half a\nrestore would leave the owner to work out which files came back.",
+        "operationId": "restore_from_trash_api_v1_libraries__library_id__file_ops_trash_restore__operation_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore From Trash",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/{operation_id}/undo": {
+      "post": {
+        "description": "Apply an operation's inverse \u2014 the Undo behind every completed toast.\n\nOnly a completed operation can be undone, and only once; the journal row is\nmarked `undone` rather than deleted, so the history still explains how the\nlibrary reached its current shape.",
+        "operationId": "undo_operation_api_v1_libraries__library_id__file_ops__operation_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Operation",
+        "tags": [
+          "file-ops"
         ]
       }
     },
@@ -14710,6 +16084,164 @@
         "summary": "Update Tag",
         "tags": [
           "tags"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/write-mode": {
+      "get": {
+        "description": "Report whether guarded file operations are permitted for this library.",
+        "operationId": "get_write_mode_api_v1_libraries__library_id__write_mode_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteModeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Write Mode",
+        "tags": [
+          "write mode"
+        ]
+      },
+      "put": {
+        "description": "Turn write mode on or off.\n\nEnabling a passphrase-protected library needs that passphrase in the body \u2014\na one-time re-auth on the capability change, answered with a generic 401 so\na missing passphrase and a wrong one are indistinguishable. Enabling on a\ndeployment configured read-only is refused with 403 ``write_mode_disabled``.\nDisabling is always permitted for an authorized caller.\n\nA correct passphrase authorizes the request on its own, in place of an\nunlocked session: it *is* the library's credential, and demanding a live\nunlock as well would leave a locked library unable to gain write mode\nwithout first being opened somewhere else \u2014 for one prompt, two prompts.",
+        "operationId": "set_write_mode_api_v1_libraries__library_id__write_mode_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteModeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteModeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Write Mode",
+        "tags": [
+          "write mode"
         ]
       }
     }

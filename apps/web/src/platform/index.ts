@@ -158,6 +158,20 @@ interface PlatformRuntime {
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
+  /**
+   * Stream one *dropped* file into a library (plan 4 W5).
+   *
+   * Only the shell can do this: a browser cannot read an absolute path, and the
+   * shell refuses any path it did not itself see in a drop. Undefined in the
+   * browser, where dropped files arrive as real `File` objects the web layer
+   * uploads directly.
+   */
+  importDroppedFile?(request: {
+    libraryId: string
+    path: string
+    destDir: string
+    onConflict?: string
+  }): Promise<HostImportOutcome>
   // True while a shell-initiated drag-out is still on the pasteboard, so the drop
   // listener ignores the app's own files dragged back onto the window (P1-4).
   isDragOutActive(): boolean
@@ -432,6 +446,28 @@ export const reverseMapHostPaths = (
 // Subscribes to OS file drops onto the shell window (no-op in the browser)
 export const listenHostFileDrop = (handler: (paths: string[]) => void): Promise<() => void> =>
   runtime.listenFileDrop(handler)
+
+/** What the shell reports after copying one dropped file into a library. */
+export interface HostImportOutcome {
+  path: string
+  operationId: string
+  sizeBytes: number
+  skipped: boolean
+}
+
+/** Whether this host can copy dropped files in at all (desktop only). */
+export const canImportDroppedFiles = (): boolean => runtime.importDroppedFile !== undefined
+
+/** Copy one dropped file into a library through the shell. */
+export const importHostDroppedFile = (request: {
+  libraryId: string
+  path: string
+  destDir: string
+  onConflict?: string
+}): Promise<HostImportOutcome> => {
+  if (!runtime.importDroppedFile) throw new Error('This host cannot copy files in.')
+  return runtime.importDroppedFile(request)
+}
 
 // Reports whether a shell-initiated drag-out is still in flight (always false on web)
 export const isHostDragOutActive = (): boolean => runtime.isDragOutActive()

@@ -9,6 +9,8 @@ import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
+import { useFileWriteActions } from './fileWriteActions'
+import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
 import type { HoverPreviewSource } from './hoverPreviewState'
@@ -58,6 +60,12 @@ interface FileBrowserProps {
   onOpenFile?: (relativePath: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
   onStartFileDrag?: (relativePaths: string[]) => void
+  // Whether guarded write operations are permitted for this library right now
+  // (ADR-0013: the per-library opt-in *and* the deployment switch). False keeps
+  // the browser exactly as it was before write mode existed.
+  writeMode?: boolean
+  // Transient message, with an Undo action when the operation has an inverse.
+  onFlash?: (message: string, undo?: () => void) => void
 }
 
 /** Breadcrumb segments for a library-root-relative POSIX path. */
@@ -222,8 +230,19 @@ function FileList({
   onRevealFile,
   onOpenFile,
   onStartFileDrag,
+  scope,
+  path: currentPath,
+  writeMode = false,
+  onFlash,
 }: FileListProps) {
   const menu = useContextMenu()
+  const write = useFileWriteActions({
+    currentPath,
+    onFlash: onFlash ?? (() => undefined),
+  })
+  // New Folder needs a directory to create *in*, which the flat unbundled queue
+  // does not have. Renaming works in both scopes — a path is a path.
+  const canCreateFolder = writeMode && scope === 'browse'
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // Anchor for Shift-range selection (the last plainly-clicked file).
   const [anchor, setAnchor] = useState<string | null>(null)
@@ -233,6 +252,9 @@ function FileList({
 
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // Whether an OS drag is currently over the listing, for the drop cue.
+  const [dropActive, setDropActive] = useState(false)
 
   // Client-side filter (by name) + sort. Directories stay grouped ahead of
   // files (file-manager convention; folders are the navigational containers,
@@ -292,8 +314,26 @@ function FileList({
     }
   }
 
+  // Rename is the one action a directory has, so a directory's context menu now
+  // exists at all — it used to return early because bundling acts on files only.
+  const contextDirectory = (entry: FileBrowserEntry, e: React.MouseEvent) => {
+    setSelected(new Set([entry.relative_path]))
+    onSelectEntry(entry)
+    const items: MenuEntry[] = [
+      { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
+      { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
+      // A folder's own delete takes everything inside it, in one operation.
+      { label: 'Move to Trash', onClick: () => write.askToDelete([entry.relative_path], 0) },
+    ]
+    if (canCreateFolder) items.push({ label: 'New Folder', onClick: write.startNewFolder })
+    menu.open(e, items)
+  }
+
   const contextRow = (entry: FileBrowserEntry, e: React.MouseEvent) => {
-    if (entry.kind === 'directory') return // bundling acts on files only
+    if (entry.kind === 'directory') {
+      if (writeMode) contextDirectory(entry, e)
+      return // bundling acts on files only
+    }
     const inSelection = selected.has(entry.relative_path)
     // The selection can now include directories (drag/shift-select), so restrict
     // the bundling targets to files.
@@ -322,7 +362,79 @@ function FileList({
       )
       if (hostItems.length > 0) items.push(null, ...hostItems)
     }
+    if (writeMode) {
+      const writeItems: MenuEntry[] = []
+      // Rename acts on one entry; a multi-selection has no single new name.
+      if (n === 1)
+        writeItems.push({
+          label: 'Rename…',
+          onClick: () => write.startRename(targets[0] as string),
+        })
+      // Move takes the whole selection, directories included — unlike bundling,
+      // which is a files-only action.
+      const moveTargets = selectionTargets(entry.relative_path, selected)
+      writeItems.push({
+        label: moveTargets.length > 1 ? `Move ${moveTargets.length} Items…` : 'Move to…',
+        onClick: () => write.askToMove(moveTargets),
+      })
+      writeItems.push({
+        label: n > 1 ? `Move ${n} Files to Trash` : 'Move to Trash',
+        onClick: () => write.askToDelete(targets, linkedCount(targets)),
+      })
+      if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
+      if (writeItems.length > 0) items.push(null, ...writeItems)
+    }
     menu.open(e, items)
+  }
+
+  // Right-clicking empty space is where New Folder is expected to live.
+  const contextBackground = (e: React.MouseEvent) => {
+    if (!canCreateFolder) return
+    if ((e.target as HTMLElement).closest('[data-relpath]')) return // a row handles its own
+    e.preventDefault()
+    menu.open(e, [{ label: 'New Folder', onClick: write.startNewFolder }])
+  }
+
+  // Dropping files from the desktop copies them into the folder being browsed.
+  // Only *files* — `dataTransfer.items` cannot expand a dropped folder without
+  // recursion, which the server has no batch endpoint for yet.
+  const onDragOverFiles = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault() // required, or the browser opens the file instead
+    e.dataTransfer.dropEffect = 'copy'
+    setDropActive(true)
+  }
+
+  const onDropFiles = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    setDropActive(false)
+    write.importFiles([...e.dataTransfer.files])
+  }
+
+  // How many of these paths a bundle is built on — the part of a delete worth
+  // pausing over, and the one thing the confirmation can say that a file
+  // manager's could not.
+  const linkedCount = (paths: string[]): number =>
+    visible.filter((entry) => paths.includes(entry.relative_path) && entry.linked).length
+
+  // F2 (and Enter, the macOS convention) renames the single selected entry;
+  // Delete / ⌘⌫ moves the selection to the trash.
+  const listKeyDown = (e: React.KeyboardEvent) => {
+    if (!writeMode || write.renamingPath || write.creatingFolder) return
+    if (e.key === 'F2' || e.key === 'Enter') {
+      const only = selected.size === 1 ? [...selected][0] : null
+      if (!only) return
+      e.preventDefault()
+      write.startRename(only)
+      return
+    }
+    if (e.key === 'Delete' || (e.key === 'Backspace' && (e.metaKey || e.ctrlKey))) {
+      if (selected.size === 0) return
+      e.preventDefault()
+      const paths = [...selected]
+      write.askToDelete(paths, linkedCount(paths))
+    }
   }
 
   // Drag-out targets: the whole file selection when dragging a selected file in a
@@ -400,6 +512,39 @@ function FileList({
         <span className="toolbar__count">{visible.length.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
 
+        {canCreateFolder && (
+          <>
+            <button
+              className="btn btn--sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={write.busy}
+              title="Copy files from this computer into this folder"
+            >
+              Add Files…
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              aria-hidden="true"
+              onChange={(event) => {
+                write.importFiles([...(event.target.files ?? [])])
+                // Reset, so choosing the same file twice in a row still fires.
+                event.target.value = ''
+              }}
+            />
+            <button
+              className="btn btn--sm"
+              onClick={write.startNewFolder}
+              disabled={write.busy}
+              title="Create a folder in this directory"
+            >
+              New Folder
+            </button>
+          </>
+        )}
+
         <input
           type="search"
           placeholder="Search files…"
@@ -467,10 +612,41 @@ function FileList({
       </div>
 
       <div
-        className={`file-browser__body${marqueeRect ? ' file-browser__body--dragging' : ''}`}
+        className={`file-browser__body${marqueeRect ? ' file-browser__body--dragging' : ''}${
+          dropActive ? ' file-browser__body--dropping' : ''
+        }`}
         ref={setScrollEl}
         onMouseDown={onBackgroundMouseDown}
+        onContextMenu={contextBackground}
+        onKeyDown={listKeyDown}
+        onDragOver={canCreateFolder ? onDragOverFiles : undefined}
+        onDragLeave={canCreateFolder ? () => setDropActive(false) : undefined}
+        onDrop={canCreateFolder ? onDropFiles : undefined}
+        // Focusable so F2/Enter reach the list without stealing the tab order
+        // from the toolbar controls above it.
+        tabIndex={-1}
       >
+        {write.importing.length > 0 && (
+          <div className="file-importing" role="status">
+            Copying{' '}
+            {write.importing.length === 1 ? write.importing[0] : `${write.importing.length} files`}…
+          </div>
+        )}
+        {/* Above the listing rather than inside it: the new folder has no
+            position in the current sort until it has a name. */}
+        {write.creatingFolder && (
+          <div className="file-newfolder">
+            <span className="file-row__icon">
+              <IconFolder />
+            </span>
+            <NameEditor
+              initial="New Folder"
+              label="New folder name"
+              onSubmit={write.submitNewFolder}
+              onCancel={write.cancelNewFolder}
+            />
+          </div>
+        )}
         {isLoading ? (
           <div className="empty">Loading…</div>
         ) : isError ? (
@@ -521,6 +697,9 @@ function FileList({
                       onDoubleClick={() => openEntry(entry)}
                       onContextMenu={(e) => contextRow(entry, e)}
                       dragProps={entryDragProps(entry)}
+                      renaming={write.renamingPath === entry.relative_path}
+                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      onCancelRename={write.cancelRename}
                     />
                   ))}
                 </div>
@@ -538,6 +717,9 @@ function FileList({
                       onContextMenu={(e) => contextRow(entry, e)}
                       previewDisabled={marqueeRect !== null || menu.state !== null}
                       dragProps={entryDragProps(entry)}
+                      renaming={write.renamingPath === entry.relative_path}
+                      onRename={(name) => write.submitRename(entry.relative_path, name)}
+                      onCancelRename={write.cancelRename}
                     />
                   ))}
                 </div>
@@ -556,6 +738,35 @@ function FileList({
         )}
 
         <ContextMenu state={menu.state} onClose={menu.close} />
+
+        {write.conflict && (
+          <ConflictDialog
+            name={write.conflict.conflictingName}
+            onKeepBoth={write.keepBoth}
+            onReplace={write.replace}
+            onCancel={write.dismissConflict}
+            busy={write.busy}
+          />
+        )}
+
+        {write.pendingDelete && (
+          <DeleteDialog
+            paths={write.pendingDelete.paths}
+            linkedCount={write.pendingDelete.linkedCount}
+            onConfirm={write.confirmDelete}
+            onCancel={write.dismissDelete}
+            busy={write.busy}
+          />
+        )}
+
+        {write.pendingMove && (
+          <DirectoryPicker
+            moving={write.pendingMove.paths}
+            onChoose={write.moveTo}
+            onCancel={write.dismissMove}
+            busy={write.busy}
+          />
+        )}
 
         {openIndex !== null && (
           <FileEntryViewer
@@ -577,6 +788,9 @@ function FileRow({
   onDoubleClick,
   onContextMenu,
   dragProps,
+  renaming,
+  onRename,
+  onCancelRename,
 }: {
   entry: FileBrowserEntry
   selected: boolean
@@ -584,6 +798,9 @@ function FileRow({
   onDoubleClick: () => void
   onContextMenu: (e: React.MouseEvent) => void
   dragProps: FileDragProps
+  renaming: boolean
+  onRename: (name: string) => void
+  onCancelRename: () => void
 }) {
   const isDir = entry.kind === 'directory'
   return (
@@ -595,11 +812,22 @@ function FileRow({
       role="row"
       aria-selected={selected}
       data-relpath={entry.relative_path}
-      {...dragProps}
+      // A row being renamed must not also be a drag source: the pointer belongs
+      // to the text field while a name is being edited.
+      {...(renaming ? {} : dragProps)}
     >
       <span className="file-row__name">
         <span className="file-row__icon">{entryIcon(entry)}</span>
-        <span className="file-row__text">{entry.name}</span>
+        {renaming ? (
+          <NameEditor
+            initial={entry.name}
+            label={`Rename ${entry.name}`}
+            onSubmit={onRename}
+            onCancel={onCancelRename}
+          />
+        ) : (
+          <span className="file-row__text">{entry.name}</span>
+        )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
             a confirmed bundle shows no status badge. */}
@@ -628,6 +856,9 @@ function FileCard({
   onContextMenu,
   previewDisabled,
   dragProps,
+  renaming,
+  onRename,
+  onCancelRename,
 }: {
   entry: FileBrowserEntry
   selected: boolean
@@ -636,6 +867,9 @@ function FileCard({
   onContextMenu: (e: React.MouseEvent) => void
   previewDisabled: boolean
   dragProps: FileDragProps
+  renaming: boolean
+  onRename: (name: string) => void
+  onCancelRename: () => void
 }) {
   const isDir = entry.kind === 'directory'
   const previewSource = useMemo<HoverPreviewSource | null>(
@@ -674,7 +908,7 @@ function FileCard({
       role="gridcell"
       aria-selected={selected}
       data-relpath={entry.relative_path}
-      {...dragProps}
+      {...(renaming ? {} : dragProps)}
     >
       <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
         <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
@@ -686,7 +920,16 @@ function FileCard({
         )}
       </HoverPreview>
       <div className="card__meta">
-        <div className="card__title">{entry.name}</div>
+        {renaming ? (
+          <NameEditor
+            initial={entry.name}
+            label={`Rename ${entry.name}`}
+            onSubmit={onRename}
+            onCancel={onCancelRename}
+          />
+        ) : (
+          <div className="card__title">{entry.name}</div>
+        )}
         <div className="card__sub">
           <span>{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
           {!isDir && <span>{formatBytes(entry.size_bytes)}</span>}

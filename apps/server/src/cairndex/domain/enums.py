@@ -40,10 +40,21 @@ class MediaKind(StrEnum):
 
 
 class FileAvailability(StrEnum):
-    """File presence on disk. Distinct from metadata deletion (ADR-0002)."""
+    """File presence on disk. Distinct from metadata deletion (ADR-0002).
+
+    ``trashed`` is the third state, added by write mode (ADR-0013 §3.2): the
+    file has been moved into the library's own trash and is recoverable. It is
+    deliberately **not** ``missing`` — missing means "we do not know where this
+    went", which is the scanner's problem to solve, whereas trashed means "we
+    put it there, and here is how to put it back". Surfaces that require a
+    readable file already test for ``available``, so they exclude it for free;
+    the Missing Files view tests for ``missing``, so a trashed file does not
+    appear there either.
+    """
 
     AVAILABLE = "available"
     MISSING = "missing"
+    TRASHED = "trashed"
 
 
 class JobType(StrEnum):
@@ -150,3 +161,43 @@ class GroupingPlanStatus(StrEnum):
     APPLIED = "applied"
     SUPERSEDED = "superseded"
     CANCELLED = "cancelled"
+
+
+# --- Guarded file operations (ADR-0013, plan 4) ------------------------------
+class FileOpType(StrEnum):
+    """Kind of guarded file operation recorded in the journal.
+
+    Only the operations that exist are listed. ``save_new`` (W2) follows; the
+    journal stores the value as text, so adding one needs no migration.
+
+    There is no ``restore`` member: restoring is not a new operation, it is the
+    original ``trash`` row being undone, which is why the trash can be listed by
+    reading the journal for `trash` rows that are still ``done``.
+    """
+
+    RENAME = "rename"
+    MKDIR = "mkdir"
+    TRASH = "trash"
+    IMPORT = "import"
+    MOVE = "move"
+
+
+class FileOpStatus(StrEnum):
+    """Lifecycle of a journaled file operation (ADR-0013 §3.1).
+
+    ``pending`` is written *before* the filesystem is touched, so a crash
+    mid-operation is discoverable rather than silent: the reconciler on the next
+    library open decides whether the operation completed (finish the metadata
+    side) or never happened (``failed``). ``undone`` records that the inverse
+    was applied, keeping the history honest rather than deleting the row.
+    """
+
+    PENDING = "pending"
+    DONE = "done"
+    FAILED = "failed"
+    UNDONE = "undone"
+    # A trashed operation whose entries have been deleted for good. Distinct
+    # from ``undone`` (restored) and kept rather than dropped, because "these
+    # files were permanently deleted on this date" is the single most useful
+    # thing the history can still say once the bytes are gone.
+    EMPTIED = "emptied"

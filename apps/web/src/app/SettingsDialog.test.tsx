@@ -12,6 +12,7 @@ const AVAILABLE: LibraryRead = {
   root_path: '/libraries/available',
   status: 'available',
   schema_version: 1,
+  write_mode_enabled: false,
   created_at: '2026-07-13T00:00:00Z',
   updated_at: '2026-07-13T00:00:00Z',
   last_opened_at: null,

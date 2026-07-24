@@ -78,9 +78,11 @@ active library's identity-verified root and categorizes into in-library relative
 files (fed to Create Bundle), out-of-library files (echoed back as the dropped
 absolutes the web itself supplied), and a directory count. In-library media seeds
 Create Bundle; the server tolerates and reports by reason any path it can't bundle
-in that batch. Outside files get an in-place-linking explanation — the seam where
-plan 4 W5 copy-into-library attaches, handed exactly those outside absolutes — and
-a dropped folder gets its own message.
+in that batch. Outside files are **copied in** when the library permits writing
+(ADR-0013 §7): `importer.rs` streams each one to the server's import endpoint,
+refusing any path the shell did not itself record from the OS drop event — the
+web layer may name a dropped path, never invent one. A read-only library still
+gets the in-place-linking explanation, and a dropped folder gets its own message.
 
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
@@ -95,10 +97,13 @@ custom-protocol origins by default; `tauri dev` requires an explicit exact
 Vite-origin opt-in through `CAIRNDEX_CORS_EXTRA_ORIGINS`. No source media or
 library metadata is stored in the shell.
 
-Normal Cairndex operations are metadata-only. The current app does not move,
-rename, delete, or rewrite source files. The only filesystem writes in the
-current product path are owner-initiated library package creation and generated
-cache files under `.cairndex/cache/`.
+Normal Cairndex operations are metadata-only: scanning, grouping, playback, and
+thumbnailing never move, rename, delete, or rewrite source files. Source media
+changes **only** through an explicit, journaled write-mode operation (ADR-0013)
+— rename, New Folder, delete-to-trash, restore, and import — which requires both
+the owner's per-library opt-in and the deployment switch. Everything else that
+touches the disk is owner-initiated library package creation and generated cache
+files under `.cairndex/cache/`.
 
 ## 2. Backend (`apps/server`)
 
@@ -120,6 +125,8 @@ jobs/         in-process worker and job context
 scanning/     scan, fast-add, media classification, fingerprints, repair
 media/        ffprobe/ffmpeg adapters, thumbnails, playback/subtitle helpers
 grouping/     ADR-0009 suggester, plan store, and apply service
+file_ops/     ADR-0013 write mode: gate, path validator, journal, operations,
+              trash, and streamed imports
 ```
 
 Content endpoints are scoped to one library:
@@ -132,6 +139,15 @@ Content endpoints are scoped to one library:
   selected library's `library.db` and library root.
 - `GET /api/v1/jobs/{job_id}` is global because job status lives in the registry
   queue.
+- `GET|PUT /api/v1/libraries/{id}/write-mode` is registry-level too (ADR-0013):
+  it changes a server-side flag and reads the manifest, but never opens
+  `library.db`. Endpoints that *use* the capability declare the
+  `require_write_mode` dependency, which answers 403 `write_mode_disabled` when
+  either the library's flag or `CAIRNDEX_WRITE_MODE` says no.
+- `/api/v1/libraries/{id}/file-ops/…` are the guarded write operations
+  themselves — `rename`, `mkdir`, `{op}/undo`, and the journal listing. All but
+  the listing declare the gate; the listing does not, because turning the
+  capability off must not hide what it did while it was on.
 
 A `LibrarySession` dependency resolves `{library_id}` through the registry,
 refuses unknown/unavailable libraries, opens the matching `.cairndex/library.db`,
@@ -236,7 +252,8 @@ ownership lease (§4.1) and `library.db.bak` its sync-heal snapshot (§4.2).
 The server-local registry DB (`{CAIRNDEX_DATA_DIR}/registry.db`) contains:
 
 - `registered_libraries`: known library roots, manifest paths, availability,
-  schema version, and last-opened timestamps;
+  schema version, last-opened timestamps, and the per-library write-mode opt-in
+  (ADR-0013 — registry state precisely so a copied library arrives read-only);
 - `job_queue`: scan/probe/thumbnail jobs, progress, cancellation, terminal state,
   and result payloads;
 - `server_identity`: this install's persistent `server_uuid` and machine name,
