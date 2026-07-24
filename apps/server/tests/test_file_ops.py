@@ -1045,3 +1045,305 @@ def test_an_interrupted_replacing_import_is_not_mistaken_for_a_finished_one(
     session.refresh(row)
     assert row.status is FileOpStatus.FAILED
     assert (library_root / "movie.mkv").read_bytes() == b"the original"
+
+
+# --- move (plan 4 W3) --------------------------------------------------------
+def test_move_relocates_the_file_and_repoints_its_row(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Inbox/ep1.mkv", b"payload")
+    (library_root / "Shows").mkdir()
+    file = _link(session, "Inbox/ep1.mkv")
+    original_id = file.id
+
+    result = operations.move(session, library_root, paths=["Inbox/ep1.mkv"], dest_dir="Shows")
+
+    assert result.path == "Shows/ep1.mkv"
+    assert result.files_updated == 1
+    assert not (library_root / "Inbox/ep1.mkv").exists()
+    assert (library_root / "Shows/ep1.mkv").read_bytes() == b"payload"
+    session.refresh(file)
+    # The invariant a move shares with a rename: same row, same id, new path.
+    assert file.id == original_id
+    assert file.relative_path == "Shows/ep1.mkv"
+
+
+def test_move_preserves_bundle_membership_and_cover(session: Session, library_root: Path) -> None:
+    _touch(library_root, "movie.mkv")
+    (library_root / "Movies").mkdir()
+    file = _link(session, "movie.mkv")
+    bundle = session.get(AssetBundle, file.bundle_id)
+    assert bundle is not None
+    bundle.cover_file_id = file.id
+    session.commit()
+
+    operations.move(session, library_root, paths=["movie.mkv"], dest_dir="Movies")
+
+    session.refresh(bundle)
+    assert bundle.cover_file_id == file.id
+    assert [f.relative_path for f in bundle.files] == ["Movies/movie.mkv"]
+
+
+def test_moving_a_directory_repoints_every_row_beneath_it(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Inbox/S01/ep1.mkv")
+    _touch(library_root, "Inbox/S01/ep2.mkv")
+    (library_root / "Shows").mkdir()
+    a = _link(session, "Inbox/S01/ep1.mkv")
+    b = _link(session, "Inbox/S01/ep2.mkv")
+
+    result = operations.move(session, library_root, paths=["Inbox/S01"], dest_dir="Shows")
+
+    assert result.files_updated == 2
+    assert (library_root / "Shows/S01/ep1.mkv").is_file()
+    session.refresh(a)
+    session.refresh(b)
+    assert a.relative_path == "Shows/S01/ep1.mkv"
+    assert b.relative_path == "Shows/S01/ep2.mkv"
+
+
+def test_move_into_the_library_root(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Inbox/ep1.mkv")
+    file = _link(session, "Inbox/ep1.mkv")
+
+    result = operations.move(session, library_root, paths=["Inbox/ep1.mkv"], dest_dir="")
+
+    assert result.path == "ep1.mkv"
+    assert (library_root / "ep1.mkv").is_file()
+    session.refresh(file)
+    assert file.relative_path == "ep1.mkv"
+
+
+def test_move_refuses_a_directory_into_its_own_subtree(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Show/S01/ep1.mkv")
+
+    with pytest.raises(ValidationError):
+        operations.move(session, library_root, paths=["Show"], dest_dir="Show/S01")
+
+    # Nothing moved, and nothing was journaled for an operation that never began.
+    assert (library_root / "Show/S01/ep1.mkv").is_file()
+    assert journal.list_operations(session, limit=5) == []
+
+
+def test_move_to_the_same_directory_does_nothing(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Show/ep1.mkv")
+    file = _link(session, "Show/ep1.mkv")
+
+    result = operations.move(session, library_root, paths=["Show/ep1.mkv"], dest_dir="Show")
+
+    assert result.files_updated == 0
+    session.refresh(file)
+    assert file.relative_path == "Show/ep1.mkv"
+
+
+def test_move_moves_nothing_when_a_collision_would_fail(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Inbox/ep1.mkv", b"incoming")
+    _touch(library_root, "Shows/ep1.mkv", b"already here")
+    _link(session, "Inbox/ep1.mkv")
+
+    with pytest.raises(ConflictError):
+        operations.move(session, library_root, paths=["Inbox/ep1.mkv"], dest_dir="Shows")
+
+    # The default policy asks *before* moving, so the source is exactly where it
+    # was and the destination is untouched.
+    assert (library_root / "Inbox/ep1.mkv").read_bytes() == b"incoming"
+    assert (library_root / "Shows/ep1.mkv").read_bytes() == b"already here"
+
+
+def test_move_keep_both_settles_on_a_free_name(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Inbox/ep1.mkv", b"incoming")
+    _touch(library_root, "Shows/ep1.mkv", b"already here")
+    _link(session, "Inbox/ep1.mkv")
+
+    result = operations.move(
+        session,
+        library_root,
+        paths=["Inbox/ep1.mkv"],
+        dest_dir="Shows",
+        on_conflict=ConflictPolicy.SUFFIX,
+    )
+
+    assert result.path == "Shows/ep1 (2).mkv"
+    assert (library_root / "Shows/ep1.mkv").read_bytes() == b"already here"
+    assert (library_root / "Shows/ep1 (2).mkv").read_bytes() == b"incoming"
+
+
+def test_move_replace_trashes_the_displaced_file(session: Session, library_root: Path) -> None:
+    _touch(library_root, "Inbox/ep1.mkv", b"the better copy")
+    _touch(library_root, "Shows/ep1.mkv", b"the original")
+    displaced = _link(session, "Shows/ep1.mkv")
+
+    result = operations.move(
+        session,
+        library_root,
+        paths=["Inbox/ep1.mkv"],
+        dest_dir="Shows",
+        on_conflict=ConflictPolicy.REPLACE,
+    )
+
+    assert (library_root / "Shows/ep1.mkv").read_bytes() == b"the better copy"
+    session.refresh(displaced)
+    assert displaced.availability is FileAvailability.TRASHED
+    # Filed as its own trash operation, recorded per moved entry.
+    trashed = operations.list_trash(session)
+    assert [entry.original_path for _op, entries in trashed for entry in entries] == [
+        "Shows/ep1.mkv"
+    ]
+    moved = result.operation.payload["moves"][0]
+    assert moved["replaced_operation_id"] == trashed[0][0].id
+
+
+def test_moving_many_items_is_one_operation_that_undoes_together(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Inbox/a.mkv", b"a")
+    _touch(library_root, "Inbox/b.mkv", b"b")
+    (library_root / "Shows").mkdir()
+    a = _link(session, "Inbox/a.mkv")
+    b = _link(session, "Inbox/b.mkv")
+
+    result = operations.move(
+        session, library_root, paths=["Inbox/a.mkv", "Inbox/b.mkv"], dest_dir="Shows"
+    )
+    assert (library_root / "Shows/a.mkv").is_file()
+    assert (library_root / "Shows/b.mkv").is_file()
+
+    operations.undo(session, library_root, operation_id=result.operation.id)
+
+    # One undo puts the whole batch back, and the history says so honestly.
+    assert (library_root / "Inbox/a.mkv").read_bytes() == b"a"
+    assert (library_root / "Inbox/b.mkv").read_bytes() == b"b"
+    assert not (library_root / "Shows/a.mkv").exists()
+    session.refresh(a)
+    session.refresh(b)
+    assert a.relative_path == "Inbox/a.mkv"
+    assert b.relative_path == "Inbox/b.mkv"
+    assert journal.list_operations(session, limit=5)[0].status is FileOpStatus.UNDONE
+
+
+def test_undoing_a_replacing_move_puts_both_files_back(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "Inbox/ep1.mkv", b"the better copy")
+    _touch(library_root, "Shows/ep1.mkv", b"the original")
+    displaced = _link(session, "Shows/ep1.mkv")
+
+    result = operations.move(
+        session,
+        library_root,
+        paths=["Inbox/ep1.mkv"],
+        dest_dir="Shows",
+        on_conflict=ConflictPolicy.REPLACE,
+    )
+    operations.undo(session, library_root, operation_id=result.operation.id)
+
+    assert (library_root / "Shows/ep1.mkv").read_bytes() == b"the original"
+    assert (library_root / "Inbox/ep1.mkv").read_bytes() == b"the better copy"
+    session.refresh(displaced)
+    assert displaced.availability is FileAvailability.AVAILABLE
+    assert displaced.relative_path == "Shows/ep1.mkv"
+
+
+def test_move_refuses_two_selected_items_that_would_share_a_name(
+    session: Session, library_root: Path
+) -> None:
+    """Two same-named files bound for one directory: the second would clobber the
+    first on disk. Refuse the whole batch rather than overwrite original media."""
+    _touch(library_root, "A/ep1.mkv", b"from A")
+    _touch(library_root, "B/ep1.mkv", b"from B")
+    (library_root / "Dest").mkdir()
+
+    with pytest.raises(ValidationError):
+        operations.move(session, library_root, paths=["A/ep1.mkv", "B/ep1.mkv"], dest_dir="Dest")
+
+    assert (library_root / "A/ep1.mkv").read_bytes() == b"from A"
+    assert (library_root / "B/ep1.mkv").read_bytes() == b"from B"
+
+
+def test_a_partly_failed_move_keeps_what_moved(session: Session, library_root: Path) -> None:
+    """A per-file filesystem error is tolerated like a partly-failed delete: the
+    entries that moved are recorded, the one that could not is reported."""
+    _touch(library_root, "a.mkv", b"payload")
+    _touch(library_root, "locked/b.mkv")
+    (library_root / "Dest").mkdir()
+    moved_row = _link(session, "a.mkv")
+    locked = library_root / "locked"
+    locked.chmod(0o500)  # b.mkv cannot be removed from it
+    try:
+        result = operations.move(
+            session, library_root, paths=["a.mkv", "locked/b.mkv"], dest_dir="Dest"
+        )
+    finally:
+        locked.chmod(0o700)
+
+    assert result.failed_paths == ["locked/b.mkv"]
+    assert result.operation.status is FileOpStatus.DONE
+    assert (library_root / "Dest/a.mkv").read_bytes() == b"payload"
+    assert (library_root / "locked/b.mkv").is_file()  # untouched
+    session.refresh(moved_row)
+    assert moved_row.relative_path == "Dest/a.mkv"
+
+
+def test_reconciler_completes_a_move_that_was_interrupted_halfway(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "not-moved.mkv")
+    (library_root / "Dest").mkdir()
+    (library_root / "Dest/a.mkv").write_bytes(b"payload")  # this one reached the disk
+    moved_row = _link(session, "a.mkv")  # row still points at the pre-move path
+    still_here = _link(session, "not-moved.mkv")
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {
+            "dest_dir": "Dest",
+            "moves": [
+                {"source": "a.mkv", "destination": "Dest/a.mkv"},
+                {"source": "not-moved.mkv", "destination": "Dest/not-moved.mkv"},
+            ],
+        },
+    )
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (1, 0)
+    session.refresh(row)
+    session.refresh(moved_row)
+    session.refresh(still_here)
+    assert row.status is FileOpStatus.DONE
+    assert moved_row.relative_path == "Dest/a.mkv"
+    # The entry that never moved is left exactly where it was.
+    assert still_here.relative_path == "not-moved.mkv"
+    assert (library_root / "not-moved.mkv").is_file()
+
+
+def test_reconciler_fails_a_move_that_never_happened(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv")
+    (library_root / "Dest").mkdir()
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {"dest_dir": "Dest", "moves": [{"source": "a.mkv", "destination": "Dest/a.mkv"}]},
+    )
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (0, 1)
+    session.refresh(row)
+    assert row.status is FileOpStatus.FAILED
+    assert (library_root / "a.mkv").is_file()
+
+
+def test_move_of_a_missing_source_is_not_found(session: Session, library_root: Path) -> None:
+    (library_root / "Dest").mkdir()
+    with pytest.raises(NotFoundError):
+        operations.move(session, library_root, paths=["ghost.mkv"], dest_dir="Dest")
+
+
+def test_move_to_a_missing_destination_is_not_found(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv")
+    with pytest.raises(NotFoundError):
+        operations.move(session, library_root, paths=["a.mkv"], dest_dir="Nowhere")

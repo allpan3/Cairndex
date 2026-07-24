@@ -167,9 +167,8 @@ class GroupingPlanStatus(StrEnum):
 class FileOpType(StrEnum):
     """Kind of guarded file operation recorded in the journal.
 
-    Only the operations that exist are listed. ``move`` (W3) and ``save_new``
-    (W2) follow; the journal stores the value as text, so adding one needs no
-    migration.
+    Only the operations that exist are listed. ``save_new`` (W2) follows; the
+    journal stores the value as text, so adding one needs no migration.
 
     There is no ``restore`` member: restoring is not a new operation, it is the
     original ``trash`` row being undone, which is why the trash can be listed by
@@ -180,6 +179,7 @@ class FileOpType(StrEnum):
     MKDIR = "mkdir"
     TRASH = "trash"
     IMPORT = "import"
+    MOVE = "move"
 
 
 class FileOpStatus(StrEnum):

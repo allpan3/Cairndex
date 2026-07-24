@@ -980,6 +980,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/file-ops/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Entries
+         * @description Move files and directories into another directory, carrying their metadata.
+         *
+         *     Like rename, the filesystem move and the `AssetFile.relative_path` update
+         *     happen together, so every id — and therefore every bundle membership, cover,
+         *     subtitle link and cached thumbnail — survives by construction. Moving a
+         *     directory repoints everything beneath it in the same operation.
+         *
+         *     The whole multi-select is one journal operation with one undo. A destination
+         *     that already holds something answers 409 `conflict` before anything moves,
+         *     which the client turns into the Replace / Skip / Keep both prompt and
+         *     re-issues with an explicit `on_conflict`.
+         */
+        post: operations["move_entries_api_v1_libraries__library_id__file_ops_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/file-ops/rename": {
         parameters: {
             query?: never;
@@ -2788,16 +2818,15 @@ export interface components {
          * FileOpType
          * @description Kind of guarded file operation recorded in the journal.
          *
-         *     Only the operations that exist are listed. ``move`` (W3) and ``save_new``
-         *     (W2) follow; the journal stores the value as text, so adding one needs no
-         *     migration.
+         *     Only the operations that exist are listed. ``save_new`` (W2) follows; the
+         *     journal stores the value as text, so adding one needs no migration.
          *
          *     There is no ``restore`` member: restoring is not a new operation, it is the
          *     original ``trash`` row being undone, which is why the trash can be listed by
          *     reading the journal for `trash` rows that are still ``done``.
          * @enum {string}
          */
-        FileOpType: "rename" | "mkdir" | "trash" | "import";
+        FileOpType: "rename" | "mkdir" | "trash" | "import" | "move";
         /**
          * FileOperationPage
          * @description Newest-first page of the journal.
@@ -3265,6 +3294,21 @@ export interface components {
          * @enum {string}
          */
         MediaKind: "video" | "image" | "subtitle" | "audio" | "other";
+        /**
+         * MoveRequest
+         * @description Move one or more files/directories into another directory.
+         */
+        MoveRequest: {
+            /**
+             * Dest Dir
+             * @default
+             */
+            dest_dir: string;
+            /** @default fail */
+            on_conflict: components["schemas"]["ConflictPolicy"];
+            /** Paths */
+            paths: string[];
+        };
         /** NotNode */
         "NotNode-Input": {
             /** Child */
@@ -6236,6 +6280,45 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_entries_api_v1_libraries__library_id__file_ops_move_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
