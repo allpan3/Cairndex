@@ -2475,6 +2475,14 @@
       "FileOperationResult": {
         "description": "What an operation did, for the toast that offers to undo it.",
         "properties": {
+          "failed_paths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Paths",
+            "type": "array"
+          },
           "files_updated": {
             "title": "Files Updated",
             "type": "integer"
@@ -3021,6 +3029,14 @@
       "ImportResultRead": {
         "description": "An import, plus what actually arrived.",
         "properties": {
+          "failed_paths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Failed Paths",
+            "type": "array"
+          },
           "files_updated": {
             "title": "Files Updated",
             "type": "integer"

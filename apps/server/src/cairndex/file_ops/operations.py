@@ -14,7 +14,7 @@ path *segments*, and ``LIKE 'Show%'`` would happily also match ``Showcase/``.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
@@ -44,6 +44,11 @@ class OperationResult:
     files_updated: int
     # True when a "skip" policy meant nothing happened at all.
     skipped: bool = False
+    # Paths a multi-item operation could not act on — a permissions error on one
+    # file of a multi-select delete, say. The operation still *completed* for
+    # everything else, which is why this is a field on a success rather than an
+    # exception: the alternative loses the items that did move.
+    failed_paths: list[str] = field(default_factory=list)
 
 
 def _linked_rows_under(session: Session, relative_path: str) -> list[AssetFile]:
@@ -131,7 +136,7 @@ def rename(
     )
     if settled.skip:
         return OperationResult(
-            operation=_noop(session, source_relative),
+            operation=_noop(session, source_relative, skipped=True),
             path=source_relative,
             files_updated=0,
             skipped=True,
@@ -283,25 +288,45 @@ def trash_paths(session: Session, root: Path, *, paths: list[str]) -> OperationR
 
     operation = journal.begin(session, op=FileOpType.TRASH, payload={"paths": targets})
     entries: list[trash.TrashedEntry] = []
-    try:
-        for relative in targets:
-            moved = trash.move_into_trash(root, operation_id=operation.id, original_path=relative)
-            entries.extend(mark_rows_trashed(session, operation.id, moved))
-    except OSError as error:
-        journal.fail(session, operation, _os_error_message(error))
-        raise ConflictError("Could not move everything to the trash.") from error
-    trash.write_meta(root, operation_id=operation.id, entries=entries)
+    failed: list[str] = []
+    error_reason = ""
 
+    for relative in targets:
+        try:
+            moved = trash.move_into_trash(root, operation_id=operation.id, original_path=relative)
+        except OSError as error:
+            # Keep going rather than abandoning the operation. Failing the whole
+            # thing here would mark the journal row `failed` and roll back the
+            # rows — while the entries moved *before* this one are already inside
+            # the trash directory, listed by nothing, restorable by nothing, and
+            # pruned by nothing. That is the exact state the reconciler exists to
+            # prevent, and the reconciler only ever looks at `pending` rows, so
+            # nothing would come along later and notice.
+            failed.append(relative)
+            error_reason = error_reason or _os_error_message(error)
+            continue
+        entries.extend(mark_rows_trashed(session, operation.id, moved))
+
+    if not entries:
+        journal.fail(session, operation, error_reason or "nothing could be moved to the trash")
+        raise ConflictError("Could not move anything to the trash.")
+
+    trash.write_meta(root, operation_id=operation.id, entries=entries)
+    moved_count = sum(1 for entry in entries if entry.file_id)
     journal.finish(
         session,
         operation,
         entries=[entry.as_payload() for entry in entries],
-        files_updated=sum(1 for entry in entries if entry.file_id),
+        files_updated=moved_count,
+        # Recorded on the row, so the history says which items this deletion did
+        # not manage to take rather than quietly claiming all of them.
+        **({"failed_paths": failed, "error": error_reason} if failed else {}),
     )
     return OperationResult(
         operation=operation,
-        path=targets[0],
-        files_updated=sum(1 for entry in entries if entry.file_id),
+        path=entries[0].original_path,
+        files_updated=moved_count,
+        failed_paths=failed,
     )
 
 
@@ -443,6 +468,29 @@ def _ensure_restorable(session: Session, root: Path, entries: list[trash.Trashed
             raise ConflictError(f"Another file is already recorded at {entry.original_path!r}.")
 
 
+def _ensure_replacement_restorable(session: Session, operation: FileOperation) -> None:
+    """Refuse an undo whose Replace can no longer be completed.
+
+    An operation that displaced a file recorded the deletion that holds it. If
+    that deletion has since been emptied, the displaced file is gone for good —
+    and there is no version of "undo" worth performing, because putting the
+    incoming file back where it came from would leave the destination empty
+    while the journal still advertised the operation as undoable.
+    """
+    replaced_id = operation.payload.get("replaced_operation_id")
+    if not replaced_id:
+        return
+    replaced = journal.get_operation(session, str(replaced_id))
+    if replaced is None:
+        raise ConflictError(
+            "The file this replaced can no longer be found, so this cannot be undone."
+        )
+    if replaced.status is not FileOpStatus.DONE:
+        raise ConflictError(
+            "The file this replaced was permanently deleted, so this can no longer be undone."
+        )
+
+
 def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     """Apply an operation's inverse and mark it undone (ADR-0013 §3.1).
 
@@ -455,6 +503,16 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
         raise NotFoundError(f"operation {operation_id!r} not found")
     if operation.status is not FileOpStatus.DONE:
         raise ConflictError(f"This operation is {operation.status.value} and cannot be undone.")
+    if operation.payload.get("skipped"):
+        # A skipped operation wrote nothing, so its "destination" names a file
+        # that was already there and has nothing to do with it. Reversing it
+        # would move a bystander to the trash.
+        raise ConflictError("This operation was skipped, so there is nothing to undo.")
+    # Checked *before* anything is touched. Undo must not half-execute: if the
+    # file a Replace displaced was permanently deleted, reversing the rename
+    # alone would leave the destination empty and the journal still claiming the
+    # operation is undoable, with the next attempt failing on a missing source.
+    _ensure_replacement_restorable(session, operation)
 
     if operation.op is FileOpType.TRASH:
         # Undoing a deletion *is* restoring it — same inverse, same journal row.
@@ -519,14 +577,22 @@ def _normalized(path: str, *, what: str) -> str:
     return normalize_relative_path(path)
 
 
-def _noop(session: Session, relative: str) -> FileOperation:
+def _noop(session: Session, relative: str, *, skipped: bool = False) -> FileOperation:
     """A completed journal row for an operation that had nothing to do.
 
     Recorded rather than skipped so the caller always has an operation to point
-    its toast at, and so the history shows the request that was made.
+    its toast at, and so the history shows the request that was made. ``skipped``
+    marks the collision case specifically, which is what stops Undo treating the
+    destination — a file this operation never touched — as its own to reverse.
     """
     operation = journal.begin(
-        session, op=FileOpType.RENAME, payload={"source": relative, "destination": relative}
+        session,
+        op=FileOpType.RENAME,
+        payload={
+            "source": relative,
+            "destination": relative,
+            **({"skipped": True} if skipped else {}),
+        },
     )
     return journal.finish(session, operation, files_updated=0)
 

@@ -450,3 +450,30 @@ test('a read-only library has no way to copy files in', () => {
   dropFiles(new File(['x'], 'x.mkv'))
   expect(importOne).not.toHaveBeenCalled()
 })
+
+test('a partly failed delete reports what it could not take', async () => {
+  renderBrowser()
+
+  // Two items selected, because a single-item delete that fails is an error
+  // rather than a partial success — only a batch can half-succeed.
+  fireEvent.click(row('Season 1'))
+  fireEvent.click(row('ep1.mkv'), { metaKey: true })
+  fireEvent.keyDown(document.querySelector('.file-browser__body') as HTMLElement, {
+    key: 'Delete',
+  })
+  fireEvent.click(await screen.findByRole('button', { name: 'Move to Trash' }))
+
+  const handlers = trashMutate.mock.calls[0]?.[1] as { onSuccess: (result: unknown) => void }
+  handlers.onSuccess({
+    path: 'Show/ep1.mkv',
+    operation: { id: 'op-p' },
+    files_updated: 1,
+    failed_paths: ['Show/locked.mkv'],
+  })
+
+  // A partial failure is still a success for what moved — and says which item
+  // stayed put, rather than an error that leaves the owner guessing.
+  await waitFor(() => expect(flashes).toHaveLength(1))
+  expect(flashes[0]?.message).toBe('Moved “ep1.mkv” to the trash. “locked.mkv” could not be moved.')
+  expect(flashes[0]?.undo).toBeDefined()
+})

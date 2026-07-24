@@ -51,6 +51,10 @@ class FileOperationResult(BaseModel):
     files_updated: int
     # True when a `skip` policy meant nothing happened.
     skipped: bool
+    # Paths a multi-item operation could not act on. The operation still
+    # completed for everything else — reported rather than raised, because
+    # failing the request would lose the items that did move.
+    failed_paths: list[str] = []
 
 
 class ImportResultRead(FileOperationResult):
