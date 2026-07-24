@@ -48,6 +48,7 @@ def _result(outcome: operations.OperationResult) -> FileOperationResult:
         path=outcome.path,
         files_updated=outcome.files_updated,
         skipped=outcome.skipped,
+        failed_paths=outcome.failed_paths,
     )
 
 
@@ -121,6 +122,7 @@ async def import_file(
         path=result.operation.path,
         files_updated=result.operation.files_updated,
         skipped=result.operation.skipped,
+        failed_paths=result.operation.failed_paths,
         size_bytes=result.size_bytes,
     )
 

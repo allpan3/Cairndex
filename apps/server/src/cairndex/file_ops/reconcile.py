@@ -16,6 +16,9 @@ that can be partially done: a multi-path delete interrupted halfway has entries
 sitting in the trash, and failing the whole operation would leave them there
 with nothing listing them — invisible to the Trash view and unreachable by
 restore. So whatever reached the trash is recorded and the deletion completes.
+(The same reasoning applies to a delete that fails mid-*request* rather than
+mid-crash; ``trash_paths`` handles that itself, because this only ever examines
+``pending`` rows and would never see it.)
 
 Never raises. A library that cannot be reconciled must still open — refusing to
 open it would turn a recoverable inconsistency into a lost library.
@@ -29,7 +32,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileOpType
-from cairndex.file_ops import journal, trash
+from cairndex.file_ops import imports, journal, trash
 from cairndex.file_ops.operations import mark_rows_trashed, repoint_linked_rows
 from cairndex.file_ops.paths import resolve_writable
 from cairndex.persistence.models import FileOperation
@@ -107,11 +110,17 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         return _settle_trash(session, root, operation)
 
     if operation.op is FileOpType.IMPORT:
-        # An import is pending only if the process died while bytes were still
-        # arriving — the file is renamed into place and marked done in one
-        # breath at the end. So the destination existing means it finished;
-        # otherwise a `.part` file is all there is, and the staging sweep on the
-        # same library open removes it.
+        # The destination existing is *not* enough to conclude the import
+        # finished: a Replace-policy import whose upload died partway leaves the
+        # old file still sitting at that path, and calling that success would
+        # record an import of bytes that never arrived. The staging file is the
+        # evidence that settles it — it exists only while an upload is
+        # unfinished, and this runs before the staging sweep precisely so it is
+        # still there to be read.
+        staging = imports.staging_dir(root) / f"{operation.id}.part"
+        if os.path.lexists(staging):
+            journal.fail(session, operation, "interrupted before the upload finished")
+            return False
         destination = operation.payload.get("destination")
         if destination and os.path.lexists(resolve_writable(root, destination)):
             journal.finish(session, operation, reconciled=True)

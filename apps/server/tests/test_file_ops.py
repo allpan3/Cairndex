@@ -27,7 +27,7 @@ from cairndex.domain.enums import (
     FileRole,
     MediaKind,
 )
-from cairndex.file_ops import imports, journal, operations
+from cairndex.file_ops import imports, journal, operations, trash
 from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.file_ops.paths import suffixed_name, validate_name
 from cairndex.file_ops.reconcile import reconcile_pending
@@ -877,3 +877,171 @@ def test_staging_sweep_removes_abandoned_partial_uploads(library_root: Path) -> 
 
 def test_staging_sweep_is_quiet_when_nothing_was_ever_imported(library_root: Path) -> None:
     assert imports.sweep_staging(library_root) == 0
+
+
+# --- review findings, each of which shipped and should not again -------------
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_a_partly_failed_delete_keeps_what_moved_reachable(
+    session: Session, library_root: Path
+) -> None:
+    """The bug: an OSError partway through a multi-path delete marked the whole
+    operation failed — while the files moved *before* it were already inside the
+    trash directory, listed by nothing, restorable by nothing, pruned by nothing.
+    The reconciler describes that as the worst outcome available, and only ever
+    inspects `pending` rows, so nothing would have come along later and noticed.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    _touch(library_root, "locked/b.mkv")
+    linked = _link(session, "a.mkv")
+    locked = library_root / "locked"
+    locked.chmod(0o500)  # b.mkv cannot be moved out of it
+    try:
+        result = operations.trash_paths(session, library_root, paths=["a.mkv", "locked/b.mkv"])
+    finally:
+        locked.chmod(0o700)
+
+    # The one that moved is a completed deletion: visible, restorable, prunable.
+    assert result.failed_paths == ["locked/b.mkv"]
+    assert result.operation.status is FileOpStatus.DONE
+    listed = operations.list_trash(session)
+    assert [entry.original_path for _op, entries in listed for entry in entries] == ["a.mkv"]
+    session.refresh(linked)
+    assert linked.availability is FileAvailability.TRASHED
+
+    # The one that did not move is untouched and still on disk.
+    assert (library_root / "locked/b.mkv").is_file()
+
+    # And what moved really can be put back, which is the whole claim.
+    operations.restore(session, library_root, operation_id=result.operation.id)
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+
+
+def test_a_delete_that_moves_nothing_still_fails(session: Session, library_root: Path) -> None:
+    """The partial-success path must not turn a total failure into a success."""
+    _touch(library_root, "a.mkv")
+    original = trash.move_into_trash
+
+    def refuse(*_args: object, **_kwargs: object) -> trash.TrashedEntry:
+        raise OSError(13, "Permission denied")
+
+    trash.move_into_trash = refuse  # type: ignore[assignment]
+    try:
+        with pytest.raises(ConflictError):
+            operations.trash_paths(session, library_root, paths=["a.mkv"])
+    finally:
+        trash.move_into_trash = original  # type: ignore[assignment]
+
+    assert (library_root / "a.mkv").is_file()
+    assert journal.list_operations(session, limit=5)[0].status is FileOpStatus.FAILED
+
+
+def test_undoing_a_skipped_import_leaves_the_file_that_was_already_there(
+    session: Session, library_root: Path
+) -> None:
+    """The bug: a skipped import finishes `done` with its destination pointing at
+    the file that was *already* there. Undo saw the destination exist and trashed
+    it — moving a bystander to the trash for an import that never wrote a byte."""
+    _touch(library_root, "movie.mkv", b"the original")
+    result = asyncio.run(
+        imports.import_stream(
+            session,
+            library_root,
+            dest_dir="",
+            filename="movie.mkv",
+            body=_body(b"the newcomer"),
+            on_conflict=ConflictPolicy.SKIP,
+        )
+    )
+    assert result.operation.skipped is True
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result.operation.operation.id)
+
+    assert (library_root / "movie.mkv").read_bytes() == b"the original"
+    assert operations.list_trash(session) == []
+
+
+def test_undoing_a_skipped_rename_is_refused_too(session: Session, library_root: Path) -> None:
+    _touch(library_root, "a.mkv", b"a")
+    _touch(library_root, "b.mkv", b"b")
+    result = operations.rename(
+        session, library_root, path="a.mkv", new_name="b.mkv", on_conflict=ConflictPolicy.SKIP
+    )
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result.operation.id)
+
+    assert (library_root / "a.mkv").read_bytes() == b"a"
+    assert (library_root / "b.mkv").read_bytes() == b"b"
+
+
+def test_undoing_a_replace_after_empty_trash_changes_nothing(
+    session: Session, library_root: Path
+) -> None:
+    """The bug: undo renamed the file back first and *then* discovered the
+    displaced file had been permanently deleted — leaving the rename reversed on
+    disk, the journal still claiming the operation was undoable, and a second
+    attempt failing on a source that no longer existed. Refuse before touching
+    anything instead."""
+    _touch(library_root, "new.mkv", b"better")
+    _touch(library_root, "old.mkv", b"original")
+    result = operations.rename(
+        session,
+        library_root,
+        path="new.mkv",
+        new_name="old.mkv",
+        on_conflict=ConflictPolicy.REPLACE,
+    )
+    operations.empty_trash(session, library_root)
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result.operation.id)
+
+    # Nothing half-happened: the rename stands, and the journal still says so.
+    assert (library_root / "old.mkv").read_bytes() == b"better"
+    assert not (library_root / "new.mkv").exists()
+    session.refresh(result.operation)
+    assert result.operation.status is FileOpStatus.DONE
+
+
+def test_undoing_a_replacing_import_after_empty_trash_changes_nothing(
+    session: Session, library_root: Path
+) -> None:
+    _touch(library_root, "movie.mkv", b"the original")
+    result = asyncio.run(
+        imports.import_stream(
+            session,
+            library_root,
+            dest_dir="",
+            filename="movie.mkv",
+            body=_body(b"the newcomer"),
+            on_conflict=ConflictPolicy.REPLACE,
+        )
+    )
+    operations.empty_trash(session, library_root)
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result.operation.operation.id)
+
+    # The imported file is still in place rather than trashed half-way through.
+    assert (library_root / "movie.mkv").read_bytes() == b"the newcomer"
+
+
+def test_an_interrupted_replacing_import_is_not_mistaken_for_a_finished_one(
+    session: Session, library_root: Path
+) -> None:
+    """The destination existing proves nothing for a Replace import: the *old*
+    file is still sitting there until the last moment. The staging file is the
+    evidence, which is why reconciliation runs before the staging sweep."""
+    _touch(library_root, "movie.mkv", b"the original")
+    row = _interrupted(session, FileOpType.IMPORT, {"destination": "movie.mkv"})
+    staging = imports.staging_dir(library_root)
+    staging.mkdir(parents=True, exist_ok=True)
+    (staging / f"{row.id}.part").write_bytes(b"half an upl")
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (0, 1)
+    session.refresh(row)
+    assert row.status is FileOpStatus.FAILED
+    assert (library_root / "movie.mkv").read_bytes() == b"the original"
