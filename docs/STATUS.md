@@ -11,6 +11,42 @@
 > (deferred from D7), and a pass on the **native Finder drag gesture** on a
 > packaged build, which cannot be automated here.
 
+## Fixed: move-undo could silently overwrite a newcomer (2026-07-23)
+
+An owner review of W3 found one real bug in the move-undo path, and confirmed
+the three earlier fixes generalized correctly to move (the `skipped` guard and
+`_ensure_replacement_restorable` both run for `MOVE` before anything touches the
+disk).
+
+**The bug: undoing a move silently overwrote whatever now sat at the vacated
+path.** The `MOVE` branch of `undo` called `_rename_on_disk(destination, source)`
+with no occupancy check on the source, and POSIX `rename` clobbers its target
+silently. Reproduced: move `a.mkv` into `sub/`, drop a *new* `a.mkv` at the root
+(an import, a Finder copy, a re-download), press Undo — the undo succeeded and the
+newcomer's bytes were gone, not trashed, not journaled, not errored. It was the
+only data-destroying path in write mode that is not Empty Trash, and it was a
+toast-button away. Every neighboring inverse already guards against exactly this:
+undo-of-rename answers 409 through the collision policy, and `restore` runs
+`_ensure_restorable` first. Move was the one that skipped it.
+
+The fix mirrors `_ensure_restorable`: a new `_ensure_move_reversible` checks every
+entry's source path — against both the filesystem and the linked rows — before
+moving anything, and refuses the whole undo with a clear message naming the
+occupied path. All-or-nothing, up front, like restore. It also absorbs the
+metadata echo the review noted (a linked newcomer would have hit the unique
+constraint *after* the bytes were destroyed) and most of the mid-undo `OSError`
+window (the occupied-source case was its main non-error trigger). Backend
+**766 passed** (+3 regression tests, each confirmed to fail against the old code).
+
+**Two non-blocking observations from the same review are left as known
+limitations**, both manual-recovery and neither data-losing: (1) a Replace entry
+whose *own* rename then fails leaves its displaced file in the trash as its own
+operation — visible and restorable there — but the failed entry drops out of the
+move payload, so undo will not bring it back automatically; (2) a crash mid-batch
+loses the `replaced_operation_id` association for the same reason (it is written
+at `finish`), so a reconciled replacing-move has the same manual-recovery story.
+Both are W6 alongside the move batch job.
+
 ## Implemented: plan 4 W3 — move (2026-07-23)
 
 Same branch. Move turned out **smaller than the plan sketched**, because W1's

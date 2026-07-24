@@ -666,6 +666,38 @@ def _replaced_operation_ids(operation: FileOperation) -> list[str]:
     return ids
 
 
+def _ensure_move_reversible(session: Session, root: Path, moves: list[dict[str, str]]) -> None:
+    """Refuse a move-undo whose source path is now occupied, before moving anything.
+
+    Undo moves each entry from its destination back to its source with a plain
+    rename, which on POSIX silently clobbers whatever now sits at the source —
+    a file imported, copied, or re-downloaded there in the meantime. Every
+    sibling inverse guards against exactly this (undo-of-rename through the
+    collision policy, restore through :func:`_ensure_restorable`); move is the
+    one that must not be the exception. So the source of every entry that would
+    actually move back — its destination still in place — is checked against
+    both the filesystem and the linked rows, all-or-nothing and up front, and
+    the whole undo is refused if any is taken.
+    """
+    for entry in moves:
+        source = entry.get("source")
+        destination = entry.get("destination")
+        if not source or not destination:
+            continue
+        if not os.path.lexists(resolve_writable(root, destination)):
+            # This entry will not move back (its file is already gone from the
+            # destination), so nothing would be clobbered at its source.
+            continue
+        if os.path.lexists(resolve_writable(root, source)):
+            raise ConflictError(
+                f"Something is already at {source!r}, so this move can no longer be undone. "
+                "Move or rename it, then undo again."
+            )
+        taken = session.scalar(select(AssetFile.id).where(AssetFile.relative_path == source))
+        if taken is not None:
+            raise ConflictError(f"Another file is already recorded at {source!r}.")
+
+
 def _ensure_replacement_restorable(session: Session, operation: FileOperation) -> None:
     """Refuse an undo whose Replace can no longer be completed.
 
@@ -719,6 +751,7 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
         # returned before anything that rode out inside it. A Replace displaced a
         # file into the trash first; once our file is back out of that path,
         # restoring the displaced one puts it home too.
+        _ensure_move_reversible(session, root, operation.payload.get("moves", []))
         moved_back = 0
         for entry in reversed(operation.payload.get("moves", [])):
             source = entry["source"]
