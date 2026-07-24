@@ -3,12 +3,65 @@
 > **Current position:** phase H — plan 4 library write mode, on
 > `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
 > request). **W0, W1, W4 and W5 are complete**, including the desktop drag-in
-> that write mode was built for. **W3 (move) is the recommended next task** —
+> that write mode was built for, and **three review findings are fixed** (see
+> the entry immediately below). **W3 (move) is the recommended next task** —
 > smaller than planned, since W1/W4/W5 built most of its machinery; W2 stays
 > blocked on plan 1 M11, and W6 closes the track. Two things still need the
 > owner: a pass on a genuinely downloaded build (deferred from D7), and a pass
 > on the **native Finder drag gesture** on a packaged build, which cannot be
 > automated here.
+
+## Fixed: three write-mode review findings (2026-07-23)
+
+An owner review of W4/W5 found three real bugs, all mine, none covered by the
+743 tests that were passing. Each now has a regression test that was confirmed
+to fail against the old code before the fix went in.
+
+**1. A partly failed delete stranded files invisibly.** When an `OSError` hit
+partway through a multi-path delete, `journal.fail` rolled the row updates back
+and marked the operation failed — while the entries moved *before* the failure
+were already inside `.cairndex/trash/{op_id}/`. The trash listing only shows
+`done` operations, restore refuses a failed one, and Empty Trash never prunes
+it: the files were gone from their original path and reachable by nothing.
+
+That is precisely the state `_settle_trash` was written to prevent, and the
+lesson is the interesting part: **the reconciler only ever inspects `pending`
+rows**, so it could not have caught this. The crash-shaped version of the bug
+was handled; the mid-request version recreated it three lines away. `trash_paths`
+now does what the reconciler does — completes for what moved, reports the rest
+in a new `failed_paths` field, and only fails outright when nothing moved at all.
+Real trigger: a multi-select delete where one item hits a permissions error on an
+SMB/NAS mount.
+
+**2. Undoing a *skipped* import trashed the innocent file.** A skipped import
+finishes `done` with its destination pointing at the file that was already
+there — the one it deliberately did not overwrite. Undo saw a file at the
+destination and moved it to the trash. Undo now refuses a skipped operation,
+and the same guard covers a skipped rename, whose no-op journal row now records
+`skipped` for consistency.
+
+**3. Undo of a Replace after Empty Trash half-executed.** The inverse rename ran
+first, *then* the restore raised 409 because the trash op had been emptied — so
+`mark_undone` never ran: the file was renamed back on disk while the journal
+still advertised the operation as undoable, and a second attempt 404'd on the
+now-missing source. Both undo paths (rename and import) now check the replaced
+operation's status **before touching the disk** and refuse with a clear reason.
+The choice was refuse-entirely over proceed-partially: a half-undo with no way
+to finish is worse than a clear no.
+
+**Also fixed, from the same review's non-blocking observation:** a crash mid-
+upload for a Replace import was reconciled as `done` because its destination
+existed — that being the *old* file, still in place. The staging `.part` file is
+the evidence that settles it, and reconciliation already runs before the sweep
+that removes it, so it was there to be read all along.
+
+Verified against a real dev server as well as in tests: a delete where the
+second path is unwritable now leaves the first in the Trash view and restorable,
+and both undo refusals leave the files exactly where they were.
+
+Backend **743 passed** (+7), web **365 passed** (+1, the partial-failure
+message), all static gates clean, OpenAPI and `schema.d.ts` regenerated for the
+new `failed_paths` field.
 
 ## Implemented: plan 4 W5 desktop bridge — Finder drag-in (2026-07-23)
 
