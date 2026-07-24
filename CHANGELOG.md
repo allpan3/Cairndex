@@ -53,6 +53,25 @@ grouped under `Unreleased` until the first tagged release.
   are absolute paths, `..`, symlinks pointing outside the library, and names
   that a Windows or SMB client would silently mangle.
 
+- **Write mode — move** (plan 4 W3). **Move to…** from the File Browser context
+  menu — on one file, one folder, or a whole selection — opens a picker that
+  walks the library's own folders one level at a time, so the destination is a
+  real folder you can see rather than a path you type. The folders you are
+  moving are left out of it, because a folder cannot go inside itself.
+
+  **Moving through Cairndex never needs repair either.** Like a rename, the file
+  moves and its recorded location change together, so every id survives — a
+  moved folder carries its whole subtree, its bundles, covers and subtitle links
+  intact. The whole selection is one action with **one Undo**. A name already
+  taken in the destination **asks** — Replace / Skip / Keep both, applied to the
+  batch — before anything moves; Replace sends the file it displaces to the
+  trash, so it too is recoverable. If one file of a batch cannot be moved (a
+  permissions wall on a share), the rest still move and the toast says which one
+  stayed behind.
+
+  *Not yet:* dragging entries onto a folder to move them — the menu is the way
+  in for now.
+
 - **Write mode — delete to a trash, and Replace** (plan 4 W4). **Deleting never
   unlinks.** Files and folders move into the library's own trash, and a new
   **Trash** view in the sidebar puts them back. Because the move is a rename
