@@ -10,8 +10,8 @@ trash listing. Both describe state the library already has, and hiding them
 when the capability is off would make past operations invisible and trashed
 files look permanently gone. Reading what happened is not writing.
 
-Rename, New Folder, import, delete-to-trash, restore, Empty Trash, and Undo
-are here; move (W3) attaches the same way.
+Rename, New Folder, move, import, delete-to-trash, restore, Empty Trash, and
+Undo are here.
 """
 
 from pathlib import Path
@@ -28,6 +28,7 @@ from cairndex.api.schemas.file_ops import (
     FileOperationResult,
     ImportResultRead,
     MakeDirectoryRequest,
+    MoveRequest,
     RenameRequest,
     TrashedEntryRead,
     TrashedOperationRead,
@@ -84,6 +85,33 @@ def make_directory(
 ) -> FileOperationResult:
     """Create one new directory. Its parent must already exist."""
     return _result(operations.make_directory(db, library_root_for_session(db), path=payload.path))
+
+
+@router.post("/move", response_model=FileOperationResult, status_code=status.HTTP_200_OK)
+def move_entries(
+    payload: MoveRequest, db: LibrarySession, _gate: WriteModeRequired
+) -> FileOperationResult:
+    """Move files and directories into another directory, carrying their metadata.
+
+    Like rename, the filesystem move and the `AssetFile.relative_path` update
+    happen together, so every id — and therefore every bundle membership, cover,
+    subtitle link and cached thumbnail — survives by construction. Moving a
+    directory repoints everything beneath it in the same operation.
+
+    The whole multi-select is one journal operation with one undo. A destination
+    that already holds something answers 409 `conflict` before anything moves,
+    which the client turns into the Replace / Skip / Keep both prompt and
+    re-issues with an explicit `on_conflict`.
+    """
+    return _result(
+        operations.move(
+            db,
+            library_root_for_session(db),
+            paths=payload.paths,
+            dest_dir=payload.dest_dir,
+            on_conflict=payload.on_conflict,
+        )
+    )
 
 
 @router.post("/import", response_model=ImportResultRead, status_code=status.HTTP_201_CREATED)

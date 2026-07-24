@@ -11,13 +11,16 @@ at all. The filesystem itself is the evidence:
   scanner's moved-file repair (ADR-0006) is the mechanism for the ambiguous
   cases, and it preserves ``AssetFile.id`` too.
 
-A deletion is the one operation reconciled *partially*, because it is the one
-that can be partially done: a multi-path delete interrupted halfway has entries
-sitting in the trash, and failing the whole operation would leave them there
-with nothing listing them — invisible to the Trash view and unreachable by
-restore. So whatever reached the trash is recorded and the deletion completes.
-(The same reasoning applies to a delete that fails mid-*request* rather than
-mid-crash; ``trash_paths`` handles that itself, because this only ever examines
+Deletion and multi-move are reconciled *partially*, because they are the
+operations that can be partially done. A multi-path delete interrupted halfway
+has entries sitting in the trash, and failing the whole operation would leave
+them there with nothing listing them — invisible to the Trash view and
+unreachable by restore. A batch move interrupted halfway has some files at their
+new paths and some not, and failing the whole operation would point the moved
+ones at paths that no longer hold them. So in both cases whatever actually
+happened on disk is recorded per entry and the operation completes. (The same
+reasoning applies to a delete or move that fails mid-*request* rather than
+mid-crash; the operation handles that itself, because this only ever examines
 ``pending`` rows and would never see it.)
 
 Never raises. A library that cannot be reconciled must still open — refusing to
@@ -109,6 +112,9 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
     if operation.op is FileOpType.TRASH:
         return _settle_trash(session, root, operation)
 
+    if operation.op is FileOpType.MOVE:
+        return _settle_move(session, root, operation)
+
     if operation.op is FileOpType.IMPORT:
         # The destination existing is *not* enough to conclude the import
         # finished: a Replace-policy import whose upload died partway leaves the
@@ -130,6 +136,41 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
 
     journal.fail(session, operation, f"cannot reconcile a {operation.op.value} operation")
     return False
+
+
+def _settle_move(session: Session, root: Path, operation: FileOperation) -> bool:
+    """Complete an interrupted multi-move for whatever actually moved on disk.
+
+    A batch move is many renames under one operation, so a crash can leave some
+    entries moved and some not — the same partial shape as a multi-path delete,
+    and resolved the same way. Each entry is judged on its own evidence: source
+    gone and destination present means that rename took effect, so its rows are
+    repointed; any other state means it did not, and the file is simply left
+    where it is for the scanner's moved-file repair to pick up. Completing the
+    entries that made it beats failing the whole operation, which would leave
+    already-moved files pointed at paths that no longer hold them.
+    """
+    completed: list[dict[str, str]] = []
+    files_updated = 0
+    for entry in operation.payload.get("moves", []):
+        source = entry.get("source")
+        destination = entry.get("destination")
+        if not source or not destination:
+            continue
+        source_present = os.path.lexists(resolve_writable(root, source))
+        destination_present = os.path.lexists(resolve_writable(root, destination))
+        if not source_present and destination_present:
+            files_updated += repoint_linked_rows(session, source=source, destination=destination)
+            completed.append(entry)
+
+    if not completed:
+        journal.fail(session, operation, "interrupted before anything was moved")
+        return False
+
+    journal.finish(
+        session, operation, moves=completed, files_updated=files_updated, reconciled=True
+    )
+    return True
 
 
 def _settle_trash(session: Session, root: Path, operation: FileOperation) -> bool:

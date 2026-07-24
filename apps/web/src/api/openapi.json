@@ -2374,12 +2374,13 @@
         "type": "string"
       },
       "FileOpType": {
-        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. ``move`` (W3) and ``save_new``\n(W2) follow; the journal stores the value as text, so adding one needs no\nmigration.\n\nThere is no ``restore`` member: restoring is not a new operation, it is the\noriginal ``trash`` row being undone, which is why the trash can be listed by\nreading the journal for `trash` rows that are still ``done``.",
+        "description": "Kind of guarded file operation recorded in the journal.\n\nOnly the operations that exist are listed. ``save_new`` (W2) follows; the\njournal stores the value as text, so adding one needs no migration.\n\nThere is no ``restore`` member: restoring is not a new operation, it is the\noriginal ``trash`` row being undone, which is why the trash can be listed by\nreading the journal for `trash` rows that are still ``done``.",
         "enum": [
           "rename",
           "mkdir",
           "trash",
-          "import"
+          "import",
+          "move"
         ],
         "title": "FileOpType",
         "type": "string"
@@ -3533,6 +3534,33 @@
         ],
         "title": "MediaKind",
         "type": "string"
+      },
+      "MoveRequest": {
+        "description": "Move one or more files/directories into another directory.",
+        "properties": {
+          "dest_dir": {
+            "default": "",
+            "title": "Dest Dir",
+            "type": "string"
+          },
+          "on_conflict": {
+            "$ref": "#/components/schemas/ConflictPolicy",
+            "default": "fail"
+          },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "title": "MoveRequest",
+        "type": "object"
       },
       "NotNode-Input": {
         "additionalProperties": false,
@@ -10668,6 +10696,91 @@
           }
         },
         "summary": "Make Directory",
+        "tags": [
+          "file-ops"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/file-ops/move": {
+      "post": {
+        "description": "Move files and directories into another directory, carrying their metadata.\n\nLike rename, the filesystem move and the `AssetFile.relative_path` update\nhappen together, so every id \u2014 and therefore every bundle membership, cover,\nsubtitle link and cached thumbnail \u2014 survives by construction. Moving a\ndirectory repoints everything beneath it in the same operation.\n\nThe whole multi-select is one journal operation with one undo. A destination\nthat already holds something answers 409 `conflict` before anything moves,\nwhich the client turns into the Replace / Skip / Keep both prompt and\nre-issues with an explicit `on_conflict`.",
+        "operationId": "move_entries_api_v1_libraries__library_id__file_ops_move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileOperationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Entries",
         "tags": [
           "file-ops"
         ]

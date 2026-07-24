@@ -195,6 +195,186 @@ def rename(
     return OperationResult(operation=operation, path=target_relative, files_updated=updated)
 
 
+def move(
+    session: Session,
+    root: Path,
+    *,
+    paths: list[str],
+    dest_dir: str,
+    on_conflict: ConflictPolicy = ConflictPolicy.FAIL,
+) -> OperationResult:
+    """Move files and directories into another directory, carrying their metadata.
+
+    A move is a rename that changes the *parent* instead of the name, so it
+    inherits rename's central property: each entry keeps its ``AssetFile.id``, so
+    bundle membership, covers, subtitle links and cache identity survive by
+    construction rather than by later repair. A directory moves whole, one
+    operation repointing every row beneath it.
+
+    The whole multi-select is **one journal operation with one undo**. Collisions
+    are resolved *before* the disk is touched, so a ``fail`` answer moves nothing
+    and the client can ask; ``skip``/``suffix``/``replace`` settle per entry. Like
+    a multi-file delete, a per-file filesystem error is tolerated: the entries
+    that moved are recorded and the ones that did not are reported, because
+    failing the whole operation would lose track of what already moved.
+    """
+    if not paths:
+        raise ValidationError("nothing to move")
+
+    # The destination is an *existing* directory (New Folder is its own
+    # operation) or the library root. Empty means the root, which normalizing
+    # would reject, so it is handled before the validator sees it.
+    try:
+        dest_relative = normalize_relative_path(dest_dir) if dest_dir else ""
+        dest_full = (
+            resolve_writable(root, dest_relative, what="destination")
+            if dest_relative
+            else Path(root)
+        )
+    except PathSafetyError as error:
+        raise ValidationError(str(error)) from error
+    if not dest_full.is_dir():
+        raise NotFoundError(f"{dest_relative or '(library root)'} is not a directory.")
+
+    sources: list[str] = []
+    for raw in paths:
+        try:
+            relative = _normalized(raw, what="source")
+            resolved = resolve_writable(root, relative, what="source")
+        except PathSafetyError as error:
+            raise ValidationError(str(error)) from error
+        if not os.path.lexists(resolved):
+            raise NotFoundError(f"{relative!r} does not exist.")
+        sources.append(relative)
+
+    # Moving a folder and something already inside it in one gesture: the child
+    # rides along with the parent, so dropping it keeps the batch a faithful set
+    # and stops a second move failing on a path the first already carried away.
+    sources = _drop_nested(sources)
+
+    # Phase 1 — decide everything before touching the disk. A `fail` collision
+    # raises here, having moved nothing, which is what lets the client ask.
+    planned: list[tuple[str, str, bool]] = []  # (source, destination, replace)
+    claimed: set[str] = set()
+    skipped_any = False
+    for source_relative in sources:
+        source_full = resolve_writable(root, source_relative, what="source")
+        name = PurePosixPath(source_relative).name
+        destination = join_relative(dest_relative, name)
+        if destination == source_relative:
+            continue  # already in this directory; nothing to do
+        is_directory = source_full.is_dir() and not source_full.is_symlink()
+        if is_directory and (
+            dest_relative == source_relative or dest_relative.startswith(f"{source_relative}/")
+        ):
+            # A directory cannot become its own descendant; the rename would
+            # either fail deep in the kernel or, worse, succeed into a loop.
+            raise ValidationError(f"Cannot move {name!r} into itself.")
+        settled = resolve_collision(
+            root, relative_path=destination, policy=on_conflict, name=name, parent=dest_relative
+        )
+        if settled.skip:
+            skipped_any = True
+            continue
+        destination = settled.relative_path
+        if destination in claimed:
+            # Two selected items with the same name bound for one directory. The
+            # second would clobber the first on disk — the one outcome the "never
+            # overwrite" rule forbids — so refuse the batch rather than pick a
+            # winner. (Auto-suffixing within a batch is a W6 refinement.)
+            raise ValidationError(
+                f"More than one selected item would be named {name!r} in the destination."
+            )
+        if not settled.replace:
+            _ensure_no_linked_conflict(session, destination)
+        claimed.add(destination)
+        planned.append((source_relative, destination, settled.replace))
+
+    if not planned:
+        # Everything was already in place or skipped; there is nothing to move,
+        # but the caller still needs an operation to point its toast at.
+        operation = journal.begin(
+            session,
+            op=FileOpType.MOVE,
+            payload={
+                "dest_dir": dest_relative,
+                "moves": [],
+                **({"skipped": True} if skipped_any else {}),
+            },
+        )
+        journal.finish(session, operation, files_updated=0)
+        return OperationResult(
+            operation=operation, path=dest_relative, files_updated=0, skipped=skipped_any
+        )
+
+    operation = journal.begin(
+        session,
+        op=FileOpType.MOVE,
+        payload={
+            "dest_dir": dest_relative,
+            "moves": [{"source": src, "destination": dst} for src, dst, _ in planned],
+        },
+    )
+
+    # Phase 2 — perform. Each move is tolerated on its own: an OSError on one
+    # (a permissions wall on a share, a cross-device boundary) records the file
+    # as unmoved and carries on, rather than abandoning the ones already moved.
+    performed: list[dict[str, str]] = []
+    failed: list[str] = []
+    error_reason = ""
+    total_updated = 0
+    try:
+        for source_relative, destination, replace in planned:
+            replaced_operation_id = ""
+            try:
+                if replace:
+                    # Trash-then-write (ADR-0013 §3.3): the displaced entry is
+                    # deleted as its own trash operation, so it lands in the Trash
+                    # view and undoing this move restores it.
+                    displaced = trash_paths(session, root, paths=[destination])
+                    replaced_operation_id = displaced.operation.id
+                source_full = resolve_writable(root, source_relative, what="source")
+                destination_full = resolve_writable(root, destination, what="destination")
+                _rename_on_disk(source_full, destination_full)
+            except (OSError, ConflictError) as error:
+                failed.append(source_relative)
+                error_reason = error_reason or (
+                    _os_error_message(error) if isinstance(error, OSError) else str(error)
+                )
+                continue
+            total_updated += repoint_linked_rows(
+                session, source=source_relative, destination=destination
+            )
+            entry = {"source": source_relative, "destination": destination}
+            if replaced_operation_id:
+                entry["replaced_operation_id"] = replaced_operation_id
+            performed.append(entry)
+    except Exception as error:  # metadata side failed after a file moved
+        journal.fail(session, operation, "metadata update failed after a file was moved")
+        raise ConflictError(
+            "Some files were moved on disk, but their metadata could not be updated. "
+            "A scan will reconcile them."
+        ) from error
+
+    if not performed:
+        journal.fail(session, operation, error_reason or "nothing could be moved")
+        raise ConflictError("Could not move anything.")
+
+    journal.finish(
+        session,
+        operation,
+        moves=performed,
+        files_updated=total_updated,
+        **({"failed_paths": failed, "error": error_reason} if failed else {}),
+    )
+    return OperationResult(
+        operation=operation,
+        path=performed[0]["destination"],
+        files_updated=total_updated,
+        failed_paths=failed,
+    )
+
+
 def make_directory(session: Session, root: Path, *, path: str) -> OperationResult:
     """Create one new directory. Its parent must already exist."""
     try:
@@ -468,6 +648,24 @@ def _ensure_restorable(session: Session, root: Path, entries: list[trash.Trashed
             raise ConflictError(f"Another file is already recorded at {entry.original_path!r}.")
 
 
+def _replaced_operation_ids(operation: FileOperation) -> list[str]:
+    """Every trash operation this one displaced a file into, for undo's sake.
+
+    A rename or import displaces at most one file and records it at the top of
+    the payload; a move can displace one per entry and records them inside
+    ``moves``. Undo has to check and restore all of them.
+    """
+    ids: list[str] = []
+    top = operation.payload.get("replaced_operation_id")
+    if top:
+        ids.append(str(top))
+    for move in operation.payload.get("moves", []):
+        replaced = move.get("replaced_operation_id")
+        if replaced:
+            ids.append(str(replaced))
+    return ids
+
+
 def _ensure_replacement_restorable(session: Session, operation: FileOperation) -> None:
     """Refuse an undo whose Replace can no longer be completed.
 
@@ -477,18 +675,16 @@ def _ensure_replacement_restorable(session: Session, operation: FileOperation) -
     incoming file back where it came from would leave the destination empty
     while the journal still advertised the operation as undoable.
     """
-    replaced_id = operation.payload.get("replaced_operation_id")
-    if not replaced_id:
-        return
-    replaced = journal.get_operation(session, str(replaced_id))
-    if replaced is None:
-        raise ConflictError(
-            "The file this replaced can no longer be found, so this cannot be undone."
-        )
-    if replaced.status is not FileOpStatus.DONE:
-        raise ConflictError(
-            "The file this replaced was permanently deleted, so this can no longer be undone."
-        )
+    for replaced_id in _replaced_operation_ids(operation):
+        replaced = journal.get_operation(session, replaced_id)
+        if replaced is None:
+            raise ConflictError(
+                "The file this replaced can no longer be found, so this cannot be undone."
+            )
+        if replaced.status is not FileOpStatus.DONE:
+            raise ConflictError(
+                "The file this replaced was permanently deleted, so this can no longer be undone."
+            )
 
 
 def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
@@ -517,6 +713,32 @@ def undo(session: Session, root: Path, *, operation_id: str) -> OperationResult:
     if operation.op is FileOpType.TRASH:
         # Undoing a deletion *is* restoring it — same inverse, same journal row.
         return restore(session, root, operation_id=operation_id)
+
+    if operation.op is FileOpType.MOVE:
+        # Move each entry back where it came from, in reverse so a directory is
+        # returned before anything that rode out inside it. A Replace displaced a
+        # file into the trash first; once our file is back out of that path,
+        # restoring the displaced one puts it home too.
+        moved_back = 0
+        for entry in reversed(operation.payload.get("moves", [])):
+            source = entry["source"]
+            destination = entry["destination"]
+            destination_full = resolve_writable(root, destination)
+            if os.path.lexists(destination_full):
+                try:
+                    _rename_on_disk(destination_full, resolve_writable(root, source))
+                except OSError as error:
+                    raise ConflictError(f"Could not move {destination!r} back.") from error
+                moved_back += repoint_linked_rows(session, source=destination, destination=source)
+            replaced_id = entry.get("replaced_operation_id")
+            if replaced_id:
+                restore(session, root, operation_id=str(replaced_id))
+        journal.mark_undone(session, operation)
+        return OperationResult(
+            operation=operation,
+            path=operation.payload.get("dest_dir", ""),
+            files_updated=moved_back,
+        )
 
     if operation.op is FileOpType.RENAME:
         result = rename(

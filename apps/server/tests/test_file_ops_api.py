@@ -397,3 +397,60 @@ def test_an_empty_upload_is_refused_and_leaves_nothing(
     history = client.get(f"/api/v1/libraries/{writable}/file-ops").json()["operations"]
     assert history[0]["op"] == "import"
     assert history[0]["status"] == "failed"
+
+
+def _move(client: TestClient, library_id: str, **payload: object) -> Response:
+    return client.post(f"/api/v1/libraries/{library_id}/file-ops/move", json=payload)
+
+
+def test_move_is_gated(client: TestClient, library_id: str, library_root: Path) -> None:
+    (library_root / "a.mkv").write_bytes(b"x")
+    (library_root / "Dest").mkdir()
+
+    refused = _move(client, library_id, paths=["a.mkv"], dest_dir="Dest")
+
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "write_mode_disabled"
+    assert (library_root / "a.mkv").is_file()
+
+
+def test_move_and_undo_round_trip(client: TestClient, writable: str, library_root: Path) -> None:
+    (library_root / "Inbox").mkdir()
+    (library_root / "Inbox/a.mkv").write_bytes(b"x")
+    (library_root / "Dest").mkdir()
+
+    moved = _move(client, writable, paths=["Inbox/a.mkv"], dest_dir="Dest")
+
+    assert moved.status_code == 200, moved.text
+    body = moved.json()
+    assert body["path"] == "Dest/a.mkv"
+    assert (library_root / "Dest/a.mkv").is_file()
+
+    undone = client.post(f"/api/v1/libraries/{writable}/file-ops/{body['operation']['id']}/undo")
+
+    assert undone.status_code == 200
+    assert (library_root / "Inbox/a.mkv").is_file()
+    assert not (library_root / "Dest/a.mkv").exists()
+
+
+def test_move_collision_reaches_the_client_as_a_choice(
+    client: TestClient, writable: str, library_root: Path
+) -> None:
+    (library_root / "Inbox").mkdir()
+    (library_root / "Inbox/a.mkv").write_bytes(b"incoming")
+    (library_root / "Dest").mkdir()
+    (library_root / "Dest/a.mkv").write_bytes(b"already here")
+
+    refused = _move(client, writable, paths=["Inbox/a.mkv"], dest_dir="Dest")
+
+    assert refused.status_code == 409
+    assert refused.json()["details"]["code"] == "path_conflict"
+
+    kept_both = _move(
+        client, writable, paths=["Inbox/a.mkv"], dest_dir="Dest", on_conflict="suffix"
+    )
+
+    assert kept_both.status_code == 200
+    assert kept_both.json()["path"] == "Dest/a (2).mkv"
+    assert (library_root / "Dest/a.mkv").read_bytes() == b"already here"
+    assert (library_root / "Dest/a (2).mkv").read_bytes() == b"incoming"

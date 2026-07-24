@@ -25,6 +25,17 @@ class MakeDirectoryRequest(BaseModel):
     path: str = Field(min_length=1)
 
 
+class MoveRequest(BaseModel):
+    """Move one or more files/directories into another directory."""
+
+    # Library-relative POSIX paths, validated server-side like every other write.
+    paths: list[str] = Field(min_length=1)
+    # The destination directory, relative to the library root. Empty means the
+    # root itself; it must already exist (New Folder is a separate operation).
+    dest_dir: str = ""
+    on_conflict: ConflictPolicy = ConflictPolicy.FAIL
+
+
 class FileOperationRead(BaseModel):
     """One journal entry, as the history view and Undo need it."""
 
