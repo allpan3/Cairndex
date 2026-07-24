@@ -14,8 +14,19 @@ import { IconFolder, IconTrash } from './icons'
  *
  * A Files-surface scope like Unbundled rather than a bundle browse view: the
  * things in it are files, some of which were never in a bundle at all.
+ *
+ * With write mode off the view is read-only: the server keeps the listing
+ * readable so trashed files never look permanently gone, but restore and Empty
+ * Trash are write operations it would refuse. The buttons stay visible and
+ * disabled — a control that disappears reads as a file that cannot come back.
  */
-export function TrashView({ onFlash }: { onFlash: (message: string) => void }) {
+export function TrashView({
+  writeMode,
+  onFlash,
+}: {
+  writeMode: boolean
+  onFlash: (message: string) => void
+}) {
   const trash = useTrash()
   const restore = useRestoreFromTrash()
   const empty = useEmptyTrash()
@@ -24,6 +35,9 @@ export function TrashView({ onFlash }: { onFlash: (message: string) => void }) {
   const operations = trash.data?.operations ?? []
   const size = trash.data?.size_bytes ?? 0
   const busy = restore.isPending || empty.isPending
+  const readOnlyHint = writeMode
+    ? undefined
+    : 'Write mode is off for this library. Turn it back on to do this.'
 
   const restoreOne = (operationId: string) =>
     restore.mutate(operationId, {
@@ -52,9 +66,19 @@ export function TrashView({ onFlash }: { onFlash: (message: string) => void }) {
           {operations.length.toLocaleString()} {operations.length === 1 ? 'deletion' : 'deletions'}
           {size > 0 && ` · ${formatBytes(size)}`}
         </span>
+        {!writeMode && operations.length > 0 && (
+          <span className="toolbar__count">
+            Write mode is off — these files stay recoverable, but restoring needs it back on.
+          </span>
+        )}
         <span className="toolbar__spacer" />
         {operations.length > 0 && !confirmingEmpty && (
-          <button className="btn btn--sm" onClick={() => setConfirmingEmpty(true)} disabled={busy}>
+          <button
+            className="btn btn--sm"
+            onClick={() => setConfirmingEmpty(true)}
+            disabled={busy || !writeMode}
+            title={readOnlyHint}
+          >
             Empty Trash…
           </button>
         )}
@@ -109,7 +133,8 @@ export function TrashView({ onFlash }: { onFlash: (message: string) => void }) {
                   <button
                     className="btn btn--sm"
                     onClick={() => restoreOne(operation.operation_id)}
-                    disabled={busy}
+                    disabled={busy || !writeMode}
+                    title={readOnlyHint}
                   >
                     Put back
                   </button>
