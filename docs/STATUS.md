@@ -2,14 +2,75 @@
 
 > **Current position:** phase H — plan 4 library write mode, on
 > `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
-> request). **W0, W1, W4 and W5 are complete**, including the desktop drag-in
-> that write mode was built for, and **three review findings are fixed** (see
-> the entry immediately below). **W3 (move) is the recommended next task** —
-> smaller than planned, since W1/W4/W5 built most of its machinery; W2 stays
-> blocked on plan 1 M11, and W6 closes the track. Two things still need the
-> owner: a pass on a genuinely downloaded build (deferred from D7), and a pass
-> on the **native Finder drag gesture** on a packaged build, which cannot be
-> automated here.
+> request). **W0, W1, W3, W4 and W5 are complete**, including the desktop
+> drag-in that write mode was built for, and three earlier review findings are
+> fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
+> its one deferred piece is drag-move onto a directory row (see the entry
+> immediately below). W2 stays blocked on plan 1 M11, and W6 closes the track.
+> Two things still need the owner: a pass on a genuinely downloaded build
+> (deferred from D7), and a pass on the **native Finder drag gesture** on a
+> packaged build, which cannot be automated here.
+
+## Implemented: plan 4 W3 — move (2026-07-23)
+
+Same branch. Move turned out **smaller than the plan sketched**, because W1's
+rename and W4's trash had already built its machinery: a move is a rename that
+changes the parent instead of the name, so it reuses `_rename_on_disk`,
+`repoint_linked_rows`, the collision policies, and trash-then-write Replace
+almost wholesale.
+
+**Server.** `operations.move` takes a list of paths and one destination
+directory and records the whole selection as **one journal `MOVE` operation
+with one undo**. The shape that mattered:
+
+- **Collisions are resolved before the disk is touched.** A `fail` answer moves
+  nothing and returns the same 409 `path_conflict` rename does, so the client
+  can ask; `skip`/`suffix`/`replace` settle per entry. Replace files its
+  displaced file as its own trash operation, recorded *per moved entry* (a
+  batch can displace more than one), which is why undo restores every one of
+  them and refuses up front if any was already emptied.
+- **A per-file `OSError` is tolerated like a partly-failed delete** — the
+  entries that moved are recorded, the rest reported in `failed_paths` — and for
+  the same reason: failing the whole operation would point already-moved files
+  at paths that no longer hold them, and the reconciler only inspects `pending`
+  rows so nothing would notice.
+- **Two selected items that would share a destination name are refused** before
+  anything moves, rather than allowed to clobber on disk — the one outcome the
+  "never overwrite original media" rule forbids. (Auto-suffixing within a batch
+  is a W6 refinement.)
+- **Reconcile and undo both walk the entries.** Reconcile completes whatever
+  actually reached the disk (partial, like a delete); undo moves each entry back
+  in reverse — a directory before anything that rode out inside it — and
+  restores any displaced file once its path is free again. A directory refuses
+  to move into its own subtree.
+
+**Web.** A **Move to… destination picker** (`DirectoryPicker`) reached from the
+context menu on files, directories, and multi-selections. It navigates the
+library's own directory tree one level at a time — a breadcrumb plus the
+subfolders at each level — so the destination is always a real, in-root folder
+the owner can see rather than a typed path. The folders being moved are removed
+from the tree, because a folder cannot be moved into itself. A collision raises
+the shared Replace / Skip / Keep both prompt, applied to the whole batch (the
+Eagle/Finder "apply to all") and re-issued in one call. Verified against a real
+dev server: the picker renders, the breadcrumb descends the tree, and the moved
+folder is correctly excluded from it.
+
+**Deferred, and the one piece of W3 that did not land: drag-move onto a
+directory row.** The File Browser's drag system is already intricate — a
+rubber-band marquee interleaved with native file-promise drag-*out* to the OS —
+and wiring an internal drag-*move* target correctly alongside it is a slice of
+its own. The dialog delivers the capability; drag is a second gesture for the
+same thing, and folding it into the existing DnD deserves its own change rather
+than riding on this one. Also not built here, and consistent with how W4/W5
+shipped: the multi-item plan/preview endpoint (§4) and the `file_ops_batch`
+job for bulk moves (§3.4) — moves run synchronously like trash and import, and
+collisions surface as a 409 rather than a preview step. Both are W6.
+
+**Tests.** Backend **763 passed** (+20: move round-trips, directory-subtree
+moves, the collision policies, batch undo, the partial-failure and
+same-name-clobber guards, reconcile partial/never-happened, plus three API-level
+move tests). Web **369 passed** (+4 move-flow component tests). All static gates
+clean; OpenAPI and `schema.d.ts` regenerated for `POST /file-ops/move`.
 
 ## Fixed: three write-mode review findings (2026-07-23)
 
