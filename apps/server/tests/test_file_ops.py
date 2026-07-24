@@ -1347,3 +1347,69 @@ def test_move_to_a_missing_destination_is_not_found(session: Session, library_ro
     _touch(library_root, "a.mkv")
     with pytest.raises(NotFoundError):
         operations.move(session, library_root, paths=["a.mkv"], dest_dir="Nowhere")
+
+
+def test_undoing_a_move_refuses_to_clobber_a_newcomer_at_the_source(
+    session: Session, library_root: Path
+) -> None:
+    """The bug: undo moved the file back with a plain rename, which on POSIX
+    silently overwrites whatever now sits at the source — a file imported,
+    copied, or re-downloaded there after the move. It is the only data-losing
+    path in write mode that is not Empty Trash, and it is a toast-button away.
+    Every sibling inverse prechecks occupancy; move must too."""
+    _touch(library_root, "a.mkv", b"the original")
+    (library_root / "sub").mkdir()
+    moved = _link(session, "a.mkv")
+    result = operations.move(session, library_root, paths=["a.mkv"], dest_dir="sub")
+    assert (library_root / "sub/a.mkv").read_bytes() == b"the original"
+
+    # A newcomer takes the vacated path — an import, a Finder copy, a download.
+    _touch(library_root, "a.mkv", b"a different file that must not be lost")
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result.operation.id)
+
+    # The newcomer's bytes are untouched, the move still stands, and the journal
+    # still honestly says so — nothing half-happened.
+    assert (library_root / "a.mkv").read_bytes() == b"a different file that must not be lost"
+    assert (library_root / "sub/a.mkv").read_bytes() == b"the original"
+    session.refresh(result.operation)
+    assert result.operation.status is FileOpStatus.DONE
+    session.refresh(moved)
+    assert moved.relative_path == "sub/a.mkv"
+
+
+def test_undoing_a_move_refuses_a_linked_row_at_the_source(
+    session: Session, library_root: Path
+) -> None:
+    """The metadata echo of the same bug: if the newcomer is a linked row,
+    repoint would hit the unique constraint *after* the bytes were destroyed.
+    The precheck catches it against the rows too, before touching anything."""
+    _touch(library_root, "a.mkv", b"the original")
+    (library_root / "sub").mkdir()
+    operations.move(session, library_root, paths=["a.mkv"], dest_dir="sub")
+    result_id = journal.list_operations(session, limit=1)[0].id
+
+    # A scan links a new file at the vacated path.
+    _touch(library_root, "a.mkv", b"newcomer")
+    _link(session, "a.mkv")
+
+    with pytest.raises(ConflictError):
+        operations.undo(session, library_root, operation_id=result_id)
+
+    assert (library_root / "a.mkv").read_bytes() == b"newcomer"
+    assert (library_root / "sub/a.mkv").read_bytes() == b"the original"
+
+
+def test_a_move_undo_still_works_when_the_source_is_free(
+    session: Session, library_root: Path
+) -> None:
+    """The guard refuses only a taken source; an ordinary undo is unaffected."""
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "sub").mkdir()
+    result = operations.move(session, library_root, paths=["a.mkv"], dest_dir="sub")
+
+    operations.undo(session, library_root, operation_id=result.operation.id)
+
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+    assert not (library_root / "sub/a.mkv").exists()
