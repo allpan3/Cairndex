@@ -7,11 +7,32 @@
 > genuinely downloaded build (deferred from D7), and a pass on the **native
 > Finder drag gesture** on a packaged build, which cannot be automated here.
 
-## In progress: post-merge interaction fixes (2026-07-25)
+## Ready for review: post-merge interaction fixes (2026-07-26)
 
-Branch `fix/post-merge-fixes`, latest `HEAD`. Owner testing of the merged build
-produced several rounds of drag-and-drop, selection and layout fixes. The two
-findings worth recording beyond the changelog:
+Branch `fix/post-merge-fixes`, 11 commits, opened as a PR. Owner testing of the
+merged build produced several rounds of drag-and-drop, selection and layout
+fixes; the branch history was squashed from 37 commits to 11 coherent ones (same
+tree) before review. The findings worth carrying forward:
+
+**`tsc --noEmit` checks nothing in this repo.** The root `tsconfig.json` is
+`files: []` with project references, so bare `tsc` silently no-ops. The gate is
+`npm run typecheck` (`tsc -b`), which is what `just check-web` runs — an agent
+reaching for `npx tsc --noEmit` will get a clean result from an empty check, and
+did, for a whole session. Two latent runtime crashes reached the branch that way.
+Related: annotating a callback parameter inside `useMutation` collapses TanStack's
+generic inference and makes `mutate` accept anything, so a call site on a retired
+contract still type-checks.
+
+**Drag-and-drop has a settled model now; keep to it.** A drop resolves to a
+*destination* — the item a block lands in front of, the end of a group, or "nest
+into this one" — and that single value paints the seam and commits the move, so
+the two cannot disagree. The container owns the gesture; cards and rows carry
+only dragstart/dragend. The dragged payload lives in a synchronous store
+(`dnd.ts`), never React state, because a fast drag delivers its drop before a
+render. The server takes moves, not orders, and answers with the resulting order,
+which the client applies without refetching. Manual order is directionless.
+Reordering never bumps `updated_at`. Most of the bug reports on this branch were
+some version of violating one of those.
 
 **Tauri's `dragDropEnabled` is a whole-pipeline switch, not a feature toggle.**
 With it `true` (the default), tauri-runtime-wry answers *every* drag event as
