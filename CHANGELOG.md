@@ -222,6 +222,27 @@ grouped under `Unreleased` until the first tagged release.
   `packaging/ffmpeg-build-info/`; the three-year offer no longer depends on a
   third-party build server still serving those files.
 
+### Changed
+
+- **The desktop window's title bar is merged into the app.** macOS no longer
+  stacks a grey system bar above the shell: the app surface starts at the top of
+  the window and the traffic lights float over the sidebar's top-left corner,
+  which the sidebar now reserves. The toolbar sits in that same strip and drags
+  the window, as a native toolbar does. Browser tabs are unaffected.
+
+- **Recently Added no longer offers a sort.** The server treats it as the All
+  view — date-added descending is the only thing that makes it "recent" — so
+  changing the sort there quietly produced a second All view under a misleading
+  name (and the choice was remembered, so it stayed wrong). The control now
+  shows the fixed order and says why, rather than disappearing.
+
+- **The sidebar no longer highlights a collection selected in the grid.** The
+  tree's highlight means "this is where you are", and selecting a folder card
+  doesn't navigate — so lighting up the matching row claimed a move that never
+  happened. Each surface now shows the selection it made; the selection itself is
+  still one thing, and every action on it (drag, context menu, inspector) is
+  unchanged.
+
 ### Fixed
 
 - **Cover art was intercepting the gestures meant for the card holding it.** A

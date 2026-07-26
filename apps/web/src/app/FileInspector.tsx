@@ -52,7 +52,7 @@ export function FileInspector({
 
   if (entry === null) {
     return (
-      <aside className="inspector">
+      <aside className="inspector" data-tauri-drag-region>
         <div className="inspector__empty">Select a file to see its details.</div>
       </aside>
     )
@@ -91,7 +91,7 @@ export function FileInspector({
   }
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" data-tauri-drag-region>
       {editing ? (
         <input
           className="edit inspector__title-edit"

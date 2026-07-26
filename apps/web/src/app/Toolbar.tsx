@@ -21,6 +21,9 @@ interface ToolbarProps {
   sort: BundleSort
   order: SortOrder
   onSort: (sort: BundleSort, order: SortOrder) => void
+  /** Set when the view defines its own order (Recently Added): the control is
+   *  shown disabled with this as its explanation. */
+  sortLockedReason?: string
   perCollectionSort: boolean
   onPerCollectionSort: (value: boolean) => void
   // Ad-hoc toolbar filters (local UI state; see app/adHocFilters.ts).
@@ -45,6 +48,7 @@ export function Toolbar({
   sort,
   order,
   onSort,
+  sortLockedReason,
   perCollectionSort,
   onPerCollectionSort,
   adHocFilters,
@@ -58,7 +62,7 @@ export function Toolbar({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" data-tauri-drag-region="deep">
         <span className="toolbar__title">{title}</span>
         <span className="toolbar__count">{total.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
@@ -87,6 +91,7 @@ export function Toolbar({
           sort={sort}
           order={order}
           onChange={onSort}
+          lockedReason={sortLockedReason}
           perCollection={perCollectionSort}
           onPerCollection={onPerCollectionSort}
         />

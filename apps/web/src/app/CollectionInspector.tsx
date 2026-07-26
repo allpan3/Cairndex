@@ -36,7 +36,7 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
   }
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" data-tauri-drag-region>
       {hasCover && (
         <div className="inspector__cover">
           <img

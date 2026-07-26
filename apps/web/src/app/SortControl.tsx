@@ -17,6 +17,10 @@ interface SortControlProps {
   sort: BundleSort
   order: SortOrder
   onChange: (sort: BundleSort, order: SortOrder) => void
+  /** Set when the view *is* its sort (Recently Added). The control stays visible
+   *  but does not open, and says why: a control that vanishes reads as a feature
+   *  that broke, where a disabled one reads as a rule. */
+  lockedReason?: string
   // #8: when true, each collection/view keeps its own last-used sort.
   perCollection: boolean
   onPerCollection: (value: boolean) => void
@@ -31,6 +35,7 @@ export function SortControl({
   sort,
   order,
   onChange,
+  lockedReason,
   perCollection,
   onPerCollection,
 }: SortControlProps) {
@@ -44,7 +49,8 @@ export function SortControl({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label="Sort"
-        title="Sort"
+        disabled={lockedReason !== undefined}
+        title={lockedReason ?? 'Sort'}
       >
         {label}
         <span className="sortctl__dir" aria-hidden="true">
@@ -52,6 +58,7 @@ export function SortControl({
         </span>
       </button>
       {open &&
+        lockedReason === undefined &&
         pos &&
         createPortal(
           <div

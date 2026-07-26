@@ -186,6 +186,41 @@ button {
   background: var(--accent-soft);
 }
 
+/* --- Merged title bar (desktop shell) ------------------------------------- *
+ * The macOS window is `titleBarStyle: Overlay`, so there is no grey system bar
+ * stacked above the app — the app surface starts at the top of the window and
+ * the traffic lights float over the sidebar's top-left corner. Only two things
+ * follow from that: reserve that corner, and give the strip somewhere to drag
+ * the window from (the toolbars and the brand row carry
+ * `data-tauri-drag-region`). Everything is scoped to the attribute
+ * `markOverlayTitleBar` sets, so the browser build is unchanged. */
+.sidebar__titlebar {
+  flex: none;
+  height: 0;
+}
+:root[data-titlebar='overlay'] .sidebar__titlebar {
+  /* The traffic lights sit ~13px down and end ~x=78 — clear of the brand once
+     the row below them starts here. The sidebar gives up its own top padding so
+     this strip reaches the window's edge: padding there would be a dead band
+     right beside the lights, which is the first place a hand goes to move a
+     window. The negative margins cancel the sidebar's side padding too, so the
+     strip runs edge to edge — a 8px dead seam at the window corner would be the
+     same bug in miniature. */
+  height: 34px;
+  margin: 0 -8px;
+}
+:root[data-titlebar='overlay'] .sidebar {
+  padding-top: 0;
+}
+/* Nothing may cover the lights, and a scrolled sidebar must not slide content
+   under them either. */
+:root[data-titlebar='overlay'] .sidebar__brand {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-2);
+}
+
 /* --- Sidebar -------------------------------------------------------------- */
 .sidebar {
   grid-column: 1;
