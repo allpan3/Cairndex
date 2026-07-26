@@ -91,8 +91,18 @@ and apply the OS multiplier.
 
 The Tauri 2 shell hosts the same `apps/web` Vite development server and
 production `dist`; there is no desktop frontend fork. `tauri dev` loads a page
-whose origin is Vite's `http://127.0.0.1:5173`, so opt that exact development
-origin into the backend before starting the shell:
+whose origin is Vite's `http://127.0.0.1:5173`, which is **not** one of the
+packaged `tauri://` origins the backend trusts by default — so a cross-origin
+call from the dev webview to any server is CORS-blocked unless that origin is
+opted in.
+
+- **"This Computer" (the bundled sidecar) needs nothing.** The shell detects
+  `tauri::is_dev()` and spawns the sidecar with `CAIRNDEX_CORS_EXTRA_ORIGINS`
+  set to the dev origin automatically (`sidecar.rs`), so the HTTP-based flows —
+  adding a library, path completion — work out of the box. Set the variable in
+  your own shell to override it.
+- **A standalone server (e.g. `:8000`) must opt the origin in itself**, because
+  the shell does not spawn it:
 
 ```bash
 cd apps/server
@@ -105,6 +115,40 @@ cd apps/desktop
 npm install
 npm run tauri dev
 ```
+
+### Which server the desktop talks to (sidecar vs standalone)
+
+`tauri dev` gives you two ways to provide the server the frontend calls, and
+choosing between them is the main thing to understand — it is what decides
+whether you ever run `:8000` for desktop work:
+
+- **A standalone server you run from source** — the `:8000` uvicorn above, which
+  the desktop connects to like any other server (enter `http://127.0.0.1:8000`
+  on the first-run screen). It runs your **live** code under `--reload`, needs no
+  rebuild, and lets the desktop and the web app share one server and one set of
+  libraries. **Prefer this while iterating**, on the frontend or the server.
+- **"This Computer" — the bundled sidecar**, which the shell spawns itself. This
+  is the self-contained server end users get, but it is a **PyInstaller build of
+  `apps/server` frozen at build time**, staged from
+  `packaging/dist/cairndex-sidecar/`. After changing server code you must rebuild
+  it, or it silently serves stale code — a route added since the last build
+  `404`s in the desktop while the web app (on your live `:8000`) works:
+
+```bash
+cd apps/server && uv run python packaging/build_sidecar.py
+# Run the shell against the fresh binary, bypassing the stale copy Tauri staged
+# into target/ at its last cargo build:
+cd apps/desktop
+CAIRNDEX_SIDECAR_BIN="$(cd ../server && pwd)/packaging/dist/cairndex-sidecar/cairndex-sidecar" \
+  npm run tauri dev
+```
+
+Reach for the sidecar only when you specifically want to exercise the
+self-contained bundling (or the packaged `.app`, see the README); use the
+standalone `:8000` server for everything else. Two servers opening the *same*
+library folder is refused by the ownership lease, so do not run the sidecar
+against a library your `:8000` server already has open — that is the
+"open on `<this machine>`" message.
 
 The first-run screen stores a verified server URL in the Tauri store. Bootstrap
 also requires the health response to advertise the pairing and progress

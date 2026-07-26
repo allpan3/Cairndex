@@ -39,10 +39,11 @@ export interface OpenLibraryFolderResult {
  */
 export async function openLibraryFolder(
   knownLibraryUuids: string[] = [],
+  options: { adopt?: boolean; stage?: boolean } = {},
 ): Promise<OpenLibraryFolderResult> {
   // Cancellable step first: dismissing the picker must leave the current
   // connection, cache, and library exactly as they were.
-  const opened = await openHostLibraryFolder(knownLibraryUuids)
+  const opened = await openHostLibraryFolder(knownLibraryUuids, options.stage ?? false)
   if (!opened) return { opened: null }
 
   // Not a library yet. The shell is holding the folder against the token; until
@@ -56,7 +57,11 @@ export async function openLibraryFolder(
   // by uuid, since our id would belong to a registry it is not talking to.
   if (opened.alreadyAvailable) return { opened }
 
-  await adoptOpenedLibrary(opened)
+  // Registered with the local sidecar by the shell. The first-run/open-folder
+  // flow *adopts* it (switches to it); the Manage dialog passes `adopt: false`,
+  // because adding a library to the list is not the same as switching to it —
+  // and switching remounts the app, which is exactly what closes that dialog.
+  if (options.adopt ?? true) await adoptOpenedLibrary(opened)
   return { opened }
 }
 
@@ -70,11 +75,14 @@ export async function openLibraryFolder(
 export async function confirmPickedLibrary(
   token: string,
   name: string,
+  options: { adopt?: boolean } = {},
 ): Promise<OpenLibraryFolderResult> {
   // Creation first, and only then the switch: a failure here (a blank name, an
   // unwritable folder, a stale token) must leave the current connection alone.
   const opened = await confirmHostPickedLibrary(token, name)
-  await adoptOpenedLibrary(opened)
+  // `adopt: false` (the Manage dialog) creates the library and leaves it in the
+  // list without switching to it, so the dialog stays open on an explicit add.
+  if (options.adopt ?? true) await adoptOpenedLibrary(opened)
   return { opened }
 }
 

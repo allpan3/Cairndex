@@ -547,7 +547,7 @@ function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSetti
       />
       <div className="center">
         <div className="state">
-          No library yet. Click <strong>+</strong> in the sidebar to add one.
+          No library yet. Click the <strong>library</strong> icon at the top left to add one.
         </div>
       </div>
       <aside className="inspector" />
