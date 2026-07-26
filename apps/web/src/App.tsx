@@ -76,6 +76,7 @@ import {
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
 import type { DragItem } from './app/dnd'
+import { getActiveDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -632,6 +633,12 @@ function Workspace({
   // What's currently being dragged (bundles or a collection), so folder cards and
   // sidebar rows can accept cross-surface drops (reparent / move into collection).
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
+  // Writes the synchronous store first (commit paths read it), then the
+  // reactive state (highlights render from it). See dnd.ts on why both exist.
+  const updateDragItem = useCallback((item: DragItem | null) => {
+    setActiveDrag(item)
+    setDragItem(item)
+  }, [])
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [viewerTarget, setViewerTarget] = useState<{
     bundleId: string
@@ -1674,23 +1681,20 @@ function Workspace({
       // semantics — wherever the pointer is. Finder file drags (types includes
       // Files) are left alone so drag-in keeps its own path, and the drop
       // swallow only ends stray drops; real targets handled the event first.
-      onDragOver={
-        dragItem
-          ? (e) => {
-              if (e.dataTransfer.types.includes('Files')) return
-              e.preventDefault()
-              e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
-            }
-          : undefined
-      }
-      onDrop={
-        dragItem
-          ? (e) => {
-              if (e.dataTransfer.types.includes('Files')) return
-              e.preventDefault()
-            }
-          : undefined
-      }
+      // Attached unconditionally and gated on the synchronous store: attaching
+      // only while the *reactive* dragItem is set left the first dragovers of a
+      // fast drag unhandled (see dnd.ts).
+      onDragOver={(e) => {
+        if (getActiveDrag() === null && dragItem === null) return
+        if (e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+      }}
+      onDrop={(e) => {
+        if (getActiveDrag() === null && dragItem === null) return
+        if (e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+      }}
     >
       {sidebarVisible && (
         <Sidebar
@@ -1773,7 +1777,7 @@ function Workspace({
           onMoveCollections={moveCollections}
           onCleanupCollections={() => setCleaningCollections(true)}
           dragItem={dragItem}
-          onDragItem={setDragItem}
+          onDragItem={updateDragItem}
           onReparentCollections={reparentCollections}
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
@@ -1874,7 +1878,7 @@ function Workspace({
                     onContextMenuSubcollection={collectionContextMenu}
                     onSectionContextMenu={collectionSectionContextMenu}
                     dragItem={dragItem}
-                    onDragItem={setDragItem}
+                    onDragItem={updateDragItem}
                     onReparentCollections={reparentCollections}
                     onMoveCollections={moveCollections}
                     parentId={selection.collectionId ?? null}
@@ -1956,8 +1960,8 @@ function Workspace({
                             })
                         : undefined
                     }
-                    onBundleDragStart={(ids) => setDragItem({ kind: 'bundles', ids })}
-                    onBundleDragEnd={() => setDragItem(null)}
+                    onBundleDragStart={(ids) => updateDragItem({ kind: 'bundles', ids })}
+                    onBundleDragEnd={() => updateDragItem(null)}
                     isLoading={browse.isLoading}
                     isError={browse.isError}
                     error={browse.error}

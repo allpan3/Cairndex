@@ -385,3 +385,24 @@ def test_tag_reparent_and_safe_delete_api(client: TestClient, library_id: str) -
 
     # A leaf tag deletes fine.
     assert client.delete(f"{base}/tags/{a['id']}").status_code == 204
+
+
+def test_reordering_collections_is_not_editing(session: Session) -> None:
+    """Dragging collections around must not touch their modified time. Beyond
+    honesty, ``updated_at`` is each collection's cover-thumbnail cache key, so
+    bumping it re-fetched every sibling's cover after every drag."""
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+    session.commit()
+    stamps = {x.id: x.updated_at for x in (a, b, c)}
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=a.id
+    )
+    collection_service.cleanup_collection_order(session)
+    session.commit()
+
+    for x in (a, b, c):
+        session.refresh(x)
+        assert x.updated_at == stamps[x.id], f"{x.name} was stamped modified by a reorder"

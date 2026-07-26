@@ -27,10 +27,10 @@ import {
   IconTagQuestion,
   IconTrash,
 } from './icons'
-import type { DragItem } from './dnd'
-import { dropZone } from './dnd'
+import type { DragItem, TreeDrop } from './dnd'
+import { dropZone, getActiveDrag, sameTreeDrop, seamFor, setActiveDrag } from './dnd'
 import { PickGuides } from './PickGuides'
-import { gapBefore, moveManyTo } from './reorder'
+import { gapBefore, moveBeforeId } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
 
@@ -218,10 +218,10 @@ export function Sidebar({
   const menu = useContextMenu()
   // Drop feedback for the hovered collection row (before/after = reorder gap,
   // into = reparent/add). The dragged payload comes from the App-level dragItem.
-  const [dropSlot, setDropSlot] = useState<{
-    id: string
-    zone: 'before' | 'into' | 'after'
-  } | null>(null)
+  // Where the drop will land, named once — see DropTarget in dnd.ts. A tree gap
+  // carries its parent group too: "the end of the group" means nothing without
+  // knowing which group, since rows from different levels interleave on screen.
+  const [dropSlot, setDropSlot] = useState<TreeDrop | null>(null)
   // A drag ending leaves the last hovered slot behind; the *next* drag showed it
   // for a beat before the first dragover corrected it. Reset as the new drag
   // begins — adjusted during render (React's reset-on-prop-change pattern)
@@ -804,8 +804,8 @@ function CollectionBranch({
   onDoneEditing: () => void
   dragItem: DragItem | null
   onDragItem?: (item: DragItem | null) => void
-  dropSlot: { id: string; zone: 'before' | 'into' | 'after' } | null
-  onDropSlot: (v: { id: string; zone: 'before' | 'into' | 'after' } | null) => void
+  dropSlot: TreeDrop | null
+  onDropSlot: (v: TreeDrop | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
   onMoveCollections?: SidebarProps['onMoveCollections']
   onReparentCollections?: (ids: string[], targetId: string) => void
@@ -821,8 +821,16 @@ function CollectionBranch({
   // Only reflect the hover slot while a drag is live — a bundle drag begins in
   // the Browser and never fires a sidebar row's onDragEnd, so gating on dragItem
   // prevents the highlight from sticking after such a drag ends.
-  const slotZone = dragItem && dropSlot?.id === id ? dropSlot.zone : null
+  // One seam per destination: a leading line on the row the block lands before,
+  // or a trailing line on the last row of the group when it lands at the end.
+  // Never both sides of one gap.
+  const seam =
+    dropSlot?.kind === 'gap' && dropSlot.parentId === parentId
+      ? seamFor({ kind: 'gap', beforeId: dropSlot.beforeId }, id, siblingIds)
+      : undefined
+  const nesting = dropSlot?.kind === 'into' && dropSlot.id === id
   const endDrag = () => {
+    setActiveDrag(null)
     onDragItem?.(null)
     onDropSlot(null)
   }
@@ -831,9 +839,9 @@ function CollectionBranch({
     <>
       <div
         className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
-          slotZone === 'into' ? ' collection-row--drop-into' : ''
+          nesting ? ' collection-row--drop-into' : ''
         }`}
-        data-drop={slotZone && slotZone !== 'into' ? slotZone : undefined}
+        data-drop={seam}
         onClick={(e) => {
           if (editing) return
           if ((e.metaKey || e.shiftKey) && onModifierSelect) {
@@ -856,6 +864,7 @@ function CollectionBranch({
               ? [...multiSelectedIds]
               : [id]
           setDragBadge(e, dragBadgeLabel(ids.length, node.collection.name, 'collection'))
+          setActiveDrag({ kind: 'collection', id, ids })
           onDragItem?.({ kind: 'collection', id, ids })
         }}
         onDragEnd={endDrag}
@@ -863,42 +872,60 @@ function CollectionBranch({
           // Bundles → move into this collection; a folder → drop on the top/bottom
           // edge to place before/after this row (reorder within, or reparent into,
           // this row's group), or on the middle to reparent *into* this collection.
+          // Reads the synchronous drag store, not the prop: a fast drag delivers
+          // these events before React commits the dragstart's state (see dnd.ts).
+          const live = getActiveDrag() ?? dragItem
           let zone: 'before' | 'into' | 'after' | null = null
-          if (dragItem?.kind === 'bundles') {
+          if (live?.kind === 'bundles') {
             zone = 'into'
             e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
-          } else if (dragItem?.kind === 'collection' && !dragItem.ids.includes(id)) {
+          } else if (live?.kind === 'collection' && !live.ids.includes(id)) {
             const r = e.currentTarget.getBoundingClientRect()
             zone = dropZone(e, r, 'vertical', true)
           }
           if (zone === null) return
           e.preventDefault()
-          if (dropSlot?.id !== id || dropSlot.zone !== zone) onDropSlot({ id, zone })
+          const target: TreeDrop =
+            zone === 'into'
+              ? { kind: 'into', id }
+              : {
+                  kind: 'gap',
+                  parentId,
+                  // Collapsed to "before the next row": one name per gap, and the
+                  // exact value the server is sent. For a row with children
+                  // showing, that also puts the line below them — where the next
+                  // sibling actually starts — instead of under the row itself,
+                  // which read as "make this a child".
+                  beforeId: gapBefore(siblingIds, live?.ids ?? [], id, zone),
+                }
+          if (!sameTreeDrop(dropSlot, target)) onDropSlot(target)
         }}
         onDrop={(e) => {
-          if (!dragItem) return
-          if (dragItem.kind === 'bundles') {
+          const live = getActiveDrag() ?? dragItem
+          if (!live) return
+          if (live.kind === 'bundles') {
             e.preventDefault()
             onMoveBundlesInto?.(id, e.altKey)
-          } else if (!dragItem.ids.includes(id)) {
+          } else if (!live.ids.includes(id)) {
             e.preventDefault()
             // Recompute the zone from the cursor at drop time — the last dragover
             // may not have settled on this row, and a stale slot would silently
             // turn an intended reorder into a reparent ("move fails" ~1 in 8).
             const r = e.currentTarget.getBoundingClientRect()
             const zone = dropZone(e, r, 'vertical', true)
-            const dragged = dragItem.ids
+            const dragged = live.ids
             const incoming = dragged.filter((x) => !siblingIds.includes(x))
+            const beforeId = gapBefore(siblingIds, dragged, id, zone)
             if (zone === 'into') {
               onReparentCollections?.(dragged, id)
             } else if (incoming.length === 0) {
-              onReorderCollections(parentId, dragged, gapBefore(siblingIds, dragged, id, zone))
+              onReorderCollections(parentId, dragged, beforeId)
             } else {
               // From another parent group: reparent into this row's group at the slot.
               onMoveCollections?.(
                 dragged,
                 parentId,
-                moveManyTo([...siblingIds, ...incoming], dragged, id, zone === 'before'),
+                moveBeforeId([...siblingIds, ...incoming], dragged, beforeId),
               )
             }
           }
@@ -997,16 +1024,17 @@ function CollectionListEnd({
         over ? ' collection-list-end--over' : ''
       }`}
       onDragOver={(e) => {
-        if (dragItem?.kind !== 'collection') return
+        if ((getActiveDrag() ?? dragItem)?.kind !== 'collection') return
         e.preventDefault()
         if (!over) setOver(true)
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         setOver(false)
-        if (dragItem?.kind !== 'collection') return
+        const live = getActiveDrag() ?? dragItem
+        if (live?.kind !== 'collection') return
         e.preventDefault()
-        const dragged = dragItem.ids
+        const dragged = live.ids
         const rest = topLevelIds.filter((x) => !dragged.includes(x))
         // Keep the dragged block in its existing top-level order where it has
         // one, so a multi-selection doesn't come out shuffled at the end.
@@ -1016,7 +1044,11 @@ function CollectionListEnd({
           // Already top-level: just move them to the end.
           onReorderCollections(null, dragged, null)
         } else {
-          onMoveCollections?.(dragged, null, [...rest, ...moved, ...incoming])
+          onMoveCollections?.(
+            dragged,
+            null,
+            moveBeforeId([...rest, ...moved, ...incoming], dragged, null),
+          )
         }
         onEndDrag()
       }}

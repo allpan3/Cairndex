@@ -285,6 +285,55 @@ grouped under `Unreleased` until the first tagged release.
   subcollection view stays fixed: its cards span several parents, so a drag there
   would rewrite the global order while appearing to arrange one collection.
 
+- **The sidebar tree joins the one-seam model, with reachable reorder edges.**
+  Dropping between two rows shows a single seam wherever in that gap the pointer
+  is. Its reorder edges also had a floor put under them: 28% of a 226px card is a
+  comfortable 63px, but 28% of a 29px row is 8px, so nesting kept winning drags
+  meant as reorders — the edges are now at least 10px while the middle keeps a
+  third of the row for nesting. And a row with its children showing now draws the
+  seam *below* those children, where the next sibling actually begins, instead of
+  tight under the row where it read as "make this a child".
+
+- **One seam per drop location.** A gap between two cards was describable from
+  either side — "after the left one" or "before the right one" — so a single
+  insertion point presented as two seams that did the same thing. A drop now
+  resolves to a *destination* (the item the block lands in front of, or the end
+  of the group) and exactly one seam paints for it, wherever the pointer happens
+  to be within that gap's reach. Nesting is untouched: a card's middle still
+  rings for "make this a subcollection". Applies to the collection cards and the
+  bundle grid, which share the model.
+
+- **Reordering collections no longer sometimes does nothing.** The owner's
+  recording caught it: the insertion line promised "before Archive", but the release
+  landed two pixels into the *gutter* between cards — territory the cards didn't
+  own. It fell to an old surface handler that resolved drops by the grid's
+  vertical midpoint, picked the last sibling as the edge, and when that sibling
+  was the dragged card itself, silently discarded the move. The collection grid
+  now works exactly like the bundle grid: one gap computation over the cursor
+  feeds both the insertion line and the drop, gutters resolve to the gap they
+  visually are, and the dragged payload lives in a synchronous store so even the
+  fastest flick can't outrun it. Sidebar rows got the same synchronous payload.
+
+- **Cards select on press, not release.** Selection used to land on mouse-up —
+  so a drag that began on an unselected card swallowed the click that would have
+  selected it, and the drag left with the *previous* selection. Pressing a card
+  now selects it immediately; pressing a card that is already part of a
+  multi-selection keeps the group (so the group can be dragged), and a plain
+  click still collapses to just that card on release. Modifier clicks (⌘, ⇧)
+  are unchanged.
+
+- **A settled reorder no longer starts a hover preview on its own.** When a
+  drop rearranges the grid, cards slide under the resting pointer and whichever
+  one lands there began playing its preview unasked — sometimes continuing after
+  the pointer moved away. Previews now stay off after a drag ends until the
+  pointer actually travels (beyond a few pixels), the signal that hovering is
+  intentional again.
+
+- **Reordering collections no longer counts as modifying them.** Same rule
+  bundles got: rearranging the shelf isn't editing the books. Beyond honesty,
+  each collection's modified time is its cover-thumbnail cache key, so every
+  drag was re-fetching every sibling's cover.
+
 - **Drag-reorder rebuilt around three rules, after a screen recording showed a
   drop scrambling cards it never touched.** The recording's toolbar read
   "Manual ↓" — and *descending manual order* was the hole: the server resolves
