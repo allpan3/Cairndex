@@ -156,6 +156,8 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
 
   await page.getByRole('button', { name: 'NAS Media' }).click()
   await page.locator('.file-row__name', { hasText: 'scan.tiff' }).dblclick()
-  await expect(page.locator('.viewer__img')).toBeVisible()
+  // The File Browser opens the same viewer the Bundle Browser uses, so this is
+  // the shared image stage rather than a bare <img> lightbox.
+  await expect(page.locator('.mv-image')).toBeVisible()
   await expect.poll(() => previewRequests.some((url) => url.includes('path=scan.tiff'))).toBe(true)
 })

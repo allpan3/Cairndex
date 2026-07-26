@@ -68,7 +68,9 @@ export function VideoStage({
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
-      artwork: [{ src: artworkUrl, sizes: '512x512', type: 'image/jpeg' }],
+      // A File Browser path has no cover image, so it supplies no artwork rather
+      // than an entry pointing at nothing.
+      artwork: artworkUrl ? [{ src: artworkUrl, sizes: '512x512', type: 'image/jpeg' }] : [],
     })
     navigator.mediaSession.setActionHandler('play', () => commandsRef.current.play())
     navigator.mediaSession.setActionHandler('pause', () => commandsRef.current.pause())
