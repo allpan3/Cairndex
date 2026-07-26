@@ -23,6 +23,11 @@ export interface SortPref {
   order: SortOrder
 }
 
+/** The orders the Recent view offers. Recent is the All view ranked by a date;
+ *  which date is the only choice it has to make, so these are the only sorts
+ *  that keep the view's name true. */
+export const RECENT_SORTS: BundleSort[] = ['date_added', 'date_modified', 'date_opened']
+
 export const PLAYER_SEEK_STEPS = [2, 5, 10, 30] as const
 export type PlayerSeekStep = (typeof PLAYER_SEEK_STEPS)[number]
 
@@ -82,7 +87,7 @@ export interface SystemViewDef {
 
 export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'all', label: 'All', icon: '▦' },
-  { view: 'recent', label: 'Recently Added', icon: '🕗' },
+  { view: 'recent', label: 'Recent', icon: '🕗' },
   { view: 'uncategorized', label: 'Uncategorized', icon: '◌' },
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
   // The file-first "to-bundle queue" (its count is highlighted) sits with the

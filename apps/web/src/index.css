@@ -968,13 +968,17 @@ button {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  /* One clean clipped card. The old stacked-sheet look drew its "sheets" as
-     box-shadows floating above/right of the thumb — they sat exactly where a
-     selection ring's top and right edges paint (so a selected folder looked
-     highlighted on two sides only), and the name/count footer visibly belonged
-     to just the front sheet. A folder now reads as a folder via the chip on
-     the thumb instead. */
-  overflow: hidden;
+  /* One clean card. The old stacked-sheet look drew its "sheets" as box-shadows
+     floating above/right of the thumb — they sat exactly where a selection
+     ring's top and right edges paint (so a selected folder looked highlighted
+     on two sides only), and the name/count footer visibly belonged to just the
+     front sheet. A folder now reads as a folder via the chip on the thumb.
+
+     Clipping is done by the *parts* that need it (the cover fills the thumb;
+     the footer sits on the bottom corners) rather than by the card. An
+     `overflow: hidden` here also swallowed the reorder drop indicator, which is
+     drawn in the gap just outside the card's box — the drag showed no insertion
+     line at all. */
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
@@ -995,6 +999,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Clips the cover to the card's top corners (the card no longer clips). */
+  overflow: hidden;
+  border-radius: 7px 7px 0 0;
 }
 /* The folder marker: always present, covered or not, so a folder card is
    distinguishable from a bundle card at a glance. */
@@ -1035,6 +1042,7 @@ button {
   min-width: 0;
   background: var(--surface);
   border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
 }
 .collcard__name {
   overflow: hidden;

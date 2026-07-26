@@ -267,3 +267,29 @@ def test_notes_reject_non_string(client: TestClient, library_id: str) -> None:
     bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
     r = client.patch(f"{base}/bundles/{bundle_id}", json={"notes": ["ok", 5]})
     assert r.status_code == 422
+
+
+def test_marking_a_bundle_opened_orders_the_recent_view(
+    client: TestClient, library_id: str
+) -> None:
+    """POST …/opened is fire-and-forget: 204, no body, and no version consumed —
+    so it can never make opening a bundle fail or collide with a real edit."""
+    base = f"/api/v1/libraries/{library_id}"
+    first = client.post(f"{base}/bundles", json={"title": "first"}).json()
+    second = client.post(f"{base}/bundles", json={"title": "second"}).json()
+
+    assert client.post(f"{base}/bundles/{first['id']}/opened").status_code == 204
+    assert client.post(f"{base}/bundles/{second['id']}/opened").status_code == 204
+
+    after = client.get(f"{base}/bundles/{first['id']}").json()
+    assert after["version"] == first["version"]
+    assert after["updated_at"] == first["updated_at"]
+
+    r = client.get(f"{base}/bundles/browse", params={"sort": "date_opened", "order": "desc"})
+    assert r.status_code == 200, r.text
+    assert [b["title"] for b in r.json()["items"]] == ["second", "first"]
+
+
+def test_opening_an_unknown_bundle_is_a_404(client: TestClient, library_id: str) -> None:
+    r = client.post(f"/api/v1/libraries/{library_id}/bundles/01HZZZZZZZZZZZZZZZZZZZZZZZ/opened")
+    assert r.status_code == 404

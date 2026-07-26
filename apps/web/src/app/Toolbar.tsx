@@ -21,9 +21,8 @@ interface ToolbarProps {
   sort: BundleSort
   order: SortOrder
   onSort: (sort: BundleSort, order: SortOrder) => void
-  /** Set when the view defines its own order (Recently Added): the control is
-   *  shown disabled with this as its explanation. */
-  sortLockedReason?: string
+  /** Restricts which sorts the control offers (the Recent view: date orders). */
+  allowedSorts?: BundleSort[]
   perCollectionSort: boolean
   onPerCollectionSort: (value: boolean) => void
   // Ad-hoc toolbar filters (local UI state; see app/adHocFilters.ts).
@@ -48,7 +47,7 @@ export function Toolbar({
   sort,
   order,
   onSort,
-  sortLockedReason,
+  allowedSorts,
   perCollectionSort,
   onPerCollectionSort,
   adHocFilters,
@@ -91,7 +90,7 @@ export function Toolbar({
           sort={sort}
           order={order}
           onChange={onSort}
-          lockedReason={sortLockedReason}
+          allowed={allowedSorts}
           perCollection={perCollectionSort}
           onPerCollection={onPerCollectionSort}
         />

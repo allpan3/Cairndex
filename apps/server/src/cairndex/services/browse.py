@@ -47,7 +47,7 @@ from cairndex.services.playback_progress import resume_position
 
 class SystemView(StrEnum):
     ALL = "all"
-    RECENT = "recent"  # all, default-sorted by date added
+    RECENT = "recent"  # all, ordered by one of the date columns (client picks)
     UNCATEGORIZED = "uncategorized"  # in no collection
     UNTAGGED = "untagged"  # has no tags
     MISSING = "missing"  # has at least one missing file
@@ -56,6 +56,8 @@ class SystemView(StrEnum):
 
 class BundleSort(StrEnum):
     DATE_ADDED = "date_added"
+    DATE_MODIFIED = "date_modified"  # bundle metadata last changed
+    DATE_OPENED = "date_opened"  # last opened in the album view or viewer
     TITLE = "title"
     RATING = "rating"
     SIZE = "size"
@@ -252,6 +254,10 @@ def _apply_sort(
 ) -> Select[Any]:
     column = {
         BundleSort.DATE_ADDED: AssetBundle.created_at,
+        BundleSort.DATE_MODIFIED: AssetBundle.updated_at,
+        # NULL = never opened. SQLite sorts NULLs last under DESC, which is what
+        # "most recently opened first" should show anyway.
+        BundleSort.DATE_OPENED: AssetBundle.last_opened_at,
         BundleSort.TITLE: AssetBundle.title,
         BundleSort.RATING: AssetBundle.rating,
         BundleSort.SIZE: _size_sq(),

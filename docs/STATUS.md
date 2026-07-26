@@ -25,6 +25,15 @@ and its deterministic self-drop detection are bypassed. The native plumbing is
 left in place, unused, pending a decision — either keep `false` and delete it, or
 restore it behind a narrower per-event answer.
 
+**A Tauri capability denial is silent, and looks exactly like a UI bug.** The
+merged title bar's drag regions were correct in the DOM and still did nothing:
+`capabilities/default.json` had never granted `core:window:allow-start-dragging`,
+so the drag script's `invoke` was refused by the permission layer with no
+console error and no visible failure. The file's own description already warned
+that `core:window:default` grants only getters — every mutating window command
+must be listed. When a shell-only interaction does nothing at all, check the
+capability before the code.
+
 **WebKit and Chromium disagree about drag and selection enough that a browser
 check is not a desktop check.** Three separate fixes passed in the preview pane
 and failed in the shell: an app-wide `user-select: none` silently prevented every

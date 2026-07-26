@@ -222,6 +222,17 @@ def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
     service.delete_bundle(db, bundle_id)
 
 
+@router.post("/{bundle_id}/opened", status_code=status.HTTP_204_NO_CONTENT)
+def mark_bundle_opened(bundle_id: str, db: LibrarySession) -> None:
+    """Record that the owner opened this bundle (Recent view, Date Opened order).
+
+    Fire-and-forget from the client: it stamps a timestamp and returns nothing,
+    so a failure can never block opening a bundle. Not a PATCH — nothing about
+    the bundle's metadata changes, and it must not consume a version.
+    """
+    service.mark_bundle_opened(db, bundle_id)
+
+
 @router.put("/{bundle_id}/cursor", response_model=BundleCursorRead)
 def update_bundle_cursor(
     bundle_id: str, payload: BundleCursorUpdate, db: LibrarySession
