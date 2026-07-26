@@ -9,6 +9,7 @@ import { actionIdsRequiring, dispatchableActionIds, keymapMenus, shortcutReferen
 // from the same source) is the point: a table edit that is not mirrored in the
 // SPA's action types fails here instead of producing a dead menu item.
 const EXPECTED_WORKSPACE_ACTIONS: DesktopWorkspaceAction[] = [
+  'reload',
   'settings',
   'manage-libraries',
   'pair-device',

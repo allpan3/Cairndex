@@ -1,15 +1,90 @@
 # Project status
 
-> **Current position:** phase H — plan 4 library write mode, on
-> `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
-> request). **W0, W1, W3, W4 and W5 are complete**, including the desktop
-> drag-in that write mode was built for; five review findings across five
-> rounds (W0 through the final PR pass) are fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
-> its one deferred piece is drag-move onto a directory row (see the entry
-> immediately below). W2 stays blocked on plan 1 M11, and W6 closes the track.
-> Two things still need the owner: a pass on a genuinely downloaded build
-> (deferred from D7), and a pass on the **native Finder drag gesture** on a
-> packaged build, which cannot be automated here.
+> **Current position:** plan 4 write mode is **merged** (PR #30). Work continues
+> on `fix/post-merge-fixes` — a run of owner-reported desktop/web fixes found by
+> hands-on testing, latest commit below. W2 stays blocked on plan 1 M11, and W6
+> closes the write-mode track. Two things still need the owner: a pass on a
+> genuinely downloaded build (deferred from D7), and a pass on the **native
+> Finder drag gesture** on a packaged build, which cannot be automated here.
+
+## Ready for review: post-merge interaction fixes (2026-07-26)
+
+Branch `fix/post-merge-fixes`, 11 commits, opened as a PR. Owner testing of the
+merged build produced several rounds of drag-and-drop, selection and layout
+fixes; the branch history was squashed from 37 commits to 11 coherent ones (same
+tree) before review. The findings worth carrying forward:
+
+**`tsc --noEmit` checks nothing in this repo.** The root `tsconfig.json` is
+`files: []` with project references, so bare `tsc` silently no-ops. The gate is
+`npm run typecheck` (`tsc -b`), which is what `just check-web` runs — an agent
+reaching for `npx tsc --noEmit` will get a clean result from an empty check, and
+did, for a whole session. Two latent runtime crashes reached the branch that way.
+Related: annotating a callback parameter inside `useMutation` collapses TanStack's
+generic inference and makes `mutate` accept anything, so a call site on a retired
+contract still type-checks.
+
+**Drag-and-drop has a settled model now; keep to it.** A drop resolves to a
+*destination* — the item a block lands in front of, the end of a group, or "nest
+into this one" — and that single value paints the seam and commits the move, so
+the two cannot disagree. The container owns the gesture; cards and rows carry
+only dragstart/dragend. The dragged payload lives in a synchronous store
+(`dnd.ts`), never React state, because a fast drag delivers its drop before a
+render. The server takes moves, not orders, and answers with the resulting order,
+which the client applies without refetching. Manual order is directionless.
+Reordering never bumps `updated_at`. Most of the bug reports on this branch were
+some version of violating one of those.
+
+**Tauri's `dragDropEnabled` is a whole-pipeline switch, not a feature toggle.**
+With it `true` (the default), tauri-runtime-wry answers *every* drag event as
+handled, which wry reports to WKWebView as "block the OS default" — and that
+takes the page's own HTML5 drag events with it. Internal drag-and-drop had
+therefore never worked in the desktop shell; it works in a browser, which is why
+it looked like a styling problem for so long. It is now `false` in
+`tauri.conf.json`. The consequence: OS drops arrive as ordinary HTML5 `File`
+drops through the browser import path, so the shell's byte-level import progress
+and its deterministic self-drop detection are bypassed. The native plumbing is
+left in place, unused, pending a decision — either keep `false` and delete it, or
+restore it behind a narrower per-event answer.
+
+**A Tauri capability denial is silent, and looks exactly like a UI bug.** The
+merged title bar's drag regions were correct in the DOM and still did nothing:
+`capabilities/default.json` had never granted `core:window:allow-start-dragging`,
+so the drag script's `invoke` was refused by the permission layer with no
+console error and no visible failure. The file's own description already warned
+that `core:window:default` grants only getters — every mutating window command
+must be listed. When a shell-only interaction does nothing at all, check the
+capability before the code.
+
+**WebKit and Chromium disagree about drag and selection enough that a browser
+check is not a desktop check.** Three separate fixes passed in the preview pane
+and failed in the shell: an app-wide `user-select: none` silently prevented every
+`dragstart` (WebKit refuses to start a drag inside an unselectable subtree);
+negative `setDragImage` offsets are clamped, so the drag pill's offset has to be
+baked into the image as transparent padding; and a cover image is both a native
+drag source and a **Live Text** surface, so it stole the gestures aimed at the
+card behind it. Anything touching drag or selection needs a desktop pass.
+
+## Rebuilt: drag-reorder's underlying model (2026-07-25)
+
+After ~10 rounds of symptom fixes, the owner (rightly) called for a rethink. The
+stable design that came out, for future reference:
+
+- **The request carries the move, not an order**: `(moved_ids, before_id)`;
+  the server resolves it against the whole scope and **returns the resulting
+  order**, which the client applies directly. Nothing refetches after a reorder
+  — a refetch is a second answer to a settled question, and any disagreement
+  paints as a phantom second move.
+- **Manual order is directionless.** `manual desc` gave one arrangement two
+  coordinate systems; every translation between them was a bug. The client
+  coerces manual to ascending and hides the direction toggle.
+- **One gap computation** (`computeGap` in Browser.tsx) feeds both the
+  insertion indicator and the drop commit; cards have no reorder handlers.
+  Indicator == outcome by construction.
+- **Reordering preserves `updated_at`** (`_write_manual_order` diffs and
+  carries the timestamp forward past the `onupdate` default) — a drag must not
+  mark every bundle in the library modified.
+- Reorder mutations are serialized (`scope: {id}`), so overlapping drags apply
+  in commit order.
 
 ## Fixed: a non-empty trash vanished from the UI with write mode off (2026-07-24)
 

@@ -14,6 +14,12 @@
   --text-muted: #7f8593;
   --accent: #5b8cff;
   --accent-soft: rgba(91, 140, 255, 0.16);
+  /* Selected *and* hovered: has to read as "still selected, and under the
+     pointer", so it lifts from --accent-soft rather than replacing it. */
+  --accent-soft-strong: rgba(91, 140, 255, 0.28);
+  /* Hover on an unselected row — stronger than --surface, which was so close to
+     the row background that hovering looked like nothing happened. */
+  --row-hover: #24272f;
   --ok: #4ade80;
   --warn: #fbbf24;
   --error: #f87171;
@@ -118,6 +124,42 @@ button {
   height: 100vh;
   overflow: hidden;
 }
+
+/* An app-wide `user-select: none` used to live on `.app`, and it broke internal
+   drag-and-drop in the desktop shell: WebKit refuses to start a `dragstart` on a
+   subtree that cannot be selected, so dragging a bundle onto a collection simply
+   did nothing (it kept working in Chromium, which is why a browser-only check
+   missed it). The marquee's own `selectstart` blocker is what actually stops the
+   sweep-selection anyway, so the blanket rule is gone and the per-row rules
+   (`.card`, `.collcard`, `.list-row`, `.file-row`) carry the rest.
+
+   Belt for the same WebKit rule: anything the app marks draggable says so
+   explicitly, so a `user-select: none` ancestor can never suppress its drag. */
+[draggable='true'] {
+  -webkit-user-drag: element;
+}
+
+/* Cover art and hover previews are decoration: the card or row beneath them
+   owns every gesture. Left interactive, the media element becomes the event
+   target and WebKit takes over in three visible ways — grabbing a cover starts
+   a native *image* drag (which ignores `setDragImage`, so the tidy drag pill is
+   replaced by a big translucent copy of the artwork), right-clicking opens the
+   OS image/video menu instead of ours, and macOS Live Text makes the words
+   recognised *inside* the picture selectable, so a marquee that crosses a
+   thumbnail sweeps up image text instead of selecting items. Making the media
+   inert fixes all three at once and costs nothing: hover previews bind their
+   handlers to the wrapper, not the media. The real viewers are deliberately
+   left out — there, selecting text in an image is a feature. */
+.collcard__thumb-img,
+.hover-preview__image,
+.hover-preview__video,
+.hover-preview__storyboard,
+.inspector__cover img {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
 .resizer-bar {
   cursor: col-resize;
   z-index: 10;
@@ -144,6 +186,41 @@ button {
   background: var(--accent-soft);
 }
 
+/* --- Merged title bar (desktop shell) ------------------------------------- *
+ * The macOS window is `titleBarStyle: Overlay`, so there is no grey system bar
+ * stacked above the app — the app surface starts at the top of the window and
+ * the traffic lights float over the sidebar's top-left corner. Only two things
+ * follow from that: reserve that corner, and give the strip somewhere to drag
+ * the window from (the toolbars and the brand row carry
+ * `data-tauri-drag-region`). Everything is scoped to the attribute
+ * `markOverlayTitleBar` sets, so the browser build is unchanged. */
+.sidebar__titlebar {
+  flex: none;
+  height: 0;
+}
+:root[data-titlebar='overlay'] .sidebar__titlebar {
+  /* The traffic lights sit ~13px down and end ~x=78 — clear of the brand once
+     the row below them starts here. The sidebar gives up its own top padding so
+     this strip reaches the window's edge: padding there would be a dead band
+     right beside the lights, which is the first place a hand goes to move a
+     window. The negative margins cancel the sidebar's side padding too, so the
+     strip runs edge to edge — a 8px dead seam at the window corner would be the
+     same bug in miniature. */
+  height: 34px;
+  margin: 0 -8px;
+}
+:root[data-titlebar='overlay'] .sidebar {
+  padding-top: 0;
+}
+/* Nothing may cover the lights, and a scrolled sidebar must not slide content
+   under them either. */
+:root[data-titlebar='overlay'] .sidebar__brand {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-2);
+}
+
 /* --- Sidebar -------------------------------------------------------------- */
 .sidebar {
   grid-column: 1;
@@ -152,6 +229,26 @@ button {
   overflow-y: auto;
   padding: 12px 8px;
   user-select: none;
+  /* A column so the footer can claim the leftover space and sit at the bottom
+     instead of trailing whatever the nav sections happen to end at. */
+  display: flex;
+  flex-direction: column;
+}
+.sidebar__foot {
+  /* Claims the leftover space when the nav is short… */
+  margin-top: auto;
+  flex: none;
+  /* …and sticks to the bottom of the scrollport when it is long, so Settings is
+     always where it is expected instead of below the fold of a tall tree. The
+     background is required: sticky content scrolls *over* what is behind it. */
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  margin-left: -8px;
+  margin-right: -8px;
+  padding: 6px 8px 0;
 }
 .sidebar__brand {
   display: flex;
@@ -727,6 +824,15 @@ button {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  /* Reserve the scrollbar's width whether or not it is showing.
+     The grid measures this element's `clientWidth` (which excludes a scrollbar)
+     to lay out its columns, and re-measures through a ResizeObserver. Without a
+     stable gutter that is a feedback loop at exactly one window size: content
+     just tall enough shows a scrollbar → clientWidth drops by its width → the
+     cards relayout shorter → the scrollbar is no longer needed → clientWidth
+     grows back → repeat, forever, at frame rate. The whole app appears to
+     vibrate between two sizes. */
+  scrollbar-gutter: stable;
 }
 .browser--dragging {
   user-select: none;
@@ -869,17 +975,24 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  /* No overflow:hidden — the thumb's stacked-sheet shadows peek out top-right.
-     The thumb and meta round their own outer corners instead. */
-  background: transparent;
+  /* One clean card. The old stacked-sheet look drew its "sheets" as box-shadows
+     floating above/right of the thumb — they sat exactly where a selection
+     ring's top and right edges paint (so a selected folder looked highlighted
+     on two sides only), and the name/count footer visibly belonged to just the
+     front sheet. A folder now reads as a folder via the chip on the thumb.
+
+     Clipping is done by the *parts* that need it (the cover fills the thumb;
+     the footer sits on the bottom corners) rather than by the card. An
+     `overflow: hidden` here also swallowed the reorder drop indicator, which is
+     drawn in the gap just outside the card's box — the drag showed no insertion
+     line at all. */
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   text-align: left;
   padding: 0;
-  /* Reserve room for the stacked sheets that sit above/right of the thumb. */
-  margin: 6px 6px 0 0;
 }
 .collcard:hover {
   border-color: var(--border-strong);
@@ -895,14 +1008,28 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px 8px 0 0;
-  /* Two offset "sheets" behind the cover give the folder a stacked look that
-     reads differently from a flat bundle card. */
-  box-shadow:
-    3px -3px 0 -1px var(--surface),
-    3px -3px 0 0 var(--border),
-    6px -6px 0 -1px var(--surface),
-    6px -6px 0 0 var(--border);
+  /* Clips the cover to the card's top corners (the card no longer clips). */
+  overflow: hidden;
+  border-radius: 7px 7px 0 0;
+}
+/* The folder marker: always present, covered or not, so a folder card is
+   distinguishable from a bundle card at a glance. */
+.collcard__chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(10, 12, 16, 0.55);
+  color: #fff;
+}
+.collcard__chip .icon {
+  width: 12px;
+  height: 12px;
 }
 .collcard__thumb-icon {
   color: var(--text-muted);
@@ -918,13 +1045,13 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px 8px 0 0;
 }
 .collcard__meta {
   padding: 6px 8px;
   min-width: 0;
   background: var(--surface);
-  border-radius: 0 0 8px 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 7px 7px;
 }
 .collcard__name {
   overflow: hidden;
@@ -944,7 +1071,10 @@ button {
    over the titles/meta. */
 .card,
 .collcard,
-.list-row {
+.list-row,
+/* File Browser rows too: without this a marquee drag across the listing paints
+   the native text-selection highlight over every filename it sweeps. */
+.file-row {
   user-select: none;
 }
 .card {
@@ -1112,10 +1242,16 @@ button {
   color: var(--text);
 }
 .list-row:hover {
-  background: var(--surface);
+  background: var(--row-hover);
 }
+/* Order matters: `.list-row:hover` and `.list-row--selected:hover` have equal
+   specificity, so the selected-and-hovered rule must come last or a plain hover
+   would repaint a selected row as if it were not selected. */
 .list-row--selected {
   background: var(--accent-soft);
+}
+.list-row--selected:hover {
+  background: var(--accent-soft-strong);
 }
 .list-row--head {
   position: sticky;
@@ -1173,7 +1309,18 @@ button {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-strong);
-  margin: 0 0 4px;
+  margin: 0 0 10px;
+  line-height: 1.3;
+  /* A long filename with no spaces must wrap inside the pane, not overflow it. */
+  overflow-wrap: anywhere;
+}
+.inspector__title-edit {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
 }
 .inspector__multi-head {
   display: flex;
@@ -2042,10 +2189,9 @@ code {
 
 /* --- Global Settings / Devices ------------------------------------------- */
 .sidebar__settings {
-  margin-top: 14px;
-  border-top: 1px solid var(--border);
+  /* No border or top margin of its own: the `.sidebar__foot` wrapper draws the
+     one divider now. Keeping both painted two lines above Settings. */
   border-radius: 0;
-  padding-top: 10px;
 }
 .sidebar__settings .icon {
   width: 15px;
@@ -3924,10 +4070,15 @@ code {
   min-height: var(--file-row-h, 40px);
 }
 .file-table .file-row:hover {
-  background: var(--bg-2);
+  background: var(--row-hover);
 }
+/* Selected last, and with its own hover, so hovering a selected row deepens it
+   instead of painting it back to the unselected hover colour. */
 .file-table .file-row--selected {
   background: var(--accent-soft);
+}
+.file-table .file-row--selected:hover {
+  background: var(--accent-soft-strong);
 }
 /* Each grid cell clips overflow so a long value can't shove the columns. */
 .file-table .file-row > span {
@@ -4046,7 +4197,9 @@ code {
 .file-inspector__actions {
   display: grid;
   gap: 7px;
-  padding: 0 16px 10px;
+  /* No horizontal padding: `.inspector` already pads, and the extra 16px indented
+     these buttons past every row of the metadata above them. */
+  margin-top: 12px;
 }
 .file-meta__row {
   display: flex;
@@ -4633,4 +4786,181 @@ code {
   background: var(--bg-2);
   color: var(--text-muted);
   font-size: 12px;
+}
+
+/* --- Copy-in progress (plan 4 W5): batch position + per-file bar/rate ------ */
+.import-progress {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  font-size: 12px;
+}
+.import-progress__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+}
+.import-progress__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-progress__count {
+  flex: none;
+  color: var(--text-muted);
+}
+.import-progress__bar {
+  height: 4px;
+  margin: 6px 0 4px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.import-progress__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 120ms linear;
+}
+/* No byte counts (the web upload cannot report them): a sliding sweep instead. */
+.import-progress__bar--indeterminate .import-progress__fill {
+  width: 35%;
+  animation: import-progress-sweep 1.1s ease-in-out infinite;
+}
+@keyframes import-progress-sweep {
+  0% {
+    margin-left: -35%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+.import-progress__meta {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Selected-and-hovered, everywhere -------------------------------------
+   Every surface had the same inversion: `X:hover` (a class plus a pseudo-class)
+   outranks `X--selected` (one class), so moving the pointer over a *selected*
+   item repainted it with the plain hover colour — it looked deselected until the
+   pointer left. Pairing each selected state with its own hover, last in the
+   cascade, is the fix; collected here so a new surface can be added in one place
+   rather than rediscovering the bug per view.
+
+   Two families, matching how each surface marks selection. Rows mark it with a
+   *background*, so their hover deepens the background. Cards (bundle, collection,
+   album tile) mark it with an accent *ring* on a transparent or self-rounded
+   body — painting a background box behind those looked broken (visibly so during
+   a drag-over, when :hover is active on the drop target), so their hover
+   thickens the ring instead. */
+.nav-item--active:hover,
+.list-row--selected:hover,
+.file-table .file-row--selected:hover {
+  background: var(--accent-soft-strong);
+}
+.card--selected:hover,
+.collcard--selected:hover,
+.album-tile--selected:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* --- Drag badge ------------------------------------------------------------
+   The custom drag preview for every internal drag. Browsers snapshot the source
+   element by default, which gave a different ghost per surface — a huge
+   half-transparent card in the grid, a full-width sliver for a list row, and
+   sometimes nothing at all (WebKit refuses to snapshot some composited nodes).
+   A small pill naming what is being dragged is consistent everywhere and,
+   crucially, does not blot out the drop target underneath. Mounted at a real
+   on-screen position because WebKit snapshots the element as rendered — an
+   off-screen node captures blank — and layered *behind* the opaque app surface
+   so it is never actually seen. */
+.drag-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  /* Transparent lead-in: the snapshot starts at the cursor, the pill begins
+     just clear of the pointer glyph so the label is never hidden under it. */
+  padding-left: 10px;
+  pointer-events: none;
+}
+.drag-badge__pill {
+  max-width: 240px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Settings: a labelled checkbox with an explanatory line ---------------- */
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+.settings-toggle input {
+  margin-top: 2px;
+  flex: none;
+}
+.settings-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+.settings-toggle__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* --- Global fetching indicator: visible feedback for ⌘R / any refresh ------ */
+.top-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 1000;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  /* A faint wash under the sweep, so the bar is locatable even at the moment the
+     highlight is off-screen at one end. */
+  box-shadow: inset 0 0 0 100vmax var(--accent-soft);
+  /* The minimum-visible-duration, done without a timer: fading out waits 420ms
+     and then takes 220ms, so a request that settles in 3ms is still on screen
+     long enough to see. Appearing is near-instant (see --active below). */
+  opacity: 0;
+  transition: opacity 220ms ease 420ms;
+}
+/* Appearing must be *instant*, not a fade: a local request can be in flight for
+   only a few milliseconds, and any fade-in would be cut off partway — leaving a
+   bar at 5% opacity that nobody can see. Jumping to full opacity and relying on
+   the delayed fade-out above is what makes a 3ms fetch visible for ~640ms. */
+.top-progress--active {
+  opacity: 1;
+  transition: none;
+  /* Only sweeps while it is actually on: the element stays mounted so the
+     fade-out has something to animate, and an animation left running behind an
+     invisible bar is work for nothing. */
+  animation: top-progress-sweep 1s linear infinite;
+}
+@keyframes top-progress-sweep {
+  0% {
+    background-position: -40% 0;
+  }
+  100% {
+    background-position: 140% 0;
+  }
 }

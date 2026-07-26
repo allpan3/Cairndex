@@ -24,8 +24,10 @@ import {
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
+  useMarkBundleOpened,
   useDeploymentWriteMode,
   useFileOperations,
+  invalidateAfterFileOperation,
   useLibraries,
   useLibraryAuth,
   useTrash,
@@ -50,6 +52,7 @@ import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
+import { ImportProgress } from './app/ImportProgress'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
@@ -74,6 +77,7 @@ import {
 } from './app/ManualBundlingDialogs'
 import { CleanupOrderDialog } from './app/CleanupOrderDialog'
 import type { DragItem } from './app/dnd'
+import { getActiveDrag, setActiveDrag } from './app/dnd'
 import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
@@ -103,6 +107,8 @@ import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktop
 import { useJobNotifications } from './desktop/useJobNotifications'
 import {
   DEFAULT_PREFS,
+  RECENT_SORTS,
+  STANDARD_SORTS,
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
@@ -254,7 +260,10 @@ export default function App() {
   // removing. The bootstrap cannot show that dialog — it lists a server's
   // libraries and there is no server yet — so it picks a folder directly.
   useDesktopMenu((action) => {
-    if (action === 'settings') setSettingsPage('devices')
+    // The desktop shell has no browser chrome, so ⌘R is only a reload if the
+    // menu makes it one — without this item the key did nothing at all.
+    if (action === 'reload') globalThis.location.reload()
+    else if (action === 'settings') setSettingsPage('devices')
     else if (action === 'pair-device') setSettingsPage('pair')
     else if (action === 'manage-libraries') setManaging(true)
   })
@@ -547,10 +556,10 @@ function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSetti
       />
       <div className="center">
         <div className="state">
-          No library yet. Click <strong>+</strong> in the sidebar to add one.
+          No library yet. Click the <strong>library</strong> icon at the top left to add one.
         </div>
       </div>
-      <aside className="inspector" />
+      <aside className="inspector" data-tauri-drag-region />
     </div>
   )
 }
@@ -625,6 +634,12 @@ function Workspace({
   // What's currently being dragged (bundles or a collection), so folder cards and
   // sidebar rows can accept cross-surface drops (reparent / move into collection).
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
+  // Writes the synchronous store first (commit paths read it), then the
+  // reactive state (highlights render from it). See dnd.ts on why both exist.
+  const updateDragItem = useCallback((item: DragItem | null) => {
+    setActiveDrag(item)
+    setDragItem(item)
+  }, [])
   const [openBundleId, setOpenBundleId] = useState<string | null>(null)
   const [viewerTarget, setViewerTarget] = useState<{
     bundleId: string
@@ -827,6 +842,8 @@ function Workspace({
   const renameCollection = useRenameCollection()
   const updateCollection = useUpdateCollection()
   const reorderCollections = useReorderCollections()
+  // Stamps "last opened" and lets the Date Opened listings re-sort themselves.
+  const markOpened = useMarkBundleOpened()
   const cleanupCollectionOrder = useCleanupCollectionOrder()
   const reorderBundles = useReorderBundles()
   const cleanupBundleOrder = useCleanupBundleOrder()
@@ -874,6 +891,12 @@ function Workspace({
   // several. Mutually exclusive with the bundle selection — selecting either
   // clears the other, since acting on both at once is meaningless.
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<string>>(new Set())
+  // Which surface the collection selection was made on. The sidebar's highlight
+  // already means "this is where you are"; lighting the same row up because its
+  // card was clicked in the grid says the app navigated when it didn't. So the
+  // tree shows a selection only when it was made *in* the tree, and the grid
+  // shows one only when it was made in the grid.
+  const [collectionSelectionFrom, setCollectionSelectionFrom] = useState<'grid' | 'sidebar'>('grid')
   // Each collection opens with both sections expanded (don't carry a fold from
   // the previously-viewed collection). Reset during render on change rather than
   // in an effect — React's "adjust state when a prop changes" pattern.
@@ -951,10 +974,32 @@ function Workspace({
     : selection.collectionId
       ? `coll:${selection.collectionId}`
       : `view:${selection.view}`
-  const effectiveSort: SortPref =
+  // Recent ranks by a date, and *which* date is the whole choice the view
+  // offers — Title or Size there would just be the All view under another name
+  // (the server treats `recent` as All; only the ordering differs). So the sort
+  // menu is narrowed to the three date orders, and a sort carried in from
+  // another view falls back to Date Added rather than showing something the
+  // menu can no longer express.
+  const isRecentView = selection.view === 'recent' && selection.collectionId === null
+  const allowedSorts: BundleSort[] = isRecentView ? RECENT_SORTS : STANDARD_SORTS
+  const storedSort: SortPref =
     prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
       : { sort: prefs.sort, order: prefs.order }
+  // Manual has no direction. An order the owner arranged by hand *is* the
+  // order; "manual descending" created a second coordinate system over the same
+  // arrangement, and every reorder then had to translate between what the grid
+  // displayed and what the storage meant — the class of bug behind drops
+  // scrambling the grid and reloads disagreeing with what was on screen. Stored
+  // prefs that still say manual+desc (possible from before this rule) are
+  // coerced on read.
+  const resolvedSort: SortPref = allowedSorts.includes(storedSort.sort)
+    ? storedSort
+    : isRecentView
+      ? { sort: 'date_added', order: 'desc' }
+      : { sort: 'manual', order: 'asc' }
+  const effectiveSort: SortPref =
+    resolvedSort.sort === 'manual' ? { sort: 'manual', order: 'asc' } : resolvedSort
   const setEffectiveSort = useCallback(
     (sort: BundleSort, order: SortOrder) => {
       if (prefs.sortScope === 'collection') {
@@ -1013,6 +1058,16 @@ function Workspace({
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
   }, [selection, collections.data, activeSmartCollection])
 
+  // The one collection selection, shown only on the surface that made it. Both
+  // are the same Set when they aren't empty, so everything that acts on the
+  // selection (drag payloads, the context menu, the "N collections selected"
+  // inspector) keeps reading `selectedCollectionIds` and stays surface-agnostic.
+  const EMPTY_SELECTION = useMemo(() => new Set<string>(), [])
+  const sidebarSelectedCollectionIds =
+    collectionSelectionFrom === 'sidebar' ? selectedCollectionIds : EMPTY_SELECTION
+  const gridSelectedCollectionIds =
+    collectionSelectionFrom === 'grid' ? selectedCollectionIds : EMPTY_SELECTION
+
   const select = useCallback(
     (id: string, e: React.MouseEvent) => {
       // Shift+click: select the inclusive range from the anchor to this card,
@@ -1057,17 +1112,22 @@ function Workspace({
     setSelectedCollectionIds(new Set())
   }, [])
 
-  const open = useCallback((id: string) => {
-    setSelectedIds(new Set([id]))
-    setActiveId(id)
-    setSelectedCollectionIds(new Set())
-    setViewerTarget({ bundleId: id })
-  }, [])
+  const open = useCallback(
+    (id: string) => {
+      setSelectedIds(new Set([id]))
+      setActiveId(id)
+      setSelectedCollectionIds(new Set())
+      setViewerTarget({ bundleId: id })
+      markOpened(id)
+    },
+    [markOpened],
+  )
 
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
   // the bundle selection to keep the two mutually exclusive.
   const selectCollection = useCallback(
     (id: string, e: React.MouseEvent) => {
+      setCollectionSelectionFrom('grid')
       if (e.shiftKey && collectionAnchor) {
         const ids = headerCollections.map((c) => c.id)
         const a = ids.indexOf(collectionAnchor)
@@ -1081,7 +1141,9 @@ function Workspace({
         }
       }
       setSelectedCollectionIds((prev) => {
-        if (e.metaKey || e.ctrlKey) {
+        // Cmd toggles. Deliberately not Ctrl: on macOS Ctrl-click is the
+        // context-menu chord, so treating it as a toggle fought the menu.
+        if (e.metaKey && collectionSelectionFrom === 'grid') {
           const next = new Set(prev)
           if (next.has(id)) next.delete(id)
           else next.add(id)
@@ -1093,12 +1155,42 @@ function Workspace({
       setSelectedIds(new Set())
       setActiveId(null)
     },
-    [headerCollections, collectionAnchor],
+    [headerCollections, collectionAnchor, collectionSelectionFrom],
+  )
+
+  // Modifier-click on a sidebar collection row: toggle it in the sidebar's own
+  // multi-selection, without navigating. A selection built in the grid is not
+  // extended here — it isn't shown in the tree, so adding to it invisibly would
+  // be a surprise; the first sidebar modifier-click starts fresh instead.
+  const toggleCollectionFromSidebar = useCallback(
+    (id: string) => {
+      setSelectedCollectionIds((prev) => {
+        const next = new Set(collectionSelectionFrom === 'sidebar' ? prev : [])
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      setCollectionSelectionFrom('sidebar')
+      setCollectionAnchor(id)
+      setSelectedIds(new Set())
+      setActiveId(null)
+    },
+    [collectionSelectionFrom],
   )
 
   // Marquee result over the subcollection cards — replaces the subcollection
   // selection wholesale and clears the bundle selection.
   const selectCollectionsMany = useCallback((ids: string[]) => {
+    setCollectionSelectionFrom('grid')
+    setSelectedCollectionIds(new Set(ids))
+    setSelectedIds(new Set())
+    setActiveId(null)
+  }, [])
+
+  // The sidebar's own Shift-range result. Same state, but tagged as the
+  // sidebar's so the tree shows it (see `collectionSelectionFrom`).
+  const selectCollectionsFromSidebar = useCallback((ids: string[]) => {
+    setCollectionSelectionFrom('sidebar')
     setSelectedCollectionIds(new Set(ids))
     setSelectedIds(new Set())
     setActiveId(null)
@@ -1107,6 +1199,15 @@ function Workspace({
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set())
     setActiveId(null)
+  }, [])
+
+  // Empty-space click: drop *both* selections. Which one is live depends on what
+  // was last clicked, and blank space belongs to neither, so a single handler
+  // clears the lot rather than leaving the other kind of selection stranded.
+  const clearAllSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setActiveId(null)
+    setSelectedCollectionIds(new Set())
   }, [])
 
   // Double-clicking a tag on the All Tags page: go to All bundles, clear the
@@ -1143,6 +1244,7 @@ function Workspace({
           label: 'Open Bundle',
           onClick: () => {
             setOpenBundleId(id)
+            markOpened(id)
             setViewerTarget(null)
           },
           disabled: n > 1,
@@ -1195,6 +1297,7 @@ function Workspace({
       selectedIds,
       selection.collectionId,
       open,
+      markOpened,
       batch,
       menu,
       updateCollection,
@@ -1222,6 +1325,7 @@ function Workspace({
   // inside this mapped library land in the fast-add flow (Create Bundle); files
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
+  const queryClient = useQueryClient()
   const fileOperations = useFileOperations()
   const hostImports = useHostImports({
     libraryId,
@@ -1230,18 +1334,54 @@ function Workspace({
     // the file appear somewhere else would be the wrong kind of surprise.
     destDir: mode === 'file' && fileScope === 'browse' ? filePath : '',
     onFlash: showFlash,
-    onImported: (operationId) => ({
-      // Reuses the same undo mutation the File Browser's toasts use, so a
-      // desktop-dropped import is undone by exactly the same path — including
-      // its cache invalidation — as one added through the picker.
-      undo: () =>
-        fileOperations.undo.mutate(operationId, {
-          onSuccess: () => showFlash('Undone.'),
-          onError: (error) =>
-            showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
-        }),
-    }),
+    onImported: (operationId) => {
+      // The file landed on disk through the shell, not the import *mutation*, so
+      // nothing has invalidated the browser — do it here, the same refresh a
+      // picker-added or web-dropped import gets, or the new file stays off screen
+      // until the next navigation.
+      invalidateAfterFileOperation(queryClient)
+      return {
+        // Reuses the same undo mutation the File Browser's toasts use, so a
+        // desktop-dropped import is undone by exactly the same path — including
+        // its cache invalidation — as one added through the picker.
+        undo: () =>
+          fileOperations.undo.mutate(operationId, {
+            onSuccess: () => showFlash('Undone.'),
+            onError: (error) =>
+              showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+          }),
+      }
+    },
   })
+
+  // Rename the file shown in the inspector (double-click its title). A collision
+  // is reported as a flash rather than the full Replace/Keep-both prompt — that
+  // richer flow stays in the File Browser's own inline rename.
+  const renameSelectedFile = (relativePath: string, newName: string) => {
+    fileOperations.rename.mutate(
+      { path: relativePath, newName, onConflict: undefined },
+      {
+        onSuccess: (result) => {
+          const settled = result.path.split('/').pop() ?? result.path
+          // Keep the open inspector in step with the name it landed on.
+          setFileEntry((previous) =>
+            previous && previous.relative_path === relativePath
+              ? { ...previous, name: settled, relative_path: result.path }
+              : previous,
+          )
+          showFlash(`Renamed to “${settled}”.`, () =>
+            fileOperations.undo.mutate(result.operation.id, {
+              onSuccess: () => showFlash('Undone.'),
+              onError: (error) =>
+                showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+            }),
+          )
+        },
+        onError: (failure) =>
+          showFlash(failure instanceof Error ? failure.message : 'That name could not be used.'),
+      },
+    )
+  }
 
   useDesktopFileDrop({
     libraryId,
@@ -1270,12 +1410,13 @@ function Workspace({
         {
           label: 'Clean Up Order…',
           onClick: () => setCleaningBundles(true),
-          // No manual order to tidy on a flattened list or in the All view.
-          disabled: headerFlattened || isAllView,
+          // A flattened list has no single manual order to tidy; everywhere
+          // else does, the All view included.
+          disabled: headerFlattened,
         },
       ])
     },
-    [menu, headerFlattened, isAllView],
+    [menu, headerFlattened],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -1351,29 +1492,17 @@ function Workspace({
     [selectedCollectionIds, collections.data, menu, platform.kind, libraryId],
   )
 
-  // Drag a collection onto another → reparent it (cycle/self guarded server-side).
-  const reparentCollection = useCallback(
-    (id: string, newParentId: string | null) => {
-      if (id === newParentId) return
-      updateCollection.mutate({ id, patch: { parent_id: newParentId } })
+  // Every collection move — reorder within a group, drag between levels, or
+  // nest into another collection — is one request: which collections, into which
+  // group, at which gap. The server reparents whatever is not already there and
+  // places the block, so there is no intermediate state where a collection sits
+  // in its new group carrying its old position. Nesting is simply the case with
+  // no gap named: the end of the target's children.
+  const moveCollectionsTo = useCallback(
+    (movedIds: string[], parentId: string | null, beforeId: string | null) => {
+      reorderCollections.mutate({ parentId, movedIds, beforeId })
     },
-    [updateCollection],
-  )
-
-  // Drop a collection onto the gap before/after a row in a *different* parent
-  // group (including the top level, newParentId=null): reparent it into that
-  // group, then write the new sibling order. Reorder runs after the reparent
-  // commits so the backend's same-parent validation passes. This is what makes
-  // "move a subcollection out to the top level" work.
-  const moveCollection = useCallback(
-    (id: string, newParentId: string | null, orderedIds: string[]) => {
-      if (id === newParentId) return
-      updateCollection.mutate(
-        { id, patch: { parent_id: newParentId } },
-        { onSuccess: () => reorderCollections.mutate({ parentId: newParentId, orderedIds }) },
-      )
-    },
-    [updateCollection, reorderCollections],
+    [reorderCollections],
   )
 
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
@@ -1504,6 +1633,28 @@ function Workspace({
           ['--inspector-w']: `${inspectorW}px`,
         } as React.CSSProperties
       }
+      // While an *internal* drag is live, the whole app accepts the dragover so
+      // the cursor badge is consistent everywhere: the OS was showing a green
+      // "+" over dead space (effectAllowed is copyMove, and an unhandled area
+      // defaults to copy) and an arrow over real targets. Handling it here pins
+      // the effect to move — or copy while ⌥ is held, matching the drop
+      // semantics — wherever the pointer is. Finder file drags (types includes
+      // Files) are left alone so drag-in keeps its own path, and the drop
+      // swallow only ends stray drops; real targets handled the event first.
+      // Attached unconditionally and gated on the synchronous store: attaching
+      // only while the *reactive* dragItem is set left the first dragovers of a
+      // fast drag unhandled (see dnd.ts).
+      onDragOver={(e) => {
+        if (getActiveDrag() === null && dragItem === null) return
+        if (e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+      }}
+      onDrop={(e) => {
+        if (getActiveDrag() === null && dragItem === null) return
+        if (e.dataTransfer.types.includes('Files')) return
+        e.preventDefault()
+      }}
     >
       {sidebarVisible && (
         <Sidebar
@@ -1535,6 +1686,10 @@ function Workspace({
           onChangeLibrary={onChangeLibrary}
           onManageLibraries={onManage}
           onOpenSettings={onSettings}
+          // A copy-in from a Finder drop is not scoped to any one pane, so its
+          // progress is docked in the sidebar above Settings rather than injected
+          // into whatever surface happens to be on screen.
+          footer={hostImports.progress ? <ImportProgress {...hostImports.progress} /> : undefined}
           canLock={canLock}
           onLock={onLock}
           onUpdateLibrary={() => updateLibrary.mutate()}
@@ -1558,6 +1713,9 @@ function Workspace({
             setReviewingGrouping(true)
           }}
           selection={selection}
+          multiSelectedIds={sidebarSelectedCollectionIds}
+          onModifierSelectCollection={toggleCollectionFromSidebar}
+          onSelectCollectionsMany={selectCollectionsFromSidebar}
           onSelect={(s) => {
             setMode('collection')
             setSelection(s)
@@ -1573,15 +1731,15 @@ function Workspace({
           onRenameCollection={(id, name, callbacks) =>
             renameCollection.mutate({ id, name }, callbacks)
           }
-          onReorderCollections={(parentId, orderedIds) =>
-            reorderCollections.mutate({ parentId, orderedIds })
+          onReorderCollections={(parentId, movedIds, beforeId) =>
+            moveCollectionsTo(movedIds, parentId, beforeId)
           }
-          onMoveCollection={moveCollection}
           onCleanupCollections={() => setCleaningCollections(true)}
           dragItem={dragItem}
-          onDragItem={setDragItem}
-          onReparentCollection={reparentCollection}
+          onDragItem={updateDragItem}
+          onReparentCollections={(ids, targetId) => moveCollectionsTo(ids, targetId, null)}
           onMoveBundlesInto={moveBundlesToCollection}
+          onBackgroundClick={clearAllSelection}
           smartCollections={smartCollections.data ?? []}
           onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
           onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -1631,6 +1789,7 @@ function Workspace({
               sort={effectiveSort.sort}
               order={effectiveSort.order}
               onSort={setEffectiveSort}
+              allowedSorts={allowedSorts}
               perCollectionSort={prefs.sortScope === 'collection'}
               onPerCollectionSort={(v) =>
                 setPrefs({ ...prefs, sortScope: v ? 'collection' : 'global' })
@@ -1678,21 +1837,18 @@ function Workspace({
                     onContextMenuSubcollection={collectionContextMenu}
                     onSectionContextMenu={collectionSectionContextMenu}
                     dragItem={dragItem}
-                    onDragItem={setDragItem}
-                    onReparentCollection={reparentCollection}
-                    onMoveCollection={moveCollection}
-                    parentId={selection.collectionId ?? null}
+                    onDragItem={updateDragItem}
+                    onReparentCollections={(ids, targetId) =>
+                      moveCollectionsTo(ids, targetId, null)
+                    }
                     onMoveBundlesInto={moveBundlesToCollection}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the
                       // flattened view where cards span multiple parents.
                       headerFlattened
                         ? undefined
-                        : (orderedIds) =>
-                            reorderCollections.mutate({
-                              parentId: selection.collectionId ?? null,
-                              orderedIds,
-                            })
+                        : (movedIds, beforeId) =>
+                            moveCollectionsTo(movedIds, selection.collectionId ?? null, beforeId)
                     }
                     onOpenSubcollection={(id) => {
                       setSelection({ view: 'all', collectionId: id })
@@ -1700,7 +1856,7 @@ function Workspace({
                       setSelectedCollectionIds(new Set())
                       setOpenBundleId(null)
                     }}
-                    selectedIds={selectedCollectionIds}
+                    selectedIds={gridSelectedCollectionIds}
                     zoom={prefs.zoom}
                     subcollapsed={subcollapsed}
                     onToggleSubcollapsed={() => setSubcollapsed((v) => !v)}
@@ -1743,16 +1899,24 @@ function Workspace({
                       // list — a single collection's own bundles or a system-view
                       // queue. It's disabled when contents are flattened and in the
                       // All view (reordering "everything" is meaningless).
-                      effectiveSort.sort === 'manual' && !headerFlattened && !isAllView
-                        ? (orderedIds) =>
+                      // Reorder wherever a manual order is well defined: a
+                      // collection's own bundles, a system-view queue, and the
+                      // All view — which *is* the global manual order, the one
+                      // new bundles arrive at the front of. Only the flattened
+                      // view is excluded: its cards span several parents, so
+                      // dragging there would silently rewrite the global order
+                      // while appearing to arrange one collection.
+                      effectiveSort.sort === 'manual' && !headerFlattened
+                        ? ({ movedIds, beforeId }) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,
-                              orderedIds,
+                              movedIds,
+                              beforeId,
                             })
                         : undefined
                     }
-                    onBundleDragStart={(ids) => setDragItem({ kind: 'bundles', ids })}
-                    onBundleDragEnd={() => setDragItem(null)}
+                    onBundleDragStart={(ids) => updateDragItem({ kind: 'bundles', ids })}
+                    onBundleDragEnd={() => updateDragItem(null)}
                     isLoading={browse.isLoading}
                     isError={browse.isError}
                     error={browse.error}
@@ -1774,11 +1938,12 @@ function Workspace({
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
+          onRename={writeMode && fileScope === 'browse' ? renameSelectedFile : undefined}
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
       ) : isMultiSelection(selectedCollectionIds) ? (
-        <aside className="inspector">
+        <aside className="inspector" data-tauri-drag-region>
           <div className="state">{selectedCollectionIds.size} collections selected</div>
         </aside>
       ) : isMultiSelection(selectedIds) ? (
@@ -1966,16 +2131,6 @@ function Workspace({
           onCancel={hostImports.dismiss}
           busy={false}
         />
-      )}
-
-      {hostImports.importing.length > 0 && (
-        <div className="mb-toast" role="status">
-          Copying{' '}
-          {hostImports.importing.length === 1
-            ? hostImports.importing[0]
-            : `${hostImports.importing.length} files`}
-          …
-        </div>
       )}
 
       {flash && (

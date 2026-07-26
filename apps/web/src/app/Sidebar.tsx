@@ -8,6 +8,8 @@ import type {
   ViewCounts,
 } from '../api/client'
 import { ContextMenu } from './ContextMenu'
+import { dragBadgeLabel, setDragBadge } from './dragBadge'
+import { suppressShiftSelection } from './selection'
 import { JobProgress } from './JobProgress'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
@@ -25,10 +27,10 @@ import {
   IconTagQuestion,
   IconTrash,
 } from './icons'
-import type { DragItem } from './dnd'
-import { dropZone } from './dnd'
+import type { DragItem, TreeDrop } from './dnd'
+import { dropZone, getActiveDrag, sameTreeDrop, seamFor, setActiveDrag } from './dnd'
 import { PickGuides } from './PickGuides'
-import { moveTo } from './reorder'
+import { gapBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
 
@@ -61,6 +63,8 @@ interface SidebarProps {
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
   onOpenSettings: () => void
+  /** Docked just above Settings — the transfer indicator's fixed home. */
+  footer?: ReactNode
   canLock?: boolean
   onLock?: () => void
   onUpdateLibrary: () => void
@@ -76,6 +80,14 @@ interface SidebarProps {
   maintenanceError?: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
+  // The collection-section multi-selection, mirrored here so sidebar rows show
+  // membership; modifier-clicking a row toggles it via the callback below,
+  // *without* navigating. Shift toggles like Cmd — the tree has no linear order
+  // shared with the section grid, so a range would be a guess.
+  multiSelectedIds?: Set<string>
+  onModifierSelectCollection?: (id: string) => void
+  /** Replace the multi-selection wholesale — the Shift-range result. */
+  onSelectCollectionsMany?: (ids: string[]) => void
   // Unbundled is a Files-surface view (a flat "to-bundle queue"), so it routes
   // into Files mode rather than selecting a bundle browse view.
   onOpenUnbundled?: () => void
@@ -103,19 +115,23 @@ interface SidebarProps {
     name: string,
     callbacks: { onSuccess: () => void; onError: (err: unknown) => void },
   ) => void
-  // Persist a manual drag-reorder of one sibling group (parentId null = top level).
-  onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
-  // Move a collection into a different parent group at a specific slot (reparent
-  // + reorder). newParentId null = the top level.
-  onMoveCollection?: (id: string, newParentId: string | null, orderedIds: string[]) => void
+  // Move collections to a gap in one sibling group: the dragged block, and the
+  // collection it lands in front of (null = the end of the group).
+  onReorderCollections: (
+    parentId: string | null,
+    movedIds: string[],
+    beforeId: string | null,
+  ) => void
   // Right-click the Collections heading → clean up the collection manual order.
   onCleanupCollections?: () => void
   // Cross-surface drag: the current payload + callbacks to reparent a collection
   // or move bundles into a collection by dropping on a sidebar row.
   dragItem?: DragItem | null
   onDragItem?: (item: DragItem | null) => void
-  onReparentCollection?: (id: string, targetId: string) => void
+  onReparentCollections?: (ids: string[], targetId: string) => void
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
+  // Clicking the sidebar's blank space drops the current selection.
+  onBackgroundClick?: () => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -151,6 +167,7 @@ export function Sidebar({
   onChangeLibrary,
   onManageLibraries,
   onOpenSettings,
+  footer,
   canLock,
   onLock,
   onUpdateLibrary,
@@ -166,6 +183,9 @@ export function Sidebar({
   maintenanceError,
   selection,
   onSelect,
+  multiSelectedIds,
+  onModifierSelectCollection,
+  onSelectCollectionsMany,
   onOpenUnbundled,
   onOpenAllTags,
   onOpenTrash,
@@ -178,12 +198,12 @@ export function Sidebar({
   onCreateCollection,
   onRenameCollection,
   onReorderCollections,
-  onMoveCollection,
   onCleanupCollections,
   dragItem = null,
   onDragItem,
-  onReparentCollection,
+  onReparentCollections,
   onMoveBundlesInto,
+  onBackgroundClick,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -193,10 +213,19 @@ export function Sidebar({
   const menu = useContextMenu()
   // Drop feedback for the hovered collection row (before/after = reorder gap,
   // into = reparent/add). The dragged payload comes from the App-level dragItem.
-  const [dropSlot, setDropSlot] = useState<{
-    id: string
-    zone: 'before' | 'into' | 'after'
-  } | null>(null)
+  // Where the drop will land, named once — see DropTarget in dnd.ts. A tree gap
+  // carries its parent group too: "the end of the group" means nothing without
+  // knowing which group, since rows from different levels interleave on screen.
+  const [dropSlot, setDropSlot] = useState<TreeDrop | null>(null)
+  // A drag ending leaves the last hovered slot behind; the *next* drag showed it
+  // for a beat before the first dragover corrected it. Reset as the new drag
+  // begins — adjusted during render (React's reset-on-prop-change pattern)
+  // rather than in an effect, which would paint the stale slot for a frame.
+  const [lastDragItem, setLastDragItem] = useState(dragItem)
+  if (dragItem !== lastDragItem) {
+    setLastDragItem(dragItem)
+    if (dragItem) setDropSlot(null)
+  }
   // Fold state for the two sidebar sections (persisted).
   const [smartCollapsed, setSmartCollapsed] = usePersistentState(
     'cairndex.sidebar.smartCollapsed',
@@ -206,6 +235,10 @@ export function Sidebar({
     'cairndex.sidebar.collectionsCollapsed',
     false,
   )
+
+  // Shift-range anchor for sidebar multi-select: the last row plainly clicked
+  // or Cmd-toggled. A ref, not state — it never needs a re-render of its own.
+  const rangeAnchorRef = useRef<string | null>(null)
 
   // Id of the collection currently showing an inline rename box — set right
   // after "+ Collection" creates one, so the user can type its name in place.
@@ -238,6 +271,34 @@ export function Sidebar({
   // under ADR-0008), including empty ones — a folder shouldn't vanish just
   // because it has no bundles yet.
   const tree = useMemo(() => buildTree(collections), [collections])
+
+  // Cmd toggles; Shift ranges over the rows as currently *visible* (respecting
+  // which branches are expanded) — the order the user can actually see. Ctrl is
+  // deliberately not a selection key: on macOS Ctrl-click is the context-menu
+  // chord. Plain clicks and Cmd-toggles both move the range anchor.
+  const modifierSelectRow = (id: string, e: React.MouseEvent) => {
+    if (e.shiftKey && rangeAnchorRef.current && onSelectCollectionsMany) {
+      const visible: string[] = []
+      const walk = (nodes: TreeNode[], depth: number) => {
+        for (const n of nodes) {
+          visible.push(n.collection.id)
+          if (n.children.length > 0 && isExpanded(n.collection.id, depth)) {
+            walk(n.children, depth + 1)
+          }
+        }
+      }
+      walk(tree, 0)
+      const a = visible.indexOf(rangeAnchorRef.current)
+      const b = visible.indexOf(id)
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        onSelectCollectionsMany(visible.slice(lo, hi + 1))
+        return
+      }
+    }
+    rangeAnchorRef.current = id
+    onModifierSelectCollection?.(id)
+  }
 
   // "+ Collection": create it under the collection currently open (or at the
   // top level when browsing a system view/smart collection), pick a name
@@ -292,8 +353,26 @@ export function Sidebar({
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar__brand">
+    <aside
+      className="sidebar"
+      onMouseDownCapture={suppressShiftSelection}
+      // Clicking the sidebar's blank space (the gap above Settings, the run-out
+      // below the last collection) drops the selection, the way clicking blank
+      // space in the grid does. Without it a multi-selection built here could
+      // only be undone by selecting something else.
+      onClick={(e) => {
+        const target = e.target as HTMLElement
+        if (target.closest('.nav-item, button, input, select, textarea, label')) return
+        onBackgroundClick?.()
+      }}
+    >
+      {/* Clearance for the window's traffic lights, which float over this corner
+          in the desktop shell (see `markOverlayTitleBar`). Zero-height in a
+          browser. The drag regions move the window, the way the system title bar
+          they replace would; "deep" covers the labels inside them too, since
+          Tauri's bare attribute only matches a click on the element itself. */}
+      <div className="sidebar__titlebar" data-tauri-drag-region="deep" />
+      <div className="sidebar__brand" data-tauri-drag-region="deep">
         <span>🍃</span> Cairndex
       </div>
 
@@ -465,6 +544,19 @@ export function Sidebar({
             </Fragment>
           )
         })}
+        {/* All Tags (a management surface, not a browse view) sits below the
+            Unbundled/Missing queues. */}
+        <button
+          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
+          onClick={() => onOpenAllTags?.()}
+        >
+          <span className="nav-item__icon">
+            <IconTag />
+          </span>
+          <span className="nav-item__label">All Tags</span>
+        </button>
+        {/* Trash last: it is the recoverable-deletions bin, not a browse or
+            management surface, so it reads as the tail of the section. */}
         {showTrash && (
           <button
             className={`nav-item${mode === 'file' && fileScope === 'trash' ? ' nav-item--active' : ''}`}
@@ -477,17 +569,6 @@ export function Sidebar({
             <span className="nav-item__label">Trash</span>
           </button>
         )}
-        {/* All Tags (a management surface, not a browse view) sits at the bottom
-            of the system section, below the Unbundled/Missing queues. */}
-        <button
-          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
-          onClick={() => onOpenAllTags?.()}
-        >
-          <span className="nav-item__icon">
-            <IconTag />
-          </span>
-          <span className="nav-item__label">All Tags</span>
-        </button>
       </div>
 
       <div className="sidebar__section">
@@ -571,7 +652,12 @@ export function Sidebar({
                 parentId={null}
                 siblingIds={tree.map((n) => n.collection.id)}
                 selection={selection}
-                onSelect={onSelect}
+                onSelect={(sel) => {
+                  if (sel.collectionId) rangeAnchorRef.current = sel.collectionId
+                  onSelect(sel)
+                }}
+                multiSelectedIds={multiSelectedIds}
+                onModifierSelect={modifierSelectRow}
                 onContextMenu={collectionMenu}
                 collectionCounts={collectionCounts}
                 isExpanded={isExpanded}
@@ -584,8 +670,7 @@ export function Sidebar({
                 dropSlot={dropSlot}
                 onDropSlot={setDropSlot}
                 onReorderCollections={onReorderCollections}
-                onMoveCollection={onMoveCollection}
-                onReparentCollection={onReparentCollection}
+                onReparentCollections={onReparentCollections}
                 onMoveBundlesInto={onMoveBundlesInto}
               />
             ))}
@@ -594,9 +679,7 @@ export function Sidebar({
                 the top level (reordering, or moving a subcollection out). */}
             {tree.length > 0 && (
               <CollectionListEnd
-                topLevelIds={tree.map((n) => n.collection.id)}
                 dragItem={dragItem}
-                onMoveCollection={onMoveCollection}
                 onReorderCollections={onReorderCollections}
                 onEndDrag={() => {
                   onDragItem?.(null)
@@ -608,12 +691,18 @@ export function Sidebar({
         )}
       </div>
 
-      <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
-        <span className="nav-item__icon">
-          <IconSettings />
-        </span>
-        <span className="nav-item__label">Settings</span>
-      </button>
+      {/* Pinned to the bottom (margin-top:auto) so Settings is where it is
+          expected rather than trailing whatever the nav happens to end at, and
+          so a transfer indicator has a fixed home directly above it. */}
+      <div className="sidebar__foot">
+        {footer}
+        <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
+          <span className="nav-item__icon">
+            <IconSettings />
+          </span>
+          <span className="nav-item__label">Settings</span>
+        </button>
+      </div>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>
@@ -668,6 +757,8 @@ function CollectionBranch({
   siblingIds,
   selection,
   onSelect,
+  multiSelectedIds,
+  onModifierSelect,
   onContextMenu,
   collectionCounts,
   isExpanded,
@@ -680,8 +771,7 @@ function CollectionBranch({
   dropSlot,
   onDropSlot,
   onReorderCollections,
-  onMoveCollection,
-  onReparentCollection,
+  onReparentCollections,
   onMoveBundlesInto,
 }: {
   node: TreeNode
@@ -694,6 +784,8 @@ function CollectionBranch({
   siblingIds: string[]
   selection: Selection
   onSelect: (selection: Selection) => void
+  multiSelectedIds?: Set<string>
+  onModifierSelect?: (id: string, e: React.MouseEvent) => void
   onContextMenu: (collection: CollectionRead, e: React.MouseEvent) => void
   collectionCounts?: Record<string, number>
   isExpanded: (id: string, depth: number) => boolean
@@ -703,14 +795,15 @@ function CollectionBranch({
   onDoneEditing: () => void
   dragItem: DragItem | null
   onDragItem?: (item: DragItem | null) => void
-  dropSlot: { id: string; zone: 'before' | 'into' | 'after' } | null
-  onDropSlot: (v: { id: string; zone: 'before' | 'into' | 'after' } | null) => void
+  dropSlot: TreeDrop | null
+  onDropSlot: (v: TreeDrop | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
-  onMoveCollection?: SidebarProps['onMoveCollection']
-  onReparentCollection?: (id: string, targetId: string) => void
+  onReparentCollections?: (ids: string[], targetId: string) => void
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
 }) {
-  const active = selection.collectionId === node.collection.id
+  const active =
+    selection.collectionId === node.collection.id ||
+    (multiSelectedIds?.has(node.collection.id) ?? false)
   const hasChildren = node.children.length > 0
   const expanded = isExpanded(node.collection.id, depth)
   const editing = editingId === node.collection.id
@@ -718,8 +811,16 @@ function CollectionBranch({
   // Only reflect the hover slot while a drag is live — a bundle drag begins in
   // the Browser and never fires a sidebar row's onDragEnd, so gating on dragItem
   // prevents the highlight from sticking after such a drag ends.
-  const slotZone = dragItem && dropSlot?.id === id ? dropSlot.zone : null
+  // One seam per destination: a leading line on the row the block lands before,
+  // or a trailing line on the last row of the group when it lands at the end.
+  // Never both sides of one gap.
+  const seam =
+    dropSlot?.kind === 'gap' && dropSlot.parentId === parentId
+      ? seamFor({ kind: 'gap', beforeId: dropSlot.beforeId }, id, siblingIds)
+      : undefined
+  const nesting = dropSlot?.kind === 'into' && dropSlot.id === id
   const endDrag = () => {
+    setActiveDrag(null)
     onDragItem?.(null)
     onDropSlot(null)
   }
@@ -728,59 +829,90 @@ function CollectionBranch({
     <>
       <div
         className={`nav-item collection-row${active ? ' nav-item--active' : ''}${
-          slotZone === 'into' ? ' collection-row--drop-into' : ''
+          nesting ? ' collection-row--drop-into' : ''
         }`}
-        data-drop={slotZone && slotZone !== 'into' ? slotZone : undefined}
-        onClick={() => !editing && onSelect({ view: 'all', collectionId: id })}
+        data-drop={seam}
+        onClick={(e) => {
+          if (editing) return
+          if ((e.metaKey || e.shiftKey) && onModifierSelect) {
+            // Build a multi-selection in place; navigation stays on plain click.
+            onModifierSelect(id, e)
+            return
+          }
+          onSelect({ view: 'all', collectionId: id })
+        }}
         onContextMenu={(e) => onContextMenu(node.collection, e)}
         role="treeitem"
         aria-selected={active}
         draggable={!editing}
         onDragStart={(e) => {
           e.dataTransfer.effectAllowed = 'move'
-          onDragItem?.({ kind: 'collection', id })
+          // Grabbing a row that is part of a multi-selection drags the whole
+          // selection; grabbing anything else drags just it.
+          const ids =
+            multiSelectedIds && multiSelectedIds.has(id) && multiSelectedIds.size > 1
+              ? [...multiSelectedIds]
+              : [id]
+          setDragBadge(e, dragBadgeLabel(ids.length, node.collection.name, 'collection'))
+          setActiveDrag({ kind: 'collection', id, ids })
+          onDragItem?.({ kind: 'collection', id, ids })
         }}
         onDragEnd={endDrag}
         onDragOver={(e) => {
           // Bundles → move into this collection; a folder → drop on the top/bottom
           // edge to place before/after this row (reorder within, or reparent into,
           // this row's group), or on the middle to reparent *into* this collection.
+          // Reads the synchronous drag store, not the prop: a fast drag delivers
+          // these events before React commits the dragstart's state (see dnd.ts).
+          const live = getActiveDrag() ?? dragItem
           let zone: 'before' | 'into' | 'after' | null = null
-          if (dragItem?.kind === 'bundles') {
+          if (live?.kind === 'bundles') {
             zone = 'into'
             e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
-          } else if (dragItem?.kind === 'collection' && dragItem.id !== id) {
+          } else if (live?.kind === 'collection' && !live.ids.includes(id)) {
             const r = e.currentTarget.getBoundingClientRect()
             zone = dropZone(e, r, 'vertical', true)
           }
           if (zone === null) return
           e.preventDefault()
-          if (dropSlot?.id !== id || dropSlot.zone !== zone) onDropSlot({ id, zone })
+          const target: TreeDrop =
+            zone === 'into'
+              ? { kind: 'into', id }
+              : {
+                  kind: 'gap',
+                  parentId,
+                  // Collapsed to "before the next row": one name per gap, and the
+                  // exact value the server is sent. For a row with children
+                  // showing, that also puts the line below them — where the next
+                  // sibling actually starts — instead of under the row itself,
+                  // which read as "make this a child".
+                  beforeId: gapBefore(siblingIds, live?.ids ?? [], id, zone),
+                }
+          if (!sameTreeDrop(dropSlot, target)) onDropSlot(target)
         }}
         onDrop={(e) => {
-          if (!dragItem) return
-          if (dragItem.kind === 'bundles') {
+          const live = getActiveDrag() ?? dragItem
+          if (!live) return
+          if (live.kind === 'bundles') {
             e.preventDefault()
             onMoveBundlesInto?.(id, e.altKey)
-          } else if (dragItem.id !== id) {
+          } else if (!live.ids.includes(id)) {
             e.preventDefault()
             // Recompute the zone from the cursor at drop time — the last dragover
             // may not have settled on this row, and a stale slot would silently
             // turn an intended reorder into a reparent ("move fails" ~1 in 8).
             const r = e.currentTarget.getBoundingClientRect()
             const zone = dropZone(e, r, 'vertical', true)
+            const dragged = live.ids
             if (zone === 'into') {
-              onReparentCollection?.(dragItem.id, id)
-            } else if (siblingIds.includes(dragItem.id)) {
-              onReorderCollections(parentId, moveTo(siblingIds, dragItem.id, id, zone === 'before'))
-            } else {
-              // From another parent group: reparent into this row's group at the slot.
-              onMoveCollection?.(
-                dragItem.id,
-                parentId,
-                moveTo([...siblingIds, dragItem.id], dragItem.id, id, zone === 'before'),
-              )
+              onReparentCollections?.(dragged, id)
+              endDrag()
+              return
             }
+            // One callback for every case: this row's group is the destination,
+            // and a collection arriving from another level is reparented by the
+            // same request.
+            onReorderCollections(parentId, dragged, gapBefore(siblingIds, dragged, id, zone))
           }
           endDrag()
         }}
@@ -826,6 +958,8 @@ function CollectionBranch({
             siblingIds={node.children.map((c) => c.collection.id)}
             selection={selection}
             onSelect={onSelect}
+            multiSelectedIds={multiSelectedIds}
+            onModifierSelect={onModifierSelect}
             onContextMenu={onContextMenu}
             collectionCounts={collectionCounts}
             isExpanded={isExpanded}
@@ -838,8 +972,7 @@ function CollectionBranch({
             dropSlot={dropSlot}
             onDropSlot={onDropSlot}
             onReorderCollections={onReorderCollections}
-            onMoveCollection={onMoveCollection}
-            onReparentCollection={onReparentCollection}
+            onReparentCollections={onReparentCollections}
             onMoveBundlesInto={onMoveBundlesInto}
           />
         ))}
@@ -852,15 +985,11 @@ function CollectionBranch({
  * dragging "past the last collection" into the empty space below the tree, and
  * the way to move a nested subcollection out to the top level. */
 function CollectionListEnd({
-  topLevelIds,
   dragItem,
-  onMoveCollection,
   onReorderCollections,
   onEndDrag,
 }: {
-  topLevelIds: string[]
   dragItem: DragItem | null
-  onMoveCollection?: SidebarProps['onMoveCollection']
   onReorderCollections: SidebarProps['onReorderCollections']
   onEndDrag: () => void
 }) {
@@ -875,23 +1004,19 @@ function CollectionListEnd({
         over ? ' collection-list-end--over' : ''
       }`}
       onDragOver={(e) => {
-        if (dragItem?.kind !== 'collection') return
+        if ((getActiveDrag() ?? dragItem)?.kind !== 'collection') return
         e.preventDefault()
         if (!over) setOver(true)
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
         setOver(false)
-        if (dragItem?.kind !== 'collection') return
+        const live = getActiveDrag() ?? dragItem
+        if (live?.kind !== 'collection') return
         e.preventDefault()
-        const id = dragItem.id
-        const rest = topLevelIds.filter((x) => x !== id)
-        if (topLevelIds.includes(id)) {
-          // Already top-level: just move it to the end.
-          onReorderCollections(null, [...rest, id])
-        } else {
-          onMoveCollection?.(id, null, [...rest, id])
-        }
+        // Past the last row means the end of the top level — for a nested
+        // collection just as much as one already there.
+        onReorderCollections(null, live.ids, null)
         onEndDrag()
       }}
     />

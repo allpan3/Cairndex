@@ -1,13 +1,86 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 use serde::Deserialize;
-use tauri::{async_runtime, AppHandle, Emitter, Runtime, Window};
+use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, Window};
 
 use crate::mappings::{self, MappingError};
 
-// A drag preview image is mandatory on macOS/Windows. Embed the app icon at
-// compile time so the packaged shell never depends on a runtime asset path.
-const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/32x32.png");
+// How long after a drag-out its files are still recognised as ours if they land
+// back on our own window. Long enough to cover a drag the user held for a while,
+// short enough that genuinely re-importing a file later is not blocked.
+const SELF_DROP_WINDOW: Duration = Duration::from_secs(30);
+
+/// The absolute paths of the most recent drag-out.
+///
+/// The web layer's guard is *timing*-based (a grace period after the drag-ended
+/// event), and it loses the race: dropping a dragged card back on our own window
+/// was being read as a fresh Finder drop and **copied the files into the library**.
+/// In a grid every card is a drag source, so an ordinary click-drag could silently
+/// duplicate files. This is the deterministic half of the answer — we compare the
+/// dropped paths against what we actually put on the pasteboard, so recognising
+/// our own drop does not depend on which event arrives first.
+///
+/// Absolute paths never leave the shell: the web layer asks a yes/no question and
+/// gets a yes/no answer (plan 3 §5/§6).
+#[derive(Default)]
+pub(crate) struct RecentDragOut {
+    inner: Mutex<Option<(HashSet<PathBuf>, Instant)>>,
+}
+
+impl RecentDragOut {
+    fn remember(&self, paths: &[PathBuf]) {
+        let set = paths.iter().cloned().collect();
+        if let Ok(mut guard) = self.inner.lock() {
+            *guard = Some((set, Instant::now()));
+        }
+    }
+
+    /// Whether every dropped path came from our own recent drag-out. Requiring
+    /// *all* of them keeps a genuine drag of new files alongside one of ours from
+    /// being discarded.
+    fn owns(&self, paths: &[PathBuf]) -> bool {
+        if paths.is_empty() {
+            return false;
+        }
+        let Ok(guard) = self.inner.lock() else {
+            return false;
+        };
+        let Some((known, at)) = guard.as_ref() else {
+            return false;
+        };
+        if at.elapsed() > SELF_DROP_WINDOW {
+            return false;
+        }
+        paths.iter().all(|path| {
+            known.contains(path)
+                || std::fs::canonicalize(path).is_ok_and(|resolved| known.contains(&resolved))
+        })
+    }
+}
+
+/// Ask whether a drop is our own drag-out landing back on us.
+///
+/// Called by the drop router before anything is imported. Answers `false` on
+/// anything it does not recognise, so a real Finder drop is never swallowed.
+#[tauri::command]
+pub(crate) async fn drop_is_self_drag<R: Runtime>(
+    app: AppHandle<R>,
+    paths: Vec<String>,
+) -> Result<bool, MappingError> {
+    let owned: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    Ok(app.state::<RecentDragOut>().owns(&owned))
+}
+
+// A drag preview image is mandatory on macOS/Windows. A neutral document glyph
+// rather than the app icon: the thing under the cursor is a *file* being carried
+// out, and showing the Cairndex logo made it read as dragging the application.
+// Embedded at compile time so the packaged shell never depends on a runtime path.
+const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/drag-file.png");
 
 // Emitted when a shell-initiated drag-out session ends (drop or cancel) so the SPA
 // can clear its "drag-out in flight" guard and stop ignoring its own file drops.
@@ -42,6 +115,11 @@ pub(crate) async fn start_file_drag<R: Runtime>(
     let paths = async_runtime::spawn_blocking(move || resolve_drag_paths(&resolver, &items))
         .await
         .map_err(|_| MappingError::drag_action_failed())??;
+
+    // Remember what we are about to put on the pasteboard *before* the drag can
+    // possibly be dropped, so a drop landing back on our window is recognised as
+    // ours no matter how the events interleave.
+    app.state::<RecentDragOut>().remember(&paths);
 
     // The native drag session has to be created on the main thread. Bridge its
     // synchronous result back to this async command without blocking a worker.
@@ -123,15 +201,99 @@ fn begin_native_drag<R: Runtime>(
         let _ = emitter.emit(DRAG_ENDED_EVENT, drag_id);
     };
 
-    #[cfg(target_os = "linux")]
-    let outcome = {
-        let gtk_window = window
-            .gtk_window()
-            .map_err(|_| MappingError::drag_action_failed())?;
-        drag::start_drag(&gtk_window, item, image, on_drop, drag::Options::default())
-    };
-    #[cfg(not(target_os = "linux"))]
-    let outcome = drag::start_drag(window, item, image, on_drop, drag::Options::default());
+    // Starting the session is wrapped because it can **panic**, not merely fail:
+    // AppKit's `beginDraggingSessionWithItems:event:source:` returns nil when it
+    // has no live mouse-drag event to attach to, and the objc2 binding turns that
+    // NULL into a panic — which aborts the whole app.
+    //
+    // We can reach that state legitimately: paths are resolved off-thread first
+    // (canonicalizing an offline SMB mount must not block the UI), so by the time
+    // this runs on the main thread the gesture that started it may be over — a
+    // quick press-drag on a row is enough. A drag that cannot start is an
+    // ordinary failure, so it is reported as one and the window survives.
+    let start = std::panic::AssertUnwindSafe(move || {
+        #[cfg(target_os = "linux")]
+        {
+            let gtk_window = window
+                .gtk_window()
+                .map_err(|_| MappingError::drag_action_failed())?;
+            drag::start_drag(&gtk_window, item, image, on_drop, drag::Options::default())
+                .map_err(|_| MappingError::drag_action_failed())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            drag::start_drag(window, item, image, on_drop, drag::Options::default())
+                .map_err(|_| MappingError::drag_action_failed())
+        }
+    });
+    std::panic::catch_unwind(start).unwrap_or_else(|_| {
+        eprintln!("[dragout] the OS refused to start a drag session; ignoring this drag");
+        Err(MappingError::drag_action_failed())
+    })
+}
 
-    outcome.map_err(|_| MappingError::drag_action_failed())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Recognising our own drag-out is what stops a dropped card being copied back
+    // into the library as if it came from Finder, so these pin the recogniser
+    // rather than the drag itself (which needs a live AppKit session).
+
+    #[test]
+    fn recognises_the_paths_it_just_dragged_out() {
+        let recent = RecentDragOut::default();
+        let paths = vec![PathBuf::from("/tmp/a.mkv"), PathBuf::from("/tmp/b.mkv")];
+
+        recent.remember(&paths);
+
+        assert!(recent.owns(&paths));
+    }
+
+    #[test]
+    fn does_not_claim_a_drop_it_never_dragged() {
+        let recent = RecentDragOut::default();
+        recent.remember(&[PathBuf::from("/tmp/ours.mkv")]);
+
+        // A genuine Finder drop must still be imported.
+        assert!(!recent.owns(&[PathBuf::from("/tmp/theirs.mkv")]));
+    }
+
+    #[test]
+    fn does_not_claim_a_mixed_drop() {
+        // One of ours plus one from Finder is a real drop: discarding it would
+        // silently lose the file the user meant to add.
+        let recent = RecentDragOut::default();
+        recent.remember(&[PathBuf::from("/tmp/ours.mkv")]);
+
+        assert!(!recent.owns(&[
+            PathBuf::from("/tmp/ours.mkv"),
+            PathBuf::from("/tmp/theirs.mkv")
+        ]));
+    }
+
+    #[test]
+    fn claims_nothing_before_any_drag() {
+        let recent = RecentDragOut::default();
+
+        assert!(!recent.owns(&[PathBuf::from("/tmp/a.mkv")]));
+    }
+
+    #[test]
+    fn an_empty_drop_is_never_ours() {
+        let recent = RecentDragOut::default();
+        recent.remember(&[PathBuf::from("/tmp/a.mkv")]);
+
+        assert!(!recent.owns(&[]));
+    }
+
+    #[test]
+    fn a_later_drag_replaces_the_one_before_it() {
+        let recent = RecentDragOut::default();
+        recent.remember(&[PathBuf::from("/tmp/first.mkv")]);
+        recent.remember(&[PathBuf::from("/tmp/second.mkv")]);
+
+        assert!(recent.owns(&[PathBuf::from("/tmp/second.mkv")]));
+        assert!(!recent.owns(&[PathBuf::from("/tmp/first.mkv")]));
+    }
 }

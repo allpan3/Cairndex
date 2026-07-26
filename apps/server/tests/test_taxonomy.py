@@ -110,12 +110,44 @@ def test_reorder_collections_rewrites_one_sibling_group(session: Session) -> Non
     b = collection_service.create_collection(session, name="b")
     c = collection_service.create_collection(session, name="c")
 
-    collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id, b.id])
+    # Drag c to the front of its group.
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=a.id
+    )
     assert [c.sort_order, a.sort_order, b.sort_order] == [0, 1, 2]
 
-    # A partial or cross-parent list is rejected so the order stays well-defined.
-    with pytest.raises(ValidationError):
-        collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id])
+    # Dropping past the last one appends.
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=None
+    )
+    assert [a.sort_order, b.sort_order, c.sort_order] == [0, 1, 2]
+
+
+def test_reorder_collections_skips_ids_that_no_longer_exist(session: Session) -> None:
+    """A drag must not fail outright because the client's picture has drifted —
+    that is a move the owner made that silently did nothing. A vanished id is
+    skipped and the meaningful part of the move still lands."""
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[b.id, "01HZZZZZZZZZZZZZZZZZZZZZZZ"], before_id=a.id
+    )
+
+    assert [b.sort_order, a.sort_order] == [0, 1]
+
+
+def test_reorder_collections_moves_a_block_together(session: Session) -> None:
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+    d = collection_service.create_collection(session, name="d")
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[a.id, c.id], before_id=d.id
+    )
+
+    assert [b.sort_order, a.sort_order, c.sort_order, d.sort_order] == [0, 1, 2, 3]
 
 
 def test_cleanup_collection_order_sorts_every_sibling_group_by_name(session: Session) -> None:
@@ -351,3 +383,78 @@ def test_tag_reparent_and_safe_delete_api(client: TestClient, library_id: str) -
 
     # A leaf tag deletes fine.
     assert client.delete(f"{base}/tags/{a['id']}").status_code == 204
+
+
+def test_reordering_collections_is_not_editing(session: Session) -> None:
+    """Dragging collections around must not touch their modified time. Beyond
+    honesty, ``updated_at`` is each collection's cover-thumbnail cache key, so
+    bumping it re-fetched every sibling's cover after every drag."""
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+    session.commit()
+    stamps = {x.id: x.updated_at for x in (a, b, c)}
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=a.id
+    )
+    collection_service.cleanup_collection_order(session)
+    session.commit()
+
+    for x in (a, b, c):
+        session.refresh(x)
+        assert x.updated_at == stamps[x.id], f"{x.name} was stamped modified by a reorder"
+
+
+def test_reorder_collections_reparents_and_places_in_one_step(session: Session) -> None:
+    """The bug behind "a nested collection dropped at the bottom jumps back up".
+
+    Moving between levels used to be a reparent *then* a placement, and between
+    the two the collection existed in its new group still carrying its old
+    position — a window a client refetch could latch onto. One operation now.
+    """
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    nested = collection_service.create_collection(session, name="nested", parent_id=a.id)
+    # Its position among a's children is a low number that, read as a top-level
+    # position, would sort it above b — which is exactly what the owner saw.
+    assert nested.sort_order < b.sort_order
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[nested.id], before_id=None
+    )
+
+    assert nested.parent_id is None
+    assert [c.name for c in collection_service._siblings(session, None)] == ["a", "b", "nested"]
+
+
+def test_reorder_collections_nests_at_the_end_of_the_new_group(session: Session) -> None:
+    """Dropping onto a collection is the same operation with no gap named."""
+    parent = collection_service.create_collection(session, name="parent")
+    first = collection_service.create_collection(session, name="first", parent_id=parent.id)
+    loose = collection_service.create_collection(session, name="loose")
+
+    collection_service.reorder_collections(
+        session, parent_id=parent.id, moved_ids=[loose.id], before_id=None
+    )
+
+    assert loose.parent_id == parent.id
+    assert [c.name for c in collection_service._siblings(session, parent.id)] == ["first", "loose"]
+    assert first.sort_order == 0 and loose.sort_order == 1
+
+
+def test_reorder_collections_refuses_to_nest_a_collection_inside_itself(session: Session) -> None:
+    """A cycle is skipped, not raised — the client's tree can have drifted, and a
+    drag that would fold a collection into its own child should simply not."""
+    outer = collection_service.create_collection(session, name="outer")
+    inner = collection_service.create_collection(session, name="inner", parent_id=outer.id)
+
+    collection_service.reorder_collections(
+        session, parent_id=inner.id, moved_ids=[outer.id], before_id=None
+    )
+    collection_service.reorder_collections(
+        session, parent_id=outer.id, moved_ids=[outer.id], before_id=None
+    )
+
+    assert outer.parent_id is None
+    assert inner.parent_id == outer.id

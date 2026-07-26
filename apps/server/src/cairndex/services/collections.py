@@ -7,7 +7,7 @@ File Browser, which browses the active library root directly.
 
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -73,39 +73,95 @@ def list_collections(
 
 
 def _siblings(session: Session, parent_id: str | None) -> list[Collection]:
-    """All collections directly under ``parent_id`` (NULL = top level)."""
+    """All collections directly under ``parent_id`` (NULL = top level), in the
+    manual order the UI renders them in — sort_order, name as the tie-break.
+    Resolving a move against this list requires it to *be* the current order."""
     return list(
         session.scalars(
-            select(Collection).where(
+            select(Collection)
+            .where(
                 Collection.parent_id.is_(None)
                 if parent_id is None
                 else Collection.parent_id == parent_id
             )
+            .order_by(Collection.sort_order, Collection.name)
         )
     )
 
 
 def reorder_collections(
-    session: Session, *, parent_id: str | None, ordered_ids: list[str]
+    session: Session, *, parent_id: str | None, moved_ids: list[str], before_id: str | None
 ) -> list[Collection]:
-    """Set each collection's ``sort_order`` from its position in ``ordered_ids``.
+    """Move collections into ``parent_id``'s group, landing before ``before_id``.
 
-    ``ordered_ids`` must be exactly the collections directly under ``parent_id``
-    (a manual drag-reorder rewrites one sibling group at a time). Cross-parent or
-    partial lists are rejected so the persisted order stays well-defined.
+    One operation for the whole gesture: whatever is not already in that group is
+    reparented into it, then the block is placed — immediately before
+    ``before_id``, or at the end when it is None. Dragging a collection to a
+    different level and positioning it there is a single thing the owner did, and
+    it used to be two requests: a reparent, then a placement. Between them the
+    collection was published in its new group still carrying its old position, so
+    a client refetch landing in that window latched onto the wrong order — a
+    nested collection dropped at the bottom of the tree appeared back up near its
+    old parent.
+
+    Tolerant by design. Ids that no longer exist, or whose move would put a
+    collection inside itself or its own descendant, are skipped rather than
+    failing the drag: the client's picture of the tree can always have drifted,
+    and the meaningful part of a move the owner made should still happen.
     """
+    _require_parent(session, parent_id)
+    now = utcnow()
+    for collection_id in moved_ids:
+        collection = session.get(Collection, collection_id)
+        if collection is None or collection.parent_id == parent_id:
+            continue
+        if collection_id == parent_id:
+            continue
+        if parent_id is not None and is_descendant(
+            session, Collection, candidate_id=parent_id, of_id=collection_id
+        ):
+            continue
+        # A reparent *is* a change to the collection, unlike a pure reorder — its
+        # place in the tree is part of what it is, so the modified time moves.
+        collection.parent_id = parent_id
+        collection.updated_at = now
+    session.flush()
+
     siblings = _siblings(session, parent_id)
     by_id = {c.id: c for c in siblings}
-    if set(ordered_ids) != set(by_id):
-        raise ValidationError("ordered ids must be exactly the collections under this parent")
-    now = utcnow()
-    for order, cid in enumerate(ordered_ids):
+    order = [c.id for c in siblings]
+    moving = [cid for cid in order if cid in set(moved_ids)]
+    if not moving or before_id in set(moving):
+        return [by_id[cid] for cid in order]
+    rest = [cid for cid in order if cid not in set(moving)]
+    at = rest.index(before_id) if before_id in rest else len(rest)
+    result = rest[:at] + moving + rest[at:]
+    _write_sibling_order(session, by_id, result)
+    return [by_id[cid] for cid in result]
+
+
+def _write_sibling_order(session: Session, by_id: dict[str, Collection], result: list[str]) -> None:
+    """Persist ``result`` as the group's ``sort_order``, touching only rows whose
+    position changed — and *not* their ``updated_at``. Rearranging collections is
+    not editing them: the modified time answers "when did this collection's own
+    content change", and bumping it here also invalidated every sibling's cover
+    thumbnail (the cache key is ``updated_at``) on each drag. The column carries
+    an ``onupdate`` default, so changed rows are written with an explicit UPDATE
+    that passes the current value through (a column present in the statement is
+    not filled by the default)."""
+    for position, cid in enumerate(result):
         collection = by_id[cid]
-        if collection.sort_order != order:
-            collection.sort_order = order
-            collection.updated_at = now
+        if collection.sort_order == position:
+            continue
+        session.execute(
+            update(Collection)
+            .where(Collection.id == cid)
+            .values(sort_order=position, updated_at=Collection.updated_at)
+        )
+        # The core UPDATE bypasses the identity-mapped instance; reload it so
+        # callers (and the API response built from these rows) see the new order.
+        session.expire(collection, ["sort_order", "updated_at"])
     session.flush()
-    return [by_id[cid] for cid in ordered_ids]
 
 
 def cleanup_collection_order(session: Session, *, descending: bool = False) -> None:
@@ -119,14 +175,9 @@ def cleanup_collection_order(session: Session, *, descending: bool = False) -> N
     groups: dict[str | None, list[Collection]] = {}
     for c in all_collections:
         groups.setdefault(c.parent_id, []).append(c)
-    now = utcnow()
     for siblings in groups.values():
         siblings.sort(key=lambda c: c.name.casefold(), reverse=descending)
-        for order, collection in enumerate(siblings):
-            if collection.sort_order != order:
-                collection.sort_order = order
-                collection.updated_at = now
-    session.flush()
+        _write_sibling_order(session, {c.id: c for c in siblings}, [c.id for c in siblings])
 
 
 def update_collection(

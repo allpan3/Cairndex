@@ -5,11 +5,13 @@ import type { FileBrowserEntry, SortOrder } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
 import type { HostLabels } from '../platform'
+import { displayName, useDisplayPrefs } from '../state/displayPrefs'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
 import { useFileWriteActions } from './fileWriteActions'
+import { ImportProgress } from './ImportProgress'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -17,7 +19,7 @@ import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
-import { selectionTargets } from './selection'
+import { selectionTargets, suppressShiftSelection } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -247,6 +249,11 @@ function FileList({
   // Anchor for Shift-range selection (the last plainly-clicked file).
   const [anchor, setAnchor] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
+  const [displayPrefs] = useDisplayPrefs()
+  // The *displayed* name only. Renaming, search and every operation keep using
+  // `entry.name`, so hiding extensions can never change what an action does.
+  const labelFor = (entry: FileBrowserEntry) =>
+    displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
   const [search, setSearch] = useState('')
   const matchSearch = usePinyinSearch(search)
 
@@ -320,6 +327,8 @@ function FileList({
     setSelected(new Set([entry.relative_path]))
     onSelectEntry(entry)
     const items: MenuEntry[] = [
+      { label: 'Copy Path', onClick: () => copyPath(entry.relative_path) },
+      null,
       { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
       { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
       // A folder's own delete takes everything inside it, in one operation.
@@ -345,6 +354,14 @@ function FileList({
     }
     const n = targets.length
     const items: MenuEntry[] = [
+      // First, and independent of write mode: the inspector no longer prints the
+      // path, so copying it must always be reachable.
+      {
+        label: 'Copy Path',
+        disabled: n > 1,
+        onClick: () => copyPath(entry.relative_path),
+      },
+      null,
       {
         label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
         onClick: () => onAddToBundle(targets),
@@ -410,6 +427,15 @@ function FileList({
     e.preventDefault()
     setDropActive(false)
     write.importFiles([...e.dataTransfer.files])
+  }
+
+  // Copy the library-relative path — the inspector no longer prints it (it is the
+  // longest value there and rarely read), so this is how it is retrieved.
+  const copyPath = (relativePath: string) => {
+    void navigator.clipboard
+      ?.writeText(relativePath)
+      .then(() => onFlash?.(`Copied “${relativePath}”.`))
+      .catch(() => onFlash?.('The path could not be copied.'))
   }
 
   // How many of these paths a bundle is built on — the part of a delete worth
@@ -479,14 +505,10 @@ function FileList({
   const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollEl,
     getWrapperEl: () => wrapperRef.current,
-    // Rubber-band from empty space always, and from a file row in list layout
-    // (rows fill the width, so there's otherwise nothing to grab); a plain click
-    // still selects via the drag threshold. File rows aren't reorder-draggable.
-    isBackgroundTarget: (target) => {
-      if (target.closest('.file-table__head')) return false
-      if (!target.closest('[data-relpath]')) return true
-      return prefs.layout === 'list'
-    },
+    // Only true empty space starts a band; a tile or row is never a band origin.
+    isBackgroundTarget: (target) =>
+      !target.closest('.file-table__head') && !target.closest('[data-relpath]'),
+    rubberBand: prefs.layout !== 'list',
     hitTest,
     getBaseSelection: () => selected,
     onChange: (ids) => {
@@ -507,7 +529,7 @@ function FileList({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" data-tauri-drag-region="deep">
         {header}
         <span className="toolbar__count">{visible.length.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
@@ -616,6 +638,7 @@ function FileList({
           dropActive ? ' file-browser__body--dropping' : ''
         }`}
         ref={setScrollEl}
+        onMouseDownCapture={suppressShiftSelection}
         onMouseDown={onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={listKeyDown}
@@ -626,12 +649,7 @@ function FileList({
         // from the toolbar controls above it.
         tabIndex={-1}
       >
-        {write.importing.length > 0 && (
-          <div className="file-importing" role="status">
-            Copying{' '}
-            {write.importing.length === 1 ? write.importing[0] : `${write.importing.length} files`}…
-          </div>
-        )}
+        {write.importProgress && <ImportProgress {...write.importProgress} />}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
@@ -690,6 +708,7 @@ function FileList({
                     <FileRow
                       key={entry.relative_path}
                       entry={entry}
+                      label={labelFor(entry)}
                       selected={
                         selected.has(entry.relative_path) || entry.relative_path === selectedPath
                       }
@@ -709,6 +728,7 @@ function FileList({
                     <FileCard
                       key={entry.relative_path}
                       entry={entry}
+                      label={labelFor(entry)}
                       selected={
                         selected.has(entry.relative_path) || entry.relative_path === selectedPath
                       }
@@ -791,8 +811,11 @@ function FileRow({
   renaming,
   onRename,
   onCancelRename,
+  label,
 }: {
   entry: FileBrowserEntry
+  /** The name as displayed — may have its extension hidden (a display pref). */
+  label: string
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
@@ -826,7 +849,7 @@ function FileRow({
             onCancel={onCancelRename}
           />
         ) : (
-          <span className="file-row__text">{entry.name}</span>
+          <span className="file-row__text">{label}</span>
         )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
@@ -859,8 +882,11 @@ function FileCard({
   renaming,
   onRename,
   onCancelRename,
+  label,
 }: {
   entry: FileBrowserEntry
+  /** The name as displayed — may have its extension hidden (a display pref). */
+  label: string
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
@@ -928,7 +954,7 @@ function FileCard({
             onCancel={onCancelRename}
           />
         ) : (
-          <div className="card__title">{entry.name}</div>
+          <div className="card__title">{label}</div>
         )}
         <div className="card__sub">
           <span>{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
