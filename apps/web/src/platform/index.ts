@@ -67,6 +67,12 @@ export interface OpenedLibrary {
   /** The picked folder's basename, which prefills the name field. */
   folderName: string | null
   /**
+   * With `needsConfirmation`, whether the parked folder is already a library
+   * (confirm registers it — no name needed) or a plain folder (confirm creates
+   * one from the typed name). Lets the dialog show Add versus Create.
+   */
+  isLibrary: boolean
+  /**
    * True when the caller's *current* server already has this library, so no
    * local server was started. Opening it locally would register a second server
    * against the same folder, which the ownership lease then refuses — the user
@@ -132,7 +138,7 @@ interface PlatformRuntime {
   configureServer(serverUrl: string, options?: { localToken?: string | null }): Promise<void>
   startLocalServer(): Promise<LocalServerInfo>
   localServerStatus(): Promise<LocalServerInfo | null>
-  openLibraryFolder(knownLibraryUuids: string[]): Promise<OpenedLibrary | null>
+  openLibraryFolder(knownLibraryUuids: string[], stage: boolean): Promise<OpenedLibrary | null>
   confirmPickedLibrary(token: string, name: string): Promise<OpenedLibrary>
   loadConnections(): Promise<StoredConnections | null>
   saveConnections(value: StoredConnections): Promise<void>
@@ -353,8 +359,13 @@ export const hostLocalServerStatus = (): Promise<LocalServerInfo | null> =>
 // Picks a library folder and opens it through the local server, returning ids only.
 // `knownLibraryUuids` are the portable ids the caller's current server already
 // serves, so a folder it already has is reported rather than opened twice.
-export const openHostLibraryFolder = (knownLibraryUuids: string[]): Promise<OpenedLibrary | null> =>
-  runtime.openLibraryFolder(knownLibraryUuids)
+export const openHostLibraryFolder = (
+  knownLibraryUuids: string[],
+  // Stage an existing library (park it for a confirm) rather than open it
+  // immediately. The Manage dialog stages; the first-run/menu open-folder flow
+  // does not. See `open_library_folder` in the shell.
+  stage = false,
+): Promise<OpenedLibrary | null> => runtime.openLibraryFolder(knownLibraryUuids, stage)
 
 // Creates a library at the folder a previous pick is holding, under the name the
 // user confirmed. `token` is the opaque handle from that pick — the path itself
