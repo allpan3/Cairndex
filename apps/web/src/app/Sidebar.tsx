@@ -365,7 +365,13 @@ export function Sidebar({
         onBackgroundClick?.()
       }}
     >
-      <div className="sidebar__brand">
+      {/* Clearance for the window's traffic lights, which float over this corner
+          in the desktop shell (see `markOverlayTitleBar`). Zero-height in a
+          browser. The drag regions move the window, the way the system title bar
+          they replace would; "deep" covers the labels inside them too, since
+          Tauri's bare attribute only matches a click on the element itself. */}
+      <div className="sidebar__titlebar" data-tauri-drag-region="deep" />
+      <div className="sidebar__brand" data-tauri-drag-region="deep">
         <span>🍃</span> Cairndex
       </div>
 

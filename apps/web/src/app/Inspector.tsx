@@ -126,14 +126,14 @@ export function Inspector({
 
   if (bundleId === null) {
     return (
-      <aside className="inspector">
+      <aside className="inspector" data-tauri-drag-region>
         <div className="state">Select a bundle or collection to see its details.</div>
       </aside>
     )
   }
   if (!bundle) {
     return (
-      <aside className="inspector">
+      <aside className="inspector" data-tauri-drag-region>
         <div className="state">Loading…</div>
       </aside>
     )
@@ -250,7 +250,7 @@ function BundleEditor({
   )
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" data-tauri-drag-region>
       <div
         className="inspector__cover"
         style={{ backgroundImage: `url(${thumbnailUrl(bundleId, bundle.updated_at)})` }}
