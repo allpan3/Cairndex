@@ -300,3 +300,60 @@ test('an unanswered decision times out to a retryable unavailable state', async 
     vi.useRealTimers()
   }
 })
+
+/** Options for a path with no `AssetFile` row — the File Browser's unindexed case. */
+function pathOptions(streamUrl: string): UseHlsSessionOptions {
+  return {
+    fileId: null,
+    enabled: true,
+    directPlayable: true,
+    directStreamUrl: streamUrl,
+    directMimeType: 'video/mp4',
+    caps: CAPS,
+    getCurrentTime: () => 12.5,
+  }
+}
+
+test('an unindexed path plays natively without requesting a decision', async () => {
+  const { result } = renderHook(() => useHlsSession(pathOptions('/file?path=loose.mp4')))
+
+  await waitFor(() => expect(result.current.status).toBe('ready'))
+  expect(result.current.source).toMatchObject({
+    kind: 'native',
+    src: '/file?path=loose.mp4',
+    mimeType: 'video/mp4',
+    startAt: 0,
+  })
+  // There is no file row to decide on, so the round-trip must be skipped.
+  expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
+  // Nothing to re-attach either — recovery falls to the native reload path.
+  expect(result.current.reattach()).toBe(false)
+})
+
+test('stepping between unindexed paths does not carry the previous playhead', async () => {
+  const { result, rerender } = renderHook(
+    ({ url }: { url: string }) => useHlsSession(pathOptions(url)),
+    {
+      initialProps: { url: '/file?path=a.mp4' },
+    },
+  )
+  await waitFor(() => expect(result.current.source?.src).toBe('/file?path=a.mp4'))
+
+  // A recovery reload resumes this file at the live playhead.
+  act(() => result.current.retry())
+  await waitFor(() => expect(result.current.source?.startAt).toBe(12.5))
+
+  // Switching to a different path is a different file, so it starts at zero even
+  // though both share a null file id.
+  rerender({ url: '/file?path=b.mp4' })
+  await waitFor(() => expect(result.current.source?.src).toBe('/file?path=b.mp4'))
+  expect(result.current.source?.startAt).toBe(0)
+})
+
+test('an unindexed path with no readable URL stays idle', async () => {
+  const { result } = renderHook(() => useHlsSession({ ...pathOptions(''), directStreamUrl: null }))
+
+  await waitFor(() => expect(result.current.status).toBe('idle'))
+  expect(result.current.source).toBeNull()
+  expect(mocks.requestPlaybackDecision).not.toHaveBeenCalled()
+})
