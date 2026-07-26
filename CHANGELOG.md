@@ -224,6 +224,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Creating a collection is reachable from where you are.** The sidebar's **+**
+  now always makes a **top-level** collection, whatever happens to be open — it
+  used to nest under the current selection, which meant there was no way to ask
+  for a top-level one while browsing a collection, and the same button quietly did
+  two different things. Nesting became its own gesture instead: **right-click a
+  collection → New Subcollection**. And "New Collection" is now offered by the
+  Collections heading and its blank run-out, the bundle grid's empty-space menu,
+  and the desktop shell's **File → New Collection**
+  (<kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>). All of them drop straight
+  into the inline rename box, as the **+** already did.
+
 - **The File Browser plays video in the app's player.** Opening a video there
   used to hand it to the browser's own `<video controls>` — no custom control
   bar, no keyboard map, no transcode fallback, no storyboard scrubbing, no

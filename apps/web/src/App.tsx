@@ -662,6 +662,12 @@ function Workspace({
   const [addingToBundle, setAddingToBundle] = useState<FileSelection | null>(null)
   const [creatingBundle, setCreatingBundle] = useState<FileSelection | null>(null)
   const [creatingEmpty, setCreatingEmpty] = useState(false)
+  // A pending "new collection" raised from outside the sidebar (the grid's
+  // empty-space menu, the native File menu). The sidebar consumes it and clears
+  // it, because the new row's inline rename and expansion are its state.
+  const [newCollectionRequest, setNewCollectionRequest] = useState<{
+    parentId: string | null
+  } | null>(null)
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
   // Transient success banner after a manual bundling action.
   const [flash, setFlash] = useState<string | null>(null)
@@ -793,6 +799,7 @@ function Workspace({
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
+    else if (action === 'new-collection') setNewCollectionRequest({ parentId: null })
     else if (action === 'show-bundles') setMode('collection')
     else if (action === 'show-files') {
       setMode('file')
@@ -1406,6 +1413,13 @@ function Workspace({
     (e: React.MouseEvent) => {
       menu.open(e, [
         { label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) },
+        // Top level, not the open collection: the grid has no notion of "here"
+        // in the collection tree, so guessing one would be arbitrary. Nesting is
+        // the sidebar row's own right-click.
+        {
+          label: 'New Collection',
+          onClick: () => setNewCollectionRequest({ parentId: null }),
+        },
         null,
         {
           label: 'Clean Up Order…',
@@ -1740,6 +1754,8 @@ function Workspace({
           onReparentCollections={(ids, targetId) => moveCollectionsTo(ids, targetId, null)}
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
+          newCollectionRequest={newCollectionRequest}
+          onNewCollectionHandled={() => setNewCollectionRequest(null)}
           smartCollections={smartCollections.data ?? []}
           onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
           onEditSmartCollection={(sc) => setEditor({ existing: sc })}
