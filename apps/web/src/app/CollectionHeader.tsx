@@ -3,12 +3,12 @@ import { useRef, useState } from 'react'
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import type { DragItem } from './dnd'
-import { dropZone } from './dnd'
+import { dropZone, getActiveDrag, sameTarget, seamFor, setActiveDrag } from './dnd'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
 import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth } from './layout'
-import { gapBefore, moveManyTo } from './reorder'
+import { gapBefore, moveBeforeId } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
@@ -111,6 +111,12 @@ function CollectionCard({
       className={`collcard${selected ? ' collcard--selected' : ''}${
         dropInto ? ' collcard--drop-into' : ''
       }`}
+      // Select on press so a drag departs with this card selected — see the
+      // same handler on BundleCard for the full reasoning.
+      onMouseDown={(e) => {
+        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || selected) return
+        onSelect(e)
+      }}
       onClick={onSelect}
       onDoubleClick={onOpen}
       onContextMenu={onContextMenu}
@@ -204,11 +210,17 @@ export function CollectionHeader({
   // (before/after = reorder gap, into = reparent/add). The dragged item itself
   // comes from the App-level dragItem (so a bundle or a folder from elsewhere can
   // be dropped here).
-  const [dropSlot, setDropSlot] = useState<{
-    id: string
-    zone: 'before' | 'into' | 'after'
-  } | null>(null)
+  // Where the drop will land — a destination, not a card and a side. A gap
+  // between two cards can be described from either card ("after the left one" /
+  // "before the right one"), and describing it both ways is what made one
+  // insertion point look like two seams. It is named once here, the way the
+  // server names it: the card the moved block lands in front of, or null for the
+  // end of the group.
+  const [dropSlot, setDropSlot] = useState<
+    { kind: 'into'; id: string } | { kind: 'gap'; beforeId: string | null } | null
+  >(null)
   const clearDrag = () => {
+    setActiveDrag(null)
     setDropSlot(null)
     onDragItem(null)
   }
@@ -228,37 +240,80 @@ export function CollectionHeader({
   }
   const siblingIds = subcollections.map((c) => c.id)
 
-  // Catch a collection reorder that lands in the empty space around the folder
-  // cards (past the content box), routing it to the beginning or end of the
-  // group so you needn't pinpoint a card edge. Cards handle their own drops; this
-  // only fires for drops on the surrounding surface, and only when reordering is
-  // enabled (not in the flattened view).
+  // The container owns the whole drop gesture — same design as the bundle grid
+  // (Browser.tsx), for the same reason. Cards used to handle drops themselves
+  // while a separate surface handler caught the rest, and the two disagreed:
+  // the card's dragover painted "insert before Archive" while a release two pixels
+  // into the gutter fell to the surface handler, which resolved by the grid's
+  // *vertical midpoint*, picked the last sibling as the edge — and when that
+  // sibling was the dragged card itself, silently did nothing. One computation
+  // over the cursor now feeds both the indicator and the commit.
+  const computeGap = (e: {
+    clientX: number
+    clientY: number
+  }): { kind: 'into'; id: string } | { kind: 'gap'; beforeId: string | null } | null => {
+    const live = getActiveDrag() ?? dragItem
+    const gridEl = gridRef.current
+    if (live === null || gridEl === null) return null
+    let best: { id: string; rect: DOMRect; distance: number } | null = null
+    for (const el of gridEl.querySelectorAll<HTMLElement>('[data-collection-id]')) {
+      const id = el.dataset.collectionId
+      if (id === undefined) continue
+      const r = el.getBoundingClientRect()
+      const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right)
+      const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom)
+      const distance = Math.hypot(dx, dy)
+      if (best === null || distance < best.distance) best = { id, rect: r, distance }
+    }
+    if (best === null) return null
+    // Bundles dropped anywhere on the section mean "into the nearest folder".
+    if (live.kind === 'bundles') return { kind: 'into', id: best.id }
+    const member = live.ids.includes(best.id)
+    // Hovering a member of the dragged block can only mean its own edges — a
+    // no-op gap or a small nudge — never "into itself".
+    const zone = member
+      ? e.clientX < best.rect.left + best.rect.width / 2
+        ? 'before'
+        : 'after'
+      : // A card's middle band nests into it; its edges (and the gutters either
+        // side) are the reorder gap. With no reordering — the flattened view —
+        // everything reads as "into".
+        onReorderCollections
+        ? dropZone(e, best.rect, 'horizontal', true)
+        : 'into'
+    if (zone === 'into') return member ? null : { kind: 'into', id: best.id }
+    // Collapse "after this card" into "before the next one": one name per gap,
+    // and the exact value the server is sent.
+    return { kind: 'gap', beforeId: gapBefore(siblingIds, live.ids, best.id, zone) }
+  }
+
   const onSurfaceDragOver = (e: React.DragEvent) => {
-    if (!onReorderCollections || dragItem?.kind !== 'collection') return
-    if ((e.target as HTMLElement).closest('[data-collection-id]')) return
+    const gap = computeGap(e)
+    if (gap === null) return
     e.preventDefault()
+    const live = getActiveDrag() ?? dragItem
+    if (live?.kind === 'bundles') e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+    setDropSlot((prev) => (sameTarget(prev, gap) ? prev : gap))
   }
   const onSurfaceDrop = (e: React.DragEvent) => {
-    if (!onReorderCollections || dragItem?.kind !== 'collection') return
-    if ((e.target as HTMLElement).closest('[data-collection-id]')) return
+    const live = getActiveDrag() ?? dragItem
+    const gap = computeGap(e)
+    if (live === null || gap === null) return
     e.preventDefault()
-    if (siblingIds.length === 0) return clearDrag()
-    const gr = gridRef.current?.getBoundingClientRect()
-    const before = gr ? e.clientY < gr.top + gr.height / 2 : false
-    const edgeId = before ? siblingIds[0] : siblingIds[siblingIds.length - 1]
-    const dragged = dragItem.ids
-    if (edgeId !== undefined && !dragged.includes(edgeId)) {
+    if (live.kind === 'bundles') {
+      if (gap.kind === 'into') onMoveBundlesInto(gap.id, e.altKey)
+    } else if (gap.kind === 'into') {
+      onReparentCollections(live.ids, gap.id)
+    } else {
+      const dragged = live.ids
       const incoming = dragged.filter((id) => !siblingIds.includes(id))
       if (incoming.length === 0) {
-        onReorderCollections(
-          dragged,
-          gapBefore(siblingIds, dragged, edgeId, before ? 'before' : 'after'),
-        )
+        onReorderCollections?.(dragged, gap.beforeId)
       } else {
         onMoveCollections(
           dragged,
           parentId,
-          moveManyTo([...siblingIds, ...incoming], dragged, edgeId, before),
+          moveBeforeId([...siblingIds, ...incoming], dragged, gap.beforeId),
         )
       }
     }
@@ -370,10 +425,11 @@ export function CollectionHeader({
                 onContextMenuSubcollection ? (e) => onContextMenuSubcollection(c.id, e) : undefined
               }
               draggable
-              drop={
-                activeSlot?.id === c.id && activeSlot.zone !== 'into' ? activeSlot.zone : undefined
-              }
-              dropInto={activeSlot?.id === c.id && activeSlot.zone === 'into'}
+              // One seam per destination: the card it lands in front of shows a
+              // leading line; the end of the group shows a trailing line on the
+              // last card. Never both sides of one gap.
+              drop={seamFor(activeSlot, c.id, siblingIds)}
+              dropInto={activeSlot?.kind === 'into' && activeSlot.id === c.id}
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = 'move'
                 // Grabbing a card that is part of a multi-selection drags the
@@ -382,56 +438,10 @@ export function CollectionHeader({
                 const ids =
                   selectedIds.has(c.id) && selectedIds.size > 1 ? [...selectedIds] : [c.id]
                 setDragBadge(e, dragBadgeLabel(ids.length, c.name, 'collection'))
+                setActiveDrag({ kind: 'collection', id: c.id, ids })
                 onDragItem({ kind: 'collection', id: c.id, ids })
               }}
               onDragEnd={clearDrag}
-              onDragOver={(e) => {
-                // Bundles dropped on a folder always mean "move into"; a folder
-                // hovering another can reorder (edges) or reparent (center).
-                let zone: 'before' | 'into' | 'after' | null = null
-                if (dragItem?.kind === 'bundles') {
-                  zone = 'into'
-                  // Reflect Alt = "add (copy) into" vs plain "move into".
-                  e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
-                } else if (dragItem?.kind === 'collection' && !dragItem.ids.includes(c.id)) {
-                  const r = e.currentTarget.getBoundingClientRect()
-                  // Reorder edges only when this sibling group is reorderable.
-                  zone = onReorderCollections ? dropZone(e, r, 'horizontal', true) : 'into'
-                }
-                if (zone === null) return
-                e.preventDefault()
-                setDropSlot((prev) =>
-                  prev?.id === c.id && prev.zone === zone ? prev : { id: c.id, zone },
-                )
-              }}
-              onDrop={(e) => {
-                if (dragItem === null) return
-                if (dragItem.kind === 'bundles') {
-                  e.preventDefault()
-                  onMoveBundlesInto(c.id, e.altKey)
-                } else if (!dragItem.ids.includes(c.id)) {
-                  e.preventDefault()
-                  // Recompute the zone from the cursor at drop time (a stale slot
-                  // would silently turn an intended reorder into a reparent).
-                  const r = e.currentTarget.getBoundingClientRect()
-                  const zone = onReorderCollections ? dropZone(e, r, 'horizontal', true) : 'into'
-                  const dragged = dragItem.ids
-                  const incoming = dragged.filter((id) => !siblingIds.includes(id))
-                  if (zone === 'into') {
-                    onReparentCollections(dragged, c.id)
-                  } else if (incoming.length === 0) {
-                    onReorderCollections?.(dragged, gapBefore(siblingIds, dragged, c.id, zone))
-                  } else {
-                    // Dragged in from another parent group (e.g. the sidebar).
-                    onMoveCollections(
-                      dragged,
-                      parentId,
-                      moveManyTo([...siblingIds, ...incoming], dragged, c.id, zone === 'before'),
-                    )
-                  }
-                }
-                clearDrag()
-              }}
             />
           ))}
         </div>

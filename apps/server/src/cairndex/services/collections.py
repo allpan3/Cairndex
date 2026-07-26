@@ -7,7 +7,7 @@ File Browser, which browses the active library root directly.
 
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -113,14 +113,32 @@ def reorder_collections(
     rest = [cid for cid in order if cid not in set(moving)]
     at = rest.index(before_id) if before_id in rest else len(rest)
     result = rest[:at] + moving + rest[at:]
-    now = utcnow()
+    _write_sibling_order(session, by_id, result)
+    return [by_id[cid] for cid in result]
+
+
+def _write_sibling_order(session: Session, by_id: dict[str, Collection], result: list[str]) -> None:
+    """Persist ``result`` as the group's ``sort_order``, touching only rows whose
+    position changed — and *not* their ``updated_at``. Rearranging collections is
+    not editing them: the modified time answers "when did this collection's own
+    content change", and bumping it here also invalidated every sibling's cover
+    thumbnail (the cache key is ``updated_at``) on each drag. The column carries
+    an ``onupdate`` default, so changed rows are written with an explicit UPDATE
+    that passes the current value through (a column present in the statement is
+    not filled by the default)."""
     for position, cid in enumerate(result):
         collection = by_id[cid]
-        if collection.sort_order != position:
-            collection.sort_order = position
-            collection.updated_at = now
+        if collection.sort_order == position:
+            continue
+        session.execute(
+            update(Collection)
+            .where(Collection.id == cid)
+            .values(sort_order=position, updated_at=Collection.updated_at)
+        )
+        # The core UPDATE bypasses the identity-mapped instance; reload it so
+        # callers (and the API response built from these rows) see the new order.
+        session.expire(collection, ["sort_order", "updated_at"])
     session.flush()
-    return [by_id[cid] for cid in result]
 
 
 def cleanup_collection_order(session: Session, *, descending: bool = False) -> None:
@@ -134,14 +152,9 @@ def cleanup_collection_order(session: Session, *, descending: bool = False) -> N
     groups: dict[str | None, list[Collection]] = {}
     for c in all_collections:
         groups.setdefault(c.parent_id, []).append(c)
-    now = utcnow()
     for siblings in groups.values():
         siblings.sort(key=lambda c: c.name.casefold(), reverse=descending)
-        for order, collection in enumerate(siblings):
-            if collection.sort_order != order:
-                collection.sort_order = order
-                collection.updated_at = now
-    session.flush()
+        _write_sibling_order(session, {c.id: c for c in siblings}, [c.id for c in siblings])
 
 
 def update_collection(
