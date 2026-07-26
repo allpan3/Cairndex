@@ -2,16 +2,67 @@
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
-> app's real media viewer (closing the M2 follow-up). Two branches are open:
-> `fix/collection-creation-affordances` (below) and `fix/write-mode-hardening`
-> (plan 4 W6). W2 stays blocked on plan 1 M11, and W6 closes the write-mode
-> track. Two things still need the owner: a pass on a
-> genuinely downloaded build (deferred from D7), and a pass on the **native
-> Finder drag gesture** on a packaged build, which cannot be automated here.
+> app's real media viewer (PR #32) and the collection-creation affordances
+> (owner-reported: the sidebar "+" nested instead of creating at the top level,
+> and creating one was unreachable from the grid and the shell menu). One branch
+> is open: `fix/write-mode-hardening` (plan 4 W6, in progress — see below). W2
+> stays blocked on plan 1 M11, and W6 closes the write-mode track. Two things
+> still need the owner: a pass on a genuinely downloaded build (deferred from D7),
+> and a pass on the **native Finder drag gesture** on a packaged build, which
+> cannot be automated here.
 
-## In progress: collection-creation affordances (2026-07-26)
+## In progress: plan 4 W6 — write-mode hardening (2026-07-26)
 
-Branch `fix/collection-creation-affordances`, off `main` at `33d46f0`.
+Branch `fix/write-mode-hardening`, rebased onto `main` at `7b767d3`. W6 is the last
+unblocked write-mode slice (W2 still waits on plan 1 M11, which is in the future
+bucket), and it is a bag of independent items rather than one change. Landed so
+far:
+
+**The desktop importer's library id (the PR #30 review's hardening note).** It
+reached the upload URL through `format!` into a string that was then parsed, so an
+id carrying `..`, `?`, `#` or an extra `/` restructured the URL. The reason it was
+reachable at all: `media_proxy::target_for` accepts *any* non-empty id — it
+consults the id only to decide whether to attach the bearer token — so nothing
+upstream constrained the value. With `server_scoped_token` set the token is
+attached regardless, which made the worst case an authenticated POST carrying the
+file's bytes aimed at an arbitrary path on the local server. Now the path is built
+with `path_segments_mut` (which percent-encodes each segment) and the id is
+shape-checked in one shared place: `mappings::validate_library_id` had only
+rejected the empty string, so the mapping lookups were equally unguarded. Server
+ids are ULIDs, so the accepted charset (`[A-Za-z0-9_-]`) is comfortably
+permissive. Rust **101 passed** (+3: a real ULID through a trailing-slash base, a
+table of seven hostile ids, and the charset itself).
+
+**Already done, found while surveying:** case-only renames on case-insensitive
+filesystems are handled — `_rename_on_disk` stages via a temporary name. The W6
+list pairs that with EXDEV, which is not.
+
+### Remaining W6 items, and what each actually involves
+
+- **EXDEV** — a library root spanning mount points (or `.cairndex/trash` on a
+  different device from the file being trashed) makes `os.rename` fail with
+  `EXDEV`. Today that degrades safely to a per-file `failed_paths` entry, so
+  nothing is lost, but the operation can never succeed. The fix is a
+  copy-then-delete fallback, which is **not atomic** — the journal has to
+  represent a "copied, not yet deleted" state and the reconciler has to finish or
+  unwind it. It touches the never-rename/move/overwrite-original-media rule, so it
+  wants an owner decision on approach before it is written, not after.
+- **Drag-move onto a directory row** — the capability already exists via the Move
+  to… dialog; this is a second gesture for it, alongside the File Browser's
+  marquee and native drag-*out*. Its own slice, as W3 recorded.
+- **The two move-undo manual-recovery cases** from the W3 review: a Replace whose
+  own rename fails, and a crash losing `replaced_operation_id`. Both are visible
+  and restorable in the Trash today; neither loses data.
+- Auto-suffixing within a move batch (currently refused rather than guessed — a
+  deliberate safety narrowing, so relaxing it is an owner call), the multi-item
+  plan/preview endpoint, the `file_ops_batch` job for bulk moves, retention
+  config, journal history UI, deployment/backup docs, a perf pass on bulk ops, and
+  bundle "delete with files" (the smallest remaining W4 piece).
+
+## Merged: collection-creation affordances (2026-07-26)
+
+Branch `fix/collection-creation-affordances`, fast-forwarded into `main` at
+`7b767d3` at the owner's request (no PR).
 Owner-reported: there was no way to add a collection from the grid or the shell
 menu, no way to add a subcollection by right-clicking one, and the sidebar's **+**
 created inside the currently open collection rather than at the top level.
