@@ -26,6 +26,7 @@ import {
   useReorderCollections,
   useDeploymentWriteMode,
   useFileOperations,
+  invalidateAfterFileOperation,
   useLibraries,
   useLibraryAuth,
   useTrash,
@@ -1222,6 +1223,7 @@ function Workspace({
   // inside this mapped library land in the fast-add flow (Create Bundle); files
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
+  const queryClient = useQueryClient()
   const fileOperations = useFileOperations()
   const hostImports = useHostImports({
     libraryId,
@@ -1230,17 +1232,24 @@ function Workspace({
     // the file appear somewhere else would be the wrong kind of surprise.
     destDir: mode === 'file' && fileScope === 'browse' ? filePath : '',
     onFlash: showFlash,
-    onImported: (operationId) => ({
-      // Reuses the same undo mutation the File Browser's toasts use, so a
-      // desktop-dropped import is undone by exactly the same path — including
-      // its cache invalidation — as one added through the picker.
-      undo: () =>
-        fileOperations.undo.mutate(operationId, {
-          onSuccess: () => showFlash('Undone.'),
-          onError: (error) =>
-            showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
-        }),
-    }),
+    onImported: (operationId) => {
+      // The file landed on disk through the shell, not the import *mutation*, so
+      // nothing has invalidated the browser — do it here, the same refresh a
+      // picker-added or web-dropped import gets, or the new file stays off screen
+      // until the next navigation.
+      invalidateAfterFileOperation(queryClient)
+      return {
+        // Reuses the same undo mutation the File Browser's toasts use, so a
+        // desktop-dropped import is undone by exactly the same path — including
+        // its cache invalidation — as one added through the picker.
+        undo: () =>
+          fileOperations.undo.mutate(operationId, {
+            onSuccess: () => showFlash('Undone.'),
+            onError: (error) =>
+              showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+          }),
+      }
+    },
   })
 
   useDesktopFileDrop({
