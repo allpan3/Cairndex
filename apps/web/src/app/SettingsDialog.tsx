@@ -588,9 +588,7 @@ function AppearancePage() {
         <input
           type="checkbox"
           checked={prefs.hideFileExtensions}
-          onChange={(event) =>
-            setPrefs((current) => ({ ...current, hideFileExtensions: event.target.checked }))
-          }
+          onChange={(event) => setPrefs({ hideFileExtensions: event.target.checked })}
         />
         <span>
           <strong>Hide file extensions</strong>

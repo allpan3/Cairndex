@@ -1,4 +1,4 @@
-import { usePersistentState } from './usePersistentState'
+import { useCallback, useSyncExternalStore } from 'react'
 
 /**
  * Display preferences that belong to this client, not to the library.
@@ -8,6 +8,11 @@ import { usePersistentState } from './usePersistentState'
  * owner gives once in Settings and expects every surface to respect. Stored
  * locally because "how I like to look at my library" travels with the machine,
  * not with the metadata.
+ *
+ * A **shared store** rather than `usePersistentState`, because two components
+ * read this at once: the Settings dialog that writes it and the File Browser
+ * behind it. Per-component state would leave the browser showing the old answer
+ * until it happened to remount — the setting would look like it had not applied.
  */
 export interface DisplayPrefs {
   /** Show `Holiday` rather than `Holiday.mkv` in file listings. */
@@ -18,8 +23,53 @@ export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = { hideFileExtensions: false }
 
 const STORAGE_KEY = 'cairndex.displayPrefs'
 
-export function useDisplayPrefs() {
-  return usePersistentState<DisplayPrefs>(STORAGE_KEY, DEFAULT_DISPLAY_PREFS)
+function read(): DisplayPrefs {
+  try {
+    const raw = globalThis.localStorage?.getItem(STORAGE_KEY)
+    if (!raw) return DEFAULT_DISPLAY_PREFS
+    // Merged over the defaults so a value stored before a newer field existed
+    // does not read back as undefined.
+    return { ...DEFAULT_DISPLAY_PREFS, ...(JSON.parse(raw) as Partial<DisplayPrefs>) }
+  } catch {
+    return DEFAULT_DISPLAY_PREFS
+  }
+}
+
+// One snapshot object per change, cached so `useSyncExternalStore` sees a stable
+// reference between renders (a fresh object each call would loop forever).
+let snapshot: DisplayPrefs = read()
+const listeners = new Set<() => void>()
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+function write(next: DisplayPrefs): void {
+  snapshot = next
+  try {
+    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(next))
+  } catch {
+    /* private mode / quota — the preference still applies for this session */
+  }
+  for (const listener of listeners) listener()
+}
+
+/** Read the preferences, re-rendering every reader when any of them changes. */
+export function useDisplayPrefs(): [DisplayPrefs, (update: Partial<DisplayPrefs>) => void] {
+  const prefs = useSyncExternalStore(
+    subscribe,
+    () => snapshot,
+    () => snapshot,
+  )
+  const set = useCallback((update: Partial<DisplayPrefs>) => write({ ...snapshot, ...update }), [])
+  return [prefs, set]
+}
+
+/** Test seam: forget everything so one case cannot leak into the next. */
+export function resetDisplayPrefsForTests(): void {
+  snapshot = DEFAULT_DISPLAY_PREFS
+  listeners.clear()
 }
 
 /**

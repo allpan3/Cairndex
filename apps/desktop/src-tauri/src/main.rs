@@ -39,6 +39,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // an upload can only ever be asked for a file the user actually dropped
         // (see `importer`), never one the web layer names on its own.
         .manage(importer::DroppedFiles::default())
+        .manage(dragout::RecentDragOut::default())
         // Single-instance must be registered BEFORE the deep-link plugin: on
         // Windows/Linux a deep link launches a *second* process whose argv carries
         // the URL, and this callback is where that argv is forwarded to the running
@@ -107,6 +108,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             exports::save_export_file,
             importer::import_dropped_file,
             dragout::start_file_drag,
+            dragout::drop_is_self_drag,
             host::open_file,
             host::reveal_file,
             lifecycle::finish_exit,

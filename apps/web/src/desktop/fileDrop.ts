@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   hostOperationErrorMessage,
   isDesktopHost,
+  hostDropIsSelfDrag,
   isHostDragOutActive,
   listenHostFileDrop,
   releaseHostDragOut,
@@ -165,16 +166,27 @@ export function useDesktopFileDrop(routing: FileDropRouting): void {
     let disposed = false
     let unlisten: (() => void) | undefined
     void listenHostFileDrop((paths) => {
-      let reason: DropBlockReason = null
-      if (isHostDragOutActive()) {
-        // The app's own drag-out landed back on us: ignore this drop, and release
-        // the guard now since a drop means the native session ended (P0-4 belt).
-        reason = 'self-drag'
-        releaseHostDragOut()
-      } else if (isBlockingSurfaceOpen()) {
-        reason = 'modal'
-      }
-      void handleFileDrop(paths, routingRef.current, reason)
+      void (async () => {
+        let reason: DropBlockReason = null
+        if (isHostDragOutActive()) {
+          // The app's own drag-out landed back on us: ignore this drop, and release
+          // the guard now since a drop means the native session ended (P0-4 belt).
+          reason = 'self-drag'
+          releaseHostDragOut()
+        } else if (await hostDropIsSelfDrag(paths)) {
+          // The guard above is timing-based and can lose the race — the drag-ended
+          // event plus its grace can elapse before the drop reaches us. Then our own
+          // files read as a fresh Finder drop and get *copied into the library*,
+          // which a plain click-drag on a card was enough to trigger. The shell
+          // remembers what it actually put on the pasteboard, so this answer does
+          // not depend on event ordering.
+          reason = 'self-drag'
+          releaseHostDragOut()
+        } else if (isBlockingSurfaceOpen()) {
+          reason = 'modal'
+        }
+        await handleFileDrop(paths, routingRef.current, reason)
+      })()
     })
       .then((stop) => {
         if (disposed) stop()
