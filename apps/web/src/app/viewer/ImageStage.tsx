@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import type { FileRead } from '../../api/client'
-import { fileContentUrl, filePreviewUrl, fileThumbnailUrl } from '../../api/client'
 import {
   type ImageFitMode,
   type Size,
@@ -17,14 +15,9 @@ import {
   scaleForMode,
   zoomToPoint,
 } from './imageTransform'
-import { isBrowserNativeImage } from './imageSupport'
+import type { ViewerItem } from './viewerItem'
 
 type BackgroundMode = 'dark' | 'light' | 'checker'
-
-interface TierSource {
-  tier: SourceTier
-  src: string
-}
 
 interface PointerPoint {
   x: number
@@ -56,11 +49,10 @@ function decodeImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-// Read known image dimensions from probed tech metadata when available
-function metadataSize(file: FileRead): Size {
-  const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
-  const width = typeof meta.width === 'number' && Number.isFinite(meta.width) ? meta.width : 0
-  const height = typeof meta.height === 'number' && Number.isFinite(meta.height) ? meta.height : 0
+// Read known image dimensions from probed metadata when the item carries them
+function metadataSize(item: ViewerItem): Size {
+  const width = item.width ?? 0
+  const height = item.height ?? 0
   return width > 0 && height > 0 ? { width, height } : DEFAULT_SIZE
 }
 
@@ -85,7 +77,7 @@ function pinchGeometry(points: PointerPoint[]): { center: PointerPoint; distance
 }
 
 // M5 image stage with affine zoom/pan and progressive preview derivatives
-export function ImageStage({ file, onError }: { file: FileRead; onError: () => void }) {
+export function ImageStage({ item, onError }: { item: ViewerItem; onError: () => void }) {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const activePointers = useRef(new Map<number, PointerPoint>())
   const lastPanPoint = useRef<PointerPoint | null>(null)
@@ -94,17 +86,20 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
   const inFlightTier = useRef<InFlightTier | null>(null)
   const onErrorRef = useRef(onError)
   const hasLoadedAnyTier = useRef(false)
-  const nativeImage = isBrowserNativeImage(file.relative_path)
-  const metadataNaturalSize = metadataSize(file)
+  const nativeImage = item.nativeImage
+  const metadataNaturalSize = metadataSize(item)
   const hasMetadataSize = metadataNaturalSize !== DEFAULT_SIZE
   const hasMetadataSizeRef = useRef(hasMetadataSize)
+  // Lowest available rank: a bundle file starts at its cover thumbnail, while a
+  // File Browser path has no thumbnail to borrow and starts at its preview.
+  const baseTier = item.imageTiers[0]
   const [background, setBackground] = useState<BackgroundMode>('dark')
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 })
   const [naturalSize, setNaturalSize] = useState<Size>(() => metadataNaturalSize)
   const [fitMode, setFitMode] = useState<ImageFitMode>('fit')
   const [transform, setTransform] = useState<Transform>({ scale: 1, tx: 0, ty: 0 })
-  const [displaySrc, setDisplaySrc] = useState(() => fileThumbnailUrl(file.bundle_id, file.id))
-  const [loadedTier, setLoadedTier] = useState<SourceTier>('thumbnail')
+  const [displaySrc, setDisplaySrc] = useState(() => baseTier?.src ?? '')
+  const [loadedTier, setLoadedTier] = useState<SourceTier>(() => baseTier?.tier ?? 'thumbnail')
   const [failedTiers, setFailedTiers] = useState<Set<SourceTier>>(() => new Set())
 
   const containScale = fitScale(viewport, naturalSize)
@@ -121,15 +116,7 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
     [renderedTransform.scale, nativeImage],
   )
 
-  const sources = useMemo<TierSource[]>(() => {
-    const out: TierSource[] = [
-      { tier: 'thumbnail', src: fileThumbnailUrl(file.bundle_id, file.id) },
-    ]
-    if (!nativeImage) out.push({ tier: 'preview1600', src: filePreviewUrl(file, 1600) })
-    if (!nativeImage) out.push({ tier: 'preview2560', src: filePreviewUrl(file, 2560) })
-    if (nativeImage) out.push({ tier: 'original', src: fileContentUrl(file.id) })
-    return out
-  }, [file, nativeImage])
+  const sources = item.imageTiers
 
   const applyMode = useCallback(
     (mode: ImageFitMode) => {
@@ -361,7 +348,7 @@ export function ImageStage({ file, onError }: { file: FileRead; onError: () => v
         className="mv-image"
         src={displaySrc}
         data-tier={loadedTier}
-        alt={file.display_title}
+        alt={item.title}
         draggable={false}
         onLoad={onImageLoad}
         onError={() => {

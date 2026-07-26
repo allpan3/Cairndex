@@ -22,6 +22,7 @@ import { usePinyinSearch } from './pinyin'
 import { selectionTargets, suppressShiftSelection } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
+import type { PlayerPrefs } from './types'
 
 // File Browser mirrors the bundle browser's toolbar, but with file-appropriate
 // sort fields (bundles' rating/file-count/date-added don't apply) and only
@@ -58,6 +59,8 @@ interface FileBrowserProps {
   onAddToBundle: (relativePaths: string[]) => void
   onCreateBundle: (relativePaths: string[]) => void
   hostLabels: HostLabels
+  playerPrefs: PlayerPrefs
+  onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
@@ -236,6 +239,9 @@ function FileList({
   path: currentPath,
   writeMode = false,
   onFlash,
+  libraryName,
+  playerPrefs,
+  onPlayerPrefs,
 }: FileListProps) {
   const menu = useContextMenu()
   const write = useFileWriteActions({
@@ -279,6 +285,14 @@ function FileList({
 
   const openable = useMemo(() => visible.filter((e) => e.kind === 'file' && e.supported), [visible])
   const [openIndex, setOpenIndex] = useState<number | null>(null)
+  // The viewer's heading names where the playlist came from: the folder being
+  // browsed (the library root has no path segment), or the flat queue.
+  const viewerTitle =
+    scope === 'unbundled'
+      ? 'Unbundled'
+      : currentPath
+        ? (currentPath.split('/').pop() ?? libraryName)
+        : libraryName
 
   // Single click selects (for the inspector); Cmd/Ctrl toggles the entry, Shift
   // selects the inclusive range from the anchor. Both directories and files take
@@ -794,6 +808,9 @@ function FileList({
             index={openIndex}
             onIndex={setOpenIndex}
             onClose={() => setOpenIndex(null)}
+            title={viewerTitle}
+            playerPrefs={playerPrefs}
+            onPlayerPrefs={onPlayerPrefs}
           />
         )}
       </div>

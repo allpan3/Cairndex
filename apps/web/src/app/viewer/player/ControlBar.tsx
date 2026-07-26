@@ -11,7 +11,7 @@ import {
 } from '../../icons'
 import { formatClock } from '../../../lib/format'
 import { SeekBar } from './SeekBar'
-import { SettingsMenu } from './SettingsMenu'
+import { SettingsMenu, type CoverFrameActions } from './SettingsMenu'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
@@ -24,9 +24,8 @@ interface ControlBarProps {
   onDragChange: (dragging: boolean) => void
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
-  onUseCoverFrame: () => void
-  onClearCoverFrame: () => void
-  hasCoverFrame: boolean
+  /** Bundle-cover actions, or null when the item cannot own a cover. */
+  cover: CoverFrameActions | null
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
@@ -39,9 +38,7 @@ export function ControlBar({
   onDragChange,
   fileLoop,
   onFileLoop,
-  onUseCoverFrame,
-  onClearCoverFrame,
-  hasCoverFrame,
+  cover,
 }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
@@ -95,9 +92,7 @@ export function ControlBar({
           player={player}
           fileLoop={fileLoop}
           onFileLoop={onFileLoop}
-          onUseCoverFrame={onUseCoverFrame}
-          onClearCoverFrame={onClearCoverFrame}
-          hasCoverFrame={hasCoverFrame}
+          cover={cover}
           sourceHeight={video.height}
         />
         <button
