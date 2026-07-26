@@ -123,21 +123,20 @@ button {
   grid-template-columns: var(--sidebar-w, 240px) 1fr var(--inspector-w, 300px);
   height: 100vh;
   overflow: hidden;
-  /* The app shell is a click/drag surface, not prose. Putting this on the rows
-     alone was not enough: a marquee drag *starts* on the container background and
-     the browser then paints a selection across everything it sweeps — including
-     text in panes the selection was never over. Fields and dialogs opt back in
-     below, so a pairing code or a filename is still selectable where that is the
-     point. */
-  user-select: none;
 }
-.app input,
-.app textarea,
-.app [contenteditable='true'],
-/* Dialogs are read-and-copy surfaces (pair codes, paths, error text) and are
-   never marquee targets, so selection belongs there. */
-.modal {
-  user-select: text;
+
+/* An app-wide `user-select: none` used to live on `.app`, and it broke internal
+   drag-and-drop in the desktop shell: WebKit refuses to start a `dragstart` on a
+   subtree that cannot be selected, so dragging a bundle onto a collection simply
+   did nothing (it kept working in Chromium, which is why a browser-only check
+   missed it). The marquee's own `selectstart` blocker is what actually stops the
+   sweep-selection anyway, so the blanket rule is gone and the per-row rules
+   (`.card`, `.collcard`, `.list-row`, `.file-row`) carry the rest.
+
+   Belt for the same WebKit rule: anything the app marks draggable says so
+   explicitly, so a `user-select: none` ancestor can never suppress its drag. */
+[draggable='true'] {
+  -webkit-user-drag: element;
 }
 .resizer-bar {
   cursor: col-resize;
