@@ -73,39 +73,54 @@ def list_collections(
 
 
 def _siblings(session: Session, parent_id: str | None) -> list[Collection]:
-    """All collections directly under ``parent_id`` (NULL = top level)."""
+    """All collections directly under ``parent_id`` (NULL = top level), in the
+    manual order the UI renders them in — sort_order, name as the tie-break.
+    Resolving a move against this list requires it to *be* the current order."""
     return list(
         session.scalars(
-            select(Collection).where(
+            select(Collection)
+            .where(
                 Collection.parent_id.is_(None)
                 if parent_id is None
                 else Collection.parent_id == parent_id
             )
+            .order_by(Collection.sort_order, Collection.name)
         )
     )
 
 
 def reorder_collections(
-    session: Session, *, parent_id: str | None, ordered_ids: list[str]
+    session: Session, *, parent_id: str | None, moved_ids: list[str], before_id: str | None
 ) -> list[Collection]:
-    """Set each collection's ``sort_order`` from its position in ``ordered_ids``.
+    """Move collections to a gap in one sibling group's manual order.
 
-    ``ordered_ids`` must be exactly the collections directly under ``parent_id``
-    (a manual drag-reorder rewrites one sibling group at a time). Cross-parent or
-    partial lists are rejected so the persisted order stays well-defined.
+    Takes the *move* — ``moved_ids`` land as a block immediately before
+    ``before_id``, or at the end when it is None — and resolves it against the
+    group as it stands, rather than accepting a list of ids to renumber.
+
+    The old contract required the caller to send exactly the group's members,
+    which made a drag fail outright (silently, from the owner's side) whenever
+    the client's picture had drifted — a collection created, deleted or moved
+    elsewhere since it last loaded. Ids that are not in the group are ignored
+    here instead, so the part of the move that is meaningful still happens.
     """
     siblings = _siblings(session, parent_id)
     by_id = {c.id: c for c in siblings}
-    if set(ordered_ids) != set(by_id):
-        raise ValidationError("ordered ids must be exactly the collections under this parent")
+    order = [c.id for c in siblings]
+    moving = [cid for cid in order if cid in set(moved_ids)]
+    if not moving or before_id in set(moving):
+        return [by_id[cid] for cid in order]
+    rest = [cid for cid in order if cid not in set(moving)]
+    at = rest.index(before_id) if before_id in rest else len(rest)
+    result = rest[:at] + moving + rest[at:]
     now = utcnow()
-    for order, cid in enumerate(ordered_ids):
+    for position, cid in enumerate(result):
         collection = by_id[cid]
-        if collection.sort_order != order:
-            collection.sort_order = order
+        if collection.sort_order != position:
+            collection.sort_order = position
             collection.updated_at = now
     session.flush()
-    return [by_id[cid] for cid in ordered_ids]
+    return [by_id[cid] for cid in result]
 
 
 def cleanup_collection_order(session: Session, *, descending: bool = False) -> None:

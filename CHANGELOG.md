@@ -224,6 +224,31 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **Date orders belong to Recent, and new bundles arrive at the front.** Date
+  Added / Modified / Opened are offered in the Recent view only — elsewhere they
+  were a second route to what Recent is for. Every other view sorts by Manual,
+  Title, Rating, Size or File Count. In manual order, a bundle nobody has dragged
+  yet now sorts newest-first rather than oldest-first, so what was just imported
+  appears at the front instead of the end of the library. A group that *has* been
+  dragged keeps its explicit order untouched.
+
+- **A file's line now names what it is, not the role the scanner guessed.**
+  Roles were assigned by reading filenames — the first image became `cover`, a
+  second video `alternate_version` — and nothing could change them afterwards:
+  reordering files did not reassign them, and no control set them. A guess
+  presented as a label reads as a fact, so files now show their media kind
+  (video, image, subtitle, audio) with the extension standing in for anything
+  unclassified, such as `pdf`. Which file is the cover stays where it is
+  unambiguous: the starred row.
+
+- **Superseded: a file's role reads as "image" where the app was guessing.** The scanner
+  marks the first image in a bundle (or one named cover/poster/thumb) as `cover`
+  and the rest as `image`, but nothing on disk says whether a picture beside a
+  video is cover art, an album page, or a screenshot — and printing the guess as
+  a type invited it to be read as fact. Both now read "image"; which file is
+  actually the cover stays where it is unambiguous, on the starred row. The role
+  itself is unchanged and still seeds the automatic cover pick.
+
 - **The desktop window's title bar is merged into the app.** macOS no longer
   stacks a grey system bar above the shell: the app surface starts at the top of
   the window and the traffic lights float over the sidebar's top-left corner,
@@ -253,6 +278,95 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Bundles can be reordered in the All view.** It was disabled on the grounds
+  that "reordering everything is meaningless", but All *is* the global manual
+  order — the one new bundles now arrive at the front of — so arranging it is
+  exactly what someone curating a library wants. Only the flattened
+  subcollection view stays fixed: its cards span several parents, so a drag there
+  would rewrite the global order while appearing to arrange one collection.
+
+- **Drag-reorder rebuilt around three rules, after a screen recording showed a
+  drop scrambling cards it never touched.** The recording's toolbar read
+  "Manual ↓" — and *descending manual order* was the hole: the server resolves
+  and returns the order ascending, so painting its correct answer onto a
+  reversed display shuffled the whole grid, and a reload (fetching descending
+  again) disagreed with what had been painted. The rules now:
+
+  *Manual order has no direction.* An order arranged by hand is just the order;
+  offering ascending/descending over it created two readings of one
+  arrangement, and a drag can only be correct under one of them. The direction
+  toggle is gone for Manual, and a stored "manual descending" preference is
+  read as plain manual.
+
+  *What the line shows is what the drop does.* One computation over the cursor
+  position now produces both the blue insertion indicator and the committed
+  move — cards no longer handle reorder drops at all, so there is nothing left
+  to race and no second opinion. The indicator also clears when the drag leaves
+  the grid.
+
+  *Rearranging the shelf doesn't edit the books.* The order writer now touches
+  only rows whose position changed and carries their modified-time forward —
+  previously each drag rewrote the entire scope, stamping every bundle in the
+  library "modified just now" (quietly destroying Date Modified) and issuing
+  one UPDATE per bundle against a library database that may live on a network
+  volume, which is also the likely cause of reloads turning slow after a few
+  drags. Overlapping drags are serialized so their results apply in commit
+  order.
+
+- **A reorder no longer answers twice.** The move was settled by a *refetch*
+  after the write — a second answer to a question the write had already decided —
+  so any disagreement between the client's guess and the server's order showed up
+  as the row moving again half a second later, unprompted. Both reorder endpoints
+  now return the resulting order, the client applies exactly that, and nothing is
+  invalidated. One gesture, one request, one answer.
+
+- **Reordering collections sometimes did nothing at all.** The endpoint required
+  the client to send *exactly* the members of a sibling group, so a drag failed
+  outright — silently — whenever the client's picture had drifted (a collection
+  created, deleted, or moved elsewhere since the tree last loaded). It now takes
+  the same move description bundles use and resolves it against the group as it
+  actually stands, ignoring ids that are no longer there.
+
+- **Superseded: a reorder appeared to trigger a second, unrelated one a moment later.** The
+  optimistic update — the part that moves the card under the cursor before the
+  server answers — was applied to *every* cached listing rather than the one the
+  move belongs to. A drag inside one collection also rewrote the remembered order
+  of the All view and every other cached collection, and each of those snapped
+  back to the truth the moment it was next shown or refetched. Only the listings
+  a move actually reorders are touched now.
+
+- **Drag-reordering bundles was unreliable in three separate ways, and has been
+  rebuilt.** Items landed one place off, jumped to the very start or end of the
+  list, or did nothing at all.
+
+  *A drop on a card was handled twice.* The container's fallback handler — meant
+  for drops in the margin — tested for cards with a selector that never matched
+  the elements that carry the drop, so it fired for card drops as well and sent a
+  second, contradictory move. The two raced, and the wrong one often won: that is
+  the jump to an end.
+
+  *A drop in the gutter meant "an end".* Anything not exactly on a card was read
+  as "send it to the start or the finish", including the few pixels between two
+  tiles — the very place the insertion line invites the drop. Off-card drops now
+  resolve to the nearest gap.
+
+  *The client decided the order.* It sent the whole list it could see and the
+  server numbered it 0..n-1, which is only right when the client holds the entire
+  collection. Browsing is paged, so a drag in anything larger than a page
+  renumbered the loaded window on top of the order values the rest still held,
+  and bundles the user could not even see moved. The client now sends the *move*
+  — what was dragged, and what it was dropped in front of — and the server
+  resolves it against the whole collection. The dragged ids also travel on the
+  drag itself rather than in React state, so a drop no longer depends on a render
+  having happened first.
+
+- **Reordering files inside a bundle was slow.** Not the write — a handful of
+  UPDATEs — but what followed it: the list only moved once the round trip
+  finished, and then refetched the bundle's files, a request that stats every
+  file to reconcile missing ones. On a network volume that was the whole delay.
+  The drag now applies immediately and the server's own response replaces it,
+  with no refetch.
+
 - **The desktop window could not be moved.** Two causes, both silent. Tauri's
   `data-tauri-drag-region` in its bare form only fires when the click lands on
   that exact element, and the app's top row is made of children — a flex spacer,
@@ -268,6 +382,15 @@ grouped under `Unreleased` until the first tagged release.
   the gap just *outside* the card — so it was clipped away, leaving a reorder
   drag with no sign of where it would land. The card no longer clips; the cover
   and the footer clip themselves, which is all that ever needed it.
+
+- **The window jittered between two sizes at one particular width.** The grid
+  measures its scroll container to lay out columns, and that measurement excludes
+  a scrollbar — so at the width where content is *just* tall enough to need one,
+  showing the scrollbar narrowed the measurement, which relaid the cards shorter,
+  which removed the need for the scrollbar, which widened it again, forever, at
+  frame rate. The scrollbar's width is now always reserved, which makes the loop
+  impossible. Only affects setups showing classic scrollbars; with macOS overlay
+  scrollbars nothing changes.
 
 - **Cover art was intercepting the gestures meant for the card holding it.** A
   thumbnail is decoration, but the browser treated the image element as the

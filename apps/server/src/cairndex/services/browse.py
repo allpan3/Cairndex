@@ -266,7 +266,18 @@ def _apply_sort(
     }[sort]
     ordering = column.desc() if descending else column.asc()
     # AssetBundle.id (ULID) is the stable tie-breaker for deterministic paging.
-    return stmt.order_by(ordering, AssetBundle.id.desc() if descending else AssetBundle.id.asc())
+    #
+    # Manual inverts it. A bundle nobody has dragged yet keeps the default order
+    # value it was created with, so under MANUAL the tie-break is what decides
+    # where every *new* bundle lands — and ULIDs ascend with time, meaning
+    # oldest-first would bury a fresh import at the end of the library. Newest
+    # first there puts what just arrived at the front, which is where someone
+    # goes looking for it. Once a group has actually been dragged, its members
+    # hold distinct order values and this never applies.
+    tie_descending = not descending if sort is BundleSort.MANUAL else descending
+    return stmt.order_by(
+        ordering, AssetBundle.id.desc() if tie_descending else AssetBundle.id.asc()
+    )
 
 
 def browse_bundles(
@@ -325,9 +336,30 @@ def _write_manual_order(
 ) -> None:
     """Assign each id its 0-based position as the manual order — into the given
     collection's membership ``sort_order`` when scoped to one, else the global
-    ``AssetBundle.manual_order``."""
+    ``AssetBundle.manual_order``.
+
+    Only rows whose position actually changes are written. ``ordered_ids`` now
+    spans the whole scope (the move is resolved server-side), and most of a
+    scope does not move in any one drag — an unconditional rewrite would issue
+    one UPDATE per bundle in the library per drag. Worse, ``updated_at`` carries
+    ``onupdate=utcnow``, so those writes stamped every bundle "modified just
+    now": a drag would silently rewrite the whole library's Date Modified
+    ordering. Rearranging a shelf is not editing the books — the rows that must
+    move carry their ``updated_at`` forward explicitly (passing the current
+    value overrides the onupdate default, which only fills omitted columns)."""
     if collection_id is not None:
+        current_membership: dict[str, int] = {
+            row.bundle_id: row.sort_order
+            for row in session.execute(
+                select(
+                    asset_bundle_collections.c.bundle_id,
+                    asset_bundle_collections.c.sort_order,
+                ).where(asset_bundle_collections.c.collection_id == collection_id)
+            )
+        }
         for order, bundle_id in enumerate(ordered_ids):
+            if current_membership.get(bundle_id) == order:
+                continue
             session.execute(
                 update(asset_bundle_collections)
                 .where(
@@ -337,21 +369,72 @@ def _write_manual_order(
                 .values(sort_order=order)
             )
     else:
+        current_order: dict[str, int] = {
+            row.id: row.manual_order
+            for row in session.execute(select(AssetBundle.id, AssetBundle.manual_order))
+        }
         for order, bundle_id in enumerate(ordered_ids):
+            if current_order.get(bundle_id) == order:
+                continue
             session.execute(
-                update(AssetBundle).where(AssetBundle.id == bundle_id).values(manual_order=order)
+                update(AssetBundle)
+                .where(AssetBundle.id == bundle_id)
+                .values(manual_order=order, updated_at=AssetBundle.updated_at)
             )
     session.flush()
 
 
-def reorder_bundles(session: Session, *, collection_id: str | None, ordered_ids: list[str]) -> None:
-    """Persist a manual drag-reorder of bundles (MANUAL sort).
+def scoped_manual_order(session: Session, collection_id: str | None) -> list[str]:
+    """Every bundle id in the scope, in its current manual order."""
+    scoped = apply_scope(
+        select(AssetBundle.id).where(_visible_file_exists()),
+        session,
+        view=SystemView.ALL,
+        collection_id=collection_id,
+        include_descendants=False,
+        predicate=None,
+        search_pred=None,
+    )
+    return list(
+        session.scalars(_apply_sort(scoped, BundleSort.MANUAL, False, collection_id=collection_id))
+    )
 
-    ``ordered_ids`` is the client's current on-screen order — best-effort over the
-    loaded window (each listed id takes its position; ids not listed keep their
-    stored order). "Clean up by…" rewrites the whole scope deterministically.
+
+def reorder_bundles(
+    session: Session,
+    *,
+    collection_id: str | None,
+    moved_ids: list[str],
+    before_id: str | None,
+) -> list[str]:
+    """Move bundles to a gap in the manual order (MANUAL sort).
+
+    Takes the *move* rather than an order: ``moved_ids`` land as one block
+    immediately before ``before_id`` (or at the end when it is None), keeping the
+    relative order they already have. The new positions are then written across
+    the whole scope.
+
+    Returns the scope's resulting order, so the caller never has to re-derive it
+    (or re-fetch to find out): the answer to "where did it land" comes back with
+    the write that decided it.
+
+    Deliberately not "renumber the list the client sent". Browsing is paged, so
+    the client's list is only the loaded window; numbering it 0..n-1 left every
+    unloaded bundle holding order values from the same range, which is what made
+    a drag in a large collection scatter items to the front or back. Resolving
+    the move against the full scope here makes the loaded window irrelevant.
     """
-    _write_manual_order(session, collection_id, ordered_ids)
+    order = scoped_manual_order(session, collection_id)
+    moving = [bundle_id for bundle_id in order if bundle_id in set(moved_ids)]
+    # Dropping onto a member of the block is a no-op, not an error: the block
+    # cannot land relative to itself.
+    if not moving or before_id in set(moving):
+        return order
+    rest = [bundle_id for bundle_id in order if bundle_id not in set(moving)]
+    at = rest.index(before_id) if before_id in rest else len(rest)
+    result = rest[:at] + moving + rest[at:]
+    _write_manual_order(session, collection_id, result)
+    return result
 
 
 def cleanup_bundle_order(

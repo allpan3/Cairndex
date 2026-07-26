@@ -7,7 +7,7 @@ import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
-import { moveTo } from './reorder'
+import { DRAG_BUNDLES } from './dnd'
 import { selectionTargets, suppressShiftSelection } from './selection'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
@@ -31,7 +31,7 @@ interface BrowserProps {
   onEmptyContextMenu?: (e: React.MouseEvent) => void
   // When set (Manual sort), cards/rows become drag-reorderable; a drop fires the
   // full resulting order of loaded items.
-  onReorder?: (orderedIds: string[]) => void
+  onReorder?: (move: { movedIds: string[]; beforeId: string | null }) => void
   // Cross-surface drag: a bundle drag begins (carrying the whole selection when
   // the dragged card is selected) so folder cards / the sidebar can accept a
   // "move into collection" drop. onBundleDragEnd clears that state.
@@ -49,6 +49,42 @@ interface BrowserProps {
   // Overrides the generic empty-state body (e.g. a collection whose bundles all
   // live in subcollections). Ignored while a search is active.
   emptyState?: React.ReactNode
+}
+
+/**
+ * The reorder gesture's single source of truth.
+ *
+ * Every dragover and the drop itself run this one function over the rendered
+ * cards: nearest card by clamped distance (so gutters and margins resolve to
+ * the gap they visually belong to), leading/trailing half by the layout's axis.
+ * `indicator` is what the blue line paints; `beforeId` is what the server is
+ * asked to do. Because both come from the same computation on the same cursor
+ * position, the indicator and the outcome cannot disagree — the previous design
+ * let cards and the container answer the drop independently, and every reorder
+ * bug so far was some version of those answers diverging.
+ */
+function computeGap(
+  scrollEl: HTMLElement,
+  e: { clientX: number; clientY: number },
+  layout: LayoutMode,
+): { indicator: { id: string; before: boolean }; overId: string; before: boolean } | null {
+  let best: { id: string; before: boolean; distance: number } | null = null
+  for (const el of scrollEl.querySelectorAll<HTMLElement>('[data-bundle-id]')) {
+    const id = el.dataset.bundleId
+    if (id === undefined) continue
+    // Grid/justified cards sit inside a positioned slot that owns the gap
+    // geometry; list rows are their own geometry.
+    const box = el.closest<HTMLElement>('.browser__cardslot') ?? el
+    const r = box.getBoundingClientRect()
+    const dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right)
+    const dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom)
+    const distance = Math.hypot(dx, dy)
+    const before =
+      layout === 'list' ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2
+    if (best === null || distance < best.distance) best = { id, before, distance }
+  }
+  if (best === null) return null
+  return { indicator: { id: best.id, before: best.before }, overId: best.id, before: best.before }
 }
 
 export function Browser(props: BrowserProps) {
@@ -73,7 +109,13 @@ export function Browser(props: BrowserProps) {
   // a gap indicator so the drop lands *between* items, not onto one.
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
+  // The dragged payload, in a ref: the commit path never reads React state
+  // (a drop can fire before the render that state update scheduled), and
+  // dataTransfer's payload is unreadable during dragover by spec — the ref is
+  // the one place that is always current within this window.
+  const dragIdsRef = useRef<string[] | null>(null)
   const clearDrag = () => {
+    dragIdsRef.current = null
     setDragId(null)
     setDropSlot(null)
     onBundleDragEnd?.()
@@ -81,6 +123,21 @@ export function Browser(props: BrowserProps) {
   // Drag handlers for a card/row. A card is draggable when it can be reordered
   // (Manual sort) or moved into a collection (always, if the parent wired the
   // cross-surface hook). Reorder over/drop only fire when onReorder is set.
+  // The gap a drop lands in, named by the card that will follow the moved block:
+  // the leading half of a card is the gap before it, the trailing half is the gap
+  // before whatever comes next (null at the end of the list = append). Cards in
+  // the moved block are skipped — naming one of them would describe the gap by a
+  // card that is about to leave it, which the server can only read as "nowhere".
+  const gapBefore = (overId: string, before: boolean, moved: string[]): string | null => {
+    const index = items.findIndex((i) => i.id === overId)
+    if (index < 0) return null
+    for (let at = before ? index : index + 1; at < items.length; at++) {
+      const candidate = items[at]?.id
+      if (candidate !== undefined && !moved.includes(candidate)) return candidate
+    }
+    return null
+  }
+
   const dragProps = (id: string) => {
     if (!onReorder && !onBundleDragStart) return {}
     return {
@@ -90,38 +147,20 @@ export function Browser(props: BrowserProps) {
         // a "copy" gesture — still yields a valid drop (Alt = add to collection
         // without removing from the current one) instead of a rejected drag.
         e.dataTransfer.effectAllowed = 'copyMove'
-        setDragId(id)
-        setDropSlot(null) // the previous drag's gap indicator must not flash back
         // Carry the whole selection when dragging a selected card, else just this.
         const targets = selectionTargets(id, selectedIds)
+        dragIdsRef.current = targets
+        e.dataTransfer.setData(DRAG_BUNDLES, targets.join(' '))
+        setDragId(id)
+        setDropSlot(null) // the previous drag's gap indicator must not flash back
         const title = items.find((i) => i.id === id)?.title ?? 'Bundle'
         setDragBadge(e, dragBadgeLabel(targets.length, title, 'bundle'))
         onBundleDragStart?.(targets)
       },
       onDragEnd: clearDrag,
-      onDragOver: (e: React.DragEvent) => {
-        if (!onReorder || dragId === null || dragId === id) return
-        e.preventDefault()
-        // Insert before/after based on which half of the target the cursor is in
-        // — horizontally for grid/justified tiles, vertically for list rows.
-        const r = e.currentTarget.getBoundingClientRect()
-        const before =
-          layout === 'list' ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2
-        setDropSlot((prev) => (prev?.id === id && prev.before === before ? prev : { id, before }))
-      },
-      onDrop: (e: React.DragEvent) => {
-        if (!onReorder || dragId === null || dragId === id) return
-        e.preventDefault()
-        onReorder(
-          moveTo(
-            items.map((i) => i.id),
-            dragId,
-            id,
-            dropSlot?.id === id ? dropSlot.before : true,
-          ),
-        )
-        clearDrag()
-      },
+      // Deliberately no per-card dragover/drop: the container owns the whole
+      // gesture (see onContainerDragOver/Drop), so there is exactly one handler
+      // pair and one gap computation — nothing to race, nothing to disagree.
       'data-drop': dropSlot?.id === id ? (dropSlot.before ? 'before' : 'after') : undefined,
     }
   }
@@ -229,27 +268,43 @@ export function Browser(props: BrowserProps) {
     props.onEmptyContextMenu(e)
   }
 
-  // Catch a reorder drop that lands in the empty margin around the cards (past
-  // the "invisible boundary" of the content box), so dropping anywhere below the
-  // last card lands at the end and above the first lands at the beginning —
-  // without having to pinpoint a card edge. Cards handle their own drops (this
-  // bails when the target is a card, and again once the card cleared dragId).
+  // The container owns the whole reorder gesture. Both handlers run the same
+  // `computeGap` over the same cursor position: dragover paints the indicator
+  // from it, drop commits it. What the blue line shows is, by construction,
+  // what the drop does.
   const onContainerDragOver = (e: React.DragEvent) => {
-    if (!onReorder || dragId === null) return
-    if ((e.target as HTMLElement).closest('[data-bundle-id]')) return
+    if (!onReorder || !scrollEl || dragIdsRef.current === null) return
     e.preventDefault()
+    const gap = computeGap(scrollEl, e, layout)
+    setDropSlot((prev) =>
+      gap === null
+        ? prev === null
+          ? prev
+          : null
+        : prev?.id === gap.indicator.id && prev.before === gap.indicator.before
+          ? prev
+          : gap.indicator,
+    )
   }
   const onContainerDrop = (e: React.DragEvent) => {
-    if (!onReorder || dragId === null) return
-    if ((e.target as HTMLElement).closest('[data-bundle-id]')) return
+    if (!onReorder || !scrollEl) return
+    // Same-window drags carry the payload in the ref; the dataTransfer copy is
+    // the fallback for a drop whose dragstart this component never saw.
+    const moved =
+      dragIdsRef.current ?? e.dataTransfer.getData(DRAG_BUNDLES).split(' ').filter(Boolean)
+    if (moved.length === 0) return
     e.preventDefault()
-    const ids = items.map((i) => i.id)
-    if (ids.length === 0) return clearDrag()
-    const wr = wrapperRef.current?.getBoundingClientRect()
-    const before = wr ? e.clientY < wr.top + wr.height / 2 : false
-    const edgeId = before ? ids[0] : ids[ids.length - 1]
-    if (edgeId !== undefined) onReorder(moveTo(ids, dragId, edgeId, before))
+    const gap = computeGap(scrollEl, e, layout)
+    if (gap !== null)
+      onReorder({ movedIds: moved, beforeId: gapBefore(gap.overId, gap.before, moved) })
     clearDrag()
+  }
+  // Leaving the browser mid-drag (headed for the sidebar, say) takes the
+  // indicator with it — a line promising an insertion that pointer is no longer
+  // offering.
+  const onContainerDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setDropSlot(null)
   }
 
   return (
@@ -263,6 +318,7 @@ export function Browser(props: BrowserProps) {
       onContextMenu={onRootContextMenu}
       onDragOver={onContainerDragOver}
       onDrop={onContainerDrop}
+      onDragLeave={onContainerDragLeave}
     >
       {props.isError && (
         <div className="state state--error">

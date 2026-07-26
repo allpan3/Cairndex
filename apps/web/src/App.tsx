@@ -106,6 +106,7 @@ import { useJobNotifications } from './desktop/useJobNotifications'
 import {
   DEFAULT_PREFS,
   RECENT_SORTS,
+  STANDARD_SORTS,
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
@@ -970,15 +971,25 @@ function Workspace({
   // another view falls back to Date Added rather than showing something the
   // menu can no longer express.
   const isRecentView = selection.view === 'recent' && selection.collectionId === null
-  const allowedSorts: BundleSort[] | undefined = isRecentView ? RECENT_SORTS : undefined
+  const allowedSorts: BundleSort[] = isRecentView ? RECENT_SORTS : STANDARD_SORTS
   const storedSort: SortPref =
     prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
       : { sort: prefs.sort, order: prefs.order }
-  const effectiveSort: SortPref =
-    allowedSorts && !allowedSorts.includes(storedSort.sort)
+  // Manual has no direction. An order the owner arranged by hand *is* the
+  // order; "manual descending" created a second coordinate system over the same
+  // arrangement, and every reorder then had to translate between what the grid
+  // displayed and what the storage meant — the class of bug behind drops
+  // scrambling the grid and reloads disagreeing with what was on screen. Stored
+  // prefs that still say manual+desc (possible from before this rule) are
+  // coerced on read.
+  const resolvedSort: SortPref = allowedSorts.includes(storedSort.sort)
+    ? storedSort
+    : isRecentView
       ? { sort: 'date_added', order: 'desc' }
-      : storedSort
+      : { sort: 'manual', order: 'asc' }
+  const effectiveSort: SortPref =
+    resolvedSort.sort === 'manual' ? { sort: 'manual', order: 'asc' } : resolvedSort
   const setEffectiveSort = useCallback(
     (sort: BundleSort, order: SortOrder) => {
       if (prefs.sortScope === 'collection') {
@@ -1385,12 +1396,13 @@ function Workspace({
         {
           label: 'Clean Up Order…',
           onClick: () => setCleaningBundles(true),
-          // No manual order to tidy on a flattened list or in the All view.
-          disabled: headerFlattened || isAllView,
+          // A flattened list has no single manual order to tidy; everywhere
+          // else does, the All view included.
+          disabled: headerFlattened,
         },
       ])
     },
-    [menu, headerFlattened, isAllView],
+    [menu, headerFlattened],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -1755,8 +1767,8 @@ function Workspace({
           onRenameCollection={(id, name, callbacks) =>
             renameCollection.mutate({ id, name }, callbacks)
           }
-          onReorderCollections={(parentId, orderedIds) =>
-            reorderCollections.mutate({ parentId, orderedIds })
+          onReorderCollections={(parentId, movedIds, beforeId) =>
+            reorderCollections.mutate({ parentId, movedIds, beforeId })
           }
           onMoveCollections={moveCollections}
           onCleanupCollections={() => setCleaningCollections(true)}
@@ -1872,10 +1884,11 @@ function Workspace({
                       // flattened view where cards span multiple parents.
                       headerFlattened
                         ? undefined
-                        : (orderedIds) =>
+                        : (movedIds, beforeId) =>
                             reorderCollections.mutate({
                               parentId: selection.collectionId ?? null,
-                              orderedIds,
+                              movedIds,
+                              beforeId,
                             })
                     }
                     onOpenSubcollection={(id) => {
@@ -1927,11 +1940,19 @@ function Workspace({
                       // list — a single collection's own bundles or a system-view
                       // queue. It's disabled when contents are flattened and in the
                       // All view (reordering "everything" is meaningless).
-                      effectiveSort.sort === 'manual' && !headerFlattened && !isAllView
-                        ? (orderedIds) =>
+                      // Reorder wherever a manual order is well defined: a
+                      // collection's own bundles, a system-view queue, and the
+                      // All view — which *is* the global manual order, the one
+                      // new bundles arrive at the front of. Only the flattened
+                      // view is excluded: its cards span several parents, so
+                      // dragging there would silently rewrite the global order
+                      // while appearing to arrange one collection.
+                      effectiveSort.sort === 'manual' && !headerFlattened
+                        ? ({ movedIds, beforeId }) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,
-                              orderedIds,
+                              movedIds,
+                              beforeId,
                             })
                         : undefined
                     }

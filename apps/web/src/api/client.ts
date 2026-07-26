@@ -474,10 +474,15 @@ export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
 
 // Persist a manual drag-reorder of one sibling group (parentId null = top level).
 // The sidebar tree and main-browser folder cards share this sort_order.
-export const reorderCollections = (parentId: string | null, orderedIds: string[]) =>
+export const reorderCollections = (
+  parentId: string | null,
+  movedIds: string[],
+  beforeId: string | null,
+) =>
   send<CollectionRead[]>(`${lib()}/collections/reorder`, 'PUT', {
     parent_id: parentId,
-    ordered_ids: orderedIds,
+    moved_ids: movedIds,
+    before_id: beforeId,
   })
 
 // "Clean up by… Title": rewrite every sibling group's manual order alphabetically.
@@ -1074,10 +1079,15 @@ export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
 
 // Manual drag-reorder of bundles (MANUAL sort). collectionId null = global order.
-export const reorderBundles = (collectionId: string | null, orderedIds: string[]) =>
-  send<void>(`${lib()}/bundles/reorder`, 'PUT', {
+export const reorderBundles = (
+  collectionId: string | null,
+  movedIds: string[],
+  beforeId: string | null,
+) =>
+  send<{ ordered_ids: string[] }>(`${lib()}/bundles/reorder`, 'PUT', {
     collection_id: collectionId,
-    ordered_ids: orderedIds,
+    moved_ids: movedIds,
+    before_id: beforeId,
   })
 
 // "Clean up by…": rewrite the whole scope's manual order to a chosen toolbar sort.

@@ -36,3 +36,10 @@ export function dropZone(
   if (frac > 0.72) return 'after'
   return 'into'
 }
+
+/** DataTransfer type carrying the dragged bundle ids (space-separated).
+ *
+ * The payload travels with the drag rather than in React state, so a drop never
+ * depends on a render having happened since `dragstart` — the source of drops
+ * that landed in the wrong place, or did nothing at all. */
+export const DRAG_BUNDLES = 'application/x-cairndex-bundles'

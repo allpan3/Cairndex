@@ -110,12 +110,46 @@ def test_reorder_collections_rewrites_one_sibling_group(session: Session) -> Non
     b = collection_service.create_collection(session, name="b")
     c = collection_service.create_collection(session, name="c")
 
-    collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id, b.id])
+    # Drag c to the front of its group.
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=a.id
+    )
     assert [c.sort_order, a.sort_order, b.sort_order] == [0, 1, 2]
 
-    # A partial or cross-parent list is rejected so the order stays well-defined.
-    with pytest.raises(ValidationError):
-        collection_service.reorder_collections(session, parent_id=None, ordered_ids=[c.id, a.id])
+    # Dropping past the last one appends.
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[c.id], before_id=None
+    )
+    assert [a.sort_order, b.sort_order, c.sort_order] == [0, 1, 2]
+
+
+def test_reorder_collections_ignores_ids_outside_the_group(session: Session) -> None:
+    """A drag must not fail outright because the client's picture has drifted —
+    that is a move the owner made that silently did nothing. Unknown ids are
+    skipped and the meaningful part of the move still lands."""
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    elsewhere = collection_service.create_collection(session, name="child", parent_id=a.id)
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[b.id, elsewhere.id], before_id=a.id
+    )
+
+    assert [b.sort_order, a.sort_order] == [0, 1]
+    assert elsewhere.parent_id == a.id
+
+
+def test_reorder_collections_moves_a_block_together(session: Session) -> None:
+    a = collection_service.create_collection(session, name="a")
+    b = collection_service.create_collection(session, name="b")
+    c = collection_service.create_collection(session, name="c")
+    d = collection_service.create_collection(session, name="d")
+
+    collection_service.reorder_collections(
+        session, parent_id=None, moved_ids=[a.id, c.id], before_id=d.id
+    )
+
+    assert [b.sort_order, a.sort_order, c.sort_order, d.sort_order] == [0, 1, 2, 3]
 
 
 def test_cleanup_collection_order_sorts_every_sibling_group_by_name(session: Session) -> None:

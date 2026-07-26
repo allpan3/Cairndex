@@ -338,7 +338,8 @@ def _browse_ids(session: Session, **kwargs: object) -> list[str]:
 
 def test_manual_sort_uses_global_order_in_all_view(session: Session) -> None:
     a, b, c = (_confirmed(session, t) for t in ("a", "b", "c"))
-    reorder_bundles(session, collection_id=None, ordered_ids=[c.id, a.id, b.id])
+    # Newest-first by default, so the starting order is c, b, a. Move b to the end.
+    reorder_bundles(session, collection_id=None, moved_ids=[b.id], before_id=None)
     assert _browse_ids(session, view=SystemView.ALL) == [c.id, a.id, b.id]
 
 
@@ -348,10 +349,12 @@ def test_manual_sort_uses_membership_order_inside_a_collection(session: Session)
     for bundle in (a, b, c):
         bundle_service.set_bundle_collections(session, bundle.id, [coll.id])
     # A collection order distinct from the global order proves the two are separate.
-    reorder_bundles(session, collection_id=coll.id, ordered_ids=[b.id, c.id, a.id])
-    reorder_bundles(session, collection_id=None, ordered_ids=[a.id, b.id, c.id])
+    # Both start newest-first (c, b, a).
+    reorder_bundles(session, collection_id=coll.id, moved_ids=[a.id], before_id=None)
+    reorder_bundles(session, collection_id=None, moved_ids=[a.id], before_id=c.id)
+    reorder_bundles(session, collection_id=None, moved_ids=[b.id], before_id=c.id)
 
-    assert _browse_ids(session, collection_id=coll.id) == [b.id, c.id, a.id]
+    assert _browse_ids(session, collection_id=coll.id) == [c.id, b.id, a.id]
     assert _browse_ids(session, view=SystemView.ALL) == [a.id, b.id, c.id]
 
 
@@ -432,3 +435,115 @@ def test_date_modified_sort_follows_metadata_edits(session: Session) -> None:
 
     page = browse_bundles(session, sort=BundleSort.DATE_MODIFIED, descending=True)
     assert page.items[0].title == "older"
+
+
+def test_manual_sort_puts_a_newly_added_bundle_first(session: Session) -> None:
+    """Nothing has been dragged, so every bundle holds the same default order
+    value and the tie-break decides. A bundle added just now belongs at the
+    front — that is where someone looks for what they just imported."""
+    first = bundle_service.create_bundle(session, title="oldest")
+    second = bundle_service.create_bundle(session, title="middle")
+    session.commit()
+    newest = bundle_service.create_bundle(session, title="newest")
+    session.commit()
+
+    page = browse_bundles(session, sort=BundleSort.MANUAL, descending=False)
+    assert [b.title for b in page.items] == ["newest", "middle", "oldest"]
+    assert {first.id, second.id, newest.id} == {b.id for b in page.items}
+
+
+def test_manual_sort_still_honours_a_dragged_order(session: Session) -> None:
+    """Once a group has been dragged, its explicit order wins outright — the
+    newest-first tie-break only ever settles bundles nobody has placed."""
+    bundle_service.create_bundle(session, title="a")
+    b = bundle_service.create_bundle(session, title="b")
+    c = bundle_service.create_bundle(session, title="c")
+    session.commit()
+
+    # Starts newest-first (c, b, a); drag b to the front.
+    reorder_bundles(session, collection_id=None, moved_ids=[b.id], before_id=c.id)
+    session.commit()
+
+    page = browse_bundles(session, sort=BundleSort.MANUAL, descending=False)
+    assert [x.title for x in page.items] == ["b", "c", "a"]
+
+
+def test_reorder_is_resolved_against_the_whole_scope_not_the_loaded_page(
+    session: Session,
+) -> None:
+    """The bug behind "items jump to the beginning or the end".
+
+    The client only ever holds a page. The old contract took its visible list and
+    numbered it 0..n-1, which collided with the order values every unloaded
+    bundle still held — so bundles the user could not even see moved. Sending the
+    move instead means the size of the loaded window changes nothing.
+    """
+    titles = [f"b{i:02d}" for i in range(12)]
+    bundles = {t: _confirmed(session, t) for t in titles}
+    order = _browse_ids(session, view=SystemView.ALL)
+    names = {b.id: b.title for b in bundles.values()}
+
+    # A drag made while looking at only the first four: move the 4th before the
+    # 2nd. Everything outside that window must keep its relative order.
+    reorder_bundles(session, collection_id=None, moved_ids=[order[3]], before_id=order[1])
+
+    after = _browse_ids(session, view=SystemView.ALL)
+    expected = [order[0], order[3], order[1], order[2], *order[4:]]
+    assert [names[i] for i in after] == [names[i] for i in expected]
+
+
+def test_reorder_moves_a_multi_selection_as_one_block(session: Session) -> None:
+    a, b, c, d = (_confirmed(session, t) for t in ("a", "b", "c", "d"))
+    order = _browse_ids(session, view=SystemView.ALL)  # newest first: d, c, b, a
+
+    # Drag the two ends together to the front; they keep their relative order.
+    reorder_bundles(session, collection_id=None, moved_ids=[order[3], order[0]], before_id=order[1])
+
+    assert _browse_ids(session, view=SystemView.ALL) == [order[0], order[3], order[1], order[2]]
+    assert {a.id, b.id, c.id, d.id} == set(order)
+
+
+def test_reorder_appends_when_there_is_no_bundle_to_land_before(session: Session) -> None:
+    _a, _b, _c = (_confirmed(session, t) for t in ("a", "b", "c"))
+    order = _browse_ids(session, view=SystemView.ALL)
+
+    reorder_bundles(session, collection_id=None, moved_ids=[order[0]], before_id=None)
+
+    assert _browse_ids(session, view=SystemView.ALL) == [order[1], order[2], order[0]]
+
+
+def test_dropping_a_block_onto_itself_changes_nothing(session: Session) -> None:
+    _a, _b, _c = (_confirmed(session, t) for t in ("a", "b", "c"))
+    order = _browse_ids(session, view=SystemView.ALL)
+
+    reorder_bundles(session, collection_id=None, moved_ids=[order[0], order[1]], before_id=order[1])
+
+    assert _browse_ids(session, view=SystemView.ALL) == order
+
+
+def test_reorder_ignores_ids_outside_the_scope(session: Session) -> None:
+    coll = collection_service.create_collection(session, name="C")
+    inside, outside = _confirmed(session, "inside"), _confirmed(session, "outside")
+    bundle_service.set_bundle_collections(session, inside.id, [coll.id])
+
+    reorder_bundles(session, collection_id=coll.id, moved_ids=[outside.id], before_id=inside.id)
+
+    assert _browse_ids(session, collection_id=coll.id) == [inside.id]
+
+
+def test_reordering_is_not_editing(session: Session) -> None:
+    """A drag rearranges the shelf; it must not mark the books modified. The
+    manual-order writer spans the whole scope now, and ``updated_at`` carries an
+    onupdate default — an unconditional rewrite would stamp every bundle in the
+    library "modified just now" on every drag, destroying Date Modified."""
+    a = bundle_service.create_bundle(session, title="a")
+    b = bundle_service.create_bundle(session, title="b")
+    c = bundle_service.create_bundle(session, title="c")
+    session.commit()
+    stamps = {x.id: x.updated_at for x in (a, b, c)}
+
+    reorder_bundles(session, collection_id=None, moved_ids=[a.id], before_id=None)
+    session.commit()
+    for x in (a, b, c):
+        session.refresh(x)
+        assert x.updated_at == stamps[x.id], f"{x.title} was stamped modified by a reorder"
