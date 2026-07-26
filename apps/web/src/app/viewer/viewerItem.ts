@@ -132,12 +132,14 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
             { tier: 'preview2560', src: fileBrowserPreviewUrl(entry.relative_path, 2560) },
           ]
       : []
+  // A listing row can reach us from a partially-populated source (fixtures, an
+  // older server); normalize absent to null so the shape matches what it claims.
   return {
     key: entry.relative_path,
-    fileId: entry.file_id,
-    bundleId: entry.bundle_id,
+    fileId: entry.file_id ?? null,
+    bundleId: entry.bundle_id ?? null,
     title: entry.name,
-    mediaKind: entry.media_kind,
+    mediaKind: entry.media_kind ?? null,
     supported: entry.supported,
     // A File Browser listing is a live directory read, so anything it returned
     // exists; a linked row's availability is the scanner's separate concern.
@@ -148,11 +150,11 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     contentUrl: entry.file_id
       ? fileStreamUrl(entry.file_id)
       : fileBrowserContentUrl(entry.relative_path),
-    mimeType: entry.mime_type,
-    sizeBytes: entry.size_bytes,
+    mimeType: entry.mime_type ?? null,
+    sizeBytes: entry.size_bytes ?? null,
     width: null,
     height: null,
-    duration: entry.duration,
+    duration: entry.duration ?? null,
     // An unclassified path has no media kind; 'other' makes the label fall back
     // to the file extension, matching how a bundle file labels the same case.
     typeLabel: formatFileType(entry.media_kind ?? 'other', entry.name),
