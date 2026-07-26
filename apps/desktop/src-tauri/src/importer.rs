@@ -285,7 +285,10 @@ fn import_url(
         .append_pair("filename", filename)
         .append_pair("dest_dir", dest_dir)
         .append_pair("on_conflict", on_conflict.unwrap_or("fail"))
-        .append_pair("link", "true");
+        // Copy the file in without bundling it. A drop into a folder is a
+        // filesystem action — the file should land there and show in the File
+        // Browser, not become a one-file bundle the owner did not ask for.
+        .append_pair("link", "false");
     Ok(url)
 }
 
@@ -383,7 +386,8 @@ mod tests {
         assert!(query.contains(&("filename".into(), "my movie (1).mkv".into())));
         assert!(query.contains(&("dest_dir".into(), "Show/S01".into())));
         assert!(query.contains(&("on_conflict".into(), "replace".into())));
-        assert!(query.contains(&("link".into(), "true".into())));
+        // Imports do not auto-bundle: the file lands in the folder, unlinked.
+        assert!(query.contains(&("link".into(), "false".into())));
     }
 
     #[test]

@@ -589,7 +589,9 @@ export async function importFile(
     dest_dir: options.destDir ?? '',
     filename: options.filename ?? file.name,
     on_conflict: options.onConflict ?? 'fail',
-    link: String(options.link ?? true),
+    // Default off: importing copies the file in without fast-adding it to a
+    // bundle. Callers opt in explicitly if they ever want the link.
+    link: String(options.link ?? false),
   })
   const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
     method: 'POST',
