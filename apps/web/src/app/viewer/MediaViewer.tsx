@@ -667,12 +667,8 @@ function InfoPanel({ file, playable }: { file: FileRead; playable: PlayableVideo
       <h3>{file.display_title}</h3>
       <dl>
         <div>
-          <dt>Kind</dt>
-          <dd>{file.media_kind}</dd>
-        </div>
-        <div>
-          <dt>Role</dt>
-          <dd>{fileRoleLabel(file)}</dd>
+          <dt>Type</dt>
+          <dd>{fileTypeLabel(file)}</dd>
         </div>
         <div>
           <dt>Size</dt>

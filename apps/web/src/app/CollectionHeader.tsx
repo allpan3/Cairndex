@@ -8,7 +8,7 @@ import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
 import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth } from './layout'
-import { gapBefore, moveBeforeId } from './reorder'
+import { gapBefore } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
@@ -42,10 +42,6 @@ interface CollectionHeaderProps {
   dragItem: DragItem | null
   onDragItem: (item: DragItem | null) => void
   onReparentCollections: (ids: string[], targetId: string) => void
-  // Parent of the folder cards shown here (the viewed collection, or null in the
-  // All view) — used to place a card dragged in from another parent group.
-  parentId: string | null
-  onMoveCollections: (ids: string[], newParentId: string | null, orderedIds: string[]) => void
   onMoveBundlesInto: (targetId: string, alt: boolean) => void
   selectedIds: Set<string>
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
@@ -190,8 +186,6 @@ export function CollectionHeader({
   dragItem,
   onDragItem,
   onReparentCollections,
-  parentId,
-  onMoveCollections,
   onMoveBundlesInto,
   selectedIds,
   zoom,
@@ -305,17 +299,9 @@ export function CollectionHeader({
     } else if (gap.kind === 'into') {
       onReparentCollections(live.ids, gap.id)
     } else {
-      const dragged = live.ids
-      const incoming = dragged.filter((id) => !siblingIds.includes(id))
-      if (incoming.length === 0) {
-        onReorderCollections?.(dragged, gap.beforeId)
-      } else {
-        onMoveCollections(
-          dragged,
-          parentId,
-          moveBeforeId([...siblingIds, ...incoming], dragged, gap.beforeId),
-        )
-      }
+      // One callback for every case: the group is this section's parent, and a
+      // collection arriving from elsewhere is reparented by the same request.
+      onReorderCollections?.(live.ids, gap.beforeId)
     }
     clearDrag()
   }

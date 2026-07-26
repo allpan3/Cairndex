@@ -1305,7 +1305,7 @@
         "type": "object"
       },
       "CollectionReorder": {
-        "description": "Manual drag-reorder within one sibling group (NULL parent = top level).\n\nCarries the move, not a whole order: which collections were dragged, and\nwhich one they were dropped in front of.",
+        "description": "A collection move: which collections, into which group, at which gap.\n\nCarries the move rather than a whole order. ``parent_id`` is the group they\nend up in (NULL = top level) \u2014 anything not already there is reparented as\npart of the same operation, so dragging between levels stays one request and\nnever publishes a collection in its new group carrying its old position.",
         "properties": {
           "before_id": {
             "anyOf": [
@@ -9640,7 +9640,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/reorder": {
       "put": {
-        "description": "Persist a manual drag-reorder of one sibling group (NULL parent = top\nlevel). The sidebar tree and the main-browser folder cards both render from\nthis ``sort_order`` so a reorder in either surface updates both.",
+        "description": "Move collections into a group at a gap \u2014 the whole drag, in one request.\n\nReparents whatever is not already in ``parent_id``'s group, then places the\nblock. The sidebar tree and the main-browser folder cards both render from\nthis ``sort_order``, so a move in either surface updates both. Answers with\nthe resulting group so the client never has to re-derive (or re-fetch) where\nthe drop landed.",
         "operationId": "reorder_collections_api_v1_libraries__library_id__collections_reorder_put",
         "parameters": [
           {

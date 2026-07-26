@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { seamFor } from './dnd'
-import { gapBefore, moveBeforeId, moveManyTo, moveTo } from './reorder'
+import { gapBefore, moveManyTo, moveTo } from './reorder'
 
 describe('moveTo', () => {
   it('inserts before and after the target slot', () => {
@@ -106,20 +106,5 @@ describe('seamFor — one seam per destination', () => {
       undefined,
       undefined,
     ])
-  })
-})
-
-describe('moveBeforeId', () => {
-  it('re-inserts the block before the named item, or appends for null', () => {
-    expect(moveBeforeId(['a', 'b', 'c'], ['c'], 'b')).toEqual(['a', 'c', 'b'])
-    expect(moveBeforeId(['a', 'b', 'c'], ['a'], null)).toEqual(['b', 'c', 'a'])
-  })
-
-  it('keeps a multi-item block in list order', () => {
-    expect(moveBeforeId(['a', 'b', 'c', 'd'], ['d', 'b'], 'a')).toEqual(['b', 'd', 'a', 'c'])
-  })
-
-  it('appends when the named item is unknown', () => {
-    expect(moveBeforeId(['a', 'b'], ['a'], 'zz')).toEqual(['b', 'a'])
   })
 })

@@ -92,18 +92,41 @@ def _siblings(session: Session, parent_id: str | None) -> list[Collection]:
 def reorder_collections(
     session: Session, *, parent_id: str | None, moved_ids: list[str], before_id: str | None
 ) -> list[Collection]:
-    """Move collections to a gap in one sibling group's manual order.
+    """Move collections into ``parent_id``'s group, landing before ``before_id``.
 
-    Takes the *move* — ``moved_ids`` land as a block immediately before
-    ``before_id``, or at the end when it is None — and resolves it against the
-    group as it stands, rather than accepting a list of ids to renumber.
+    One operation for the whole gesture: whatever is not already in that group is
+    reparented into it, then the block is placed — immediately before
+    ``before_id``, or at the end when it is None. Dragging a collection to a
+    different level and positioning it there is a single thing the owner did, and
+    it used to be two requests: a reparent, then a placement. Between them the
+    collection was published in its new group still carrying its old position, so
+    a client refetch landing in that window latched onto the wrong order — a
+    nested collection dropped at the bottom of the tree appeared back up near its
+    old parent.
 
-    The old contract required the caller to send exactly the group's members,
-    which made a drag fail outright (silently, from the owner's side) whenever
-    the client's picture had drifted — a collection created, deleted or moved
-    elsewhere since it last loaded. Ids that are not in the group are ignored
-    here instead, so the part of the move that is meaningful still happens.
+    Tolerant by design. Ids that no longer exist, or whose move would put a
+    collection inside itself or its own descendant, are skipped rather than
+    failing the drag: the client's picture of the tree can always have drifted,
+    and the meaningful part of a move the owner made should still happen.
     """
+    _require_parent(session, parent_id)
+    now = utcnow()
+    for collection_id in moved_ids:
+        collection = session.get(Collection, collection_id)
+        if collection is None or collection.parent_id == parent_id:
+            continue
+        if collection_id == parent_id:
+            continue
+        if parent_id is not None and is_descendant(
+            session, Collection, candidate_id=parent_id, of_id=collection_id
+        ):
+            continue
+        # A reparent *is* a change to the collection, unlike a pure reorder — its
+        # place in the tree is part of what it is, so the modified time moves.
+        collection.parent_id = parent_id
+        collection.updated_at = now
+    session.flush()
+
     siblings = _siblings(session, parent_id)
     by_id = {c.id: c for c in siblings}
     order = [c.id for c in siblings]
