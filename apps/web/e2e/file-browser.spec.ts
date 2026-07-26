@@ -97,12 +97,35 @@ async function mockApi(page: Page) {
               supported: true,
               mime_type: 'image/tiff',
             }),
+            entry('song.mp3', {
+              media_kind: 'audio',
+              supported: true,
+              mime_type: 'audio/mpeg',
+            }),
             entry('notes.txt', { supported: false }),
           ],
         },
       })
     }
   })
+  // Minimal 16-bit PCM WAV (a beat of silence) so the audio element, which
+  // fetches real bytes, gets something Chromium can decode.
+  const wav = Buffer.alloc(44 + 3200)
+  wav.write('RIFF', 0)
+  wav.writeUInt32LE(36 + 3200, 4)
+  wav.write('WAVEfmt ', 8)
+  wav.writeUInt32LE(16, 16) // PCM fmt chunk size
+  wav.writeUInt16LE(1, 20) // PCM
+  wav.writeUInt16LE(1, 22) // mono
+  wav.writeUInt32LE(8000, 24) // sample rate
+  wav.writeUInt32LE(16000, 28) // byte rate
+  wav.writeUInt16LE(2, 32) // block align
+  wav.writeUInt16LE(16, 34) // bits per sample
+  wav.write('data', 36)
+  wav.writeUInt32LE(3200, 40)
+  await page.route('**/file?path=song.mp3', (r) =>
+    r.fulfill({ status: 200, contentType: 'audio/wav', body: wav }),
+  )
   await page.route('**/file/preview?*', (r) => {
     previewRequests.push(r.request().url())
     return r.fulfill({
@@ -156,6 +179,15 @@ test('browses a library read-only with badges and breadcrumbs', async ({ page })
 
   await page.getByRole('button', { name: 'NAS Media' }).click()
   await page.locator('.file-row__name', { hasText: 'scan.tiff' }).dblclick()
-  await expect(page.locator('.viewer__img')).toBeVisible()
+  // The File Browser opens the same viewer the Bundle Browser uses, so this is
+  // the shared image stage rather than a bare <img> lightbox.
+  await expect(page.locator('.mv-image')).toBeVisible()
   await expect.poll(() => previewRequests.some((url) => url.includes('path=scan.tiff'))).toBe(true)
+
+  // Audio is openable too, on the native element sourced from its path.
+  await page.keyboard.press('Escape')
+  await page.locator('.file-row__name', { hasText: 'song.mp3' }).dblclick()
+  const audio = page.getByTestId('media-audio')
+  await expect(audio).toBeVisible()
+  await expect(audio).toHaveAttribute('src', /file\?path=song\.mp3/)
 })

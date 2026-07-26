@@ -52,7 +52,15 @@ const DEFAULT_PARAMS: SwitchParams = {
 }
 
 export interface UseHlsSessionOptions {
-  /** Current file id when it is an available video; null disables the hook. */
+  /**
+   * Current file id when it is an available, indexed video.
+   *
+   * Null means there is no `AssetFile` row to decide on. With `enabled` set and
+   * a `directStreamUrl` given, playback degrades to a native progressive read of
+   * that URL — the File Browser case for a path that was never indexed, which
+   * can be played but cannot be remuxed/transcoded server-side. Null with no
+   * `directStreamUrl` disables the hook entirely.
+   */
   fileId: string | null
   /** The current file is an available video with a manifest entry. */
   enabled: boolean
@@ -124,7 +132,7 @@ export function useHlsSession({
   const reattachCountRef = useRef(0)
   const reattachAtRef = useRef(Number.NEGATIVE_INFINITY)
   const reattachingRef = useRef(false)
-  const lastFileRef = useRef<string | null>(null)
+  const lastSourceRef = useRef<string | null>(null)
   const getCurrentTimeRef = useRef(getCurrentTime)
   useEffect(() => {
     getCurrentTimeRef.current = getCurrentTime
@@ -142,9 +150,13 @@ export function useHlsSession({
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- reset/decision status are
        synchronized to the current file, not derived render state */
-    const freshFile = lastFileRef.current !== fileId
+    // Unindexed paths all have a null fileId, so identity falls back to the
+    // stream URL — otherwise stepping between two of them would look like the
+    // same file and carry the previous one's playhead into the next.
+    const sourceKey = fileId ?? directStreamUrl
+    const freshFile = lastSourceRef.current !== sourceKey
     if (freshFile) {
-      lastFileRef.current = fileId
+      lastSourceRef.current = sourceKey
       paramsRef.current = DEFAULT_PARAMS
       startAtRef.current = 0
       reattachCountRef.current = 0
@@ -158,10 +170,33 @@ export function useHlsSession({
       setAudioStreams([])
     }
 
-    if (!enabled || !fileId) {
+    if (!enabled) {
       void teardownLive()
       setStatus('idle')
       setSource(null)
+      return
+    }
+
+    // No file row to decide on — an unindexed File Browser path. There is no
+    // server-side remux/transcode option for it, so skip the decision round-trip
+    // and play the bytes natively. Whether the browser can actually decode this
+    // container/codec is then the media element's answer, surfaced through the
+    // stage's error path exactly like a failed direct decision.
+    if (!fileId) {
+      if (!directStreamUrl) {
+        void teardownLive()
+        setStatus('idle')
+        setSource(null)
+        return
+      }
+      void teardownLive()
+      setSource({
+        src: directStreamUrl,
+        mimeType: directMimeType ?? 'video/mp4',
+        kind: 'native',
+        startAt: startAtRef.current,
+      })
+      setStatus('ready')
       return
     }
 

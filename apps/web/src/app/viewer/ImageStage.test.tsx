@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { FileRead } from '../../api/client'
 import { setActiveLibraryId } from '../../api/client'
 import { ImageStage } from './ImageStage'
+import { viewerItemFromFile } from './viewerItem'
 
 interface DecodeRequest {
   src: string
@@ -42,7 +43,7 @@ function file(overrides: Partial<FileRead> = {}): FileRead {
 function renderStage(imageFile: FileRead, onError = vi.fn()) {
   return render(
     <div className="media-viewer">
-      <ImageStage key={imageFile.id} file={imageFile} onError={onError} />
+      <ImageStage key={imageFile.id} item={viewerItemFromFile(imageFile)} onError={onError} />
     </div>,
   )
 }
@@ -107,7 +108,7 @@ describe('ImageStage', () => {
       <div className="media-viewer">
         <ImageStage
           key="f2"
-          file={file({ id: 'f2', relative_path: 'other.png' })}
+          item={viewerItemFromFile(file({ id: 'f2', relative_path: 'other.png' }))}
           onError={vi.fn()}
         />
       </div>,

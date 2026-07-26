@@ -1776,6 +1776,8 @@ function Workspace({
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
+            playerPrefs={prefs.player}
+            onPlayerPrefs={setPlayerPrefs}
           />
         ) : (
           <>
