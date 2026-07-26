@@ -11,6 +11,7 @@ export type DesktopWorkspaceAction =
   | 'manage-libraries'
   | 'pair-device'
   | 'new-bundle'
+  | 'new-collection'
   | 'show-bundles'
   | 'show-files'
   | 'zoom-in'

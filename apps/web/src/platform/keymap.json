@@ -86,6 +86,14 @@
           "keys": []
         },
         {
+          "id": "new-collection",
+          "label": "New Collection",
+          "accelerator": "CmdOrCtrl+Shift+N",
+          "browserReserved": true,
+          "requires": "library",
+          "keys": []
+        },
+        {
           "id": "pair-device",
           "label": "Pair Device\u2026",
           "accelerator": null,

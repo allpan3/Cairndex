@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   CollectionRead,
@@ -55,7 +55,7 @@ function viewIcon(view: SystemView): ReactNode {
   }
 }
 
-interface SidebarProps {
+export interface SidebarProps {
   mode: AppMode
   onMode: (mode: AppMode) => void
   libraries: LibraryRead[]
@@ -132,6 +132,14 @@ interface SidebarProps {
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
   // Clicking the sidebar's blank space drops the current selection.
   onBackgroundClick?: () => void
+  /**
+   * A create-collection request raised outside the sidebar (the grid's empty-space
+   * menu, the native File menu). `parentId` null means top level. The sidebar owns
+   * the flow because the new row's inline rename and branch expansion are its
+   * state; `onNewCollectionHandled` clears the request once consumed.
+   */
+  newCollectionRequest?: { parentId: string | null } | null
+  onNewCollectionHandled?: () => void
   smartCollections: SmartCollectionRead[]
   onNewSmartCollection: () => void
   onEditSmartCollection: (sc: SmartCollectionRead) => void
@@ -204,6 +212,8 @@ export function Sidebar({
   onReparentCollections,
   onMoveBundlesInto,
   onBackgroundClick,
+  newCollectionRequest = null,
+  onNewCollectionHandled,
   smartCollections,
   onNewSmartCollection,
   onEditSmartCollection,
@@ -300,48 +310,91 @@ export function Sidebar({
     onModifierSelectCollection?.(id)
   }
 
-  // "+ Collection": create it under the collection currently open (or at the
-  // top level when browsing a system view/smart collection), pick a name
-  // that doesn't collide with its siblings, expand its ancestor chain so it's
-  // visible, then drop straight into the inline rename box.
-  const handleNewCollection = () => {
-    setCreateError(null)
-    const parentId = selection.collectionId ?? null
-    const siblingNames = new Set(
-      collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
-    )
-    let name = 'New Collection'
-    for (let n = 2; siblingNames.has(name); n++) name = `New Collection ${n}`
+  // Create a collection under an explicit parent (null = top level), pick a name
+  // that doesn't collide with its siblings, expand the parent's ancestor chain so
+  // the new row is visible, then drop straight into the inline rename box.
+  //
+  // The parent is always passed in, never inferred from the current selection:
+  // "+ Collection" means top level, and nesting is its own gesture (right-click a
+  // collection → New Subcollection). Inferring it from what happened to be open
+  // meant the same button did two different things with no way to ask for the
+  // first one while browsing a collection.
+  const createCollectionUnder = useCallback(
+    (parentId: string | null) => {
+      setCreateError(null)
+      const siblingNames = new Set(
+        collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
+      )
+      let name = 'New Collection'
+      for (let n = 2; siblingNames.has(name); n++) name = `New Collection ${n}`
 
-    onCreateCollection(
-      { name, parent_id: parentId },
-      {
-        onSuccess: (created) => {
-          if (parentId) {
-            const ancestors = new Set<string>()
-            let cur: string | null = parentId
-            while (cur) {
-              ancestors.add(cur)
-              cur = collections.find((c) => c.id === cur)?.parent_id ?? null
+      onCreateCollection(
+        { name, parent_id: parentId },
+        {
+          onSuccess: (created) => {
+            if (parentId) {
+              const ancestors = new Set<string>()
+              let cur: string | null = parentId
+              while (cur) {
+                ancestors.add(cur)
+                cur = collections.find((c) => c.id === cur)?.parent_id ?? null
+              }
+              setExpandedOverride((prev) => new Set([...prev, ...ancestors]))
+              setCollapsedOverride((prev) => {
+                const s = new Set(prev)
+                for (const id of ancestors) s.delete(id)
+                return s
+              })
             }
-            setExpandedOverride((prev) => new Set([...prev, ...ancestors]))
-            setCollapsedOverride((prev) => {
-              const s = new Set(prev)
-              for (const id of ancestors) s.delete(id)
-              return s
-            })
-          }
-          setEditingId(created.id)
+            setEditingId(created.id)
+          },
+          onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
         },
-        onError: (err) => setCreateError(err instanceof Error ? err.message : 'Could not create'),
-      },
-    )
-  }
+      )
+    },
+    [collections, onCreateCollection],
+  )
+
+  // A request from outside the sidebar (the grid's empty-space menu, the native
+  // File menu). It arrives as a prop rather than a callback because the sidebar
+  // owns the flow — the new row's inline rename box and branch expansion are its
+  // state — while the caller only names the parent. An effect is the only hook
+  // available: the trigger is another pane or the OS menu, so there is no event in
+  // this subtree to hang it off (mirrors App's deepLink handling).
+  //
+  // Consumption is tracked by request identity rather than by trusting the
+  // caller's clear: `createCollectionUnder` changes identity whenever the
+  // collection list refetches — which creating one causes — so a caller that
+  // wired the request without the clear callback would otherwise create in a loop.
+  const consumedRequestRef = useRef<{ parentId: string | null } | null>(null)
+  useEffect(() => {
+    if (!newCollectionRequest || consumedRequestRef.current === newCollectionRequest) return
+    consumedRequestRef.current = newCollectionRequest
+    createCollectionUnder(newCollectionRequest.parentId)
+    onNewCollectionHandled?.()
+  }, [newCollectionRequest, onNewCollectionHandled, createCollectionUnder])
 
   const collectionMenu = (collection: CollectionRead, e: React.MouseEvent) =>
     menu.open(e, [
+      {
+        label: 'New Subcollection',
+        onClick: () => createCollectionUnder(collection.id),
+      },
+      null,
       { label: 'Delete Collection', danger: true, onClick: () => onDeleteCollection(collection) },
     ])
+
+  // Right-clicking the Collections heading or the blank run-out below the list:
+  // both mean "here", which at those spots is the top level.
+  const collectionsBackgroundMenu = (e: React.MouseEvent) => {
+    const items: MenuEntry[] = [
+      { label: 'New Collection', onClick: () => createCollectionUnder(null) },
+    ]
+    if (onCleanupCollections) {
+      items.push(null, { label: 'Clean Up Order…', onClick: onCleanupCollections })
+    }
+    menu.open(e, items)
+  }
 
   const smartMenu = (sc: SmartCollectionRead, e: React.MouseEvent) => {
     const items: MenuEntry[] = [
@@ -616,23 +669,29 @@ export function Sidebar({
           })}
       </div>
 
-      <div className="sidebar__section">
+      <div
+        className="sidebar__section"
+        // Right-clicking this section's blank run-out — below the last row, beside
+        // the heading — means "here", which at the section level is the top level.
+        // Scoped to the section rather than the whole aside: the brand, the library
+        // selector and the jobs strip are not collection space, and offering to
+        // make a collection from the app title would be nonsense.
+        onContextMenu={(e) => {
+          const target = e.target as HTMLElement
+          if (target.closest('.nav-item, button, input, select, textarea, label')) return
+          collectionsBackgroundMenu(e)
+        }}
+      >
         <SectionHeading
           label="Collections"
           collapsed={collectionsCollapsed}
           onToggle={() => setCollectionsCollapsed(!collectionsCollapsed)}
-          onAdd={handleNewCollection}
+          onAdd={() => createCollectionUnder(null)}
           addLabel="New collection"
-          addTitle={
-            selection.collectionId
-              ? 'New collection inside the current one'
-              : 'New top-level collection'
-          }
-          onContextMenu={
-            onCleanupCollections
-              ? (e) => menu.open(e, [{ label: 'Clean Up Order…', onClick: onCleanupCollections }])
-              : undefined
-          }
+          // Always the top level, whatever is open. Nesting is the collection
+          // row's own right-click menu.
+          addTitle="New top-level collection"
+          onContextMenu={collectionsBackgroundMenu}
         />
         {!collectionsCollapsed && (
           <>
