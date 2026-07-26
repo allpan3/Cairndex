@@ -20,6 +20,15 @@ export interface ReverseMapResult {
   directories: number
 }
 
+// One upload-progress tick for a dropped file being copied in (plan 4 W5).
+// `path` is the dropped file's absolute path, which the web layer already holds,
+// so it can match a tick to the file it is showing progress for.
+export interface ImportProgressEvent {
+  path: string
+  sent: number
+  total: number
+}
+
 // Defines the complete web-versus-native host boundary from plan 3 section 4
 export interface HostPlatform {
   kind: 'web' | 'desktop'
@@ -164,6 +173,7 @@ interface PlatformRuntime {
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
+  listenImportProgress(handler: (progress: ImportProgressEvent) => void): Promise<() => void>
   /**
    * Stream one *dropped* file into a library (plan 4 W5).
    *
@@ -261,6 +271,7 @@ const webRuntime: PlatformRuntime = {
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
+  listenImportProgress: async () => () => undefined,
   isDragOutActive: () => false,
   releaseDragOut: () => undefined,
 }
@@ -447,6 +458,11 @@ export const setHostBadgeCount = (count: number | null): Promise<void> =>
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>
   runtime.listenFullscreen(handler)
 export const listenHostLifecycle = (): Promise<() => void> => runtime.listenLifecycle()
+
+// Per-file upload progress for the desktop drag-in copy (plan 4 W5).
+export const listenHostImportProgress = (
+  handler: (progress: ImportProgressEvent) => void,
+): Promise<() => void> => runtime.listenImportProgress(handler)
 
 // Reverse-maps Finder-dropped absolute paths against one library's local mapping
 export const reverseMapHostPaths = (

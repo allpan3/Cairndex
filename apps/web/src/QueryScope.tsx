@@ -1,5 +1,29 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useIsFetching } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+
+/**
+ * A thin bar at the top of the window whenever any query is in flight.
+ *
+ * Without it a ⌘R reload's refetch — and any data refresh — is silent, so there
+ * is no way to tell it took effect. This makes "something is loading" a visible,
+ * always-present cue rather than a guess.
+ *
+ * A local server answers in a few milliseconds — fewer frames than the eye
+ * registers — so the bar has to outlive the request that caused it. That minimum
+ * is done in **CSS**, not with a timer: the element stays mounted and only its
+ * opacity is toggled, appearing immediately and fading out after a delay (see
+ * `.top-progress`). No timers to clear, and render stays pure.
+ */
+function TopProgressBar() {
+  const active = useIsFetching() > 0
+  return (
+    <div
+      className={`top-progress${active ? ' top-progress--active' : ''}`}
+      aria-hidden="true"
+      data-testid="top-progress"
+    />
+  )
+}
 
 /**
  * Owns one QueryClient for one connection scope (plan 3 §7.1).
@@ -29,5 +53,10 @@ export function QueryScope({ children }: { children: ReactNode }) {
         },
       }),
   )
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <TopProgressBar />
+      {children}
+    </QueryClientProvider>
+  )
 }

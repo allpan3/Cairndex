@@ -61,6 +61,8 @@ interface SidebarProps {
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
   onOpenSettings: () => void
+  /** Docked just above Settings — the transfer indicator's fixed home. */
+  footer?: ReactNode
   canLock?: boolean
   onLock?: () => void
   onUpdateLibrary: () => void
@@ -151,6 +153,7 @@ export function Sidebar({
   onChangeLibrary,
   onManageLibraries,
   onOpenSettings,
+  footer,
   canLock,
   onLock,
   onUpdateLibrary,
@@ -465,6 +468,19 @@ export function Sidebar({
             </Fragment>
           )
         })}
+        {/* All Tags (a management surface, not a browse view) sits below the
+            Unbundled/Missing queues. */}
+        <button
+          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
+          onClick={() => onOpenAllTags?.()}
+        >
+          <span className="nav-item__icon">
+            <IconTag />
+          </span>
+          <span className="nav-item__label">All Tags</span>
+        </button>
+        {/* Trash last: it is the recoverable-deletions bin, not a browse or
+            management surface, so it reads as the tail of the section. */}
         {showTrash && (
           <button
             className={`nav-item${mode === 'file' && fileScope === 'trash' ? ' nav-item--active' : ''}`}
@@ -477,17 +493,6 @@ export function Sidebar({
             <span className="nav-item__label">Trash</span>
           </button>
         )}
-        {/* All Tags (a management surface, not a browse view) sits at the bottom
-            of the system section, below the Unbundled/Missing queues. */}
-        <button
-          className={`nav-item${mode === 'tags' ? ' nav-item--active' : ''}`}
-          onClick={() => onOpenAllTags?.()}
-        >
-          <span className="nav-item__icon">
-            <IconTag />
-          </span>
-          <span className="nav-item__label">All Tags</span>
-        </button>
       </div>
 
       <div className="sidebar__section">
@@ -608,12 +613,18 @@ export function Sidebar({
         )}
       </div>
 
-      <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
-        <span className="nav-item__icon">
-          <IconSettings />
-        </span>
-        <span className="nav-item__label">Settings</span>
-      </button>
+      {/* Pinned to the bottom (margin-top:auto) so Settings is where it is
+          expected rather than trailing whatever the nav happens to end at, and
+          so a transfer indicator has a fixed home directly above it. */}
+      <div className="sidebar__foot">
+        {footer}
+        <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
+          <span className="nav-item__icon">
+            <IconSettings />
+          </span>
+          <span className="nav-item__label">Settings</span>
+        </button>
+      </div>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
     </aside>

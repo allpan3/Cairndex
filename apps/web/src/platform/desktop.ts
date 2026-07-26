@@ -17,6 +17,7 @@ import type {
   HostImportOutcome,
   HostOs,
   HostPlatform,
+  ImportProgressEvent,
   OpenedLibrary,
   PlatformRuntime,
   ReverseMapResult,
@@ -351,6 +352,9 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),
+    listenImportProgress: (handler) =>
+      // The importer emits a per-file tick as it streams bytes to the server.
+      listen<ImportProgressEvent>('import-progress', (event) => handler(event.payload)),
     isDragOutActive: dragGuard.isActive,
     releaseDragOut: dragGuard.release,
   }

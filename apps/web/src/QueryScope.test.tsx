@@ -82,6 +82,35 @@ describe('QueryScope', () => {
     expect(screen.getByTestId('cached')).toHaveTextContent('empty')
   })
 
+  it('marks the fetching indicator active while a request is in flight', async () => {
+    // The only feedback a ⌘R reload gives, so what matters is that the bar is
+    // *marked* active during the request. How long it then stays visible is CSS
+    // (an instant appear plus a delayed fade-out) precisely because a local
+    // request can settle in fewer milliseconds than any fade would take — an
+    // earlier attempt faded *in* over 80ms and was therefore never seen.
+    let release: ((value: string) => void) | undefined
+    render(
+      <QueryScope>
+        <Probe
+          resolver={() =>
+            new Promise<string>((resolve) => {
+              release = resolve
+            })
+          }
+        />
+      </QueryScope>,
+    )
+
+    const bar = screen.getByTestId('top-progress')
+    await waitFor(() => expect(bar).toHaveClass('top-progress--active'))
+
+    release?.('done')
+
+    // Always mounted, only re-styled: unmounting would cancel the fade-out.
+    await waitFor(() => expect(bar).not.toHaveClass('top-progress--active'))
+    expect(screen.getByTestId('top-progress')).toBeInTheDocument()
+  })
+
   it('does not remake the client on an ordinary re-render', async () => {
     // Only a key change should reset the cache; a parent re-render must not
     // throw away a warm cache and refetch everything.

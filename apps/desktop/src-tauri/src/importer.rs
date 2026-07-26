@@ -26,17 +26,69 @@
 
 use std::collections::HashSet;
 use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::Serialize;
-use tauri::{async_runtime, State};
+use tauri::{async_runtime, AppHandle, Emitter, Runtime, State};
 use url::Url;
 
 use crate::media_proxy::MediaProxy;
+
+/// How often the upload reports bytes-sent to the webview. Frequent enough for a
+/// smooth bar, rare enough that a fast local upload does not flood the event bus.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(120);
+/// The event the webview listens on for per-file upload progress.
+const PROGRESS_EVENT: &str = "import-progress";
+
+/// One upload-progress tick. `path` identifies which dropped file this is about,
+/// so the web layer can match it to the file it is showing.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportProgress {
+    path: String,
+    sent: u64,
+    total: u64,
+}
+
+/// Wraps the file handle so streaming it to the server also reports how far the
+/// upload has got. reqwest reads this as the request body; every read advances
+/// the counter, and a throttled tick is emitted so the UI can draw a bar and a
+/// rate. Errors emitting are ignored — a missed tick must never fail an upload.
+struct ProgressReader<R: Runtime> {
+    inner: File,
+    app: AppHandle<R>,
+    path: String,
+    sent: u64,
+    total: u64,
+    last_emit: Instant,
+}
+
+impl<R: Runtime> Read for ProgressReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        self.sent += read as u64;
+        let now = Instant::now();
+        // Emit on the throttle interval, and always on the final read (EOF), so
+        // the bar reliably reaches 100% rather than stopping a tick short.
+        if read == 0 || now.duration_since(self.last_emit) >= PROGRESS_INTERVAL {
+            self.last_emit = now;
+            let _ = self.app.emit(
+                PROGRESS_EVENT,
+                ImportProgress {
+                    path: self.path.clone(),
+                    sent: self.sent,
+                    total: self.total,
+                },
+            );
+        }
+        Ok(read)
+    }
+}
 
 // Generous: an import is bounded by the size of the file and the speed of the
 // link, not by anything this shell controls. Long enough that a large file over
@@ -137,7 +189,8 @@ pub(crate) fn remember_drop(dropped: &DroppedFiles, paths: &[PathBuf]) {
 /// One file per call, mirroring the endpoint: each import gets its own
 /// collision answer and its own undo, which a batched call could not offer.
 #[tauri::command]
-pub(crate) async fn import_dropped_file(
+pub(crate) async fn import_dropped_file<R: Runtime>(
+    app: AppHandle<R>,
     proxy: State<'_, MediaProxy>,
     dropped: State<'_, DroppedFiles>,
     library_id: String,
@@ -173,6 +226,7 @@ pub(crate) async fn import_dropped_file(
     // off the IPC thread so the window stays responsive during a large import.
     async_runtime::spawn_blocking(move || {
         upload(
+            app,
             &server_url,
             token.as_deref(),
             &library_id,
@@ -187,7 +241,8 @@ pub(crate) async fn import_dropped_file(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn upload(
+fn upload<R: Runtime>(
+    app: AppHandle<R>,
     server_url: &Url,
     token: Option<&str>,
     library_id: &str,
@@ -216,12 +271,32 @@ fn upload(
         .build()
         .map_err(|error| ImportError::new("client_failed", error.to_string()))?;
 
+    // An opening tick at zero, so the file shows immediately at 0% rather than
+    // only appearing once the first chunk has flushed.
+    let path = source.to_string_lossy().into_owned();
+    let _ = app.emit(
+        PROGRESS_EVENT,
+        ImportProgress {
+            path: path.clone(),
+            sent: 0,
+            total: size,
+        },
+    );
+    let reader = ProgressReader {
+        inner: handle,
+        app,
+        path,
+        sent: 0,
+        total: size,
+        last_emit: Instant::now(),
+    };
+
     let mut request = client
         .post(target)
         .header(CONTENT_TYPE, "application/octet-stream")
         // Streams from the handle rather than buffering the file, and sets a
         // real Content-Length so the server is not left guessing.
-        .body(reqwest::blocking::Body::sized(handle, size));
+        .body(reqwest::blocking::Body::sized(reader, size));
     if let Some(token) = token {
         request = request.header(AUTHORIZATION, format!("Bearer {token}"));
     }

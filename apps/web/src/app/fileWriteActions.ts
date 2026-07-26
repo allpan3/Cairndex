@@ -68,6 +68,9 @@ export interface FileWriteActions {
   importFiles: (files: File[]) => void
   /** Names still uploading, in order — the progress the UI renders. */
   importing: string[]
+  /** The current file and its place in the batch, for the copy-in indicator.
+   * No byte progress: a `fetch` upload cannot report it (the desktop path can). */
+  importProgress: { name: string; index: number; total: number } | null
   /** The delete confirmation, or null. Render with `<DeleteDialog />`. */
   pendingDelete: PendingDelete | null
   askToDelete: (paths: string[], linkedCount: number) => void
@@ -96,6 +99,11 @@ export function useFileWriteActions({
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
   const [importing, setImporting] = useState<string[]>([])
+  const [importProgress, setImportProgress] = useState<{
+    name: string
+    index: number
+    total: number
+  } | null>(null)
 
   const undoLater = (operationId: string) => () => {
     undo.mutate(operationId, {
@@ -274,6 +282,7 @@ export function useFileWriteActions({
     },
     dismissMove: () => setPendingMove(null),
     importing,
+    importProgress,
     importFiles: (files) => {
       if (files.length > 0) void runImports(files)
     },
@@ -305,8 +314,10 @@ export function useFileWriteActions({
    * still asks.
    */
   async function runImports(files: File[], policy?: ConflictPolicy): Promise<void> {
+    const total = files.length
     for (const [index, file] of files.entries()) {
       setImporting((current) => [...current, file.name])
+      setImportProgress({ name: file.name, index: index + 1, total })
       try {
         const result = await importOne.mutateAsync({
           file,
@@ -327,6 +338,7 @@ export function useFileWriteActions({
             remaining: files.slice(index + 1),
             conflictingName: failure.entryName || file.name,
           })
+          setImportProgress(null) // paused on a question until it is answered
           return
         }
         onFlash(messageOf(failure))
@@ -334,6 +346,7 @@ export function useFileWriteActions({
         setImporting((current) => current.filter((name) => name !== file.name))
       }
     }
+    setImportProgress(null)
   }
 }
 

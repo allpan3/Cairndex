@@ -5,11 +5,13 @@ import type { FileBrowserEntry, SortOrder } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
 import type { HostLabels } from '../platform'
+import { displayName, useDisplayPrefs } from '../state/displayPrefs'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
 import { FileEntryViewer } from './FileEntryViewer'
 import { useFileWriteActions } from './fileWriteActions'
+import { ImportProgress } from './ImportProgress'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -247,6 +249,11 @@ function FileList({
   // Anchor for Shift-range selection (the last plainly-clicked file).
   const [anchor, setAnchor] = useState<string | null>(null)
   const [prefs, setPrefs] = usePersistentState<FilePrefs>('cairndex.filePrefs', DEFAULT_FILE_PREFS)
+  const [displayPrefs] = useDisplayPrefs()
+  // The *displayed* name only. Renaming, search and every operation keep using
+  // `entry.name`, so hiding extensions can never change what an action does.
+  const labelFor = (entry: FileBrowserEntry) =>
+    displayName(entry.name, entry.kind === 'directory', displayPrefs.hideFileExtensions)
   const [search, setSearch] = useState('')
   const matchSearch = usePinyinSearch(search)
 
@@ -626,12 +633,7 @@ function FileList({
         // from the toolbar controls above it.
         tabIndex={-1}
       >
-        {write.importing.length > 0 && (
-          <div className="file-importing" role="status">
-            Copying{' '}
-            {write.importing.length === 1 ? write.importing[0] : `${write.importing.length} files`}…
-          </div>
-        )}
+        {write.importProgress && <ImportProgress {...write.importProgress} />}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
@@ -690,6 +692,7 @@ function FileList({
                     <FileRow
                       key={entry.relative_path}
                       entry={entry}
+                      label={labelFor(entry)}
                       selected={
                         selected.has(entry.relative_path) || entry.relative_path === selectedPath
                       }
@@ -709,6 +712,7 @@ function FileList({
                     <FileCard
                       key={entry.relative_path}
                       entry={entry}
+                      label={labelFor(entry)}
                       selected={
                         selected.has(entry.relative_path) || entry.relative_path === selectedPath
                       }
@@ -791,8 +795,11 @@ function FileRow({
   renaming,
   onRename,
   onCancelRename,
+  label,
 }: {
   entry: FileBrowserEntry
+  /** The name as displayed — may have its extension hidden (a display pref). */
+  label: string
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
@@ -826,7 +833,7 @@ function FileRow({
             onCancel={onCancelRename}
           />
         ) : (
-          <span className="file-row__text">{entry.name}</span>
+          <span className="file-row__text">{label}</span>
         )}
         {!isDir && !entry.supported && <span className="badge">unsupported</span>}
         {/* Bundle status: flag files that still need attention. A file already in
@@ -859,8 +866,11 @@ function FileCard({
   renaming,
   onRename,
   onCancelRename,
+  label,
 }: {
   entry: FileBrowserEntry
+  /** The name as displayed — may have its extension hidden (a display pref). */
+  label: string
   selected: boolean
   onClick: (e: React.MouseEvent) => void
   onDoubleClick: () => void
@@ -928,7 +938,7 @@ function FileCard({
             onCancel={onCancelRename}
           />
         ) : (
-          <div className="card__title">{entry.name}</div>
+          <div className="card__title">{label}</div>
         )}
         <div className="card__sub">
           <span>{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
