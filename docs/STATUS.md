@@ -1,14 +1,14 @@
 # Project status
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
-> post-merge interaction fixes (PR #31). Work continues on
-> `feat/file-browser-app-player` — the File Browser now opens the app's real
-> media viewer, closing the M2 follow-up. W2 stays blocked on plan 1 M11, and W6
+> post-merge interaction fixes (PR #31) and the File Browser's move onto the
+> app's real media viewer (closing the M2 follow-up). W2 stays blocked on plan 1
+> M11, and W6
 > closes the write-mode track. Two things still need the owner: a pass on a
 > genuinely downloaded build (deferred from D7), and a pass on the **native
 > Finder drag gesture** on a packaged build, which cannot be automated here.
 
-## In progress: one media viewer shell for both browsing surfaces (2026-07-26)
+## Merged: one media viewer shell for both browsing surfaces (2026-07-26)
 
 Branch `feat/file-browser-app-player`, off `main` at `33d46f0`. Owner-reported:
 playing a video from the File Browser did not use the app's player. It didn't —
@@ -71,10 +71,15 @@ tests — a linked File Browser video reaching the real pipeline with no native
 
 **No backend or API change**, so OpenAPI and `schema.d.ts` were not regenerated.
 
-**Not verified:** a hands-on pass against a real library — the evidence here is
-the e2e suite (real Chromium, and a real backend for the `@fullstack` specs).
-Worth an owner spot check on a genuinely exotic unindexed file, where the
-native-only path has no transcode to fall back on.
+**Review catch before merge:** the extracted Stage had dropped the old
+lightbox's audio branch — the server marks audio openable, so a File Browser
+`.mp3` would have hit the fallback card. Restored as the native audio element,
+with its errors routed straight to the failed card (audio has no
+decision/session pipeline, so the video recovery budget would have swallowed
+them). Pinned by the file-browser e2e spec with a generated WAV.
+
+**Verified:** owner tested the branch hands-on and reported no issues; full
+frontend gate and Playwright suite (92) green.
 
 ## Merged: post-merge interaction fixes (2026-07-26)
 
