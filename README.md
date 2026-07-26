@@ -164,6 +164,32 @@ npm run tauri dev
 
 Health check: `curl http://localhost:8000/api/v1/health`
 
+### Which surface to run, and when
+
+Cairndex is a frontend plus a server; **where the server comes from is the choice
+that trips people up.** Three ways to run it, fastest to most production-like:
+
+- **Web app** (`:8000` + `:5173`) — the browser build. Vite proxies `/api` to the
+  `:8000` backend, so both live-reload and are always current. Use this for most
+  frontend and server work; it needs no CORS setup and no desktop toolchain.
+- **Desktop shell** (`npm run tauri dev`) — the same frontend in the native
+  window. It needs a server, and you pick one:
+  - **Point it at your `:8000` server** (best while iterating) — live code, no
+    rebuilds, and it shares libraries with the web app. Start `:8000` with the dev
+    origin allowed: `CAIRNDEX_CORS_EXTRA_ORIGINS=http://127.0.0.1:5173`, then
+    connect the app to `http://127.0.0.1:8000`.
+  - **"This Computer"** — the shell runs its own **bundled** server, which is what
+    ships to users but is a *frozen* build. Rebuild it after server changes
+    (`apps/server/packaging/build_sidecar.py`) or it serves stale code — the cause
+    of a route that `404`s in the desktop while the web app works.
+- **Packaged app** (`tauri build`, below) — the real installable `.app`, needed
+  for deep links, notifications, and genuine end-user testing.
+
+Rule of thumb: **run `:8000` for the web app and for a live-code desktop; build
+the desktop server (sidecar or packaged app) only to test the self-contained
+product.** Full detail — CORS, the sidecar freshness trap, the single-owner lease
+— is in [docs/development.md](docs/development.md#desktop-appsdesktop).
+
 ### Rebuilding and reinstalling the desktop app
 
 `tauri dev` above runs the shell against the Vite dev server. To test a **packaged**

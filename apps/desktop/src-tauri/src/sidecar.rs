@@ -165,6 +165,11 @@ impl LocalServer {
 struct Pick {
     token: String,
     root: PathBuf,
+    /// Whether the parked folder is already a Cairndex library, so confirming
+    /// *registers* it rather than *creating* one. Both are deferred to the
+    /// confirm step now, so nothing is added to the registry until the user
+    /// clicks Add — the pick only ever parks a path.
+    is_library: bool,
 }
 
 /// The one pending pick awaiting confirmation.
@@ -180,28 +185,29 @@ pub(crate) struct PendingPick {
 
 impl PendingPick {
     /// Park a picked path and mint the token that redeems it.
-    fn store(&self, root: PathBuf) -> Result<String, SidecarError> {
+    fn store(&self, root: PathBuf, is_library: bool) -> Result<String, SidecarError> {
         let token = random_token()?;
         *lock_through_poison(&self.slot) = Some(Pick {
             token: token.clone(),
             root,
+            is_library,
         });
         Ok(token)
     }
 
-    /// Redeem a token for the path it was minted for, consuming the slot.
+    /// Redeem a token for the path and kind it was minted for, consuming the slot.
     ///
     /// A token that does not match leaves the slot **intact**: the mismatch
     /// means this token belongs to a pick that has already been superseded, and
-    /// consuming the current one would create a library at a folder the user
-    /// picked later, from a dialog they answered about an earlier one.
-    fn take(&self, token: &str) -> Result<PathBuf, SidecarError> {
+    /// consuming the current one would add a library at a folder the user picked
+    /// later, from a dialog they answered about an earlier one.
+    fn take(&self, token: &str) -> Result<(PathBuf, bool), SidecarError> {
         let mut guard = lock_through_poison(&self.slot);
         match guard.as_ref() {
             Some(pick) if pick.token == token => {
-                let root = pick.root.clone();
+                let redeemed = (pick.root.clone(), pick.is_library);
                 *guard = None;
-                Ok(root)
+                Ok(redeemed)
             }
             _ => Err(SidecarError::new(
                 SidecarErrorCode::PickExpired,
@@ -411,6 +417,19 @@ fn launch(binary: &Path, data_dir: &Path) -> Result<(Child, LocalServerInfo), Si
         }
     }
 
+    // In `tauri dev` the webview is served from Vite's dev origin
+    // (`http://127.0.0.1:5173`, the `devUrl` in `tauri.conf.json`), which the
+    // sidecar's CORS list does not include — only the packaged `tauri://`
+    // origins are trusted by default. Without this, the browser blocks every
+    // cross-origin call from the dev webview to the sidecar, which silently
+    // breaks the HTTP-based flows (adding a library, path completion) while the
+    // app otherwise starts fine. Only in dev, and only when the developer has
+    // not set their own value — a deliberate override in the shell's env is
+    // inherited by the child and left to win.
+    if tauri::is_dev() && std::env::var_os("CAIRNDEX_CORS_EXTRA_ORIGINS").is_none() {
+        command.env("CAIRNDEX_CORS_EXTRA_ORIGINS", "http://127.0.0.1:5173");
+    }
+
     let mut child = command
         .spawn()
         .map_err(|error| SidecarError::new(SidecarErrorCode::SpawnFailed, error.to_string()))?;
@@ -505,6 +524,10 @@ pub(crate) struct OpenedLibrary {
     /// The picked folder's basename, which prefills the name field of the
     /// confirmation. Only set with `needs_confirmation`.
     pub(crate) folder_name: Option<String>,
+    /// With `needs_confirmation`, whether the parked folder is already a library
+    /// (confirm registers it, no name needed) or a plain folder (confirm creates
+    /// one from the typed name). Lets the dialog show "Add" versus "Create".
+    pub(crate) is_library: bool,
     /// `true` when the caller already has this library on its current server, so
     /// no local server was started and nothing was registered.
     pub(crate) already_available: bool,
@@ -541,6 +564,12 @@ pub(crate) struct OpenedLibrary {
 pub(crate) async fn open_library_folder<R: Runtime>(
     app: AppHandle<R>,
     known_library_uuids: Vec<String>,
+    // `true` from the Manage dialog, where Browse means "pick a folder" and Add
+    // is the deliberate second step: an existing library is *parked*, not
+    // registered, until the user confirms. `false` from the first-run/menu
+    // "open a folder" flow, where opening an existing library immediately is the
+    // whole point. A plain folder always parks (it needs a name either way).
+    stage: bool,
 ) -> Result<Option<OpenedLibrary>, SidecarError> {
     // The dialog must be driven from the caller's thread, as the other pickers
     // in this shell already are; everything after it can block.
@@ -549,19 +578,12 @@ pub(crate) async fn open_library_folder<R: Runtime>(
         return Ok(None);
     };
 
-    if !picked.is_library() {
-        let token = app.state::<PendingPick>().store(picked.root)?;
-        return Ok(Some(OpenedLibrary {
-            needs_confirmation: true,
-            token: Some(token),
-            folder_name: Some(picked.folder_name),
-            ..OpenedLibrary::default()
-        }));
-    }
-
-    if known_library_uuids
-        .iter()
-        .any(|uuid| uuid.eq_ignore_ascii_case(&picked.library_uuid))
+    // A folder the caller's current server already serves: nothing to add, so
+    // this stays immediate — the caller just selects what it already has.
+    if picked.is_library()
+        && known_library_uuids
+            .iter()
+            .any(|uuid| uuid.eq_ignore_ascii_case(&picked.library_uuid))
     {
         return Ok(Some(OpenedLibrary {
             already_available: true,
@@ -571,18 +593,37 @@ pub(crate) async fn open_library_folder<R: Runtime>(
         }));
     }
 
-    tauri::async_runtime::spawn_blocking(move || {
-        let info = start(&app)?;
-        let library_id = register_library(&info, &picked.root)?;
-        Ok(Some(OpenedLibrary {
-            library_id,
-            library_uuid: picked.library_uuid,
-            display_name: picked.display_name,
-            ..OpenedLibrary::default()
-        }))
-    })
-    .await
-    .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?
+    // Open-and-switch an existing library right away (the non-staging callers).
+    if picked.is_library() && !stage {
+        return tauri::async_runtime::spawn_blocking(move || {
+            let info = start(&app)?;
+            let library_id = register_library(&info, &picked.root)?;
+            // Located by the same pick that opened it — no separate step later.
+            remember_local_mapping(&app, &library_id, &picked.root);
+            Ok(Some(OpenedLibrary {
+                library_id,
+                library_uuid: picked.library_uuid,
+                display_name: picked.display_name,
+                ..OpenedLibrary::default()
+            }))
+        })
+        .await
+        .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?;
+    }
+
+    // Park the pick — a plain folder (confirm creates a library) or, when
+    // staging, an existing library (confirm registers it). The registry is not
+    // touched until the user confirms, so Browse adds nothing on its own.
+    let is_library = picked.is_library();
+    let token = app.state::<PendingPick>().store(picked.root, is_library)?;
+    Ok(Some(OpenedLibrary {
+        needs_confirmation: true,
+        token: Some(token),
+        folder_name: Some(picked.folder_name),
+        is_library,
+        display_name: picked.display_name,
+        ..OpenedLibrary::default()
+    }))
 }
 
 /// Create a library at the folder a previous pick parked, and open it.
@@ -599,12 +640,40 @@ pub(crate) async fn confirm_picked_library<R: Runtime>(
     name: String,
 ) -> Result<OpenedLibrary, SidecarError> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = app.state::<PendingPick>().take(&token)?;
+        let (root, is_library) = app.state::<PendingPick>().take(&token)?;
         let info = start(&app)?;
-        create_library(&info, &root, &name)
+        let opened = if is_library {
+            // Already a library: register it (its manifest carries the name), so
+            // the typed `name` is not used — the row keeps the identity on disk.
+            let library_id = register_library(&info, &root)?;
+            OpenedLibrary {
+                library_id,
+                ..OpenedLibrary::default()
+            }
+        } else {
+            create_library(&info, &root, &name)?
+        };
+        // The picker already had this path and (for an existing library) proved
+        // its marker, so record the local mapping now — the library is located
+        // without a second manual pick. Best-effort: a mapping failure must not
+        // undo the registration, only leave "Locate on This Mac" available.
+        remember_local_mapping(&app, &opened.library_id, &root);
+        Ok(opened)
     })
     .await
     .map_err(|error| SidecarError::new(SidecarErrorCode::OpenFailed, error.to_string()))?
+}
+
+/// Record where a just-added library lives on this Mac, best-effort.
+///
+/// The uuid comes from the folder's own marker rather than a caller argument, so
+/// this one helper covers both a freshly *created* library and a *registered*
+/// existing one, and cannot store a mapping the marker would not back.
+fn remember_local_mapping<R: Runtime>(app: &AppHandle<R>, library_id: &str, root: &Path) {
+    let Some(uuid) = read_uuid(root) else {
+        return;
+    };
+    let _ = mappings::remember_mapping(app, library_id, &uuid, root);
 }
 
 // One client for a single request to the sidecar, with a bound on how long a
@@ -1042,9 +1111,21 @@ mod tests {
         let pending = PendingPick::default();
         let root = PathBuf::from("/tmp/cairndex-pick");
 
-        let token = pending.store(root.clone()).expect("store");
+        let token = pending.store(root.clone(), false).expect("store");
 
-        assert_eq!(pending.take(&token).expect("take"), root);
+        assert_eq!(pending.take(&token).expect("take"), (root, false));
+    }
+
+    #[test]
+    fn a_pick_remembers_whether_the_folder_is_already_a_library() {
+        // The flag rides with the parked path so confirm registers an existing
+        // library rather than trying to create one over it.
+        let pending = PendingPick::default();
+        let root = PathBuf::from("/tmp/cairndex-existing");
+
+        let token = pending.store(root.clone(), true).expect("store");
+
+        assert_eq!(pending.take(&token).expect("take"), (root, true));
     }
 
     #[test]
@@ -1053,7 +1134,7 @@ mod tests {
         // not create a second library at the same folder.
         let pending = PendingPick::default();
         let token = pending
-            .store(PathBuf::from("/tmp/cairndex-pick"))
+            .store(PathBuf::from("/tmp/cairndex-pick"), false)
             .expect("store");
 
         assert!(pending.take(&token).is_ok());
@@ -1069,16 +1150,21 @@ mod tests {
         // stale token must not create a library at the new one.
         let pending = PendingPick::default();
         let first = pending
-            .store(PathBuf::from("/tmp/cairndex-first"))
+            .store(PathBuf::from("/tmp/cairndex-first"), false)
             .expect("store first");
         let second_root = PathBuf::from("/tmp/cairndex-second");
-        let second = pending.store(second_root.clone()).expect("store second");
+        let second = pending
+            .store(second_root.clone(), false)
+            .expect("store second");
 
         let error = pending.take(&first).expect_err("superseded token");
         assert_eq!(error.code, SidecarErrorCode::PickExpired);
 
         // The newer pick survived the rejected attempt.
-        assert_eq!(pending.take(&second).expect("take second"), second_root);
+        assert_eq!(
+            pending.take(&second).expect("take second"),
+            (second_root, false)
+        );
     }
 
     #[test]
@@ -1096,19 +1182,26 @@ mod tests {
         // the parked path stays parked until the next pick replaces it.
         let pending = PendingPick::default();
         let root = PathBuf::from("/tmp/cairndex-cancelled");
-        let token = pending.store(root.clone()).expect("store");
+        let token = pending.store(root.clone(), false).expect("store");
 
         // …user closes the dialog; no take happens…
 
-        assert_eq!(pending.take(&token).expect("still redeemable"), root);
+        assert_eq!(
+            pending.take(&token).expect("still redeemable"),
+            (root, false)
+        );
     }
 
     #[test]
     fn every_pick_mints_a_distinct_token() {
         let pending = PendingPick::default();
 
-        let first = pending.store(PathBuf::from("/tmp/a")).expect("store");
-        let second = pending.store(PathBuf::from("/tmp/b")).expect("store");
+        let first = pending
+            .store(PathBuf::from("/tmp/a"), false)
+            .expect("store");
+        let second = pending
+            .store(PathBuf::from("/tmp/b"), false)
+            .expect("store");
 
         assert_ne!(first, second);
         assert_eq!(first.len(), 64);

@@ -48,6 +48,7 @@ interface RawOpenedLibrary {
   needs_confirmation: boolean
   token: string | null
   folder_name: string | null
+  is_library: boolean
   already_available: boolean
   library_id: string
   library_uuid: string
@@ -61,6 +62,7 @@ function toOpenedLibrary(raw: RawOpenedLibrary): OpenedLibrary {
     needsConfirmation: raw.needs_confirmation,
     token: raw.token,
     folderName: raw.folder_name,
+    isLibrary: raw.is_library,
     alreadyAvailable: raw.already_available,
     libraryId: raw.library_id,
     libraryUuid: raw.library_uuid,
@@ -235,8 +237,8 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       invoke<{ base_url: string; token: string } | null>('local_server_status').then((info) =>
         info ? { baseUrl: info.base_url, token: info.token } : null,
       ),
-    openLibraryFolder: (knownLibraryUuids) =>
-      invoke<RawOpenedLibrary | null>('open_library_folder', { knownLibraryUuids }).then(
+    openLibraryFolder: (knownLibraryUuids, stage) =>
+      invoke<RawOpenedLibrary | null>('open_library_folder', { knownLibraryUuids, stage }).then(
         (opened) => (opened ? toOpenedLibrary(opened) : null),
       ),
     confirmPickedLibrary: (token, name) =>

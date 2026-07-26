@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:bundled": "node ./dev-bundled.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.5"

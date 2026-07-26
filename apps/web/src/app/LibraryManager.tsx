@@ -12,6 +12,7 @@ import {
   useLibraryMutations,
   useWriteModeMutation,
 } from '../api/hooks'
+import { getActiveConnection } from '../desktop/connections'
 import { confirmPickedLibrary, openLibraryFolder } from '../desktop/openLibraryFolder'
 import { hostOperationErrorMessage, isDesktopHost } from '../platform'
 
@@ -61,6 +62,10 @@ export function LibraryManager({
   const rows = libraries.data ?? []
   const busy =
     hostBusy || create.isPending || register.isPending || probe.isPending || remove.isPending
+  // A staged pick of an existing library: confirming *registers* it (its own
+  // manifest carries the name), so the name field is read-only and the primary
+  // button reads Add rather than Create.
+  const addingLibrary = confirming?.kind === 'pick' && confirming.isLibrary
 
   // Enter the name step, prefilled with the folder's own name.
   const askForName = (next: ConfirmState) => {
@@ -112,26 +117,43 @@ export function LibraryManager({
   }
 
   // Desktop only: the same three outcomes, reached through the native picker.
+  //
+  // A natively-picked folder is always a *local*-server library. On the local
+  // connection, picking it *adds* it — the list refreshes and the dialog stays
+  // open, so adding is not the same as switching, and Browse mirrors the typed
+  // path (pick, then an explicit Add). Only a remote connection has to adopt
+  // (switch to the local server), because the folder cannot otherwise join the
+  // list being shown; that path keeps the old switch-and-close behaviour.
   const browse = async () => {
     if (busy) return
     setError(null)
     setHostBusy(true)
     try {
+      // `stage: true` — the shell parks the pick instead of adding it, so Browse
+      // only picks a folder and the deliberate Add is the confirm step below.
       const { opened } = await openLibraryFolder(
         rows.map((library) => library.library_uuid).filter(Boolean),
+        { stage: true },
       )
       if (!opened) return // cancelled — nothing changed
       if (opened.needsConfirmation && opened.token) {
-        askForName({ kind: 'pick', token: opened.token, folderName: opened.folderName ?? '' })
+        // A plain folder to name, or a library to add: both go to the confirm
+        // step, where the button reads Create or Add accordingly.
+        askForName({
+          kind: 'pick',
+          token: opened.token,
+          folderName: opened.folderName ?? '',
+          isLibrary: opened.isLibrary,
+        })
         return
       }
       if (opened.alreadyAvailable) {
+        // Not an add — the current server already has it, so go to it.
         const here = rows.find((library) => library.library_uuid === opened.libraryUuid)
         if (here) onSelect?.(here.id)
+        onClose()
       }
-      // Anything else already switched to the local connection and queued its
-      // own selection, which lands after the remount this modal will not survive.
-      onClose()
+      // A staged pick always needs confirmation, so there is no other outcome.
     } catch (failure) {
       setError(hostOperationErrorMessage(failure))
     } finally {
@@ -148,7 +170,15 @@ export function LibraryManager({
       if (confirming.kind === 'pick') {
         // The shell holds the folder against this token; it never crossed into
         // this layer, and a token a later pick superseded is refused.
-        await confirmPickedLibrary(confirming.token, chosen)
+        const adopt = getActiveConnection()?.kind === 'remote'
+        await confirmPickedLibrary(confirming.token, chosen, { adopt })
+        if (!adopt) {
+          // Added to the local server: show it in the list and return to the
+          // add row so another can follow, rather than switching and closing.
+          await libraries.refetch()
+          cancelConfirm()
+          return
+        }
       } else {
         const added = await create.mutateAsync({
           root_path: confirming.path,
@@ -217,7 +247,7 @@ export function LibraryManager({
           }}
         >
           <label className="field-label" htmlFor={confirming ? 'new-library-name' : 'library-path'}>
-            {confirming ? 'Name' : 'Add library'}
+            {confirming ? (addingLibrary ? 'Library' : 'Name') : 'Add library'}
           </label>
           {/* One row, so the suggestion menu — which stays open to drill down —
               drops over the hint text below rather than over the action it
@@ -230,6 +260,10 @@ export function LibraryManager({
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 aria-label="Library name"
+                // An existing library keeps the name from its own manifest, so
+                // the field is read-only there — it shows what will be added
+                // rather than inviting an edit that registration would ignore.
+                readOnly={addingLibrary}
                 // Focused and selected, so the prefilled folder name is one
                 // keystroke away from being replaced and Enter confirms it.
                 autoFocus
@@ -259,7 +293,7 @@ export function LibraryManager({
               className="btn btn--primary"
               disabled={busy || !(confirming ? name.trim() : path.trim())}
             >
-              {confirming ? 'Create library' : 'Add library'}
+              {confirming ? (addingLibrary ? 'Add library' : 'Create library') : 'Add library'}
             </button>
           </div>
           <p className="lib-add__hint">
@@ -279,13 +313,16 @@ export function LibraryManager({
 type ConfirmState =
   | { kind: 'path'; path: string; createFolder: boolean; folderName: string }
   // `token` stands in for the folder the shell picked and is holding; the path
-  // itself never enters this layer (see `mappings::PickedFolder`).
-  | { kind: 'pick'; token: string; folderName: string }
+  // itself never enters this layer (see `mappings::PickedFolder`). `isLibrary`
+  // decides whether confirming registers an existing library or creates one.
+  | { kind: 'pick'; token: string; folderName: string; isLibrary: boolean }
 
 /** What confirming will actually do, in one sentence. */
 function newLibraryAsk(target: ConfirmState): string {
   if (target.kind === 'pick') {
-    return `“${target.folderName}” isn’t a Cairndex library. Confirming creates a new one there.`
+    return target.isLibrary
+      ? `“${target.folderName}” is a Cairndex library. Confirming adds it to this server.`
+      : `“${target.folderName}” isn’t a Cairndex library. Confirming creates a new one there.`
   }
   if (target.createFolder) {
     return `${target.path} doesn’t exist yet. Confirming creates the folder and a new library in it.`
