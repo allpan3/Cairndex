@@ -443,6 +443,7 @@ export function ViewerShell({
             videoActive={videoActive}
             hls={hls}
             onError={handleStageError}
+            onFailed={() => currentKey && setFailedKey(currentKey)}
             onRetryFailed={retryFailedPlayback}
           />
         )}
@@ -485,6 +486,7 @@ function Stage({
   videoActive,
   hls,
   onError,
+  onFailed,
   onRetryFailed,
 }: {
   item: ViewerItem
@@ -496,7 +498,10 @@ function Stage({
   failed: boolean
   videoActive: boolean
   hls: HlsSessionState
+  /** Video-stage errors: routed through re-attach/reload recovery first. */
   onError: () => void
+  /** Unrecoverable media errors: straight to the failed card, no recovery. */
+  onFailed: () => void
   onRetryFailed: () => void
 }) {
   if (!item.available) {
@@ -522,6 +527,22 @@ function Stage({
   }
   if (item.mediaKind === 'image' && item.supported && !failed) {
     return <ImageStage key={item.key} item={item} onError={onError} />
+  }
+  // Audio keeps the native element the old File Browser lightbox used: there is
+  // no decision/session pipeline for it, so its errors are unrecoverable and go
+  // straight to the failed card rather than through the video recovery budget.
+  if (item.mediaKind === 'audio' && item.supported && !failed) {
+    return (
+      <audio
+        key={item.key}
+        className="mv-audio"
+        src={item.contentUrl}
+        controls
+        autoPlay
+        onError={onFailed}
+        data-testid="media-audio"
+      />
+    )
   }
   // The playback decision now drives video playability (M7): a source may need a
   // remux/transcode HLS session, so the manifest's direct-only `playable` flag

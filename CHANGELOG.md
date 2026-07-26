@@ -230,7 +230,8 @@ grouped under `Unreleased` until the first tagged release.
   resume. It now opens the same viewer the Bundle Browser uses, so
   <kbd>←</kbd>/<kbd>→</kbd> seek, <kbd>Space</kbd> plays, and everything the
   player can do is available from either surface. Images gain the zoom/pan stage
-  for the same reason.
+  for the same reason. Audio keeps the native element it always had —
+  there is no custom audio UI yet.
 
   **Stepping still follows the folder, not a bundle.** The File Browser keeps
   owning its own playlist — the openable files in the directory you are looking
