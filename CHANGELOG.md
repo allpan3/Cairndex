@@ -230,11 +230,19 @@ grouped under `Unreleased` until the first tagged release.
   which the sidebar now reserves. The toolbar sits in that same strip and drags
   the window, as a native toolbar does. Browser tabs are unaffected.
 
-- **Recently Added no longer offers a sort.** The server treats it as the All
-  view — date-added descending is the only thing that makes it "recent" — so
-  changing the sort there quietly produced a second All view under a misleading
-  name (and the choice was remembered, so it stayed wrong). The control now
-  shows the fixed order and says why, rather than disappearing.
+- **"Recently Added" is now "Recent", and picks its date.** It ranks by **Date
+  Added**, **Date Modified**, or **Date Opened** — *which* date is the whole
+  choice the view offers, so its menu holds those three and nothing else. Sorting
+  it by Title or Size only produced a second All view under a misleading name
+  (the server treats `recent` as All; only the ordering differs), and the
+  per-view preference remembered the mistake.
+
+  Date Opened is new: opening a bundle — in the album view or the viewer —
+  records the time. It is stored separately from the modified time on purpose,
+  so merely looking at something never counts as changing it: opening consumes
+  no version and leaves Date Modified alone. A library that predates this gains
+  the column on open, with everything in it reading as never-opened, which is
+  what actually happened.
 
 - **The sidebar no longer highlights a collection selected in the grid.** The
   tree's highlight means "this is where you are", and selecting a folder card
@@ -244,6 +252,22 @@ grouped under `Unreleased` until the first tagged release.
   unchanged.
 
 ### Fixed
+
+- **The desktop window could not be moved.** Two causes, both silent. Tauri's
+  `data-tauri-drag-region` in its bare form only fires when the click lands on
+  that exact element, and the app's top row is made of children — a flex spacer,
+  the title and count — so nearly every grab hit a child and did nothing; the
+  drag strips now use the `deep` form, which still refuses on buttons and
+  inputs. Underneath that, the shell's capability file never granted
+  `core:window:allow-start-dragging`, so the drag request was denied by the
+  permission layer even where the region matched. The sidebar's padding and the
+  inspector column, both dead bands at the window's top edge, now drag too.
+
+- **Dragging a collection to reorder it showed no insertion line.** The folder
+  card's redesign clipped its own overflow, and the drop indicator is drawn in
+  the gap just *outside* the card — so it was clipped away, leaving a reorder
+  drag with no sign of where it would land. The card no longer clips; the cover
+  and the footer clip themselves, which is all that ever needed it.
 
 - **Cover art was intercepting the gestures meant for the card holding it.** A
   thumbnail is decoration, but the browser treated the image element as the

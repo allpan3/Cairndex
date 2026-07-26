@@ -11,7 +11,7 @@ import type {
   SmartCollectionRead,
   SortOrder,
 } from './api/client'
-import { setActiveLibraryId } from './api/client'
+import { markBundleOpened, setActiveLibraryId } from './api/client'
 import {
   useBatchUpdate,
   useBrowse,
@@ -105,6 +105,7 @@ import { useDesktopMenu, useDesktopMenuAvailability } from './desktop/useDesktop
 import { useJobNotifications } from './desktop/useJobNotifications'
 import {
   DEFAULT_PREFS,
+  RECENT_SORTS,
   SYSTEM_VIEWS,
   type AppMode,
   type BrowsePrefs,
@@ -962,17 +963,22 @@ function Workspace({
     : selection.collectionId
       ? `coll:${selection.collectionId}`
       : `view:${selection.view}`
-  // Recently Added *is* a sort. The server treats it as the All view — the only
-  // thing that makes it "recent" is date-added descending — so a sort change
-  // there would silently turn it into a second All view under a misleading name.
-  // The sort is fixed here, and the toolbar's control says so (disabled with a
-  // reason) rather than vanishing.
-  const sortLocked = selection.view === 'recent' && selection.collectionId === null
-  const effectiveSort: SortPref = sortLocked
-    ? { sort: 'date_added', order: 'desc' }
-    : prefs.sortScope === 'collection'
+  // Recent ranks by a date, and *which* date is the whole choice the view
+  // offers — Title or Size there would just be the All view under another name
+  // (the server treats `recent` as All; only the ordering differs). So the sort
+  // menu is narrowed to the three date orders, and a sort carried in from
+  // another view falls back to Date Added rather than showing something the
+  // menu can no longer express.
+  const isRecentView = selection.view === 'recent' && selection.collectionId === null
+  const allowedSorts: BundleSort[] | undefined = isRecentView ? RECENT_SORTS : undefined
+  const storedSort: SortPref =
+    prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
       : { sort: prefs.sort, order: prefs.order }
+  const effectiveSort: SortPref =
+    allowedSorts && !allowedSorts.includes(storedSort.sort)
+      ? { sort: 'date_added', order: 'desc' }
+      : storedSort
   const setEffectiveSort = useCallback(
     (sort: BundleSort, order: SortOrder) => {
       if (prefs.sortScope === 'collection') {
@@ -1090,6 +1096,7 @@ function Workspace({
     setActiveId(id)
     setSelectedCollectionIds(new Set())
     setViewerTarget({ bundleId: id })
+    void markBundleOpened(id)
   }, [])
 
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
@@ -1213,6 +1220,7 @@ function Workspace({
           label: 'Open Bundle',
           onClick: () => {
             setOpenBundleId(id)
+            void markBundleOpened(id)
             setViewerTarget(null)
           },
           disabled: n > 1,
@@ -1806,7 +1814,7 @@ function Workspace({
               sort={effectiveSort.sort}
               order={effectiveSort.order}
               onSort={setEffectiveSort}
-              sortLockedReason={sortLocked ? 'Recently Added is always newest first' : undefined}
+              allowedSorts={allowedSorts}
               perCollectionSort={prefs.sortScope === 'collection'}
               onPerCollectionSort={(v) =>
                 setPrefs({ ...prefs, sortScope: v ? 'collection' : 'global' })

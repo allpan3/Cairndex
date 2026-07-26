@@ -386,3 +386,49 @@ def test_collection_counts_endpoint(client: TestClient, library_id: str) -> None
 
     counts = client.get(f"{base}/collections/counts").json()["counts"]
     assert counts == {root: 3, child: 2, leaf: 2, empty: 0}
+
+
+def test_date_opened_sort_puts_never_opened_last(session: Session) -> None:
+    """The Recent view's Date Opened order. A bundle nobody has opened has no
+    timestamp to rank by, and belongs at the end of "most recently opened"."""
+    never = bundle_service.create_bundle(session, title="never")
+    first = bundle_service.create_bundle(session, title="first")
+    second = bundle_service.create_bundle(session, title="second")
+    session.commit()
+
+    bundle_service.mark_bundle_opened(session, first.id)
+    bundle_service.mark_bundle_opened(session, second.id)
+    session.commit()
+
+    page = browse_bundles(session, sort=BundleSort.DATE_OPENED, descending=True)
+    assert [b.title for b in page.items][:2] == ["second", "first"]
+    assert page.items[-1].title == "never"
+    assert never.last_opened_at is None
+
+
+def test_marking_opened_is_not_an_edit(session: Session) -> None:
+    """Opening must not bump the metadata version or the modified time: it is a
+    read, and either would make browsing look like editing (and would drag every
+    glanced-at bundle to the top of Date Modified)."""
+    bundle = bundle_service.create_bundle(session, title="b")
+    session.commit()
+    before_version, before_updated = bundle.version, bundle.updated_at
+
+    bundle_service.mark_bundle_opened(session, bundle.id)
+    session.commit()
+
+    assert bundle.last_opened_at is not None
+    assert bundle.version == before_version
+    assert bundle.updated_at == before_updated
+
+
+def test_date_modified_sort_follows_metadata_edits(session: Session) -> None:
+    older = bundle_service.create_bundle(session, title="older")
+    bundle_service.create_bundle(session, title="newer")
+    session.commit()
+
+    bundle_service.update_bundle(session, older.id, {"rating": 5})
+    session.commit()
+
+    page = browse_bundles(session, sort=BundleSort.DATE_MODIFIED, descending=True)
+    assert page.items[0].title == "older"

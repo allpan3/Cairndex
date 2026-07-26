@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for the Cairndex main window. Note that core:window:default grants only getter commands, so every mutating window command must be listed explicitly — allow-set-badge-count is required or the dock badge is silently denied. The deep-link plugin needs no capability here: its scheme registration is build-time config and the SPA consumes links through a shell-owned event and command, not the plugin's JS API.",
+  "description": "Capabilities for the Cairndex main window. Note that core:window:default grants only getter commands, so every mutating window command must be listed explicitly — allow-set-badge-count is required or the dock badge is silently denied, and allow-start-dragging / allow-internal-toggle-maximize are what make the merged title bar's data-tauri-drag-region strips work at all (Tauri always injects the drag script, but the invoke it fires is denied without these, so dragging fails silently). The deep-link plugin needs no capability here: its scheme registration is build-time config and the SPA consumes links through a shell-owned event and command, not the plugin's JS API.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-destroy",
     "core:window:allow-set-badge-count",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
     "store:default",
     "notification:default"
   ]

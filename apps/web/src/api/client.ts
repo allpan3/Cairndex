@@ -69,7 +69,15 @@ export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionReq
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
-export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count' | 'manual'
+export type BundleSort =
+  | 'date_added'
+  | 'date_modified'
+  | 'date_opened'
+  | 'title'
+  | 'rating'
+  | 'size'
+  | 'file_count'
+  | 'manual'
 // The real (non-manual) sorts a "Clean up by…" can rewrite the manual order to.
 export type CleanupSort = Exclude<BundleSort, 'manual'>
 export type SortOrder = 'asc' | 'desc'
@@ -1038,6 +1046,11 @@ export const updateBundle = (id: string, patch: BundlePatch, version?: number) =
 
 export const updateBundleCursor = (id: string, fileId: string) =>
   send<BundleCursorRead>(`${lib()}/bundles/${id}/cursor`, 'PUT', { file_id: fileId })
+
+/** Stamp "last opened" for the Recent view's Date Opened order. Fire-and-forget:
+ *  opening a bundle must not wait on it, and must not fail because of it. */
+export const markBundleOpened = (id: string) =>
+  send<void>(`${lib()}/bundles/${id}/opened`, 'POST').catch(() => undefined)
 
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })
