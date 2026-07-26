@@ -327,6 +327,8 @@ function FileList({
     setSelected(new Set([entry.relative_path]))
     onSelectEntry(entry)
     const items: MenuEntry[] = [
+      { label: 'Copy Path', onClick: () => copyPath(entry.relative_path) },
+      null,
       { label: 'Rename…', onClick: () => write.startRename(entry.relative_path) },
       { label: 'Move to…', onClick: () => write.askToMove([entry.relative_path]) },
       // A folder's own delete takes everything inside it, in one operation.
@@ -352,6 +354,14 @@ function FileList({
     }
     const n = targets.length
     const items: MenuEntry[] = [
+      // First, and independent of write mode: the inspector no longer prints the
+      // path, so copying it must always be reachable.
+      {
+        label: 'Copy Path',
+        disabled: n > 1,
+        onClick: () => copyPath(entry.relative_path),
+      },
+      null,
       {
         label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
         onClick: () => onAddToBundle(targets),
@@ -417,6 +427,15 @@ function FileList({
     e.preventDefault()
     setDropActive(false)
     write.importFiles([...e.dataTransfer.files])
+  }
+
+  // Copy the library-relative path — the inspector no longer prints it (it is the
+  // longest value there and rarely read), so this is how it is retrieved.
+  const copyPath = (relativePath: string) => {
+    void navigator.clipboard
+      ?.writeText(relativePath)
+      .then(() => props.onFlash?.(`Copied “${relativePath}”.`))
+      .catch(() => props.onFlash?.('The path could not be copied.'))
   }
 
   // How many of these paths a bundle is built on — the part of a delete worth

@@ -133,6 +133,16 @@
       "label": "View",
       "items": [
         {
+          "id": "reload",
+          "label": "Reload",
+          "accelerator": "CmdOrCtrl+R",
+          "browserReserved": true,
+          "keys": []
+        },
+        {
+          "separator": true
+        },
+        {
           "id": "show-bundles",
           "label": "Bundles",
           "accelerator": "CmdOrCtrl+1",
