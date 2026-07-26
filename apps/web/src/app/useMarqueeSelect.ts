@@ -68,13 +68,11 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     const scrollbarW = scrollEl.offsetWidth - scrollEl.clientWidth
     if (scrollbarW > 0 && e.clientX > scrollEl.getBoundingClientRect().right - scrollbarW) return
 
-    // Stop the browser from starting a text selection on this press. CSS alone was
-    // not enough: a drag that *begins* on the container background (or just
-    // outside a section) still paints a selection across everything it sweeps,
-    // including labels the pointer never touched. Preventing the default on the
-    // mousedown that begins a marquee is what actually suppresses it, and any
-    // selection left over from a previous gesture is cleared with it.
-    e.preventDefault()
+    // Any selection left from a previous gesture goes now; the `selectstart`
+    // blocker below stops a new one forming. Deliberately *not*
+    // `e.preventDefault()` here: that also suppresses `dragstart`, which is how
+    // dragging a bundle onto a collection works — this same mousedown is allowed
+    // to become a native drag (see `onNativeDrag`).
     globalThis.getSelection?.()?.removeAllRanges()
 
     const additive = e.metaKey || e.ctrlKey || e.shiftKey
@@ -158,10 +156,17 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     // a card/row to move it): it swallows the mouseup that would normally end the
     // marquee, so without this the selection box would stick on screen. In that
     // case we just abandon the marquee (no empty-click deselect).
+    // Suppresses text selection for the life of this gesture only. Narrower than
+    // preventing the mousedown's default (which would kill `dragstart` with it)
+    // and stronger than CSS, which does not stop a selection that *starts* on the
+    // container background from sweeping across the labels it passes over.
+    const onSelectStart = (ev: Event) => ev.preventDefault()
+
     const finish = (fromDrag: boolean) => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('dragstart', onNativeDrag)
+      window.removeEventListener('selectstart', onSelectStart)
       if (state.raf) cancelAnimationFrame(state.raf)
       if (!fromDrag && !state.dragging && !additive) opts.onChange([])
       setMarqueeRect(null)
@@ -172,6 +177,7 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('dragstart', onNativeDrag)
+    window.addEventListener('selectstart', onSelectStart)
   }
 
   return { marqueeRect, onMouseDown }
