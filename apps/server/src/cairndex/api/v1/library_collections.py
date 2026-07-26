@@ -45,9 +45,13 @@ def list_collections(db: LibrarySession, page: Pagination) -> Page[CollectionRea
 
 @router.put("/reorder", response_model=list[CollectionRead])
 def reorder_collections(payload: CollectionReorder, db: LibrarySession) -> list[CollectionRead]:
-    """Persist a manual drag-reorder of one sibling group (NULL parent = top
-    level). The sidebar tree and the main-browser folder cards both render from
-    this ``sort_order`` so a reorder in either surface updates both."""
+    """Move collections into a group at a gap — the whole drag, in one request.
+
+    Reparents whatever is not already in ``parent_id``'s group, then places the
+    block. The sidebar tree and the main-browser folder cards both render from
+    this ``sort_order``, so a move in either surface updates both. Answers with
+    the resulting group so the client never has to re-derive (or re-fetch) where
+    the drop landed."""
     rows = service.reorder_collections(
         db,
         parent_id=payload.parent_id,

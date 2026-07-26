@@ -250,11 +250,10 @@ export function Browser(props: BrowserProps) {
     // rows aren't reorder-draggable (list rows fill the width, so there'd be no
     // empty space to grab otherwise; a plain click still selects via the 4px
     // threshold). In manual sort the native row-drag owns the gesture instead.
-    isBackgroundTarget: (target) => {
-      if (target.closest('.list-row--head')) return false
-      if (!target.closest('[data-bundle-id]')) return true
-      return layout === 'list' && !onReorder
-    },
+    // Only true empty space starts a band; a card or row is never a band origin.
+    isBackgroundTarget: (target) =>
+      !target.closest('.list-row--head') && !target.closest('[data-bundle-id]'),
+    rubberBand: layout !== 'list',
     hitTest: idsInRect,
     getBaseSelection: () => selectedIds,
     onChange: onMarqueeSelect,

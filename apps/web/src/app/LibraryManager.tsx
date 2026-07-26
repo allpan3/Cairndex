@@ -341,12 +341,16 @@ function newLibraryAsk(target: ConfirmState): string {
  */
 export function NewLibraryDialog({
   folderName,
+  isLibrary,
   busy,
   error,
   onConfirm,
   onCancel,
 }: {
   folderName: string
+  /** Whether the picked folder already holds a library — the sentence below
+   *  differs, and guessing it would tell the owner the wrong thing. */
+  isLibrary: boolean
   busy: boolean
   error: string | null
   onConfirm: (name: string) => void
@@ -388,7 +392,9 @@ export function NewLibraryDialog({
             onFocus={(event) => event.target.select()}
             spellCheck={false}
           />
-          <p className="lib-add__hint">{newLibraryAsk({ kind: 'pick', token: '', folderName })}</p>
+          <p className="lib-add__hint">
+            {newLibraryAsk({ kind: 'pick', token: '', folderName, isLibrary })}
+          </p>
           <div className="modal__actions">
             <span className="toolbar__spacer" />
             <button type="button" className="btn" onClick={onCancel} disabled={busy}>

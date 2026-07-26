@@ -162,6 +162,7 @@ test('picking a library the current server already serves selects it here', asyn
       token: null,
       folderName: null,
       alreadyAvailable: true,
+      isLibrary: true,
       libraryId: '',
       libraryUuid: MOVIES.library_uuid,
       displayName: 'Movies',

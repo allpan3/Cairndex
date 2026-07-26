@@ -30,7 +30,7 @@ import {
 import type { DragItem, TreeDrop } from './dnd'
 import { dropZone, getActiveDrag, sameTreeDrop, seamFor, setActiveDrag } from './dnd'
 import { PickGuides } from './PickGuides'
-import { gapBefore, moveBeforeId } from './reorder'
+import { gapBefore } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
 
@@ -115,7 +115,6 @@ interface SidebarProps {
     name: string,
     callbacks: { onSuccess: () => void; onError: (err: unknown) => void },
   ) => void
-  // Persist a manual drag-reorder of one sibling group (parentId null = top level).
   // Move collections to a gap in one sibling group: the dragged block, and the
   // collection it lands in front of (null = the end of the group).
   onReorderCollections: (
@@ -123,9 +122,6 @@ interface SidebarProps {
     movedIds: string[],
     beforeId: string | null,
   ) => void
-  // Move collections into a different parent group at a specific slot (reparent
-  // + reorder). newParentId null = the top level.
-  onMoveCollections?: (ids: string[], newParentId: string | null, orderedIds: string[]) => void
   // Right-click the Collections heading → clean up the collection manual order.
   onCleanupCollections?: () => void
   // Cross-surface drag: the current payload + callbacks to reparent a collection
@@ -202,7 +198,6 @@ export function Sidebar({
   onCreateCollection,
   onRenameCollection,
   onReorderCollections,
-  onMoveCollections,
   onCleanupCollections,
   dragItem = null,
   onDragItem,
@@ -675,7 +670,6 @@ export function Sidebar({
                 dropSlot={dropSlot}
                 onDropSlot={setDropSlot}
                 onReorderCollections={onReorderCollections}
-                onMoveCollections={onMoveCollections}
                 onReparentCollections={onReparentCollections}
                 onMoveBundlesInto={onMoveBundlesInto}
               />
@@ -685,9 +679,7 @@ export function Sidebar({
                 the top level (reordering, or moving a subcollection out). */}
             {tree.length > 0 && (
               <CollectionListEnd
-                topLevelIds={tree.map((n) => n.collection.id)}
                 dragItem={dragItem}
-                onMoveCollections={onMoveCollections}
                 onReorderCollections={onReorderCollections}
                 onEndDrag={() => {
                   onDragItem?.(null)
@@ -779,7 +771,6 @@ function CollectionBranch({
   dropSlot,
   onDropSlot,
   onReorderCollections,
-  onMoveCollections,
   onReparentCollections,
   onMoveBundlesInto,
 }: {
@@ -807,7 +798,6 @@ function CollectionBranch({
   dropSlot: TreeDrop | null
   onDropSlot: (v: TreeDrop | null) => void
   onReorderCollections: SidebarProps['onReorderCollections']
-  onMoveCollections?: SidebarProps['onMoveCollections']
   onReparentCollections?: (ids: string[], targetId: string) => void
   onMoveBundlesInto?: (targetId: string, alt: boolean) => void
 }) {
@@ -914,20 +904,15 @@ function CollectionBranch({
             const r = e.currentTarget.getBoundingClientRect()
             const zone = dropZone(e, r, 'vertical', true)
             const dragged = live.ids
-            const incoming = dragged.filter((x) => !siblingIds.includes(x))
-            const beforeId = gapBefore(siblingIds, dragged, id, zone)
             if (zone === 'into') {
               onReparentCollections?.(dragged, id)
-            } else if (incoming.length === 0) {
-              onReorderCollections(parentId, dragged, beforeId)
-            } else {
-              // From another parent group: reparent into this row's group at the slot.
-              onMoveCollections?.(
-                dragged,
-                parentId,
-                moveBeforeId([...siblingIds, ...incoming], dragged, beforeId),
-              )
+              endDrag()
+              return
             }
+            // One callback for every case: this row's group is the destination,
+            // and a collection arriving from another level is reparented by the
+            // same request.
+            onReorderCollections(parentId, dragged, gapBefore(siblingIds, dragged, id, zone))
           }
           endDrag()
         }}
@@ -987,7 +972,6 @@ function CollectionBranch({
             dropSlot={dropSlot}
             onDropSlot={onDropSlot}
             onReorderCollections={onReorderCollections}
-            onMoveCollections={onMoveCollections}
             onReparentCollections={onReparentCollections}
             onMoveBundlesInto={onMoveBundlesInto}
           />
@@ -1001,15 +985,11 @@ function CollectionBranch({
  * dragging "past the last collection" into the empty space below the tree, and
  * the way to move a nested subcollection out to the top level. */
 function CollectionListEnd({
-  topLevelIds,
   dragItem,
-  onMoveCollections,
   onReorderCollections,
   onEndDrag,
 }: {
-  topLevelIds: string[]
   dragItem: DragItem | null
-  onMoveCollections?: SidebarProps['onMoveCollections']
   onReorderCollections: SidebarProps['onReorderCollections']
   onEndDrag: () => void
 }) {
@@ -1034,22 +1014,9 @@ function CollectionListEnd({
         const live = getActiveDrag() ?? dragItem
         if (live?.kind !== 'collection') return
         e.preventDefault()
-        const dragged = live.ids
-        const rest = topLevelIds.filter((x) => !dragged.includes(x))
-        // Keep the dragged block in its existing top-level order where it has
-        // one, so a multi-selection doesn't come out shuffled at the end.
-        const moved = [...topLevelIds.filter((x) => dragged.includes(x))]
-        const incoming = dragged.filter((x) => !topLevelIds.includes(x))
-        if (incoming.length === 0) {
-          // Already top-level: just move them to the end.
-          onReorderCollections(null, dragged, null)
-        } else {
-          onMoveCollections?.(
-            dragged,
-            null,
-            moveBeforeId([...rest, ...moved, ...incoming], dragged, null),
-          )
-        }
+        // Past the last row means the end of the top level — for a nested
+        // collection just as much as one already there.
+        onReorderCollections(null, live.ids, null)
         onEndDrag()
       }}
     />

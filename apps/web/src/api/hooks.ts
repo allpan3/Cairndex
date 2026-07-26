@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+
 import {
   type InfiniteData,
   type QueryClient,
@@ -115,6 +117,7 @@ import {
   cleanupBundleOrder,
   clearCoverFrame,
   reorderFiles,
+  markBundleOpened,
   setBundleCollections,
   setBundleTags,
   setCoverFrame,
@@ -1415,7 +1418,11 @@ export function useReorderCollections() {
     // cache gets — no invalidate, no refetch. A refetch is a second answer to a
     // question already settled, and any disagreement with it shows up as the
     // row moving a second time on its own.
-    onSuccess: (group: CollectionRead[]) => {
+    // No parameter annotation here on purpose: annotating a callback argument
+    // inside useMutation collapses TanStack's generic inference, and `mutate`
+    // then accepts *anything* — which is how a call site left on the old
+    // `orderedIds` contract survived a clean type check.
+    onSuccess: (group) => {
       const byId = new Map(group.map((c) => [c.id, c]))
       qc.setQueryData<CollectionRead[]>(['collections'], (old) =>
         old?.map((c) => byId.get(c.id) ?? c),
@@ -1460,6 +1467,34 @@ function applyBrowseOrder(
     return { ...p, items }
   })
   return { ...data, pages }
+}
+
+/**
+ * Record that a bundle was opened, then let the listings that rank by it catch
+ * up on their own.
+ *
+ * Opening a bundle changes where it belongs under Date Opened, but nothing was
+ * telling those listings so — the Recent view only re-sorted when something else
+ * happened to refetch it (navigating back to it, or changing the order), which
+ * left the owner's own action invisible until they poked it. Only listings
+ * actually sorted by the affected column are invalidated, so this cannot
+ * re-shuffle a view the open had no bearing on.
+ */
+export function useMarkBundleOpened() {
+  const qc = useQueryClient()
+  return useCallback(
+    (id: string) => {
+      void markBundleOpened(id).then(() => {
+        qc.invalidateQueries({
+          queryKey: ['browse'],
+          predicate: (query) =>
+            (query.queryKey[1] as BrowseQuery | undefined)?.sort === 'date_opened',
+        })
+        qc.invalidateQueries({ queryKey: ['continue-watching'] })
+      })
+    },
+    [qc],
+  )
 }
 
 /** Which manual order a browse listing is sorted by, or `undefined` when it is
