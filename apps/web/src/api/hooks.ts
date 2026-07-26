@@ -438,7 +438,10 @@ export function useFileOperations() {
         file: File
         destDir: string
         onConflict?: ConflictPolicy
-      }) => importFile(file, { destDir, onConflict, link: true }),
+        // No `link`: an imported file is copied into the folder, not fast-added
+        // into a one-file bundle. It shows in the File Browser; bundling stays a
+        // separate, deliberate action.
+      }) => importFile(file, { destDir, onConflict }),
       onSuccess: refresh,
     }),
   }
@@ -446,7 +449,7 @@ export function useFileOperations() {
 
 // Everything a file operation can change: the listing it happened in, the views
 // that render paths or counts, the journal, and the trash.
-function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
+export function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
     'file-browser',
     'browse',
