@@ -110,7 +110,7 @@ test('renders the shell and browses bundles', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByText('Cairndex')).toBeVisible()
-  await expect(page.getByRole('button', { name: /Recently Added/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Recent/ })).toBeVisible()
   // Grid renders cards from the mocked browse response.
   await expect(page.getByText('Movie 0')).toBeVisible()
   await expect(page.getByText('40 items')).toBeVisible()
@@ -1276,10 +1276,14 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
   const second = await cards.nth(1).boundingBox()
   if (!gridBox || !second) throw new Error('missing bounding box')
 
-  // Drag from the grid's empty top-left corner, through both cards.
-  await page.mouse.move(gridBox.x + 2, gridBox.y + 2)
+  // Drag from the empty column past the last card, back across both of them.
+  // (Not the grid's top-left corner: the folder card fills that, and pressing a
+  // card selects it rather than starting a band.)
+  const first = await cards.nth(0).boundingBox()
+  if (!first) throw new Error('missing bounding box')
+  await page.mouse.move(gridBox.x + gridBox.width - 4, gridBox.y + 4)
   await page.mouse.down()
-  await page.mouse.move(second.x + second.width / 2, second.y + second.height / 2, { steps: 5 })
+  await page.mouse.move(first.x + first.width / 2, first.y + first.height / 2, { steps: 5 })
   await page.mouse.up()
 
   await expect(cards.nth(0)).toHaveClass(/collcard--selected/)
@@ -1290,7 +1294,7 @@ test('drag-selects subcollection cards with a marquee, and empty space deselects
 
   // A plain click on empty space (no drag) clears the subcollection selection,
   // same as it does for bundles.
-  await page.mouse.click(gridBox.x + 2, gridBox.y + 2)
+  await page.mouse.click(gridBox.x + gridBox.width - 4, gridBox.y + 4)
   await expect(page.locator('.collcard--selected')).toHaveCount(0)
 })
 
