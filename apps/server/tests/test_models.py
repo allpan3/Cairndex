@@ -230,3 +230,16 @@ def test_cover_file_id_is_nullable_and_settable(session: Session) -> None:
     session.refresh(bundle)
     assert bundle.cover_file is not None
     assert bundle.cover_file.id == file.id
+
+
+# A library that predates Date Opened gains the column, and every bundle in it
+# reads back as never-opened — which is the truth: opens were not recorded then.
+def test_ensure_content_indexes_adds_last_opened_at(engine: Engine) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE asset_bundles DROP COLUMN last_opened_at"))
+    assert "last_opened_at" not in {c["name"] for c in inspect(engine).get_columns("asset_bundles")}
+
+    ensure_content_indexes(engine)
+
+    columns = {c["name"]: c for c in inspect(engine).get_columns("asset_bundles")}
+    assert columns["last_opened_at"]["nullable"] is True

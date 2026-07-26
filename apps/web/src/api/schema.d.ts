@@ -456,6 +456,11 @@ export interface paths {
          * Reorder Bundles
          * @description Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``
          *     scopes it to a collection's membership order; null = the global order.
+         *
+         *     Answers with the scope's resulting order. The client applies that directly
+         *     rather than re-fetching the listing: a refetch is a second, later answer to
+         *     the same question, and any disagreement between it and the client's guess
+         *     shows up as the row moving twice.
          */
         put: operations["reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put"];
         post?: never;
@@ -623,6 +628,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Bundle Opened
+         * @description Record that the owner opened this bundle (Recent view, Date Opened order).
+         *
+         *     Fire-and-forget from the client: it stamps a timestamp and returns nothing,
+         *     so a failure can never block opening a bundle. Not a PATCH — nothing about
+         *     the bundle's metadata changes, and it must not consume a version.
+         */
+        post: operations["mark_bundle_opened_api_v1_libraries__library_id__bundles__bundle_id__opened_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/playback": {
         parameters: {
             query?: never;
@@ -750,9 +779,13 @@ export interface paths {
         get?: never;
         /**
          * Reorder Collections
-         * @description Persist a manual drag-reorder of one sibling group (NULL parent = top
-         *     level). The sidebar tree and the main-browser folder cards both render from
-         *     this ``sort_order`` so a reorder in either surface updates both.
+         * @description Move collections into a group at a gap — the whole drag, in one request.
+         *
+         *     Reparents whatever is not already in ``parent_id``'s group, then places the
+         *     block. The sidebar tree and the main-browser folder cards both render from
+         *     this ``sort_order``, so a move in either surface updates both. Answers with
+         *     the resulting group so the client never has to re-derive (or re-fetch) where
+         *     the drop landed.
          */
         put: operations["reorder_collections_api_v1_libraries__library_id__collections_reorder_put"];
         post?: never;
@@ -2245,7 +2278,7 @@ export interface components {
              * Sort
              * @enum {string}
              */
-            sort: "date_added" | "title" | "rating" | "size" | "file_count";
+            sort: "date_added" | "date_modified" | "date_opened" | "title" | "rating" | "size" | "file_count";
         };
         /** BundleCollections */
         BundleCollections: {
@@ -2281,6 +2314,15 @@ export interface components {
             proposed_title: string;
             /** Roles */
             roles: components["schemas"]["ProposedRoleRead"][];
+        };
+        /**
+         * BundleOrder
+         * @description The scope's resulting manual order, returned by a reorder so the client
+         *     never has to guess where the move landed (or refetch to find out).
+         */
+        BundleOrder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
         };
         /** BundleRead */
         BundleRead: {
@@ -2320,18 +2362,32 @@ export interface components {
          * BundleReorder
          * @description Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
          *     order to a collection's membership; null = the global All/system-view order.
+         *
+         *     The client sends the *move it made*, not the order it believes in: which
+         *     bundles were dragged and which bundle they were dropped in front of. The
+         *     server owns the resulting order.
+         *
+         *     This used to take the client's whole visible list and number it 0..n-1, which
+         *     was only ever correct when the client had the entire scope loaded. Browsing
+         *     is paged, so a drag in a collection larger than one page renumbered the
+         *     loaded window on top of order values the rest of the collection still held —
+         *     and unloaded bundles then surfaced in the middle, or the dragged one appeared
+         *     to jump to an end. Sending the intent makes the size of the loaded window
+         *     irrelevant.
          */
         BundleReorder: {
+            /** Before Id */
+            before_id?: string | null;
             /** Collection Id */
             collection_id?: string | null;
-            /** Ordered Ids */
-            ordered_ids: string[];
+            /** Moved Ids */
+            moved_ids: string[];
         };
         /**
          * BundleSort
          * @enum {string}
          */
-        BundleSort: "date_added" | "title" | "rating" | "size" | "file_count" | "manual";
+        BundleSort: "date_added" | "date_modified" | "date_opened" | "title" | "rating" | "size" | "file_count" | "manual";
         /** BundleSummary */
         BundleSummary: {
             /** Cover Key */
@@ -2473,11 +2529,18 @@ export interface components {
         };
         /**
          * CollectionReorder
-         * @description Manual drag-reorder of one sibling group (NULL parent = top level).
+         * @description A collection move: which collections, into which group, at which gap.
+         *
+         *     Carries the move rather than a whole order. ``parent_id`` is the group they
+         *     end up in (NULL = top level) — anything not already there is reparented as
+         *     part of the same operation, so dragging between levels stays one request and
+         *     never publishes a collection in its new group carrying its old position.
          */
         CollectionReorder: {
-            /** Ordered Ids */
-            ordered_ids: string[];
+            /** Before Id */
+            before_id?: string | null;
+            /** Moved Ids */
+            moved_ids: string[];
             /** Parent Id */
             parent_id?: string | null;
         };
@@ -4954,11 +5017,13 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BundleOrder"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -5496,6 +5561,40 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_bundle_opened_api_v1_libraries__library_id__bundles__bundle_id__opened_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

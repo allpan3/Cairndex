@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { initializeHostPlatform, isDesktopHost, revealHostWindow } from './platform'
 import { QueryScope } from './QueryScope'
+import { markOverlayTitleBar } from './desktop/titleBar'
 
 const root = createRoot(document.getElementById('root')!)
 
@@ -39,6 +40,7 @@ function revealDesktopWindowAfterMount(): void {
 
 // Loads the native bridge, mounts the shell, then acknowledges the dark document
 async function renderDesktopApp(): Promise<void> {
+  markOverlayTitleBar(document, navigator.userAgent)
   let content: ReactNode
   try {
     const [{ DesktopBootstrap }] = await Promise.all([

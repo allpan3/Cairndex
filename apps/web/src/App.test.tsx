@@ -47,6 +47,8 @@ function mockApi(
     authError?: number
     /** Deletions in the library's trash — recoverable even with write mode off. */
     trashOperations?: unknown[]
+    /** Collections in the library (sidebar tree + folder cards). */
+    collections?: unknown[]
   } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
@@ -71,7 +73,8 @@ function mockApi(
       else if (url.includes('/bundles/counts'))
         body = { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0 }
       else if (url.includes('/collections/counts')) body = { counts: {} }
-      else if (url.includes('/collections')) body = { items: [], next_cursor: null }
+      else if (url.includes('/collections'))
+        body = { items: options.collections ?? [], next_cursor: null }
       else if (url.includes('/smart-collections')) body = []
       else if (url.includes('/grouping/plans/plan1'))
         body = {
@@ -224,7 +227,7 @@ test('renders the shell with the brand and the system views', async () => {
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
-  expect(screen.getByText('Recently Added')).toBeInTheDocument()
+  expect(screen.getByText('Recent')).toBeInTheDocument()
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   expect(screen.getByText('Missing Files')).toBeInTheDocument()
   expect(screen.queryByText(/Thumbnails/i)).not.toBeInTheDocument()
@@ -373,4 +376,89 @@ test('the Manage Libraries menu item works in the running app, not just at setup
   expect(screen.getByLabelText('Library path')).toBeInTheDocument()
   // Opening it must not reach the shell on its own — Browse… does that.
   expect(openFolder.run).not.toHaveBeenCalled()
+})
+
+const COLLECTION = {
+  id: 'c1',
+  name: 'Westerns',
+  parent_id: null,
+  sort_order: 0,
+  note: null,
+  cover_bundle_id: null,
+  version: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
+/** The sidebar tree row for a collection, found by its name (the tree sorts by
+ *  manual order then name, so position is not a stable handle). */
+function sidebarRow(container: HTMLElement, name: string): HTMLElement {
+  const row = [...container.querySelectorAll('.collection-row[role="treeitem"]')].find((el) =>
+    el.textContent?.includes(name),
+  )
+  expect(row).toBeDefined()
+  return row as HTMLElement
+}
+
+test('a collection selected in the grid does not light up its sidebar row', async () => {
+  // The sidebar highlight means "this is where you are". Selecting a folder card
+  // in the grid does not navigate, so lighting the matching row said the app had
+  // moved when it hadn't. The selection is shown on the surface that made it.
+  mockApi([LIBRARY], { collections: [COLLECTION, { ...COLLECTION, id: 'c2', name: 'Noir' }] })
+  const { container } = renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  const card = await waitFor(() => {
+    const el = container.querySelector('[data-collection-id="c1"]')
+    expect(el).not.toBeNull()
+    return el as HTMLElement
+  })
+  fireEvent.click(card)
+
+  expect(card.className).toContain('collcard--selected')
+  expect(sidebarRow(container, 'Westerns').className).not.toContain('nav-item--active')
+})
+
+test('a collection selected in the sidebar does light up its row, and only there', async () => {
+  mockApi([LIBRARY], { collections: [COLLECTION, { ...COLLECTION, id: 'c2', name: 'Noir' }] })
+  const { container } = renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+  await waitFor(() => expect(container.querySelector('[data-collection-id="c1"]')).not.toBeNull())
+
+  const row = sidebarRow(container, 'Westerns')
+  // Cmd-click builds the sidebar's own multi-selection without navigating.
+  fireEvent.click(row, { metaKey: true })
+
+  expect(sidebarRow(container, 'Westerns').className).toContain('nav-item--active')
+  // …and the matching grid card stays unselected: one selection, shown once.
+  const card = container.querySelector('[data-collection-id="c1"]') as HTMLElement
+  expect(card.className).not.toContain('collcard--selected')
+})
+
+test('Recent offers the date orders and nothing else', async () => {
+  // Recent is the All view ranked by a date; *which* date is the only choice it
+  // has. Title or Size there would be the All view under another name, so the
+  // menu is narrowed rather than the control being removed.
+  mockApi()
+  renderApp()
+  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
+
+  const sortButton = () => screen.getByRole('button', { name: 'Sort' })
+  fireEvent.click(sortButton())
+  expect(screen.getByText('File Count')).toBeInTheDocument()
+  fireEvent.click(sortButton())
+
+  fireEvent.click(screen.getByText('Recent'))
+
+  // A sort carried in from another view (Manual) can't be expressed here, so it
+  // falls back to Date Added rather than showing a label the menu cannot offer.
+  expect(sortButton()).toHaveTextContent('Date Added')
+  fireEvent.click(sortButton())
+  // Scoped to the menu: "Date Added" is also the button's own label.
+  const options = document.querySelectorAll('.sortctl__section:first-of-type .sortctl__opt')
+  expect([...options].map((o) => o.textContent?.replace('✓', ''))).toEqual([
+    'Date Added',
+    'Date Modified',
+    'Date Opened',
+  ])
 })

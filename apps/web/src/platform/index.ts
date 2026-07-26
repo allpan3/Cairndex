@@ -20,6 +20,15 @@ export interface ReverseMapResult {
   directories: number
 }
 
+// One upload-progress tick for a dropped file being copied in (plan 4 W5).
+// `path` is the dropped file's absolute path, which the web layer already holds,
+// so it can match a tick to the file it is showing progress for.
+export interface ImportProgressEvent {
+  path: string
+  sent: number
+  total: number
+}
+
 // Defines the complete web-versus-native host boundary from plan 3 section 4
 export interface HostPlatform {
   kind: 'web' | 'desktop'
@@ -66,6 +75,12 @@ export interface OpenedLibrary {
   token: string | null
   /** The picked folder's basename, which prefills the name field. */
   folderName: string | null
+  /**
+   * With `needsConfirmation`, whether the parked folder is already a library
+   * (confirm registers it — no name needed) or a plain folder (confirm creates
+   * one from the typed name). Lets the dialog show Add versus Create.
+   */
+  isLibrary: boolean
   /**
    * True when the caller's *current* server already has this library, so no
    * local server was started. Opening it locally would register a second server
@@ -132,7 +147,7 @@ interface PlatformRuntime {
   configureServer(serverUrl: string, options?: { localToken?: string | null }): Promise<void>
   startLocalServer(): Promise<LocalServerInfo>
   localServerStatus(): Promise<LocalServerInfo | null>
-  openLibraryFolder(knownLibraryUuids: string[]): Promise<OpenedLibrary | null>
+  openLibraryFolder(knownLibraryUuids: string[], stage: boolean): Promise<OpenedLibrary | null>
   confirmPickedLibrary(token: string, name: string): Promise<OpenedLibrary>
   loadConnections(): Promise<StoredConnections | null>
   saveConnections(value: StoredConnections): Promise<void>
@@ -158,6 +173,8 @@ interface PlatformRuntime {
   listenLifecycle(): Promise<() => void>
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
+  listenImportProgress(handler: (progress: ImportProgressEvent) => void): Promise<() => void>
+  dropIsSelfDrag(paths: string[]): Promise<boolean>
   /**
    * Stream one *dropped* file into a library (plan 4 W5).
    *
@@ -255,6 +272,8 @@ const webRuntime: PlatformRuntime = {
   listenLifecycle: async () => () => undefined,
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
+  listenImportProgress: async () => () => undefined,
+  dropIsSelfDrag: async () => false,
   isDragOutActive: () => false,
   releaseDragOut: () => undefined,
 }
@@ -353,8 +372,13 @@ export const hostLocalServerStatus = (): Promise<LocalServerInfo | null> =>
 // Picks a library folder and opens it through the local server, returning ids only.
 // `knownLibraryUuids` are the portable ids the caller's current server already
 // serves, so a folder it already has is reported rather than opened twice.
-export const openHostLibraryFolder = (knownLibraryUuids: string[]): Promise<OpenedLibrary | null> =>
-  runtime.openLibraryFolder(knownLibraryUuids)
+export const openHostLibraryFolder = (
+  knownLibraryUuids: string[],
+  // Stage an existing library (park it for a confirm) rather than open it
+  // immediately. The Manage dialog stages; the first-run/menu open-folder flow
+  // does not. See `open_library_folder` in the shell.
+  stage = false,
+): Promise<OpenedLibrary | null> => runtime.openLibraryFolder(knownLibraryUuids, stage)
 
 // Creates a library at the folder a previous pick is holding, under the name the
 // user confirmed. `token` is the opaque handle from that pick — the path itself
@@ -436,6 +460,17 @@ export const setHostBadgeCount = (count: number | null): Promise<void> =>
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>
   runtime.listenFullscreen(handler)
 export const listenHostLifecycle = (): Promise<() => void> => runtime.listenLifecycle()
+
+// Whether a drop is our own drag-out landing back on us. Asked of the shell,
+// which remembers the paths it put on the pasteboard — the web layer's own guard
+// is timing-based and can lose the race, and losing it *copies files*.
+export const hostDropIsSelfDrag = (paths: string[]): Promise<boolean> =>
+  runtime.dropIsSelfDrag(paths)
+
+// Per-file upload progress for the desktop drag-in copy (plan 4 W5).
+export const listenHostImportProgress = (
+  handler: (progress: ImportProgressEvent) => void,
+): Promise<() => void> => runtime.listenImportProgress(handler)
 
 // Reverse-maps Finder-dropped absolute paths against one library's local mapping
 export const reverseMapHostPaths = (

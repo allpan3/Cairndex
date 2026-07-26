@@ -372,6 +372,43 @@ fn save_mappings<R: Runtime>(
     })
 }
 
+/// Record the local mapping for a library the shell just added.
+///
+/// The native-picker add already picked the folder and (for an existing
+/// library) verified its marker, so the local path is known — "Locate on This
+/// Mac" is only meant for a library some *other* machine registered. Re-proving
+/// the marker against `library_uuid` here keeps a created-then-moved folder or a
+/// mismatched pick from being stored as if it were the library. Best-effort by
+/// the caller: a failure to record the mapping must not undo the registration,
+/// only leave the manual locate available.
+pub(crate) fn remember_mapping<R: Runtime>(
+    app: &AppHandle<R>,
+    library_id: &str,
+    library_uuid: &str,
+    local_root: &Path,
+) -> Result<(), MappingError> {
+    validate_library_id(library_id)?;
+    let root = validate_library_root(local_root, library_uuid)?;
+    let local_root = root
+        .to_str()
+        .ok_or_else(|| {
+            MappingError::new(
+                MappingErrorCode::InvalidLibraryRoot,
+                "The library folder uses an unsupported path encoding.",
+            )
+        })?
+        .to_owned();
+    let mut mappings = load_mappings(app)?;
+    mappings.insert(
+        library_id.to_string(),
+        MappingRecord {
+            local_root,
+            library_uuid: library_uuid.to_string(),
+        },
+    );
+    save_mappings(app, &mappings)
+}
+
 // Returns the configured local root without resolving any media path
 #[tauri::command]
 pub(crate) async fn get_library_mapping<R: Runtime>(

@@ -16,7 +16,13 @@ import {
   usePlaybackManifest,
 } from '../../api/hooks'
 import { useViewerMenu } from '../../desktop/useViewerMenu'
-import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
+import {
+  formatBytes,
+  formatClock,
+  formatDimensions,
+  formatDuration,
+  formatFileType,
+} from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
 import { MediaFallback } from './MediaFallback'
@@ -661,12 +667,8 @@ function InfoPanel({ file, playable }: { file: FileRead; playable: PlayableVideo
       <h3>{file.display_title}</h3>
       <dl>
         <div>
-          <dt>Kind</dt>
-          <dd>{file.media_kind}</dd>
-        </div>
-        <div>
-          <dt>Role</dt>
-          <dd>{fileRoleLabel(file)}</dd>
+          <dt>Type</dt>
+          <dd>{fileTypeLabel(file)}</dd>
         </div>
         <div>
           <dt>Size</dt>
@@ -704,13 +706,13 @@ function FallbackCard({
   const meta = (file.tech_metadata ?? {}) as Record<string, unknown>
   const dims = formatDimensions(meta.width as number, meta.height as number)
   const dur = formatDuration(meta.duration as number)
-  const metaText = `${fileRoleLabel(file)} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
+  const metaText = `${fileTypeLabel(file)} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(file.size_bytes)}`
   return <MediaFallback heading={heading} message={message} meta={metaText} action={action} />
 }
 
-// Hide the retired primary-video label while preserving legacy stored roles
-function fileRoleLabel(file: FileRead): string {
-  return file.role === 'primary_video' ? 'video' : file.role
+// What the file is — its media kind, never the scanner's guessed in-bundle role
+function fileTypeLabel(file: FileRead): string {
+  return formatFileType(file.media_kind, file.original_filename)
 }
 
 /** Filesystem-safe-ish basename for downloaded PNG snapshots. */

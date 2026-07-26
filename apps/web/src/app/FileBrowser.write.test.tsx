@@ -399,7 +399,9 @@ test('files are uploaded one at a time, not six at once', async () => {
   // The second has not started while the first is still in flight — otherwise
   // they split the same bandwidth and everything finishes late.
   await waitFor(() => expect(importOne).toHaveBeenCalledTimes(1))
-  expect(await screen.findByText(/Copying a\.mkv/)).toBeInTheDocument()
+  // The copy-in indicator names the current file and its place in the batch.
+  expect(await screen.findByText(/a\.mkv/)).toBeInTheDocument()
+  expect(screen.getByText('1 of 2')).toBeInTheDocument()
 
   resolveFirst?.({
     path: 'Show/a.mkv',

@@ -40,6 +40,7 @@ const NEEDS_NAME: OpenedLibrary = {
   needsConfirmation: true,
   token: 'pick-token-1',
   folderName: 'Holiday Videos',
+  isLibrary: false,
   alreadyAvailable: false,
   libraryId: '',
   libraryUuid: '',
@@ -96,7 +97,48 @@ test('a picked plain folder is named through the same confirmation, prefilled', 
   fireEvent.click(screen.getByRole('button', { name: 'Create library' }))
 
   await waitFor(() => expect(confirmHostPick).toHaveBeenCalledWith('pick-token-1', 'Trips'))
-  await waitFor(() => expect(onClose).toHaveBeenCalled())
+  // On the local connection an add is not a switch: the library joins the list
+  // and the dialog stays open on the add form, rather than closing.
+  await screen.findByLabelText('Library path')
+  expect(onClose).not.toHaveBeenCalled()
+})
+
+test('picking an existing library folder stages it, and Add registers without switching', async () => {
+  // A folder that is already a library the current server does not have: the
+  // shell parks it (needsConfirmation, isLibrary) rather than adding it, so the
+  // owner still clicks Add. The name is read-only — the library keeps its own.
+  openHostFolder.mockResolvedValue({
+    opened: {
+      needsConfirmation: true,
+      token: 'pick-token-lib',
+      folderName: 'Trips',
+      isLibrary: true,
+      alreadyAvailable: false,
+      libraryId: '',
+      libraryUuid: '01J99999999999999999999999',
+      displayName: 'Trips',
+    } satisfies OpenedLibrary,
+  })
+  confirmHostPick.mockResolvedValue({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  const onClose = vi.fn()
+  const onSelect = vi.fn()
+  renderManager({ onClose, onSelect })
+  await screen.findByText('Movies')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+
+  // Nothing added yet — staged, with an explicit Add and a read-only name.
+  const name = await screen.findByLabelText('Library name')
+  expect(name).toHaveAttribute('readonly')
+  expect(confirmHostPick).not.toHaveBeenCalled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+
+  await waitFor(() => expect(confirmHostPick).toHaveBeenCalledWith('pick-token-lib', 'Trips'))
+  // Added, not switched: the dialog stays open and nothing was selected.
+  await screen.findByLabelText('Library path')
+  expect(onSelect).not.toHaveBeenCalled()
+  expect(onClose).not.toHaveBeenCalled()
 })
 
 test('cancelling the name step creates nothing', async () => {
@@ -120,6 +162,7 @@ test('picking a library the current server already serves selects it here', asyn
       token: null,
       folderName: null,
       alreadyAvailable: true,
+      isLibrary: true,
       libraryId: '',
       libraryUuid: MOVIES.library_uuid,
       displayName: 'Movies',

@@ -32,6 +32,12 @@ export function rectsIntersect(a: MarqueeRect, b: MarqueeRect): boolean {
 }
 
 interface UseMarqueeSelectOptions {
+  // False where dragging out a rectangle is not offered — the list layouts. A
+  // band over a single column of rows can only ever pick a consecutive run,
+  // which is what Shift-click already does in one gesture, so the rows keep
+  // their drag for reordering and moving instead. A plain click on empty space
+  // still clears the selection.
+  rubberBand?: boolean
   // The scrollable element that clips the view and gets auto-scrolled.
   getScrollEl: () => HTMLElement | null
   // The element whose top-left corner is the origin for marquee-rect math
@@ -52,8 +58,9 @@ interface UseMarqueeSelectOptions {
 
 /**
  * Left-click-drag rectangle (rubber-band) multi-select, shared by the bundle
- * browser and the file view grid/list. A plain click (no drag, no modifier)
- * on empty space clears the selection instead.
+ * browser and the file view. A plain click (no drag, no modifier) on empty space
+ * clears the selection instead. Offered in the grid layouts only — see
+ * `rubberBand`.
  */
 export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
   const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null)
@@ -68,7 +75,30 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     const scrollbarW = scrollEl.offsetWidth - scrollEl.clientWidth
     if (scrollbarW > 0 && e.clientX > scrollEl.getBoundingClientRect().right - scrollbarW) return
 
+    // Any selection left from a previous gesture goes now; the `selectstart`
+    // blocker below stops a new one forming.
+    globalThis.getSelection?.()?.removeAllRanges()
+
+    // A mousedown the marquee has claimed must not also become a native drag.
+    // Rows in the list view stay `draggable` (that is how one is dropped onto a
+    // collection), so a rubber-band starting on a row used to be killed by its
+    // own `dragstart` a few pixels later — which is why list-view marquee only
+    // appeared to work where there happened to be empty space. Suppressing the
+    // default here is exactly the "kills dragstart" behaviour, wanted this time
+    // and scoped to a gesture the marquee already owns.
     const additive = e.metaKey || e.ctrlKey || e.shiftKey
+
+    if (opts.rubberBand === false) {
+      // No band to draw, but a plain click on empty space still means "deselect".
+      const clearOnUp = () => {
+        window.removeEventListener('mouseup', clearOnUp)
+        if (!additive) opts.onChange([])
+      }
+      window.addEventListener('mouseup', clearOnUp)
+      return
+    }
+
+    if ((e.target as HTMLElement).closest('[draggable="true"]')) e.preventDefault()
     const state: DragState = {
       originClientX: e.clientX,
       originClientY: e.clientY,
@@ -149,10 +179,17 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     // a card/row to move it): it swallows the mouseup that would normally end the
     // marquee, so without this the selection box would stick on screen. In that
     // case we just abandon the marquee (no empty-click deselect).
+    // Suppresses text selection for the life of this gesture only. Narrower than
+    // preventing the mousedown's default (which would kill `dragstart` with it)
+    // and stronger than CSS, which does not stop a selection that *starts* on the
+    // container background from sweeping across the labels it passes over.
+    const onSelectStart = (ev: Event) => ev.preventDefault()
+
     const finish = (fromDrag: boolean) => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
       window.removeEventListener('dragstart', onNativeDrag)
+      window.removeEventListener('selectstart', onSelectStart)
       if (state.raf) cancelAnimationFrame(state.raf)
       if (!fromDrag && !state.dragging && !additive) opts.onChange([])
       setMarqueeRect(null)
@@ -163,6 +200,7 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     window.addEventListener('dragstart', onNativeDrag)
+    window.addEventListener('selectstart', onSelectStart)
   }
 
   return { marqueeRect, onMouseDown }

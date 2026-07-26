@@ -36,6 +36,9 @@ interface SetupState {
 interface NamingState {
   token: string
   folderName: string
+  /** Whether the picked folder is already a library, so the prompt can say which
+   *  of the two things confirming will do. */
+  isLibrary: boolean
   busy: boolean
   error: string | null
 }
@@ -103,6 +106,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
                   setNaming({
                     token: result.opened.token,
                     folderName: result.opened.folderName ?? '',
+                    isLibrary: result.opened.isLibrary,
                     busy: false,
                     error: null,
                   })
@@ -239,6 +243,7 @@ export function DesktopBootstrap({ children }: DesktopBootstrapProps) {
   const namingDialog = naming && (
     <NewLibraryDialog
       folderName={naming.folderName}
+      isLibrary={naming.isLibrary}
       busy={naming.busy}
       error={naming.error}
       onCancel={() => setNaming(null)}

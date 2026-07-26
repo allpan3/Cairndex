@@ -108,10 +108,33 @@ class FileRepairCandidateRead(BaseModel):
 
 class BundleReorder(BaseModel):
     """Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
-    order to a collection's membership; null = the global All/system-view order."""
+    order to a collection's membership; null = the global All/system-view order.
+
+    The client sends the *move it made*, not the order it believes in: which
+    bundles were dragged and which bundle they were dropped in front of. The
+    server owns the resulting order.
+
+    This used to take the client's whole visible list and number it 0..n-1, which
+    was only ever correct when the client had the entire scope loaded. Browsing
+    is paged, so a drag in a collection larger than one page renumbered the
+    loaded window on top of order values the rest of the collection still held —
+    and unloaded bundles then surfaced in the middle, or the dragged one appeared
+    to jump to an end. Sending the intent makes the size of the loaded window
+    irrelevant."""
 
     collection_id: str | None = None
-    ordered_ids: list[str] = Field(min_length=1)
+    #: Bundles being moved, in any order — they land as a block, keeping the
+    #: relative order they already have in the scope.
+    moved_ids: list[str] = Field(min_length=1)
+    #: Insert the block immediately before this bundle; null appends to the end.
+    before_id: str | None = None
+
+
+class BundleOrder(BaseModel):
+    """The scope's resulting manual order, returned by a reorder so the client
+    never has to guess where the move landed (or refetch to find out)."""
+
+    ordered_ids: list[str]
 
 
 class BundleCleanupOrder(BaseModel):
@@ -119,7 +142,9 @@ class BundleCleanupOrder(BaseModel):
     ``sort`` is one of the real sorts (not ``manual``); rejected otherwise."""
 
     collection_id: str | None = None
-    sort: Literal["date_added", "title", "rating", "size", "file_count"]
+    sort: Literal[
+        "date_added", "date_modified", "date_opened", "title", "rating", "size", "file_count"
+    ]
     order: Literal["asc", "desc"] = "asc"
 
 

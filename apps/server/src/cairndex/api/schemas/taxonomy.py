@@ -47,10 +47,18 @@ class CollectionUpdate(BaseModel):
 
 
 class CollectionReorder(BaseModel):
-    """Manual drag-reorder of one sibling group (NULL parent = top level)."""
+    """A collection move: which collections, into which group, at which gap.
+
+    Carries the move rather than a whole order. ``parent_id`` is the group they
+    end up in (NULL = top level) — anything not already there is reparented as
+    part of the same operation, so dragging between levels stays one request and
+    never publishes a collection in its new group carrying its old position."""
 
     parent_id: str | None = None
-    ordered_ids: list[str] = Field(min_length=1)
+    #: Collections being moved; they land as a block in their existing order.
+    moved_ids: list[str] = Field(min_length=1)
+    #: Insert the block immediately before this collection; null appends.
+    before_id: str | None = None
 
 
 class CollectionCleanup(BaseModel):

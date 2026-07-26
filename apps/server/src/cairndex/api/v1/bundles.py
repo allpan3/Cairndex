@@ -14,6 +14,7 @@ from cairndex.api.schemas.bundles import (
     BundleCreate,
     BundleCursorRead,
     BundleCursorUpdate,
+    BundleOrder,
     BundleRead,
     BundleReorder,
     BundleTags,
@@ -140,12 +141,22 @@ def bundle_view_counts(db: LibrarySession) -> ViewCounts:
     return ViewCounts(**browse_service.view_counts(db))
 
 
-@router.put("/reorder", status_code=status.HTTP_204_NO_CONTENT)
-def reorder_bundles(payload: BundleReorder, db: LibrarySession) -> None:
+@router.put("/reorder", response_model=BundleOrder)
+def reorder_bundles(payload: BundleReorder, db: LibrarySession) -> BundleOrder:
     """Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``
-    scopes it to a collection's membership order; null = the global order."""
-    browse_service.reorder_bundles(
-        db, collection_id=payload.collection_id, ordered_ids=payload.ordered_ids
+    scopes it to a collection's membership order; null = the global order.
+
+    Answers with the scope's resulting order. The client applies that directly
+    rather than re-fetching the listing: a refetch is a second, later answer to
+    the same question, and any disagreement between it and the client's guess
+    shows up as the row moving twice."""
+    return BundleOrder(
+        ordered_ids=browse_service.reorder_bundles(
+            db,
+            collection_id=payload.collection_id,
+            moved_ids=payload.moved_ids,
+            before_id=payload.before_id,
+        )
     )
 
 
@@ -220,6 +231,17 @@ def update_bundle(
 @router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
     service.delete_bundle(db, bundle_id)
+
+
+@router.post("/{bundle_id}/opened", status_code=status.HTTP_204_NO_CONTENT)
+def mark_bundle_opened(bundle_id: str, db: LibrarySession) -> None:
+    """Record that the owner opened this bundle (Recent view, Date Opened order).
+
+    Fire-and-forget from the client: it stamps a timestamp and returns nothing,
+    so a failure can never block opening a bundle. Not a PATCH — nothing about
+    the bundle's metadata changes, and it must not consume a version.
+    """
+    service.mark_bundle_opened(db, bundle_id)
 
 
 @router.put("/{bundle_id}/cursor", response_model=BundleCursorRead)
