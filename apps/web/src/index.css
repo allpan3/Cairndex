@@ -138,6 +138,28 @@ button {
 [draggable='true'] {
   -webkit-user-drag: element;
 }
+
+/* Cover art and hover previews are decoration: the card or row beneath them
+   owns every gesture. Left interactive, the media element becomes the event
+   target and WebKit takes over in three visible ways — grabbing a cover starts
+   a native *image* drag (which ignores `setDragImage`, so the tidy drag pill is
+   replaced by a big translucent copy of the artwork), right-clicking opens the
+   OS image/video menu instead of ours, and macOS Live Text makes the words
+   recognised *inside* the picture selectable, so a marquee that crosses a
+   thumbnail sweeps up image text instead of selecting items. Making the media
+   inert fixes all three at once and costs nothing: hover previews bind their
+   handlers to the wrapper, not the media. The real viewers are deliberately
+   left out — there, selecting text in an image is a feature. */
+.collcard__thumb-img,
+.hover-preview__image,
+.hover-preview__video,
+.hover-preview__storyboard,
+.inspector__cover img {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
 .resizer-bar {
   cursor: col-resize;
   z-index: 10;
@@ -909,17 +931,20 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  /* No overflow:hidden — the thumb's stacked-sheet shadows peek out top-right.
-     The thumb and meta round their own outer corners instead. */
-  background: transparent;
+  /* One clean clipped card. The old stacked-sheet look drew its "sheets" as
+     box-shadows floating above/right of the thumb — they sat exactly where a
+     selection ring's top and right edges paint (so a selected folder looked
+     highlighted on two sides only), and the name/count footer visibly belonged
+     to just the front sheet. A folder now reads as a folder via the chip on
+     the thumb instead. */
+  overflow: hidden;
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   text-align: left;
   padding: 0;
-  /* Reserve room for the stacked sheets that sit above/right of the thumb. */
-  margin: 6px 6px 0 0;
 }
 .collcard:hover {
   border-color: var(--border-strong);
@@ -935,14 +960,25 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px 8px 0 0;
-  /* Two offset "sheets" behind the cover give the folder a stacked look that
-     reads differently from a flat bundle card. */
-  box-shadow:
-    3px -3px 0 -1px var(--surface),
-    3px -3px 0 0 var(--border),
-    6px -6px 0 -1px var(--surface),
-    6px -6px 0 0 var(--border);
+}
+/* The folder marker: always present, covered or not, so a folder card is
+   distinguishable from a bundle card at a glance. */
+.collcard__chip {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(10, 12, 16, 0.55);
+  color: #fff;
+}
+.collcard__chip .icon {
+  width: 12px;
+  height: 12px;
 }
 .collcard__thumb-icon {
   color: var(--text-muted);
@@ -958,13 +994,12 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px 8px 0 0;
 }
 .collcard__meta {
   padding: 6px 8px;
   min-width: 0;
   background: var(--surface);
-  border-radius: 0 0 8px 8px;
+  border-top: 1px solid var(--border);
 }
 .collcard__name {
   overflow: hidden;
@@ -4761,14 +4796,57 @@ code {
    item repainted it with the plain hover colour — it looked deselected until the
    pointer left. Pairing each selected state with its own hover, last in the
    cascade, is the fix; collected here so a new surface can be added in one place
-   rather than rediscovering the bug per view. */
+   rather than rediscovering the bug per view.
+
+   Two families, matching how each surface marks selection. Rows mark it with a
+   *background*, so their hover deepens the background. Cards (bundle, collection,
+   album tile) mark it with an accent *ring* on a transparent or self-rounded
+   body — painting a background box behind those looked broken (visibly so during
+   a drag-over, when :hover is active on the drop target), so their hover
+   thickens the ring instead. */
 .nav-item--active:hover,
-.collcard--selected:hover,
-.card--selected:hover,
-.album-tile--selected:hover,
 .list-row--selected:hover,
 .file-table .file-row--selected:hover {
   background: var(--accent-soft-strong);
+}
+.card--selected:hover,
+.collcard--selected:hover,
+.album-tile--selected:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* --- Drag badge ------------------------------------------------------------
+   The custom drag preview for every internal drag. Browsers snapshot the source
+   element by default, which gave a different ghost per surface — a huge
+   half-transparent card in the grid, a full-width sliver for a list row, and
+   sometimes nothing at all (WebKit refuses to snapshot some composited nodes).
+   A small pill naming what is being dragged is consistent everywhere and,
+   crucially, does not blot out the drop target underneath. Mounted at a real
+   on-screen position because WebKit snapshots the element as rendered — an
+   off-screen node captures blank — and layered *behind* the opaque app surface
+   so it is never actually seen. */
+.drag-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  /* Transparent lead-in: the snapshot starts at the cursor, the pill begins
+     just clear of the pointer glyph so the label is never hidden under it. */
+  padding-left: 10px;
+  pointer-events: none;
+}
+.drag-badge__pill {
+  max-width: 240px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Settings: a labelled checkbox with an explanatory line ---------------- */

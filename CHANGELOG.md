@@ -224,6 +224,30 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **Cover art was intercepting the gestures meant for the card holding it.** A
+  thumbnail is decoration, but the browser treated the image element as the
+  thing being clicked, and WebKit then applied its own image behaviour on top:
+  grabbing a folder cover started a native *image* drag (a large translucent
+  copy of the artwork instead of the drag pill, ignoring the app's drag image
+  entirely), right-clicking one opened the OS image menu instead of Cairndex's,
+  and macOS Live Text made the words recognised *inside* the picture
+  selectable — so a drag-select that crossed a cover highlighted text baked
+  into the artwork rather than selecting items. Thumbnails and hover previews
+  are now inert; the card or row beneath them owns every gesture. The real
+  viewers keep their interactive images, where selecting text in a picture is
+  a feature rather than a misfire.
+
+- **Collections could not be multi-selected for a drag, and blank space would
+  not deselect them.** Dragging one card of a three-collection selection moved
+  only that one; the drag pill likewise said one name. A collection drag now
+  carries the whole selection ("3 collections") and drops them together —
+  reparenting into a folder, or reordering as one block that keeps its relative
+  order. Any dragged collection that is an ancestor of the drop target is left
+  behind instead of failing the whole drop on the server's cycle check.
+  Clicking blank space now clears the selection in two places that ignored it:
+  the wide empty strip beside the *Subcollections* / *Contents* titles, and the
+  sidebar's own empty space.
+
 - **The macOS app bundle was invalidly signed, not merely unsigned.** Tauri only
   runs `codesign` when a signing identity is configured, and none was, so
   `Cairndex.app` shipped with no `_CodeSignature/CodeResources` — an executable

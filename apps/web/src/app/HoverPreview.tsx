@@ -92,6 +92,7 @@ export function HoverPreview({
           data-testid="hover-preview-image"
           src={source.imageUrl ?? undefined}
           alt=""
+          draggable={false}
         />
       )}
       {mountDirect && (

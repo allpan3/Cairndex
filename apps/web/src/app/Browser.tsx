@@ -5,9 +5,10 @@ import type { BundleSummary } from '../api/client'
 import { thumbnailUrl } from '../api/client'
 import { formatBytes, formatDate, formatDimensions } from '../lib/format'
 import { BundleCard } from './BundleCard'
+import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { computeRows, type PlacedCard, type Row } from './layout'
 import { moveTo } from './reorder'
-import { selectionTargets } from './selection'
+import { selectionTargets, suppressShiftSelection } from './selection'
 import type { LayoutMode } from './types'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -90,8 +91,12 @@ export function Browser(props: BrowserProps) {
         // without removing from the current one) instead of a rejected drag.
         e.dataTransfer.effectAllowed = 'copyMove'
         setDragId(id)
+        setDropSlot(null) // the previous drag's gap indicator must not flash back
         // Carry the whole selection when dragging a selected card, else just this.
-        onBundleDragStart?.(selectionTargets(id, selectedIds))
+        const targets = selectionTargets(id, selectedIds)
+        const title = items.find((i) => i.id === id)?.title ?? 'Bundle'
+        setDragBadge(e, dragBadgeLabel(targets.length, title, 'bundle'))
+        onBundleDragStart?.(targets)
       },
       onDragEnd: clearDrag,
       onDragOver: (e: React.DragEvent) => {
@@ -253,6 +258,7 @@ export function Browser(props: BrowserProps) {
       ref={setScrollEl}
       role="listbox"
       aria-label="Bundles"
+      onMouseDownCapture={suppressShiftSelection}
       onMouseDown={onBackgroundMouseDown}
       onContextMenu={onRootContextMenu}
       onDragOver={onContainerDragOver}

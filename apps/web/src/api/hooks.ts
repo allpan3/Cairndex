@@ -1472,7 +1472,43 @@ export function useBatchUpdate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: BatchUpdate) => batchUpdate(payload),
-    onSuccess: () => {
+    // Dropping bundles on a collection is pure metadata, but the UI used to sit
+    // still until the whole browse listing refetched — a round trip plus a page
+    // rebuild for an action with a fully predictable outcome. Apply the visible
+    // parts up front: pull the moved bundles out of the listings they left, and
+    // bump the collection counts. The invalidations below then reconcile with
+    // the server's answer, correcting the guess if it was wrong.
+    onMutate: (payload) => {
+      const removed = payload.remove_collection_ids ?? []
+      if (removed.length > 0 && payload.bundle_ids.length > 0) {
+        const gone = new Set(payload.bundle_ids)
+        qc.setQueriesData<InfiniteData<BundleBrowsePage>>(
+          {
+            queryKey: ['browse'],
+            predicate: (query) => {
+              const scope = query.queryKey[1] as BrowseQuery | undefined
+              return scope?.collectionId != null && removed.includes(scope.collectionId)
+            },
+          },
+          (data) =>
+            data && {
+              ...data,
+              pages: data.pages.map((page) => ({
+                ...page,
+                items: page.items.filter((item) => !gone.has(item.id)),
+                total: page.total - payload.bundle_ids.length,
+              })),
+            },
+        )
+      }
+      // Deliberately no optimistic *count* math. The server counts a collection's
+      // subtree (moving a bundle between a parent and its own child leaves the
+      // parent's number unchanged), so a flat ±1 here disagrees with the truth
+      // for exactly the common gesture — filing a bundle into a subcollection —
+      // and a wrong number on screen is worse than one arriving a beat later.
+      // The invalidation below brings the real counts with the next round trip.
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       qc.invalidateQueries({ queryKey: ['collection-counts'] })

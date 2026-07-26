@@ -1086,7 +1086,9 @@ function Workspace({
         }
       }
       setSelectedCollectionIds((prev) => {
-        if (e.metaKey || e.ctrlKey) {
+        // Cmd toggles. Deliberately not Ctrl: on macOS Ctrl-click is the
+        // context-menu chord, so treating it as a toggle fought the menu.
+        if (e.metaKey) {
           const next = new Set(prev)
           if (next.has(id)) next.delete(id)
           else next.add(id)
@@ -1101,6 +1103,22 @@ function Workspace({
     [headerCollections, collectionAnchor],
   )
 
+  // Modifier-click on a sidebar collection row: toggle it in the same
+  // multi-selection the section cards use, without navigating. Shift toggles
+  // like Cmd — the tree shares no linear order with the section grid, so a
+  // range there would be a guess about an ordering the user cannot see.
+  const toggleCollectionFromSidebar = useCallback((id: string) => {
+    setSelectedCollectionIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setCollectionAnchor(id)
+    setSelectedIds(new Set())
+    setActiveId(null)
+  }, [])
+
   // Marquee result over the subcollection cards — replaces the subcollection
   // selection wholesale and clears the bundle selection.
   const selectCollectionsMany = useCallback((ids: string[]) => {
@@ -1112,6 +1130,15 @@ function Workspace({
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set())
     setActiveId(null)
+  }, [])
+
+  // Empty-space click: drop *both* selections. Which one is live depends on what
+  // was last clicked, and blank space belongs to neither, so a single handler
+  // clears the lot rather than leaving the other kind of selection stranded.
+  const clearAllSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setActiveId(null)
+    setSelectedCollectionIds(new Set())
   }, [])
 
   // Double-clicking a tag on the All Tags page: go to All bundles, clear the
@@ -1393,29 +1420,64 @@ function Workspace({
     [selectedCollectionIds, collections.data, menu, platform.kind, libraryId],
   )
 
-  // Drag a collection onto another → reparent it (cycle/self guarded server-side).
-  const reparentCollection = useCallback(
-    (id: string, newParentId: string | null) => {
-      if (id === newParentId) return
-      updateCollection.mutate({ id, patch: { parent_id: newParentId } })
+  // Which of the dragged collections may actually become children of
+  // `newParentId`. The server rejects a collection parented to itself or to one
+  // of its own descendants; dropping a multi-selection that happens to contain
+  // the target's ancestor would otherwise surface as a bare error, so those are
+  // dropped from the move here and the rest still goes through.
+  const parentableInto = useCallback(
+    (ids: string[], newParentId: string | null): string[] => {
+      const parentOf = new Map((collections.data ?? []).map((c) => [c.id, c.parent_id ?? null]))
+      const ancestorsOfTarget = new Set<string>()
+      for (let at = newParentId; at !== null && at !== undefined; at = parentOf.get(at) ?? null) {
+        if (ancestorsOfTarget.has(at)) break // corrupt cycle — stop rather than spin
+        ancestorsOfTarget.add(at)
+      }
+      return ids.filter((id) => !ancestorsOfTarget.has(id))
     },
-    [updateCollection],
+    [collections.data],
   )
 
-  // Drop a collection onto the gap before/after a row in a *different* parent
-  // group (including the top level, newParentId=null): reparent it into that
-  // group, then write the new sibling order. Reorder runs after the reparent
-  // commits so the backend's same-parent validation passes. This is what makes
-  // "move a subcollection out to the top level" work.
-  const moveCollection = useCallback(
-    (id: string, newParentId: string | null, orderedIds: string[]) => {
-      if (id === newParentId) return
-      updateCollection.mutate(
-        { id, patch: { parent_id: newParentId } },
-        { onSuccess: () => reorderCollections.mutate({ parentId: newParentId, orderedIds }) },
-      )
+  // Drag collections onto another → reparent them all into it. Ones that already
+  // live there are left alone: dropping a mixed selection into a folder some of
+  // it is already in shouldn't spend a write (and a refetch) saying so.
+  const reparentCollections = useCallback(
+    (ids: string[], newParentId: string | null) => {
+      const parentOf = new Map((collections.data ?? []).map((c) => [c.id, c.parent_id ?? null]))
+      for (const id of parentableInto(ids, newParentId)) {
+        if (parentOf.get(id) === newParentId) continue
+        updateCollection.mutate({ id, patch: { parent_id: newParentId } })
+      }
     },
-    [updateCollection, reorderCollections],
+    [updateCollection, parentableInto, collections.data],
+  )
+
+  // Drop collections onto the gap before/after a row in a *different* parent
+  // group (including the top level, newParentId=null): reparent them into that
+  // group, then write the new sibling order. Reorder runs after the last
+  // reparent commits so the backend's same-parent validation passes. This is
+  // what makes "move a subcollection out to the top level" work.
+  const moveCollections = useCallback(
+    (ids: string[], newParentId: string | null, orderedIds: string[]) => {
+      const moving = parentableInto(ids, newParentId)
+      if (moving.length === 0) return
+      // The caller built `orderedIds` from the whole dragged set, but a reorder
+      // must list a sibling group exactly — so anything the cycle check refused
+      // to move comes back out of the order too. (A refused id is an ancestor of
+      // the new parent, which can never also be one of its children.)
+      const order = orderedIds.filter((id) => moving.includes(id) || !ids.includes(id))
+      let pending = moving.length
+      const writeOrder = () => {
+        if (--pending === 0) reorderCollections.mutate({ parentId: newParentId, orderedIds: order })
+      }
+      for (const id of moving) {
+        updateCollection.mutate(
+          { id, patch: { parent_id: newParentId } },
+          { onSuccess: writeOrder },
+        )
+      }
+    },
+    [updateCollection, reorderCollections, parentableInto],
   )
 
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
@@ -1546,6 +1608,31 @@ function Workspace({
           ['--inspector-w']: `${inspectorW}px`,
         } as React.CSSProperties
       }
+      // While an *internal* drag is live, the whole app accepts the dragover so
+      // the cursor badge is consistent everywhere: the OS was showing a green
+      // "+" over dead space (effectAllowed is copyMove, and an unhandled area
+      // defaults to copy) and an arrow over real targets. Handling it here pins
+      // the effect to move — or copy while ⌥ is held, matching the drop
+      // semantics — wherever the pointer is. Finder file drags (types includes
+      // Files) are left alone so drag-in keeps its own path, and the drop
+      // swallow only ends stray drops; real targets handled the event first.
+      onDragOver={
+        dragItem
+          ? (e) => {
+              if (e.dataTransfer.types.includes('Files')) return
+              e.preventDefault()
+              e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+            }
+          : undefined
+      }
+      onDrop={
+        dragItem
+          ? (e) => {
+              if (e.dataTransfer.types.includes('Files')) return
+              e.preventDefault()
+            }
+          : undefined
+      }
     >
       {sidebarVisible && (
         <Sidebar
@@ -1604,6 +1691,9 @@ function Workspace({
             setReviewingGrouping(true)
           }}
           selection={selection}
+          multiSelectedIds={selectedCollectionIds}
+          onModifierSelectCollection={toggleCollectionFromSidebar}
+          onSelectCollectionsMany={selectCollectionsMany}
           onSelect={(s) => {
             setMode('collection')
             setSelection(s)
@@ -1622,12 +1712,13 @@ function Workspace({
           onReorderCollections={(parentId, orderedIds) =>
             reorderCollections.mutate({ parentId, orderedIds })
           }
-          onMoveCollection={moveCollection}
+          onMoveCollections={moveCollections}
           onCleanupCollections={() => setCleaningCollections(true)}
           dragItem={dragItem}
           onDragItem={setDragItem}
-          onReparentCollection={reparentCollection}
+          onReparentCollections={reparentCollections}
           onMoveBundlesInto={moveBundlesToCollection}
+          onBackgroundClick={clearAllSelection}
           smartCollections={smartCollections.data ?? []}
           onNewSmartCollection={() => setEditor({ initialDraft: emptyDraft() })}
           onEditSmartCollection={(sc) => setEditor({ existing: sc })}
@@ -1725,8 +1816,8 @@ function Workspace({
                     onSectionContextMenu={collectionSectionContextMenu}
                     dragItem={dragItem}
                     onDragItem={setDragItem}
-                    onReparentCollection={reparentCollection}
-                    onMoveCollection={moveCollection}
+                    onReparentCollections={reparentCollections}
+                    onMoveCollections={moveCollections}
                     parentId={selection.collectionId ?? null}
                     onMoveBundlesInto={moveBundlesToCollection}
                     onReorderCollections={
