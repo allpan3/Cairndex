@@ -42,6 +42,7 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
           <img
             src={collectionThumbnailUrl(collection.id, collection.updated_at)}
             alt=""
+            draggable={false}
             onError={() => setHasCover(false)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
