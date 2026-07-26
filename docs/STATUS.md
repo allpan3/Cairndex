@@ -2,11 +2,56 @@
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
-> app's real media viewer (closing the M2 follow-up). W2 stays blocked on plan 1
-> M11, and W6
-> closes the write-mode track. Two things still need the owner: a pass on a
+> app's real media viewer (closing the M2 follow-up). Two branches are open:
+> `fix/collection-creation-affordances` (below) and `fix/write-mode-hardening`
+> (plan 4 W6). W2 stays blocked on plan 1 M11, and W6 closes the write-mode
+> track. Two things still need the owner: a pass on a
 > genuinely downloaded build (deferred from D7), and a pass on the **native
 > Finder drag gesture** on a packaged build, which cannot be automated here.
+
+## In progress: collection-creation affordances (2026-07-26)
+
+Branch `fix/collection-creation-affordances`, off `main` at `33d46f0`.
+Owner-reported: there was no way to add a collection from the grid or the shell
+menu, no way to add a subcollection by right-clicking one, and the sidebar's **+**
+created inside the currently open collection rather than at the top level.
+
+**The + was the actual bug.** It inferred its parent from `selection.collectionId`,
+so one button did two different things depending on what happened to be open — and
+while browsing a collection there was *no* way to ask for a top-level one. It is
+now unconditionally top level, and nesting became its own gesture: **right-click a
+collection → New Subcollection**. "New Collection" was added to the Collections
+heading and its section run-out, the bundle grid's empty-space menu, and the native
+**File → New Collection** (`CmdOrCtrl+Shift+N`, free — the keymap test pins that
+accelerators are never reused). All routes end in the same inline rename box.
+
+**The shape worth remembering:** the sidebar keeps owning the create flow, because
+the new row's inline rename (`editingId`) and ancestor expansion are its state.
+Outside callers therefore raise a `newCollectionRequest` prop that the sidebar
+consumes, mirroring how App delivers `deepLink`. It is consumed **by request
+identity**, not by trusting the caller's clear callback: `createCollectionUnder`
+changes identity whenever the collection list refetches — which creating one
+causes — so a caller wired without the clear would otherwise have created in a
+loop.
+
+**One thing the live check caught.** The first draft hung the blank-space menu on
+the whole `<aside>`, guarded only by "not a row or button". Probing the real DOM
+showed the first matching blank point was the **app title** — right-clicking the
+Cairndex wordmark would have offered to make a collection. Scoped to the
+collections `.sidebar__section` instead, and verified in the running app that the
+brand, the library selector and the jobs strip raise nothing while the heading,
+the section, a collection row and the grid all raise the right menus.
+
+**Tests:** web **424 passed** (+6 in a new `Sidebar.collections.test.tsx`: the +
+at top level with a collection open, the subcollection menu, the heading menu, the
+external request, single consumption under a refetch, and per-parent name
+collision). Rust **98 passed** — the shell builds its menu from `keymap.json`, so
+the new item needed no Rust change beyond staying inside the existing contract.
+Verified live against the running dev server (menus only; no collections were
+created in the owner's real library).
+
+**Not done:** the desktop **File → New Collection** item cannot be exercised in a
+browser, so it is covered by the keymap contract test rather than end-to-end.
 
 ## Merged: one media viewer shell for both browsing surfaces (2026-07-26)
 
