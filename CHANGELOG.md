@@ -224,6 +224,26 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **The File Browser plays video in the app's player.** Opening a video there
+  used to hand it to the browser's own `<video controls>` — no custom control
+  bar, no keyboard map, no transcode fallback, no storyboard scrubbing, no
+  resume. It now opens the same viewer the Bundle Browser uses, so
+  <kbd>←</kbd>/<kbd>→</kbd> seek, <kbd>Space</kbd> plays, and everything the
+  player can do is available from either surface. Images gain the zoom/pan stage
+  for the same reason.
+
+  **Stepping still follows the folder, not a bundle.** The File Browser keeps
+  owning its own playlist — the openable files in the directory you are looking
+  at, in the order shown — so opening a file that happens to be in a bundle does
+  not silently switch you to that bundle's contents.
+
+  **A file that was never indexed still plays.** It streams from its path and
+  gets the whole player shell, minus what genuinely needs a file row: no
+  subtitles, storyboard, chapters, or saved position, and no server-side
+  remux/transcode, so an exotic codec fails exactly as it did before. A file that
+  *is* indexed behaves identically to opening it from its bundle, resume point
+  included.
+
 - **Date orders belong to Recent, and new bundles arrive at the front.** Date
   Added / Modified / Opened are offered in the Recent view only — elsewhere they
   were a second route to what Recent is for. Every other view sorts by Manual,
