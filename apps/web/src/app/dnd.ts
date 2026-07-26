@@ -3,7 +3,14 @@
 // rows) react based on the payload. Kept in App-level state (same-document drag),
 // so components don't need to (de)serialize dataTransfer during dragover.
 
-export type DragItem = { kind: 'bundles'; ids: string[] } | { kind: 'collection'; id: string }
+// A collection drag carries the whole selected set in `ids` (multi-select drags
+// like a bundle drag does) plus `id`, the one row/card actually grabbed. The
+// grabbed one is what reorder math anchors on — "drop these three after the card
+// I'm holding" needs to know which of the three is under the cursor — while
+// `ids` is what actually moves. For a plain unselected drag both agree: [id].
+export type DragItem =
+  | { kind: 'bundles'; ids: string[] }
+  | { kind: 'collection'; id: string; ids: string[] }
 
 // Where a drop will land relative to the hovered item: reorder before/after it,
 // or move *into* it (reparent a collection / add a bundle).

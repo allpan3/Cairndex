@@ -19,7 +19,7 @@ import type { HoverPreviewSource } from './hoverPreviewState'
 import { IconCaptions, IconFile, IconFilm, IconFolder, IconImage, IconMusic } from './icons'
 import { listRowHeight } from './layout'
 import { usePinyinSearch } from './pinyin'
-import { selectionTargets } from './selection'
+import { selectionTargets, suppressShiftSelection } from './selection'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -642,6 +642,7 @@ function FileList({
           dropActive ? ' file-browser__body--dropping' : ''
         }`}
         ref={setScrollEl}
+        onMouseDownCapture={suppressShiftSelection}
         onMouseDown={onBackgroundMouseDown}
         onContextMenu={contextBackground}
         onKeyDown={listKeyDown}

@@ -1,15 +1,38 @@
 # Project status
 
-> **Current position:** phase H — plan 4 library write mode, on
-> `feat/write-mode-w0-gate` (single PR for the whole track, at the owner's
-> request). **W0, W1, W3, W4 and W5 are complete**, including the desktop
-> drag-in that write mode was built for; five review findings across five
-> rounds (W0 through the final PR pass) are fixed. **W3 (move) landed 2026-07-23** with the Move to… destination picker;
-> its one deferred piece is drag-move onto a directory row (see the entry
-> immediately below). W2 stays blocked on plan 1 M11, and W6 closes the track.
-> Two things still need the owner: a pass on a genuinely downloaded build
-> (deferred from D7), and a pass on the **native Finder drag gesture** on a
-> packaged build, which cannot be automated here.
+> **Current position:** plan 4 write mode is **merged** (PR #30). Work continues
+> on `fix/post-merge-fixes` — a run of owner-reported desktop/web fixes found by
+> hands-on testing, latest commit below. W2 stays blocked on plan 1 M11, and W6
+> closes the write-mode track. Two things still need the owner: a pass on a
+> genuinely downloaded build (deferred from D7), and a pass on the **native
+> Finder drag gesture** on a packaged build, which cannot be automated here.
+
+## In progress: post-merge interaction fixes (2026-07-25)
+
+Branch `fix/post-merge-fixes`, latest `HEAD`. Owner testing of the merged build
+produced several rounds of drag-and-drop, selection and layout fixes. The two
+findings worth recording beyond the changelog:
+
+**Tauri's `dragDropEnabled` is a whole-pipeline switch, not a feature toggle.**
+With it `true` (the default), tauri-runtime-wry answers *every* drag event as
+handled, which wry reports to WKWebView as "block the OS default" — and that
+takes the page's own HTML5 drag events with it. Internal drag-and-drop had
+therefore never worked in the desktop shell; it works in a browser, which is why
+it looked like a styling problem for so long. It is now `false` in
+`tauri.conf.json`. The consequence: OS drops arrive as ordinary HTML5 `File`
+drops through the browser import path, so the shell's byte-level import progress
+and its deterministic self-drop detection are bypassed. The native plumbing is
+left in place, unused, pending a decision — either keep `false` and delete it, or
+restore it behind a narrower per-event answer.
+
+**WebKit and Chromium disagree about drag and selection enough that a browser
+check is not a desktop check.** Three separate fixes passed in the preview pane
+and failed in the shell: an app-wide `user-select: none` silently prevented every
+`dragstart` (WebKit refuses to start a drag inside an unselectable subtree);
+negative `setDragImage` offsets are clamped, so the drag pill's offset has to be
+baked into the image as transparent padding; and a cover image is both a native
+drag source and a **Live Text** surface, so it stole the gestures aimed at the
+card behind it. Anything touching drag or selection needs a desktop pass.
 
 ## Fixed: a non-empty trash vanished from the UI with write mode off (2026-07-24)
 
