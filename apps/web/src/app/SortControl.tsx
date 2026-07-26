@@ -7,6 +7,8 @@ import { usePopover } from './usePopover'
 const SORTS: { value: BundleSort; label: string }[] = [
   { value: 'manual', label: 'Manual' },
   { value: 'date_added', label: 'Date Added' },
+  { value: 'date_modified', label: 'Date Modified' },
+  { value: 'date_opened', label: 'Date Opened' },
   { value: 'title', label: 'Title' },
   { value: 'rating', label: 'Rating' },
   { value: 'size', label: 'Size' },
@@ -17,10 +19,10 @@ interface SortControlProps {
   sort: BundleSort
   order: SortOrder
   onChange: (sort: BundleSort, order: SortOrder) => void
-  /** Set when the view *is* its sort (Recently Added). The control stays visible
-   *  but does not open, and says why: a control that vanishes reads as a feature
-   *  that broke, where a disabled one reads as a rule. */
-  lockedReason?: string
+  /** Restricts the offered sorts. The Recent view passes the date orders: what
+   *  makes it "recent" is *which* date it ranks by, so Title or Size there would
+   *  just be the All view under another name. Omitted = every sort. */
+  allowed?: BundleSort[]
   // #8: when true, each collection/view keeps its own last-used sort.
   perCollection: boolean
   onPerCollection: (value: boolean) => void
@@ -35,11 +37,12 @@ export function SortControl({
   sort,
   order,
   onChange,
-  lockedReason,
+  allowed,
   perCollection,
   onPerCollection,
 }: SortControlProps) {
   const { open, setOpen, ref, panelRef, pos } = usePopover()
+  const sorts = allowed ? SORTS.filter((s) => allowed.includes(s.value)) : SORTS
   const label = SORTS.find((s) => s.value === sort)?.label ?? 'Sort'
 
   return (
@@ -49,8 +52,7 @@ export function SortControl({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label="Sort"
-        disabled={lockedReason !== undefined}
-        title={lockedReason ?? 'Sort'}
+        title="Sort"
       >
         {label}
         <span className="sortctl__dir" aria-hidden="true">
@@ -58,7 +60,6 @@ export function SortControl({
         </span>
       </button>
       {open &&
-        lockedReason === undefined &&
         pos &&
         createPortal(
           <div
@@ -67,7 +68,7 @@ export function SortControl({
             style={{ top: pos.top, right: pos.right, bottom: pos.bottom, maxHeight: pos.maxHeight }}
           >
             <div className="sortctl__section">
-              {SORTS.map((s) => (
+              {sorts.map((s) => (
                 <button
                   key={s.value}
                   className={`sortctl__opt${s.value === sort ? ' sortctl__opt--on' : ''}`}

@@ -119,7 +119,9 @@ class BundleCleanupOrder(BaseModel):
     ``sort`` is one of the real sorts (not ``manual``); rejected otherwise."""
 
     collection_id: str | None = None
-    sort: Literal["date_added", "title", "rating", "size", "file_count"]
+    sort: Literal[
+        "date_added", "date_modified", "date_opened", "title", "rating", "size", "file_count"
+    ]
     order: Literal["asc", "desc"] = "asc"
 
 

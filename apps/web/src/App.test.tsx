@@ -227,7 +227,7 @@ test('renders the shell with the brand and the system views', async () => {
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
-  expect(screen.getByText('Recently Added')).toBeInTheDocument()
+  expect(screen.getByText('Recent')).toBeInTheDocument()
   expect(screen.getByText('Uncategorized')).toBeInTheDocument()
   expect(screen.getByText('Missing Files')).toBeInTheDocument()
   expect(screen.queryByText(/Thumbnails/i)).not.toBeInTheDocument()
@@ -435,23 +435,30 @@ test('a collection selected in the sidebar does light up its row, and only there
   expect(card.className).not.toContain('collcard--selected')
 })
 
-test('Recently Added locks the sort — the view is its order', async () => {
-  // The server treats `recent` as the All view; date-added descending is the
-  // only thing that makes it "recent". A changeable sort there would quietly
-  // produce a second All view under a misleading name.
+test('Recent offers the date orders and nothing else', async () => {
+  // Recent is the All view ranked by a date; *which* date is the only choice it
+  // has. Title or Size there would be the All view under another name, so the
+  // menu is narrowed rather than the control being removed.
   mockApi()
   renderApp()
   await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
 
   const sortButton = () => screen.getByRole('button', { name: 'Sort' })
-  expect(sortButton()).toBeEnabled()
-
-  fireEvent.click(screen.getByText('Recently Added'))
-
-  expect(sortButton()).toBeDisabled()
-  expect(sortButton()).toHaveTextContent('Date Added')
-  expect(sortButton()).toHaveAttribute('title', 'Recently Added is always newest first')
-  // Disabled, not hidden: the rule is visible rather than a control that vanished.
   fireEvent.click(sortButton())
-  expect(screen.queryByText('File Count')).not.toBeInTheDocument()
+  expect(screen.getByText('File Count')).toBeInTheDocument()
+  fireEvent.click(sortButton())
+
+  fireEvent.click(screen.getByText('Recent'))
+
+  // A sort carried in from another view (Manual) can't be expressed here, so it
+  // falls back to Date Added rather than showing a label the menu cannot offer.
+  expect(sortButton()).toHaveTextContent('Date Added')
+  fireEvent.click(sortButton())
+  // Scoped to the menu: "Date Added" is also the button's own label.
+  const options = document.querySelectorAll('.sortctl__section:first-of-type .sortctl__opt')
+  expect([...options].map((o) => o.textContent?.replace('✓', ''))).toEqual([
+    'Date Added',
+    'Date Modified',
+    'Date Opened',
+  ])
 })

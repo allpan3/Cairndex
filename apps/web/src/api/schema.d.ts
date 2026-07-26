@@ -623,6 +623,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/opened": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Bundle Opened
+         * @description Record that the owner opened this bundle (Recent view, Date Opened order).
+         *
+         *     Fire-and-forget from the client: it stamps a timestamp and returns nothing,
+         *     so a failure can never block opening a bundle. Not a PATCH — nothing about
+         *     the bundle's metadata changes, and it must not consume a version.
+         */
+        post: operations["mark_bundle_opened_api_v1_libraries__library_id__bundles__bundle_id__opened_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/playback": {
         parameters: {
             query?: never;
@@ -2245,7 +2269,7 @@ export interface components {
              * Sort
              * @enum {string}
              */
-            sort: "date_added" | "title" | "rating" | "size" | "file_count";
+            sort: "date_added" | "date_modified" | "date_opened" | "title" | "rating" | "size" | "file_count";
         };
         /** BundleCollections */
         BundleCollections: {
@@ -2331,7 +2355,7 @@ export interface components {
          * BundleSort
          * @enum {string}
          */
-        BundleSort: "date_added" | "title" | "rating" | "size" | "file_count" | "manual";
+        BundleSort: "date_added" | "date_modified" | "date_opened" | "title" | "rating" | "size" | "file_count" | "manual";
         /** BundleSummary */
         BundleSummary: {
             /** Cover Key */
@@ -5496,6 +5520,40 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_bundle_opened_api_v1_libraries__library_id__bundles__bundle_id__opened_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
