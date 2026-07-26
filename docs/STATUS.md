@@ -1,18 +1,87 @@
 # Project status
 
-> **Current position:** plan 4 write mode is **merged** (PR #30). Work continues
-> on `fix/post-merge-fixes` — a run of owner-reported desktop/web fixes found by
-> hands-on testing, latest commit below. W2 stays blocked on plan 1 M11, and W6
+> **Current position:** plan 4 write mode is **merged** (PR #30), as are the
+> post-merge interaction fixes (PR #31). Work continues on
+> `feat/file-browser-app-player` — the File Browser now opens the app's real
+> media viewer, closing the M2 follow-up. W2 stays blocked on plan 1 M11, and W6
 > closes the write-mode track. Two things still need the owner: a pass on a
 > genuinely downloaded build (deferred from D7), and a pass on the **native
 > Finder drag gesture** on a packaged build, which cannot be automated here.
 
-## Ready for review: post-merge interaction fixes (2026-07-26)
+## In progress: one media viewer shell for both browsing surfaces (2026-07-26)
 
-Branch `fix/post-merge-fixes`, 11 commits, opened as a PR. Owner testing of the
-merged build produced several rounds of drag-and-drop, selection and layout
-fixes; the branch history was squashed from 37 commits to 11 coherent ones (same
-tree) before review. The findings worth carrying forward:
+Branch `feat/file-browser-app-player`, off `main` at `33d46f0`. Owner-reported:
+playing a video from the File Browser did not use the app's player. It didn't —
+the File Browser had kept its own path-based lightbox (`FileEntryViewer`) with a
+bare `<video controls>` since plan 1 M2, a deferral recorded in this file at the
+time and now closed.
+
+**Why it wasn't a small fix.** The player stack is addressed by
+`file_id`/`bundle_id` — playback manifest, decision/session, storyboard,
+progress, subtitles — while the File Browser addresses entries by
+library-relative path, and an entry need not be indexed at all. The two surfaces
+have genuinely different identity models, so routing one into the other's viewer
+would have meant either faking an `AssetFile` row for a bare path or letting the
+File Browser inherit a bundle's playlist.
+
+**What landed:**
+
+- `viewer/viewerItem.ts` — `ViewerItem`, the normalized shape a `FileRead` and a
+  `FileBrowserEntry` both map into, with the fields a bare path genuinely lacks
+  (`fileId`, `bundleId`, `coverTime`, `canSetCover`) explicitly null rather than
+  invented. This is the seam; nothing downstream asks where an item came from.
+- `viewer/ViewerShell.tsx` — the chrome, playback engine, stages, control bar,
+  info panel, shortcuts and recovery budgets, extracted from `MediaViewer`
+  unchanged in behavior. `MediaViewer` and `FileEntryViewer` are now thin
+  containers over it, differing only in where the playlist and the playback entry
+  come from.
+- `useHlsSession` gained a **native-only mode**: `fileId: null` with a
+  `directStreamUrl` plays the bytes without a decision round-trip, because an
+  unindexed path has no row to remux/transcode against. Its freshness check moved
+  from `fileId` to `fileId ?? directStreamUrl` — every unindexed path shares a
+  null id, so keying on it alone carried one file's playhead into the next.
+- `ImageStage` takes tier sources instead of a `FileRead`, so File Browser images
+  get zoom/pan too. Their tiers start at `preview1600` (a File Browser row has no
+  cover thumbnail to borrow).
+- `ControlBar`/`SettingsMenu` take an optional cover group; an unindexed path
+  hides it rather than offering a cover it cannot set.
+- The dead `.viewer__*` lightbox CSS is gone.
+
+**Deliberately kept:** the File Browser still owns its playlist, so stepping
+walks the folder's openable files in listing order — opening a file that happens
+to belong to a bundle does not switch the playlist to that bundle. Arrow keys
+seek, as they do in the bundle viewer; file stepping is the chevrons and
+`Cmd/Ctrl+[`/`]`.
+
+**Degradation for an unindexed path**, all for want of a file row: no subtitles,
+storyboard, chapters, or saved position, and no server-side remux/transcode, so
+an undecodable codec fails as it did before. A *linked* entry resolves its real
+manifest row and behaves exactly like opening it from its bundle, resume
+included; if the manifest has no row for it (never probed), it falls back to the
+direct path entry rather than hanging on "Preparing playback…".
+
+**Tests run:** frontend `npm run lint`, `format:check`, `typecheck`, `test`
+(57 files, 418 tests), `build`; full Playwright suite (92 passed, including the
+`@fullstack` backend-backed player specs). New coverage: `viewerItem.test.ts`
+(adapter identity, tier lists, type-label fallback), three `useHlsSession` tests
+for native-only mode and the playhead-carry bug, and two `player.spec.ts` e2e
+tests — a linked File Browser video reaching the real pipeline with no native
+`controls` attribute and arrow-seek, and an unindexed one playing from
+`/file?path=` with **zero** decision/session requests and folder-scoped stepping.
+
+**No backend or API change**, so OpenAPI and `schema.d.ts` were not regenerated.
+
+**Not verified:** a hands-on pass against a real library — the evidence here is
+the e2e suite (real Chromium, and a real backend for the `@fullstack` specs).
+Worth an owner spot check on a genuinely exotic unindexed file, where the
+native-only path has no transcode to fall back on.
+
+## Merged: post-merge interaction fixes (2026-07-26)
+
+Branch `fix/post-merge-fixes`, 11 commits, merged as PR #31 (`33d46f0`). Owner
+testing of the merged build produced several rounds of drag-and-drop, selection
+and layout fixes; the branch history was squashed from 37 commits to 11 coherent
+ones (same tree) before review. The findings worth carrying forward:
 
 **`tsc --noEmit` checks nothing in this repo.** The root `tsconfig.json` is
 `files: []` with project references, so bare `tsc` silently no-ops. The gate is
@@ -4212,10 +4281,10 @@ slice without new runtime dependencies and without backend/API changes:
   lines on initial open — `VideoStage` now re-asserts track modes on each
   `<track>` load event (verified live on the two-subtitle DeepOcean bundle:
   only the selected track shows, and disabled tracks skip their cue fetch).
-- File Browser still uses `FileEntryViewer` with path-based URLs and native
-  browser controls, but now shares the fallback card component. Follow-up:
-  migrate File Browser onto the same viewer/stage primitives when plan 1 reaches
-  the path-based File Browser completion work.
+- File Browser still used `FileEntryViewer` with path-based URLs and native
+  browser controls at the time of this merge, sharing only the fallback card
+  component. **Resolved later** — see *Merged: one media viewer shell for both
+  browsing surfaces* below, which retired that split.
 - Follow-up recorded in plan 1: replace the removed inline file list with an
   expandable bundle-files side panel, and expand the right-side metadata panel
   into a first-class file/bundle metadata drawer.
