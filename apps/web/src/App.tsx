@@ -51,6 +51,7 @@ import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
+import { ImportProgress } from './app/ImportProgress'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
@@ -1252,6 +1253,35 @@ function Workspace({
     },
   })
 
+  // Rename the file shown in the inspector (double-click its title). A collision
+  // is reported as a flash rather than the full Replace/Keep-both prompt — that
+  // richer flow stays in the File Browser's own inline rename.
+  const renameSelectedFile = (relativePath: string, newName: string) => {
+    fileOperations.rename.mutate(
+      { path: relativePath, newName, onConflict: undefined },
+      {
+        onSuccess: (result) => {
+          const settled = result.path.split('/').pop() ?? result.path
+          // Keep the open inspector in step with the name it landed on.
+          setFileEntry((previous) =>
+            previous && previous.relative_path === relativePath
+              ? { ...previous, name: settled, relative_path: result.path }
+              : previous,
+          )
+          showFlash(`Renamed to “${settled}”.`, () =>
+            fileOperations.undo.mutate(result.operation.id, {
+              onSuccess: () => showFlash('Undone.'),
+              onError: (error) =>
+                showFlash(error instanceof Error ? error.message : 'That could not be undone.'),
+            }),
+          )
+        },
+        onError: (failure) =>
+          showFlash(failure instanceof Error ? failure.message : 'That name could not be used.'),
+      },
+    )
+  }
+
   useDesktopFileDrop({
     libraryId,
     mappingState,
@@ -1544,6 +1574,10 @@ function Workspace({
           onChangeLibrary={onChangeLibrary}
           onManageLibraries={onManage}
           onOpenSettings={onSettings}
+          // A copy-in from a Finder drop is not scoped to any one pane, so its
+          // progress is docked in the sidebar above Settings rather than injected
+          // into whatever surface happens to be on screen.
+          footer={hostImports.progress ? <ImportProgress {...hostImports.progress} /> : undefined}
           canLock={canLock}
           onLock={onLock}
           onUpdateLibrary={() => updateLibrary.mutate()}
@@ -1783,6 +1817,7 @@ function Workspace({
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
+          onRename={writeMode && fileScope === 'browse' ? renameSelectedFile : undefined}
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
@@ -1975,16 +2010,6 @@ function Workspace({
           onCancel={hostImports.dismiss}
           busy={false}
         />
-      )}
-
-      {hostImports.importing.length > 0 && (
-        <div className="mb-toast" role="status">
-          Copying{' '}
-          {hostImports.importing.length === 1
-            ? hostImports.importing[0]
-            : `${hostImports.importing.length} files`}
-          …
-        </div>
       )}
 
       {flash && (

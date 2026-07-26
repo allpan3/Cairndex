@@ -9,6 +9,7 @@ import {
 } from '../api/client'
 import { useDeviceMutations, useDevices } from '../api/hooks'
 import { formatDateTime } from '../lib/format'
+import { useDisplayPrefs } from '../state/displayPrefs'
 import {
   clearHostDeviceToken,
   getHostLabels,
@@ -33,7 +34,7 @@ export function SettingsDialog({
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
-  const [page, setPage] = useState<'devices' | 'libraries'>('devices')
+  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance'>('devices')
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -65,8 +66,16 @@ export function SettingsDialog({
                 Libraries
               </button>
             )}
+            <button
+              className={`settings-nav__item${page === 'appearance' ? ' settings-nav__item--active' : ''}`}
+              onClick={() => setPage('appearance')}
+            >
+              Appearance
+            </button>
           </nav>
-          {desktop && page === 'libraries' ? (
+          {page === 'appearance' ? (
+            <AppearancePage />
+          ) : desktop && page === 'libraries' ? (
             <LibraryMappingsPage libraries={libraries} />
           ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
@@ -553,5 +562,44 @@ function DeviceRow({
         {revoking ? 'Revoking…' : 'Revoke'}
       </button>
     </article>
+  )
+}
+
+/**
+ * Display preferences for this client (plan 4 follow-up).
+ *
+ * Local to the machine, not the library: it is how the owner likes to *look* at
+ * their files, so it travels with the app rather than the metadata. Hiding
+ * extensions changes the label only — never a path, a search match, or what a
+ * rename operates on.
+ */
+function AppearancePage() {
+  const [prefs, setPrefs] = useDisplayPrefs()
+
+  return (
+    <section className="devices-page" aria-labelledby="appearance-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="appearance-title">Appearance</h3>
+          <p>How this computer displays your library. Nothing here changes your files.</p>
+        </div>
+      </div>
+      <label className="settings-toggle">
+        <input
+          type="checkbox"
+          checked={prefs.hideFileExtensions}
+          onChange={(event) =>
+            setPrefs((current) => ({ ...current, hideFileExtensions: event.target.checked }))
+          }
+        />
+        <span>
+          <strong>Hide file extensions</strong>
+          <span className="settings-toggle__hint">
+            Show “Holiday” instead of “Holiday.mkv” in the File Browser. Renaming still shows the
+            full name, so an extension can never be lost by accident.
+          </span>
+        </span>
+      </label>
+    </section>
   )
 }
