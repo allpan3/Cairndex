@@ -71,6 +71,17 @@ export function BundleCard({
   return (
     <div
       className={`card${selected ? ' card--selected' : ''}`}
+      // Selection happens on press, not release. A drag that begins on an
+      // unselected card swallows the click that would have selected it, so the
+      // card departed unselected — and the drag then carried whatever the *old*
+      // selection was. Pressing an already-selected card changes nothing here
+      // (the group must survive so it can be dragged together); the plain click
+      // on release still collapses to just this card, as before. Modifier
+      // presses stay on click, where range/toggle logic already lives.
+      onMouseDown={(e) => {
+        if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || selected) return
+        onSelect(item.id, e)
+      }}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen(item.id)}
       onContextMenu={(e) => onContextMenu(item.id, e)}
