@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { importHostDroppedFile } from '../platform'
+import { importHostDroppedFile, listenHostImportProgress } from '../platform'
 
 /**
  * Copying files dropped from Finder into the active library (plan 4 W5).
@@ -27,9 +27,26 @@ export interface HostImportConflict {
   remaining: string[]
 }
 
+/** Live progress for the file currently uploading, within its batch. */
+export interface ImportProgress {
+  name: string
+  /** 1-based position in the current batch. */
+  index: number
+  /** How many files this copy-in is transferring in total. */
+  total: number
+  /** Bytes uploaded for the current file. */
+  sent: number
+  /** The current file's size in bytes (0 until the first tick). */
+  size: number
+  /** Smoothed upload rate in bytes/second. */
+  rate: number
+}
+
 export interface HostImports {
   /** Names currently uploading, in order. */
   importing: string[]
+  /** The current file's transfer progress, or null when idle. */
+  progress: ImportProgress | null
   conflict: HostImportConflict | null
   copyIn: (paths: string[]) => void
   keepBoth: () => void
@@ -53,13 +70,52 @@ export function useHostImports({
   onImported: (operationId: string) => { undo: () => void }
 }): HostImports {
   const [importing, setImporting] = useState<string[]>([])
+  const [progress, setProgress] = useState<ImportProgress | null>(null)
   const [conflict, setConflict] = useState<HostImportConflict | null>(null)
+  // The file currently uploading, so a progress tick (which only knows a path)
+  // can be matched to it, and the previous byte/time sample for rate.
+  const current = useRef<{ path: string; name: string; index: number; total: number } | null>(null)
+  const sample = useRef<{ sent: number; at: number; rate: number }>({ sent: 0, at: 0, rate: 0 })
+
+  // Bytes-sent ticks arrive on a global event; translate each into progress for
+  // the file we are on. Set up once — the refs carry the moving target.
+  useEffect(() => {
+    let stop = () => {}
+    let active = true
+    void listenHostImportProgress((tick) => {
+      const now = current.current
+      if (!now || tick.path !== now.path) return
+      const at = performance.now()
+      const previous = sample.current
+      const seconds = (at - previous.at) / 1000
+      const raw = seconds > 0 ? (tick.sent - previous.sent) / seconds : previous.rate
+      // Light smoothing so the rate reads steadily rather than jittering.
+      const rate = previous.rate === 0 ? raw : previous.rate * 0.6 + raw * 0.4
+      sample.current = { sent: tick.sent, at, rate }
+      setProgress({
+        name: now.name,
+        index: now.index,
+        total: now.total,
+        sent: tick.sent,
+        size: tick.total,
+        rate: Math.max(0, rate),
+      })
+    }).then((unsubscribe) => (active ? (stop = unsubscribe) : unsubscribe()))
+    return () => {
+      active = false
+      stop()
+    }
+  }, [])
 
   async function run(paths: string[], onConflict?: 'suffix' | 'replace'): Promise<void> {
     if (!libraryId) return
+    const total = paths.length
     for (const [index, path] of paths.entries()) {
       const name = nameOf(path)
-      setImporting((current) => [...current, name])
+      setImporting((currentNames) => [...currentNames, name])
+      current.current = { path, name, index: index + 1, total }
+      sample.current = { sent: 0, at: performance.now(), rate: 0 }
+      setProgress({ name, index: index + 1, total, sent: 0, size: 0, rate: 0 })
       try {
         const outcome = await importHostDroppedFile({
           libraryId,
@@ -84,13 +140,18 @@ export function useHostImports({
             conflictingName: conflicting || name,
             remaining: paths.slice(index + 1),
           })
+          // Paused on a question: stop showing progress until the answer resumes.
+          current.current = null
+          setProgress(null)
           return
         }
         onFlash(hostImportMessage(failure, name))
       } finally {
-        setImporting((current) => current.filter((entry) => entry !== name))
+        setImporting((names) => names.filter((entry) => entry !== name))
       }
     }
+    current.current = null
+    setProgress(null)
   }
 
   const answer = (policy: 'suffix' | 'replace') => {
@@ -102,6 +163,7 @@ export function useHostImports({
 
   return {
     importing,
+    progress,
     conflict,
     copyIn: (paths) => {
       if (paths.length > 0) void run(paths)

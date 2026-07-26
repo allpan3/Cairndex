@@ -5,9 +5,11 @@ use tauri::{async_runtime, AppHandle, Emitter, Runtime, Window};
 
 use crate::mappings::{self, MappingError};
 
-// A drag preview image is mandatory on macOS/Windows. Embed the app icon at
-// compile time so the packaged shell never depends on a runtime asset path.
-const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/32x32.png");
+// A drag preview image is mandatory on macOS/Windows. A neutral document glyph
+// rather than the app icon: the thing under the cursor is a *file* being carried
+// out, and showing the Cairndex logo made it read as dragging the application.
+// Embedded at compile time so the packaged shell never depends on a runtime path.
+const DRAG_PREVIEW_ICON: &[u8] = include_bytes!("../icons/drag-file.png");
 
 // Emitted when a shell-initiated drag-out session ends (drop or cancel) so the SPA
 // can clear its "drag-out in flight" guard and stop ignoring its own file drops.

@@ -10,6 +10,8 @@ import { conflictName, hostImportMessage, useHostImports } from './useHostImport
 const importDroppedFile = vi.fn()
 vi.mock('../platform', () => ({
   importHostDroppedFile: (request: unknown) => importDroppedFile(request),
+  // No byte ticks in the test; the progress subscription is a no-op.
+  listenHostImportProgress: () => Promise.resolve(() => undefined),
 }))
 
 const flashes: { message: string; undo?: () => void }[] = []
