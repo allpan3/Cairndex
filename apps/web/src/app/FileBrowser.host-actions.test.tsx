@@ -4,6 +4,7 @@ import { expect, test, vi } from 'vitest'
 
 import { hostLabelsFor } from '../platform'
 import { FileBrowser } from './FileBrowser'
+import { DEFAULT_PLAYER_PREFS } from './types'
 
 vi.mock('../api/hooks', async () => {
   const { linkedVideoEntry } = await import('./testFixtures')
@@ -52,6 +53,8 @@ function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: strin
         selectedPath={null}
         onNavigate={() => undefined}
         onSelectEntry={() => undefined}
+        playerPrefs={DEFAULT_PLAYER_PREFS}
+        onPlayerPrefs={() => undefined}
         onAddToBundle={() => undefined}
         onCreateBundle={() => undefined}
         hostLabels={labels}
