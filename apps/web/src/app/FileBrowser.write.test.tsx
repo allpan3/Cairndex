@@ -5,6 +5,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { PathConflictError, type FileBrowserEntry } from '../api/client'
 import { hostLabelsFor } from '../platform'
 import { FileBrowser } from './FileBrowser'
+import { DEFAULT_PLAYER_PREFS } from './types'
 
 // The File Browser's write affordances (ADR-0013 W1): inline rename, New
 // Folder, the collision prompt, and the Undo a completed operation offers.
@@ -91,6 +92,8 @@ function renderBrowser(writeMode = true) {
         selectedPath={null}
         onNavigate={() => undefined}
         onSelectEntry={() => undefined}
+        playerPrefs={DEFAULT_PLAYER_PREFS}
+        onPlayerPrefs={() => undefined}
         onAddToBundle={() => undefined}
         onCreateBundle={() => undefined}
         hostLabels={hostLabelsFor('macos')}

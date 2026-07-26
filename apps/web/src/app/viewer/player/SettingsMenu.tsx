@@ -12,15 +12,23 @@ function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
   return PLAYER_SEEK_STEPS[index] ?? 5
 }
 
+/**
+ * Bundle-cover affordances for the playing file. Null when the item cannot own a
+ * cover — an unindexed File Browser path has no bundle to be the cover of.
+ */
+export interface CoverFrameActions {
+  onUse: () => void
+  onClear: () => void
+  hasCoverFrame: boolean
+}
+
 interface SettingsMenuProps {
   hls: HlsSessionState
   subtitles: SubtitleTrackRead[]
   player: PlayerController
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
-  onUseCoverFrame: () => void
-  onClearCoverFrame: () => void
-  hasCoverFrame: boolean
+  cover: CoverFrameActions | null
   sourceHeight: number | null
 }
 
@@ -48,9 +56,7 @@ export function SettingsMenu({
   player,
   fileLoop,
   onFileLoop,
-  onUseCoverFrame,
-  onClearCoverFrame,
-  hasCoverFrame,
+  cover,
   sourceHeight,
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
@@ -224,22 +230,24 @@ export function SettingsMenu({
               ))}
             </div>
           )}
-          <div className="mv-menu__group">
-            <div className="mv-menu__label">Cover</div>
-            <div className="mv-menu__actions">
-              <button className="mv-menu__action" role="menuitem" onClick={onUseCoverFrame}>
-                Set frame as cover
-              </button>
-              <button
-                className="mv-menu__action"
-                role="menuitem"
-                onClick={onClearCoverFrame}
-                disabled={!hasCoverFrame}
-              >
-                Reset cover to default
-              </button>
+          {cover && (
+            <div className="mv-menu__group">
+              <div className="mv-menu__label">Cover</div>
+              <div className="mv-menu__actions">
+                <button className="mv-menu__action" role="menuitem" onClick={cover.onUse}>
+                  Set frame as cover
+                </button>
+                <button
+                  className="mv-menu__action"
+                  role="menuitem"
+                  onClick={cover.onClear}
+                  disabled={!cover.hasCoverFrame}
+                >
+                  Reset cover to default
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>
