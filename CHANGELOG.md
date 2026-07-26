@@ -285,6 +285,32 @@ grouped under `Unreleased` until the first tagged release.
   subcollection view stays fixed: its cards span several parents, so a drag there
   would rewrite the global order while appearing to arrange one collection.
 
+- **Rubber-band selection is gone from the list layouts**, in both the Bundle
+  Browser and the File Browser. A band dragged down a single column of rows can
+  only ever pick a consecutive run — which is what Shift-click already does in one
+  gesture — so the rows keep their drag for reordering and for dropping onto a
+  collection instead, and there is no longer a hidden rule about which part of a
+  row starts which gesture. The grid layouts band as before. Clicking empty space
+  still clears the selection everywhere.
+
+- **Opening a bundle now re-sorts the Recent view on its own.** Date Opened only
+  caught up when something else happened to refetch the listing — navigating back
+  to it, or changing the order — so the owner's own action stayed invisible until
+  they poked it. Opening a bundle now tells exactly the listings that rank by that
+  column, so the re-sort happens behind the viewer; a view sorted by anything else
+  is left alone.
+
+- **Dragging a nested collection to the bottom of the tree puts it there.** It
+  used to land near its old parent instead. Two causes, both from splitting one
+  gesture in two: the placement half of the request still spoke a retired
+  contract and was rejected outright (leaving the collection reparented but
+  carrying its old position), and even with that fixed, the reparent published an
+  intermediate state — in the new group, old position — that a refetch could latch
+  onto before the placement landed. A collection move is now a single request
+  naming what moves, which group it joins, and which gap it lands in; the server
+  reparents and places together. Nesting is the same operation with no gap named,
+  so it too now lands somewhere defined instead of keeping a stale position.
+
 - **The sidebar tree joins the one-seam model, with reachable reorder edges.**
   Dropping between two rows shows a single seam wherever in that gap the pointer
   is. Its reorder edges also had a floor put under them: 28% of a 226px card is a

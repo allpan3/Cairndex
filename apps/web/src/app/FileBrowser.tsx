@@ -434,8 +434,8 @@ function FileList({
   const copyPath = (relativePath: string) => {
     void navigator.clipboard
       ?.writeText(relativePath)
-      .then(() => props.onFlash?.(`Copied “${relativePath}”.`))
-      .catch(() => props.onFlash?.('The path could not be copied.'))
+      .then(() => onFlash?.(`Copied “${relativePath}”.`))
+      .catch(() => onFlash?.('The path could not be copied.'))
   }
 
   // How many of these paths a bundle is built on — the part of a delete worth
@@ -505,14 +505,10 @@ function FileList({
   const { marqueeRect, onMouseDown: onBackgroundMouseDown } = useMarqueeSelect({
     getScrollEl: () => scrollEl,
     getWrapperEl: () => wrapperRef.current,
-    // Rubber-band from empty space always, and from a file row in list layout
-    // (rows fill the width, so there's otherwise nothing to grab); a plain click
-    // still selects via the drag threshold. File rows aren't reorder-draggable.
-    isBackgroundTarget: (target) => {
-      if (target.closest('.file-table__head')) return false
-      if (!target.closest('[data-relpath]')) return true
-      return prefs.layout === 'list'
-    },
+    // Only true empty space starts a band; a tile or row is never a band origin.
+    isBackgroundTarget: (target) =>
+      !target.closest('.file-table__head') && !target.closest('[data-relpath]'),
+    rubberBand: prefs.layout !== 'list',
     hitTest,
     getBaseSelection: () => selected,
     onChange: (ids) => {

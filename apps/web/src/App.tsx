@@ -11,7 +11,7 @@ import type {
   SmartCollectionRead,
   SortOrder,
 } from './api/client'
-import { markBundleOpened, setActiveLibraryId } from './api/client'
+import { setActiveLibraryId } from './api/client'
 import {
   useBatchUpdate,
   useBrowse,
@@ -24,6 +24,7 @@ import {
   useDeleteCollection,
   useReorderBundles,
   useReorderCollections,
+  useMarkBundleOpened,
   useDeploymentWriteMode,
   useFileOperations,
   invalidateAfterFileOperation,
@@ -841,6 +842,8 @@ function Workspace({
   const renameCollection = useRenameCollection()
   const updateCollection = useUpdateCollection()
   const reorderCollections = useReorderCollections()
+  // Stamps "last opened" and lets the Date Opened listings re-sort themselves.
+  const markOpened = useMarkBundleOpened()
   const cleanupCollectionOrder = useCleanupCollectionOrder()
   const reorderBundles = useReorderBundles()
   const cleanupBundleOrder = useCleanupBundleOrder()
@@ -1109,13 +1112,16 @@ function Workspace({
     setSelectedCollectionIds(new Set())
   }, [])
 
-  const open = useCallback((id: string) => {
-    setSelectedIds(new Set([id]))
-    setActiveId(id)
-    setSelectedCollectionIds(new Set())
-    setViewerTarget({ bundleId: id })
-    void markBundleOpened(id)
-  }, [])
+  const open = useCallback(
+    (id: string) => {
+      setSelectedIds(new Set([id]))
+      setActiveId(id)
+      setSelectedCollectionIds(new Set())
+      setViewerTarget({ bundleId: id })
+      markOpened(id)
+    },
+    [markOpened],
+  )
 
   // Click a subcollection card (with modifier = toggle, Shift = range). Clears
   // the bundle selection to keep the two mutually exclusive.
@@ -1238,7 +1244,7 @@ function Workspace({
           label: 'Open Bundle',
           onClick: () => {
             setOpenBundleId(id)
-            void markBundleOpened(id)
+            markOpened(id)
             setViewerTarget(null)
           },
           disabled: n > 1,
@@ -1291,6 +1297,7 @@ function Workspace({
       selectedIds,
       selection.collectionId,
       open,
+      markOpened,
       batch,
       menu,
       updateCollection,
@@ -1485,64 +1492,17 @@ function Workspace({
     [selectedCollectionIds, collections.data, menu, platform.kind, libraryId],
   )
 
-  // Which of the dragged collections may actually become children of
-  // `newParentId`. The server rejects a collection parented to itself or to one
-  // of its own descendants; dropping a multi-selection that happens to contain
-  // the target's ancestor would otherwise surface as a bare error, so those are
-  // dropped from the move here and the rest still goes through.
-  const parentableInto = useCallback(
-    (ids: string[], newParentId: string | null): string[] => {
-      const parentOf = new Map((collections.data ?? []).map((c) => [c.id, c.parent_id ?? null]))
-      const ancestorsOfTarget = new Set<string>()
-      for (let at = newParentId; at !== null && at !== undefined; at = parentOf.get(at) ?? null) {
-        if (ancestorsOfTarget.has(at)) break // corrupt cycle — stop rather than spin
-        ancestorsOfTarget.add(at)
-      }
-      return ids.filter((id) => !ancestorsOfTarget.has(id))
+  // Every collection move — reorder within a group, drag between levels, or
+  // nest into another collection — is one request: which collections, into which
+  // group, at which gap. The server reparents whatever is not already there and
+  // places the block, so there is no intermediate state where a collection sits
+  // in its new group carrying its old position. Nesting is simply the case with
+  // no gap named: the end of the target's children.
+  const moveCollectionsTo = useCallback(
+    (movedIds: string[], parentId: string | null, beforeId: string | null) => {
+      reorderCollections.mutate({ parentId, movedIds, beforeId })
     },
-    [collections.data],
-  )
-
-  // Drag collections onto another → reparent them all into it. Ones that already
-  // live there are left alone: dropping a mixed selection into a folder some of
-  // it is already in shouldn't spend a write (and a refetch) saying so.
-  const reparentCollections = useCallback(
-    (ids: string[], newParentId: string | null) => {
-      const parentOf = new Map((collections.data ?? []).map((c) => [c.id, c.parent_id ?? null]))
-      for (const id of parentableInto(ids, newParentId)) {
-        if (parentOf.get(id) === newParentId) continue
-        updateCollection.mutate({ id, patch: { parent_id: newParentId } })
-      }
-    },
-    [updateCollection, parentableInto, collections.data],
-  )
-
-  // Drop collections onto the gap before/after a row in a *different* parent
-  // group (including the top level, newParentId=null): reparent them into that
-  // group, then write the new sibling order. Reorder runs after the last
-  // reparent commits so the backend's same-parent validation passes. This is
-  // what makes "move a subcollection out to the top level" work.
-  const moveCollections = useCallback(
-    (ids: string[], newParentId: string | null, orderedIds: string[]) => {
-      const moving = parentableInto(ids, newParentId)
-      if (moving.length === 0) return
-      // The caller built `orderedIds` from the whole dragged set, but a reorder
-      // must list a sibling group exactly — so anything the cycle check refused
-      // to move comes back out of the order too. (A refused id is an ancestor of
-      // the new parent, which can never also be one of its children.)
-      const order = orderedIds.filter((id) => moving.includes(id) || !ids.includes(id))
-      let pending = moving.length
-      const writeOrder = () => {
-        if (--pending === 0) reorderCollections.mutate({ parentId: newParentId, orderedIds: order })
-      }
-      for (const id of moving) {
-        updateCollection.mutate(
-          { id, patch: { parent_id: newParentId } },
-          { onSuccess: writeOrder },
-        )
-      }
-    },
-    [updateCollection, reorderCollections, parentableInto],
+    [reorderCollections],
   )
 
   // Drop the dragged bundles onto a collection → add to it, and (unless Alt =
@@ -1772,13 +1732,12 @@ function Workspace({
             renameCollection.mutate({ id, name }, callbacks)
           }
           onReorderCollections={(parentId, movedIds, beforeId) =>
-            reorderCollections.mutate({ parentId, movedIds, beforeId })
+            moveCollectionsTo(movedIds, parentId, beforeId)
           }
-          onMoveCollections={moveCollections}
           onCleanupCollections={() => setCleaningCollections(true)}
           dragItem={dragItem}
           onDragItem={updateDragItem}
-          onReparentCollections={reparentCollections}
+          onReparentCollections={(ids, targetId) => moveCollectionsTo(ids, targetId, null)}
           onMoveBundlesInto={moveBundlesToCollection}
           onBackgroundClick={clearAllSelection}
           smartCollections={smartCollections.data ?? []}
@@ -1879,9 +1838,9 @@ function Workspace({
                     onSectionContextMenu={collectionSectionContextMenu}
                     dragItem={dragItem}
                     onDragItem={updateDragItem}
-                    onReparentCollections={reparentCollections}
-                    onMoveCollections={moveCollections}
-                    parentId={selection.collectionId ?? null}
+                    onReparentCollections={(ids, targetId) =>
+                      moveCollectionsTo(ids, targetId, null)
+                    }
                     onMoveBundlesInto={moveBundlesToCollection}
                     onReorderCollections={
                       // Reorder writes one sibling group; disabled in the
@@ -1889,11 +1848,7 @@ function Workspace({
                       headerFlattened
                         ? undefined
                         : (movedIds, beforeId) =>
-                            reorderCollections.mutate({
-                              parentId: selection.collectionId ?? null,
-                              movedIds,
-                              beforeId,
-                            })
+                            moveCollectionsTo(movedIds, selection.collectionId ?? null, beforeId)
                     }
                     onOpenSubcollection={(id) => {
                       setSelection({ view: 'all', collectionId: id })

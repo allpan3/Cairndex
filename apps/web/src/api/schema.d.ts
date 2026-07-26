@@ -779,9 +779,13 @@ export interface paths {
         get?: never;
         /**
          * Reorder Collections
-         * @description Persist a manual drag-reorder of one sibling group (NULL parent = top
-         *     level). The sidebar tree and the main-browser folder cards both render from
-         *     this ``sort_order`` so a reorder in either surface updates both.
+         * @description Move collections into a group at a gap — the whole drag, in one request.
+         *
+         *     Reparents whatever is not already in ``parent_id``'s group, then places the
+         *     block. The sidebar tree and the main-browser folder cards both render from
+         *     this ``sort_order``, so a move in either surface updates both. Answers with
+         *     the resulting group so the client never has to re-derive (or re-fetch) where
+         *     the drop landed.
          */
         put: operations["reorder_collections_api_v1_libraries__library_id__collections_reorder_put"];
         post?: never;
@@ -2525,10 +2529,12 @@ export interface components {
         };
         /**
          * CollectionReorder
-         * @description Manual drag-reorder within one sibling group (NULL parent = top level).
+         * @description A collection move: which collections, into which group, at which gap.
          *
-         *     Carries the move, not a whole order: which collections were dragged, and
-         *     which one they were dropped in front of.
+         *     Carries the move rather than a whole order. ``parent_id`` is the group they
+         *     end up in (NULL = top level) — anything not already there is reparented as
+         *     part of the same operation, so dragging between levels stays one request and
+         *     never publishes a collection in its new group carrying its old position.
          */
         CollectionReorder: {
             /** Before Id */

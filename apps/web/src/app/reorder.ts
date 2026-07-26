@@ -43,15 +43,3 @@ export function gapBefore(
   }
   return null
 }
-
-/** `order` with `moved` lifted out and re-inserted immediately before
- *  `beforeId` — appended when it is null. The list form of the destination a
- *  drop resolved to, for the callers that must send a whole order rather than a
- *  move (a collection changing parents). Mirrors the server's own resolution. */
-export function moveBeforeId(order: string[], moved: string[], beforeId: string | null): string[] {
-  const moving = order.filter((id) => moved.includes(id))
-  const rest = order.filter((id) => !moved.includes(id))
-  const at = beforeId === null ? -1 : rest.indexOf(beforeId)
-  const index = at < 0 ? rest.length : at
-  return [...rest.slice(0, index), ...moving, ...rest.slice(index)]
-}
