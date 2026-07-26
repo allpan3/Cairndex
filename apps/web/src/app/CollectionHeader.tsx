@@ -8,7 +8,7 @@ import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
 import { IconChevron, IconFolder } from './icons'
 import { collectionCardWidth } from './layout'
-import { moveManyTo } from './reorder'
+import { gapBefore, moveManyTo } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
 interface CollectionHeaderProps {
@@ -34,7 +34,7 @@ interface CollectionHeaderProps {
   onContextMenuSubcollection?: (id: string, e: React.MouseEvent) => void
   // Persist a manual drag-reorder of the folder cards (these all share one
   // parent). Omitted when reordering doesn't apply (e.g. the flattened view).
-  onReorderCollections?: (orderedIds: string[]) => void
+  onReorderCollections?: (movedIds: string[], beforeId: string | null) => void
   // Right-click on empty section space → the folder-order context menu (Clean up…).
   onSectionContextMenu?: (e: React.MouseEvent) => void
   // Cross-surface drag: the current payload + callbacks to start a collection
@@ -250,7 +250,10 @@ export function CollectionHeader({
     if (edgeId !== undefined && !dragged.includes(edgeId)) {
       const incoming = dragged.filter((id) => !siblingIds.includes(id))
       if (incoming.length === 0) {
-        onReorderCollections(moveManyTo(siblingIds, dragged, edgeId, before))
+        onReorderCollections(
+          dragged,
+          gapBefore(siblingIds, dragged, edgeId, before ? 'before' : 'after'),
+        )
       } else {
         onMoveCollections(
           dragged,
@@ -417,7 +420,7 @@ export function CollectionHeader({
                   if (zone === 'into') {
                     onReparentCollections(dragged, c.id)
                   } else if (incoming.length === 0) {
-                    onReorderCollections?.(moveManyTo(siblingIds, dragged, c.id, zone === 'before'))
+                    onReorderCollections?.(dragged, gapBefore(siblingIds, dragged, c.id, zone))
                   } else {
                     // Dragged in from another parent group (e.g. the sidebar).
                     onMoveCollections(

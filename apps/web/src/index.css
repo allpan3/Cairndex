@@ -824,6 +824,15 @@ button {
   min-height: 0;
   overflow-y: auto;
   position: relative;
+  /* Reserve the scrollbar's width whether or not it is showing.
+     The grid measures this element's `clientWidth` (which excludes a scrollbar)
+     to lay out its columns, and re-measures through a ResizeObserver. Without a
+     stable gutter that is a feedback loop at exactly one window size: content
+     just tall enough shows a scrollbar → clientWidth drops by its width → the
+     cards relayout shorter → the scrollbar is no longer needed → clientWidth
+     grows back → repeat, forever, at frame rate. The whole app appears to
+     vibrate between two sizes. */
+  scrollbar-gutter: stable;
 }
 .browser--dragging {
   user-select: none;

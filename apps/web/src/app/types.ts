@@ -28,6 +28,11 @@ export interface SortPref {
  *  that keep the view's name true. */
 export const RECENT_SORTS: BundleSort[] = ['date_added', 'date_modified', 'date_opened']
 
+/** What every other view offers — the date orders are Recent's whole reason to
+ *  exist, so repeating them elsewhere just gives two ways to reach one result.
+ *  Manual is the default, and newly added bundles arrive at its front. */
+export const STANDARD_SORTS: BundleSort[] = ['manual', 'title', 'rating', 'size', 'file_count']
+
 export const PLAYER_SEEK_STEPS = [2, 5, 10, 30] as const
 export type PlayerSeekStep = (typeof PLAYER_SEEK_STEPS)[number]
 

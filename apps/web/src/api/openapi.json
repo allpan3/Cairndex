@@ -627,6 +627,23 @@
         "title": "BundleDraftResponse",
         "type": "object"
       },
+      "BundleOrder": {
+        "description": "The scope's resulting manual order, returned by a reorder so the client\nnever has to guess where the move landed (or refetch to find out).",
+        "properties": {
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordered Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "BundleOrder",
+        "type": "object"
+      },
       "BundleRead": {
         "properties": {
           "cover_file_id": {
@@ -726,8 +743,19 @@
         "type": "object"
       },
       "BundleReorder": {
-        "description": "Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the\norder to a collection's membership; null = the global All/system-view order.",
+        "description": "Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the\norder to a collection's membership; null = the global All/system-view order.\n\nThe client sends the *move it made*, not the order it believes in: which\nbundles were dragged and which bundle they were dropped in front of. The\nserver owns the resulting order.\n\nThis used to take the client's whole visible list and number it 0..n-1, which\nwas only ever correct when the client had the entire scope loaded. Browsing\nis paged, so a drag in a collection larger than one page renumbered the\nloaded window on top of order values the rest of the collection still held \u2014\nand unloaded bundles then surfaced in the middle, or the dragged one appeared\nto jump to an end. Sending the intent makes the size of the loaded window\nirrelevant.",
         "properties": {
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
           "collection_id": {
             "anyOf": [
               {
@@ -739,17 +767,17 @@
             ],
             "title": "Collection Id"
           },
-          "ordered_ids": {
+          "moved_ids": {
             "items": {
               "type": "string"
             },
             "minItems": 1,
-            "title": "Ordered Ids",
+            "title": "Moved Ids",
             "type": "array"
           }
         },
         "required": [
-          "ordered_ids"
+          "moved_ids"
         ],
         "title": "BundleReorder",
         "type": "object"
@@ -1277,14 +1305,25 @@
         "type": "object"
       },
       "CollectionReorder": {
-        "description": "Manual drag-reorder of one sibling group (NULL parent = top level).",
+        "description": "Manual drag-reorder within one sibling group (NULL parent = top level).\n\nCarries the move, not a whole order: which collections were dragged, and\nwhich one they were dropped in front of.",
         "properties": {
-          "ordered_ids": {
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "moved_ids": {
             "items": {
               "type": "string"
             },
             "minItems": 1,
-            "title": "Ordered Ids",
+            "title": "Moved Ids",
             "type": "array"
           },
           "parent_id": {
@@ -1300,7 +1339,7 @@
           }
         },
         "required": [
-          "ordered_ids"
+          "moved_ids"
         ],
         "title": "CollectionReorder",
         "type": "object"
@@ -7461,7 +7500,7 @@
     },
     "/api/v1/libraries/{library_id}/bundles/reorder": {
       "put": {
-        "description": "Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``\nscopes it to a collection's membership order; null = the global order.",
+        "description": "Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``\nscopes it to a collection's membership order; null = the global order.\n\nAnswers with the scope's resulting order. The client applies that directly\nrather than re-fetching the listing: a refetch is a second, later answer to\nthe same question, and any disagreement between it and the client's guess\nshows up as the row moving twice.",
         "operationId": "reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put",
         "parameters": [
           {
@@ -7517,7 +7556,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleOrder"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {

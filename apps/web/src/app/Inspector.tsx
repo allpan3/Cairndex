@@ -9,7 +9,13 @@ import {
   useRepairFile,
   useUpdateBundle,
 } from '../api/hooks'
-import { formatBytes, formatDate, formatDimensions, formatDuration } from '../lib/format'
+import {
+  formatBytes,
+  formatDate,
+  formatDimensions,
+  formatDuration,
+  formatFileType,
+} from '../lib/format'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
@@ -635,7 +641,7 @@ export function FileList({
                   )}
                 </div>
                 <div className="file-row__role">
-                  {f.role === 'primary_video' ? 'video' : f.role} ·{' '}
+                  {formatFileType(f.media_kind, f.original_filename)} ·{' '}
                   {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
                 </div>
               </div>

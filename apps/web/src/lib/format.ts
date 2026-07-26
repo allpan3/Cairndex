@@ -56,3 +56,24 @@ export function formatDateTime(iso: string): string {
         minute: '2-digit',
       })
 }
+
+/**
+ * What a file *is*, for the one line under its name.
+ *
+ * Deliberately the media kind, not the in-bundle role. The scanner assigns roles
+ * by guessing intent from filenames — the first image becomes `cover`, a second
+ * video becomes `alternate_version` — and those guesses are neither reliable nor
+ * changeable: reordering files does not reassign them, and nothing in the UI
+ * sets them. Showing a guess as a label invited it to be read as a fact about
+ * the file. The media kind is simply true. Which file is the cover stays where
+ * it is unambiguous: the starred row.
+ *
+ * `other` covers everything the server does not classify, so the extension is
+ * more informative than the word "other" — a PDF says "pdf".
+ */
+export function formatFileType(mediaKind: string, filename: string): string {
+  if (mediaKind !== 'other') return mediaKind
+  const dot = filename.lastIndexOf('.')
+  const ext = dot > 0 ? filename.slice(dot + 1).toLowerCase() : ''
+  return ext.length > 0 && ext.length <= 5 ? ext : 'file'
+}
