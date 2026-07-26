@@ -352,6 +352,7 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
       getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'drop') handler(event.payload.paths)
       }),
+    dropIsSelfDrag: (paths) => invoke<boolean>('drop_is_self_drag', { paths }),
     listenImportProgress: (handler) =>
       // The importer emits a per-file tick as it streams bytes to the server.
       listen<ImportProgressEvent>('import-progress', (event) => handler(event.payload)),

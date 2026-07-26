@@ -68,6 +68,15 @@ export function useMarqueeSelect(opts: UseMarqueeSelectOptions) {
     const scrollbarW = scrollEl.offsetWidth - scrollEl.clientWidth
     if (scrollbarW > 0 && e.clientX > scrollEl.getBoundingClientRect().right - scrollbarW) return
 
+    // Stop the browser from starting a text selection on this press. CSS alone was
+    // not enough: a drag that *begins* on the container background (or just
+    // outside a section) still paints a selection across everything it sweeps,
+    // including labels the pointer never touched. Preventing the default on the
+    // mousedown that begins a marquee is what actually suppresses it, and any
+    // selection left over from a previous gesture is cleared with it.
+    e.preventDefault()
+    globalThis.getSelection?.()?.removeAllRanges()
+
     const additive = e.metaKey || e.ctrlKey || e.shiftKey
     const state: DragState = {
       originClientX: e.clientX,

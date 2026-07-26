@@ -174,6 +174,7 @@ interface PlatformRuntime {
   reverseMapPaths(libraryId: string, paths: string[]): Promise<ReverseMapResult>
   listenFileDrop(handler: (paths: string[]) => void): Promise<() => void>
   listenImportProgress(handler: (progress: ImportProgressEvent) => void): Promise<() => void>
+  dropIsSelfDrag(paths: string[]): Promise<boolean>
   /**
    * Stream one *dropped* file into a library (plan 4 W5).
    *
@@ -272,6 +273,7 @@ const webRuntime: PlatformRuntime = {
   reverseMapPaths: async () => ({ inside: [], outside: [], directories: 0 }),
   listenFileDrop: async () => () => undefined,
   listenImportProgress: async () => () => undefined,
+  dropIsSelfDrag: async () => false,
   isDragOutActive: () => false,
   releaseDragOut: () => undefined,
 }
@@ -458,6 +460,12 @@ export const setHostBadgeCount = (count: number | null): Promise<void> =>
 export const listenHostFullscreen = (handler: (fullscreen: boolean) => void): Promise<() => void> =>
   runtime.listenFullscreen(handler)
 export const listenHostLifecycle = (): Promise<() => void> => runtime.listenLifecycle()
+
+// Whether a drop is our own drag-out landing back on us. Asked of the shell,
+// which remembers the paths it put on the pasteboard — the web layer's own guard
+// is timing-based and can lose the race, and losing it *copies files*.
+export const hostDropIsSelfDrag = (paths: string[]): Promise<boolean> =>
+  runtime.dropIsSelfDrag(paths)
 
 // Per-file upload progress for the desktop drag-in copy (plan 4 W5).
 export const listenHostImportProgress = (

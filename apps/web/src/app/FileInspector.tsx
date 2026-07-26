@@ -58,10 +58,11 @@ export function FileInspector({
     )
   }
 
-  // No "Name" row: the title above already is the name, and repeating it pushed
-  // the facts that are not visible elsewhere further down.
+  // No "Name" row: the title above already is the name. No "Path" either — it is
+  // the longest value here and wraps to several lines for a nested file, pushing
+  // everything else out of view for something that is rarely *read*. It is copied
+  // instead, from the row's own context menu.
   const rows: [string, string][] = [
-    ['Path', entry.relative_path],
     ['Type', entry.kind === 'directory' ? 'Folder' : (entry.extension ?? 'file')],
     ['Size', entry.kind === 'directory' ? '—' : formatBytes(entry.size_bytes)],
     ['Date Added', entry.created_at ? formatDateTime(entry.created_at) : '—'],

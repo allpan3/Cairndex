@@ -256,7 +256,10 @@ export default function App() {
   // removing. The bootstrap cannot show that dialog — it lists a server's
   // libraries and there is no server yet — so it picks a folder directly.
   useDesktopMenu((action) => {
-    if (action === 'settings') setSettingsPage('devices')
+    // The desktop shell has no browser chrome, so ⌘R is only a reload if the
+    // menu makes it one — without this item the key did nothing at all.
+    if (action === 'reload') globalThis.location.reload()
+    else if (action === 'settings') setSettingsPage('devices')
     else if (action === 'pair-device') setSettingsPage('pair')
     else if (action === 'manage-libraries') setManaging(true)
   })
