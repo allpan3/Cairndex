@@ -43,6 +43,28 @@ baked into the image as transparent padding; and a cover image is both a native
 drag source and a **Live Text** surface, so it stole the gestures aimed at the
 card behind it. Anything touching drag or selection needs a desktop pass.
 
+## Rebuilt: drag-reorder's underlying model (2026-07-25)
+
+After ~10 rounds of symptom fixes, the owner (rightly) called for a rethink. The
+stable design that came out, for future reference:
+
+- **The request carries the move, not an order**: `(moved_ids, before_id)`;
+  the server resolves it against the whole scope and **returns the resulting
+  order**, which the client applies directly. Nothing refetches after a reorder
+  — a refetch is a second answer to a settled question, and any disagreement
+  paints as a phantom second move.
+- **Manual order is directionless.** `manual desc` gave one arrangement two
+  coordinate systems; every translation between them was a bug. The client
+  coerces manual to ascending and hides the direction toggle.
+- **One gap computation** (`computeGap` in Browser.tsx) feeds both the
+  insertion indicator and the drop commit; cards have no reorder handlers.
+  Indicator == outcome by construction.
+- **Reordering preserves `updated_at`** (`_write_manual_order` diffs and
+  carries the timestamp forward past the `onupdate` default) — a drag must not
+  mark every bundle in the library modified.
+- Reorder mutations are serialized (`scope: {id}`), so overlapping drags apply
+  in commit order.
+
 ## Fixed: a non-empty trash vanished from the UI with write mode off (2026-07-24)
 
 The final owner review of PR #30 (whole-track pass: the move-undo fix verified,

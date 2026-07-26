@@ -30,7 +30,7 @@ import {
 import type { DragItem } from './dnd'
 import { dropZone } from './dnd'
 import { PickGuides } from './PickGuides'
-import { moveManyTo } from './reorder'
+import { gapBefore, moveManyTo } from './reorder'
 import { SYSTEM_VIEWS, type AppMode, type Selection } from './types'
 import { usePersistentState } from '../state/usePersistentState'
 
@@ -116,7 +116,13 @@ interface SidebarProps {
     callbacks: { onSuccess: () => void; onError: (err: unknown) => void },
   ) => void
   // Persist a manual drag-reorder of one sibling group (parentId null = top level).
-  onReorderCollections: (parentId: string | null, orderedIds: string[]) => void
+  // Move collections to a gap in one sibling group: the dragged block, and the
+  // collection it lands in front of (null = the end of the group).
+  onReorderCollections: (
+    parentId: string | null,
+    movedIds: string[],
+    beforeId: string | null,
+  ) => void
   // Move collections into a different parent group at a specific slot (reparent
   // + reorder). newParentId null = the top level.
   onMoveCollections?: (ids: string[], newParentId: string | null, orderedIds: string[]) => void
@@ -886,7 +892,7 @@ function CollectionBranch({
             if (zone === 'into') {
               onReparentCollections?.(dragged, id)
             } else if (incoming.length === 0) {
-              onReorderCollections(parentId, moveManyTo(siblingIds, dragged, id, zone === 'before'))
+              onReorderCollections(parentId, dragged, gapBefore(siblingIds, dragged, id, zone))
             } else {
               // From another parent group: reparent into this row's group at the slot.
               onMoveCollections?.(
@@ -1008,7 +1014,7 @@ function CollectionListEnd({
         const incoming = dragged.filter((x) => !topLevelIds.includes(x))
         if (incoming.length === 0) {
           // Already top-level: just move them to the end.
-          onReorderCollections(null, [...rest, ...moved])
+          onReorderCollections(null, dragged, null)
         } else {
           onMoveCollections?.(dragged, null, [...rest, ...moved, ...incoming])
         }

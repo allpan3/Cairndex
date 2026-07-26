@@ -44,6 +44,10 @@ export function SortControl({
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const sorts = allowed ? SORTS.filter((s) => allowed.includes(s.value)) : SORTS
   const label = SORTS.find((s) => s.value === sort)?.label ?? 'Sort'
+  // Manual has no direction — the arrangement is the order. Offering ascending/
+  // descending over it created two readings of one order, and drag-reorder can
+  // only be correct under one of them.
+  const directionless = sort === 'manual'
 
   return (
     <div className="picker" ref={ref}>
@@ -55,9 +59,11 @@ export function SortControl({
         title="Sort"
       >
         {label}
-        <span className="sortctl__dir" aria-hidden="true">
-          {order === 'desc' ? '↓' : '↑'}
-        </span>
+        {!directionless && (
+          <span className="sortctl__dir" aria-hidden="true">
+            {order === 'desc' ? '↓' : '↑'}
+          </span>
+        )}
       </button>
       {open &&
         pos &&
@@ -79,23 +85,25 @@ export function SortControl({
                 </button>
               ))}
             </div>
-            <div className="sortctl__sep" />
-            <div className="sortctl__section sortctl__dirrow" role="group" aria-label="Direction">
-              <button
-                className={`sortctl__opt${order === 'asc' ? ' sortctl__opt--on' : ''}`}
-                onClick={() => onChange(sort, 'asc')}
-              >
-                <span className="sortctl__check">{order === 'asc' ? '✓' : ''}</span>
-                Ascending ↑
-              </button>
-              <button
-                className={`sortctl__opt${order === 'desc' ? ' sortctl__opt--on' : ''}`}
-                onClick={() => onChange(sort, 'desc')}
-              >
-                <span className="sortctl__check">{order === 'desc' ? '✓' : ''}</span>
-                Descending ↓
-              </button>
-            </div>
+            {!directionless && <div className="sortctl__sep" />}
+            {!directionless && (
+              <div className="sortctl__section sortctl__dirrow" role="group" aria-label="Direction">
+                <button
+                  className={`sortctl__opt${order === 'asc' ? ' sortctl__opt--on' : ''}`}
+                  onClick={() => onChange(sort, 'asc')}
+                >
+                  <span className="sortctl__check">{order === 'asc' ? '✓' : ''}</span>
+                  Ascending ↑
+                </button>
+                <button
+                  className={`sortctl__opt${order === 'desc' ? ' sortctl__opt--on' : ''}`}
+                  onClick={() => onChange(sort, 'desc')}
+                >
+                  <span className="sortctl__check">{order === 'desc' ? '✓' : ''}</span>
+                  Descending ↓
+                </button>
+              </div>
+            )}
             <div className="sortctl__sep" />
             <label className="sortctl__scope">
               <input

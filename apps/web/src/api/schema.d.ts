@@ -456,6 +456,11 @@ export interface paths {
          * Reorder Bundles
          * @description Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``
          *     scopes it to a collection's membership order; null = the global order.
+         *
+         *     Answers with the scope's resulting order. The client applies that directly
+         *     rather than re-fetching the listing: a refetch is a second, later answer to
+         *     the same question, and any disagreement between it and the client's guess
+         *     shows up as the row moving twice.
          */
         put: operations["reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put"];
         post?: never;
@@ -2306,6 +2311,15 @@ export interface components {
             /** Roles */
             roles: components["schemas"]["ProposedRoleRead"][];
         };
+        /**
+         * BundleOrder
+         * @description The scope's resulting manual order, returned by a reorder so the client
+         *     never has to guess where the move landed (or refetch to find out).
+         */
+        BundleOrder: {
+            /** Ordered Ids */
+            ordered_ids: string[];
+        };
         /** BundleRead */
         BundleRead: {
             /** Cover File Id */
@@ -2344,12 +2358,26 @@ export interface components {
          * BundleReorder
          * @description Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the
          *     order to a collection's membership; null = the global All/system-view order.
+         *
+         *     The client sends the *move it made*, not the order it believes in: which
+         *     bundles were dragged and which bundle they were dropped in front of. The
+         *     server owns the resulting order.
+         *
+         *     This used to take the client's whole visible list and number it 0..n-1, which
+         *     was only ever correct when the client had the entire scope loaded. Browsing
+         *     is paged, so a drag in a collection larger than one page renumbered the
+         *     loaded window on top of order values the rest of the collection still held —
+         *     and unloaded bundles then surfaced in the middle, or the dragged one appeared
+         *     to jump to an end. Sending the intent makes the size of the loaded window
+         *     irrelevant.
          */
         BundleReorder: {
+            /** Before Id */
+            before_id?: string | null;
             /** Collection Id */
             collection_id?: string | null;
-            /** Ordered Ids */
-            ordered_ids: string[];
+            /** Moved Ids */
+            moved_ids: string[];
         };
         /**
          * BundleSort
@@ -2497,11 +2525,16 @@ export interface components {
         };
         /**
          * CollectionReorder
-         * @description Manual drag-reorder of one sibling group (NULL parent = top level).
+         * @description Manual drag-reorder within one sibling group (NULL parent = top level).
+         *
+         *     Carries the move, not a whole order: which collections were dragged, and
+         *     which one they were dropped in front of.
          */
         CollectionReorder: {
-            /** Ordered Ids */
-            ordered_ids: string[];
+            /** Before Id */
+            before_id?: string | null;
+            /** Moved Ids */
+            moved_ids: string[];
             /** Parent Id */
             parent_id?: string | null;
         };
@@ -4978,11 +5011,13 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["BundleOrder"];
+                };
             };
             /** @description Validation Error */
             422: {

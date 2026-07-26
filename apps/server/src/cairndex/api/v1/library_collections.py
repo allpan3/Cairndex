@@ -49,7 +49,10 @@ def reorder_collections(payload: CollectionReorder, db: LibrarySession) -> list[
     level). The sidebar tree and the main-browser folder cards both render from
     this ``sort_order`` so a reorder in either surface updates both."""
     rows = service.reorder_collections(
-        db, parent_id=payload.parent_id, ordered_ids=payload.ordered_ids
+        db,
+        parent_id=payload.parent_id,
+        moved_ids=payload.moved_ids,
+        before_id=payload.before_id,
     )
     return [CollectionRead.model_validate(c) for c in rows]
 
