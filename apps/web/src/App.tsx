@@ -555,7 +555,7 @@ function NoLibraryView({ onManage, onSettings }: { onManage: () => void; onSetti
           No library yet. Click the <strong>library</strong> icon at the top left to add one.
         </div>
       </div>
-      <aside className="inspector" />
+      <aside className="inspector" data-tauri-drag-region />
     </div>
   )
 }
@@ -879,6 +879,12 @@ function Workspace({
   // several. Mutually exclusive with the bundle selection — selecting either
   // clears the other, since acting on both at once is meaningless.
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<string>>(new Set())
+  // Which surface the collection selection was made on. The sidebar's highlight
+  // already means "this is where you are"; lighting the same row up because its
+  // card was clicked in the grid says the app navigated when it didn't. So the
+  // tree shows a selection only when it was made *in* the tree, and the grid
+  // shows one only when it was made in the grid.
+  const [collectionSelectionFrom, setCollectionSelectionFrom] = useState<'grid' | 'sidebar'>('grid')
   // Each collection opens with both sections expanded (don't carry a fold from
   // the previously-viewed collection). Reset during render on change rather than
   // in an effect — React's "adjust state when a prop changes" pattern.
@@ -956,8 +962,15 @@ function Workspace({
     : selection.collectionId
       ? `coll:${selection.collectionId}`
       : `view:${selection.view}`
-  const effectiveSort: SortPref =
-    prefs.sortScope === 'collection'
+  // Recently Added *is* a sort. The server treats it as the All view — the only
+  // thing that makes it "recent" is date-added descending — so a sort change
+  // there would silently turn it into a second All view under a misleading name.
+  // The sort is fixed here, and the toolbar's control says so (disabled with a
+  // reason) rather than vanishing.
+  const sortLocked = selection.view === 'recent' && selection.collectionId === null
+  const effectiveSort: SortPref = sortLocked
+    ? { sort: 'date_added', order: 'desc' }
+    : prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
       : { sort: prefs.sort, order: prefs.order }
   const setEffectiveSort = useCallback(
@@ -1018,6 +1031,16 @@ function Workspace({
     return SYSTEM_VIEWS.find((v) => v.view === selection.view)?.label ?? 'All'
   }, [selection, collections.data, activeSmartCollection])
 
+  // The one collection selection, shown only on the surface that made it. Both
+  // are the same Set when they aren't empty, so everything that acts on the
+  // selection (drag payloads, the context menu, the "N collections selected"
+  // inspector) keeps reading `selectedCollectionIds` and stays surface-agnostic.
+  const EMPTY_SELECTION = useMemo(() => new Set<string>(), [])
+  const sidebarSelectedCollectionIds =
+    collectionSelectionFrom === 'sidebar' ? selectedCollectionIds : EMPTY_SELECTION
+  const gridSelectedCollectionIds =
+    collectionSelectionFrom === 'grid' ? selectedCollectionIds : EMPTY_SELECTION
+
   const select = useCallback(
     (id: string, e: React.MouseEvent) => {
       // Shift+click: select the inclusive range from the anchor to this card,
@@ -1073,6 +1096,7 @@ function Workspace({
   // the bundle selection to keep the two mutually exclusive.
   const selectCollection = useCallback(
     (id: string, e: React.MouseEvent) => {
+      setCollectionSelectionFrom('grid')
       if (e.shiftKey && collectionAnchor) {
         const ids = headerCollections.map((c) => c.id)
         const a = ids.indexOf(collectionAnchor)
@@ -1088,7 +1112,7 @@ function Workspace({
       setSelectedCollectionIds((prev) => {
         // Cmd toggles. Deliberately not Ctrl: on macOS Ctrl-click is the
         // context-menu chord, so treating it as a toggle fought the menu.
-        if (e.metaKey) {
+        if (e.metaKey && collectionSelectionFrom === 'grid') {
           const next = new Set(prev)
           if (next.has(id)) next.delete(id)
           else next.add(id)
@@ -1100,28 +1124,42 @@ function Workspace({
       setSelectedIds(new Set())
       setActiveId(null)
     },
-    [headerCollections, collectionAnchor],
+    [headerCollections, collectionAnchor, collectionSelectionFrom],
   )
 
-  // Modifier-click on a sidebar collection row: toggle it in the same
-  // multi-selection the section cards use, without navigating. Shift toggles
-  // like Cmd — the tree shares no linear order with the section grid, so a
-  // range there would be a guess about an ordering the user cannot see.
-  const toggleCollectionFromSidebar = useCallback((id: string) => {
-    setSelectedCollectionIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-    setCollectionAnchor(id)
-    setSelectedIds(new Set())
-    setActiveId(null)
-  }, [])
+  // Modifier-click on a sidebar collection row: toggle it in the sidebar's own
+  // multi-selection, without navigating. A selection built in the grid is not
+  // extended here — it isn't shown in the tree, so adding to it invisibly would
+  // be a surprise; the first sidebar modifier-click starts fresh instead.
+  const toggleCollectionFromSidebar = useCallback(
+    (id: string) => {
+      setSelectedCollectionIds((prev) => {
+        const next = new Set(collectionSelectionFrom === 'sidebar' ? prev : [])
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      setCollectionSelectionFrom('sidebar')
+      setCollectionAnchor(id)
+      setSelectedIds(new Set())
+      setActiveId(null)
+    },
+    [collectionSelectionFrom],
+  )
 
   // Marquee result over the subcollection cards — replaces the subcollection
   // selection wholesale and clears the bundle selection.
   const selectCollectionsMany = useCallback((ids: string[]) => {
+    setCollectionSelectionFrom('grid')
+    setSelectedCollectionIds(new Set(ids))
+    setSelectedIds(new Set())
+    setActiveId(null)
+  }, [])
+
+  // The sidebar's own Shift-range result. Same state, but tagged as the
+  // sidebar's so the tree shows it (see `collectionSelectionFrom`).
+  const selectCollectionsFromSidebar = useCallback((ids: string[]) => {
+    setCollectionSelectionFrom('sidebar')
     setSelectedCollectionIds(new Set(ids))
     setSelectedIds(new Set())
     setActiveId(null)
@@ -1691,9 +1729,9 @@ function Workspace({
             setReviewingGrouping(true)
           }}
           selection={selection}
-          multiSelectedIds={selectedCollectionIds}
+          multiSelectedIds={sidebarSelectedCollectionIds}
           onModifierSelectCollection={toggleCollectionFromSidebar}
-          onSelectCollectionsMany={selectCollectionsMany}
+          onSelectCollectionsMany={selectCollectionsFromSidebar}
           onSelect={(s) => {
             setMode('collection')
             setSelection(s)
@@ -1768,6 +1806,7 @@ function Workspace({
               sort={effectiveSort.sort}
               order={effectiveSort.order}
               onSort={setEffectiveSort}
+              sortLockedReason={sortLocked ? 'Recently Added is always newest first' : undefined}
               perCollectionSort={prefs.sortScope === 'collection'}
               onPerCollectionSort={(v) =>
                 setPrefs({ ...prefs, sortScope: v ? 'collection' : 'global' })
@@ -1837,7 +1876,7 @@ function Workspace({
                       setSelectedCollectionIds(new Set())
                       setOpenBundleId(null)
                     }}
-                    selectedIds={selectedCollectionIds}
+                    selectedIds={gridSelectedCollectionIds}
                     zoom={prefs.zoom}
                     subcollapsed={subcollapsed}
                     onToggleSubcollapsed={() => setSubcollapsed((v) => !v)}
@@ -1916,7 +1955,7 @@ function Workspace({
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
       ) : isMultiSelection(selectedCollectionIds) ? (
-        <aside className="inspector">
+        <aside className="inspector" data-tauri-drag-region>
           <div className="state">{selectedCollectionIds.size} collections selected</div>
         </aside>
       ) : isMultiSelection(selectedIds) ? (

@@ -533,7 +533,7 @@ function FileList({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" data-tauri-drag-region="deep">
         {header}
         <span className="toolbar__count">{visible.length.toLocaleString()} items</span>
         <span className="toolbar__spacer" />

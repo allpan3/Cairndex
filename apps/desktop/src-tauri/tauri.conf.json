@@ -21,7 +21,9 @@
         "minHeight": 640,
         "visible": false,
         "dragDropEnabled": false,
-        "backgroundColor": "#141519"
+        "backgroundColor": "#141519",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
