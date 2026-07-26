@@ -1385,6 +1385,116 @@ test('previews a linked video card in the File Browser grid', async ({ page }) =
   expect(forbidden).toEqual([])
 })
 
+/** File Browser rows for a folder holding one linked and one unlinked video. */
+function fileBrowserVideos(size: number) {
+  const base = {
+    kind: 'file',
+    size_bytes: size,
+    modified_at: '2026-06-25T00:00:00Z',
+    created_at: '2026-06-25T00:00:00Z',
+    extension: 'mp4',
+    mime_type: 'video/mp4',
+    media_kind: 'video',
+    supported: true,
+    container: 'mov,mp4,m4a,3gp,3g2,mj2',
+    video_codec: 'h264',
+    audio_codec: 'aac',
+    resume_position: null,
+    unbundled: false,
+  }
+  return [
+    {
+      ...base,
+      name: 'movie.mp4',
+      relative_path: 'movie.mp4',
+      linked: true,
+      bundle_id: 'b0',
+      file_id: 'f0',
+      duration: 3,
+    },
+    {
+      ...base,
+      name: 'loose.mp4',
+      relative_path: 'loose.mp4',
+      linked: false,
+      bundle_id: null,
+      file_id: null,
+      duration: null,
+    },
+  ]
+}
+
+test('plays a linked File Browser video in the app player, not native controls', async ({
+  page,
+}) => {
+  const decisions: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/playback-decision')) decisions.push(request.url())
+  })
+  await mockMedia(page)
+  await mockApi(page)
+  await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
+    route.fulfill({ json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) } }),
+  )
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Files' }).click()
+  await page.locator('.file-row__name', { hasText: 'movie.mp4' }).dblclick()
+
+  // The app's viewer, with its own control bar — a native <video controls> would
+  // have neither of these.
+  await expect(page.getByTestId('media-controls')).toBeVisible()
+  const video = page.getByTestId('media-video')
+  await expect(video).not.toHaveAttribute('controls', /.*/)
+
+  // Being indexed, it goes through the real playback pipeline and gets the
+  // manifest's subtitle track.
+  await expect.poll(() => decisions.length).toBeGreaterThan(0)
+  await expect(page.locator('[data-testid="media-video"] track')).toHaveAttribute(
+    'src',
+    /subtitles\/s0\/vtt/,
+  )
+
+  // Arrow keys seek the track; they do not step to the next file.
+  await page.keyboard.press('ArrowRight')
+  await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).currentTime)).toBe(5)
+  await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4')
+})
+
+test('plays an unindexed File Browser video with no playback decision', async ({ page }) => {
+  const decisions: string[] = []
+  const pathReads: string[] = []
+  page.on('request', (request) => {
+    const url = request.url()
+    if (url.includes('/playback-decision') || url.includes('/playback-sessions')) {
+      decisions.push(url)
+    }
+    if (url.includes('/file?path=')) pathReads.push(url)
+  })
+  await mockMedia(page)
+  await mockApi(page)
+  await page.route(/\/api\/v1\/libraries\/lib1\/file-browser\/entries/, (route) =>
+    route.fulfill({ json: { path: '', entries: fileBrowserVideos(generatedMp4?.length ?? 0) } }),
+  )
+  await page.route(/\/api\/v1\/libraries\/lib1\/file\?path=/, (route) =>
+    fulfillMedia(route, generatedMp4 ?? Buffer.from([])),
+  )
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Files' }).click()
+  await page.locator('.file-row__name', { hasText: 'loose.mp4' }).dblclick()
+
+  // Same player shell, but sourced straight from the path — an unindexed file has
+  // no row to decide on, so no decision/session request may be made for it.
+  await expect(page.getByTestId('media-controls')).toBeVisible()
+  await expect.poll(() => pathReads.some((url) => url.includes('path=loose.mp4'))).toBe(true)
+  expect(decisions).toEqual([])
+
+  // The playlist is the folder — both of its videos, in the listing's order —
+  // not the bundle the other one happens to belong to.
+  await expect(page.locator('.mv-subtitle')).toContainText('loose.mp4 · 1 / 2')
+  await page.getByRole('button', { name: 'Next file' }).click()
+  await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4 · 2 / 2')
+})
+
 test('skims an MKV cover through storyboards without stream or session requests', async ({
   page,
 }) => {
