@@ -222,6 +222,17 @@ grouped under `Unreleased` until the first tagged release.
   `packaging/ffmpeg-build-info/`; the three-year offer no longer depends on a
   third-party build server still serving those files.
 
+### Security
+
+- **The desktop importer no longer trusts the library id it is handed.** It went
+  into the upload URL by string interpolation, so an id carrying `..`, `?` or `/`
+  could restructure that URL — and because a server-scoped token is attached
+  before the request goes out, a crafted id could have pointed an authenticated
+  POST, carrying the file's bytes, at a path nobody chose. The id is now
+  shape-checked (server ids are ULIDs) and the path is assembled segment by
+  segment, which escapes it. Reaching this needed code running in the app's own
+  web layer, which is why it is hardening rather than a fix.
+
 ### Changed
 
 - **Creating a collection is reachable from where you are.** The sidebar's **+**
