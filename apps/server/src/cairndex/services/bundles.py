@@ -10,7 +10,7 @@ client input can escape the library root.
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,29 @@ def get_bundle(session: Session, bundle_id: str) -> AssetBundle:
     bundle = session.get(AssetBundle, bundle_id)
     if bundle is None:
         raise NotFoundError(f"bundle {bundle_id!r} not found")
+    return bundle
+
+
+def mark_bundle_opened(session: Session, bundle_id: str) -> AssetBundle:
+    """Stamp ``last_opened_at`` — the ordering behind the Recent view's Date Opened.
+
+    Opening is a *read* of the bundle, so this deliberately touches neither
+    ``updated_at`` nor ``version``: bumping either would make browsing look like
+    editing to the optimistic-concurrency guard, and would push everything the
+    owner merely looked at to the top of "recently modified".
+    """
+    bundle = get_bundle(session, bundle_id)
+    # Written as an explicit UPDATE rather than an attribute set, because
+    # ``updated_at`` carries ``onupdate=utcnow`` and so refreshes on *any* write
+    # to the row. Passing its current value in the same statement overrides that
+    # default (SQLAlchemy only fills in columns a statement omits), which is what
+    # keeps merely opening a bundle out of Date Modified.
+    session.execute(
+        update(AssetBundle)
+        .where(AssetBundle.id == bundle_id)
+        .values(last_opened_at=utcnow(), updated_at=bundle.updated_at)
+    )
+    session.refresh(bundle)
     return bundle
 
 

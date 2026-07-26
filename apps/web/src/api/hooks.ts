@@ -1,3 +1,5 @@
+import { useCallback } from 'react'
+
 import {
   type InfiniteData,
   type QueryClient,
@@ -115,6 +117,7 @@ import {
   cleanupBundleOrder,
   clearCoverFrame,
   reorderFiles,
+  markBundleOpened,
   setBundleCollections,
   setBundleTags,
   setCoverFrame,
@@ -438,7 +441,10 @@ export function useFileOperations() {
         file: File
         destDir: string
         onConflict?: ConflictPolicy
-      }) => importFile(file, { destDir, onConflict, link: true }),
+        // No `link`: an imported file is copied into the folder, not fast-added
+        // into a one-file bundle. It shows in the File Browser; bundling stays a
+        // separate, deliberate action.
+      }) => importFile(file, { destDir, onConflict }),
       onSuccess: refresh,
     }),
   }
@@ -446,7 +452,7 @@ export function useFileOperations() {
 
 // Everything a file operation can change: the listing it happened in, the views
 // that render paths or counts, the journal, and the trash.
-function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
+export function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
     'file-browser',
     'browse',
@@ -1206,9 +1212,36 @@ export function useFileMutations(bundleId: string) {
       }) => updateFile(bundleId, fileId, patch, version),
       onSettled: () => invalidate(),
     }),
+    // Reordering felt slow for a reason that had nothing to do with the write
+    // (a handful of UPDATEs): the list only moved once the round trip finished,
+    // and then it *refetched* the file list — a GET that stats every file in the
+    // bundle to reconcile missing ones, which on a network volume is the whole
+    // delay. The drag now applies to the cache immediately, the server's own
+    // response replaces it (no refetch), and only the browse card — whose cover
+    // can follow file order — is invalidated, in the background.
     reorder: useMutation({
       mutationFn: (orderedIds: string[]) => reorderFiles(bundleId, orderedIds),
-      onSuccess: () => invalidate(),
+      onMutate: async (orderedIds: string[]) => {
+        const key = ['bundle-files', bundleId]
+        await qc.cancelQueries({ queryKey: key })
+        const previous = qc.getQueryData<FileRead[]>(key)
+        if (previous) {
+          const byId = new Map(previous.map((file) => [file.id, file]))
+          const next = orderedIds.map((id) => byId.get(id)).filter((f) => f !== undefined)
+          if (next.length === previous.length) qc.setQueryData<FileRead[]>(key, next)
+        }
+        return { previous }
+      },
+      onError: (_error, _ids, context) => {
+        if (context?.previous) qc.setQueryData(['bundle-files', bundleId], context.previous)
+      },
+      onSuccess: (files: FileRead[]) => {
+        qc.setQueryData<FileRead[]>(['bundle-files', bundleId], files)
+      },
+      onSettled: () => {
+        qc.invalidateQueries({ queryKey: ['bundle', bundleId] })
+        qc.invalidateQueries({ queryKey: ['browse'] })
+      },
     }),
     remove: useMutation({
       mutationFn: (fileId: string) => removeFile(bundleId, fileId),
@@ -1369,21 +1402,33 @@ export function useUpdateCollection() {
 export function useReorderCollections() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ parentId, orderedIds }: { parentId: string | null; orderedIds: string[] }) =>
-      reorderCollections(parentId, orderedIds),
-    onMutate: async ({ orderedIds }) => {
-      await qc.cancelQueries({ queryKey: ['collections'] })
-      const prev = qc.getQueryData<CollectionRead[]>(['collections'])
-      const orderById = new Map(orderedIds.map((id, i) => [id, i]))
+    // Serialized for the same reason as useReorderBundles: the response is the
+    // whole resulting order, so responses must apply in commit order.
+    scope: { id: 'reorder-collections' },
+    mutationFn: ({
+      parentId,
+      movedIds,
+      beforeId,
+    }: {
+      parentId: string | null
+      movedIds: string[]
+      beforeId: string | null
+    }) => reorderCollections(parentId, movedIds, beforeId),
+    // The server answers with the group in its new order, so that is what the
+    // cache gets — no invalidate, no refetch. A refetch is a second answer to a
+    // question already settled, and any disagreement with it shows up as the
+    // row moving a second time on its own.
+    // No parameter annotation here on purpose: annotating a callback argument
+    // inside useMutation collapses TanStack's generic inference, and `mutate`
+    // then accepts *anything* — which is how a call site left on the old
+    // `orderedIds` contract survived a clean type check.
+    onSuccess: (group) => {
+      const byId = new Map(group.map((c) => [c.id, c]))
       qc.setQueryData<CollectionRead[]>(['collections'], (old) =>
-        old?.map((c) => (orderById.has(c.id) ? { ...c, sort_order: orderById.get(c.id)! } : c)),
+        old?.map((c) => byId.get(c.id) ?? c),
       )
-      return { prev }
     },
-    onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(['collections'], ctx.prev)
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['collections'] }),
+    onError: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
 }
 
@@ -1399,18 +1444,22 @@ export function useCleanupCollectionOrder() {
 /** Re-order the loaded browse items to match `orderedIds`, preserving each
  * infinite-query page's length (so the virtualizer's offsets stay valid). Items
  * not named keep their relative order at the tail. */
-function reorderBrowsePages(
+/** Put the loaded items into the order the server just wrote, keeping each
+ *  infinite-query page's length so the virtualizer's offsets stay valid. Ids the
+ *  client has not loaded are skipped; anything the server did not name keeps its
+ *  place at the tail. */
+function applyBrowseOrder(
   data: InfiniteData<BundleBrowsePage>,
   orderedIds: string[],
 ): InfiniteData<BundleBrowsePage> {
   const all = data.pages.flatMap((p) => p.items as BundleSummary[])
   const byId = new Map(all.map((i) => [i.id, i]))
-  const wanted = new Set(orderedIds)
-  const ordered: BundleSummary[] = orderedIds.flatMap((id) => {
+  const named = orderedIds.flatMap((id) => {
     const item = byId.get(id)
     return item ? [item] : []
   })
-  for (const item of all) if (!wanted.has(item.id)) ordered.push(item)
+  const namedIds = new Set(orderedIds)
+  const ordered = [...named, ...all.filter((i) => !namedIds.has(i.id))]
   let idx = 0
   const pages = data.pages.map((p) => {
     const items = ordered.slice(idx, idx + p.items.length)
@@ -1420,31 +1469,131 @@ function reorderBrowsePages(
   return { ...data, pages }
 }
 
-/** Persist a manual drag-reorder of bundles (MANUAL sort). Optimistically
- * re-orders every cached browse page so the dragged card holds its new slot,
- * then invalidates to reconcile with the server. */
+/**
+ * Record that a bundle was opened, then let the listings that rank by it catch
+ * up on their own.
+ *
+ * Opening a bundle changes where it belongs under Date Opened, but nothing was
+ * telling those listings so — the Recent view only re-sorted when something else
+ * happened to refetch it (navigating back to it, or changing the order), which
+ * left the owner's own action invisible until they poked it. Only listings
+ * actually sorted by the affected column are invalidated, so this cannot
+ * re-shuffle a view the open had no bearing on.
+ */
+export function useMarkBundleOpened() {
+  const qc = useQueryClient()
+  return useCallback(
+    (id: string) => {
+      void markBundleOpened(id).then(() => {
+        qc.invalidateQueries({
+          queryKey: ['browse'],
+          predicate: (query) =>
+            (query.queryKey[1] as BrowseQuery | undefined)?.sort === 'date_opened',
+        })
+        qc.invalidateQueries({ queryKey: ['continue-watching'] })
+      })
+    },
+    [qc],
+  )
+}
+
+/** Which manual order a browse listing is sorted by, or `undefined` when it is
+ *  not on manual sort at all. A collection scopes the order to its own
+ *  membership only while showing just its own bundles; flattened contents, the
+ *  All view and the system views all read the one global order (mirrors
+ *  `_manual_order_column` on the server — keep the two in step). */
+function manualScopeOf(query: BrowseQuery | undefined): string | null | undefined {
+  if (query?.sort !== 'manual') return undefined
+  return query.collectionId != null && query.includeDescendants !== true ? query.collectionId : null
+}
+
+/** Apply the same move the server will, to the cached pages, so the card lands
+ *  under the cursor immediately. Mirrors `reorder_bundles` — moved items travel
+ *  as one block in their existing relative order — but only over what is loaded;
+ *  the server settles the rest. */
+function moveInBrowsePages(
+  data: InfiniteData<BundleBrowsePage>,
+  movedIds: string[],
+  beforeId: string | null,
+): InfiniteData<BundleBrowsePage> {
+  const all = data.pages.flatMap((p) => p.items as BundleSummary[])
+  const moving = new Set(movedIds)
+  const block = all.filter((i) => moving.has(i.id))
+  if (block.length === 0 || (beforeId !== null && moving.has(beforeId))) return data
+  const rest = all.filter((i) => !moving.has(i.id))
+  const at = beforeId === null ? rest.length : rest.findIndex((i) => i.id === beforeId)
+  const ordered = at < 0 ? [...rest, ...block] : [...rest.slice(0, at), ...block, ...rest.slice(at)]
+  let idx = 0
+  const pages = data.pages.map((p) => {
+    const items = ordered.slice(idx, idx + p.items.length)
+    idx += p.items.length
+    return { ...p, items }
+  })
+  return { ...data, pages }
+}
+
+/** Persist a manual drag-reorder of bundles (MANUAL sort).
+ *
+ * Sends the *move* — which bundles were dragged, and which bundle they were
+ * dropped in front of — rather than the order the client believes in. The client
+ * only ever holds a page of a collection, so an order built from it was right
+ * only by luck; the server resolves the move against the whole scope. The cached
+ * pages get the same move applied so the card lands under the cursor at once. */
 export function useReorderBundles() {
   const qc = useQueryClient()
   return useMutation({
+    // One reorder at a time. Each response carries the whole resulting order,
+    // so two in-flight moves whose responses cross on the wire would leave the
+    // cache holding whichever landed last — not whichever committed last. A
+    // shared scope serializes them; a human can't out-drag a write anyway.
+    scope: { id: 'reorder-bundles' },
     mutationFn: ({
       collectionId,
-      orderedIds,
+      movedIds,
+      beforeId,
     }: {
       collectionId: string | null
-      orderedIds: string[]
-    }) => reorderBundles(collectionId, orderedIds),
-    onMutate: async ({ orderedIds }) => {
-      await qc.cancelQueries({ queryKey: ['browse'] })
-      const snapshots = qc.getQueriesData<InfiniteData<BundleBrowsePage>>({ queryKey: ['browse'] })
-      qc.setQueriesData<InfiniteData<BundleBrowsePage>>({ queryKey: ['browse'] }, (old) =>
-        old ? reorderBrowsePages(old, orderedIds) : old,
+      movedIds: string[]
+      beforeId: string | null
+    }) => reorderBundles(collectionId, movedIds, beforeId),
+    onMutate: async ({ collectionId, movedIds, beforeId }) => {
+      // Only the listings this move actually reorders. A reorder writes one
+      // manual order — a collection's membership order, or the global one — and
+      // applying the guess to every cached browse listing meant a drag inside one
+      // collection silently rewrote the cached order of the All view and every
+      // other collection, which then visibly snapped back the moment one of them
+      // was looked at (or refetched): a second, unasked-for reorder of something
+      // the user had not touched.
+      const affected = {
+        queryKey: ['browse'],
+        predicate: (query: { queryKey: readonly unknown[] }) =>
+          manualScopeOf(query.queryKey[1] as BrowseQuery | undefined) === collectionId,
+      }
+      await qc.cancelQueries(affected)
+      const snapshots = qc.getQueriesData<InfiniteData<BundleBrowsePage>>(affected)
+      qc.setQueriesData<InfiniteData<BundleBrowsePage>>(affected, (old) =>
+        old ? moveInBrowsePages(old, movedIds, beforeId) : old,
       )
       return { snapshots }
     },
     onError: (_e, _v, ctx) => {
       for (const [key, data] of ctx?.snapshots ?? []) qc.setQueryData(key, data)
+      qc.invalidateQueries({ queryKey: ['browse'] })
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['browse'] }),
+    // The server returns the scope's resulting order, so the settled state comes
+    // from the same response that decided it. Nothing is invalidated: a refetch
+    // is a second answer arriving later, and the row visibly moving again when
+    // it disagreed is exactly what a reorder must never do.
+    onSuccess: ({ ordered_ids }, { collectionId }) => {
+      qc.setQueriesData<InfiniteData<BundleBrowsePage>>(
+        {
+          queryKey: ['browse'],
+          predicate: (query: { queryKey: readonly unknown[] }) =>
+            manualScopeOf(query.queryKey[1] as BrowseQuery | undefined) === collectionId,
+        },
+        (old) => (old ? applyBrowseOrder(old, ordered_ids) : old),
+      )
+    },
   })
 }
 
@@ -1469,7 +1618,43 @@ export function useBatchUpdate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: BatchUpdate) => batchUpdate(payload),
-    onSuccess: () => {
+    // Dropping bundles on a collection is pure metadata, but the UI used to sit
+    // still until the whole browse listing refetched — a round trip plus a page
+    // rebuild for an action with a fully predictable outcome. Apply the visible
+    // parts up front: pull the moved bundles out of the listings they left, and
+    // bump the collection counts. The invalidations below then reconcile with
+    // the server's answer, correcting the guess if it was wrong.
+    onMutate: (payload) => {
+      const removed = payload.remove_collection_ids ?? []
+      if (removed.length > 0 && payload.bundle_ids.length > 0) {
+        const gone = new Set(payload.bundle_ids)
+        qc.setQueriesData<InfiniteData<BundleBrowsePage>>(
+          {
+            queryKey: ['browse'],
+            predicate: (query) => {
+              const scope = query.queryKey[1] as BrowseQuery | undefined
+              return scope?.collectionId != null && removed.includes(scope.collectionId)
+            },
+          },
+          (data) =>
+            data && {
+              ...data,
+              pages: data.pages.map((page) => ({
+                ...page,
+                items: page.items.filter((item) => !gone.has(item.id)),
+                total: page.total - payload.bundle_ids.length,
+              })),
+            },
+        )
+      }
+      // Deliberately no optimistic *count* math. The server counts a collection's
+      // subtree (moving a bundle between a parent and its own child leaves the
+      // parent's number unchanged), so a flat ±1 here disagrees with the truth
+      // for exactly the common gesture — filing a bundle into a subcollection —
+      // and a wrong number on screen is worse than one arriving a beat later.
+      // The invalidation below brings the real counts with the next round trip.
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       qc.invalidateQueries({ queryKey: ['collection-counts'] })

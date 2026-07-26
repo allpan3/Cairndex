@@ -185,7 +185,7 @@ export function MultiBundleInspector({
   const collectionById = new Map(collections.map((c) => [c.id, c]))
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" data-tauri-drag-region>
       <div className="inspector__multi-head">
         <span>{ids.length} bundles selected</span>
         <button className="add-btn" onClick={onClear}>

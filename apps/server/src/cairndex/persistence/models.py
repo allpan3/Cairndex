@@ -183,6 +183,13 @@ class AssetBundle(Base):
     created_at: Mapped[CreatedAt]
     imported_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]
+    # Last time the owner opened this bundle (album view or viewer) — the
+    # ordering behind the Recent view's "Date Opened". Deliberately *not*
+    # ``updated_at``: opening is a read, and bumping the metadata version for it
+    # would make every browse look like an edit to the optimistic-concurrency
+    # checks. NULL until first opened, which sorts last under "most recent
+    # first".
+    last_opened_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     version: Mapped[Version]  # optimistic-concurrency counter (phase 9)
 
     files: Mapped[list[AssetFile]] = relationship(

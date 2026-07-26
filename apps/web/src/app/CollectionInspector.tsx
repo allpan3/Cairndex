@@ -36,12 +36,13 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
   }
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" data-tauri-drag-region>
       {hasCover && (
         <div className="inspector__cover">
           <img
             src={collectionThumbnailUrl(collection.id, collection.updated_at)}
             alt=""
+            draggable={false}
             onError={() => setHasCover(false)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />

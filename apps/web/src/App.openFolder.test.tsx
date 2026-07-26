@@ -42,6 +42,7 @@ function dispatchMenu(action: string) {
 }
 const host = vi.hoisted(() => ({
   openLibraryFolder: vi.fn(),
+  confirmPickedLibrary: vi.fn(),
   startLocalServer: vi.fn(),
   configureServer: vi.fn(),
   loadConnections: vi.fn(),
@@ -87,7 +88,10 @@ vi.mock('./platform', async (importOriginal) => {
     setHostServerAvailable: () => Promise.resolve(undefined),
     normalizeHostServerUrl: (value: string) => Promise.resolve(value),
     saveHostServerUrl: () => Promise.resolve(undefined),
-    openHostLibraryFolder: (uuids: string[]) => host.openLibraryFolder(uuids),
+    openHostLibraryFolder: (uuids: string[], stage: boolean) =>
+      host.openLibraryFolder(uuids, stage),
+    confirmHostPickedLibrary: (token: string, name: string) =>
+      host.confirmPickedLibrary(token, name),
     startHostLocalServer: () => host.startLocalServer(),
     configureHostServer: (url: string, options?: unknown) => host.configureServer(url, options),
     loadHostConnections: () => host.loadConnections(),
@@ -174,84 +178,42 @@ function renderApp() {
   )
 }
 
-test('opening an already-registered library switches the app to it', async () => {
-  // Photos is first, so it is what the app shows by default. Opening Video's
-  // folder must move the app to Video.
-  mockApi([PHOTOS, VIDEO])
-  host.openLibraryFolder.mockResolvedValue({
-    alreadyAvailable: false,
-    libraryId: VIDEO.id,
-    libraryUuid: 'uuid-video',
-    displayName: 'Video',
-  })
-  renderApp()
-  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
-
-  await browseForFolder()
-
-  // `setActiveLibraryId` is what every content query is scoped by, so it is the
-  // real answer to "which library is the app on".
-  await waitFor(() => {
-    expect(active).toBe(VIDEO.id)
-  })
-})
-
-test('opening a second library while the local connection is ALREADY active switches too', async () => {
-  // The reported failure. The first open switches remote -> local, which changes
-  // the active connection and remounts everything. The *second* open changes no
-  // connection at all, so nothing remounts — and the selection has to arrive by
-  // some other route.
+test('Browse stages an existing library instead of switching to it', async () => {
+  // Browse in Manage Libraries picks a folder and *stages* it — adding is the
+  // deliberate confirm step. So an existing library is not opened on pick: the
+  // app stays where it is and shows the confirm (with a read-only name, since
+  // the library keeps its own), rather than switching. The confirm→register
+  // path itself is covered in LibraryManager.desktop.test.tsx.
   mockApi([PHOTOS, VIDEO])
   host.loadConnections.mockResolvedValue({
     connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
     activeConnectionId: 'local',
   })
   host.openLibraryFolder.mockResolvedValue({
+    needsConfirmation: true,
+    token: 'pick-token',
+    folderName: 'Video',
+    isLibrary: true,
     alreadyAvailable: false,
-    libraryId: VIDEO.id,
-    libraryUuid: 'uuid-video',
-    displayName: 'Video',
-  })
-  renderApp()
-  await waitFor(() => expect(screen.getByText('Cairndex')).toBeInTheDocument())
-  await waitFor(() => expect(active).toBe(PHOTOS.id))
-
-  await browseForFolder()
-
-  await waitFor(() => expect(active).toBe(VIDEO.id))
-})
-
-test('a library missing from the cached list still becomes active once it appears', async () => {
-  // Registering a folder the server did not previously know adds a library the
-  // SPA's cached list has never seen. `libraryId` only honours a chosen id that
-  // is present in that list, so without a refresh the selection is discarded.
-  const libraries: unknown[] = [PHOTOS]
-  mockApi(libraries)
-  host.loadConnections.mockResolvedValue({
-    connections: [{ id: 'local', kind: 'local', label: 'This Computer', serverUrl: null }],
-    activeConnectionId: 'local',
-  })
-  host.openLibraryFolder.mockResolvedValue({
-    alreadyAvailable: false,
-    libraryId: VIDEO.id,
+    libraryId: '',
     libraryUuid: 'uuid-video',
     displayName: 'Video',
   })
   renderApp()
   await waitFor(() => expect(active).toBe(PHOTOS.id))
 
-  // The newly registered library appears on the server from here on.
-  libraries.push(VIDEO)
-
   await browseForFolder()
 
-  await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
+  const name = await screen.findByLabelText('Library name')
+  expect(name).toHaveAttribute('readonly')
+  expect(active).toBe(PHOTOS.id)
 })
 
-test('the real composition: App inside DesktopBootstrap, whose QueryScope is keyed', async () => {
-  // The previous cases render App directly, which omits the keyed QueryScope
-  // that remounts the whole tree when a connection activates. That remount is
-  // the one structural thing the packaged app does and the harness did not.
+test('on a remote connection, confirming a staged pick adopts it — the keyed QueryScope remounts', async () => {
+  // A natively-picked folder is a *local*-server library, so on a remote
+  // connection adding it must switch to the local server — the one case Browse
+  // still adopts, on the confirm. This runs inside the real DesktopBootstrap so
+  // the keyed QueryScope that remounts on that connection change is exercised.
   mockApi([PHOTOS, VIDEO])
   host.loadConnections.mockResolvedValue({
     connections: [
@@ -260,7 +222,16 @@ test('the real composition: App inside DesktopBootstrap, whose QueryScope is key
     activeConnectionId: 'remote:http://nas:8000',
   })
   host.openLibraryFolder.mockResolvedValue({
+    needsConfirmation: true,
+    token: 'pick-token',
+    folderName: 'Video',
+    isLibrary: true,
     alreadyAvailable: false,
+    libraryId: '',
+    libraryUuid: 'uuid-video',
+    displayName: 'Video',
+  })
+  host.confirmPickedLibrary.mockResolvedValue({
     libraryId: VIDEO.id,
     libraryUuid: 'uuid-video',
     displayName: 'Video',
@@ -277,6 +248,13 @@ test('the real composition: App inside DesktopBootstrap, whose QueryScope is key
   await waitFor(() => expect(active).toBe(PHOTOS.id), { timeout: 3000 })
 
   await browseForFolder()
+  // Staged — nothing switched on the pick itself.
+  const add = await screen.findByRole('button', { name: 'Add library' })
+  expect(active).toBe(PHOTOS.id)
+
+  await act(async () => {
+    fireEvent.click(add)
+  })
 
   await waitFor(() => expect(active).toBe(VIDEO.id), { timeout: 3000 })
 })

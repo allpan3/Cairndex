@@ -488,6 +488,8 @@
           "sort": {
             "enum": [
               "date_added",
+              "date_modified",
+              "date_opened",
               "title",
               "rating",
               "size",
@@ -625,6 +627,23 @@
         "title": "BundleDraftResponse",
         "type": "object"
       },
+      "BundleOrder": {
+        "description": "The scope's resulting manual order, returned by a reorder so the client\nnever has to guess where the move landed (or refetch to find out).",
+        "properties": {
+          "ordered_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ordered Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ordered_ids"
+        ],
+        "title": "BundleOrder",
+        "type": "object"
+      },
       "BundleRead": {
         "properties": {
           "cover_file_id": {
@@ -724,8 +743,19 @@
         "type": "object"
       },
       "BundleReorder": {
-        "description": "Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the\norder to a collection's membership; null = the global All/system-view order.",
+        "description": "Manual drag-reorder of bundles (MANUAL sort). ``collection_id`` scopes the\norder to a collection's membership; null = the global All/system-view order.\n\nThe client sends the *move it made*, not the order it believes in: which\nbundles were dragged and which bundle they were dropped in front of. The\nserver owns the resulting order.\n\nThis used to take the client's whole visible list and number it 0..n-1, which\nwas only ever correct when the client had the entire scope loaded. Browsing\nis paged, so a drag in a collection larger than one page renumbered the\nloaded window on top of order values the rest of the collection still held \u2014\nand unloaded bundles then surfaced in the middle, or the dragged one appeared\nto jump to an end. Sending the intent makes the size of the loaded window\nirrelevant.",
         "properties": {
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
           "collection_id": {
             "anyOf": [
               {
@@ -737,17 +767,17 @@
             ],
             "title": "Collection Id"
           },
-          "ordered_ids": {
+          "moved_ids": {
             "items": {
               "type": "string"
             },
             "minItems": 1,
-            "title": "Ordered Ids",
+            "title": "Moved Ids",
             "type": "array"
           }
         },
         "required": [
-          "ordered_ids"
+          "moved_ids"
         ],
         "title": "BundleReorder",
         "type": "object"
@@ -755,6 +785,8 @@
       "BundleSort": {
         "enum": [
           "date_added",
+          "date_modified",
+          "date_opened",
           "title",
           "rating",
           "size",
@@ -1273,14 +1305,25 @@
         "type": "object"
       },
       "CollectionReorder": {
-        "description": "Manual drag-reorder of one sibling group (NULL parent = top level).",
+        "description": "A collection move: which collections, into which group, at which gap.\n\nCarries the move rather than a whole order. ``parent_id`` is the group they\nend up in (NULL = top level) \u2014 anything not already there is reparented as\npart of the same operation, so dragging between levels stays one request and\nnever publishes a collection in its new group carrying its old position.",
         "properties": {
-          "ordered_ids": {
+          "before_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before Id"
+          },
+          "moved_ids": {
             "items": {
               "type": "string"
             },
             "minItems": 1,
-            "title": "Ordered Ids",
+            "title": "Moved Ids",
             "type": "array"
           },
           "parent_id": {
@@ -1296,7 +1339,7 @@
           }
         },
         "required": [
-          "ordered_ids"
+          "moved_ids"
         ],
         "title": "CollectionReorder",
         "type": "object"
@@ -7457,7 +7500,7 @@
     },
     "/api/v1/libraries/{library_id}/bundles/reorder": {
       "put": {
-        "description": "Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``\nscopes it to a collection's membership order; null = the global order.",
+        "description": "Persist a manual drag-reorder of bundles (MANUAL sort). ``collection_id``\nscopes it to a collection's membership order; null = the global order.\n\nAnswers with the scope's resulting order. The client applies that directly\nrather than re-fetching the listing: a refetch is a second, later answer to\nthe same question, and any disagreement between it and the client's guess\nshows up as the row moving twice.",
         "operationId": "reorder_bundles_api_v1_libraries__library_id__bundles_reorder_put",
         "parameters": [
           {
@@ -7513,7 +7556,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BundleOrder"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -8836,6 +8886,83 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/opened": {
+      "post": {
+        "description": "Record that the owner opened this bundle (Recent view, Date Opened order).\n\nFire-and-forget from the client: it stamps a timestamp and returns nothing,\nso a failure can never block opening a bundle. Not a PATCH \u2014 nothing about\nthe bundle's metadata changes, and it must not consume a version.",
+        "operationId": "mark_bundle_opened_api_v1_libraries__library_id__bundles__bundle_id__opened_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Bundle Opened",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/playback": {
       "get": {
         "operationId": "playback_manifest_api_v1_libraries__library_id__bundles__bundle_id__playback_get",
@@ -9513,7 +9640,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/reorder": {
       "put": {
-        "description": "Persist a manual drag-reorder of one sibling group (NULL parent = top\nlevel). The sidebar tree and the main-browser folder cards both render from\nthis ``sort_order`` so a reorder in either surface updates both.",
+        "description": "Move collections into a group at a gap \u2014 the whole drag, in one request.\n\nReparents whatever is not already in ``parent_id``'s group, then places the\nblock. The sidebar tree and the main-browser folder cards both render from\nthis ``sort_order``, so a move in either surface updates both. Answers with\nthe resulting group so the client never has to re-derive (or re-fetch) where\nthe drop landed.",
         "operationId": "reorder_collections_api_v1_libraries__library_id__collections_reorder_put",
         "parameters": [
           {

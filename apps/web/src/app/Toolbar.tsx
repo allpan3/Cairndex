@@ -21,6 +21,8 @@ interface ToolbarProps {
   sort: BundleSort
   order: SortOrder
   onSort: (sort: BundleSort, order: SortOrder) => void
+  /** Restricts which sorts the control offers (the Recent view: date orders). */
+  allowedSorts?: BundleSort[]
   perCollectionSort: boolean
   onPerCollectionSort: (value: boolean) => void
   // Ad-hoc toolbar filters (local UI state; see app/adHocFilters.ts).
@@ -45,6 +47,7 @@ export function Toolbar({
   sort,
   order,
   onSort,
+  allowedSorts,
   perCollectionSort,
   onPerCollectionSort,
   adHocFilters,
@@ -58,7 +61,7 @@ export function Toolbar({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" data-tauri-drag-region="deep">
         <span className="toolbar__title">{title}</span>
         <span className="toolbar__count">{total.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
@@ -87,6 +90,7 @@ export function Toolbar({
           sort={sort}
           order={order}
           onChange={onSort}
+          allowed={allowedSorts}
           perCollection={perCollectionSort}
           onPerCollection={onPerCollectionSort}
         />

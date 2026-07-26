@@ -69,7 +69,15 @@ export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionReq
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
 export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
-export type BundleSort = 'date_added' | 'title' | 'rating' | 'size' | 'file_count' | 'manual'
+export type BundleSort =
+  | 'date_added'
+  | 'date_modified'
+  | 'date_opened'
+  | 'title'
+  | 'rating'
+  | 'size'
+  | 'file_count'
+  | 'manual'
 // The real (non-manual) sorts a "Clean up by…" can rewrite the manual order to.
 export type CleanupSort = Exclude<BundleSort, 'manual'>
 export type SortOrder = 'asc' | 'desc'
@@ -466,10 +474,15 @@ export const fetchCollectionStats = (id: string, signal?: AbortSignal) =>
 
 // Persist a manual drag-reorder of one sibling group (parentId null = top level).
 // The sidebar tree and main-browser folder cards share this sort_order.
-export const reorderCollections = (parentId: string | null, orderedIds: string[]) =>
+export const reorderCollections = (
+  parentId: string | null,
+  movedIds: string[],
+  beforeId: string | null,
+) =>
   send<CollectionRead[]>(`${lib()}/collections/reorder`, 'PUT', {
     parent_id: parentId,
-    ordered_ids: orderedIds,
+    moved_ids: movedIds,
+    before_id: beforeId,
   })
 
 // "Clean up by… Title": rewrite every sibling group's manual order alphabetically.
@@ -589,7 +602,9 @@ export async function importFile(
     dest_dir: options.destDir ?? '',
     filename: options.filename ?? file.name,
     on_conflict: options.onConflict ?? 'fail',
-    link: String(options.link ?? true),
+    // Default off: importing copies the file in without fast-adding it to a
+    // bundle. Callers opt in explicitly if they ever want the link.
+    link: String(options.link ?? false),
   })
   const response = await hostFetch(resolveApiUrl(`${lib()}/file-ops/import?${query}`), {
     method: 'POST',
@@ -1037,6 +1052,11 @@ export const updateBundle = (id: string, patch: BundlePatch, version?: number) =
 export const updateBundleCursor = (id: string, fileId: string) =>
   send<BundleCursorRead>(`${lib()}/bundles/${id}/cursor`, 'PUT', { file_id: fileId })
 
+/** Stamp "last opened" for the Recent view's Date Opened order. Fire-and-forget:
+ *  opening a bundle must not wait on it, and must not fail because of it. */
+export const markBundleOpened = (id: string) =>
+  send<void>(`${lib()}/bundles/${id}/opened`, 'POST').catch(() => undefined)
+
 export const setBundleTags = (id: string, ids: string[]) =>
   send<unknown>(`${lib()}/bundles/${id}/tags`, 'PUT', { ids })
 
@@ -1059,10 +1079,15 @@ export const reorderFiles = (bundleId: string, orderedIds: string[]) =>
   send<FileRead[]>(`${lib()}/bundles/${bundleId}/files/order`, 'PUT', { ordered_ids: orderedIds })
 
 // Manual drag-reorder of bundles (MANUAL sort). collectionId null = global order.
-export const reorderBundles = (collectionId: string | null, orderedIds: string[]) =>
-  send<void>(`${lib()}/bundles/reorder`, 'PUT', {
+export const reorderBundles = (
+  collectionId: string | null,
+  movedIds: string[],
+  beforeId: string | null,
+) =>
+  send<{ ordered_ids: string[] }>(`${lib()}/bundles/reorder`, 'PUT', {
     collection_id: collectionId,
-    ordered_ids: orderedIds,
+    moved_ids: movedIds,
+    before_id: beforeId,
   })
 
 // "Clean up by…": rewrite the whole scope's manual order to a chosen toolbar sort.

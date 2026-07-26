@@ -60,7 +60,7 @@ export function TrashView({
 
   return (
     <>
-      <div className="toolbar">
+      <div className="toolbar" data-tauri-drag-region="deep">
         <span className="toolbar__title">Trash</span>
         <span className="toolbar__count">
           {operations.length.toLocaleString()} {operations.length === 1 ? 'deletion' : 'deletions'}

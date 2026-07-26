@@ -70,6 +70,9 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
     # Per-directory heuristic overrides retained by each durable grouping snapshot
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
+    # Recent view "Date Opened" ordering. NULL in an existing library means
+    # "never opened here", which is the truth — opens were not recorded before.
+    ("asset_bundles", "last_opened_at", "DATETIME"),
 )
 
 _ADDITIVE_CONTENT_TABLES: tuple[str, ...] = (

@@ -6,6 +6,7 @@ import type { ViewerCommand } from '../app/viewer/player/useShortcuts'
  * from that table); `platform/keymap.test.ts` pins the two together.
  */
 export type DesktopWorkspaceAction =
+  | 'reload'
   | 'settings'
   | 'manage-libraries'
   | 'pair-device'
