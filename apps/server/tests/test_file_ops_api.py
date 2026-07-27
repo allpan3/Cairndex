@@ -597,3 +597,79 @@ def test_deleting_an_empty_bundle_with_files_reports_no_operation(
     assert response.status_code == 200
     assert response.json() is None
     assert client.get(f"/api/v1/libraries/{writable}/bundles/{bundle.id}").status_code == 404
+
+
+def test_delete_with_files_survives_a_missing_file(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """Review finding: one vanished file used to 404 the whole request.
+
+    The present file is trashed; the ghost row — which has no bytes anywhere to
+    make recoverable — is dropped the way the plain delete would drop it.
+    """
+    bundle_id = _linked_bundle(session, library_root, "a.mkv")
+    (library_root / "gone.mkv").write_bytes(b"x")
+    session.add(
+        AssetFile(
+            bundle_id=bundle_id,
+            relative_path="gone.mkv",
+            original_filename="gone.mkv",
+            display_title="gone.mkv",
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+            sequence=1,
+            size_bytes=1,
+        )
+    )
+    session.commit()
+    (library_root / "gone.mkv").unlink()
+
+    response = client.post(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files")
+
+    assert response.status_code == 200, response.text
+    assert not (library_root / "a.mkv").exists()
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    assert browse["items"] == []
+    session.expire_all()
+    assert (
+        session.scalars(select(AssetFile).where(AssetFile.relative_path == "gone.mkv")).all() == []
+    )
+
+
+def test_delete_with_files_skips_a_file_already_in_the_trash(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """Review finding: a previously trashed file 422'd on its own trash path.
+
+    That file stays recoverable under the operation that trashed it; this delete
+    trashes only what is still at its real path, and the bundle leaves browse.
+    """
+    bundle_id = _linked_bundle(session, library_root, "b.mkv")
+    (library_root / "c.mkv").write_bytes(b"x")
+    session.add(
+        AssetFile(
+            bundle_id=bundle_id,
+            relative_path="c.mkv",
+            original_filename="c.mkv",
+            display_title="c.mkv",
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+            sequence=1,
+            size_bytes=1,
+        )
+    )
+    session.commit()
+    first = client.post(f"/api/v1/libraries/{writable}/file-ops/trash", json={"paths": ["c.mkv"]})
+    assert first.status_code == 200, first.text
+    session.expire_all()
+
+    response = client.post(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files")
+
+    assert response.status_code == 200, response.text
+    assert not (library_root / "b.mkv").exists()
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    assert browse["items"] == []
+    # Both trash operations are independently recoverable.
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    trashed = sorted(e["original_path"] for op in listing["operations"] for e in op["entries"])
+    assert trashed == ["b.mkv", "c.mkv"]

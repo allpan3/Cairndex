@@ -1563,7 +1563,11 @@ def test_reconciler_finishes_a_cross_device_move_that_had_not_deleted_the_origin
     _touch(library_root, "a.mkv", b"payload")
     (library_root / "mnt").mkdir()
     _touch(library_root, "mnt/a.mkv", b"payload")
-    (library_root / "mnt" / fsmove.pending_marker(Path("a.mkv")).name).write_text("a.mkv")
+    # The marker records the source's full path, and the reconciler requires the
+    # match — a marker that merely exists is not evidence (see marker_names_source).
+    (library_root / "mnt" / fsmove.pending_marker(Path("a.mkv")).name).write_text(
+        str(library_root / "a.mkv")
+    )
     file = _link(session, "a.mkv")
     row = _interrupted(
         session,
@@ -1715,3 +1719,33 @@ def test_a_failing_retention_sweep_never_stops_a_library_opening(
     assert "trash retention sweep failed" in caplog.text
     # And the deletion is still recoverable, which is the point of not guessing.
     assert [op.id for op, _ in operations.list_trash(session)] == [trashed.operation.id]
+
+
+def test_reconciler_refuses_a_marker_that_names_a_different_source(
+    session: Session, library_root: Path
+) -> None:
+    """A marker vouches for one specific move, not for its destination path.
+
+    A stale marker left by an earlier attempt must not let an unrelated pending
+    operation claim the destination — the wrong guess repoints metadata onto the
+    wrong file.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _touch(library_root, "mnt/a.mkv", b"payload")
+    (library_root / "mnt" / fsmove.pending_marker(Path("a.mkv")).name).write_text(
+        str(library_root / "somewhere-else.mkv")
+    )
+    file = _link(session, "a.mkv")
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {"dest_dir": "mnt", "moves": [{"source": "a.mkv", "destination": "mnt/a.mkv"}]},
+    )
+
+    reconcile_pending(session, library_root)
+
+    session.refresh(row)
+    session.refresh(file)
+    assert row.status is FileOpStatus.FAILED
+    assert file.relative_path == "a.mkv"

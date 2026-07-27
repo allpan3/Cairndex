@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
 
 from cairndex.api.deps import (
     IfMatchVersion,
@@ -37,6 +39,7 @@ from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.file_ops import FileOperationRead, FileOperationResult
 from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
+from cairndex.domain.enums import FileAvailability
 from cairndex.file_ops import operations
 from cairndex.media import playback, thumbnails
 from cairndex.persistence.engine import library_root_for_session
@@ -268,13 +271,43 @@ def delete_bundle_with_files(
     in the app pointed at.
     """
     bundle = service.get_bundle(db, bundle_id)
-    paths = [file.relative_path for file in bundle.files]
-    if not paths:
-        # Nothing to trash, so there is no operation and nothing to undo. An empty
-        # bundle has no files to outlive it, so it goes now.
-        service.delete_bundle(db, bundle_id)
+    root = library_root_for_session(db)
+
+    # Not every row has bytes to trash, and handing trash_paths a path it cannot
+    # move fails the whole request (review finding): a bundle with a *missing*
+    # file 404'd, and one with a file already trashed individually 422'd on its
+    # own trash-internal path. Partition instead of passing everything through.
+    present: list[str] = []
+    ghosts: list[AssetFile] = []
+    for file in bundle.files:
+        if file.availability is FileAvailability.TRASHED:
+            # Already recoverable under its earlier trash operation, and already
+            # hidden from browse; that operation keeps owning its restore.
+            continue
+        if not os.path.lexists(root / file.relative_path):
+            ghosts.append(file)
+            continue
+        present.append(file.relative_path)
+
+    # A missing file has no bytes anywhere, so there is nothing to make
+    # recoverable: dropping its row is the same metadata-only removal the plain
+    # delete performs, done here so the ghost cannot keep the bundle visible.
+    for row in ghosts:
+        db.delete(row)
+    db.flush()
+
+    if not present:
+        remaining = db.scalar(
+            select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle_id)
+        )
+        if not remaining:
+            # Only ghosts (or nothing): no recoverable trace will point at this
+            # bundle, so it goes now, like the empty-bundle case.
+            service.delete_bundle(db, bundle_id)
+        db.commit()
         return None
-    result = operations.trash_paths(db, library_root_for_session(db), paths=paths)
+
+    result = operations.trash_paths(db, root, paths=present)
     return FileOperationResult(
         operation=FileOperationRead.model_validate(result.operation),
         path=result.path,

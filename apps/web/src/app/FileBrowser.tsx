@@ -126,10 +126,19 @@ function EntryThumb({
   fallback: ReactNode
 }) {
   const src = thumbnailFor(entry)
-  const [failed, setFailed] = useState(false)
-  if (!src || failed) return <>{fallback}</>
+  // Latched per-source, not per-component: rows are keyed by path, so an entry
+  // whose source later changes (fast-add links it, giving it a real thumbnail
+  // URL) reuses this instance — a boolean would keep it stuck on the icon.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  if (!src || failedSrc === src) return <>{fallback}</>
   return (
-    <img className={className} src={src} alt="" decoding="async" onError={() => setFailed(true)} />
+    <img
+      className={className}
+      src={src}
+      alt=""
+      decoding="async"
+      onError={() => setFailedSrc(src)}
+    />
   )
 }
 
