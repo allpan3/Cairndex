@@ -233,6 +233,28 @@ grouped under `Unreleased` until the first tagged release.
   segment, which escapes it. Reaching this needed code running in the app's own
   web layer, which is why it is hardening rather than a fix.
 
+### Fixed
+
+- **Moving a file across a mount point inside your library now works.** A library
+  root can span filesystems — a NAS share or external drive mounted at a
+  subdirectory, a bind mount in a container — and the underlying rename cannot
+  cross that boundary. Renames, moves, deleting to the trash and restoring from it
+  all reported a per-file failure at that line; nothing was ever lost, but the
+  operation could not succeed. They now fall back to copying and then removing the
+  original.
+
+  **The original is always the last thing to go.** The copy lands under a hidden
+  name beside its destination, is flushed to disk, and is committed with an atomic
+  rename; only then is the original removed. Every interruption therefore leaves
+  the file readable at one path or both — never neither. If the process dies in the
+  window where both exist, the next library open finishes the bookkeeping and
+  **reports the leftover original rather than deleting it**: automatic recovery
+  does not destroy original media, so the duplicate is yours to remove through the
+  ordinary Trash once you can see it.
+
+  A cross-device move is a copy, so it takes as long as the bytes take — and,
+  unlike a rename, it needs room for a second copy while it runs.
+
 ### Changed
 
 - **Creating a collection is reachable from where you are.** The sidebar's **+**
