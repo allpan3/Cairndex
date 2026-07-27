@@ -11,12 +11,13 @@
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
-## In progress: plan 4 W6 — write-mode hardening (2026-07-26)
+## Ready for review: plan 4 W6 — write-mode hardening (2026-07-26)
 
 Branch `fix/write-mode-hardening`, rebased onto `main` at `7b767d3`. W6 is the last
 unblocked write-mode slice (W2 still waits on plan 1 M11, which is in the future
-bucket), and it is a bag of independent items rather than one change. Landed so
-far:
+bucket), and it is a bag of independent items rather than one change. **The
+correctness and safety items are done; three feature-sized ones are deliberately
+not, and are listed with reasons below.** Landed:
 
 **The desktop importer's library id (the PR #30 review's hardening note).** It
 reached the upload URL through `format!` into a string that was then parsed, so an
@@ -76,19 +77,72 @@ reconciler branches, and trash/restore across a boundary).
 case-insensitive filesystems were already handled; that logic moved into `fsmove`
 unchanged.
 
-### Remaining W6 items, and what each actually involves
+**Bundle "delete with files"** (the smallest remaining W4 piece). The Delete
+dialog's checkbox had been inert since it was added — `App` took the flag and
+dropped it under a "not wired yet" comment, so the dialog asked a question and
+then ignored the answer. A write-gated `POST /bundles/{id}/delete-with-files`
+trashes the bundle's files and then removes it: trash-first like every other
+deletion, so it is undoable and the files stay listed until the trash is emptied.
 
-- **Drag-move onto a directory row** — the capability already exists via the Move
-  to… dialog; this is a second gesture for it, alongside the File Browser's
-  marquee and native drag-*out*. Its own slice, as W3 recorded.
-- **The two move-undo manual-recovery cases** from the W3 review: a Replace whose
-  own rename fails, and a crash losing `replaced_operation_id`. Both are visible
-  and restorable in the Trash today; neither loses data.
-- Auto-suffixing within a move batch (currently refused rather than guessed — a
-  deliberate safety narrowing, so relaxing it is an owner call), the multi-item
-  plan/preview endpoint, the `file_ops_batch` job for bulk moves, retention
-  config, journal history UI, deployment/backup docs, a perf pass on bulk ops, and
-  bundle "delete with files" (the smallest remaining W4 piece).
+A separate route rather than a flag on `DELETE`, because the two have different
+gates — dissolving a grouping is metadata-only and must stay available on a
+read-only library, while deleting files is a guarded write it has to refuse.
+An empty bundle returns `null`: there was no file operation, so there is nothing
+to undo and nothing worth inventing.
+
+Opening the real dialog caught what reading it had not: with the checkbox now
+live, its opening line still promised the files "always stay on disk" and its
+Unbundled clause described a fallback that no longer applied. Both now follow the
+checkbox, and the checkbox itself appears only where write mode allows it.
+
+**Trash retention.** `CAIRNDEX_TRASH_RETENTION_DAYS` empties expired trash when a
+library opens, reusing the `older_than_days` path that already existed and was
+already tested. Off by default and deliberately so — the trash is what makes
+deleting recoverable — with its own session and `try/except` so a failed sweep
+never costs the reconciliation that ran before it.
+
+**Deployment/backup docs.** The retention variable, and a new section on libraries
+that span more than one filesystem: what the EXDEV fallback costs (a move becomes
+a copy, so it needs time and room for a second copy) and what an interrupted one
+leaves (a duplicate, never a hole).
+
+Backend **801 passed**, web **427 passed**, Rust **101 passed**; OpenAPI and
+`schema.d.ts` regenerated for the new route.
+
+### Deliberately not done, and why
+
+These are feature-sized rather than hardening, and each is its own reviewable
+slice. W6 is proposed as closed without them; reopen or re-file as preferred.
+
+- **Drag-move onto a directory row.** The capability exists via the Move to…
+  dialog; this is a second *gesture* for it, threaded through the File Browser's
+  marquee and native drag-*out* system. W3 already called it a slice of its own
+  and nothing since has made it smaller.
+- **`file_ops_batch` job + the multi-item plan/preview endpoint.** Both are about
+  making bulk moves asynchronous and previewable. Worth more now than when W3
+  deferred them, because a cross-device move is a copy and can be genuinely long —
+  but that is an argument for designing them against the new cost, not for
+  bolting them on at the end of this branch.
+- **Journal history UI.** A read-only view over `file_operations`, which the API
+  already exposes. Straightforward, but it is a new surface with its own layout
+  and empty/error states, not a hardening fix.
+
+Two smaller ones judged **not worth doing**, rather than merely deferred:
+
+- **Auto-suffixing within a move batch.** Two selected items that would land on the
+  same name are refused up front. That was a deliberate narrowing — the one
+  outcome the never-overwrite rule forbids — and silently renaming one of the
+  owner's files to resolve a collision they did not know they had created is worse
+  than the refusal. Left as an owner call.
+- **The two move-undo manual-recovery cases** from the W3 review. Both leave the
+  affected file visible and restorable in the Trash; neither loses data. The fix
+  is bookkeeping to re-associate a `replaced_operation_id` written at `finish`,
+  which would mean journaling it earlier — a change to the crash-recovery contract
+  for a case whose current outcome is "recoverable, manually".
+
+A **perf pass on bulk ops** was not run: it needs a representative large library,
+which is the owner's to point at (AGENTS.md asks for recorded baselines rather
+than claims).
 
 ## Merged: collection-creation affordances (2026-07-26)
 
