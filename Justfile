@@ -45,9 +45,20 @@ dev:
 desktop:
     cd {{desktop_dir}} && npm run tauri dev
 
-# Desktop shell on its bundled sidecar (rebuilt if stale) — the shipped path.
+# `tauri dev` — both desktop recipes below — serves the web app from Vite, which
+# means React's development build and StrictMode's double render. That is fine
+# for exercising behaviour, but it is not shipped performance: judge speed with
+# `just release`.
+
+# Desktop shell on its bundled sidecar, rebuilt if stale (dev frontend).
 bundled:
     cd {{desktop_dir}} && npm run dev:bundled
+
+# Run the optimized build without packaging it — for judging real performance.
+release:
+    cd {{desktop_dir}} && npx tauri build --no-bundle
+    @echo ""
+    @echo "→ open {{tauri_dir}}/target/release/cairndex-desktop"
 
 # ---------------------------------------------------------------------- gates --
 
