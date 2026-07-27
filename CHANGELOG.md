@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **File Browser and Unbundled show thumbnails.** Both surfaces rendered a
+  media-kind icon for every row, so a folder of videos — or the whole Unbundled
+  queue — was a wall of identical glyphs. They now show a still: an indexed file
+  uses the per-file thumbnail the server extracts (a real frame, for video), and
+  an image that was never indexed falls back to its path-scoped preview. Anything
+  with no possible still — a subtitle, a folder, an unindexed video — keeps its
+  icon, as does a file whose thumbnail the server cannot produce. Both the grid
+  and the list get them; in the list they scale with the zoom slider.
+
+### Added
+
 - **Write mode — the gate** ([ADR-0013](docs/adr/0013-library-write-mode.md),
   plan 4 W0). Cairndex can be given permission to create, rename, move, and
   trash files inside one library root. **Nothing writes yet**; this is the

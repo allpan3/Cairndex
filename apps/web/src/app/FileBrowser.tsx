@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import type { FileBrowserEntry, SortOrder } from '../api/client'
+import { fileBrowserPreviewUrl, fileThumbnailUrl } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
 import { formatBytes, formatDate } from '../lib/format'
 import type { HostLabels } from '../platform'
@@ -78,6 +79,58 @@ function crumbs(path: string): { label: string; path: string }[] {
   if (!path) return []
   const parts = path.split('/')
   return parts.map((label, i) => ({ label, path: parts.slice(0, i + 1).join('/') }))
+}
+
+/**
+ * The still image to show on a file card at rest, or null to fall back to its
+ * media-kind icon.
+ *
+ * Two different sources, because a File Browser row may or may not be indexed.
+ * An *indexed* file — which is every row in the Unbundled queue, since those live
+ * in provisional bundles — has a per-file thumbnail the server generates on
+ * demand, video frames included. An *unindexed* image has no file row to hang one
+ * on, but its bytes are still readable by path, so the path-scoped preview
+ * derivative stands in. Everything else (unindexed video, audio, subtitles,
+ * directories) has neither and keeps its icon.
+ */
+function thumbnailFor(entry: FileBrowserEntry): string | null {
+  if (entry.kind === 'directory') return null
+  if (entry.file_id && entry.bundle_id) return fileThumbnailUrl(entry.bundle_id, entry.file_id)
+  if (entry.media_kind === 'image') return fileBrowserPreviewUrl(entry.relative_path, 640)
+  return null
+}
+
+/**
+ * One entry's still image, falling back to `fallback` when it has none or the
+ * server cannot produce one — an unprobed or undecodable file answers 503, and
+ * the icon is a better answer than a broken image.
+ *
+ * Deliberately **not** `loading="lazy"`. Neither the file grid nor the file list
+ * is virtualized, so lazy loading looked like the right way to keep a large
+ * folder from asking the server for every thumbnail at once — but these images
+ * live in the listing's own scroll container, and there lazy loading never
+ * fired at all: verified in a real browser, where an in-viewport thumbnail
+ * stayed unloaded through scrolling and only appeared once forced eager. A
+ * thumbnail that silently never arrives is a worse outcome than the requests it
+ * saves. What actually bounds the work is that the listing is paginated, the
+ * browser caps concurrent connections per origin, and the server caches each
+ * thumbnail after generating it once.
+ */
+function EntryThumb({
+  entry,
+  className,
+  fallback,
+}: {
+  entry: FileBrowserEntry
+  className: string
+  fallback: ReactNode
+}) {
+  const src = thumbnailFor(entry)
+  const [failed, setFailed] = useState(false)
+  if (!src || failed) return <>{fallback}</>
+  return (
+    <img className={className} src={src} alt="" decoding="async" onError={() => setFailed(true)} />
+  )
 }
 
 // Inline SVG icons (no font dependency, monochrome via currentColor) chosen by
@@ -857,7 +910,9 @@ function FileRow({
       {...(renaming ? {} : dragProps)}
     >
       <span className="file-row__name">
-        <span className="file-row__icon">{entryIcon(entry)}</span>
+        <span className="file-row__icon">
+          <EntryThumb entry={entry} className="file-row__thumb" fallback={entryIcon(entry)} />
+        </span>
         {renaming ? (
           <NameEditor
             initial={entry.name}
@@ -954,7 +1009,13 @@ function FileCard({
       {...(renaming ? {} : dragProps)}
     >
       <HoverPreview source={previewSource} disabled={previewDisabled} className="card__thumb">
-        <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
+        <EntryThumb
+          entry={entry}
+          className="card__thumb-img"
+          fallback={
+            <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
+          }
+        />
         {!isDir && !entry.linked && (
           <span className="card__badge card__badge--missing">unlinked</span>
         )}
