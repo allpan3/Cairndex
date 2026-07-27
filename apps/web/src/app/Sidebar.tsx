@@ -322,6 +322,12 @@ export function Sidebar({
   const createCollectionUnder = useCallback(
     (parentId: string | null) => {
       setCreateError(null)
+      // The new row lands in the inline rename box, which a folded section would
+      // hide — leaving a collection created, named "New Collection", with no
+      // visible way to type the name that was the point of creating it. This
+      // matters most for a request raised from the grid, where the user is not
+      // even looking at the sidebar.
+      setCollectionsCollapsed(false)
       const siblingNames = new Set(
         collections.filter((c) => (c.parent_id ?? null) === parentId).map((c) => c.name),
       )
@@ -352,7 +358,7 @@ export function Sidebar({
         },
       )
     },
-    [collections, onCreateCollection],
+    [collections, onCreateCollection, setCollectionsCollapsed],
   )
 
   // A request from outside the sidebar (the grid's empty-space menu, the native
