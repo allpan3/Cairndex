@@ -33,6 +33,9 @@ class BrowseRequest(BaseModel):
     filter: FilterExpression | None = None
     # Whole-library full-text search over bundle/file/tag/collection metadata.
     q: str | None = None
+    # Shuffle seed for the Random view; identical seeds page identically, and
+    # reseeding is just sending a new one. Ignored for every other view.
+    seed: int | None = Field(default=None, ge=0)
 
 
 class FacetRequest(BaseModel):

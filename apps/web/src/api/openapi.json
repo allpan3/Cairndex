@@ -419,6 +419,18 @@
             ],
             "title": "Q"
           },
+          "seed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
           "sort": {
             "$ref": "#/components/schemas/BundleSort",
             "default": "date_added"
@@ -5285,7 +5297,8 @@
           "uncategorized",
           "untagged",
           "missing",
-          "unbundled"
+          "unbundled",
+          "random"
         ],
         "title": "SystemView",
         "type": "string"
@@ -5326,6 +5339,25 @@
           "name"
         ],
         "title": "TagCreate",
+        "type": "object"
+      },
+      "TagDeleteImpact": {
+        "description": "What deleting a tag would remove, so the prompt can say so up front.",
+        "properties": {
+          "bundles": {
+            "title": "Bundles",
+            "type": "integer"
+          },
+          "tags": {
+            "title": "Tags",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tags",
+          "bundles"
+        ],
+        "title": "TagDeleteImpact",
         "type": "object"
       },
       "TagGroupCreate": {
@@ -7200,6 +7232,23 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "seed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seed"
             }
           },
           {
@@ -10182,7 +10231,7 @@
     },
     "/api/v1/libraries/{library_id}/collections/{collection_id}/thumbnail": {
       "get": {
-        "description": "Serve the collection's cover thumbnail \u2014 the chosen cover bundle's cover,\nor an auto-picked bundle from the subtree. 404 if the collection has no\nthumbnailable bundle; 503 if ffmpeg is unavailable.",
+        "description": "Serve the collection's cover thumbnail \u2014 the chosen cover bundle's cover,\nor an auto-picked bundle from the subtree. 404 if the collection has no\nthumbnailable bundle; 503 if ffmpeg is unavailable.\n\nScoped like the other file-serving routes: generation can shell out to\nffmpeg, and a grid of collections asks for many of these at once, so the\nsession must not stay checked out for either the generation or the transfer\n(see ``LibraryAccess``).",
         "operationId": "get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get",
         "parameters": [
           {
@@ -10445,7 +10494,7 @@
     },
     "/api/v1/libraries/{library_id}/file": {
       "get": {
-        "description": "Serve the raw bytes of a file under the library root (File Browser preview).\n\nRead-only and path-safe (same scoping as ``/file-browser/entries``). Files here\nneed not be linked into a bundle. ``FileResponse`` honors HTTP Range.",
+        "description": "Serve the raw bytes of a file under the library root (File Browser preview).\n\nRead-only and path-safe (same scoping as ``/file-browser/entries``). Files here\nneed not be linked into a bundle. ``FileResponse`` honors HTTP Range.\n\nThis is the route an *unindexed* File Browser video plays through, so it sees\nthe same overlapping range requests as ``/files/{id}/stream`` and needs the\nsame scoped session \u2014 a yield dependency here pins two connections for the\nwhole transfer and strands them outright when a seek aborts the request.",
         "operationId": "serve_file_api_v1_libraries__library_id__file_get",
         "parameters": [
           {
@@ -11503,7 +11552,7 @@
     },
     "/api/v1/libraries/{library_id}/file/preview": {
       "get": {
-        "description": "Serve a path-scoped WebP preview for a File Browser image.\n\nRead-only and path-safe. Files here need not be linked into a bundle, so the\ncache key is derived from the normalized library-relative path plus source\nquick fingerprint.",
+        "description": "Serve a path-scoped WebP preview for a File Browser image.\n\nRead-only and path-safe. Files here need not be linked into a bundle, so the\ncache key is derived from the normalized library-relative path plus source\nquick fingerprint.\n\nScoped like the other streaming routes: the session closes before the body\nstreams, so no connection is pinned for the transfer (see ``LibraryAccess``).",
         "operationId": "serve_file_preview_api_v1_libraries__library_id__file_preview_get",
         "parameters": [
           {
@@ -11595,6 +11644,127 @@
         "summary": "Serve File Preview",
         "tags": [
           "library-files"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/files/{file_id}/contact-sheet": {
+      "get": {
+        "description": "The frame grid for a contact-sheet export (plan 1 \u00a710, first M11 slice).\n\nFrames only \u2014 the client composes the metadata header and the per-cell\ntimestamps, which it can already render without dragging font discovery into\nthe server. Generated on demand, cached by grid shape and source\nfingerprint; a scoped session so the ffmpeg run never holds a DB connection.\n\n``X-Contact-Sheet-Times`` carries the instant each cell was sampled from, so\nthe client labels cells from the same definition that chose the frames\nrather than reimplementing the sampling rule. Exposed to the browser because\nthe desktop shell reaches this through a cross-origin relay.",
+        "operationId": "get_contact_sheet_api_v1_libraries__library_id__files__file_id__contact_sheet_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cols",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 6,
+              "minimum": 2,
+              "title": "Cols",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rows",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 10,
+              "minimum": 2,
+              "title": "Rows",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "width",
+            "required": false,
+            "schema": {
+              "default": 1600,
+              "enum": [
+                1280,
+                1600,
+                2048
+              ],
+              "title": "Width",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Contact Sheet",
+        "tags": [
+          "playback"
         ]
       }
     },
@@ -16042,6 +16212,7 @@
     },
     "/api/v1/libraries/{library_id}/tags/{tag_id}": {
       "delete": {
+        "description": "Delete a tag. `cascade` also deletes its child tags, which is refused\nwithout it so a parent is never taken by accident.",
         "operationId": "delete_tag_api_v1_libraries__library_id__tags__tag_id__delete",
         "parameters": [
           {
@@ -16060,6 +16231,16 @@
             "schema": {
               "title": "Library Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cascade",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Cascade",
+              "type": "boolean"
             }
           },
           {
@@ -16301,6 +16482,90 @@
           }
         },
         "summary": "Update Tag",
+        "tags": [
+          "tags"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/tags/{tag_id}/delete-impact": {
+      "get": {
+        "description": "What deleting this tag would take with it, for the confirmation prompt.",
+        "operationId": "tag_delete_impact_api_v1_libraries__library_id__tags__tag_id__delete_impact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "schema": {
+              "title": "Tag Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TagDeleteImpact"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Tag Delete Impact",
         "tags": [
           "tags"
         ]

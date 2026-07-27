@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import LibrarySession, RegistryDbSession
+from cairndex.api.deps import LibraryAccessDep, LibrarySession, RegistryDbSession
 from cairndex.api.schemas.file_browser import FileBrowserEntryRead, FileBrowserListingRead
 from cairndex.api.schemas.files import FastAddRequest, FastAddResponse
 from cairndex.api.schemas.jobs import JobRead
@@ -49,7 +49,7 @@ def list_file_browser_entries(
 
 @router.get("/file/preview")
 def serve_file_preview(
-    db: LibrarySession,
+    access: LibraryAccessDep,
     path: Annotated[str, Query()],
     size: Annotated[int, Query(json_schema_extra={"enum": list(previews.PREVIEW_SIZES)})] = 1600,
 ) -> FileResponse:
@@ -58,8 +58,12 @@ def serve_file_preview(
     Read-only and path-safe. Files here need not be linked into a bundle, so the
     cache key is derived from the normalized library-relative path plus source
     quick fingerprint.
+
+    Scoped like the other streaming routes: the session closes before the body
+    streams, so no connection is pinned for the transfer (see ``LibraryAccess``).
     """
-    target = previews.preview_for_path(db, path, size)
+    with access.session() as db:
+        target = previews.preview_for_path(db, path, size)
     return FileResponse(
         str(target),
         media_type="image/webp",
@@ -69,13 +73,19 @@ def serve_file_preview(
 
 
 @router.get("/file")
-def serve_file(db: LibrarySession, path: Annotated[str, Query()]) -> FileResponse:
+def serve_file(access: LibraryAccessDep, path: Annotated[str, Query()]) -> FileResponse:
     """Serve the raw bytes of a file under the library root (File Browser preview).
 
     Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
     need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
+
+    This is the route an *unindexed* File Browser video plays through, so it sees
+    the same overlapping range requests as ``/files/{id}/stream`` and needs the
+    same scoped session — a yield dependency here pins two connections for the
+    whole transfer and strands them outright when a seek aborts the request.
     """
-    target = file_browser_service.resolve_entry_path(db, path)
+    with access.session() as db:
+        target = file_browser_service.resolve_entry_path(db, path)
     media_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
     return FileResponse(str(target), media_type=media_type, filename=target.name)
 
