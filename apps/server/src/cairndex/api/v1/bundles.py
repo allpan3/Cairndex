@@ -4,7 +4,13 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
+from cairndex.api.deps import (
+    IfMatchVersion,
+    LibraryAccessDep,
+    LibrarySession,
+    Pagination,
+    WriteModeRequired,
+)
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
     BatchResult,
@@ -28,9 +34,12 @@ from cairndex.api.schemas.bundles import (
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
+from cairndex.api.schemas.file_ops import FileOperationRead, FileOperationResult
 from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
+from cairndex.file_ops import operations
 from cairndex.media import playback, thumbnails
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.scanning import repair as repair_service
 from cairndex.services import browse as browse_service
@@ -231,6 +240,40 @@ def update_bundle(
 @router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
     service.delete_bundle(db, bundle_id)
+
+
+@router.post("/{bundle_id}/delete-with-files", response_model=FileOperationResult | None)
+def delete_bundle_with_files(
+    bundle_id: str, db: LibrarySession, _gate: WriteModeRequired
+) -> FileOperationResult | None:
+    """Delete a bundle *and* send its files to the trash (ADR-0013 §3.2).
+
+    A separate, write-gated route rather than a flag on ``DELETE``: dissolving a
+    grouping is metadata-only and always available, while deleting the files is a
+    guarded filesystem write. Giving them one entry point would mean a read-only
+    library either lost the ordinary delete or accepted a request it must refuse.
+
+    Trash-first, never unlink — so this is undoable like every other deletion, and
+    the files are listed in the Trash view until they are emptied. The files are
+    trashed *before* the bundle rows go, because the journal entry that makes the
+    deletion recoverable has to be written while the paths are still known.
+    """
+    bundle = service.get_bundle(db, bundle_id)
+    paths = [file.relative_path for file in bundle.files]
+    if not paths:
+        # An empty bundle has nothing to trash, so there is no operation to
+        # return and nothing to undo — null rather than an invented entry.
+        service.delete_bundle(db, bundle_id)
+        return None
+    result = operations.trash_paths(db, library_root_for_session(db), paths=paths)
+    service.delete_bundle(db, bundle_id)
+    return FileOperationResult(
+        operation=FileOperationRead.model_validate(result.operation),
+        path=result.path,
+        files_updated=result.files_updated,
+        skipped=result.skipped,
+        failed_paths=result.failed_paths,
+    )
 
 
 @router.post("/{bundle_id}/opened", status_code=status.HTTP_204_NO_CONTENT)

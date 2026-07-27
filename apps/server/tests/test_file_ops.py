@@ -8,6 +8,7 @@ is what happens on the filesystem, so nothing here is mocked.
 import asyncio
 import errno
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
@@ -34,6 +35,7 @@ from cairndex.file_ops.paths import suffixed_name, validate_name
 from cairndex.file_ops.reconcile import reconcile_pending
 from cairndex.file_ops.trash import stored_relative_path
 from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
+from cairndex.registry.library_engine import _sweep_expired_trash
 from cairndex.scanning.scanner import _mark_missing
 
 
@@ -1642,3 +1644,74 @@ def test_trashing_across_a_device_boundary_works(
 
     operations.restore(session, library_root, operation_id=result.operation.id)
     assert (library_root / "a.mkv").read_bytes() == b"payload"
+
+
+# --- Trash retention sweep (plan 4 W6) --------------------------------------
+
+
+def test_retention_sweep_is_off_unless_configured(
+    session: Session, library_root: Path, session_factory: sessionmaker[Session]
+) -> None:
+    """Zero days keeps the trash forever, which is the default.
+
+    The trash is the way back from a deletion, so expiring it is opt-in: a
+    default that quietly discarded it would make deleting less recoverable than
+    the design promises.
+    """
+    _touch(library_root, "old.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    trashed.operation.finished_at = utcnow() - timedelta(days=400)
+    session.commit()
+
+    _sweep_expired_trash(session_factory, library_root, 0)
+
+    assert [op.id for op, _ in operations.list_trash(session)] == [trashed.operation.id]
+
+
+def test_retention_sweep_empties_only_what_has_expired(
+    session: Session, library_root: Path, session_factory: sessionmaker[Session]
+) -> None:
+    _touch(library_root, "old.mkv")
+    _touch(library_root, "new.mkv")
+    old = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    new = operations.trash_paths(session, library_root, paths=["new.mkv"])
+    old.operation.finished_at = utcnow() - timedelta(days=40)
+    session.commit()
+
+    _sweep_expired_trash(session_factory, library_root, 30)
+
+    session.expire_all()
+    assert [op.id for op, _ in operations.list_trash(session)] == [new.operation.id]
+    # Expiring is the one-way door: the bytes are gone, not just the row.
+    assert not (library_root / stored_relative_path(old.operation.id, "old.mkv")).exists()
+    assert (library_root / stored_relative_path(new.operation.id, "new.mkv")).exists()
+
+
+def test_a_failing_retention_sweep_never_stops_a_library_opening(
+    session: Session,
+    library_root: Path,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Emptying is best-effort; reconciliation is not, and ran before it.
+
+    A library that cannot finish its housekeeping must still open — the sweep is
+    the least important thing happening at that moment.
+    """
+    _touch(library_root, "old.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    trashed.operation.finished_at = utcnow() - timedelta(days=40)
+    session.commit()
+
+    def explode(*args: object, **kwargs: object) -> int:
+        raise OSError(errno.EIO, "the volume went away mid-sweep")
+
+    monkeypatch.setattr(operations, "empty_trash", explode)
+
+    with caplog.at_level(logging.ERROR):
+        _sweep_expired_trash(session_factory, library_root, 30)  # must not raise
+
+    assert "trash retention sweep failed" in caplog.text
+    # And the deletion is still recoverable, which is the point of not guessing.
+    assert [op.id for op, _ in operations.list_trash(session)] == [trashed.operation.id]

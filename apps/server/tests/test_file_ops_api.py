@@ -13,7 +13,9 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
 
+from cairndex.domain.enums import FileRole, GroupingState, MediaKind
 from cairndex.file_ops import gate
+from cairndex.persistence.models import AssetBundle, AssetFile
 
 
 @pytest.fixture
@@ -454,3 +456,81 @@ def test_move_collision_reaches_the_client_as_a_choice(
     assert kept_both.json()["path"] == "Dest/a (2).mkv"
     assert (library_root / "Dest/a.mkv").read_bytes() == b"already here"
     assert (library_root / "Dest/a (2).mkv").read_bytes() == b"incoming"
+
+
+# --- Deleting a bundle together with its files (plan 4 W6, closing W4) -------
+
+
+def _linked_bundle(session: Session, library_root: Path, relative: str) -> str:
+    """A confirmed bundle owning one real file on disk. Returns its id."""
+    (library_root / relative).write_bytes(b"payload")
+    bundle = AssetBundle(title="Bundle", grouping_state=GroupingState.CONFIRMED)
+    session.add(bundle)
+    session.flush()
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path=relative,
+            original_filename=relative,
+            display_title=relative,
+            role=FileRole.PRIMARY_VIDEO,
+            media_kind=MediaKind.VIDEO,
+            sequence=0,
+            size_bytes=7,
+        )
+    )
+    session.commit()
+    return bundle.id
+
+
+def test_delete_with_files_trashes_them_and_removes_the_bundle(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """The dialog's "also delete files" checkbox, finally wired to something.
+
+    Trash-first like every other deletion, so it is undoable and the files stay
+    visible in the Trash rather than simply being gone.
+    """
+    bundle_id = _linked_bundle(session, library_root, "a.mkv")
+
+    response = client.post(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files")
+
+    assert response.status_code == 200, response.text
+    assert not (library_root / "a.mkv").exists()
+    assert client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}").status_code == 404
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
+    trashed = [e["original_path"] for op in listing["operations"] for e in op["entries"]]
+    assert trashed == ["a.mkv"]
+
+
+def test_delete_with_files_is_refused_when_write_mode_is_off(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Deleting the files is a guarded write; dissolving the grouping is not.
+
+    That is why these are two routes and not one with a flag: a read-only library
+    must keep the ordinary delete while refusing this one.
+    """
+    bundle_id = _linked_bundle(session, library_root, "a.mkv")
+
+    response = client.post(f"/api/v1/libraries/{library_id}/bundles/{bundle_id}/delete-with-files")
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "write_mode_disabled"
+    assert (library_root / "a.mkv").is_file()
+    assert client.get(f"/api/v1/libraries/{library_id}/bundles/{bundle_id}").status_code == 200
+
+
+def test_deleting_an_empty_bundle_with_files_reports_no_operation(
+    client: TestClient, writable: str, session: Session
+) -> None:
+    """Nothing to trash means nothing to undo — null, not an invented entry."""
+    bundle = AssetBundle(title="Empty")
+    session.add(bundle)
+    session.commit()
+
+    response = client.post(f"/api/v1/libraries/{writable}/bundles/{bundle.id}/delete-with-files")
+
+    assert response.status_code == 200
+    assert response.json() is None
+    assert client.get(f"/api/v1/libraries/{writable}/bundles/{bundle.id}").status_code == 404

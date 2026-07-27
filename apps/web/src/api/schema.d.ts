@@ -524,6 +524,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/delete-with-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Bundle With Files
+         * @description Delete a bundle *and* send its files to the trash (ADR-0013 §3.2).
+         *
+         *     A separate, write-gated route rather than a flag on ``DELETE``: dissolving a
+         *     grouping is metadata-only and always available, while deleting the files is a
+         *     guarded filesystem write. Giving them one entry point would mean a read-only
+         *     library either lost the ordinary delete or accepted a request it must refuse.
+         *
+         *     Trash-first, never unlink — so this is undoable like every other deletion, and
+         *     the files are listed in the Trash view until they are emptied. The files are
+         *     trashed *before* the bundle rows go, because the journal entry that makes the
+         *     deletion recoverable has to be written while the paths are still known.
+         */
+        post: operations["delete_bundle_with_files_api_v1_libraries__library_id__bundles__bundle_id__delete_with_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
         parameters: {
             query?: never;
@@ -5251,6 +5281,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleCursorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_bundle_with_files_api_v1_libraries__library_id__bundles__bundle_id__delete_with_files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"] | null;
                 };
             };
             /** @description Validation Error */

@@ -94,6 +94,7 @@ def _reconcile_file_operations(maker: sessionmaker[Session], root: Path) -> None
     and database into a library the user cannot reach at all, and the scanner's
     moved-file repair remains available for exactly this state.
     """
+    from cairndex.core.config import get_settings
     from cairndex.file_ops.imports import sweep_staging
     from cairndex.file_ops.reconcile import reconcile_pending
 
@@ -106,8 +107,40 @@ def _reconcile_file_operations(maker: sessionmaker[Session], root: Path) -> None
         removed = sweep_staging(root)
         if removed:
             logger.info("removed %d abandoned partial upload(s) from %s", removed, root)
+        _sweep_expired_trash(maker, root, get_settings().trash_retention_days)
     except Exception:
         logger.exception("file-operation reconciliation failed for %s", root)
+
+
+def _sweep_expired_trash(maker: sessionmaker[Session], root: Path, retention_days: int) -> None:
+    """Empty trashed operations older than the configured retention (ADR-0013 §3.2).
+
+    Off by default, and deliberately so: the trash is the way back from a
+    deletion, and a default that quietly discards it would make deleting less
+    recoverable than the design promises. It runs at open rather than on a timer
+    because emptying is the one-way door — doing it while someone is looking at
+    the library is better than doing it while nobody is.
+
+    Its own session and its own try/except: an expired sweep that fails must not
+    cost the reconciliation that ran before it, which is the part that keeps disk
+    and database agreeing.
+    """
+    if retention_days <= 0:
+        return
+    from cairndex.file_ops.operations import empty_trash
+
+    try:
+        with maker() as session:
+            emptied = empty_trash(session, root, older_than_days=retention_days)
+        if emptied:
+            logger.info(
+                "retention swept %d expired trash operation(s) from %s (older than %d days)",
+                emptied,
+                root,
+                retention_days,
+            )
+    except Exception:
+        logger.exception("trash retention sweep failed for %s", root)
 
 
 def dispose_library_engine(library_id: str) -> None:
