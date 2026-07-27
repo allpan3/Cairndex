@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
@@ -28,7 +28,7 @@ from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
 from cairndex.file_ops import fsmove, journal, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
-from cairndex.persistence.models import AssetFile, FileOperation
+from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
 
 
 @dataclass(frozen=True)
@@ -569,6 +569,10 @@ def empty_trash(session: Session, root: Path, *, older_than_days: int | None = N
         else None
     )
     emptied = 0
+    # Bundles that lose a file here, checked afterwards for having lost their last
+    # one. Collected rather than acted on inline because a bundle's files can be
+    # spread across several trash operations.
+    touched_bundles: set[str] = set()
     for operation in journal.trashed_operations(session):
         finished = operation.finished_at
         if cutoff is not None and finished is not None and finished > cutoff:
@@ -583,12 +587,39 @@ def empty_trash(session: Session, root: Path, *, older_than_days: int | None = N
                 # Metadata deletion, finally — separate from the physical
                 # unlink above, and reached only through this explicit action
                 # (AGENTS.md: metadata removal and file deletion stay distinct).
+                touched_bundles.add(row.bundle_id)
                 session.delete(row)
         trash.prune_operation_dir(root, operation.id)
         operation.status = FileOpStatus.EMPTIED
         emptied += 1
+    session.flush()
+    _drop_bundles_emptied_of_files(session, touched_bundles)
     session.commit()
     return emptied
+
+
+def _drop_bundles_emptied_of_files(session: Session, bundle_ids: set[str]) -> None:
+    """Remove bundles whose last file was just permanently deleted.
+
+    "Delete this bundle and its files" leaves the bundle in place so Put back can
+    return it whole (see the delete-with-files route); emptying the trash is where
+    that deletion becomes final, so the husk has to go with the bytes. Without
+    this it would reappear in browse the moment its last file stopped being
+    hidden-by-being-trashed — an empty bundle the owner had already deleted.
+
+    Scoped to bundles this emptying actually touched, so a deliberately empty
+    bundle (New Empty Bundle, nothing added yet) is never swept up by it.
+    """
+    for bundle_id in bundle_ids:
+        bundle = session.get(AssetBundle, bundle_id)
+        if bundle is None:
+            continue
+        remaining = session.scalar(
+            select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle_id)
+        )
+        if not remaining:
+            session.delete(bundle)
+    session.flush()
 
 
 def list_trash(session: Session) -> list[tuple[FileOperation, list[trash.TrashedEntry]]]:
