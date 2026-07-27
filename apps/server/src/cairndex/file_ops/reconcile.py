@@ -7,6 +7,13 @@ at all. The filesystem itself is the evidence:
 
 * source gone, destination present → the rename happened; finish the metadata;
 * source present, destination absent → it never happened; mark failed;
+* **both present, and the destination looks like a completed copy of the source**
+  → a cross-device move was interrupted between committing the copy and removing
+  the original (see :mod:`cairndex.file_ops.fsmove`). The bytes are at the
+  destination, so the metadata is finished there and the leftover original is
+  *reported, not deleted* — automatic recovery removing original media is exactly
+  what ADR-0013 forbids, and the owner can delete the duplicate through the
+  ordinary journaled trash once they can see it;
 * anything else → do not guess. Mark it failed and leave the files alone; the
   scanner's moved-file repair (ADR-0006) is the mechanism for the ambiguous
   cases, and it preserves ``AssetFile.id`` too.
@@ -35,7 +42,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import FileOpType
-from cairndex.file_ops import imports, journal, trash
+from cairndex.file_ops import fsmove, imports, journal, trash
 from cairndex.file_ops.operations import mark_rows_trashed, repoint_linked_rows
 from cairndex.file_ops.paths import resolve_writable
 from cairndex.persistence.models import FileOperation
@@ -97,8 +104,10 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         if not source or not destination:
             journal.fail(session, operation, "journal entry is incomplete")
             return False
-        source_present = os.path.lexists(resolve_writable(root, source))
-        destination_present = os.path.lexists(resolve_writable(root, destination))
+        source_full = resolve_writable(root, source)
+        destination_full = resolve_writable(root, destination)
+        source_present = os.path.lexists(source_full)
+        destination_present = os.path.lexists(destination_full)
         if not source_present and destination_present:
             updated = repoint_linked_rows(session, source=source, destination=destination)
             journal.finish(session, operation, files_updated=updated, reconciled=True)
@@ -106,6 +115,22 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         if source_present and not destination_present:
             journal.fail(session, operation, "interrupted before the rename took effect")
             return False
+        if (
+            source_present
+            and destination_present
+            and os.path.lexists(fsmove.pending_marker(destination_full))
+        ):
+            updated = repoint_linked_rows(session, source=source, destination=destination)
+            fsmove.clear_marker(destination_full)
+            journal.finish(
+                session,
+                operation,
+                files_updated=updated,
+                reconciled=True,
+                leftover_source_paths=[source],
+            )
+            return True
+        fsmove.clear_marker(destination_full)
         journal.fail(session, operation, "could not determine whether the rename took effect")
         return False
 
@@ -151,24 +176,44 @@ def _settle_move(session: Session, root: Path, operation: FileOperation) -> bool
     already-moved files pointed at paths that no longer hold them.
     """
     completed: list[dict[str, str]] = []
+    leftovers: list[str] = []
     files_updated = 0
     for entry in operation.payload.get("moves", []):
         source = entry.get("source")
         destination = entry.get("destination")
         if not source or not destination:
             continue
-        source_present = os.path.lexists(resolve_writable(root, source))
-        destination_present = os.path.lexists(resolve_writable(root, destination))
+        source_full = resolve_writable(root, source)
+        destination_full = resolve_writable(root, destination)
+        source_present = os.path.lexists(source_full)
+        destination_present = os.path.lexists(destination_full)
         if not source_present and destination_present:
             files_updated += repoint_linked_rows(session, source=source, destination=destination)
             completed.append(entry)
+        elif (
+            source_present
+            and destination_present
+            and os.path.lexists(fsmove.pending_marker(destination_full))
+        ):
+            # A cross-device move that committed its copy but had not yet removed
+            # the original. The destination is authoritative; the original is left
+            # on disk and named here rather than deleted behind the owner's back.
+            files_updated += repoint_linked_rows(session, source=source, destination=destination)
+            fsmove.clear_marker(destination_full)
+            completed.append(entry)
+            leftovers.append(source)
 
     if not completed:
         journal.fail(session, operation, "interrupted before anything was moved")
         return False
 
     journal.finish(
-        session, operation, moves=completed, files_updated=files_updated, reconciled=True
+        session,
+        operation,
+        moves=completed,
+        files_updated=files_updated,
+        reconciled=True,
+        **({"leftover_source_paths": leftovers} if leftovers else {}),
     )
     return True
 
