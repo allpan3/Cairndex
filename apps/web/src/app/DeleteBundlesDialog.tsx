@@ -8,22 +8,27 @@ interface DeleteBundlesDialogProps {
   /** True when the targets are confirmed bundles, whose files fall back into the
    * Unbundled view rather than being dropped from the library. */
   filesReturnToUnbundled?: boolean
+  /** Whether this library may delete files at all (ADR-0013's two gates). */
+  writeMode?: boolean
   onCancel: () => void
-  /** `deleteFiles` reflects the checkbox; filesystem deletion is not wired yet. */
+  /** `deleteFiles` sends the files to the trash as well as removing the bundle. */
   onConfirm: (deleteFiles: boolean) => void
 }
 
 /**
- * Confirm deleting one or more bundles. Deletion is metadata-only today —
- * the bundle rows go away but the files on disk are kept (AGENTS.md §3). The
- * "Also delete contained files" checkbox is the forward-looking UI for a future
- * write-enabled milestone; it defaults off and, until file deletion is enabled,
- * does not remove anything from disk.
+ * Confirm deleting one or more bundles.
+ *
+ * Deletion is metadata-only by default: the bundle rows go away and the files
+ * stay on disk. "Also delete contained files" additionally sends them to the
+ * library's trash — never an unlink, so it is undoable and they remain listed
+ * until the trash is emptied. It defaults off, and is unavailable entirely on a
+ * library without write mode, where the server would refuse it anyway.
  */
 export function DeleteBundlesDialog({
   count,
   pending,
   filesReturnToUnbundled = false,
+  writeMode = false,
   onCancel,
   onConfirm,
 }: DeleteBundlesDialogProps) {
@@ -55,24 +60,37 @@ export function DeleteBundlesDialog({
           </button>
         </div>
 
+        {/* What happens to the files is stated once, below, because the checkbox
+            changes the answer — saying "the files stay on disk" up here would be
+            a promise the ticked box then breaks. */}
         <div className="modal__preview">
-          Delete {noun}? This removes the Cairndex metadata — the files always stay on disk.
-          {filesReturnToUnbundled
+          Delete {noun}? This removes the Cairndex metadata.
+          {filesReturnToUnbundled && !deleteFiles
             ? ' Their files fall back into Unbundled, so you can re-bundle them.'
             : ''}
         </div>
 
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={deleteFiles}
-            onChange={(e) => setDeleteFiles(e.target.checked)}
-          />
-          Also delete contained files
-        </label>
-        <div className="modal__preview">
-          Deleting files from disk isn’t enabled yet — for now the files are always kept.
-        </div>
+        {writeMode ? (
+          <>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+              />
+              Also delete contained files
+            </label>
+            <div className="modal__preview">
+              {deleteFiles
+                ? 'The files move to this library’s Trash, where you can put them back until you empty it.'
+                : 'The files stay where they are on disk.'}
+            </div>
+          </>
+        ) : (
+          // No checkbox without write mode — the server would refuse it — but the
+          // question "what happens to my files?" still needs an answer.
+          <div className="modal__preview">The files stay where they are on disk.</div>
+        )}
 
         <div className="modal__actions">
           <span className="toolbar__spacer" />

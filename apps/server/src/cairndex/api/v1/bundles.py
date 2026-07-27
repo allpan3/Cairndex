@@ -1,10 +1,18 @@
+import os
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import FileResponse
+from sqlalchemy import func, select
 
-from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
+from cairndex.api.deps import (
+    IfMatchVersion,
+    LibraryAccessDep,
+    LibrarySession,
+    Pagination,
+    WriteModeRequired,
+)
 from cairndex.api.schemas.browse import BundleBrowsePage, BundleSummary, ViewCounts
 from cairndex.api.schemas.bundles import (
     BatchResult,
@@ -28,9 +36,13 @@ from cairndex.api.schemas.bundles import (
     SetIdsRequest,
 )
 from cairndex.api.schemas.common import Page
+from cairndex.api.schemas.file_ops import FileOperationRead, FileOperationResult
 from cairndex.api.schemas.filters import BrowseRequest
 from cairndex.core.errors import NotFoundError
+from cairndex.domain.enums import FileAvailability
+from cairndex.file_ops import operations
 from cairndex.media import playback, thumbnails
+from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.scanning import repair as repair_service
 from cairndex.services import browse as browse_service
@@ -231,6 +243,78 @@ def update_bundle(
 @router.delete("/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_bundle(bundle_id: str, db: LibrarySession) -> None:
     service.delete_bundle(db, bundle_id)
+
+
+@router.post("/{bundle_id}/delete-with-files", response_model=FileOperationResult | None)
+def delete_bundle_with_files(
+    bundle_id: str, db: LibrarySession, _gate: WriteModeRequired
+) -> FileOperationResult | None:
+    """Delete a bundle *and* send its files to the trash (ADR-0013 §3.2).
+
+    A separate, write-gated route rather than a flag on ``DELETE``: dissolving a
+    grouping is metadata-only and always available, while deleting the files is a
+    guarded filesystem write. Giving them one entry point would mean a read-only
+    library either lost the ordinary delete or accepted a request it must refuse.
+
+    **The bundle row is not deleted here, and that is what makes Put back work.**
+    Trashing a file repoints its row into ``.cairndex/trash/``, which browse
+    already treats as hidden — so a bundle whose every file is trashed disappears
+    from every view on its own, without anything being destroyed. Restoring the
+    operation brings the files back to their real paths and the bundle returns
+    with its title, tags, collections and cover intact. Emptying the trash is what
+    finally removes both (see ``empty_trash``).
+
+    Deleting the bundle here instead would make the trash entry a promise the
+    library could not keep: the files would come back, but as loose files whose
+    bundle no longer existed — and for an already-unbundled bundle the cascade
+    would take the file rows with it, so Put back would restore bytes that nothing
+    in the app pointed at.
+    """
+    bundle = service.get_bundle(db, bundle_id)
+    root = library_root_for_session(db)
+
+    # Not every row has bytes to trash, and handing trash_paths a path it cannot
+    # move fails the whole request (review finding): a bundle with a *missing*
+    # file 404'd, and one with a file already trashed individually 422'd on its
+    # own trash-internal path. Partition instead of passing everything through.
+    present: list[str] = []
+    ghosts: list[AssetFile] = []
+    for file in bundle.files:
+        if file.availability is FileAvailability.TRASHED:
+            # Already recoverable under its earlier trash operation, and already
+            # hidden from browse; that operation keeps owning its restore.
+            continue
+        if not os.path.lexists(root / file.relative_path):
+            ghosts.append(file)
+            continue
+        present.append(file.relative_path)
+
+    # A missing file has no bytes anywhere, so there is nothing to make
+    # recoverable: dropping its row is the same metadata-only removal the plain
+    # delete performs, done here so the ghost cannot keep the bundle visible.
+    for row in ghosts:
+        db.delete(row)
+    db.flush()
+
+    if not present:
+        remaining = db.scalar(
+            select(func.count()).select_from(AssetFile).where(AssetFile.bundle_id == bundle_id)
+        )
+        if not remaining:
+            # Only ghosts (or nothing): no recoverable trace will point at this
+            # bundle, so it goes now, like the empty-bundle case.
+            service.delete_bundle(db, bundle_id)
+        db.commit()
+        return None
+
+    result = operations.trash_paths(db, root, paths=present)
+    return FileOperationResult(
+        operation=FileOperationRead.model_validate(result.operation),
+        path=result.path,
+        files_updated=result.files_updated,
+        skipped=result.skipped,
+        failed_paths=result.failed_paths,
+    )
 
 
 @router.post("/{bundle_id}/opened", status_code=status.HTTP_204_NO_CONTENT)

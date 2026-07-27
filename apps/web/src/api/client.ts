@@ -1115,6 +1115,17 @@ export const batchUpdate = (payload: BatchUpdate) =>
 // bundles themselves are not deleted.
 export const deleteBundle = (id: string) => send<void>(`${lib()}/bundles/${id}`, 'DELETE')
 
+/**
+ * Delete a bundle *and* send its files to the trash (ADR-0013 §3.2).
+ *
+ * A separate route from `deleteBundle`, not a flag on it: dissolving a grouping
+ * is metadata-only and always allowed, while deleting the files is a guarded
+ * write that a read-only library refuses. Returns null for an empty bundle,
+ * which had no files to trash and so produced no undoable operation.
+ */
+export const deleteBundleWithFiles = (id: string) =>
+  send<FileOperationResult | null>(`${lib()}/bundles/${id}/delete-with-files`, 'POST')
+
 // `cascade` also removes the collection's descendant subcollections; otherwise
 // they float to the library root. Bundles and files are kept either way.
 export const deleteCollection = (id: string, cascade = false) =>
