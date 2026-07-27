@@ -14,3 +14,27 @@ globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as 
 // scrollIntoView undefined and any keyboard navigation that keeps its active
 // item visible would throw in tests while working in every real browser.
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView ?? function () {}
+
+// Same reason as ResizeObserver: jsdom has no layout, so nothing can intersect.
+// The stub reports its target as visible immediately, which is what a rendered
+// element in a test *means* — real on-screen-only loading is covered by the
+// Playwright specs in a browser that actually lays out.
+class IntersectionObserverStub {
+  private readonly callback: IntersectionObserverCallback
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+  }
+  observe(target: Element) {
+    this.callback(
+      [{ isIntersecting: true, target } as unknown as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    )
+  }
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return []
+  }
+}
+globalThis.IntersectionObserver =
+  globalThis.IntersectionObserver ?? (IntersectionObserverStub as never)

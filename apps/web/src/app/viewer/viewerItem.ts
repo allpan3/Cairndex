@@ -56,6 +56,11 @@ export interface ViewerItem {
   width: number | null
   height: number | null
   duration: number | null
+  /** Frames per second, when the file has been probed. Printed on exports. */
+  fps: number | null
+  /** How the media is encoded, when probed. Printed on exports. */
+  videoCodec: string | null
+  audioCodec: string | null
   /** Human-readable type for info and fallback cards. */
   typeLabel: string
   /** Whether the browser can decode this image without a server derivative. */
@@ -71,6 +76,10 @@ export interface ViewerItem {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null
 }
 
 /** Normalize an indexed bundle file (Bundle Browser / Media Viewer). */
@@ -104,6 +113,9 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
     width: numberOrNull(meta.width),
     height: numberOrNull(meta.height),
     duration: numberOrNull(meta.duration),
+    fps: numberOrNull(meta.fps),
+    videoCodec: textOrNull(meta.video_codec),
+    audioCodec: textOrNull(meta.audio_codec),
     typeLabel: formatFileType(file.media_kind, file.original_filename),
     nativeImage,
     coverTime: file.cover_time,
@@ -155,6 +167,9 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     width: null,
     height: null,
     duration: entry.duration ?? null,
+    fps: null,
+    videoCodec: entry.video_codec ?? null,
+    audioCodec: entry.audio_codec ?? null,
     // An unclassified path has no media kind; 'other' makes the label fall back
     // to the file extension, matching how a bundle file labels the same case.
     typeLabel: formatFileType(entry.media_kind ?? 'other', entry.name),

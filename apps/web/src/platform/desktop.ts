@@ -206,6 +206,9 @@ const desktopPlatformBase: Omit<HostPlatform, 'startFileDrag'> = {
   // generates (a capped GIF or a single contact sheet), not for streaming media.
   saveExport: (suggestedName: string, bytes: Uint8Array) =>
     invoke<string | null>('save_export_file', { suggestedName, bytes: Array.from(bytes) }),
+  getExportDir: () => invoke<string | null>('get_export_dir'),
+  pickExportDir: () => invoke<string | null>('pick_export_dir'),
+  clearExportDir: () => invoke<void>('clear_export_dir'),
 }
 
 // Builds the lazily loaded desktop runtime used behind the plain-web seam

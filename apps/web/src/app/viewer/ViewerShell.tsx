@@ -3,6 +3,13 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { type PlayableVideo, type PlaybackManifest, updatePlaybackProgress } from '../../api/client'
 import { useViewerMenu } from '../../desktop/useViewerMenu'
+import { getHostPlatform, isDesktopHost } from '../../platform'
+import { contactSheetMenuItem, type ContactSheetTarget } from '../contactSheetExport'
+import { ContactSheetDialog } from '../ContactSheetDialog'
+import { ContextMenu } from '../ContextMenu'
+import { IconSidebar } from '../icons'
+import { Inspector } from '../Inspector'
+import { type MenuEntry, useContextMenu } from '../useContextMenu'
 import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
@@ -97,7 +104,10 @@ export function ViewerShell({
 }: ViewerShellProps) {
   const qc = useQueryClient()
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const [infoOpen, setInfoOpen] = useState(false)
+  // The info sidebar's visibility is a persisted player pref, so "expand" and
+  // "hide" survive stepping files and reopening the viewer.
+  const infoOpen = playerPrefs.infoOpen
+  const inspectorOpen = playerPrefs.inspectorOpen
   const [failedKey, setFailedKey] = useState<string | null>(null)
   const [scrubbing, setScrubbing] = useState(false)
   const [fileLoop, setFileLoop] = useState(false)
@@ -108,6 +118,11 @@ export function ViewerShell({
     step: (delta: number) => void
   }>({ fileLoop: false, player: null, step: () => {} })
   const [resumeNotice, setResumeNotice] = useState<{ key: string; position: number } | null>(null)
+  // Transient feedback for exports ("Building contact sheet…" / errors) — the
+  // viewer has no toast bus of its own.
+  const [exportNotice, setExportNotice] = useState<string | null>(null)
+  // The file whose contact-sheet options are open, if any.
+  const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
 
   const hasError = Boolean(error)
   const current = items[index] ?? null
@@ -201,6 +216,13 @@ export function ViewerShell({
     completed: playable?.progress?.completed,
   })
   const chromeIdle = useIdleHide(rootRef, scrubbing)
+  const contextMenu = useContextMenu()
+  const closeContextMenu = contextMenu.close
+  // The context menu dismisses on mousedown; without this the *same* gesture's
+  // click reached the video and toggled playback, so closing the menu paused the
+  // film (owner, 2026-07-27). Recorded in the capture phase, which runs before
+  // the menu's own window listener.
+  const dismissedMenuRef = useRef(false)
 
   useEffect(() => rootRef.current?.focus(), [])
 
@@ -210,7 +232,14 @@ export function ViewerShell({
     return () => window.clearTimeout(timer)
   }, [resumeNotice])
 
-  const toggleInfo = useCallback(() => setInfoOpen((v) => !v), [])
+  const toggleInfo = useCallback(
+    () => onPlayerPrefs((previous) => ({ ...previous, infoOpen: !previous.infoOpen })),
+    [onPlayerPrefs],
+  )
+  const toggleInspector = useCallback(
+    () => onPlayerPrefs((previous) => ({ ...previous, inspectorOpen: !previous.inspectorOpen })),
+    [onPlayerPrefs],
+  )
   const playableDuration = playable?.duration ?? null
   const restartFromBeginning = useCallback(() => {
     player.seek(0)
@@ -348,18 +377,67 @@ export function ViewerShell({
     }
     canvas.toBlob((blob) => {
       if (!blob) return
+      const name = `${safeName(current?.title ?? title)}.png`
+      // Desktop: through the shell, which saves into the configured export
+      // folder (Settings → Exports) or asks via the native dialog. A browser
+      // can only download, so it keeps the anchor.
+      if (isDesktopHost()) {
+        void blob.arrayBuffer().then((buffer) => {
+          void getHostPlatform()
+            .saveExport(name, new Uint8Array(buffer))
+            .catch(() => {
+              // Fall back to a plain download rather than losing the frame.
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = name
+              a.click()
+              URL.revokeObjectURL(url)
+            })
+        })
+        return
+      }
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${safeName(current?.title ?? title)}.png`
+      a.download = name
       a.click()
       URL.revokeObjectURL(url)
     }, 'image/png')
   }, [current?.title, title, videoElement])
 
+  const contactSheetTarget = useMemo(
+    () =>
+      current?.fileId && isVideo
+        ? {
+            fileId: current.fileId,
+            title: current.title,
+            sizeBytes: current.sizeBytes,
+            duration: current.duration,
+            width: current.width,
+            height: current.height,
+            fps: current.fps,
+            mimeType: current.mimeType,
+            videoCodec: current.videoCodec,
+            audioCodec: current.audioCodec,
+          }
+        : null,
+    [current, isVideo],
+  )
+
+  useEffect(() => {
+    if (exportNotice === null || exportNotice.endsWith('…')) return
+    const timer = window.setTimeout(() => setExportNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [exportNotice])
+
+  const contextMenuOpen = contextMenu.state !== null
   const shortcutActions = useMemo(
     () => ({
-      close: onClose,
+      // While the right-click menu is up, Escape belongs to it — without this
+      // the same keydown closed the menu *and* fell through to close the whole
+      // viewer (caught by the controls e2e when the menu landed).
+      close: contextMenuOpen ? closeContextMenu : onClose,
       toggleInfo,
       snapshot,
       previous: () => step(-1),
@@ -369,7 +447,7 @@ export function ViewerShell({
       isFullscreen: () => player.fullscreen,
       exitFullscreen: () => player.toggleFullscreen(),
     }),
-    [onClose, toggleInfo, snapshot, step, player],
+    [contextMenuOpen, closeContextMenu, onClose, toggleInfo, snapshot, step, player],
   )
 
   useShortcuts(rootRef, videoActive ? player : null, shortcutActions)
@@ -388,9 +466,82 @@ export function ViewerShell({
     }
   }, [cover, current?.canSetCover, current?.coverTime, player])
 
+  // Right-click gets the app's menu, not the browser's. The native <video> menu
+  // was the only thing on this gesture, and half its entries drive the element
+  // directly ("Show all controls", downloading the raw source) — controls the
+  // custom player deliberately replaced (owner report, 2026-07-27; the seam
+  // VideoStage reserved on 2026-07-19).
+  const openViewerContextMenu = (e: React.MouseEvent) => {
+    // Text fields keep their native menu (copy/paste); everything else is ours.
+    const target = e.target as HTMLElement
+    if (target.closest('input, textarea, select')) return
+    e.preventDefault()
+    const entries: MenuEntry[] = []
+    if (videoActive) {
+      entries.push(
+        { label: player.status === 'playing' ? 'Pause' : 'Play', onClick: player.playPause },
+        { label: 'Frame Back', onClick: () => player.frameStep(-1) },
+        { label: 'Frame Forward', onClick: () => player.frameStep(1) },
+        null,
+        {
+          label: player.subtitlesOn ? 'Hide Subtitles' : 'Show Subtitles',
+          disabled: !(playable?.subtitles ?? []).some((track) => track.src),
+          onClick: player.toggleSubtitles,
+        },
+        {
+          label: fileLoop ? 'Stop Looping File' : 'Loop File',
+          onClick: () => setFileLoop(!fileLoop),
+        },
+        null,
+        { label: 'Save Snapshot', onClick: snapshot },
+        // A bare path has no file row, and the grid is cut server-side from the
+        // indexed file — so unindexed videos show the row disabled rather than
+        // a submenu that cannot do anything.
+        contactSheetTarget
+          ? contactSheetMenuItem(contactSheetTarget, setSheetTarget)
+          : { label: 'Save Contact Sheet', disabled: true, onClick: () => {} },
+      )
+      if (coverActions) {
+        entries.push(
+          { label: 'Set Frame as Cover', onClick: coverActions.onUse },
+          {
+            // Its only home now that the settings menu dropped the cover group —
+            // without it, a chosen cover could be set but never undone.
+            label: 'Reset Cover to Default',
+            disabled: !coverActions.hasCoverFrame,
+            onClick: coverActions.onClear,
+          },
+        )
+      }
+      entries.push(null)
+    }
+    entries.push(
+      { label: infoOpen ? 'Hide Info' : 'Show Info', onClick: toggleInfo },
+      {
+        label: inspectorOpen ? 'Hide Bundle Inspector' : 'Show Bundle Inspector',
+        // An unindexed File Browser path has no bundle to inspect.
+        disabled: !current?.bundleId,
+        onClick: toggleInspector,
+      },
+      {
+        label: player.fullscreen ? 'Exit Full Screen' : 'Full Screen',
+        onClick: player.toggleFullscreen,
+      },
+      null,
+      { label: 'Close Viewer', onClick: onClose },
+    )
+    contextMenu.open(e, entries)
+  }
+
   return (
     <div
-      className={`media-viewer${chromeIdle ? ' media-viewer--idle' : ''}`}
+      onContextMenu={openViewerContextMenu}
+      onMouseDownCapture={() => {
+        dismissedMenuRef.current = contextMenu.state !== null
+      }}
+      className={`media-viewer${chromeIdle ? ' media-viewer--idle' : ''}${
+        inspectorOpen && current?.bundleId ? ' media-viewer--railed' : ''
+      }`}
       ref={rootRef}
       role="dialog"
       aria-modal="true"
@@ -401,6 +552,9 @@ export function ViewerShell({
         title={title}
         subtitle={current ? `${current.title} · ${index + 1} / ${items.length}` : 'Media'}
         infoOpen={infoOpen}
+        inspectorOpen={inspectorOpen}
+        canInspect={Boolean(current?.bundleId)}
+        onToggleInspector={toggleInspector}
         onToggleInfo={toggleInfo}
         onClose={onClose}
       />
@@ -422,7 +576,17 @@ export function ViewerShell({
         ›
       </button>
 
-      <div className="mv-stage">
+      <div
+        className="mv-stage"
+        // Double-click closes the viewer, the way a full-screen picture viewer
+        // does (owner, 2026-07-27). The two clicks underneath have already
+        // toggled playback twice, which lands back where it started, so nothing
+        // needs undoing here.
+        onDoubleClick={(event) => {
+          if (event.target !== event.currentTarget && !isStageSurface(event.target)) return
+          onClose()
+        }}
+      >
         {loading && <div className="mv-state">Loading media…</div>}
         {!loading && hasError && (
           <div className="mv-state mv-state--error">
@@ -445,6 +609,13 @@ export function ViewerShell({
             onError={handleStageError}
             onFailed={() => currentKey && setFailedKey(currentKey)}
             onRetryFailed={retryFailedPlayback}
+            onActivate={() => {
+              if (dismissedMenuRef.current) {
+                dismissedMenuRef.current = false
+                return
+              }
+              player.playPause()
+            }}
           />
         )}
       </div>
@@ -454,6 +625,8 @@ export function ViewerShell({
           Resumed at {formatClock(visibleResume)} <span>Click to restart</span>
         </button>
       )}
+
+      {exportNotice !== null && <div className="mv-export-notice">{exportNotice}</div>}
 
       {videoActive && playable && (
         <ControlBar
@@ -465,11 +638,33 @@ export function ViewerShell({
           onDragChange={setScrubbing}
           fileLoop={fileLoop}
           onFileLoop={setFileLoop}
-          cover={coverActions}
         />
       )}
 
-      {infoOpen && current && <InfoPanel item={current} playable={playable} />}
+      {infoOpen && current && (
+        <InfoPanel
+          item={current}
+          playable={playable}
+          items={items}
+          index={index}
+          onIndex={onIndex}
+        />
+      )}
+
+      {inspectorOpen && current?.bundleId && (
+        <aside className="mv-inspector">
+          <Inspector bundleId={current.bundleId} />
+        </aside>
+      )}
+
+      <ContextMenu state={contextMenu.state} onClose={contextMenu.close} />
+      {sheetTarget && (
+        <ContactSheetDialog
+          target={sheetTarget}
+          onClose={() => setSheetTarget(null)}
+          onReport={setExportNotice}
+        />
+      )}
     </div>
   )
 }
@@ -485,6 +680,7 @@ function Stage({
   failed,
   videoActive,
   hls,
+  onActivate,
   onError,
   onFailed,
   onRetryFailed,
@@ -498,6 +694,8 @@ function Stage({
   failed: boolean
   videoActive: boolean
   hls: HlsSessionState
+  /** Left-click on the video stage (guarded against menu-dismiss clicks). */
+  onActivate: () => void
   /** Video-stage errors: routed through re-attach/reload recovery first. */
   onError: () => void
   /** Unrecoverable media errors: straight to the failed card, no recovery. */
@@ -556,6 +754,7 @@ function Stage({
         title={title}
         artworkUrl={artworkUrl}
         onError={onError}
+        onActivate={onActivate}
       />
     )
   }
@@ -598,26 +797,47 @@ function Stage({
   )
 }
 
+/** Whether a double-click landed on the media rather than an overlay control. */
+function isStageSurface(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target.tagName === 'VIDEO' ||
+    target.tagName === 'IMG' ||
+    target.classList.contains('mv-video-stage') ||
+    target.classList.contains('mv-state')
+  )
+}
+
 const Topbar = memo(function Topbar({
   title,
   subtitle,
   infoOpen,
   onToggleInfo,
+  inspectorOpen,
+  canInspect,
+  onToggleInspector,
   onClose,
 }: {
   title: string
   subtitle: string
   infoOpen: boolean
   onToggleInfo: () => void
+  inspectorOpen: boolean
+  canInspect: boolean
+  onToggleInspector: () => void
   onClose: () => void
 }) {
   return (
-    <div className="mv-topbar">
+    // Draggable like every other top bar: the viewer covers the whole window, so
+    // without this the shell has no grab area at all while media is open (owner,
+    // 2026-07-27). "deep" so the title text inside it drags too; the buttons
+    // opt out below.
+    <div className="mv-topbar" data-tauri-drag-region="deep">
       <div>
         <div className="mv-title">{title}</div>
         <div className="mv-subtitle">{subtitle}</div>
       </div>
-      <div className="mv-topbar__actions">
+      <div className="mv-topbar__actions" data-tauri-drag-region="false">
         <button
           className={`mv-icon${infoOpen ? ' is-active' : ''}`}
           onClick={onToggleInfo}
@@ -625,6 +845,16 @@ const Topbar = memo(function Topbar({
           title="Info"
         >
           i
+        </button>
+        <button
+          className={`mv-icon${inspectorOpen ? ' is-active' : ''}`}
+          onClick={onToggleInspector}
+          aria-label={inspectorOpen ? 'Hide bundle inspector' : 'Show bundle inspector'}
+          aria-pressed={inspectorOpen}
+          title="Bundle inspector"
+          disabled={!canInspect}
+        >
+          <IconSidebar />
         </button>
         <button className="mv-icon" onClick={onClose} aria-label="Close" title="Close">
           ×
@@ -634,11 +864,36 @@ const Topbar = memo(function Topbar({
   )
 })
 
-/** Metadata side panel for the selected item. */
-function InfoPanel({ item, playable }: { item: ViewerItem; playable: PlayableVideo | null }) {
+/** The bundle inspector + playlist, alongside the playing media.
+ *
+ * The owner asked for *the* inspector here — the editable one with tags,
+ * collections and metadata — not a read-only echo of it (2026-07-27), so this
+ * embeds the real component rather than restating its fields. Its pickers portal
+ * above the viewer (see `.picker__panel`), and the viewer's keyboard map already
+ * ignores keystrokes aimed at text fields, so typing a tag never reaches the
+ * player.
+ *
+ * An unindexed File Browser path has no bundle to inspect and keeps the plain
+ * metadata card. */
+function InfoPanel({
+  item,
+  playable,
+  items,
+  index,
+  onIndex,
+}: {
+  item: ViewerItem
+  playable: PlayableVideo | null
+  items: ViewerItem[]
+  index: number
+  onIndex: (index: number) => void
+}) {
   const dims = formatDimensions(item.width, item.height)
   const dur = formatDuration(item.duration)
   const subtitles = playable?.subtitles.filter((track) => track.src).map((track) => track.label)
+  // Media facts and the playlist, for both bundle files and File Browser paths.
+  // Editing a bundle's metadata is the *inspector rail's* job, on its own
+  // toggle — the owner wants the two panels separate (2026-07-27).
   return (
     <aside className="mv-info">
       <h3>{item.title}</h3>
@@ -664,7 +919,40 @@ function InfoPanel({ item, playable }: { item: ViewerItem; playable: PlayableVid
           <dd>{subtitles && subtitles.length > 0 ? subtitles.join(', ') : '—'}</dd>
         </div>
       </dl>
+      {items.length > 1 && <FileList items={items} index={index} onIndex={onIndex} />}
     </aside>
+  )
+}
+
+/** The open playlist: every item, the current one marked, click to jump — so
+ *  switching files never needs blind prev/next stepping. */
+function FileList({
+  items,
+  index,
+  onIndex,
+}: {
+  items: ViewerItem[]
+  index: number
+  onIndex: (index: number) => void
+}) {
+  return (
+    <>
+      <h4 className="mv-info__files-title">Files ({items.length})</h4>
+      <div className="mv-info__files" role="listbox" aria-label="Files">
+        {items.map((entry, i) => (
+          <button
+            key={entry.key}
+            role="option"
+            aria-selected={i === index}
+            className={`mv-info__file${i === index ? ' is-current' : ''}`}
+            onClick={() => onIndex(i)}
+          >
+            <span className="mv-info__file-name">{entry.title}</span>
+            {entry.duration != null && <span>{formatDuration(entry.duration)}</span>}
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
 

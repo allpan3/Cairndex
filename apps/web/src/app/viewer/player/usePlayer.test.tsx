@@ -184,3 +184,46 @@ test('resets time, duration, and loading state when the source changes', async (
   expect(latest.player.duration).toBe(0)
   expect(latest.player.status).toBe('loading')
 })
+
+test('a held arrow key travels the full distance but seeks the element once', async () => {
+  // jsdom's play() returns undefined; the engine awaits it.
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  vi.useFakeTimers()
+  let latest = {} as { player: PlayerController; video: HTMLVideoElement; prefs: PlayerPrefs }
+  render(<Harness onReady={(player, video, prefs) => (latest = { player, video, prefs })} />)
+
+  await vi.waitFor(() => expect(latest.video.src).toContain('/movie.mp4'))
+  act(() => {
+    Object.defineProperty(latest.video, 'duration', { configurable: true, get: () => 120 })
+    latest.video.dispatchEvent(new Event('loadedmetadata'))
+  })
+
+  const seeks: number[] = []
+  let time = 0
+  Object.defineProperty(latest.video, 'currentTime', {
+    configurable: true,
+    get: () => time,
+    set: (next: number) => {
+      time = next
+      seeks.push(next)
+    },
+  })
+
+  // Auto-repeat: ten keydowns inside one throttle window.
+  act(() => {
+    for (let i = 0; i < 10; i += 1) latest.player.seekBy(1)
+  })
+
+  // The displayed position tracks every press, so the UI stays responsive…
+  expect(latest.player.currentTime).toBe(10)
+  // …while the element itself sees the leading edge only. Without this, each
+  // press aborts the in-flight byte range and opens a new one.
+  expect(seeks).toEqual([1])
+
+  // The trailing flush commits where the key actually left off.
+  act(() => {
+    vi.advanceTimersByTime(200)
+  })
+  expect(seeks).toEqual([1, 10])
+  vi.useRealTimers()
+})

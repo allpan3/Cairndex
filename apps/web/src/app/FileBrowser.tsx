@@ -10,7 +10,10 @@ import { displayName, useDisplayPrefs } from '../state/displayPrefs'
 import { usePersistentState } from '../state/usePersistentState'
 import { ContextMenu } from './ContextMenu'
 import { type FileDragProps, fileDragProps } from './dragOut'
+import { markHtmlFileDropHandled } from './htmlFileDrop'
 import { FileEntryViewer } from './FileEntryViewer'
+import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
+import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
 import { ImportProgress } from './ImportProgress'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
@@ -49,6 +52,8 @@ const FILE_SORTS: { value: FileSort; label: string }[] = [
 ]
 
 interface FileBrowserProps {
+  /** Leading header controls — the Back/Forward history buttons. */
+  headerLeading?: ReactNode
   libraryName: string
   // 'browse' = the directory tree; 'unbundled' = the flat "to-bundle queue".
   scope: 'browse' | 'unbundled'
@@ -105,24 +110,30 @@ function thumbnailFor(entry: FileBrowserEntry): string | null {
  * server cannot produce one — an unprobed or undecodable file answers 503, and
  * the icon is a better answer than a broken image.
  *
- * Deliberately **not** `loading="lazy"`. Neither the file grid nor the file list
- * is virtualized, so lazy loading looked like the right way to keep a large
- * folder from asking the server for every thumbnail at once — but these images
- * live in the listing's own scroll container, and there lazy loading never
- * fired at all: verified in a real browser, where an in-viewport thumbnail
- * stayed unloaded through scrolling and only appeared once forced eager. A
- * thumbnail that silently never arrives is a worse outcome than the requests it
- * saves. What actually bounds the work is that the listing is paginated, the
- * browser caps concurrent connections per origin, and the server caches each
- * thumbnail after generating it once.
+ * **Only requested once on screen.** Neither the file grid nor the file list is
+ * virtualized, so every row in a folder mounts at once; asking for all of their
+ * thumbnails immediately saturated the browser's per-origin connections and made
+ * everything sharing them — video loads above all — wait behind frame
+ * extractions nobody was looking at (owner: "videos take longer to load",
+ * 2026-07-27).
+ *
+ * `loading="lazy"` was the first attempt and does not work here: verified in a
+ * real browser, an in-viewport thumbnail inside the listing's own scroll
+ * container stayed unloaded through scrolling and only appeared once forced
+ * eager. So visibility is observed directly, which also makes the behavior
+ * ours to test rather than the browser's to decide.
  */
 function EntryThumb({
   entry,
   className,
+  holderClassName,
   fallback,
 }: {
   entry: FileBrowserEntry
   className: string
+  /** The observed wrapper. Must carry a real layout box in its surface —
+   *  `display: contents` has none, and an unboxed target never intersects. */
+  holderClassName: string
   fallback: ReactNode
 }) {
   const src = thumbnailFor(entry)
@@ -130,15 +141,39 @@ function EntryThumb({
   // whose source later changes (fast-add links it, giving it a real thumbnail
   // URL) reuses this instance — a boolean would keep it stuck on the icon.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const [visible, setVisible] = useState(false)
+  const holderRef = useRef<HTMLSpanElement | null>(null)
+
+  useEffect(() => {
+    const node = holderRef.current
+    if (!node || visible) return
+    // Generous margin so a thumbnail is in flight by the time it is scrolled to,
+    // without reaching the whole folder.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setVisible(true)
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [visible])
+
   if (!src || failedSrc === src) return <>{fallback}</>
   return (
-    <img
-      className={className}
-      src={src}
-      alt=""
-      decoding="async"
-      onError={() => setFailedSrc(src)}
-    />
+    <span ref={holderRef} className={holderClassName}>
+      {visible ? (
+        <img
+          className={className}
+          src={src}
+          alt=""
+          decoding="async"
+          onError={() => setFailedSrc(src)}
+        />
+      ) : (
+        fallback
+      )}
+    </span>
   )
 }
 
@@ -191,7 +226,7 @@ export function FileBrowser(props: FileBrowserProps) {
 }
 
 function BrowseScope(props: FileBrowserProps) {
-  const { libraryName, path, onNavigate } = props
+  const { headerLeading, libraryName, path, onNavigate } = props
   const qc = useQueryClient()
   const query = useFileBrowser(path)
   const entries = query.data?.entries ?? []
@@ -206,19 +241,22 @@ function BrowseScope(props: FileBrowserProps) {
   }, [missingFilesUpdated, qc, query.dataUpdatedAt])
 
   const header = (
-    <nav className="file-browser__crumbs" aria-label="Breadcrumb">
-      <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
-        {libraryName}
-      </button>
-      {crumbs(path).map((c) => (
-        <span key={c.path}>
-          <span className="crumb__sep">/</span>
-          <button className="crumb" onClick={() => onNavigate(c.path)}>
-            {c.label}
-          </button>
-        </span>
-      ))}
-    </nav>
+    <>
+      {headerLeading}
+      <nav className="file-browser__crumbs" aria-label="Breadcrumb">
+        <button className="crumb" onClick={() => onNavigate('')} disabled={!path}>
+          {libraryName}
+        </button>
+        {crumbs(path).map((c) => (
+          <span key={c.path}>
+            <span className="crumb__sep">/</span>
+            <button className="crumb" onClick={() => onNavigate(c.path)}>
+              {c.label}
+            </button>
+          </span>
+        ))}
+      </nav>
+    </>
   )
 
   return (
@@ -245,7 +283,12 @@ function UnbundledScope(props: FileBrowserProps) {
     <div className="file-browser">
       <FileList
         key="unbundled"
-        header={<span className="toolbar__title">Unbundled</span>}
+        header={
+          <>
+            {props.headerLeading}
+            <span className="toolbar__title">Unbundled</span>
+          </>
+        }
         entries={entries}
         isLoading={query.isLoading}
         isError={query.isError}
@@ -306,6 +349,8 @@ function FileList({
   onPlayerPrefs,
 }: FileListProps) {
   const menu = useContextMenu()
+  // The file whose contact-sheet options are open, if any.
+  const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
   const write = useFileWriteActions({
     currentPath,
     onFlash: onFlash ?? (() => undefined),
@@ -447,6 +492,26 @@ function FileList({
         onClick: () => onCreateBundle(targets),
       },
     ]
+    // An indexed video can export a contact sheet from here too (owner,
+    // 2026-07-27). An unindexed one has no file row for the server to cut the
+    // grid from, so the row is simply absent rather than present and failing.
+    if (n === 1 && entry.media_kind === 'video' && entry.file_id) {
+      items.push(
+        null,
+        contactSheetMenuItem(
+          {
+            fileId: entry.file_id,
+            title: entry.name,
+            sizeBytes: entry.size_bytes,
+            duration: entry.duration,
+            mimeType: entry.mime_type,
+            videoCodec: entry.video_codec,
+            audioCodec: entry.audio_codec,
+          },
+          setSheetTarget,
+        ),
+      )
+    }
     if (n === 1) {
       const hostItems = hostFileMenuEntries(
         hostLabels,
@@ -501,6 +566,7 @@ function FileList({
   const onDropFiles = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('Files')) return
     e.preventDefault()
+    markHtmlFileDropHandled()
     setDropActive(false)
     write.importFiles([...e.dataTransfer.files])
   }
@@ -834,6 +900,13 @@ function FileList({
         )}
 
         <ContextMenu state={menu.state} onClose={menu.close} />
+        {sheetTarget && (
+          <ContactSheetDialog
+            target={sheetTarget}
+            onClose={() => setSheetTarget(null)}
+            onReport={(message) => message !== null && onFlash?.(message)}
+          />
+        )}
 
         {write.conflict && (
           <ConflictDialog
@@ -920,7 +993,12 @@ function FileRow({
     >
       <span className="file-row__name">
         <span className="file-row__icon">
-          <EntryThumb entry={entry} className="file-row__thumb" fallback={entryIcon(entry)} />
+          <EntryThumb
+            entry={entry}
+            className="file-row__thumb"
+            holderClassName="file-row__thumb-holder"
+            fallback={entryIcon(entry)}
+          />
         </span>
         {renaming ? (
           <NameEditor
@@ -1021,6 +1099,7 @@ function FileCard({
         <EntryThumb
           entry={entry}
           className="card__thumb-img"
+          holderClassName="card__thumb-holder"
           fallback={
             <div className="card__placeholder card__placeholder--icon">{entryIcon(entry)}</div>
           }

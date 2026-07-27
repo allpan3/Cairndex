@@ -77,6 +77,16 @@ export const IconClock = () => (
   </Svg>
 )
 
+export const IconShuffle = () => (
+  <Svg>
+    <polyline points="16 3 21 3 21 8" />
+    <line x1="4" y1="20" x2="21" y2="3" />
+    <polyline points="21 16 21 21 16 21" />
+    <line x1="15" y1="15" x2="21" y2="21" />
+    <line x1="4" y1="4" x2="9" y2="9" />
+  </Svg>
+)
+
 export const IconCircleDashed = () => (
   <Svg>
     <circle cx="12" cy="12" r="9" strokeDasharray="4 3" />
@@ -264,6 +274,13 @@ export const IconPictureInPicture = () => (
 export const IconFullscreen = () => (
   <Svg>
     <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+  </Svg>
+)
+
+export const IconSidebar = () => (
+  <Svg>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="15" x2="15" y1="4" y2="20" />
   </Svg>
 )
 
