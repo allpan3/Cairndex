@@ -68,7 +68,14 @@ export type ClientCapabilities = components['schemas']['ClientCapabilities']
 export type PlaybackDecisionRequest = components['schemas']['PlaybackDecisionRequest']
 export type PlaybackDecisionResponse = components['schemas']['PlaybackDecisionResponse']
 
-export type SystemView = 'all' | 'recent' | 'uncategorized' | 'untagged' | 'missing' | 'unbundled'
+export type SystemView =
+  | 'all'
+  | 'recent'
+  | 'uncategorized'
+  | 'untagged'
+  | 'missing'
+  | 'unbundled'
+  | 'random'
 export type BundleSort =
   | 'date_added'
   | 'date_modified'
@@ -251,6 +258,8 @@ export interface BrowseParams {
   filter?: FilterExpression | null
   // Whole-library full-text search over metadata (title/filename/tag/etc.).
   search?: string | null
+  // Shuffle seed for the Random view; a new seed is a reshuffle.
+  seed?: number | null
 }
 
 export function browseBundles(
@@ -271,6 +280,7 @@ export function browseBundles(
       limit: params.limit,
       filter: params.filter,
       q: search,
+      seed: params.seed ?? null,
     })
   }
   const q = new URLSearchParams({
@@ -285,6 +295,7 @@ export function browseBundles(
     q.set('include_descendants', String(params.includeDescendants ?? false))
   }
   if (search) q.set('q', search)
+  if (params.seed != null) q.set('seed', String(params.seed))
   return getJson<BundleBrowsePage>(`${lib()}/bundles/browse?${q.toString()}`, signal)
 }
 
@@ -1005,6 +1016,13 @@ export function fileBrowserContentUrl(path: string): string {
   return resolveAssetUrl(`${lib()}/file?path=${encodeURIComponent(path)}`)
 }
 
+/** The server-generated contact-sheet frame grid for one video file. */
+export function fileContactSheetUrl(fileId: string, cols = 4, rows = 4, width = 1600): string {
+  return resolveAssetUrl(
+    `${lib()}/files/${fileId}/contact-sheet?cols=${cols}&rows=${rows}&width=${width}`,
+  )
+}
+
 export function fileStreamUrl(fileId: string): string {
   return resolveAssetUrl(`${lib()}/files/${fileId}/stream`)
 }
@@ -1028,7 +1046,14 @@ export const updateTag = (
   version?: number,
 ) => send<TagRead>(`${lib()}/tags/${id}`, 'PATCH', patch, version)
 
-export const deleteTag = (id: string) => send<void>(`${lib()}/tags/${id}`, 'DELETE')
+/** Delete a tag. `cascade` also removes its child tags, which the server
+ *  refuses without, so a parent is never taken by accident. */
+export const deleteTag = (id: string, cascade = false) =>
+  send<void>(`${lib()}/tags/${id}${cascade ? '?cascade=true' : ''}`, 'DELETE')
+
+/** What deleting a tag would remove — the numbers the prompt prints. */
+export const fetchTagDeleteImpact = (id: string, signal?: AbortSignal) =>
+  getJson<{ tags: number; bundles: number }>(`${lib()}/tags/${id}/delete-impact`, signal)
 export const fetchTagGroups = (signal?: AbortSignal) =>
   fetchAllPaged<TagGroupRead>(`${lib()}/tag-groups`, signal)
 

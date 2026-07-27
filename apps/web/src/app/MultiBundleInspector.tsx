@@ -9,7 +9,7 @@ import {
   useCommonBundleCollections,
   useCommonBundleTags,
   useCreateCollection,
-  useCreateTag,
+  useCreateTagPath,
   useTags,
 } from '../api/hooks'
 import { formatBytes } from '../lib/format'
@@ -73,6 +73,21 @@ function BulkPicker({
               placeholder={placeholder}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              // Enter takes the obvious action: the one match when the search
+              // narrows to a single row, otherwise create what was typed. The
+              // field clears either way so the next one can be typed straight
+              // in (owner, 2026-07-27).
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || !trimmedSearch) return
+                e.preventDefault()
+                const exact = visible.find(
+                  ({ item }) => item.name.toLowerCase() === trimmedSearch.toLowerCase(),
+                )
+                const chosen = exact ?? (visible.length === 1 ? visible[0] : undefined)
+                if (chosen) onToggle(chosen.item.id)
+                else onCreate(trimmedSearch)
+                setSearch('')
+              }}
               autoFocus
               aria-label={placeholder}
             />
@@ -100,7 +115,10 @@ function BulkPicker({
             {trimmedSearch !== '' && !hasExactMatch && (
               <div
                 className="pick-row pick-row--create"
-                onClick={() => onCreate(trimmedSearch)}
+                onClick={() => {
+                  onCreate(trimmedSearch)
+                  setSearch('')
+                }}
                 role="option"
                 aria-selected={false}
               >
@@ -138,7 +156,7 @@ export function MultiBundleInspector({
   const { commonCollectionIds } = useCommonBundleCollections(ids)
   const bulkUpdate = useBulkUpdateBundles()
   const batch = useBatchUpdate()
-  const createTag = useCreateTag()
+  const createTag = useCreateTagPath()
   const createCollection = useCreateCollection()
   const [title, setTitle] = useState('')
 
@@ -168,7 +186,8 @@ export function MultiBundleInspector({
   // and add it to every selected bundle.
   const handleCreateTag = (name: string) => {
     createTag.mutate(
-      { name },
+      // `/` nests: `genre/noir` creates (or reuses) `genre`, `noir` under it.
+      { path: name, existing: tags },
       { onSuccess: (created) => batch.mutate({ bundle_ids: ids, add_tag_ids: [created.id] }) },
     )
   }

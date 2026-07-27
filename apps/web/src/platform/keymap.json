@@ -277,7 +277,7 @@
           "accelerator": null,
           "browserReserved": false,
           "requires": "viewer-video",
-          "keys": [","]
+          "keys": ["X"]
         },
         {
           "id": "rate-up",
@@ -285,7 +285,7 @@
           "accelerator": null,
           "browserReserved": false,
           "requires": "viewer-video",
-          "keys": ["."]
+          "keys": ["C"]
         },
         {
           "separator": true
@@ -304,7 +304,7 @@
           "accelerator": null,
           "browserReserved": false,
           "requires": "viewer-video",
-          "keys": ["C"]
+          "keys": ["V"]
         },
         {
           "separator": true

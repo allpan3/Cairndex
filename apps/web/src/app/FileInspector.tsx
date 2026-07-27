@@ -1,21 +1,17 @@
 import { useState } from 'react'
 
-import type { FileBrowserEntry } from '../api/client'
-import { formatBytes, formatDateTime } from '../lib/format'
+import { formatBytes, formatDateTime, formatDimensions, formatDuration } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
-
-/** Tri-state bundle membership shown in the File inspector / Files surface. */
-function bundleStatus(entry: FileBrowserEntry): string {
-  if (entry.kind === 'directory') return '—'
-  if (!entry.linked) return 'Unlinked'
-  return entry.unbundled ? 'Unbundled (awaiting bundling)' : 'In a bundle'
-}
+import type { FileFacts } from './fileFacts'
 
 /**
- * Right-pane details for a File Browser selection. Deliberately *not* the bundle
- * inspector: a filesystem entry is a path, not a bundle, so this shows only
- * file/path facts plus its bundle status.
+ * Right-pane details for one file, wherever it was selected. Deliberately *not*
+ * the bundle inspector: this describes a file, not the bundle around it.
+ *
+ * It takes normalized `FileFacts` rather than either source type, so the File
+ * Browser and the in-bundle view drive the same pane instead of each growing
+ * their own (owner, 2026-07-27).
  *
  * When `onRename` is supplied (write mode on, browse scope), the title is
  * double-click-to-rename, mirroring the bundle inspector's editable title — but
@@ -29,7 +25,7 @@ export function FileInspector({
   onStartFileDrag,
   onRename,
 }: {
-  entry: FileBrowserEntry | null
+  entry: FileFacts | null
   hostLabels: HostLabels
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
@@ -43,7 +39,7 @@ export function FileInspector({
   // Abandon any in-progress edit when the selection changes underneath it —
   // adjusted during render (React's pattern for resetting state on a prop
   // change) rather than in an effect, which would flash the stale editor first.
-  const relativePath = entry?.relative_path ?? null
+  const relativePath = entry?.relativePath ?? null
   const [lastPath, setLastPath] = useState(relativePath)
   if (relativePath !== lastPath) {
     setLastPath(relativePath)
@@ -58,24 +54,33 @@ export function FileInspector({
     )
   }
 
-  // No "Name" row: the title above already is the name. No "Path" either — it is
-  // the longest value here and wraps to several lines for a nested file, pushing
-  // everything else out of view for something that is rarely *read*. It is copied
-  // instead, from the row's own context menu.
+  // No "Name" row: the title above already is the name. Path *is* here now — in
+  // a bundle the files can come from anywhere, so where one lives is the thing
+  // you want the pane to tell you (owner, 2026-07-27). It wraps rather than
+  // truncates, and sits last so a deep path pushes nothing else out of view.
+  const dims = formatDimensions(entry.width, entry.height)
   const rows: [string, string][] = [
     ['Type', entry.kind === 'directory' ? 'Folder' : (entry.extension ?? 'file')],
-    ['Size', entry.kind === 'directory' ? '—' : formatBytes(entry.size_bytes)],
-    ['Date Added', entry.created_at ? formatDateTime(entry.created_at) : '—'],
-    ['Date Modified', entry.modified_at ? formatDateTime(entry.modified_at) : '—'],
-    ['MIME', entry.mime_type ?? '—'],
-    ['Media kind', entry.media_kind ?? '—'],
+    ['Size', entry.kind === 'directory' ? '—' : formatBytes(entry.sizeBytes)],
+    ...(dims !== '—' ? ([['Dimensions', dims]] as [string, string][]) : []),
+    ...(entry.duration
+      ? ([['Duration', formatDuration(entry.duration)]] as [string, string][])
+      : []),
+    ...(entry.fps
+      ? ([['Frame rate', `${Math.round(entry.fps * 100) / 100} fps`]] as [string, string][])
+      : []),
+    ['Date Added', entry.createdAt ? formatDateTime(entry.createdAt) : '—'],
+    ['Date Modified', entry.modifiedAt ? formatDateTime(entry.modifiedAt) : '—'],
+    ['MIME', entry.mimeType ?? '—'],
+    ['Media kind', entry.mediaKind ?? '—'],
     ['Openable', entry.kind === 'directory' ? '—' : entry.supported ? 'Yes' : 'No'],
-    ['Status', bundleStatus(entry)],
+    ['Status', entry.status],
+    ['Path', entry.relativePath],
   ]
 
   // Only real files can be dragged out; directories are not draggable.
   const drag = fileDragProps(entry.kind === 'file' ? onStartFileDrag : undefined, () => [
-    entry.relative_path,
+    entry.relativePath,
   ])
 
   const canRename = onRename !== undefined
@@ -87,7 +92,7 @@ export function FileInspector({
   const commit = () => {
     setEditing(false)
     const name = draft.trim()
-    if (name && name !== entry.name) onRename?.(entry.relative_path, name)
+    if (name && name !== entry.name) onRename?.(entry.relativePath, name)
   }
 
   return (
@@ -145,12 +150,12 @@ export function FileInspector({
       {entry.kind === 'file' && (onRevealFile || onOpenFile) && (
         <div className="file-inspector__actions">
           {onOpenFile && (
-            <button className="btn" onClick={() => onOpenFile(entry.relative_path)}>
+            <button className="btn" onClick={() => onOpenFile(entry.relativePath)}>
               {hostLabels.openFile}
             </button>
           )}
           {onRevealFile && (
-            <button className="btn" onClick={() => onRevealFile(entry.relative_path)}>
+            <button className="btn" onClick={() => onRevealFile(entry.relativePath)}>
               {hostLabels.revealFile}
             </button>
           )}
