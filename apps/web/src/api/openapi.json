@@ -8116,6 +8116,98 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/delete-with-files": {
+      "post": {
+        "description": "Delete a bundle *and* send its files to the trash (ADR-0013 \u00a73.2).\n\nA separate, write-gated route rather than a flag on ``DELETE``: dissolving a\ngrouping is metadata-only and always available, while deleting the files is a\nguarded filesystem write. Giving them one entry point would mean a read-only\nlibrary either lost the ordinary delete or accepted a request it must refuse.\n\nTrash-first, never unlink \u2014 so this is undoable like every other deletion, and\nthe files are listed in the Trash view until they are emptied. The files are\ntrashed *before* the bundle rows go, because the journal entry that makes the\ndeletion recoverable has to be written while the paths are still known.",
+        "operationId": "delete_bundle_with_files_api_v1_libraries__library_id__bundles__bundle_id__delete_with_files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/FileOperationResult"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Delete Bundle With Files Api V1 Libraries  Library Id  Bundles  Bundle Id  Delete With Files Post"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Bundle With Files",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
       "get": {
         "operationId": "list_files_api_v1_libraries__library_id__bundles__bundle_id__files_get",
