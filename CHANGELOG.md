@@ -242,6 +242,11 @@ grouped under `Unreleased` until the first tagged release.
   library's Trash, stay listed there, and can be put back until you empty it.
   Nothing is unlinked.
 
+  **Put back returns the bundle, not just the files.** The bundle itself is not
+  destroyed: trashing a file hides it from every view, so a bundle whose files are
+  all trashed disappears on its own, and restoring brings it back with its title,
+  tags, collections and cover intact. Emptying the trash is what makes both final.
+
   It appears only on a library with write mode on, because that is the only place
   the server would accept it — the ordinary metadata-only delete is unchanged and
   always available. The dialog also stops claiming the files "always stay on

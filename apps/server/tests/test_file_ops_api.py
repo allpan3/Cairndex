@@ -11,9 +11,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, GroupingState, MediaKind
+from cairndex.domain.enums import FileAvailability, FileRole, GroupingState, MediaKind
 from cairndex.file_ops import gate
 from cairndex.persistence.models import AssetBundle, AssetFile
 
@@ -461,10 +462,15 @@ def test_move_collision_reaches_the_client_as_a_choice(
 # --- Deleting a bundle together with its files (plan 4 W6, closing W4) -------
 
 
-def _linked_bundle(session: Session, library_root: Path, relative: str) -> str:
-    """A confirmed bundle owning one real file on disk. Returns its id."""
+def _linked_bundle(
+    session: Session,
+    library_root: Path,
+    relative: str,
+    state: GroupingState = GroupingState.CONFIRMED,
+) -> str:
+    """A bundle owning one real file on disk. Returns its id."""
     (library_root / relative).write_bytes(b"payload")
-    bundle = AssetBundle(title="Bundle", grouping_state=GroupingState.CONFIRMED)
+    bundle = AssetBundle(title="Bundle", grouping_state=state)
     session.add(bundle)
     session.flush()
     session.add(
@@ -483,42 +489,99 @@ def _linked_bundle(session: Session, library_root: Path, relative: str) -> str:
     return bundle.id
 
 
-def test_delete_with_files_trashes_them_and_removes_the_bundle(
+def test_delete_with_files_hides_the_bundle_and_trashes_its_files(
     client: TestClient, writable: str, library_root: Path, session: Session
 ) -> None:
-    """The dialog's "also delete files" checkbox, finally wired to something.
-
-    Trash-first like every other deletion, so it is undoable and the files stay
-    visible in the Trash rather than simply being gone.
-    """
+    """The bundle leaves every view, and its files are recoverable in the Trash."""
     bundle_id = _linked_bundle(session, library_root, "a.mkv")
 
     response = client.post(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files")
 
     assert response.status_code == 200, response.text
     assert not (library_root / "a.mkv").exists()
-    assert client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}").status_code == 404
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    assert [item["id"] for item in browse["items"]] == []
     listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()
     trashed = [e["original_path"] for op in listing["operations"] for e in op["entries"]]
     assert trashed == ["a.mkv"]
 
 
-def test_delete_with_files_is_refused_when_write_mode_is_off(
-    client: TestClient, library_id: str, library_root: Path, session: Session
+def test_putting_back_a_deleted_bundle_returns_it_whole(
+    client: TestClient, writable: str, library_root: Path, session: Session
 ) -> None:
-    """Deleting the files is a guarded write; dissolving the grouping is not.
+    """Restore has to return the bundle, not just the bytes.
 
-    That is why these are two routes and not one with a flag: a read-only library
-    must keep the ordinary delete while refusing this one.
+    Owner-reported: deleting two bundles with their files and pressing Put back
+    brought neither back. The route used to delete the bundle row outright, so
+    restore could only ever return loose files — and for an already-unbundled
+    bundle the cascade took the file rows too, leaving bytes nothing pointed at.
     """
     bundle_id = _linked_bundle(session, library_root, "a.mkv")
+    deleted = client.post(
+        f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files"
+    ).json()
 
-    response = client.post(f"/api/v1/libraries/{library_id}/bundles/{bundle_id}/delete-with-files")
+    restored = client.post(
+        f"/api/v1/libraries/{writable}/file-ops/trash/restore/{deleted['operation']['id']}"
+    )
 
-    assert response.status_code == 403
-    assert response.json()["code"] == "write_mode_disabled"
-    assert (library_root / "a.mkv").is_file()
-    assert client.get(f"/api/v1/libraries/{library_id}/bundles/{bundle_id}").status_code == 200
+    assert restored.status_code == 200, restored.text
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    # Back in the browser, under its own title rather than as a loose file.
+    assert [(item["id"], item["title"]) for item in browse["items"]] == [(bundle_id, "Bundle")]
+
+
+def test_putting_back_an_unbundled_bundle_keeps_its_file_row(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """The worse half of the same bug: the cascade used to delete the file row.
+
+    A provisional bundle has nothing to re-stage into, so deleting it took its
+    `AssetFile` row along — and Put back then restored a file the library had no
+    record of, invisible until a rescan.
+    """
+    bundle_id = _linked_bundle(session, library_root, "loose.mkv", state=GroupingState.PROVISIONAL)
+    deleted = client.post(
+        f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files"
+    ).json()
+
+    client.post(f"/api/v1/libraries/{writable}/file-ops/trash/restore/{deleted['operation']['id']}")
+
+    assert (library_root / "loose.mkv").read_bytes() == b"payload"
+    row = session.scalars(select(AssetFile).where(AssetFile.relative_path == "loose.mkv")).one()
+    assert row.availability is FileAvailability.AVAILABLE
+    assert row.bundle_id == bundle_id
+
+
+def test_emptying_the_trash_finishes_the_bundle_deletion(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """The husk goes with the bytes, or it would reappear as an empty bundle."""
+    bundle_id = _linked_bundle(session, library_root, "a.mkv")
+    client.post(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/delete-with-files")
+
+    client.post(f"/api/v1/libraries/{writable}/file-ops/trash/empty", json={})
+
+    assert client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}").status_code == 404
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    assert browse["items"] == []
+
+
+def test_emptying_the_trash_leaves_a_deliberately_empty_bundle_alone(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """Only bundles this emptying stripped of files are swept up by it."""
+    empty = AssetBundle(title="Planned")
+    session.add(empty)
+    session.flush()
+    other = _linked_bundle(session, library_root, "a.mkv")
+    session.commit()
+    client.post(f"/api/v1/libraries/{writable}/bundles/{other}/delete-with-files")
+
+    client.post(f"/api/v1/libraries/{writable}/file-ops/trash/empty", json={})
+
+    assert client.get(f"/api/v1/libraries/{writable}/bundles/{empty.id}").status_code == 200
 
 
 def test_deleting_an_empty_bundle_with_files_reports_no_operation(
