@@ -57,6 +57,22 @@ def clear_marker(destination: Path) -> None:
     _discard(pending_marker(destination))
 
 
+def marker_names_source(destination: Path, source: Path) -> bool:
+    """Whether an in-flight marker exists for ``destination`` *and* names ``source``.
+
+    The reconciler's evidence for "both copies exist because a cross-device move
+    crashed between commit and cleanup". Requiring the recorded source to match —
+    not just the marker to exist — narrows the false-positive window further: a
+    stale marker from some earlier attempt at this destination cannot vouch for a
+    move from somewhere else, and the wrong guess here repoints an owner's
+    metadata onto the wrong file.
+    """
+    try:
+        return pending_marker(destination).read_text(encoding="utf-8") == str(source)
+    except OSError:
+        return False
+
+
 def pending_marker(destination: Path) -> Path:
     """The marker that says a cross-device move to ``destination`` was in flight.
 

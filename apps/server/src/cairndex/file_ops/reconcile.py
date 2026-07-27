@@ -118,7 +118,7 @@ def _settle(session: Session, root: Path, operation: FileOperation) -> bool:
         if (
             source_present
             and destination_present
-            and os.path.lexists(fsmove.pending_marker(destination_full))
+            and fsmove.marker_names_source(destination_full, source_full)
         ):
             updated = repoint_linked_rows(session, source=source, destination=destination)
             fsmove.clear_marker(destination_full)
@@ -193,7 +193,7 @@ def _settle_move(session: Session, root: Path, operation: FileOperation) -> bool
         elif (
             source_present
             and destination_present
-            and os.path.lexists(fsmove.pending_marker(destination_full))
+            and fsmove.marker_names_source(destination_full, source_full)
         ):
             # A cross-device move that committed its copy but had not yet removed
             # the original. The destination is authoritative; the original is left
