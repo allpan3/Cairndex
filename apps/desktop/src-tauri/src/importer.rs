@@ -37,6 +37,7 @@ use serde::Serialize;
 use tauri::{async_runtime, AppHandle, Emitter, Runtime, State};
 use url::Url;
 
+use crate::mappings;
 use crate::media_proxy::MediaProxy;
 
 /// How often the upload reports bytes-sent to the webview. Frequent enough for a
@@ -198,7 +199,10 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
     dest_dir: String,
     on_conflict: Option<String>,
 ) -> Result<ImportOutcome, ImportError> {
-    if library_id.is_empty() {
+    // Shape-checked before it is used to build a URL. Not a user-facing mistake:
+    // the id comes from the web layer, so a malformed one means something other
+    // than the library selector produced it.
+    if !mappings::library_id_is_safe(&library_id) {
         return Err(ImportError::new("invalid_library", "No library selected."));
     }
     let source = PathBuf::from(&path);
@@ -344,6 +348,13 @@ fn upload<R: Runtime>(
 }
 
 /// Build the import URL, preserving any base path the server is mounted under.
+///
+/// The path is assembled segment by segment rather than by interpolating into a
+/// string that is then parsed. Interpolation let a `library_id` carrying `..`,
+/// `?` or `/` restructure the URL — and with a server-scoped token attached, that
+/// would have pointed an authenticated POST (carrying the file body) at a path
+/// nobody chose. Callers shape-check the id too; this is the half that cannot be
+/// forgotten at a call site.
 fn import_url(
     server_url: &Url,
     library_id: &str,
@@ -351,11 +362,19 @@ fn import_url(
     dest_dir: &str,
     on_conflict: Option<&str>,
 ) -> Result<Url, String> {
-    let base = server_url.as_str().trim_end_matches('/');
-    let mut url = Url::parse(&format!(
-        "{base}/api/v1/libraries/{library_id}/file-ops/import"
-    ))
-    .map_err(|error| error.to_string())?;
+    if !mappings::library_id_is_safe(library_id) {
+        return Err("library id is not a valid identifier".to_string());
+    }
+    let mut url = server_url.clone();
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| "server URL cannot carry a path".to_string())?;
+        // A base URL ending in '/' leaves an empty trailing segment that would
+        // otherwise become a '//' in the middle of the path.
+        segments.pop_if_empty();
+        segments.extend(["api", "v1", "libraries", library_id, "file-ops", "import"]);
+    }
     url.query_pairs_mut()
         .append_pair("filename", filename)
         .append_pair("dest_dir", dest_dir)
@@ -474,5 +493,53 @@ mod tests {
         assert!(url
             .query_pairs()
             .any(|(key, value)| key == "on_conflict" && value == "fail"));
+    }
+
+    #[test]
+    fn import_url_takes_a_real_ulid_library_id() {
+        let server = Url::parse("http://127.0.0.1:8000/").unwrap();
+
+        let url = import_url(&server, "01KY9ZBDHXVPWXGZEDNV7AXPQ2", "a.mkv", "", None).unwrap();
+
+        // A trailing slash on the base must not double up in the middle.
+        assert_eq!(
+            url.path(),
+            "/api/v1/libraries/01KY9ZBDHXVPWXGZEDNV7AXPQ2/file-ops/import"
+        );
+    }
+
+    #[test]
+    fn import_url_refuses_a_library_id_that_would_rewrite_the_path() {
+        let server = Url::parse("https://nas.example/cairndex").unwrap();
+
+        // Each of these used to reach the URL verbatim through string
+        // interpolation: traversal out of the intended path, a grafted query or
+        // fragment, an extra path segment, or a percent-escape.
+        for hostile in [
+            "..",
+            "lib1/../../../file-ops/empty-trash",
+            "lib1?on_conflict=replace&x=",
+            "lib1#frag",
+            "lib1/extra",
+            "%2e%2e",
+            "",
+        ] {
+            assert!(
+                import_url(&server, hostile, "a.mkv", "", None).is_err(),
+                "library id {hostile:?} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn library_id_shape_accepts_server_ids_and_rejects_separators() {
+        assert!(mappings::library_id_is_safe("01KY9ZBDHXVPWXGZEDNV7AXPQ2"));
+        assert!(mappings::library_id_is_safe("lib_1-2"));
+        for bad in ["", "..", "a/b", "a?b", "a#b", "a%2fb", "a.b", "a b"] {
+            assert!(
+                !mappings::library_id_is_safe(bad),
+                "{bad:?} should be unsafe"
+            );
+        }
     }
 }

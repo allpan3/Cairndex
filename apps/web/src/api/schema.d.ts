@@ -524,6 +524,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/bundles/{bundle_id}/delete-with-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Bundle With Files
+         * @description Delete a bundle *and* send its files to the trash (ADR-0013 §3.2).
+         *
+         *     A separate, write-gated route rather than a flag on ``DELETE``: dissolving a
+         *     grouping is metadata-only and always available, while deleting the files is a
+         *     guarded filesystem write. Giving them one entry point would mean a read-only
+         *     library either lost the ordinary delete or accepted a request it must refuse.
+         *
+         *     **The bundle row is not deleted here, and that is what makes Put back work.**
+         *     Trashing a file repoints its row into ``.cairndex/trash/``, which browse
+         *     already treats as hidden — so a bundle whose every file is trashed disappears
+         *     from every view on its own, without anything being destroyed. Restoring the
+         *     operation brings the files back to their real paths and the bundle returns
+         *     with its title, tags, collections and cover intact. Emptying the trash is what
+         *     finally removes both (see ``empty_trash``).
+         *
+         *     Deleting the bundle here instead would make the trash entry a promise the
+         *     library could not keep: the files would come back, but as loose files whose
+         *     bundle no longer existed — and for an already-unbundled bundle the cascade
+         *     would take the file rows with it, so Put back would restore bytes that nothing
+         *     in the app pointed at.
+         */
+        post: operations["delete_bundle_with_files_api_v1_libraries__library_id__bundles__bundle_id__delete_with_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/bundles/{bundle_id}/files": {
         parameters: {
             query?: never;
@@ -5251,6 +5290,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BundleCursorRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_bundle_with_files_api_v1_libraries__library_id__bundles__bundle_id__delete_with_files_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                bundle_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileOperationResult"] | null;
                 };
             };
             /** @description Validation Error */

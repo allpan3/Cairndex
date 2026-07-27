@@ -127,6 +127,14 @@ class Settings(BaseSettings):
     # should be able to turn writing on through the UI at all.
     write_mode: Literal["allowed", "disabled"] = "allowed"
 
+    # How long a trashed file is kept before the retention sweep empties it for
+    # good (ADR-0013 §3.2), in days. ``0`` — the default — keeps trash forever
+    # and is the only setting that cannot lose data by surprise: the trash is
+    # the way back from a deletion, so it expires only when the operator has
+    # said how long "long enough" is. The sweep runs at library open, never on a
+    # request path, and only ever empties operations already older than this.
+    trash_retention_days: int = 0
+
     # Largest single file that may be imported into a library (ADR-0013 §7),
     # in bytes. ``0`` means no limit, which is the default: a legitimate import
     # here is a whole video file, and a cap generous enough never to reject one

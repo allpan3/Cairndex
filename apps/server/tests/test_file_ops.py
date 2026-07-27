@@ -6,7 +6,9 @@ is what happens on the filesystem, so nothing here is mocked.
 """
 
 import asyncio
+import errno
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from datetime import timedelta
@@ -14,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
@@ -27,12 +29,13 @@ from cairndex.domain.enums import (
     FileRole,
     MediaKind,
 )
-from cairndex.file_ops import imports, journal, operations, trash
+from cairndex.file_ops import fsmove, imports, journal, operations, trash
 from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.file_ops.paths import suffixed_name, validate_name
 from cairndex.file_ops.reconcile import reconcile_pending
 from cairndex.file_ops.trash import stored_relative_path
 from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
+from cairndex.registry.library_engine import _sweep_expired_trash
 from cairndex.scanning.scanner import _mark_missing
 
 
@@ -1413,3 +1416,336 @@ def test_a_move_undo_still_works_when_the_source_is_free(
 
     assert (library_root / "a.mkv").read_bytes() == b"payload"
     assert not (library_root / "sub/a.mkv").exists()
+
+
+# --- Cross-device moves (EXDEV), plan 4 W6 ----------------------------------
+#
+# A library root can span filesystems — a NAS share or external drive mounted at
+# a subdirectory, a bind mount in a container — and `os.rename` cannot cross that
+# boundary. There is no portable way to create a real mount point in a test, so
+# these force the errno the kernel would raise and assert the fallback's ordering
+# and its safety properties.
+
+
+def _fail_rename_across(boundary: str, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Make `os.rename` behave as if `boundary` were a separate filesystem.
+
+    Any rename with exactly one side under `boundary` raises EXDEV, the way a
+    real mount point would; renames wholly inside or wholly outside still work,
+    which is what lets the fallback's own staging rename succeed.
+
+    Compared on path *components*: the fallback's staging file is named
+    `.cairndex-xdev-…`, so a substring test would read it as living under the
+    `.cairndex` package and refuse the commit rename that must succeed.
+    """
+    real = os.rename
+    attempts: list[tuple[str, str]] = []
+
+    def under(path: object) -> bool:
+        return boundary in Path(str(path)).parts
+
+    def fake(src, dst, *args, **kwargs):  # type: ignore[no-untyped-def]
+        attempts.append((str(src), str(dst)))
+        if under(src) != under(dst):
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return real(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "rename", fake)
+    return attempts
+
+
+def test_a_cross_device_move_copies_then_deletes(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The move succeeds, the bytes arrive, and the original is gone afterwards."""
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _link(session, "a.mkv")
+    _fail_rename_across("mnt", monkeypatch)
+
+    result = operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
+
+    assert result.failed_paths == []
+    assert (library_root / "mnt/a.mkv").read_bytes() == b"payload"
+    assert not (library_root / "a.mkv").exists()
+    # The metadata moved with it, which is the whole point of moving in-app.
+    row = session.scalars(select(AssetFile)).one()
+    assert row.relative_path == "mnt/a.mkv"
+
+
+def test_a_cross_device_move_leaves_no_staging_entry(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A completed move cleans up after itself."""
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _fail_rename_across("mnt", monkeypatch)
+
+    operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
+
+    assert [p.name for p in (library_root / "mnt").iterdir()] == ["a.mkv"]
+
+
+def test_a_cross_device_directory_move_carries_its_contents(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Directories cross a boundary too, recursively, rows and all."""
+    _touch(library_root, "Show/S01/ep1.mkv", b"one")
+    _touch(library_root, "Show/S01/ep2.mkv", b"two")
+    (library_root / "mnt").mkdir()
+    _link(session, "Show/S01/ep1.mkv")
+    _fail_rename_across("mnt", monkeypatch)
+
+    operations.move(session, library_root, paths=["Show/S01"], dest_dir="mnt")
+
+    assert (library_root / "mnt/S01/ep1.mkv").read_bytes() == b"one"
+    assert (library_root / "mnt/S01/ep2.mkv").read_bytes() == b"two"
+    assert not (library_root / "Show/S01").exists()
+    assert session.scalars(select(AssetFile)).one().relative_path == "mnt/S01/ep1.mkv"
+
+
+def test_a_failed_cross_device_copy_leaves_the_original_alone(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The source is removed only after the copy is committed — never before.
+
+    This is the property that makes copy-then-delete safe to use on original
+    media at all: every interruption leaves the file readable at one path or
+    both, never neither.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _fail_rename_across("mnt", monkeypatch)
+
+    def explode(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(fsmove.shutil, "copy2", explode)
+
+    with pytest.raises(ConflictError):
+        operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
+
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+    assert list((library_root / "mnt").iterdir()) == []
+
+
+def test_a_cross_device_copy_refuses_to_overwrite_a_destination(
+    library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`os.rename` would clobber silently; original media never may be.
+
+    Callers settle collisions before anything is touched, so reaching this means
+    something appeared underneath us mid-copy.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    occupied = _touch(library_root, "mnt/a.mkv", b"do not lose me")
+    _fail_rename_across("mnt", monkeypatch)
+
+    with pytest.raises(FileExistsError):
+        fsmove.move_path(library_root / "a.mkv", occupied)
+
+    assert occupied.read_bytes() == b"do not lose me"
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+    assert sorted(p.name for p in (library_root / "mnt").iterdir()) == ["a.mkv"]
+
+
+def test_reconciler_finishes_a_cross_device_move_that_had_not_deleted_the_original(
+    session: Session, library_root: Path
+) -> None:
+    """The one state a plain rename can never produce: both copies on disk.
+
+    A crash between committing the copy and removing the original. The bytes are
+    at the destination, so the metadata belongs there — and the leftover original
+    is reported rather than deleted, because automatic recovery must never
+    destroy original media (ADR-0013).
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _touch(library_root, "mnt/a.mkv", b"payload")
+    # The marker records the source's full path, and the reconciler requires the
+    # match — a marker that merely exists is not evidence (see marker_names_source).
+    (library_root / "mnt" / fsmove.pending_marker(Path("a.mkv")).name).write_text(
+        str(library_root / "a.mkv")
+    )
+    file = _link(session, "a.mkv")
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {"dest_dir": "mnt", "moves": [{"source": "a.mkv", "destination": "mnt/a.mkv"}]},
+    )
+
+    report = reconcile_pending(session, library_root)
+
+    assert (report.completed, report.failed) == (1, 0)
+    session.refresh(row)
+    session.refresh(file)
+    assert row.status is FileOpStatus.DONE
+    assert file.relative_path == "mnt/a.mkv"
+    assert row.payload["leftover_source_paths"] == ["a.mkv"]
+    # Nothing was deleted, and the marker is cleaned up.
+    assert (library_root / "a.mkv").is_file()
+    assert (library_root / "mnt/a.mkv").is_file()
+    assert not fsmove.pending_marker(library_root / "mnt/a.mkv").exists()
+
+
+def test_reconciler_still_refuses_to_guess_without_the_marker(
+    session: Session, library_root: Path
+) -> None:
+    """Two same-sized files written moments apart are not evidence of a copy.
+
+    Without the in-flight marker this stays exactly as ambiguous as it was before
+    cross-device moves existed — the case the scanner's repair is for.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _touch(library_root, "mnt/a.mkv", b"payload")
+    file = _link(session, "a.mkv")
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {"dest_dir": "mnt", "moves": [{"source": "a.mkv", "destination": "mnt/a.mkv"}]},
+    )
+
+    reconcile_pending(session, library_root)
+
+    session.refresh(row)
+    session.refresh(file)
+    assert row.status is FileOpStatus.FAILED
+    assert file.relative_path == "a.mkv"
+    assert (library_root / "a.mkv").is_file()
+    assert (library_root / "mnt/a.mkv").is_file()
+
+
+def test_a_completed_cross_device_move_leaves_no_marker(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The marker exists only across the crash window, never after success."""
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _fail_rename_across("mnt", monkeypatch)
+
+    operations.move(session, library_root, paths=["a.mkv"], dest_dir="mnt")
+
+    assert not fsmove.pending_marker(library_root / "mnt/a.mkv").exists()
+    assert [p.name for p in (library_root / "mnt").iterdir()] == ["a.mkv"]
+
+
+def test_trashing_across_a_device_boundary_works(
+    session: Session, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The trash lives in the library package, which can be a different device."""
+    _touch(library_root, "a.mkv", b"payload")
+    _link(session, "a.mkv")
+    # The package dir is the "other" filesystem here.
+    _fail_rename_across(".cairndex", monkeypatch)
+
+    result = operations.trash_paths(session, library_root, paths=["a.mkv"])
+
+    assert not (library_root / "a.mkv").exists()
+    stored = library_root / stored_relative_path(result.operation.id, "a.mkv")
+    assert stored.read_bytes() == b"payload"
+
+    operations.restore(session, library_root, operation_id=result.operation.id)
+    assert (library_root / "a.mkv").read_bytes() == b"payload"
+
+
+# --- Trash retention sweep (plan 4 W6) --------------------------------------
+
+
+def test_retention_sweep_is_off_unless_configured(
+    session: Session, library_root: Path, session_factory: sessionmaker[Session]
+) -> None:
+    """Zero days keeps the trash forever, which is the default.
+
+    The trash is the way back from a deletion, so expiring it is opt-in: a
+    default that quietly discarded it would make deleting less recoverable than
+    the design promises.
+    """
+    _touch(library_root, "old.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    trashed.operation.finished_at = utcnow() - timedelta(days=400)
+    session.commit()
+
+    _sweep_expired_trash(session_factory, library_root, 0)
+
+    assert [op.id for op, _ in operations.list_trash(session)] == [trashed.operation.id]
+
+
+def test_retention_sweep_empties_only_what_has_expired(
+    session: Session, library_root: Path, session_factory: sessionmaker[Session]
+) -> None:
+    _touch(library_root, "old.mkv")
+    _touch(library_root, "new.mkv")
+    old = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    new = operations.trash_paths(session, library_root, paths=["new.mkv"])
+    old.operation.finished_at = utcnow() - timedelta(days=40)
+    session.commit()
+
+    _sweep_expired_trash(session_factory, library_root, 30)
+
+    session.expire_all()
+    assert [op.id for op, _ in operations.list_trash(session)] == [new.operation.id]
+    # Expiring is the one-way door: the bytes are gone, not just the row.
+    assert not (library_root / stored_relative_path(old.operation.id, "old.mkv")).exists()
+    assert (library_root / stored_relative_path(new.operation.id, "new.mkv")).exists()
+
+
+def test_a_failing_retention_sweep_never_stops_a_library_opening(
+    session: Session,
+    library_root: Path,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Emptying is best-effort; reconciliation is not, and ran before it.
+
+    A library that cannot finish its housekeeping must still open — the sweep is
+    the least important thing happening at that moment.
+    """
+    _touch(library_root, "old.mkv")
+    trashed = operations.trash_paths(session, library_root, paths=["old.mkv"])
+    trashed.operation.finished_at = utcnow() - timedelta(days=40)
+    session.commit()
+
+    def explode(*args: object, **kwargs: object) -> int:
+        raise OSError(errno.EIO, "the volume went away mid-sweep")
+
+    monkeypatch.setattr(operations, "empty_trash", explode)
+
+    with caplog.at_level(logging.ERROR):
+        _sweep_expired_trash(session_factory, library_root, 30)  # must not raise
+
+    assert "trash retention sweep failed" in caplog.text
+    # And the deletion is still recoverable, which is the point of not guessing.
+    assert [op.id for op, _ in operations.list_trash(session)] == [trashed.operation.id]
+
+
+def test_reconciler_refuses_a_marker_that_names_a_different_source(
+    session: Session, library_root: Path
+) -> None:
+    """A marker vouches for one specific move, not for its destination path.
+
+    A stale marker left by an earlier attempt must not let an unrelated pending
+    operation claim the destination — the wrong guess repoints metadata onto the
+    wrong file.
+    """
+    _touch(library_root, "a.mkv", b"payload")
+    (library_root / "mnt").mkdir()
+    _touch(library_root, "mnt/a.mkv", b"payload")
+    (library_root / "mnt" / fsmove.pending_marker(Path("a.mkv")).name).write_text(
+        str(library_root / "somewhere-else.mkv")
+    )
+    file = _link(session, "a.mkv")
+    row = _interrupted(
+        session,
+        FileOpType.MOVE,
+        {"dest_dir": "mnt", "moves": [{"source": "a.mkv", "destination": "mnt/a.mkv"}]},
+    )
+
+    reconcile_pending(session, library_root)
+
+    session.refresh(row)
+    session.refresh(file)
+    assert row.status is FileOpStatus.FAILED
+    assert file.relative_path == "a.mkv"

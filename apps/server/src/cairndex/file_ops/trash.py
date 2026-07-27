@@ -40,6 +40,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from cairndex.core.time import utcnow
+from cairndex.file_ops import fsmove
 from cairndex.registry import library_package as pkg
 
 META_NAME = "meta.json"
@@ -96,7 +97,10 @@ def move_into_trash(root: Path, *, operation_id: str, original_path: str) -> Tra
     is_directory = source.is_dir() and not source.is_symlink()
     destination = operation_dir(root, operation_id) / FILES_DIR / original_path
     destination.parent.mkdir(parents=True, exist_ok=True)
-    os.rename(source, destination)
+    # The trash lives under the library package, which can sit on a different
+    # filesystem from the file being deleted when a share is mounted inside the
+    # root — so this move needs the cross-device fallback too.
+    fsmove.move_path(source, destination)
     return TrashedEntry(
         original_path=original_path,
         stored_path=stored_relative_path(operation_id, original_path),
@@ -116,7 +120,7 @@ def restore_from_trash(root: Path, entry: TrashedEntry) -> None:
     source = root / entry.stored_path
     destination = root / entry.original_path
     destination.parent.mkdir(parents=True, exist_ok=True)
-    os.rename(source, destination)
+    fsmove.move_path(source, destination)
 
 
 def delete_permanently(root: Path, entry: TrashedEntry) -> None:
