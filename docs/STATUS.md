@@ -4,14 +4,13 @@
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
 > app's real media viewer (PR #32) and the collection-creation affordances
 > (owner-reported: the sidebar "+" nested instead of creating at the top level,
-> and creating one was unreachable from the grid and the shell menu). One branch
-> is open: `fix/write-mode-hardening` (plan 4 W6, in progress — see below). W2
-> stays blocked on plan 1 M11, and W6 closes the write-mode track. Two things
-> still need the owner: a pass on a genuinely downloaded build (deferred from D7),
+> and creating one was unreachable from the grid and the shell menu). Plan 4 W6
+> is **merged** (PR #33), closing the write-mode track; W2 stays blocked on
+> plan 1 M11. No branches are open. Two things still need the owner: a pass on a genuinely downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
-## Ready for review: plan 4 W6 — write-mode hardening (2026-07-26)
+## Merged: plan 4 W6 — write-mode hardening (2026-07-26, PR #33)
 
 Branch `fix/write-mode-hardening`, rebased onto `main` at `7b767d3`. W6 is the last
 unblocked write-mode slice (W2 still waits on plan 1 M11, which is in the future
