@@ -10,9 +10,16 @@
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
-## Ready for review: UI refinements — eight owner rounds (2026-07-27)
+## In review: PR #34 — UI refinements, eight owner rounds (2026-07-27)
 
-Branch `fix/ui-refinements`, 19 commits, off `main` at `8fb7125`. The owner's
+Branch `fix/ui-refinements` → **[PR #34](https://github.com/allpan3/Cairndex/pull/34)**,
+squashed to four commits by subsystem (server / desktop / web / docs), off `main`
+at `8fb7125`. A whole-branch review pass before the PR caught three things no
+single round would have: the tag delete skipped its own confirmation when the
+impact lookup failed (an unknown cost is a reason to *ask*), the filename scan
+was O(files²) and unmemoized in a component that re-renders on every drag move,
+and `--mv-controls-h` had gone circular. Browser e2e is 91/92 — the one failure
+predates this branch and is spun off. The owner's
 refinement list, each its own commit: (1) viewer topbar clears the traffic
 lights in the shell; (2) Back/Forward history over views/collections/bundles/
 File Browser paths; (3) album tiles gain Remove from Bundle + write-gated Move
