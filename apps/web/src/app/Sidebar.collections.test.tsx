@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import type { CollectionRead } from '../api/client'
@@ -122,7 +123,69 @@ function RequestHarness({
   )
 }
 
+/**
+ * Sidebar over a live collection list, so a created collection actually appears
+ * in the tree the way a refetch would deliver it. The mocks elsewhere in this
+ * file answer `onSuccess` without adding the row, which is enough to assert a
+ * payload but not to see what the user sees next.
+ */
+function StatefulHarness({ request = null }: { request?: { parentId: string | null } | null }) {
+  const [collections, setCollections] = useState<CollectionRead[]>(COLLECTIONS)
+  const onCreateCollection: SidebarProps['onCreateCollection'] = (payload, callbacks) => {
+    const created = collection('cNew', payload.name, payload.parent_id)
+    setCollections((previous) => [...previous, created])
+    callbacks.onSuccess(created)
+  }
+  return (
+    <Sidebar
+      mode="collection"
+      onMode={() => undefined}
+      libraries={[]}
+      libraryId="lib1"
+      onChangeLibrary={() => undefined}
+      onManageLibraries={() => undefined}
+      onOpenSettings={() => undefined}
+      onUpdateLibrary={() => undefined}
+      onScanFiles={() => undefined}
+      onProbe={() => undefined}
+      onGenerateStoryboards={() => undefined}
+      onReviewGrouping={() => undefined}
+      selection={{ view: 'all', collectionId: 'c1' }}
+      onSelect={() => undefined}
+      collections={collections}
+      onDeleteCollection={() => undefined}
+      onCreateCollection={onCreateCollection}
+      onRenameCollection={() => undefined}
+      onReorderCollections={() => undefined}
+      newCollectionRequest={request}
+      smartCollections={[]}
+      onNewSmartCollection={() => undefined}
+      onEditSmartCollection={() => undefined}
+      onDeleteSmartCollection={() => undefined}
+    />
+  )
+}
+
 afterEach(() => vi.restoreAllMocks())
+
+test('a created collection lands in the rename box ready to be named', () => {
+  render(<StatefulHarness />)
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'New collection' }))
+
+  // The name is a placeholder, so the point of creating one is typing over it.
+  const input = screen.getByRole('textbox')
+  expect(input).toHaveValue('New Collection')
+})
+
+test('a collection created from the grid also lands in the rename box', () => {
+  // The grid and the native menu deliver a parent rather than a click, and the
+  // user is not looking at the sidebar — so the row still has to open for typing.
+  render(<StatefulHarness request={{ parentId: 'c1' }} />)
+
+  expect(screen.getByRole('textbox')).toHaveValue('New Collection')
+})
 
 test('the + button creates at the top level even with a collection open', () => {
   const onCreateCollection = renderSidebar({ collectionId: 'c1' })
@@ -198,6 +261,24 @@ test('the same request is consumed once even if the caller never clears it', () 
   // A refetch delivers a new collections array — same pending request object.
   rerender(<RequestHarness {...props} collections={[...COLLECTIONS, collection('c3', 'More')]} />)
   expect(onCreateCollection).toHaveBeenCalledOnce()
+})
+
+test('creating unfolds the Collections section so the rename box is visible', () => {
+  // A folded section hides the new row entirely, which would leave a collection
+  // named 'New Collection' and no visible way to type the name that was the
+  // point of creating it — most likely when the request came from the grid, where
+  // the user is not even looking at the sidebar.
+  const onCreateCollection = renderSidebar()
+  const heading = screen.getByRole('button', { name: /^Collections/ })
+
+  fireEvent.click(heading)
+  expect(screen.queryByText('Films')).not.toBeInTheDocument()
+
+  fireEvent.contextMenu(heading)
+  fireEvent.click(screen.getByRole('menuitem', { name: 'New Collection' }))
+
+  expect(onCreateCollection).toHaveBeenCalledOnce()
+  expect(screen.getByText('Films')).toBeInTheDocument()
 })
 
 test('a new name avoids colliding with its own siblings only', () => {

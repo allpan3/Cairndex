@@ -229,11 +229,21 @@ grouped under `Unreleased` until the first tagged release.
   used to nest under the current selection, which meant there was no way to ask
   for a top-level one while browsing a collection, and the same button quietly did
   two different things. Nesting became its own gesture instead: **right-click a
-  collection → New Subcollection**. And "New Collection" is now offered by the
-  Collections heading and its blank run-out, the bundle grid's empty-space menu,
-  and the desktop shell's **File → New Collection**
-  (<kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>). All of them drop straight
-  into the inline rename box, as the **+** already did.
+  collection → New Subcollection**.
+
+  In the main grid, right-clicking empty space now offers a collection **at the
+  level you are looking at** — "New Collection" in the All view, "New
+  Subcollection" inside a collection — from *both* the collections section and the
+  contents section below it, since a collection with no subcollections yet has no
+  collections section to aim at. The Collections heading and its run-out in the
+  sidebar offer the same, and the desktop shell gains **File → New Collection**
+  (<kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>), which like the **+** always
+  means top level.
+
+  Every route ends the same way: the new collection opens its inline rename box
+  ready to be typed over, unfolding the sidebar's Collections section first if it
+  was folded — otherwise a collection called "New Collection" would appear with
+  nowhere visible to name it.
 
 - **The File Browser plays video in the app's player.** Opening a video there
   used to hand it to the browser's own `<video controls>` — no custom control

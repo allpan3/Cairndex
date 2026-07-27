@@ -21,9 +21,23 @@ so one button did two different things depending on what happened to be open —
 while browsing a collection there was *no* way to ask for a top-level one. It is
 now unconditionally top level, and nesting became its own gesture: **right-click a
 collection → New Subcollection**. "New Collection" was added to the Collections
-heading and its section run-out, the bundle grid's empty-space menu, and the native
+heading and its section run-out, both main-grid sections, and the native
 **File → New Collection** (`CmdOrCtrl+Shift+N`, free — the keymap test pins that
 accelerators are never reused). All routes end in the same inline rename box.
+
+**Owner correction, second pass.** The grid's menu first created at the top level,
+on the reasoning that the grid has no notion of "here" in the collection tree. It
+does: the level being *looked at*. It now creates under `selection.collectionId`
+and labels itself "New Subcollection" inside a collection, matching the section
+heading, which reads "Subcollections" there. It also had to go on **both** grid
+sections — a collection with no subcollections yet renders no collections section,
+so the contents section is the only target that always exists. Two further
+consequences of "it must end in the rename box": creating now unfolds the sidebar's
+Collections section (a folded one hid the new row, leaving a collection named "New
+Collection" and nowhere visible to name it), and the ancestor-expansion that
+already existed matters more, since a grid-raised request can nest arbitrarily
+deep. The native File menu deliberately stays top level, like the **+**: a global
+command that silently nested would be a surprise.
 
 **The shape worth remembering:** the sidebar keeps owning the create flow, because
 the new row's inline rename (`editingId`) and ancestor expansion are its state.
@@ -42,10 +56,13 @@ collections `.sidebar__section` instead, and verified in the running app that th
 brand, the library selector and the jobs strip raise nothing while the heading,
 the section, a collection row and the grid all raise the right menus.
 
-**Tests:** web **424 passed** (+6 in a new `Sidebar.collections.test.tsx`: the +
+**Tests:** web **427 passed** (+9 in a new `Sidebar.collections.test.tsx`: the +
 at top level with a collection open, the subcollection menu, the heading menu, the
-external request, single consumption under a refetch, and per-parent name
-collision). Rust **98 passed** — the shell builds its menu from `keymap.json`, so
+external request, single consumption under a refetch, per-parent name collision,
+unfolding a folded section, and the rename box opening for both a click-raised and
+a request-raised create — the last two needed a harness whose collection list
+actually grows, since a mock that only answers `onSuccess` can assert a payload but
+never shows what the user sees next). Rust **98 passed** — the shell builds its menu from `keymap.json`, so
 the new item needed no Rust change beyond staying inside the existing contract.
 Verified live against the running dev server (menus only; no collections were
 created in the owner's real library).
