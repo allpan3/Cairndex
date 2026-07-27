@@ -233,6 +233,26 @@ grouped under `Unreleased` until the first tagged release.
   segment, which escapes it. Reaching this needed code running in the app's own
   web layer, which is why it is hardening rather than a fix.
 
+### Added
+
+- **Delete a bundle's files along with the bundle.** The Delete dialog's "Also
+  delete contained files" checkbox has been present but inert since it was added
+  — it captured your answer and then kept every file. It now works, and like every
+  other deletion in Cairndex it is **trash-first**: the files move to the
+  library's Trash, stay listed there, and can be put back until you empty it.
+  Nothing is unlinked.
+
+  It appears only on a library with write mode on, because that is the only place
+  the server would accept it — the ordinary metadata-only delete is unchanged and
+  always available. The dialog also stops claiming the files "always stay on
+  disk", which stopped being true the moment the box could be ticked.
+
+- **Trash retention.** `CAIRNDEX_TRASH_RETENTION_DAYS` empties trashed files older
+  than the given number of days. Off by default and deliberately so: the trash is
+  the way back from a deletion, so it expires only once an operator has said how
+  long "long enough" is. The sweep runs when a library opens, never on a request,
+  and a failing sweep never blocks the library from opening.
+
 ### Fixed
 
 - **Moving a file across a mount point inside your library now works.** A library

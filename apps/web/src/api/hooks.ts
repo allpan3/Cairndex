@@ -53,6 +53,7 @@ import {
   fetchUnbundledFiles,
   createSmartCollection,
   deleteBundle,
+  deleteBundleWithFiles,
   deleteCollection,
   deleteLibrary,
   deleteSmartCollection,
@@ -1295,7 +1296,11 @@ export function useRepairFile(bundleId: string, fileId: string) {
 export function useDeleteBundles() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => deleteBundle(id))),
+    // `deleteFiles` sends the bundle's files to the trash as well, through the
+    // write-gated route — so it is undoable and they stay listed in the Trash
+    // rather than simply vanishing.
+    mutationFn: ({ ids, deleteFiles = false }: { ids: string[]; deleteFiles?: boolean }) =>
+      Promise.all(ids.map((id) => (deleteFiles ? deleteBundleWithFiles(id) : deleteBundle(id)))),
     onSuccess: () => {
       // Deleting a confirmed bundle re-stages its files into Unbundled, so the
       // Unbundled list + File Browser badges must refresh too.
