@@ -9,7 +9,7 @@ use tauri::{async_runtime, AppHandle, Runtime};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_store::StoreExt;
 
-const STORE_PATH: &str = "cairndex-settings.json";
+pub(crate) const STORE_PATH: &str = "cairndex-settings.json";
 const MAPPINGS_KEY: &str = "libraryMappings";
 
 // Identifies one stable rejection class for the web UI
