@@ -253,20 +253,28 @@ def delete_bundle_with_files(
     guarded filesystem write. Giving them one entry point would mean a read-only
     library either lost the ordinary delete or accepted a request it must refuse.
 
-    Trash-first, never unlink — so this is undoable like every other deletion, and
-    the files are listed in the Trash view until they are emptied. The files are
-    trashed *before* the bundle rows go, because the journal entry that makes the
-    deletion recoverable has to be written while the paths are still known.
+    **The bundle row is not deleted here, and that is what makes Put back work.**
+    Trashing a file repoints its row into ``.cairndex/trash/``, which browse
+    already treats as hidden — so a bundle whose every file is trashed disappears
+    from every view on its own, without anything being destroyed. Restoring the
+    operation brings the files back to their real paths and the bundle returns
+    with its title, tags, collections and cover intact. Emptying the trash is what
+    finally removes both (see ``empty_trash``).
+
+    Deleting the bundle here instead would make the trash entry a promise the
+    library could not keep: the files would come back, but as loose files whose
+    bundle no longer existed — and for an already-unbundled bundle the cascade
+    would take the file rows with it, so Put back would restore bytes that nothing
+    in the app pointed at.
     """
     bundle = service.get_bundle(db, bundle_id)
     paths = [file.relative_path for file in bundle.files]
     if not paths:
-        # An empty bundle has nothing to trash, so there is no operation to
-        # return and nothing to undo — null rather than an invented entry.
+        # Nothing to trash, so there is no operation and nothing to undo. An empty
+        # bundle has no files to outlive it, so it goes now.
         service.delete_bundle(db, bundle_id)
         return None
     result = operations.trash_paths(db, library_root_for_session(db), paths=paths)
-    service.delete_bundle(db, bundle_id)
     return FileOperationResult(
         operation=FileOperationRead.model_validate(result.operation),
         path=result.path,
