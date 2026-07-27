@@ -10,6 +10,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **File Browser and Unbundled show thumbnails.** Both surfaces rendered a
+  media-kind icon for every row, so a folder of videos — or the whole Unbundled
+  queue — was a wall of identical glyphs. They now show a still: an indexed file
+  uses the per-file thumbnail the server extracts (a real frame, for video), and
+  an image that was never indexed falls back to its path-scoped preview. Anything
+  with no possible still — a subtitle, a folder, an unindexed video — keeps its
+  icon, as does a file whose thumbnail the server cannot produce. Both the grid
+  and the list get them; in the list they scale with the zoom slider.
+
+### Added
+
 - **Write mode — the gate** ([ADR-0013](docs/adr/0013-library-write-mode.md),
   plan 4 W0). Cairndex can be given permission to create, rename, move, and
   trash files inside one library root. **Nothing writes yet**; this is the
@@ -221,6 +232,64 @@ grouped under `Unreleased` until the first tagged release.
   architecture's configure line and full component version list now live in
   `packaging/ffmpeg-build-info/`; the three-year offer no longer depends on a
   third-party build server still serving those files.
+
+### Security
+
+- **The desktop importer no longer trusts the library id it is handed.** It went
+  into the upload URL by string interpolation, so an id carrying `..`, `?` or `/`
+  could restructure that URL — and because a server-scoped token is attached
+  before the request goes out, a crafted id could have pointed an authenticated
+  POST, carrying the file's bytes, at a path nobody chose. The id is now
+  shape-checked (server ids are ULIDs) and the path is assembled segment by
+  segment, which escapes it. Reaching this needed code running in the app's own
+  web layer, which is why it is hardening rather than a fix.
+
+### Added
+
+- **Delete a bundle's files along with the bundle.** The Delete dialog's "Also
+  delete contained files" checkbox has been present but inert since it was added
+  — it captured your answer and then kept every file. It now works, and like every
+  other deletion in Cairndex it is **trash-first**: the files move to the
+  library's Trash, stay listed there, and can be put back until you empty it.
+  Nothing is unlinked.
+
+  **Put back returns the bundle, not just the files.** The bundle itself is not
+  destroyed: trashing a file hides it from every view, so a bundle whose files are
+  all trashed disappears on its own, and restoring brings it back with its title,
+  tags, collections and cover intact. Emptying the trash is what makes both final.
+
+  It appears only on a library with write mode on, because that is the only place
+  the server would accept it — the ordinary metadata-only delete is unchanged and
+  always available. The dialog also stops claiming the files "always stay on
+  disk", which stopped being true the moment the box could be ticked.
+
+- **Trash retention.** `CAIRNDEX_TRASH_RETENTION_DAYS` empties trashed files older
+  than the given number of days. Off by default and deliberately so: the trash is
+  the way back from a deletion, so it expires only once an operator has said how
+  long "long enough" is. The sweep runs when a library opens, never on a request,
+  and a failing sweep never blocks the library from opening.
+
+### Fixed
+
+- **Moving a file across a mount point inside your library now works.** A library
+  root can span filesystems — a NAS share or external drive mounted at a
+  subdirectory, a bind mount in a container — and the underlying rename cannot
+  cross that boundary. Renames, moves, deleting to the trash and restoring from it
+  all reported a per-file failure at that line; nothing was ever lost, but the
+  operation could not succeed. They now fall back to copying and then removing the
+  original.
+
+  **The original is always the last thing to go.** The copy lands under a hidden
+  name beside its destination, is flushed to disk, and is committed with an atomic
+  rename; only then is the original removed. Every interruption therefore leaves
+  the file readable at one path or both — never neither. If the process dies in the
+  window where both exist, the next library open finishes the bookkeeping and
+  **reports the leftover original rather than deleting it**: automatic recovery
+  does not destroy original media, so the duplicate is yours to remove through the
+  ordinary Trash once you can see it.
+
+  A cross-device move is a copy, so it takes as long as the bytes take — and,
+  unlike a rename, it needs room for a second copy while it runs.
 
 ### Changed
 

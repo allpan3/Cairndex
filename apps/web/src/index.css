@@ -1150,6 +1150,15 @@ button {
   display: flex;
   gap: 6px;
 }
+/* Resting still on a File Browser card. Sits under the hover preview (z-index 2)
+   and under the badges, which follow it in the DOM. */
+.card__thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .card__placeholder {
   display: flex;
   align-items: center;
@@ -4018,6 +4027,15 @@ code {
   flex: 0 0 auto;
   display: inline-flex;
   color: var(--text-muted);
+}
+/* Square still in the list's icon slot, scaled off the row height so it grows
+   with the zoom slider instead of staying icon-sized. */
+.file-row__thumb {
+  width: calc(var(--file-row-h, 34px) - 12px);
+  height: calc(var(--file-row-h, 34px) - 12px);
+  object-fit: cover;
+  border-radius: 2px;
+  background: var(--bg-2);
 }
 /* Inline SVG icon sizing (sidebar + file list). */
 .icon {

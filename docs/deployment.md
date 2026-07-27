@@ -89,6 +89,7 @@ Configuration is read from the environment (prefix `CAIRNDEX_`); see
 | `CAIRNDEX_FFMPEG_HWACCEL`          | _unset_         | Optional ffmpeg hardware-accelerated _decode_ for transcode sessions: `vaapi`, `qsv`, or `videotoolbox`. Unset/`none` = software decode; encoding stays `libx264`. |
 | `CAIRNDEX_WRITE_MODE`              | `allowed`       | Deployment master switch for guarded file operations (ADR-0013). `allowed` lets the per-library opt-in decide; `disabled` forces every library read-only.          |
 | `CAIRNDEX_IMPORT_MAX_BYTES`        | `0`             | Largest single file that may be uploaded into a library. `0` = no limit.                                                                                          |
+| `CAIRNDEX_TRASH_RETENTION_DAYS`    | `0`             | Days a trashed file is kept before it is emptied for good (ADR-0013 §3.2). `0` = keep forever. The sweep runs when a library opens, never on a request path.       |
 
 **Media tools**: `CAIRNDEX_FFMPEG_PATH` and `CAIRNDEX_FFPROBE_PATH` name the
 binaries explicitly. Unset, they are resolved from `PATH` and then from the
@@ -259,6 +260,32 @@ Tuning knobs: `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED` (default `true`),
 The snapshot is a convenience, **not a backup** — it lives inside the library it
 copies, so it is lost with the folder. Keep the real backups below.
 
+### Libraries that span more than one filesystem
+
+A library root can contain a mount point — a NAS share or external drive mounted
+at a subdirectory, or a bind mount in a container. That is supported, with two
+operational consequences worth knowing before you plan storage.
+
+**Moving a file across that boundary is a copy.** The rename a same-filesystem
+move uses cannot cross it, so Cairndex falls back to copy-then-delete: the copy
+lands under a hidden `.cairndex-xdev-…` name beside its destination, is flushed,
+committed with an atomic rename, and only then is the original removed. So a
+cross-boundary move takes as long as the bytes take and **needs room for a second
+copy of the file while it runs** — a same-filesystem move needs neither. Moves are
+still synchronous, so a very large one occupies its request for the duration.
+
+**An interrupted one leaves a duplicate, never a hole.** Because the original is
+removed last, every crash leaves the file readable at one path or both. If the
+process dies in the window where both exist, the next library open finishes the
+bookkeeping and *reports* the leftover original rather than deleting it —
+automatic recovery does not destroy original media. You will have two copies until
+you remove one, which is the deliberate trade. A crash earlier in the copy leaves
+an inert hidden `.cairndex-xdev-…` entry beside the destination, which is safe to
+delete.
+
+Both also apply to the trash: `.cairndex/trash/` lives in the library package, so
+deleting a file that sits on a *different* mount from the package is a copy too.
+
 ### Backups
 
 ADR-0008 split persistent state across multiple SQLite DBs:
@@ -287,6 +314,14 @@ regenerated, so a backup that skips it can turn "I can still get that back" into
   new path. If that matters more to you than recoverability, exclude
   `.cairndex/trash/` deliberately — and know that you are choosing to lose
   whatever is in it at restore time.
+
+`CAIRNDEX_TRASH_RETENTION_DAYS` bounds that growth by emptying trashed
+operations older than the given number of days when a library opens. It is `0`
+(keep forever) by default on purpose: the trash is what makes deleting
+recoverable, so it expires only once you have said how long "long enough" is.
+Setting it does not replace a backup — it is a one-way door on a timer, and it
+runs against whatever the library holds at open, so a library nobody opens is
+never swept.
 
 `infra/backup.sh` makes a consistent hot copy of one SQLite DB using SQLite's
 online backup API and integrity-checks it:

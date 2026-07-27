@@ -1456,17 +1456,17 @@ function Workspace({
     (deleteFiles: boolean) => {
       const targets = deletingBundles
       if (!targets) return
-      // Filesystem deletion isn't wired yet (metadata-only milestone); the
-      // checkbox state is captured for a future write-enabled endpoint.
-      void deleteFiles
-      deleteBundles.mutate(targets, {
-        onSuccess: () => {
-          setDeletingBundles(null)
-          clearSelection()
-          if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
-          if (viewerTarget && targets.includes(viewerTarget.bundleId)) setViewerTarget(null)
+      deleteBundles.mutate(
+        { ids: targets, deleteFiles },
+        {
+          onSuccess: () => {
+            setDeletingBundles(null)
+            clearSelection()
+            if (openBundleId && targets.includes(openBundleId)) setOpenBundleId(null)
+            if (viewerTarget && targets.includes(viewerTarget.bundleId)) setViewerTarget(null)
+          },
         },
-      })
+      )
     },
     [deletingBundles, deleteBundles, clearSelection, openBundleId, viewerTarget],
   )
@@ -2015,6 +2015,7 @@ function Workspace({
           count={deletingBundles.length}
           pending={deleteBundles.isPending}
           filesReturnToUnbundled={selection.view !== 'unbundled'}
+          writeMode={writeMode}
           onCancel={() => setDeletingBundles(null)}
           onConfirm={confirmDeleteBundles}
         />

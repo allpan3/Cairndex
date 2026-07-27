@@ -2,16 +2,152 @@
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
-> app's real media viewer (closing the M2 follow-up). Two branches are open:
-> `fix/collection-creation-affordances` (below) and `fix/write-mode-hardening`
-> (plan 4 W6). W2 stays blocked on plan 1 M11, and W6 closes the write-mode
-> track. Two things still need the owner: a pass on a
-> genuinely downloaded build (deferred from D7), and a pass on the **native
-> Finder drag gesture** on a packaged build, which cannot be automated here.
+> app's real media viewer (PR #32) and the collection-creation affordances
+> (owner-reported: the sidebar "+" nested instead of creating at the top level,
+> and creating one was unreachable from the grid and the shell menu). One branch
+> is open: `fix/write-mode-hardening` (plan 4 W6, in progress — see below). W2
+> stays blocked on plan 1 M11, and W6 closes the write-mode track. Two things
+> still need the owner: a pass on a genuinely downloaded build (deferred from D7),
+> and a pass on the **native Finder drag gesture** on a packaged build, which
+> cannot be automated here.
 
-## In progress: collection-creation affordances (2026-07-26)
+## Ready for review: plan 4 W6 — write-mode hardening (2026-07-26)
 
-Branch `fix/collection-creation-affordances`, off `main` at `33d46f0`.
+Branch `fix/write-mode-hardening`, rebased onto `main` at `7b767d3`. W6 is the last
+unblocked write-mode slice (W2 still waits on plan 1 M11, which is in the future
+bucket), and it is a bag of independent items rather than one change. **The
+correctness and safety items are done; three feature-sized ones are deliberately
+not, and are listed with reasons below.** Landed:
+
+**The desktop importer's library id (the PR #30 review's hardening note).** It
+reached the upload URL through `format!` into a string that was then parsed, so an
+id carrying `..`, `?`, `#` or an extra `/` restructured the URL. The reason it was
+reachable at all: `media_proxy::target_for` accepts *any* non-empty id — it
+consults the id only to decide whether to attach the bearer token — so nothing
+upstream constrained the value. With `server_scoped_token` set the token is
+attached regardless, which made the worst case an authenticated POST carrying the
+file's bytes aimed at an arbitrary path on the local server. Now the path is built
+with `path_segments_mut` (which percent-encodes each segment) and the id is
+shape-checked in one shared place: `mappings::validate_library_id` had only
+rejected the empty string, so the mapping lookups were equally unguarded. Server
+ids are ULIDs, so the accepted charset (`[A-Za-z0-9_-]`) is comfortably
+permissive. Rust **101 passed** (+3: a real ULID through a trailing-slash base, a
+table of seven hostile ids, and the charset itself).
+
+**EXDEV — cross-device moves** (owner approved the copy-then-delete approach).
+`os.rename` cannot cross a filesystem boundary, and a library root can easily span
+one. All four relocating operations — rename, move, trash, restore — now funnel
+through one `file_ops/fsmove.py`, which keeps the existing case-only-rename
+handling and adds the fallback.
+
+The ordering is the safety property: copy to a hidden staging name **beside the
+destination** (so the commit is a same-filesystem, atomic rename), flush, commit,
+and only then remove the original. Every interruption leaves the bytes readable at
+one path or both — never neither. The commit also refuses an occupied destination
+outright, where `os.rename` would have clobbered it silently.
+
+**The crash window needed the reconciler to learn a new state.** Between commit
+and removal both copies exist — something a plain rename can never produce, so the
+reconciler had been calling it undecidable and failing the operation. It now
+finishes the metadata at the destination and records the leftover original in
+`leftover_source_paths` **rather than deleting it**: automatic recovery destroying
+original media is exactly what ADR-0013 forbids, so the duplicate is the owner's to
+remove through the ordinary journaled trash once they can see it.
+
+**The evidence is an explicit marker file, not inference.** The first cut compared
+size and mtime, which would have called two same-sized files written moments apart
+a copy — and that guess repoints an owner's metadata onto the wrong file. It also
+silently broke the existing "refuses to guess when both paths exist" test, which is
+how it was caught. A marker written across exactly that window settles it, mirroring
+how an interrupted import is identified by its leftover staging file; without one,
+the both-present case stays as ambiguous as it always was, which a test now pins.
+
+Known costs, recorded rather than solved: a cross-device move takes as long as the
+bytes take and needs room for a second copy while it runs, and moves are still
+synchronous (the `file_ops_batch` job is a separate W6 item). Directory trees are
+copied recursively with the same commit ordering, but their per-file durability
+flush is skipped as disproportionate — a power loss mid-tree leaves the source
+intact and an inert hidden staging directory.
+
+Backend **795 passed** (+10: the fallback for files and directories, staging
+cleanup, the refusal to overwrite, the source surviving a failed copy, both
+reconciler branches, and trash/restore across a boundary).
+
+**Also already done, found while surveying:** case-only renames on
+case-insensitive filesystems were already handled; that logic moved into `fsmove`
+unchanged.
+
+**Bundle "delete with files"** (the smallest remaining W4 piece). The Delete
+dialog's checkbox had been inert since it was added — `App` took the flag and
+dropped it under a "not wired yet" comment, so the dialog asked a question and
+then ignored the answer. A write-gated `POST /bundles/{id}/delete-with-files`
+trashes the bundle's files and then removes it: trash-first like every other
+deletion, so it is undoable and the files stay listed until the trash is emptied.
+
+A separate route rather than a flag on `DELETE`, because the two have different
+gates — dissolving a grouping is metadata-only and must stay available on a
+read-only library, while deleting files is a guarded write it has to refuse.
+An empty bundle returns `null`: there was no file operation, so there is nothing
+to undo and nothing worth inventing.
+
+Opening the real dialog caught what reading it had not: with the checkbox now
+live, its opening line still promised the files "always stay on disk" and its
+Unbundled clause described a fallback that no longer applied. Both now follow the
+checkbox, and the checkbox itself appears only where write mode allows it.
+
+**Trash retention.** `CAIRNDEX_TRASH_RETENTION_DAYS` empties expired trash when a
+library opens, reusing the `older_than_days` path that already existed and was
+already tested. Off by default and deliberately so — the trash is what makes
+deleting recoverable — with its own session and `try/except` so a failed sweep
+never costs the reconciliation that ran before it.
+
+**Deployment/backup docs.** The retention variable, and a new section on libraries
+that span more than one filesystem: what the EXDEV fallback costs (a move becomes
+a copy, so it needs time and room for a second copy) and what an interrupted one
+leaves (a duplicate, never a hole).
+
+Backend **801 passed**, web **427 passed**, Rust **101 passed**; OpenAPI and
+`schema.d.ts` regenerated for the new route.
+
+### Deliberately not done, and why
+
+These are feature-sized rather than hardening, and each is its own reviewable
+slice. W6 is proposed as closed without them; reopen or re-file as preferred.
+
+- **Drag-move onto a directory row.** The capability exists via the Move to…
+  dialog; this is a second *gesture* for it, threaded through the File Browser's
+  marquee and native drag-*out* system. W3 already called it a slice of its own
+  and nothing since has made it smaller.
+- **`file_ops_batch` job + the multi-item plan/preview endpoint.** Both are about
+  making bulk moves asynchronous and previewable. Worth more now than when W3
+  deferred them, because a cross-device move is a copy and can be genuinely long —
+  but that is an argument for designing them against the new cost, not for
+  bolting them on at the end of this branch.
+- **Journal history UI.** A read-only view over `file_operations`, which the API
+  already exposes. Straightforward, but it is a new surface with its own layout
+  and empty/error states, not a hardening fix.
+
+Two smaller ones judged **not worth doing**, rather than merely deferred:
+
+- **Auto-suffixing within a move batch.** Two selected items that would land on the
+  same name are refused up front. That was a deliberate narrowing — the one
+  outcome the never-overwrite rule forbids — and silently renaming one of the
+  owner's files to resolve a collision they did not know they had created is worse
+  than the refusal. Left as an owner call.
+- **The two move-undo manual-recovery cases** from the W3 review. Both leave the
+  affected file visible and restorable in the Trash; neither loses data. The fix
+  is bookkeeping to re-associate a `replaced_operation_id` written at `finish`,
+  which would mean journaling it earlier — a change to the crash-recovery contract
+  for a case whose current outcome is "recoverable, manually".
+
+A **perf pass on bulk ops** was not run: it needs a representative large library,
+which is the owner's to point at (AGENTS.md asks for recorded baselines rather
+than claims).
+
+## Merged: collection-creation affordances (2026-07-26)
+
+Branch `fix/collection-creation-affordances`, fast-forwarded into `main` at
+`7b767d3` at the owner's request (no PR).
 Owner-reported: there was no way to add a collection from the grid or the shell
 menu, no way to add a subcollection by right-clicking one, and the sidebar's **+**
 created inside the currently open collection rather than at the top level.

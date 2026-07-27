@@ -111,12 +111,27 @@ pub(crate) struct MappingRecord {
     library_uuid: String,
 }
 
+/// True when a library id is shaped like one the server issues.
+///
+/// Server ids are ULIDs, so this charset is comfortably permissive while ruling
+/// out every character that could change the meaning of the two places an id is
+/// used unescaped-looking: a mapping key, and a path segment in a URL built for
+/// the local server. Rejecting `.`, `/`, `?`, `#` and `%` here means a crafted id
+/// cannot walk out of the intended path or graft on a query — the shell takes the
+/// id from the web layer, which is not a trust boundary it should rely on.
+pub(crate) fn library_id_is_safe(library_id: &str) -> bool {
+    !library_id.is_empty()
+        && library_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
 // Requires the server-owned registry key used to select a local mapping
 fn validate_library_id(library_id: &str) -> Result<(), MappingError> {
-    if library_id.is_empty() {
+    if !library_id_is_safe(library_id) {
         return Err(MappingError::new(
             MappingErrorCode::InvalidLibraryId,
-            "The server library identity is missing.",
+            "The server library identity is missing or malformed.",
         ));
     }
     Ok(())
