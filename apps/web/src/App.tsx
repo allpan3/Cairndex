@@ -1409,17 +1409,25 @@ function Workspace({
 
   // Right-click empty browser space → create a bundle, or clean up the bundle
   // manual order for the current scope.
+  // "New Collection" in the main grid means *here*: the collection currently
+  // open, or the top level in the All view. That is the one place a level is
+  // unambiguous — it is the level being looked at. The sidebar's "+" stays
+  // explicitly top-level, and a sidebar row's own menu nests under that row.
+  const newCollectionHere = useMemo(() => {
+    const parentId = selection.collectionId ?? null
+    return {
+      // Inside a collection this creates a child of it, so name it that way —
+      // matching the section heading, which reads "Subcollections" there.
+      label: parentId ? 'New Subcollection' : 'New Collection',
+      onClick: () => setNewCollectionRequest({ parentId }),
+    }
+  }, [selection.collectionId])
+
   const emptyContextMenu = useCallback(
     (e: React.MouseEvent) => {
       menu.open(e, [
         { label: 'Create Bundle…', onClick: () => setCreatingEmpty(true) },
-        // Top level, not the open collection: the grid has no notion of "here"
-        // in the collection tree, so guessing one would be arbitrary. Nesting is
-        // the sidebar row's own right-click.
-        {
-          label: 'New Collection',
-          onClick: () => setNewCollectionRequest({ parentId: null }),
-        },
+        newCollectionHere,
         null,
         {
           label: 'Clean Up Order…',
@@ -1430,7 +1438,7 @@ function Workspace({
         },
       ])
     },
-    [menu, headerFlattened],
+    [menu, headerFlattened, newCollectionHere],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -1539,6 +1547,8 @@ function Workspace({
   const collectionSectionContextMenu = useCallback(
     (e: React.MouseEvent) => {
       menu.open(e, [
+        newCollectionHere,
+        null,
         {
           label: 'Clean Up Order…',
           onClick: () => setCleaningCollections(true),
@@ -1546,7 +1556,7 @@ function Workspace({
         },
       ])
     },
-    [menu, headerFlattened],
+    [menu, headerFlattened, newCollectionHere],
   )
 
   const confirmRemoveCollection = useCallback(
