@@ -25,7 +25,7 @@ from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError, normalize_relative_path
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability, FileOpStatus, FileOpType
-from cairndex.file_ops import journal, trash
+from cairndex.file_ops import fsmove, journal, trash
 from cairndex.file_ops.conflicts import ConflictPolicy, resolve_collision
 from cairndex.file_ops.paths import join_relative, parent_of, resolve_writable, validate_name
 from cairndex.persistence.models import AssetFile, FileOperation
@@ -853,25 +853,12 @@ def _noop(session: Session, relative: str, *, skipped: bool = False) -> FileOper
 
 
 def _rename_on_disk(source: Path, destination: Path) -> None:
-    """``os.rename`` with the two cases that break it on real storage.
+    """Relocate one path, handling case-only renames and cross-device moves.
 
-    A case-only rename on a case-insensitive filesystem (an SMB share from
-    macOS, or APFS as usually formatted) sees source and destination as the
-    *same* file: a plain rename is a silent no-op, and an existence check on the
-    destination reports the source. Going via a temporary name makes it real.
+    See :mod:`cairndex.file_ops.fsmove` for what those two cases are and why a
+    plain ``os.rename`` is not enough for either.
     """
-    if source == destination:
-        return
-    if str(source).lower() == str(destination).lower() and source.parent == destination.parent:
-        staging = destination.with_name(f".cairndex-rename-{os.getpid()}-{destination.name}")
-        os.rename(source, staging)
-        try:
-            os.rename(staging, destination)
-        except OSError:
-            os.rename(staging, source)  # put it back rather than leave a dotfile
-            raise
-        return
-    os.rename(source, destination)
+    fsmove.move_path(source, destination)
 
 
 def _os_error_message(error: OSError) -> str:
