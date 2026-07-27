@@ -30,6 +30,8 @@ interface BrowserProps {
   contextMenuOpen?: boolean
   // Right-click on empty space (not on a card/row) — e.g. to create a bundle.
   onEmptyContextMenu?: (e: React.MouseEvent) => void
+  // OS files dropped on a card: import into the library, link into that bundle.
+  onDropFilesOnBundle?: (id: string, files: File[]) => void
   // When set (Manual sort), cards/rows become drag-reorderable; a drop fires the
   // full resulting order of loaded items.
   onReorder?: (move: { movedIds: string[]; beforeId: string | null }) => void
@@ -454,6 +456,7 @@ export function Browser(props: BrowserProps) {
                             marqueeRect !== null ||
                             props.contextMenuOpen === true
                           }
+                          onDropFiles={props.onDropFilesOnBundle}
                         />
                       </div>
                     ))}

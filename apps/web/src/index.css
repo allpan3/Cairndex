@@ -374,6 +374,16 @@ button {
 .toolbar input[type='search'] {
   width: 200px;
 }
+/* Back/Forward history — a compact seg pair leading each surface's top bar. */
+.nav-history button {
+  min-width: 26px;
+  font-size: 15px;
+  line-height: 1;
+}
+.nav-history button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .seg {
   display: inline-flex;
   border: 1px solid var(--border);
@@ -970,6 +980,52 @@ button {
   gap: 10px;
   padding-bottom: 6px;
 }
+/* List layout: the same folder cards as rows — same selection, drag, and menu
+   behaviour, only the geometry changes (owner, 2026-07-27). */
+.collcard__grid--rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* Rows follow the zoom slider like every other list in the shell
+   (--coll-row-h set inline from the same curve as file rows). */
+.collcard__grid--rows .collcard {
+  min-height: var(--coll-row-h, 40px);
+}
+.collcard__grid--rows .collcard {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+}
+.collcard__grid--rows .collcard__thumb {
+  width: calc(var(--coll-row-h, 40px) * 1.45);
+  aspect-ratio: 16 / 10;
+  flex: none;
+  border-radius: 4px;
+}
+.collcard__grid--rows .collcard__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+}
+/* Row seams read as horizontal lines, not the grid's vertical ones. */
+.collcard__grid--rows .collcard[data-drop]::after {
+  top: auto;
+  bottom: auto;
+  left: 4px;
+  right: 4px;
+  width: auto;
+  height: 3px;
+}
+.collcard__grid--rows .collcard[data-drop='before']::after {
+  top: -4px;
+}
+.collcard__grid--rows .collcard[data-drop='after']::after {
+  bottom: -4px;
+}
 .collcard {
   position: relative;
   display: flex;
@@ -1091,6 +1147,11 @@ button {
 .card:hover {
   border-color: var(--border-strong);
 }
+/* An OS file drag hovering a bundle card — this card is the drop target. */
+.card--file-drop {
+  outline: 2px solid var(--accent, #7aa2ff);
+  outline-offset: -2px;
+}
 .card--selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
@@ -1152,6 +1213,20 @@ button {
 }
 /* Resting still on a File Browser card. Sits under the hover preview (z-index 2)
    and under the badges, which follow it in the DOM. */
+/* Observed wrappers for the on-screen-only thumbnails. Each needs a real box —
+   an element with `display: contents` never intersects — sized to the slot it
+   replaces so the fallback icon and the image occupy the same space. */
+.file-row__thumb-holder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--file-row-h, 34px) - 12px);
+  height: calc(var(--file-row-h, 34px) - 12px);
+}
+.card__thumb-holder {
+  position: absolute;
+  inset: 0;
+}
 .card__thumb-img {
   position: absolute;
   inset: 0;
@@ -1424,6 +1499,31 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Sibling names collapse what they *share*, never what tells them apart: the
+   shared stem is dimmed and gives up its width first (ellipsizing in the
+   middle of the row), while the distinct tail keeps its full text. The eye
+   lands on the bright part, which is exactly the part that differs. */
+.file-row__title--split {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.fname__shared {
+  color: var(--text-muted);
+  /* Gives way overwhelmingly before the tail does. */
+  flex: 0 999 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.fname__distinct {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
 .file-row__role {
   color: var(--text-muted);
 }
@@ -1693,7 +1793,9 @@ button {
 }
 .picker__panel {
   position: fixed;
-  z-index: 30;
+  /* Above the media viewer (z 240): the inspector — and so its tag/collection
+     pickers — is reachable while a video plays. */
+  z-index: 300;
   width: 340px;
   max-width: min(380px, 92vw);
   background: var(--surface);
@@ -1762,6 +1864,15 @@ button {
   flex: 1;
   min-width: 0;
 }
+/* The picker's own search box keeps its resting border when focused: it is
+   focused the whole time the panel is open, so an accent border said nothing
+   and competed with the row highlight that does (owner, 2026-07-27). */
+.picker__search:focus,
+.picker__search:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--border);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -1778,6 +1889,19 @@ button {
   border-radius: 12px;
   padding: 1px 8px;
   font-size: 12px;
+  /* A pill is a control (it carries a context menu), not text — without this
+     the pointer turned into an I-beam over the name (owner, 2026-07-27). */
+  cursor: default;
+  user-select: none;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+/* A quiet glow rather than an accent fill: the pill is already tinted, so a
+   blue hover read as "selected" instead of "hovered". */
+.chip:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.14);
 }
 .chip button {
   border: 0;
@@ -1803,7 +1927,8 @@ button {
 /* --- Right-click context menu -------------------------------------------- */
 .context-menu {
   position: fixed;
-  z-index: 40;
+  /* Above every overlay it can be opened from — the media viewer is z 240. */
+  z-index: 300;
   min-width: 180px;
   max-width: min(280px, 90vw);
   background: var(--surface);
@@ -1856,6 +1981,14 @@ button {
 }
 .pick-row:hover {
   background: var(--bg-2);
+}
+/* The row Enter will act on. Distinct from selection (`--on`), which says what
+   is already assigned — this says what is about to happen. A filled pill rather
+   than an outline: the owner wants it readable at a glance (2026-07-27). */
+.pick-row--target,
+.pick-row--target:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
 }
 .pick-row--on {
   color: var(--text-strong);
@@ -2189,6 +2322,37 @@ code {
   color: var(--text-strong);
   font-size: 12px;
   line-height: 1.4;
+}
+/* Contact-sheet options: two rows of choices and a line saying what they add up
+   to. `.modal--narrow` because the widest thing in it is three short buttons. */
+.modal--narrow {
+  width: min(400px, 92vw);
+}
+.modal__sub {
+  margin: -6px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.modal__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.segmented {
+  display: flex;
+  gap: 6px;
+}
+.segmented .seg {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.segmented .seg.is-active {
+  color: var(--text-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 .modal__actions {
   display: flex;
@@ -2979,6 +3143,19 @@ code {
   min-height: 0;
   overflow-y: auto;
 }
+/* List layout in the in-bundle view: the File Browser's rows, so the two
+   surfaces look the same when laid out the same way. */
+.album__rows {
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px 12px;
+}
+.album__rows .file-row {
+  min-height: var(--file-row-h, 40px);
+}
+.album__bar-spacer {
+  flex: 1;
+}
 .album__grid {
   padding: 12px;
   display: grid;
@@ -3033,6 +3210,10 @@ code {
 
 /* --- Unified media viewer (Plan 1 M2) ------------------------------------ */
 .media-viewer {
+  /* Where the seek track starts, as a distance up from the bottom of the viewer.
+     Measured and published by the control bar; this literal is only the
+     pre-measurement fallback. */
+  --mv-seek-top: 24px;
   position: fixed;
   inset: 0;
   z-index: 240;
@@ -3065,6 +3246,26 @@ code {
   padding: 12px 18px;
   background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
   transition: opacity 0.18s;
+}
+/* The viewer covers the whole window, so in the desktop shell the traffic
+   lights float over its top-left corner — directly on the title. Clear them the
+   way the sidebar does, and only in the shell (`markOverlayTitleBar`).
+
+   Just enough to clear the lights (they end ~34px down), not the 40px the first
+   pass used — and **not in fullscreen**, where the OS hides the lights entirely
+   and the extra inset reads as the title floating for no reason (owner,
+   2026-07-27). `:fullscreen` covers the element-fullscreen path; the shell's
+   native window fullscreen sets `data-fullscreen` on the body. */
+:root[data-titlebar='overlay'] .mv-topbar {
+  height: 76px;
+  padding-top: 26px;
+  background: linear-gradient(rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0));
+}
+:root[data-titlebar='overlay'] .media-viewer:fullscreen .mv-topbar,
+:root[data-titlebar='overlay'] body[data-fullscreen='true'] .mv-topbar {
+  height: 64px;
+  padding-top: 12px;
+  background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
 }
 .mv-title {
   max-width: min(720px, 70vw);
@@ -3223,6 +3424,13 @@ code {
   padding: 7px 8px;
   text-align: center;
 }
+/* With the inspector docked, "next" belongs at the media's edge — the rail is
+   not part of the picture, and an arrow floating over the tag list is aiming at
+   the wrong thing (owner, 2026-07-27). */
+.media-viewer--railed .mv-nav--next {
+  right: calc(min(360px, 40vw) + 16px);
+}
+
 .mv-nav {
   position: absolute;
   z-index: 4;
@@ -3271,11 +3479,28 @@ code {
   );
   transition: opacity 0.18s;
 }
+/* Transient export feedback, mirroring the resume notice's placement. */
+.mv-export-notice {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 96px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+}
 .mv-resume {
   position: absolute;
   z-index: 6;
   left: 50%;
-  bottom: 82px;
+  /* Just above the seek track, which is what it refers to. Sitting clear of the
+     whole bar left it 52px from the track, above the button row — near the
+     controls, but not near the playhead (owner, 2026-07-27). It overlaps the
+     button row's empty middle, where the spacer is. */
+  bottom: calc(var(--mv-seek-top) + 8px);
   transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
@@ -3412,6 +3637,23 @@ code {
 .mv-menu__slider-label output {
   color: #fff;
   font-variant-numeric: tabular-nums;
+}
+.mv-menu__slider-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mv-menu__reset {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.mv-menu__reset:hover {
+  color: #fff;
 }
 .mv-menu__slider {
   width: calc(100% - 16px);
@@ -3598,12 +3840,36 @@ code {
   background-color: #050609;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
 }
+/* The bundle inspector rail — the same Inspector as the main shell, docked in
+   the viewer on its own toggle. Separate from `.mv-info`, which is the media's
+   own metadata and playlist; both can be open at once. */
+.media-viewer--railed {
+  grid-template-columns: 1fr auto;
+}
+/* Everything else in the viewer spans the media column only, so the rail docks
+   beside the stage rather than under it. */
+.media-viewer--railed > *:not(.mv-inspector) {
+  grid-column: 1;
+}
+.mv-inspector {
+  grid-row: 1 / -1;
+  grid-column: 2;
+  width: min(360px, 40vw);
+  overflow-y: auto;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  /* Same undefined-variable bug as the submenu had: the viewer sits on near
+     black, so a transparent rail is not obvious, but it was one. */
+  background: var(--surface);
+  color: var(--text);
+  min-width: 0;
+}
+
 .mv-info {
   position: absolute;
   z-index: 6;
   top: 76px;
   right: 18px;
-  width: min(320px, calc(100vw - 36px));
+  width: min(360px, calc(100vw - 36px));
   max-height: calc(100vh - 170px);
   overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -3611,6 +3877,42 @@ code {
   background: rgba(18, 20, 27, 0.94);
   padding: 14px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+.mv-info__files-title {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.mv-info__files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mv-info__file {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.mv-info__file:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.mv-info__file.is-current {
+  background: rgba(255, 255, 255, 0.14);
+}
+.mv-info__file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mv-info h3 {
   margin: 0 0 12px;
@@ -4855,6 +5157,20 @@ code {
 .settings-toggle > span {
   display: grid;
   gap: 3px;
+  min-width: 0;
+}
+.settings-toggle > span strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Settings → Exports: the row's trailing buttons. `.settings-toggle` is a flex
+   row whose first child is the label block, so the actions take the far edge. */
+.settings-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+  flex: none;
+  align-self: center;
 }
 .settings-toggle__hint {
   color: var(--text-muted);

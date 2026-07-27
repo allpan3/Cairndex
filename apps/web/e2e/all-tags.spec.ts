@@ -22,10 +22,12 @@ async function mockApi(page: Page): Promise<{
   lastBrowsePost: () => Record<string, unknown> | null
   patched: () => string[]
   reorders: () => Record<string, unknown>[]
+  deletes: () => string[]
 }> {
   let lastBrowsePost: Record<string, unknown> | null = null
   const patched: string[] = []
   const reorders: Record<string, unknown>[] = []
+  const deletes: string[] = []
 
   const tags = [tag('p', 'parent'), tag('c', 'child', 'p'), tag('leaf', 'leaf')]
 
@@ -63,11 +65,20 @@ async function mockApi(page: Page): Promise<{
     reorders.push(r.request().postDataJSON() as Record<string, unknown>)
     await r.fulfill({ json: tags })
   })
+  await page.route('**/tags/*/delete-impact', async (r) => {
+    // 'parent' has one child; the leaf has nothing hanging off it.
+    const id = r.request().url().split('/tags/')[1]!.split('/')[0]!
+    await r.fulfill({ json: id === 'p' ? { tags: 2, bundles: 3 } : { tags: 1, bundles: 0 } })
+  })
   await page.route('**/tags/*', async (r) => {
-    if (r.request().method() === 'PATCH') {
+    const method = r.request().method()
+    if (method === 'PATCH') {
       const id = r.request().url().split('/tags/')[1]!.split('?')[0]!
       patched.push(id)
       await r.fulfill({ json: { ...tag(id, 'renamed'), version: 2 } })
+    } else if (method === 'DELETE') {
+      deletes.push(r.request().url().split('/tags/')[1]!)
+      await r.fulfill({ status: 204, body: '' })
     } else {
       await r.fulfill({ status: 404, json: { message: 'not found' } })
     }
@@ -84,6 +95,7 @@ async function mockApi(page: Page): Promise<{
     lastBrowsePost: () => lastBrowsePost,
     patched: () => patched,
     reorders: () => reorders,
+    deletes: () => deletes,
   }
 }
 
@@ -123,8 +135,10 @@ test('All Tags: groups + Uncategorized, and double-click applies a global filter
     .toContain('"include_descendants":false')
 })
 
-test('All Tags: right-click rename; parent-with-children delete is blocked', async ({ page }) => {
-  const { patched } = await mockApi(page)
+test('All Tags: right-click rename, and a parent deletes with its children once confirmed', async ({
+  page,
+}) => {
+  const { patched, deletes } = await mockApi(page)
   await openAllTags(page)
 
   // Right-click the leaf → Rename Tag → commit via Enter → PATCH fires.
@@ -134,16 +148,32 @@ test('All Tags: right-click rename; parent-with-children delete is blocked', asy
   await page.locator('.tagtile__rename').press('Enter')
   await expect.poll(() => patched()).toContain('leaf')
 
-  // Deleting a parent that has children is blocked client-side (a friendly
-  // alert), so no DELETE is attempted.
-  let alert = ''
-  page.on('dialog', (d) => {
-    alert = d.message()
-    void d.dismiss()
-  })
+  // Deleting a parent asks first, in a rendered dialog — `window.confirm` is a
+  // no-op in the desktop webview, which is why this cannot be a native prompt.
+  // The prompt states what the delete costs, from the server's own count.
   await page.locator('.tagtile__head', { hasText: 'parent' }).click({ button: 'right' })
   await page.getByRole('menuitem', { name: 'Delete Tag' }).click()
-  await expect.poll(() => alert).toContain('child tags')
+  const dialog = page.getByRole('dialog', { name: 'Delete Tag and Its Children' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toContainText('1 child tag')
+  await expect(dialog).toContainText('3 bundles')
+  expect(deletes()).toEqual([])
+
+  // Confirming cascades — the whole point: a parent used to be undeletable.
+  await dialog.getByRole('button', { name: 'Delete' }).click()
+  await expect.poll(() => deletes()).toEqual(['p?cascade=true'])
+})
+
+test('All Tags: a tag on nothing deletes without a prompt', async ({ page }) => {
+  const { deletes } = await mockApi(page)
+  await openAllTags(page)
+
+  // No children, no bundles: there is nothing to warn about, so asking would be
+  // ceremony. The impact lookup is what licenses skipping the prompt.
+  await page.locator('.tagtile__head', { hasText: 'leaf' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Delete Tag' }).click()
+  await expect.poll(() => deletes()).toEqual(['leaf'])
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
 // NOTE: reparent-by-drag isn't driven here — native HTML5 DnD is unreliable in

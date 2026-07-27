@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 
-import type { TagRead } from '../api/client'
+import { fetchTagDeleteImpact, type TagRead } from '../api/client'
 import {
   useTagCounts,
   useTagGroupMemberships,
@@ -8,6 +8,7 @@ import {
   useTagMutations,
   useTags,
 } from '../api/hooks'
+import { ConfirmDialog } from './PromptDialog'
 import { ContextMenu } from './ContextMenu'
 import { alphaBucket, bucketOrder, usePinyinSearch } from './pinyin'
 import { useContextMenu } from './useContextMenu'
@@ -39,6 +40,15 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
   const { data: memberships = {} } = useTagGroupMemberships()
   const { data: counts = {} } = useTagCounts()
   const { rename, remove, reparent } = useTagMutations()
+  // The tag awaiting a delete confirmation, with what the delete would take.
+  // The tag awaiting confirmation. `children`/`bundles` are null when the impact
+  // lookup failed: the prompt then asks without claiming a cost it does not know.
+  const [deleting, setDeleting] = useState<{
+    tag: TagRead
+    children: number | null
+    bundles: number | null
+  } | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const menu = useContextMenu()
 
   const [panel, setPanel] = useState<Panel>('all')
@@ -155,19 +165,59 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
     reparent.mutate({ id, parentId: targetId, version: byId.get(id)?.version })
   }
 
+  // Deleting a parent used to be refused outright, which read as broken rather
+  // than guarded (owner, 2026-07-27). It is allowed now, but only after saying
+  // what it takes: how many tags, and how many bundles lose a tag. The counts
+  // come from the server so the prompt cannot understate a subtree the page has
+  // not loaded.
+  // Asking happens in a rendered dialog, not `window.confirm`: the desktop
+  // webview does not implement it, so the whole prompt was silently skipped
+  // there (owner, 2026-07-27).
   const startDelete = (tag: TagRead) => {
-    // First-version safe delete: block a parent with children with a friendly
-    // message (matches the server guard) rather than cascading.
-    if ((childrenOf.get(tag.id)?.length ?? 0) > 0 || tags.some((t) => t.parent_id === tag.id)) {
-      window.alert(
-        `“${tag.name}” has child tags. Move or delete its child tags first, then delete it.`,
-      )
-      return
-    }
-    if (!window.confirm(`Delete tag “${tag.name}”? This removes it from all bundles.`)) return
-    remove.mutate(tag.id, {
-      onError: (err) => window.alert(err instanceof Error ? err.message : 'Could not delete tag'),
-    })
+    void (async () => {
+      let impact: { tags: number; bundles: number } | null = null
+      try {
+        impact = await fetchTagDeleteImpact(tag.id)
+      } catch {
+        // Left null deliberately. Not knowing the cost is a reason to ask, not a
+        // reason to skip asking — treating a failed lookup as "nothing to warn
+        // about" would make a destructive action *less* guarded exactly when the
+        // server is least trustworthy.
+      }
+      // Skip the prompt only when the server has positively said there is
+      // nothing to lose: no children, and no bundle carrying the tag.
+      if (impact !== null && impact.tags === 1 && impact.bundles === 0) {
+        remove.mutate(
+          { id: tag.id },
+          {
+            onError: (err) => setError(err instanceof Error ? err.message : 'Could not delete tag'),
+          },
+        )
+        return
+      }
+      setDeleting({
+        tag,
+        children: impact ? impact.tags - 1 : null,
+        bundles: impact?.bundles ?? null,
+      })
+    })()
+  }
+
+  const confirmDelete = () => {
+    if (!deleting) return
+    const { tag, children } = deleting
+    remove.mutate(
+      // Unknown child count cascades: the user has confirmed, and refusing here
+      // would resurrect the "deleting a parent does nothing" bug.
+      { id: tag.id, cascade: children === null || children > 0 },
+      {
+        onSuccess: () => setDeleting(null),
+        onError: (err) => {
+          setDeleting(null)
+          setError(err instanceof Error ? err.message : 'Could not delete tag')
+        },
+      },
+    )
   }
 
   const openMenu = (tag: TagRead, e: React.MouseEvent) => {
@@ -335,6 +385,52 @@ export function AllTagsPage({ onApplyTagFilter }: { onApplyTagFilter: (tagId: st
       </div>
 
       <ContextMenu state={menu.state} onClose={menu.close} />
+
+      {deleting && (
+        <ConfirmDialog
+          title={
+            deleting.children !== null && deleting.children > 0
+              ? 'Delete Tag and Its Children'
+              : 'Delete Tag'
+          }
+          pending={remove.isPending}
+          onCancel={() => setDeleting(null)}
+          onConfirm={confirmDelete}
+          body={
+            <>
+              Delete “{deleting.tag.name}”?
+              {deleting.children === null && (
+                <> Its child tags and any bundles carrying it are affected too.</>
+              )}
+              {deleting.children !== null && deleting.children > 0 && (
+                <>
+                  {' '}
+                  This also deletes {deleting.children} child tag
+                  {deleting.children === 1 ? '' : 's'}.
+                </>
+              )}
+              {deleting.bundles !== null && deleting.bundles > 0 && (
+                <>
+                  {' '}
+                  {deleting.bundles} bundle{deleting.bundles === 1 ? '' : 's'} will lose the tag. No
+                  files are touched.
+                </>
+              )}
+            </>
+          }
+        />
+      )}
+
+      {error !== null && (
+        <ConfirmDialog
+          title="Could not delete tag"
+          body={error}
+          confirmLabel="OK"
+          danger={false}
+          onCancel={() => setError(null)}
+          onConfirm={() => setError(null)}
+        />
+      )}
     </div>
   )
 }

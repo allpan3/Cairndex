@@ -92,8 +92,13 @@ export function SeekBar({
   )
   const hoverChapter = hover ? chapterForTime(chapters, hover.time) : null
 
+  // The track's geometry, cached for the length of a gesture. Reading it back
+  // per `pointermove` forces a synchronous layout of a document whose inline
+  // styles the previous commit just rewrote — the classic read-after-write
+  // thrash, 60-120x a second while scrubbing.
+  const trackRect = useRef<DOMRect | null>(null)
   const timeFor = (clientX: number) => {
-    const rect = ref.current?.getBoundingClientRect()
+    const rect = trackRect.current ?? ref.current?.getBoundingClientRect()
     if (!rect || player.duration <= 0) return 0
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     return pct * player.duration
@@ -110,6 +115,7 @@ export function SeekBar({
     track.setPointerCapture(event.pointerId)
     dragging.current = { pointerId: event.pointerId, track }
     onDragChange?.(true)
+    trackRect.current = track.getBoundingClientRect()
     const time = timeFor(event.clientX)
     setDragPct(pctFor(time))
     commitSeek(time) // instant response to the click / drag start
@@ -117,9 +123,14 @@ export function SeekBar({
       if (moveEvent.pointerId !== event.pointerId) return
       const next = timeFor(moveEvent.clientX)
       setDragPct(pctFor(next))
+      // The throttle deliberately lags the video, and this preview is what
+      // covers for it — so it has to track the pointer through the drag, not
+      // freeze at wherever the press landed.
+      setHover({ x: moveEvent.clientX, time: next })
       throttledSeek(next)
     }
     const removeListeners = () => {
+      trackRect.current = null
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', end)
       window.removeEventListener('pointercancel', end)

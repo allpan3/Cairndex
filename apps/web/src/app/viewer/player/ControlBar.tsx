@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from 'react'
+
 import type { PlayableVideo, SubtitleTrackRead } from '../../../api/client'
 import {
   IconCamera,
@@ -11,7 +13,7 @@ import {
 } from '../../icons'
 import { formatClock } from '../../../lib/format'
 import { SeekBar } from './SeekBar'
-import { SettingsMenu, type CoverFrameActions } from './SettingsMenu'
+import { SettingsMenu } from './SettingsMenu'
 import type { HlsSessionState } from './useHlsSession'
 import type { PlayerController } from './usePlayer'
 
@@ -24,8 +26,6 @@ interface ControlBarProps {
   onDragChange: (dragging: boolean) => void
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
-  /** Bundle-cover actions, or null when the item cannot own a cover. */
-  cover: CoverFrameActions | null
 }
 
 /** Desktop-style custom video controls for direct and HLS playback. */
@@ -38,12 +38,44 @@ export function ControlBar({
   onDragChange,
   fileLoop,
   onFileLoop,
-  cover,
 }: ControlBarProps) {
   const time = `${formatClock(player.currentTime)} / ${formatClock(player.duration)}`
   const hasSubtitles = subtitles.some((track) => track.src)
+
+  // Publish where the seek track starts, measured rather than guessed. The
+  // resume toast is *about* the playhead, so "near the controls" means near the
+  // track — and the track is the bottom strip of this bar, under the button
+  // row, so anchoring to the bar's top left the toast 52px from the thing it
+  // refers to (owner, 2026-07-27). A literal would also be wrong the moment the
+  // row wrapped or the font differed.
+  const barRef = useRef<HTMLDivElement | null>(null)
+  useLayoutEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    const viewer = bar.closest<HTMLElement>('.media-viewer')
+    if (!viewer) return
+    const publish = () => {
+      const barRect = bar.getBoundingClientRect()
+      const track = bar.querySelector('.mv-seek')
+      const trackTop = track?.getBoundingClientRect().top ?? barRect.top
+      viewer.style.setProperty(
+        '--mv-seek-top',
+        `${Math.max(0, Math.round(window.innerHeight - trackTop))}px`,
+      )
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(bar)
+    window.addEventListener('resize', publish)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', publish)
+      viewer.style.removeProperty('--mv-seek-top')
+    }
+  }, [])
+
   return (
-    <div className="mv-controls" data-testid="media-controls">
+    <div className="mv-controls" data-testid="media-controls" ref={barRef}>
       <div className="mv-controls__row">
         <button
           className="mv-btn mv-btn--primary"
@@ -92,7 +124,6 @@ export function ControlBar({
           player={player}
           fileLoop={fileLoop}
           onFileLoop={onFileLoop}
-          cover={cover}
           sourceHeight={video.height}
         />
         <button

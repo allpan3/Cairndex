@@ -1,6 +1,20 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  memo,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 
 import { ConflictError, type BundleRead, type FileRead, thumbnailUrl } from '../api/client'
+import { bundleFileMenuEntries } from './bundleFileMenu'
+import { ContactSheetDialog } from './ContactSheetDialog'
+import { ConfirmDialog } from './PromptDialog'
+import type { ContactSheetTarget } from './contactSheetExport'
+import { ContextMenu } from './ContextMenu'
+import { collapsePrefixLengths } from './distinctNames'
+import { useContextMenu } from './useContextMenu'
 import {
   useBundle,
   useBundleFiles,
@@ -111,12 +125,18 @@ export function StarRating({ value, onChange }: { value: number; onChange: (v: n
   )
 }
 
-export function Inspector({
+// Memoized at this boundary because the viewer docks it beside a playing video:
+// `currentTime` re-renders the viewer several times a second, and without a
+// bail-out here every one of those walks the whole library's tags and
+// collections below (2026-07-27).
+export const Inspector = memo(function Inspector({
   bundleId,
   onAddFiles,
   onPlayBundle,
   onPlayFile,
   onStartFileDrag,
+  onFlash,
+  onFilterByTags,
 }: {
   bundleId: string | null
   /** Open the "Add files" manual bundling dialog for this bundle. */
@@ -127,6 +147,10 @@ export function Inspector({
   onPlayFile?: (bundleId: string, fileId: string) => void
   /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
   onStartFileDrag?: (relativePaths: string[]) => void
+  /** Report a transient message (export progress, results) to the shell. */
+  onFlash?: (message: string) => void
+  /** Filter the library by these tags, from a tag pill's menu. */
+  onFilterByTags?: (tagIds: string[]) => void
 }) {
   const { data: bundle } = useBundle(bundleId)
 
@@ -154,9 +178,11 @@ export function Inspector({
       onPlayBundle={onPlayBundle}
       onPlayFile={onPlayFile}
       onStartFileDrag={onStartFileDrag}
+      onFlash={onFlash}
+      onFilterByTags={onFilterByTags}
     />
   )
-}
+})
 
 function BundleEditor({
   bundle,
@@ -164,12 +190,16 @@ function BundleEditor({
   onPlayBundle,
   onPlayFile,
   onStartFileDrag,
+  onFlash,
+  onFilterByTags,
 }: {
   bundle: BundleRead
   onAddFiles?: (bundleId: string) => void
   onPlayBundle?: (bundleId: string) => void
   onPlayFile?: (bundleId: string, fileId: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
+  onFlash?: (message: string) => void
+  onFilterByTags?: (tagIds: string[]) => void
 }) {
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
@@ -326,7 +356,7 @@ function BundleEditor({
         />
       ))}
 
-      <TagEditor bundleId={bundleId} />
+      <TagEditor bundleId={bundleId} onFilterByTags={onFilterByTags} />
       <CollectionPicker bundleId={bundleId} />
 
       <FileList
@@ -337,6 +367,7 @@ function BundleEditor({
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
         onPlayFile={onPlayFile}
         onStartFileDrag={onStartFileDrag}
+        onFlash={onFlash}
       />
     </aside>
   )
@@ -471,6 +502,7 @@ export function FileList({
   onAddFiles,
   onPlayFile,
   onStartFileDrag,
+  onFlash,
 }: {
   bundleId: string
   bundleVersion: number
@@ -478,11 +510,24 @@ export function FileList({
   onAddFiles?: (bundleId: string) => void
   onPlayFile?: (bundleId: string, fileId: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
+  onFlash?: (message: string) => void
 }) {
+  const menu = useContextMenu()
+  const [sheetTarget, setSheetTarget] = useState<ContactSheetTarget | null>(null)
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundleVersion)
   const { reorder, remove } = useFileMutations(bundleId)
   const missingCount = files.filter((file) => file.availability !== 'available').length
+  // How much of each name is shared with a sibling and safe to collapse, so a
+  // narrow rail truncates what the rows have in common instead of the ending
+  // that tells them apart (owner, 2026-07-27).
+  // Memoized: this is O(files²) and the rail re-renders on every drag move and
+  // on every tick of playback when the viewer docks it — the same trap round 3
+  // fixed for the tag and collection pickers.
+  const nameCuts = useMemo(
+    () => collapsePrefixLengths(files.map((file) => file.display_title)),
+    [files],
+  )
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropSlot, setDropSlot] = useState<{ id: string; before: boolean } | null>(null)
   const dropSlotRef = useRef<{ id: string; before: boolean } | null>(null)
@@ -568,6 +613,20 @@ export function FileList({
               key={f.id}
               role="listitem"
               tabIndex={0}
+              onContextMenu={(event) => {
+                // The same menu the album grid shows for the same file — one
+                // definition, so the two surfaces cannot drift (owner,
+                // 2026-07-27). This rail has no host actions or trash gate of
+                // its own, so it offers the subset it can act on.
+                menu.open(
+                  event,
+                  bundleFileMenuEntries({
+                    targets: [f],
+                    onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
+                    onContactSheet: setSheetTarget,
+                  }),
+                )
+              }}
               data-reorder-file-id={f.id}
               title={dragTitle}
               aria-label={`${f.display_title}. ${dragTitle}`}
@@ -635,7 +694,19 @@ export function FileList({
             >
               <div className="file-row__main">
                 <div className="file-row__name">
-                  <span className="file-row__title">{f.display_title}</span>
+                  {(nameCuts[i] ?? 0) > 0 ? (
+                    <span
+                      className="file-row__title file-row__title--split"
+                      title={f.display_title}
+                    >
+                      <span className="fname__shared">{f.display_title.slice(0, nameCuts[i])}</span>
+                      <span className="fname__distinct">{f.display_title.slice(nameCuts[i])}</span>
+                    </span>
+                  ) : (
+                    <span className="file-row__title" title={f.display_title}>
+                      {f.display_title}
+                    </span>
+                  )}
                   {f.availability !== 'available' && (
                     <span className="badge badge--missing">missing</span>
                   )}
@@ -674,19 +745,19 @@ export function FileList({
                 {f.availability !== 'available' && (
                   <MissingFileRepairAction bundleId={bundleId} file={f} />
                 )}
-                <button
-                  className="tip"
-                  data-tip="Remove from bundle (keeps the file)"
-                  aria-label="Remove from bundle (keeps the file on disk)"
-                  onClick={() => remove.mutate(f.id)}
-                >
-                  ×
-                </button>
               </div>
             </div>
           )
         })}
       </div>
+      <ContextMenu state={menu.state} onClose={menu.close} />
+      {sheetTarget && (
+        <ContactSheetDialog
+          target={sheetTarget}
+          onClose={() => setSheetTarget(null)}
+          onReport={(message) => message !== null && onFlash?.(message)}
+        />
+      )}
     </div>
   )
 }
@@ -695,6 +766,7 @@ export function FileList({
 export function MissingFileRepairAction({ bundleId, file }: { bundleId: string; file: FileRead }) {
   const candidate = useFileRepairCandidate(bundleId, file.id, true)
   const repair = useRepairFile(bundleId, file.id)
+  const [confirmingRelink, setConfirmingRelink] = useState(false)
   if (candidate.isError)
     return (
       <span className="badge badge--missing" role="alert" title="Could not check repair matches">
@@ -712,13 +784,7 @@ export function MissingFileRepairAction({ bundleId, file }: { bundleId: string; 
         data-tip="Relink to current file"
         aria-label={label}
         title={label}
-        onClick={() => {
-          const confirmed = window.confirm(
-            `Relink this missing item to “${match.relative_path}”? ` +
-              'Its original bundle and file ID will be kept; the duplicate Cairndex link will be removed. Files on disk will not change.',
-          )
-          if (confirmed) repair.mutate(match.replacement_file_id)
-        }}
+        onClick={() => setConfirmingRelink(true)}
         disabled={repair.isPending}
       >
         ↻
@@ -727,6 +793,25 @@ export function MissingFileRepairAction({ bundleId, file }: { bundleId: string; 
         <span className="badge badge--missing" role="alert">
           relink failed
         </span>
+      )}
+      {confirmingRelink && (
+        <ConfirmDialog
+          title="Relink Missing File"
+          confirmLabel="Relink"
+          danger={false}
+          pending={repair.isPending}
+          onCancel={() => setConfirmingRelink(false)}
+          onConfirm={() => {
+            setConfirmingRelink(false)
+            repair.mutate(match.replacement_file_id)
+          }}
+          body={
+            <>
+              Relink this missing item to “{match.relative_path}”? Its original bundle and file ID
+              are kept; the duplicate Cairndex link is removed. Files on disk do not change.
+            </>
+          }
+        />
       )}
     </>
   )

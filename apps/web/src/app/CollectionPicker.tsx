@@ -52,6 +52,16 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
   const createCollection = useCreateCollection()
   const { open, setOpen, ref, panelRef, pos } = usePopover()
   const [search, setSearch] = useState('')
+
+  // Dismissing throws away what was typed: reopening the picker should present
+  // a clean field, not last time's half-finished search (owner, 2026-07-27).
+  // Compared during render rather than synced in an effect, so the stale text
+  // never paints. Catches every close — click away, Escape, or the anchor.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (wasOpen !== open) {
+    setWasOpen(open)
+    if (!open) setSearch('')
+  }
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [onlySelected, setOnlySelected] = useState(false)
   // Recently-used collection ids (most recent first), shared across bundles.
@@ -103,8 +113,13 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
   // Bottom section: the full tree (sidebar order). While searching, flatten and
   // filter so matches are never hidden inside a collapsed branch; when "only
   // selected" is on, show just the assigned rows (still in tree order).
+  // Only while the panel is on screen: this walks and sorts every collection in
+  // the library, and the viewer docks this inspector beside a playing video
+  // (2026-07-27).
   let rows: CollectionRow[]
-  if (search) {
+  if (!open) {
+    rows = []
+  } else if (search) {
     rows = flattenHierarchy(collections)
       .filter(({ item }) => matchSearch(item.name))
       .map(({ item }) => ({ item, depth: 0, hasChildren: false }))
@@ -114,6 +129,30 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
       .map(({ item }) => ({ item, depth: 0, hasChildren: false }))
   } else {
     rows = visibleCollectionRows(collections, collapsed)
+  }
+
+  // What Enter will take, decided once and rendered from the same value — the
+  // single match when the search narrows to one, an exact name if there is one,
+  // else "create what I typed". The tag picker has had this since round 3; the
+  // owner reported Enter doing nothing here (2026-07-27).
+  const enterTarget: CollectionRead | 'create' | null = (() => {
+    if (!trimmedSearch) return null
+    const matches = collections.filter((c) => matchSearch(c.name))
+    const exact = matches.find((c) => c.name.toLowerCase() === trimmedSearch.toLowerCase())
+    if (exact) return exact
+    if (matches.length === 1 && matches[0]) return matches[0]
+    return 'create'
+  })()
+
+  const acceptSearch = () => {
+    if (enterTarget === null) return
+    if (enterTarget === 'create') {
+      handleCreate(trimmedSearch)
+      setSearch('')
+      return
+    }
+    if (!assigned.has(enterTarget.id)) toggle(enterTarget.id)
+    setSearch('')
   }
 
   // Top section: recent collections (resolved + still-existing), hidden while
@@ -128,10 +167,13 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
 
   const Row = ({ item, depth, hasChildren }: CollectionRow) => {
     const on = assigned.has(item.id)
+    const isEnterTarget = enterTarget !== 'create' && enterTarget?.id === item.id
     const parent = item.parent_id ? byId.get(item.parent_id) : undefined
     return (
       <div
-        className={`pick-row${on ? ' pick-row--on' : ''}`}
+        className={`pick-row${on ? ' pick-row--on' : ''}${
+          isEnterTarget ? ' pick-row--target' : ''
+        }`}
         onClick={() => toggle(item.id)}
         role="option"
         aria-selected={on}
@@ -198,6 +240,11 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
                     placeholder="Search collections…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return
+                      e.preventDefault()
+                      acceptSearch()
+                    }}
                     autoFocus
                     aria-label="Search collections"
                   />
@@ -232,8 +279,13 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
                 ))}
                 {trimmedSearch !== '' && !hasExactMatch && (
                   <div
-                    className="pick-row pick-row--create"
-                    onClick={() => handleCreate(trimmedSearch)}
+                    className={`pick-row pick-row--create${
+                      enterTarget === 'create' ? ' pick-row--target' : ''
+                    }`}
+                    onClick={() => {
+                      handleCreate(trimmedSearch)
+                      setSearch('')
+                    }}
                     role="option"
                     aria-selected={false}
                   >
