@@ -33,20 +33,51 @@ ids are ULIDs, so the accepted charset (`[A-Za-z0-9_-]`) is comfortably
 permissive. Rust **101 passed** (+3: a real ULID through a trailing-slash base, a
 table of seven hostile ids, and the charset itself).
 
-**Already done, found while surveying:** case-only renames on case-insensitive
-filesystems are handled — `_rename_on_disk` stages via a temporary name. The W6
-list pairs that with EXDEV, which is not.
+**EXDEV — cross-device moves** (owner approved the copy-then-delete approach).
+`os.rename` cannot cross a filesystem boundary, and a library root can easily span
+one. All four relocating operations — rename, move, trash, restore — now funnel
+through one `file_ops/fsmove.py`, which keeps the existing case-only-rename
+handling and adds the fallback.
+
+The ordering is the safety property: copy to a hidden staging name **beside the
+destination** (so the commit is a same-filesystem, atomic rename), flush, commit,
+and only then remove the original. Every interruption leaves the bytes readable at
+one path or both — never neither. The commit also refuses an occupied destination
+outright, where `os.rename` would have clobbered it silently.
+
+**The crash window needed the reconciler to learn a new state.** Between commit
+and removal both copies exist — something a plain rename can never produce, so the
+reconciler had been calling it undecidable and failing the operation. It now
+finishes the metadata at the destination and records the leftover original in
+`leftover_source_paths` **rather than deleting it**: automatic recovery destroying
+original media is exactly what ADR-0013 forbids, so the duplicate is the owner's to
+remove through the ordinary journaled trash once they can see it.
+
+**The evidence is an explicit marker file, not inference.** The first cut compared
+size and mtime, which would have called two same-sized files written moments apart
+a copy — and that guess repoints an owner's metadata onto the wrong file. It also
+silently broke the existing "refuses to guess when both paths exist" test, which is
+how it was caught. A marker written across exactly that window settles it, mirroring
+how an interrupted import is identified by its leftover staging file; without one,
+the both-present case stays as ambiguous as it always was, which a test now pins.
+
+Known costs, recorded rather than solved: a cross-device move takes as long as the
+bytes take and needs room for a second copy while it runs, and moves are still
+synchronous (the `file_ops_batch` job is a separate W6 item). Directory trees are
+copied recursively with the same commit ordering, but their per-file durability
+flush is skipped as disproportionate — a power loss mid-tree leaves the source
+intact and an inert hidden staging directory.
+
+Backend **795 passed** (+10: the fallback for files and directories, staging
+cleanup, the refusal to overwrite, the source surviving a failed copy, both
+reconciler branches, and trash/restore across a boundary).
+
+**Also already done, found while surveying:** case-only renames on
+case-insensitive filesystems were already handled; that logic moved into `fsmove`
+unchanged.
 
 ### Remaining W6 items, and what each actually involves
 
-- **EXDEV** — a library root spanning mount points (or `.cairndex/trash` on a
-  different device from the file being trashed) makes `os.rename` fail with
-  `EXDEV`. Today that degrades safely to a per-file `failed_paths` entry, so
-  nothing is lost, but the operation can never succeed. The fix is a
-  copy-then-delete fallback, which is **not atomic** — the journal has to
-  represent a "copied, not yet deleted" state and the reconciler has to finish or
-  unwind it. It touches the never-rename/move/overwrite-original-media rule, so it
-  wants an owner decision on approach before it is written, not after.
 - **Drag-move onto a directory row** — the capability already exists via the Move
   to… dialog; this is a second gesture for it, alongside the File Browser's
   marquee and native drag-*out*. Its own slice, as W3 recorded.
