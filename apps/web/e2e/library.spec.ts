@@ -1072,13 +1072,50 @@ test('right-clicking a bundle deletes it via the context menu', async ({ page })
   await expect(menu).toBeVisible()
   await menu.getByRole('menuitem', { name: 'Delete Bundle' }).click()
 
-  // Confirm in the styled dialog; the "delete files" box is off by default.
+  // Confirm in the styled dialog. Without write mode there is no "delete files"
+  // checkbox at all — the server would refuse it, so the dialog does not ask.
   const dialog = page.getByRole('dialog', { name: 'Delete bundle' })
   await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0)
+  await expect(dialog).toContainText('The files stay where they are on disk.')
   await dialog.getByRole('button', { name: 'Delete' }).click()
 
   await expect.poll(() => deleted).toBe('b0')
+})
+
+test('with write mode on, the delete dialog offers the files checkbox, off by default', async ({
+  page,
+}) => {
+  await mockApi(page)
+  // Write mode is both gates agreeing (ADR-0013 §1): the deployment's /health
+  // flag and the library row's own opt-in — so the mock patches both.
+  await page.route('**/api/v1/health', (r) =>
+    r.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
+  )
+  await page.route('**/api/v1/libraries', (r) =>
+    r.fulfill({
+      json: [
+        {
+          id: 'lib1',
+          name: 'Test Library',
+          root_path: '/srv/lib',
+          status: 'available',
+          write_mode_enabled: true,
+        },
+      ],
+    }),
+  )
+
+  await page.goto('/')
+  await page.locator('.card').first().click({ button: 'right' })
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Delete Bundle' }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Delete bundle' })
+  await expect(dialog).toBeVisible()
+  const checkbox = dialog.getByRole('checkbox')
+  await expect(checkbox).not.toBeChecked()
+  await checkbox.check()
+  await expect(dialog).toContainText('move to this library’s Trash')
 })
 
 test('deleting a collection offers a subcollections choice', async ({ page }) => {
