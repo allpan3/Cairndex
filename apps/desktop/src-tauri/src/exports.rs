@@ -14,8 +14,87 @@ use std::path::{Path, PathBuf};
 
 use tauri::{async_runtime, AppHandle, Runtime};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_store::StoreExt;
 
-use crate::mappings::MappingError;
+use crate::mappings::{MappingError, STORE_PATH};
+
+/// Where exports land without asking, when the owner has chosen a folder in
+/// Settings. Absent (the default) means every save asks via the native dialog.
+const EXPORT_DIR_KEY: &str = "exportDir";
+
+/// The configured default export folder, if it is set *and still exists* — a
+/// folder deleted since it was chosen falls back to the dialog rather than an
+/// error the owner cannot see the reason for.
+fn stored_export_dir<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
+    let store = app.store(STORE_PATH).ok()?;
+    let value = store.get(EXPORT_DIR_KEY)?;
+    let path = PathBuf::from(value.as_str()?);
+    path.is_dir().then_some(path)
+}
+
+/// A destination inside `dir` that does not overwrite: `name`, then
+/// `name (2)`, `name (3)`, … — the same keep-both convention the library's own
+/// collision policy uses. Original media safety does not apply here (this is an
+/// export folder), but silently replacing the previous export would still lose
+/// the owner's file.
+fn vacant_destination(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem.to_owned(), format!(".{ext}")),
+        _ => (name.to_owned(), String::new()),
+    };
+    (2..)
+        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
+        .find(|candidate| !candidate.exists())
+        .expect("the counter is unbounded")
+}
+
+/// The configured default export folder, for the Settings display.
+#[tauri::command]
+pub(crate) fn get_export_dir<R: Runtime>(app: AppHandle<R>) -> Option<String> {
+    stored_export_dir(&app).and_then(|p| p.to_str().map(str::to_owned))
+}
+
+/// Lets the owner pick (and persist) the default export folder.
+///
+/// The path enters the store only from the OS folder picker — the web layer can
+/// ask for the dialog but never name a path, the same boundary as every other
+/// filesystem-touching command.
+#[tauri::command]
+pub(crate) async fn pick_export_dir<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Option<String>, MappingError> {
+    let (sender, receiver) = async_runtime::channel::<Option<PathBuf>>(1);
+    app.dialog().file().pick_folder(move |path| {
+        let _ = sender.blocking_send(path.and_then(|p| p.into_path().ok()));
+    });
+    let mut receiver = receiver;
+    let Some(chosen) = receiver.recv().await.flatten() else {
+        return Ok(None); // cancelled; the stored value is untouched
+    };
+    let text = chosen
+        .to_str()
+        .map(str::to_owned)
+        .ok_or_else(MappingError::unsupported_path_encoding)?;
+    let store = app
+        .store(STORE_PATH)
+        .map_err(|_| MappingError::host_action_failed())?;
+    store.set(EXPORT_DIR_KEY, serde_json::Value::String(text.clone()));
+    Ok(Some(text))
+}
+
+/// Back to ask-every-time.
+#[tauri::command]
+pub(crate) fn clear_export_dir<R: Runtime>(app: AppHandle<R>) -> Result<(), MappingError> {
+    let store = app
+        .store(STORE_PATH)
+        .map_err(|_| MappingError::host_action_failed())?;
+    store.delete(EXPORT_DIR_KEY);
+    Ok(())
+}
 
 /// Reduces a caller-supplied suggestion to a bare filename.
 ///
@@ -56,6 +135,17 @@ pub(crate) async fn save_export_file<R: Runtime>(
 ) -> Result<Option<String>, MappingError> {
     let name = sanitize_file_name(&suggested_name).ok_or_else(MappingError::host_action_failed)?;
 
+    // A configured default folder saves straight there (keep-both on a name
+    // collision) — that is the whole point of the setting. Unset, or pointing
+    // at a folder that no longer exists, falls back to asking.
+    if let Some(dir) = stored_export_dir(&app) {
+        let destination = vacant_destination(&dir, &name);
+        let written = async_runtime::spawn_blocking(move || write_artifact(&destination, &bytes))
+            .await
+            .map_err(|_| MappingError::host_action_failed())??;
+        return Ok(Some(written));
+    }
+
     let (sender, receiver) = async_runtime::channel::<Option<PathBuf>>(1);
     app.dialog()
         .file()
@@ -88,6 +178,31 @@ fn write_artifact(path: &Path, bytes: &[u8]) -> Result<String, MappingError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vacant_destination_keeps_both_with_a_counter() {
+        let dir =
+            std::env::temp_dir().join(format!("cairndex-exports-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert_eq!(vacant_destination(&dir, "sheet.jpg"), dir.join("sheet.jpg"));
+        std::fs::write(dir.join("sheet.jpg"), b"x").unwrap();
+        assert_eq!(
+            vacant_destination(&dir, "sheet.jpg"),
+            dir.join("sheet (2).jpg")
+        );
+        std::fs::write(dir.join("sheet (2).jpg"), b"x").unwrap();
+        assert_eq!(
+            vacant_destination(&dir, "sheet.jpg"),
+            dir.join("sheet (3).jpg")
+        );
+        // A dotless name counts whole.
+        std::fs::write(dir.join("raw"), b"x").unwrap();
+        assert_eq!(vacant_destination(&dir, "raw"), dir.join("raw (2)"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn keeps_an_ordinary_name() {
