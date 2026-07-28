@@ -14,8 +14,16 @@ import {
   listenHostFullscreen,
   toggleHostWindowFullscreen,
 } from '../../../platform'
+import {
+  createLeadingTrailingThrottle,
+  type LeadingTrailingThrottle,
+} from '../../../lib/leadingTrailingThrottle'
 import type { PlayerPrefs } from '../../types'
 import { createEngine, type PlaybackEngine, type PlaybackSource } from './engine'
+
+// Auto-repeat on an arrow key fires far faster than a media element can start a
+// new byte range. Matches the drag throttle in `SeekBar`.
+const RELATIVE_SEEK_THROTTLE_MS = 150
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'
 
@@ -118,6 +126,21 @@ export function usePlayer({
     setVideoElementState(element)
   }, [])
 
+  // Latest accumulated relative-seek target, and the throttle that commits it.
+  const pendingSeek = useRef<number | null>(null)
+  const relativeSeek = useRef<LeadingTrailingThrottle<number> | null>(null)
+  useEffect(() => {
+    const throttle = createLeadingTrailingThrottle(RELATIVE_SEEK_THROTTLE_MS, (time: number) => {
+      pendingSeek.current = null
+      engineRef.current?.seek(time)
+    })
+    relativeSeek.current = throttle
+    return () => {
+      throttle.cancel()
+      relativeSeek.current = null
+    }
+  }, [])
+
   const syncBuffered = useCallback(() => {
     const video = videoRef.current
     if (!video) return
@@ -125,7 +148,12 @@ export function usePlayer({
     for (let i = 0; i < video.buffered.length; i += 1) {
       ranges.push({ start: video.buffered.start(i), end: video.buffered.end(i) })
     }
-    setBuffered(ranges)
+    setBuffered((previous) =>
+      previous.length === ranges.length &&
+      previous.every((range, i) => range.start === ranges[i]?.start && range.end === ranges[i]?.end)
+        ? previous
+        : ranges,
+    )
   }, [])
 
   useEffect(() => {
@@ -262,18 +290,37 @@ export function usePlayer({
     else pause()
   }, [pause, play])
 
-  const seek = useCallback((time: number) => {
-    engineRef.current?.seek(time)
-    const live = videoRef.current
-    const limit = live?.duration ?? 0
-    setCurrentTime(Math.max(0, Math.min(time, limit || time)))
+  const clampTime = useCallback((time: number) => {
+    const limit = videoRef.current?.duration ?? 0
+    return Math.max(0, Math.min(time, limit || time))
   }, [])
 
+  const seek = useCallback(
+    (time: number) => {
+      pendingSeek.current = null
+      relativeSeek.current?.cancel()
+      const target = clampTime(time)
+      engineRef.current?.seek(target)
+      setCurrentTime(target)
+    },
+    [clampTime],
+  )
+
+  // Relative seeking is the auto-repeat path: holding an arrow key emits ~30
+  // keydowns a second, and every `currentTime` write aborts the in-flight byte
+  // range and opens a new one — punishing on a 25 Mbps 4K source. Accumulate
+  // the deltas so a held key still travels the same distance, show the moving
+  // target immediately, and let the element see one seek per window. The drag
+  // path has had this since it shipped (`SeekBar`); the keyboard never did.
   const seekBy = useCallback(
     (delta: number) => {
-      seek((videoRef.current?.currentTime ?? 0) + delta)
+      const from = pendingSeek.current ?? videoRef.current?.currentTime ?? 0
+      const target = clampTime(from + delta)
+      pendingSeek.current = target
+      setCurrentTime(target)
+      relativeSeek.current?.schedule(target)
     },
-    [seek],
+    [clampTime],
   )
 
   const setVolume = useCallback(
@@ -348,9 +395,9 @@ export function usePlayer({
   const frameStep = useCallback(
     (delta: number) => {
       pause()
-      seek((videoRef.current?.currentTime ?? 0) + delta / 30)
+      seekBy(delta / 30)
     },
-    [pause, seek],
+    [pause, seekBy],
   )
 
   const player = useMemo<PlayerController>(() => {

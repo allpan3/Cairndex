@@ -3,11 +3,12 @@ import { useRef, useState } from 'react'
 import type { CollectionRead } from '../api/client'
 import { collectionThumbnailUrl } from '../api/client'
 import type { DragItem } from './dnd'
+import type { LayoutMode } from './types'
 import { dropZone, getActiveDrag, sameTarget, seamFor, setActiveDrag } from './dnd'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
 import { IconChevron, IconFolder } from './icons'
-import { collectionCardWidth } from './layout'
+import { collectionCardWidth, listRowHeight } from './layout'
 import { gapBefore } from './reorder'
 import { type MarqueeRect, rectsIntersect, useMarqueeSelect } from './useMarqueeSelect'
 
@@ -44,6 +45,10 @@ interface CollectionHeaderProps {
   onReparentCollections: (ids: string[], targetId: string) => void
   onMoveBundlesInto: (targetId: string, alt: boolean) => void
   selectedIds: Set<string>
+  /** The shell toolbar's layout. `list` renders rows; grid and justified both
+   *  keep the cards — a folder card has no aspect ratio to justify (owner,
+   *  2026-07-27). */
+  layout?: LayoutMode
   // Target card width (px) — driven by the toolbar zoom slider, shared with the
   // bundle grid.
   zoom: number
@@ -189,6 +194,7 @@ export function CollectionHeader({
   onMoveBundlesInto,
   selectedIds,
   zoom,
+  layout = 'grid',
   subcollapsed,
   onToggleSubcollapsed,
   contentsCount,
@@ -199,6 +205,7 @@ export function CollectionHeader({
   // itself doesn't scroll — so auto-scroll-on-drag targets that, while hit
   // testing and the marquee rect stay relative to the grid.
   const scrollElRef = useRef<HTMLDivElement | null>(null)
+  const listLayout = layout === 'list'
   const gridRef = useRef<HTMLDivElement | null>(null)
   // Drop feedback for the hovered folder card: which card and which zone
   // (before/after = reorder gap, into = reparent/add). The dragged item itself
@@ -376,12 +383,17 @@ export function CollectionHeader({
       {!subcollapsed && (
         <div
           ref={gridRef}
-          className="collcard__grid"
+          className={`collcard__grid${listLayout ? ' collcard__grid--rows' : ''}`}
           style={{
             // Folder cards follow their own (smaller) curve off the shared zoom
             // slider — see collectionCardWidth — so they don't grow as large as
-            // bundle tiles.
-            gridTemplateColumns: `repeat(auto-fill, minmax(${collectionCardWidth(zoom)}px, 1fr))`,
+            // bundle tiles. In list layout the rows column ignores the template.
+            gridTemplateColumns: listLayout
+              ? undefined
+              : `repeat(auto-fill, minmax(${collectionCardWidth(zoom)}px, 1fr))`,
+            // Rows scale off the same slider, on the file-row curve, so "zoom"
+            // means one thing everywhere (owner, 2026-07-27).
+            ...(listLayout ? { ['--coll-row-h' as string]: `${listRowHeight(zoom)}px` } : {}),
             position: 'relative',
           }}
         >

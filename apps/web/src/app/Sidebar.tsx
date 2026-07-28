@@ -23,6 +23,7 @@ import {
   IconLibrary,
   IconLooseStack,
   IconSettings,
+  IconShuffle,
   IconTag,
   IconTagQuestion,
   IconTrash,
@@ -44,6 +45,8 @@ function viewIcon(view: SystemView): ReactNode {
       return <IconGrid />
     case 'recent':
       return <IconClock />
+    case 'random':
+      return <IconShuffle />
     case 'uncategorized':
       return <IconFolderQuestion />
     case 'untagged':
@@ -573,7 +576,9 @@ export function Sidebar({
           // Unbundled and Missing Files are "needs attention" queues: highlight a
           // non-zero count (zero stays neutral).
           const hinted = isUnbundled || v.view === 'missing'
-          const count = counts?.[v.view]
+          // Random is every bundle in a shuffle, so its count *is* the All count —
+          // the server keeps no separate number for it.
+          const count = v.view === 'random' ? counts?.all : counts?.[v.view]
           const active = isUnbundled
             ? mode === 'file' && fileScope === 'unbundled'
             : mode === 'collection' && selection.collectionId === null && selection.view === v.view

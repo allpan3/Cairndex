@@ -51,6 +51,14 @@ export interface HostPlatform {
    * destination can only come from the OS dialog.
    */
   saveExport(suggestedName: string, bytes: Uint8Array): Promise<string | null>
+  /**
+   * The configured default export folder (Settings → Exports), or null for
+   * ask-every-time. Desktop only; the browser cannot write outside downloads.
+   */
+  getExportDir?(): Promise<string | null>
+  /** Native folder picker; persists and returns the choice (null = cancelled). */
+  pickExportDir?(): Promise<string | null>
+  clearExportDir?(): Promise<void>
 }
 
 /** The running local-server sidecar (plan 3 D6). */

@@ -43,6 +43,13 @@ export interface PlayerPrefs {
   subtitlesOn: boolean
   seekStep: PlayerSeekStep
   preservesPitch: boolean
+  // Whether the viewer's media-info panel (metadata + playlist) is open.
+  // Persisted like the rest, so it stays where it was left across files.
+  infoOpen: boolean
+  // Whether the viewer's bundle-inspector rail is expanded — the same inspector
+  // as the main shell, on its own toggle (owner, 2026-07-27: the two are
+  // different things and each wants its own control).
+  inspectorOpen: boolean
 }
 
 export interface BrowsePrefs {
@@ -69,6 +76,8 @@ export const DEFAULT_PLAYER_PREFS: PlayerPrefs = {
   subtitlesOn: true,
   seekStep: 5,
   preservesPitch: true,
+  infoOpen: false,
+  inspectorOpen: false,
 }
 
 export const DEFAULT_PREFS: BrowsePrefs = {
@@ -93,6 +102,8 @@ export interface SystemViewDef {
 export const SYSTEM_VIEWS: SystemViewDef[] = [
   { view: 'all', label: 'All', icon: '▦' },
   { view: 'recent', label: 'Recent', icon: '🕗' },
+  // Every bundle in a seeded shuffle — browse-by-serendipity (owner, 2026-07-27).
+  { view: 'random', label: 'Random', icon: '🔀' },
   { view: 'uncategorized', label: 'Uncategorized', icon: '◌' },
   { view: 'untagged', label: 'Untagged', icon: '⛉' },
   // The file-first "to-bundle queue" (its count is highlighted) sits with the

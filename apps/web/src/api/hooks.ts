@@ -977,6 +977,52 @@ export function useCreateTag() {
   })
 }
 
+/**
+ * Create a tag from a typed name, reading `/` as a hierarchy divider: `a/b/c`
+ * creates (or reuses) `a`, then `b` under it, then `c` under that, and resolves
+ * to the leaf. A name without a slash behaves exactly like `useCreateTag`.
+ *
+ * Existing segments are matched case-insensitively against `existing` — the tag
+ * list the caller is already rendering from — so typing a parent that exists
+ * nests under it rather than erroring on the sibling-name constraint.
+ */
+export function useCreateTagPath() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({
+      path,
+      existing,
+    }: {
+      path: string
+      existing: TagRead[]
+    }): Promise<TagRead> => {
+      const segments = path
+        .split('/')
+        .map((part) => part.trim())
+        .filter(Boolean)
+      if (segments.length === 0) throw new Error('tag name must not be empty')
+      const known = [...existing]
+      let parentId: string | null = null
+      let leaf: TagRead | null = null
+      for (const name of segments) {
+        const found = known.find(
+          (tag) =>
+            (tag.parent_id ?? null) === parentId && tag.name.toLowerCase() === name.toLowerCase(),
+        )
+        if (found) {
+          leaf = found
+        } else {
+          leaf = await createTag({ name, parent_id: parentId })
+          known.push(leaf)
+        }
+        parentId = leaf.id
+      }
+      return leaf as TagRead
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tags'] }),
+  })
+}
+
 /** Rename/delete/reparent tags for the All Tags management page (Slice 3). */
 export function useTagMutations() {
   const qc = useQueryClient()
@@ -1001,7 +1047,8 @@ export function useTagMutations() {
       onSettled: invalidate,
     }),
     remove: useMutation({
-      mutationFn: (id: string) => deleteTag(id),
+      mutationFn: ({ id, cascade }: { id: string; cascade?: boolean }) =>
+        deleteTag(id, cascade ?? false),
       onSuccess: invalidate,
     }),
     // Drag-to-reparent: move a tag under a new parent (null = top level). The tree
@@ -1164,11 +1211,30 @@ export function useSetBundleTags(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (ids: string[]) => setBundleTags(id, ids),
-    onSuccess: () => {
+    // Optimistic: the chip appears on click rather than after a round trip plus
+    // a refetch. Tagging felt like it took a second (owner, 2026-07-27) because
+    // the picker only redrew once `bundle-tags` came back, behind a full
+    // `browse` refetch competing for the same connections.
+    onMutate: async (ids: string[]) => {
+      const key = ['bundle-tags', id]
+      await qc.cancelQueries({ queryKey: key })
+      const previous = qc.getQueryData<{ bundle_id: string; tag_ids: string[] }>(key)
+      if (previous) qc.setQueryData(key, { ...previous, tag_ids: ids })
+      return { previous }
+    },
+    onError: (_error, _ids, context) => {
+      // Put the old set back; the server rejected the change.
+      if (context?.previous) qc.setQueryData(['bundle-tags', id], context.previous)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle-tags', id] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
-      qc.invalidateQueries({ queryKey: ['browse'] })
+      // Only the Untagged view's *membership* depends on tags; every other
+      // browse row is unaffected, so refetching the whole grid on every tag was
+      // work nobody could see. Refetch it lazily instead of forcing it now:
+      // an inactive query refetches when its view is next shown.
+      qc.invalidateQueries({ queryKey: ['browse'], refetchType: 'none' })
     },
   })
 }
@@ -1177,10 +1243,23 @@ export function useSetBundleCollections(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (ids: string[]) => setBundleCollections(id, ids),
-    onSuccess: () => {
+    // Optimistic for the same reason as tags — see useSetBundleTags.
+    onMutate: async (ids: string[]) => {
+      const key = ['bundle-collections', id]
+      await qc.cancelQueries({ queryKey: key })
+      const previous = qc.getQueryData<{ bundle_id: string; collection_ids: string[] }>(key)
+      if (previous) qc.setQueryData(key, { ...previous, collection_ids: ids })
+      return { previous }
+    },
+    onError: (_error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(['bundle-collections', id], context.previous)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
       qc.invalidateQueries({ queryKey: ['collection-counts'] })
       qc.invalidateQueries({ queryKey: ['view-counts'] })
+      // Membership *does* decide which bundles a collection view lists, so this
+      // one still refetches — but only the collection-scoped grids, when shown.
       qc.invalidateQueries({ queryKey: ['browse'] })
     },
   })

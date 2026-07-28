@@ -116,6 +116,7 @@ def browse_bundles(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 100,
     q: Annotated[str | None, Query()] = None,
+    seed: Annotated[int | None, Query(ge=0)] = None,
 ) -> BundleBrowsePage:
     return _browse_page(
         db,
@@ -127,6 +128,7 @@ def browse_bundles(
         offset=offset,
         limit=limit,
         search=q,
+        seed=seed,
     )
 
 
@@ -145,6 +147,7 @@ def browse_bundles_filtered(payload: BrowseRequest, db: LibrarySession) -> Bundl
         limit=payload.limit,
         filter_expr=payload.filter,
         search=payload.q,
+        seed=payload.seed,
     )
 
 

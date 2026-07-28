@@ -547,3 +547,65 @@ def test_reordering_is_not_editing(session: Session) -> None:
     for x in (a, b, c):
         session.refresh(x)
         assert x.updated_at == stamps[x.id], f"{x.title} was stamped modified by a reorder"
+
+
+# --- The Random view (owner request, 2026-07-27) -----------------------------
+
+
+def _confirmed(session: Session, name: str) -> AssetBundle:
+    bundle = bundle_service.create_bundle(session, title=name)
+    bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path=f"{name}.mkv",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    return bundle
+
+
+def test_random_view_lists_everything_in_a_seed_stable_shuffle(session: Session) -> None:
+    ids = [_confirmed(session, f"v{i}").id for i in range(8)]
+    session.flush()
+
+    first = browse_bundles(session, view=SystemView.RANDOM, seed=1234, limit=100)
+    again = browse_bundles(session, view=SystemView.RANDOM, seed=1234, limit=100)
+    other = browse_bundles(session, view=SystemView.RANDOM, seed=99, limit=100)
+
+    assert sorted(s.id for s in first.items) == sorted(ids)
+    # Same seed, same order — that is what keeps offset paging coherent.
+    assert [s.id for s in first.items] == [s.id for s in again.items]
+    # A different seed is a different order (with 8! arrangements, a collision
+    # would point at a broken permutation, not bad luck).
+    assert [s.id for s in first.items] != [s.id for s in other.items]
+
+
+def test_random_view_pages_without_duplicates_or_gaps(session: Session) -> None:
+    ids = {_confirmed(session, f"p{i}").id for i in range(7)}
+    session.flush()
+
+    pages = [
+        browse_bundles(session, view=SystemView.RANDOM, seed=42, offset=offset, limit=3)
+        for offset in (0, 3, 6)
+    ]
+
+    walked = [s.id for page in pages for s in page.items]
+    assert len(walked) == len(set(walked)) == 7
+    assert set(walked) == ids
+    assert all(page.total == 7 for page in pages)
+
+
+def test_random_view_ignores_the_sort_params(session: Session) -> None:
+    for i in range(6):
+        _confirmed(session, f"s{i}")
+    session.flush()
+
+    by_title = browse_bundles(
+        session, view=SystemView.RANDOM, seed=7, sort=BundleSort.TITLE, descending=False
+    )
+    by_date = browse_bundles(
+        session, view=SystemView.RANDOM, seed=7, sort=BundleSort.DATE_ADDED, descending=True
+    )
+
+    # The shuffle is the order; sort params must not be a back door out of it.
+    assert [s.id for s in by_title.items] == [s.id for s in by_date.items]

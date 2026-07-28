@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.core.time import utcnow
 from cairndex.persistence.concurrency import guard_and_bump_version
-from cairndex.persistence.models import Tag
+from cairndex.persistence.models import Tag, asset_bundle_tags
 from cairndex.services.hierarchy import descendant_ids, is_descendant
 from cairndex.services.pagination import keyset_page
 
@@ -94,24 +94,53 @@ def update_tag(
     return tag
 
 
-def delete_tag(session: Session, tag_id: str) -> None:
-    """Delete a leaf tag (metadata only). Bundle/tag assignments and tag-group
+def delete_tag(session: Session, tag_id: str, *, cascade: bool = False) -> None:
+    """Delete a tag (metadata only). Bundle/tag assignments and tag-group
     memberships fall away via FK cascade; no file or bundle is touched.
 
-    First-version safe behavior (All Tags page): a tag with child tags is *not*
-    cascaded — deletion is blocked with a friendly error so the owner deletes or
-    moves the children first. Only leaf tags delete outright.
+    A tag with children needs ``cascade``, which deletes the whole subtree. It
+    used to be refused outright so the owner would move the children first, but
+    that made deleting a parent look broken rather than guarded (owner,
+    2026-07-27) — the decision belongs to the caller, which asks first and says
+    how many tags it is about to take.
     """
     tag = get_tag(session, tag_id)
     child_count = (
         session.scalar(select(func.count()).select_from(Tag).where(Tag.parent_id == tag_id)) or 0
     )
-    if child_count:
+    if child_count and not cascade:
         raise ConflictError(
-            "this tag has child tags — delete or move them first, then delete the parent tag"
+            "this tag has child tags — deleting it removes them too; confirm to continue"
         )
-    session.delete(tag)
+    if cascade:
+        # Deepest first, so no row is orphaned mid-transaction whatever the
+        # database's own FK behaviour is.
+        ids = descendant_ids(session, Tag, tag_id, include_self=True)
+        for descendant_id in reversed(ids):
+            descendant = session.get(Tag, descendant_id)
+            if descendant is not None:
+                session.delete(descendant)
+    else:
+        session.delete(tag)
     session.flush()
+
+
+def tag_delete_impact(session: Session, tag_id: str) -> tuple[int, int]:
+    """How many tags a delete would remove, and how many bundles it would touch.
+
+    Asked before the confirmation prompt so the prompt can say what it costs.
+    """
+    get_tag(session, tag_id)  # 404 for an unknown tag, like every other tag route
+    ids = descendant_ids(session, Tag, tag_id, include_self=True)
+    bundles = (
+        session.scalar(
+            select(func.count(func.distinct(asset_bundle_tags.c.bundle_id))).where(
+                asset_bundle_tags.c.tag_id.in_(ids)
+            )
+        )
+        or 0
+    )
+    return len(ids), bundles
 
 
 def tag_descendant_ids(session: Session, tag_id: str, *, include_self: bool = True) -> list[str]:

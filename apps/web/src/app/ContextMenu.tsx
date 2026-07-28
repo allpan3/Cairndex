@@ -27,19 +27,37 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
 
   useEffect(() => {
     if (!state) return
+    // The dismissing gesture belongs to the menu and stops there, the same rule
+    // the pickers follow: clicking the sidebar left the menu open, and clicking
+    // the shell cleared the bundle selection underneath it — the marquee acts on
+    // mousedown/mouseup, so stopping the click alone is too late (owner,
+    // 2026-07-27). Captured, so nothing beneath ever sees it.
+    const inside = (target: EventTarget | null) => ref.current?.contains(target as Node) ?? false
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose()
+      if (inside(e.target)) return
+      onClose()
+      e.stopPropagation()
+    }
+    const onAway = (e: MouseEvent) => {
+      if (inside(e.target)) return
+      e.stopPropagation()
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      onClose()
+      e.stopPropagation()
     }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onDown, true)
+    window.addEventListener('mouseup', onAway, true)
+    window.addEventListener('click', onAway, true)
+    window.addEventListener('keydown', onKey, true)
     window.addEventListener('scroll', onClose, true)
     window.addEventListener('resize', onClose)
     return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDown, true)
+      window.removeEventListener('mouseup', onAway, true)
+      window.removeEventListener('click', onAway, true)
+      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('scroll', onClose, true)
       window.removeEventListener('resize', onClose)
     }

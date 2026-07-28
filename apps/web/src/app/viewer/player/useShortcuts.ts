@@ -102,13 +102,13 @@ export function handleViewerShortcut(
   if (isEditingTarget(event.target)) return false
   const key = event.key
   if (key === 'Escape') {
-    // Escape leaves fullscreen before it closes the viewer. In the shell that
-    // fullscreen is the native window, so `document.fullscreenElement` is null and
-    // the viewer-supplied state is the only reliable signal — including for image
-    // bundles, which have no player but can still be fullscreen.
+    // Escape closes the viewer, fullscreen or not — the owner expects one press
+    // to put the player away rather than two (2026-07-27). Fullscreen is dropped
+    // first because leaving the viewer inside it would strand the shell there;
+    // `f` remains the way to leave fullscreen and keep watching.
     if (document.fullscreenElement) void document.exitFullscreen()
     else if (actions.isFullscreen()) actions.exitFullscreen()
-    else actions.close()
+    actions.close()
     return true
   }
   if (key.toLowerCase() === 'i') {
@@ -124,6 +124,9 @@ export function handleViewerShortcut(
 
   // Keys that mirror a native Playback menu item go through the shared dispatcher
   // so the two surfaces cannot diverge; the rest are viewer-only bindings.
+  // Owner remap (2026-07-27): `,`/`.` step frames (the video-editor convention),
+  // and speed moved to z/x/c — z resets to 1×, x slower, c faster. `c` used to
+  // toggle subtitles; that moved to `v` (mpv's binding).
   const lower = key.toLowerCase()
   const command: ViewerCommand | null =
     key === ' ' || lower === 'k'
@@ -134,13 +137,13 @@ export function handleViewerShortcut(
           ? 'seek-forward'
           : lower === 'm'
             ? 'toggle-mute'
-            : lower === 'c'
+            : lower === 'v'
               ? 'toggle-subtitles'
               : lower === 's'
                 ? 'snapshot'
-                : key === ','
+                : lower === 'x'
                   ? 'rate-down'
-                  : key === '.'
+                  : lower === 'c'
                     ? 'rate-up'
                     : null
   if (command) return runViewerCommand(command, player, actions)
@@ -150,8 +153,9 @@ export function handleViewerShortcut(
   else if (key === 'ArrowUp') player.setVolume(Math.min(1, player.volume + 0.05))
   else if (key === 'ArrowDown') player.setVolume(Math.max(0, player.volume - 0.05))
   else if (lower === 'f') player.toggleFullscreen()
-  else if (key === '<') player.frameStep(-1)
-  else if (key === '>') player.frameStep(1)
+  else if (key === ',' || key === '<') player.frameStep(-1)
+  else if (key === '.' || key === '>') player.frameStep(1)
+  else if (lower === 'z') player.setRate(1)
   else if (/^[0-9]$/.test(key)) player.seek((player.duration * Number(key)) / 10)
   else return false
 

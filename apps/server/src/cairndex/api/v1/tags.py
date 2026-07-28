@@ -1,9 +1,11 @@
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
-from cairndex.api.schemas.taxonomy import TagCreate, TagRead, TagUpdate
+from cairndex.api.schemas.taxonomy import TagCreate, TagDeleteImpact, TagRead, TagUpdate
 from cairndex.services import browse as browse_service
 from cairndex.services import tags as service
 
@@ -52,6 +54,19 @@ def update_tag(
     return TagRead.model_validate(tag)
 
 
+@router.get("/{tag_id}/delete-impact", response_model=TagDeleteImpact)
+def tag_delete_impact(tag_id: str, db: LibrarySession) -> TagDeleteImpact:
+    """What deleting this tag would take with it, for the confirmation prompt."""
+    tags, bundles = service.tag_delete_impact(db, tag_id)
+    return TagDeleteImpact(tags=tags, bundles=bundles)
+
+
 @router.delete("/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_tag(tag_id: str, db: LibrarySession) -> None:
-    service.delete_tag(db, tag_id)
+def delete_tag(
+    tag_id: str,
+    db: LibrarySession,
+    cascade: Annotated[bool, Query()] = False,
+) -> None:
+    """Delete a tag. `cascade` also deletes its child tags, which is refused
+    without it so a parent is never taken by accident."""
+    service.delete_tag(db, tag_id, cascade=cascade)
