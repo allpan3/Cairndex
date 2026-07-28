@@ -13,15 +13,48 @@
 > `just check-web` gate that had not been type-checking anything. The viewer's
 > failure copy (PR #36) and the MP4 keyframe-index read (PR #37) are **merged**,
 > as are file formats, encoding facts and richer file rows (PR #38). **`main` is
-> the v0.1.0 content** — the changelog is cut and the two stale plan rows are
-> corrected; PR #39 (folder-as-bundle-member) is open and deliberately *not* in
-> this release. Cutting it is: push a `v0.1.0` tag, which `release.yml` turns
-> into a drafted release, then publish the draft. No other branches are open. Two things still need the owner: a pass on a genuinely
+> the v0.1.0 content**, and **[v0.1.0 is published](https://github.com/allpan3/Cairndex/releases/tag/v0.1.0)**
+> (2026-07-28) — tag `v0.1.0` at `e73f251`, one Apple Silicon DMG with its
+> checksum and the third-party notices, verified by the owner on a genuinely
+> downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
+> *not* in this release. **Next is phase I, the Android client** (plan 2
+> T1–T7). No other branches are open. Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## Shipped: v0.1.0, the first public release (2026-07-28)
+
+**[Published](https://github.com/allpan3/Cairndex/releases/tag/v0.1.0)** at
+11:12 UTC. Tag `v0.1.0` → `e73f251`; assets are `Cairndex_0.1.0_aarch64.dmg`
+(95.4 MB), its `.sha256`, and `THIRD-PARTY-NOTICES.md`, which has to travel with
+the artifact because the bundle carries a GPL ffmpeg.
+
+**Both owner-only verifications are now done**, on a real downloaded build
+rather than a local one — which is the whole reason D7 deferred them rather than
+claiming them:
+
+- **Gatekeeper first launch.** The ad-hoc signature means macOS refuses the
+  first open; the README's System Settings → Privacy & Security → Open Anyway
+  path works, and it repeats per update until the updater lands.
+- **Drag-out to Finder**, exercised from a **network (SMB) library** — which
+  incidentally proved the path-resolution-off-the-IPC-thread design, since
+  canonicalizing an offline mount is exactly what would otherwise stall the UI.
+  It copies rather than moves. That is by design and not an artefact of the
+  share: the shell puts paths on the pasteboard and its drop callback only emits
+  `DRAG_ENDED_EVENT` — nothing removes the source — because a move would take a
+  file out of a library with no journal entry and no undo, which ADR-0013
+  forbids outside a write-mode operation.
+
+**A warning worth not acting on yet.** The release run annotated that Node 20
+actions (`checkout@v4`, `setup-node@v4`, `cache@v4`, `upload-artifact@v4`,
+`setup-uv`) are being forced onto Node 24. The run was green and the artifact is
+unaffected; it is repo-wide rather than release-specific (9 × `checkout@v4`
+across the workflows), and bumping major action versions immediately before a
+publish would have changed the build for no gain. It is now the cheapest thing
+on the post-release list.
 
 ## Release prep: v0.1.0 is one tag away (2026-07-28)
 
