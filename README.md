@@ -216,15 +216,34 @@ each build re-registers the build-directory bundle. See
 
 ## Quickstart (Docker)
 
+**Self-hosting on a NAS or server** — one hardened container serving the API and
+the built web app:
+
 ```bash
+cp .env.example .env
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+Edit `MEDIA_HOST_PATH` in `.env` to point at your library first. Do not expose
+this directly to the public internet; reach it over a LAN or Tailscale. See
+[docs/deployment.md](docs/deployment.md) for volumes, permissions, backups, and
+building an amd64 image from an Apple Silicon Mac.
+
+**Developing in containers instead of natively:**
+
+```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-This starts the backend (`:8000`) and frontend dev server (`:5173`). Requires
-Docker with the Compose v2 plugin (Docker Desktop on macOS, or `docker-ce` +
-`docker-compose-plugin` on Linux). See [docs/deployment.md](docs/deployment.md)
-for NAS deployment notes and `docker-compose.prod.yml` for the hardened
-single-container production stack.
+Backend on `:8000` and the Vite dev server on `:5173`, both hot-reloading from
+bind-mounted source. See
+[docs/development.md](docs/development.md#running-with-docker) — in particular
+the note that a library may be open on only one server at a time, so the dev
+stack wants a scratch library rather than one your desktop app is serving.
+
+Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
+`docker-ce` + `docker-compose-plugin` on Linux).
 
 ## Documentation
 

@@ -43,7 +43,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (AGENTS.md §12). A fixed high UID/GID plays well with NAS volume
-# permissions; the app never needs root and the storage root is mounted ro.
+# permissions, and is the id the mounted volumes must grant write access to: /data
+# always, and the library root too, since a library keeps its .cairndex/ package
+# (manifest, library.db, cache) inside it. Source *media* is still never written
+# outside an ADR-0013 write-mode operation — a writable mount is not write mode.
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --home /app app
 
@@ -61,7 +64,8 @@ COPY --from=server /app /app
 COPY --from=web /web/dist /app/web
 # Operator scripts (build context is the repo root, so infra/ is available
 # here even though the server stage's /app only holds apps/server). The
-# entrypoint applies migrations; backup.sh is the documented backup tool.
+# entrypoint preflights the writable mounts; backup.sh is the documented backup
+# tool.
 COPY infra/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY infra/backup.sh /app/infra/backup.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh
@@ -77,8 +81,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -fsS http://localhost:8000/api/v1/health || exit 1
 
-# Apply DB migrations on startup, then serve. No --reload in production; a single
-# worker keeps the in-process job worker and SQLite writer simple (ADR-0001).
-# Scale by process supervision, not threads.
+# No --reload in production; a single worker keeps the in-process job worker and
+# SQLite writer simple (ADR-0001). Scale by process supervision, not threads.
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "cairndex.main:app", "--host", "0.0.0.0", "--port", "8000"]
