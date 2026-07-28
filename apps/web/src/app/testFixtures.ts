@@ -21,4 +21,5 @@ export const linkedVideoEntry: FileBrowserEntry = {
   supported: true,
   unbundled: false,
   video_codec: 'h264',
+  video_codec_tag: 'avc1',
 }

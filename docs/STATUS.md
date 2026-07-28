@@ -8,9 +8,79 @@
 > is **merged** (PR #33), closing the write-mode track; W2 stays blocked on
 > plan 1 M11. Eight rounds of UI refinement are **merged** (PR #34): contact
 > sheets, the viewer's two panels, tag pill actions with cascading deletes, and
-> one layout control across every browsing surface. No branches are open. Two things still need the owner: a pass on a genuinely downloaded build (deferred from D7),
+> one layout control across every browsing surface. One branch is open:
+> `fix/hevc-hev1-direct-play`, an owner-reported HEVC playback failure in the
+> desktop app (below). Two things still need the owner: a pass on a genuinely
+> downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
+
+## Open: `fix/hevc-hev1-direct-play` — HEVC `hev1` sources never played (2026-07-27)
+
+Owner reported one video in `lex` failing with the viewer's "Playback
+interrupted" card, retry never helping, and the same file having played before.
+
+**Cause.** MP4 carries HEVC under one of two four-character labels. `hvc1` keeps
+the decoder parameter sets in the container header; `hev1` permits them in-band
+and permits them to change. AVFoundation — Safari, and therefore the desktop
+shell's WKWebView — plays only `hvc1`. Measured directly on the reported file
+against a sibling that differs in nothing else:
+
+    clip_hvc1.mp4 → isPlayable=true   subtype=hvc1  hwDecode=true
+    clip_hev1.mp4 → isPlayable=false  subtype=hev1  hwDecode=false
+
+Both labels normalized to `hevc` in `media/playback.py`, and the probe never
+recorded the label at all, so the two files were indistinguishable to
+`decide_playback`. On the client, `caps.ts` advertised `hevc` when *either*
+label probed supported, and its `supported()` OR-ed `canPlayType` with
+`MediaSource.isTypeSupported` — and WebKit returns `isTypeSupported: true` for
+`hev1` while `canPlayType` returns `""`. So an MSE-only capability vouched for
+progressive playback, the decision came back `direct`, and the raw `hev1` file
+went to a video element that could not decode it.
+
+The "used to play" is consistent: direct play never worked, but anything that
+forces a session — a quality below source, subtitle burn-in, a non-default audio
+track — routes to HLS, where MSE does accept `hev1`.
+
+**Fix.** `PROBE_VERSION` 3 records `video_codec_tag` (the bump is what re-probes
+existing rows). `CapabilityProfile` gains `video_codec_tags`, parsed out of the
+same wire list so the API shape is unchanged. A discriminating label the client
+did not confirm forces `remux`, not `transcode` — the coded video is fine, only
+mislabelled — and the remux path adds `-tag:v hvc1` so the copy comes out with a
+label Apple accepts. Codec tags are probed with `canPlayType` alone. The same
+check reaches `canDirectPlayVideo`, so hover previews fall back to the
+storyboard. Rows without a label stay optimistic, so nothing regresses before a
+re-probe.
+
+**Tests.** 831 server, 445 web, ruff/mypy/eslint/tsc/prettier clean. New
+coverage: the decision matrix for both labels and for missing/meaningless ones,
+the remux relabel (and that it does not touch H.264 or the transcode path), the
+probe field, the WebKit `canPlayType`/`isTypeSupported` asymmetry, and the hover
+fallback.
+
+**Verified end to end** against the running desktop app on 2026-07-27, after a
+sidecar rebuild and a re-probe of `lex` (68 files). The bump alone does not
+re-probe: `_is_current_probe_metadata` only invalidates the rows, and a PROBE
+job still has to run — sidebar "⟳ Update" or Jobs → "Collect metadata". Until it
+does, the tag stays null and the decision stays optimistic, which looks exactly
+like the fix not working.
+
+    re-probe        → probe_version 3, reported file tagged hev1, sibling hvc1
+    decision (hev1) → remux "hev1 codec tag is not in client capabilities"
+    decision (hvc1) → direct  (unchanged — no regression)
+    live session    → segments tagged hvc1; AVFoundation isPlayable=true,
+                      hwDecode=true
+
+`lex` holds 8 HEVC files: 7 `hvc1` and this single `hev1`.
+
+**`just check-web` was not type-checking anything.** CI failed on three type
+errors in test files that the new required field exposed, while the local gate
+had been green. The recipe ran `npx tsc --noEmit`, but the root `tsconfig.json`
+is solution-style — `"files": []` plus project references — so that command
+checks no files and exits 0. It now runs `npm run typecheck` (`tsc -b`), which
+follows the references and matches what `npm run build`, and therefore CI and
+the Docker image, actually enforce. Worth knowing for any future change that
+widens a shared type: the local gate could not have caught it.
 
 ## Merged: PR #34 — UI refinements, eight owner rounds (2026-07-28)
 

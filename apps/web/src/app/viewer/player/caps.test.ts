@@ -55,6 +55,9 @@ test('derives a Safari-like profile (native HLS + HEVC, no MSE)', () => {
   )
   expect(caps.native_hls).toBe(true)
   expect(caps.video_codecs).toEqual(expect.arrayContaining(['h264', 'hevc']))
+  // The tag it actually confirmed is advertised; the one it refused is not.
+  expect(caps.video_codecs).toContain('hvc1')
+  expect(caps.video_codecs).not.toContain('hev1')
   expect(caps.containers).toContain('mp4')
   // Native HLS still advertises the hls protocol even without MSE.
   expect(caps.protocols).toContain('hls')
@@ -89,4 +92,41 @@ test('normalizes ffprobe container lists and gates both stored codecs', () => {
   expect(canDirectPlayVideo({ ...source, audioCodec: null }, caps)).toBe(true)
   expect(sourceContainer({ container: 'matroska,webm' })).toBe('mkv')
   expect(sourceContainer({ relativePath: 'clip.mov', container: source.container })).toBe('mov')
+})
+
+test('does not advertise a tag MSE accepts but progressive playback refuses', () => {
+  // WebKit's real asymmetry: MediaSource reports hev1 as supported while the
+  // video element refuses it. OR-ing the two probes would advertise hev1 and
+  // send an unplayable source down the direct path.
+  const caps = computeCapabilities({
+    canPlayType: (type: string) =>
+      type === 'video/mp4; codecs="hvc1.1.6.L93.B0"' ||
+      type === 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'
+        ? 'probably'
+        : '',
+    isTypeSupported: () => true,
+  })
+  expect(caps.video_codecs).toContain('hvc1')
+  expect(caps.video_codecs).not.toContain('hev1')
+})
+
+test('refuses direct play of an hev1 source the client only confirmed as hvc1', () => {
+  const caps = {
+    protocols: ['progressive', 'hls'],
+    containers: ['mp4'],
+    video_codecs: ['h264', 'hevc', 'hvc1'],
+    audio_codecs: ['aac'],
+    max_height: null,
+    native_hls: true,
+  }
+  const source = {
+    container: 'mov,mp4,m4a,3gp,3g2,mj2',
+    videoCodec: 'hevc',
+    audioCodec: 'aac',
+  }
+  expect(canDirectPlayVideo({ ...source, videoCodecTag: 'hvc1' }, caps)).toBe(true)
+  expect(canDirectPlayVideo({ ...source, videoCodecTag: 'hev1' }, caps)).toBe(false)
+  // Rows probed before the tag was recorded keep the previous optimistic path.
+  expect(canDirectPlayVideo(source, caps)).toBe(true)
+  expect(canDirectPlayVideo({ ...source, videoCodecTag: null }, caps)).toBe(true)
 })

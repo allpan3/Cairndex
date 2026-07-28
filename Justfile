@@ -71,10 +71,15 @@ check-server:
       && uv run mypy src packaging \
       && uv run pytest -q
 
+# `npm run typecheck` is `tsc -b`, not `tsc --noEmit`. The root tsconfig is
+# solution-style (`"files": []` plus project references), so a plain `tsc
+# --noEmit` type-checks *nothing* and exits 0 — this gate passed clean while CI
+# failed on three type errors in test files. Build mode follows the references
+# and is what `npm run build` (and therefore CI) actually enforces.
 check-web:
     cd {{web_dir}} && npm run lint \
       && npm run format:check \
-      && npx tsc --noEmit \
+      && npm run typecheck \
       && npm run test
 
 check-desktop:

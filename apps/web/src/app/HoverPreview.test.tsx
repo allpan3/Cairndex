@@ -782,6 +782,15 @@ test('classifies direct, storyboard, and unavailable sources from caps', () => {
     ),
   ).toBe('storyboard')
   expect(hoverPreviewMode({ ...DIRECT_SOURCE, audioCodec: 'dts' }, CAPS)).toBe('storyboard')
+  // hev1-tagged HEVC decodes nowhere the video element can reach, so the hover
+  // preview must fall back to the storyboard rather than a stalled <video>.
+  const hevcCaps: ClientCapabilities = {
+    ...CAPS,
+    video_codecs: ['h264', 'hevc', 'hvc1'],
+  }
+  const hevcSource = { ...DIRECT_SOURCE, videoCodec: 'hevc' }
+  expect(hoverPreviewMode({ ...hevcSource, videoCodecTag: 'hvc1' }, hevcCaps)).toBe('direct')
+  expect(hoverPreviewMode({ ...hevcSource, videoCodecTag: 'hev1' }, hevcCaps)).toBe('storyboard')
   expect(hoverPreviewMode({ ...DIRECT_SOURCE, duration: 0 }, CAPS)).toBe('none')
   expect(hoverPreviewMode({ mediaKind: 'image', fileId: 'photo', imageUrl: '/photo' }, CAPS)).toBe(
     'image',

@@ -25,6 +25,7 @@ class BundleSummary(BaseModel):
     resume_mime_type: str | None
     resume_container: str | None
     resume_video_codec: str | None
+    resume_video_codec_tag: str | None
     resume_audio_codec: str | None
     resume_duration: float | None
     resume_position: float | None

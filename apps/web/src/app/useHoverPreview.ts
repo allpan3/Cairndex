@@ -51,6 +51,7 @@ export function useHoverPreview(
   const previewRelativePath = source?.relativePath ?? null
   const previewContainer = source?.container ?? null
   const previewVideoCodec = source?.videoCodec ?? null
+  const previewVideoCodecTag = source?.videoCodecTag ?? null
   const previewAudioCodec = source?.audioCodec ?? null
   const previewDuration = source?.duration ?? 0
   const previewStartTime = hoverStartTime(source)
@@ -66,6 +67,7 @@ export function useHoverPreview(
               relativePath: previewRelativePath,
               container: previewContainer,
               videoCodec: previewVideoCodec,
+              videoCodecTag: previewVideoCodecTag,
               audioCodec: previewAudioCodec,
               duration: previewDuration,
             }
@@ -81,6 +83,7 @@ export function useHoverPreview(
       previewMimeType,
       previewRelativePath,
       previewVideoCodec,
+      previewVideoCodecTag,
     ],
   )
   const [failedDirectFileId, setFailedDirectFileId] = useState<string | null>(null)

@@ -1067,6 +1067,7 @@ function FileCard({
             relativePath: entry.relative_path,
             container: entry.container,
             videoCodec: entry.video_codec,
+            videoCodecTag: entry.video_codec_tag,
             audioCodec: entry.audio_codec,
             duration: entry.duration,
             startTime: entry.resume_position,
@@ -1082,6 +1083,7 @@ function FileCard({
       entry.relative_path,
       entry.resume_position,
       entry.video_codec,
+      entry.video_codec_tag,
     ],
   )
   return (

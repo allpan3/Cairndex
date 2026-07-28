@@ -102,6 +102,9 @@ def _decide(
         ext=extension_of(asset_file.relative_path),
         video_codec=meta.get("video_codec") if isinstance(meta.get("video_codec"), str) else None,
         audio_codec=meta.get("audio_codec") if isinstance(meta.get("audio_codec"), str) else None,
+        video_codec_tag=(
+            meta.get("video_codec_tag") if isinstance(meta.get("video_codec_tag"), str) else None
+        ),
         source_height=height if isinstance(height, int) else None,
         audio_stream_index=audio_stream_index,
         default_audio_index=playback.default_audio_stream_index(streams),
@@ -196,6 +199,7 @@ def _build_params(
         max_height=effective_max_height,
         burn_subtitle=burn,
         hwaccel=hwaccel,
+        video_codec=playback.normalize_video_codec(meta.get("video_codec")),
     )
 
 

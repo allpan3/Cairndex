@@ -14,7 +14,12 @@ from typing import Any
 
 from cairndex.media.tool_paths import ffprobe_path as resolve_ffprobe
 
-PROBE_VERSION = 2
+# 3 adds ``video_codec_tag``. The bump is what re-probes existing rows: a stored
+# codec name alone cannot tell ``hvc1``-tagged HEVC from ``hev1``-tagged HEVC,
+# and Apple engines play only the former, so without the tag the playback
+# decision sends an unplayable source down the direct path (see
+# ``media/playback.py``).
+PROBE_VERSION = 3
 
 
 class ProbeError(RuntimeError):
@@ -216,6 +221,17 @@ def _hdr(video: dict[str, Any] | None) -> str | None:
     return None
 
 
+# The container's four-character codec label, lowercased. ffprobe reports "[0][0][0][0]"
+# for formats that carry no tag (MKV, WebM); that is not a label, so it becomes None.
+def _codec_tag(video: dict[str, Any] | None) -> str | None:
+    if video is None:
+        return None
+    tag = str(video.get("codec_tag_string") or "").strip().lower()
+    if not tag or tag.startswith("[") or set(tag) <= {"0"}:
+        return None
+    return tag
+
+
 # Infer bit depth from explicit raw-sample bits or pixel format
 def _bit_depth(video: dict[str, Any] | None) -> int | None:
     if video is None:
@@ -249,6 +265,10 @@ def normalize_metadata(raw: dict[str, Any]) -> dict[str, Any]:
         "width": video.get("width") if video else None,
         "height": video.get("height") if video else None,
         "video_codec": video.get("codec_name") if video else None,
+        # The container's four-character codec label, kept alongside the codec
+        # name because it is not cosmetic: HEVC rides as either ``hvc1`` or
+        # ``hev1``, and AVFoundation refuses ``hev1`` outright.
+        "video_codec_tag": _codec_tag(video),
         "audio_codec": audio.get("codec_name") if audio else None,
         "fps": _parse_fps(video.get("avg_frame_rate")) if video else None,
         "stream_count": len(streams),

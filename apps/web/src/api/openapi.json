@@ -1015,6 +1015,17 @@
             ],
             "title": "Resume Video Codec"
           },
+          "resume_video_codec_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Video Codec Tag"
+          },
           "title": {
             "anyOf": [
               {
@@ -1059,6 +1070,7 @@
           "resume_mime_type",
           "resume_container",
           "resume_video_codec",
+          "resume_video_codec_tag",
           "resume_audio_codec",
           "resume_duration",
           "resume_position",
@@ -1653,6 +1665,17 @@
             ],
             "title": "Resume Video Codec"
           },
+          "resume_video_codec_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Video Codec Tag"
+          },
           "title": {
             "anyOf": [
               {
@@ -1697,6 +1720,7 @@
           "resume_mime_type",
           "resume_container",
           "resume_video_codec",
+          "resume_video_codec_tag",
           "resume_audio_codec",
           "resume_duration",
           "resume_position",
@@ -2291,6 +2315,17 @@
               }
             ],
             "title": "Video Codec"
+          },
+          "video_codec_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Codec Tag"
           }
         },
         "required": [
@@ -2309,6 +2344,7 @@
           "file_id",
           "container",
           "video_codec",
+          "video_codec_tag",
           "audio_codec",
           "duration",
           "resume_position",
