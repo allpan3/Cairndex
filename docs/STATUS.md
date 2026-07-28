@@ -12,13 +12,57 @@
 > playback failure in the desktop app is **merged** (PR #35), which also fixed a
 > `just check-web` gate that had not been type-checking anything. The viewer's
 > failure copy (PR #36) and the MP4 keyframe-index read (PR #37) are **merged**,
-> as are file formats, encoding facts and richer file rows (PR #38). No branches
-> are open. Two things still need the owner: a pass on a genuinely
+> as are file formats, encoding facts and richer file rows (PR #38). **`main` is
+> the v0.1.0 content** — the changelog is cut and the two stale plan rows are
+> corrected; PR #39 (folder-as-bundle-member) is open and deliberately *not* in
+> this release. Cutting it is: push a `v0.1.0` tag, which `release.yml` turns
+> into a drafted release, then publish the draft. No other branches are open. Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## Release prep: v0.1.0 is one tag away (2026-07-28)
+
+Branch `docs/prep-v0.1.0`, off `main` at `4424d1e`. No code — the changelog cut
+and two milestone rows that had gone stale.
+
+**Nothing is published today.** The release workflow ran green for `v0.1.0` on
+2026-07-23, but there are no tags and no releases on the remote (checked against
+the API, not the local clone) — that run's tag and draft were cleaned up. So the
+pipeline is proven and the artifact is not. The version strings in
+`tauri.conf.json`, both `package.json`s and `pyproject.toml` already read
+`0.1.0`, so the tag is the only remaining action.
+
+**The changelog is cut.** Everything the repo has ever shipped sat under
+`## [Unreleased]`, which is what its own preamble said would happen until the
+first tag. That became `## [0.1.0] — 2026-07-28` with a fresh empty `Unreleased`
+above it, and the version note now claims semver from 0.1.0 onward. A short
+orientation section was added at the top of 0.1.0 — what the product is, the
+highlights, and the known limits (Apple Silicon only, the ad-hoc signature's
+first-launch approval, one machine per library) — because a first release whose
+changelog is 2,700 lines of accumulated history needs an entry point. The history
+below it was left in the order it was written; consolidating the ~25
+`### Added`/`### Changed`/`### Fixed` groups into one of each would flatten a
+chronology that currently reads as the build order, and is a judgement call
+rather than a mechanical tidy.
+
+**Two stale rows.** Plan 4 **W6** shipped as PR #33 but its milestone row was
+never ticked; it now records what landed (EXDEV copy-then-delete with a marker
+file as explicit evidence, case-only renames, trash retention, the
+multi-filesystem deployment note, bundle delete-with-files, and the importer's
+library-id hardening) and what deliberately did not (journal history UI as
+feature-sized; the bulk-ops perf pass, which needs a representative large library
+the owner has to point at). Plan 1 **M11** read "deferred to future", but PR #34
+shipped its contact-sheet half; the row now marks it part-shipped and notes the
+consequence — **plan 4 W2** (save exports into the library) waited on M11 and is
+now a slice rather than a blocked item, since the export seam and one real export
+both exist.
+
+**Still owner-only, unchanged:** a pass on a genuinely downloaded build (deferred
+from D7 to after write mode — that is now) and the native Finder drag gesture on
+a packaged build.
 
 ## Deferred: plan 5 — network-library latency (2026-07-28)
 
