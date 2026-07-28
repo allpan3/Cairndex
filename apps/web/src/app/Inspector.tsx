@@ -26,10 +26,11 @@ import {
 import {
   formatBytes,
   formatDate,
-  formatDimensions,
   formatDuration,
-  formatFileType,
+  formatFileRole,
+  formatResolution,
 } from '../lib/format'
+import type { HostLabels } from '../platform'
 import { usePersistentState } from '../state/usePersistentState'
 import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
@@ -131,20 +132,32 @@ export function StarRating({ value, onChange }: { value: number; onChange: (v: n
 // collections below (2026-07-27).
 export const Inspector = memo(function Inspector({
   bundleId,
+  hostLabels,
   onAddFiles,
   onPlayBundle,
   onPlayFile,
+  onOpenFile,
+  onRevealFile,
+  onLocateFile,
   onStartFileDrag,
   onFlash,
   onFilterByTags,
 }: {
   bundleId: string | null
+  /** Open/Reveal wording for this host; omitted where those are not wired. */
+  hostLabels?: HostLabels
   /** Open the "Add files" manual bundling dialog for this bundle. */
   onAddFiles?: (bundleId: string) => void
   /** Open the unified media viewer for this bundle. */
   onPlayBundle?: (bundleId: string) => void
   /** Open one supported file directly in the unified media viewer. */
   onPlayFile?: (bundleId: string, fileId: string) => void
+  /** Open this file with the OS default app (mapped desktop library only). */
+  onOpenFile?: (relativePath: string) => void
+  /** Reveal this file in Finder (mapped desktop library only). */
+  onRevealFile?: (relativePath: string) => void
+  /** Jump to this file's directory in the File Browser. */
+  onLocateFile?: (relativePath: string) => void
   /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
   onStartFileDrag?: (relativePaths: string[]) => void
   /** Report a transient message (export progress, results) to the shell. */
@@ -174,9 +187,13 @@ export const Inspector = memo(function Inspector({
     <BundleEditor
       key={bundle.id}
       bundle={bundle}
+      hostLabels={hostLabels}
       onAddFiles={onAddFiles}
       onPlayBundle={onPlayBundle}
       onPlayFile={onPlayFile}
+      onOpenFile={onOpenFile}
+      onRevealFile={onRevealFile}
+      onLocateFile={onLocateFile}
       onStartFileDrag={onStartFileDrag}
       onFlash={onFlash}
       onFilterByTags={onFilterByTags}
@@ -186,17 +203,25 @@ export const Inspector = memo(function Inspector({
 
 function BundleEditor({
   bundle,
+  hostLabels,
   onAddFiles,
   onPlayBundle,
   onPlayFile,
+  onOpenFile,
+  onRevealFile,
+  onLocateFile,
   onStartFileDrag,
   onFlash,
   onFilterByTags,
 }: {
   bundle: BundleRead
+  hostLabels?: HostLabels
   onAddFiles?: (bundleId: string) => void
   onPlayBundle?: (bundleId: string) => void
   onPlayFile?: (bundleId: string, fileId: string) => void
+  onOpenFile?: (relativePath: string) => void
+  onRevealFile?: (relativePath: string) => void
+  onLocateFile?: (relativePath: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
   onFilterByTags?: (tagIds: string[]) => void
@@ -363,9 +388,13 @@ function BundleEditor({
         bundleId={bundleId}
         bundleVersion={bundle.version}
         coverId={bundle.cover_file_id ?? null}
+        hostLabels={hostLabels}
         // Adding unbundled files targets a confirmed bundle only (ADR-0009).
         onAddFiles={bundle.grouping_state === 'confirmed' ? onAddFiles : undefined}
         onPlayFile={onPlayFile}
+        onOpenFile={onOpenFile}
+        onRevealFile={onRevealFile}
+        onLocateFile={onLocateFile}
         onStartFileDrag={onStartFileDrag}
         onFlash={onFlash}
       />
@@ -499,16 +528,26 @@ export function FileList({
   bundleId,
   bundleVersion,
   coverId,
+  hostLabels,
   onAddFiles,
   onPlayFile,
+  onOpenFile,
+  onRevealFile,
+  onLocateFile,
   onStartFileDrag,
   onFlash,
 }: {
   bundleId: string
   bundleVersion: number
   coverId: string | null
+  /** Open/Reveal wording for this host; omitted where those are not wired. */
+  hostLabels?: HostLabels
   onAddFiles?: (bundleId: string) => void
   onPlayFile?: (bundleId: string, fileId: string) => void
+  onOpenFile?: (relativePath: string) => void
+  onRevealFile?: (relativePath: string) => void
+  /** Jump to this file's directory in the File Browser. */
+  onLocateFile?: (relativePath: string) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
 }) {
@@ -597,8 +636,22 @@ export function FileList({
       <div className="files__list" role="list" aria-label="Files in bundle">
         {files.map((f, i) => {
           const meta = (f.tech_metadata ?? {}) as Record<string, unknown>
-          const dims = formatDimensions(meta.width as number, meta.height as number)
-          const dur = formatDuration(meta.duration as number)
+          // Everything true about the file, in one line — the row used to pick
+          // exactly one of dimensions/duration/size and drop the rest, so a
+          // video never showed how long *or* how large it was at the same time.
+          // Absent facts are omitted rather than printed as em-dashes.
+          // Leads with the file's bundle role (today: its media kind), not the
+          // container format — this slot becomes the manual-role dropdown.
+          const metaLine = [
+            formatFileRole(f.media_kind, f.original_filename),
+            f.size_bytes ? formatBytes(f.size_bytes) : null,
+            meta.width && meta.height
+              ? formatResolution(meta.width as number, meta.height as number)
+              : null,
+            meta.duration ? formatDuration(meta.duration as number) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')
           const thumbnailable = f.media_kind === 'image' || f.media_kind === 'video'
           const playable =
             f.availability === 'available' &&
@@ -616,12 +669,17 @@ export function FileList({
               onContextMenu={(event) => {
                 // The same menu the album grid shows for the same file — one
                 // definition, so the two surfaces cannot drift (owner,
-                // 2026-07-27). This rail has no host actions or trash gate of
-                // its own, so it offers the subset it can act on.
+                // 2026-07-27). Host actions come through as props: the rail sat
+                // without Reveal or Locate purely because nothing passed them,
+                // while the grid beside it offered both for the same file.
                 menu.open(
                   event,
                   bundleFileMenuEntries({
                     targets: [f],
+                    hostLabels,
+                    onOpenFile,
+                    onRevealFile,
+                    onLocateFile,
                     onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
                     onContactSheet: setSheetTarget,
                   }),
@@ -711,10 +769,7 @@ export function FileList({
                     <span className="badge badge--missing">missing</span>
                   )}
                 </div>
-                <div className="file-row__role">
-                  {formatFileType(f.media_kind, f.original_filename)} ·{' '}
-                  {dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(f.size_bytes)}
-                </div>
+                <div className="file-row__role">{metaLine}</div>
               </div>
               <div className="file-row__actions">
                 {thumbnailable && (

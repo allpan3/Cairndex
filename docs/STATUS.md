@@ -10,11 +10,38 @@
 > sheets, the viewer's two panels, tag pill actions with cascading deletes, and
 > one layout control across every browsing surface. An owner-reported HEVC
 > playback failure in the desktop app is **merged** (PR #35), which also fixed a
-> `just check-web` gate that had not been type-checking anything. No branches are
-> open. Two things still need the owner: a pass on a genuinely
+> `just check-web` gate that had not been type-checking anything. Branch
+> `feat/file-facts-display` is open (file formats, encoding facts, richer file
+> rows). Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
-> cannot be automated here.
+> cannot be automated here. One diagnosis is parked rather than queued:
+> **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
+> inspector takes ~500 ms, deferred post-v0.1.0.
+
+## Deferred: plan 5 — network-library latency (2026-07-28)
+
+Owner-reported: selecting a bundle on the NAS library leaves the inspector on
+`Loading…` for ~500 ms, degrading past a second under rapid clicking, where
+Eagle is instant on the same disk. **Deferred post-v0.1.0**; written up as
+[plan 5](plans/05-network-library-latency.md) so the diagnosis is not re-derived.
+
+The cause is architectural, not a defect. `library.db` lives inside the library
+package on SMB (ADR-0008 portability); `registry.db` is on local disk. Same file
+and pragmas, benchmarked in both places: reads 5.53 ms vs 0.00 ms, **writes
+37.96 ms vs 0.01 ms** (~3800×). Browsing writes — cursors, missing-file
+reconciliation, and a commit on every `LibrarySession` request — and WAL's
+`-shm` is unsupported on network filesystems, so it degrades instead of
+plateauing. A `/health` control probe held at 5 ms while bundle reads hit
+1331 ms on the same connection, which is what ruled out transport and threadpool
+queueing.
+
+Two things worth carrying forward. **ADR-0013 write mode does not help**: it
+gates *media* operations, while these are *metadata* writes it neither gates nor
+could. And the owner's framing — **Theater Mode** (watching; nothing written)
+vs **Management Mode** (organizing) — is a second axis orthogonal to write mode,
+with one tension to resolve first: watching is precisely when playback progress
+wants writing.
 
 ## Merged: PR #35 — HEVC `hev1` sources never played (2026-07-28)
 

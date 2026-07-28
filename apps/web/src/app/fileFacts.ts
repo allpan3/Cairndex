@@ -31,6 +31,12 @@ export interface FileFacts {
   /** How the media is encoded, when probed. */
   videoCodec: string | null
   audioCodec: string | null
+  /** Overall container bitrate in bits/second, when probed. */
+  bitrate: number | null
+  /** HDR signalling (`hdr10`/`hlg`/`dv`), null for ordinary SDR. */
+  hdr: string | null
+  /** Bits per colour sample; 8 for ordinary video. */
+  bitDepth: number | null
 }
 
 function metaNumber(meta: Record<string, unknown> | null | undefined, key: string): number | null {
@@ -63,6 +69,11 @@ export function factsFromEntry(entry: FileBrowserEntry): FileFacts {
     fps: null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
+    // The browser listing carries only the fields its cards need; the rest
+    // arrive once the file is opened from an indexed row.
+    bitrate: null,
+    hdr: null,
+    bitDepth: null,
   }
 }
 
@@ -91,6 +102,9 @@ export function factsFromBundleFile(file: FileRead): FileFacts {
     fps: metaNumber(meta, 'fps'),
     videoCodec: metaText(meta, 'video_codec'),
     audioCodec: metaText(meta, 'audio_codec'),
+    bitrate: metaNumber(meta, 'bitrate'),
+    hdr: metaText(meta, 'hdr'),
+    bitDepth: metaNumber(meta, 'bit_depth'),
   }
 }
 

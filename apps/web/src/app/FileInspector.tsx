@@ -1,6 +1,15 @@
 import { useState } from 'react'
 
-import { formatBytes, formatDateTime, formatDimensions, formatDuration } from '../lib/format'
+import {
+  formatBitrate,
+  formatBytes,
+  formatCodec,
+  formatDateTime,
+  formatDimensions,
+  formatDuration,
+  formatFileType,
+  formatVideoEncoding,
+} from '../lib/format'
 import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
 import type { FileFacts } from './fileFacts'
@@ -60,7 +69,14 @@ export function FileInspector({
   // truncates, and sits last so a deep path pushes nothing else out of view.
   const dims = formatDimensions(entry.width, entry.height)
   const rows: [string, string][] = [
-    ['Type', entry.kind === 'directory' ? 'Folder' : (entry.extension ?? 'file')],
+    // Same spelling as every other surface's type label, so a file does not
+    // read as "mp4" here and "MP4" one pane over.
+    [
+      'Type',
+      entry.kind === 'directory'
+        ? 'Folder'
+        : formatFileType(entry.mediaKind ?? 'other', entry.name),
+    ],
     ['Size', entry.kind === 'directory' ? '—' : formatBytes(entry.sizeBytes)],
     ...(dims !== '—' ? ([['Dimensions', dims]] as [string, string][]) : []),
     ...(entry.duration
@@ -69,6 +85,18 @@ export function FileInspector({
     ...(entry.fps
       ? ([['Frame rate', `${Math.round(entry.fps * 100) / 100} fps`]] as [string, string][])
       : []),
+    // Encoding rows appear only once a file has been probed. An un-probed row
+    // would otherwise grow three em-dashes that say nothing about the file.
+    ...(entry.videoCodec
+      ? ([
+          [
+            'Video',
+            formatVideoEncoding(entry.videoCodec, { bitDepth: entry.bitDepth, hdr: entry.hdr }),
+          ],
+        ] as [string, string][])
+      : []),
+    ...(entry.audioCodec ? ([['Audio', formatCodec(entry.audioCodec)]] as [string, string][]) : []),
+    ...(entry.bitrate ? ([['Bitrate', formatBitrate(entry.bitrate)]] as [string, string][]) : []),
     ['Date Added', entry.createdAt ? formatDateTime(entry.createdAt) : '—'],
     ['Date Modified', entry.modifiedAt ? formatDateTime(entry.modifiedAt) : '—'],
     ['MIME', entry.mimeType ?? '—'],
