@@ -10,6 +10,431 @@
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
+## In review: PR #34 — UI refinements, eight owner rounds (2026-07-27)
+
+Branch `fix/ui-refinements` → **[PR #34](https://github.com/allpan3/Cairndex/pull/34)**,
+squashed to four commits by subsystem (server / desktop / web / docs), off `main`
+at `8fb7125`. A whole-branch review pass before the PR caught three things no
+single round would have: the tag delete skipped its own confirmation when the
+impact lookup failed (an unknown cost is a reason to *ask*), the filename scan
+was O(files²) and unmemoized in a component that re-renders on every drag move,
+and `--mv-controls-h` had gone circular. Browser e2e is **92/92**.
+
+CI then failed on two things the local run had not. One was a **real bug this
+branch introduced**: the Back/Forward control shares the toolbar's leading slot
+with the File Browser's breadcrumb, and once the trail stopped fitting,
+`overflow: hidden` left the leading crumbs with boxes outside the visible area —
+painted nowhere, still hit-testing to the toolbar — so the library-root crumb
+could not be clicked. Reproduced at 1180px; CI's wider fonts reach it sooner,
+which is the whole reason only CI saw it. The trail scrolls now, right-aligned
+by an auto margin rather than `justify-content: flex-end` (start-overflow is
+unreachable by scrolling under `flex-end`, so scrolling alone did not fix it),
+and that spec runs at the reproducing width so the default viewport cannot hide
+it again.
+
+The other was `manual-bundling`'s drag-to-select, which had been red on `main`
+too: it asserted that a click on empty space clears the selection *while a
+context menu is open*, which this branch deliberately changed — dismissing a
+menu now leaves the selection alone. The spec dismisses first, checks the
+selection survived, then clears it. The owner's
+refinement list, each its own commit: (1) viewer topbar clears the traffic
+lights in the shell; (2) Back/Forward history over views/collections/bundles/
+File Browser paths; (3) album tiles gain Remove from Bundle + write-gated Move
+to Trash (answering: no, file deletion was not reachable there); (4) the
+viewer's info panel is a persisted sidebar listing the playlist, click to jump;
+(5) the viewer owns its right-click menu (native video menu suppressed; text
+inputs keep theirs); (6) **contact sheets** — server-cut frame grid (ffmpeg fps
+sampling + tile, cached by grid shape + fingerprint, bounded params), header
+composed client-side on canvas, saved through the export seam; (7) configurable
+default export destination (desktop; shell-stored, only ever set from the OS
+folder picker; keep-both naming; snapshot now routes through it); (8) a Random
+system view — pure-SQL seeded permutation ((rowid × Knuth-mixed seed) mod
+prime; the unmixed first cut didn't shuffle small libraries at all — a test
+caught it), toolbar Shuffle button, manual reorder + Clean Up disabled there;
+(9) `/` nests when creating tags, per-parent case-insensitive reuse; (10)
+player keys remapped (,/. frames; z/x/c speed; subtitles → v) with the keymap
+table and shortcut reference following; (11) a speed-reset control while off
+1×; (12) OS file drops can never navigate the webview again (window-level net +
+synchronous handled-flag), and dropping on a bundle card imports + links into
+that bundle under write mode.
+
+One regression caught by the e2e run and fixed in the last commit: with the new
+context menu open, Escape closed the menu *and* the viewer.
+
+### Round 8 follow-up (2026-07-27)
+
+**Sibling filenames collapse what they share, not what differs.** The inspector's
+rows end-truncated, which is exactly where sibling files differ; the owner ruled
+out middle-ellipsis as inelegant (it cuts every name in the same arbitrary
+place). `distinctNames.collapsePrefixLengths` computes, per name, the longest
+prefix shared with the sibling it most resembles, snapped to a word boundary and
+thresholded; the row renders it as a dimmed, shrink-first span with the distinct
+tail keeping full width and brightness. Deliberately per-name rather than
+list-wide so one unrelated file (a poster) cannot stop its siblings collapsing.
+The helper is reusable — the viewer playlist and the album rows share this
+disease and can adopt it later.
+
+**The tag chords are optimistic now.** Copy reads the active bundle's tags from
+the query cache (the pills on screen *are* that cache) instead of fetching;
+paste shows the toast and updates the pills at the keystroke and lets the PUTs
+catch up, cancelling in-flight refetches before the optimistic write and rolling
+back to the server's truth on failure — the same shape as `useSetBundleTags`.
+Previously the toast waited on fetch+PUT and the pills on a refetch: two visibly
+separate one-second stalls.
+
+**Zoom now drives the surfaces round 8 handed to the shell's layout control.**
+Album tiles scale on the bundle-card ramp; album rows and collection rows follow
+`listRowHeight`, published as CSS variables the way the file table does it. The
+file table had scoped its row-height rule to itself, which is why the album's
+identical rows ignored the slider.
+
+**"This library is open on AP3-M5Pro", diagnosed.** The lease on
+`/Volumes/media/library` was held by the *repo dev backend* used for verification —
+its `server_uuid` matches `apps/server/var/registry.db`'s identity, not the
+desktop sidecar's — acquired 07:29:30 local, last heartbeat 07:30:09, holder
+killed rather than shut down. A dead holder cannot release, so the lease reads
+as live for `lease_ttl` (300s) after its last heartbeat; the owner hit the
+dialog inside that window. Recovery needs nothing manual: past the TTL the
+notice becomes "This library was left open elsewhere" with **Serve here
+anyway**. Operational rule recorded: verification dev servers are stopped when
+verification ends, and only the Demo library is used.
+
+### Owner review round 8 (2026-07-27)
+
+Six items, one theme: the shell already has a layout control, so nothing else
+should grow its own.
+
+- **The toolbar's layout drives all three surfaces.** Collections render as rows
+  in list layout — the same `CollectionCard` laid flat by a CSS variant, so
+  selection, drag/drop seams and the context menu are untouched. Grid and
+  justified keep the cards (a folder has no aspect ratio to justify). The
+  in-bundle album follows the same pref and loses the private seg from round 5.
+- **Pasting tags is live.** The chord paste invalidated `['bundles']`/`['tags']`
+  but the pill lists read `['bundle-tags', id]` — nothing the paste touched.
+- **Filtering from a pill reveals the filter row.** `filtersOpen` initialized
+  from `filtersActive` but never reacted to it, so a filter arriving from the
+  pill menu left active filters with no visible controls.
+- **Pills read as controls**: `cursor: default`, no text selection, and a quiet
+  white glow on hover — an accent fill read as "selected", which is what the
+  owner meant by "not blue".
+- **The copy/paste chords are desktop-only** at the owner's call: in a browser
+  tab Shift-Cmd-C is Chrome's Inspect Element, and having one of a pair is worse
+  than having neither. The gate is `isDesktopHost()` at the top of the handler.
+
+Verified live in the web UI: list layout showing four collection rows above the
+bundle table; the album following the top control both ways with its inner seg
+gone; the pill's cursor and hover rule; "Filter Items with zflow" revealing the
+filter bar with the Tags chip at 1 and the listing at one item; and the synthetic
+chord that fired "Copied 1 tag." in round 7 now doing nothing in the browser.
+
+### Owner review round 7 (2026-07-27)
+
+Six items, and one root cause behind two of them.
+
+**`window.prompt` and `window.confirm` do nothing in Tauri's webview.** A prompt
+returns null and the caller quietly no-ops; a confirm never asks. That is the
+whole of "rename tag does not work in the desktop app" and "deleting a tag gives
+no warning at all" — and it is why neither looked like the same bug, since both
+behaved correctly in a browser. `PromptDialog`/`ConfirmDialog` replace them, and
+there are no `window.prompt`/`confirm`/`alert` calls left in the app: tag delete
+(with its impact counts), tag rename, missing-file relink, and smart-collection
+delete all render the question now.
+
+The rest:
+
+- **The per-file "×" is gone** from the inspector's rows. Removing from a bundle
+  is on the row's own menu with everything else; the button was the one thing
+  there you could hit by accident.
+- **Filtering from a tag pill takes that one tag.** It took every tag on the
+  bundle, which described the bundle rather than anything worth browsing — and
+  with no way to select several pills, the multi-tag case could never be asked
+  for deliberately.
+- **Shift-Cmd-C / Shift-Cmd-V** copy and paste tags across a bundle selection.
+  Paste is a union, and skips bundles that would gain nothing rather than bumping
+  their version for no change. Both chords are handled *before* the
+  don't-hijack-typing guard, because clicking a card can leave focus on an input,
+  which swallowed them.
+
+Verified live: the delete dialog naming the child count and cascading on confirm;
+an unused tag deleting with no prompt at all; rename through the dialog changing
+the pill; no native dialog reached in any of it (`window.confirm`/`prompt` were
+stubbed to record calls and recorded none). Paste verified with a real key press:
+a bundle carrying two tags gained the copied one and kept both of its own.
+
+**One caveat worth knowing.** In a Chrome tab, Shift-Cmd-C is the browser's
+Inspect Element shortcut; the page sees the event but it does not reach the app's
+handler. Shift-Cmd-V has no such conflict and works in both. The desktop shell
+binds neither, so both work there — which is where the owner asked for them.
+
+### Owner review round 6 (2026-07-27)
+
+Seven items. Two needed measuring before they could be fixed.
+
+**The contact sheet's tail.** Cells were taken from the *leading edge* of their
+slice, so the last slice was never sampled, and the edge trim was a flat 4% of
+duration. Stacked, on a one-hour video:
+
+| | before | after |
+| --- | --- | --- |
+| first cell | 144.0s | 117.2s |
+| last cell | 3249.0s | 3482.8s |
+| unsampled tail | **351s (5.8 min)** | 117s, equal to the head |
+
+Cells now come from the middle of their slice, and the trim is capped at five
+seconds. What is left over at each end is the same half-slice, so the sampling
+is symmetric rather than systematically missing the end.
+
+**The resume toast.** It had moved — to 6px above the control *bar*. But the bar
+is a button row above a seek track, so that left it 52px from the playhead it
+refers to, which is the gap the owner kept seeing. The bar now measures where
+its track starts and publishes `--mv-seek-top`; the toast sits 8px above that.
+Measured rather than assumed, so it holds wherever the row wraps or the font
+differs — the previous 70px literal happened to be right on this display and
+would not have been on another.
+
+The rest:
+
+- **The context menu owns its dismissal**, the same capture-phase rule the
+  pickers follow. Clicking the sidebar left it open; clicking the shell cleared
+  the bundle selection underneath it.
+- **A tag pill has a menu**: filter by the assigned tags, rename, copy, paste,
+  remove from this bundle. The clipboard is module-scoped so it survives
+  switching bundles, which is the point of copying.
+- **Deleting a parent tag** is allowed now. It was refused outright, which read
+  as broken rather than guarded. `DELETE …/tags/{id}?cascade=true` takes the
+  subtree; the plain delete still refuses, and a new `…/delete-impact` gives the
+  prompt its numbers so it cannot understate a subtree the page has not loaded.
+- **Deleting a tag that is in use prompts** with how many bundles lose it. A tag
+  on nothing, with no children, deletes without one.
+- **The contact sheet header prints the encoding** — `h264 / aac` for the demo
+  4K file.
+
+Verified live: cascade delete refused without the flag and accepted with it
+against the running server; the pill menu showing all five rows with Paste
+correctly disabled until something is copied; the menu closing from sidebar,
+grid and inspector with the selection intact in all three; the toast 8px above
+the seek track; and a generated sheet reading
+`360 MB · 2:00 · 3840×2160 · 30 fps · h264 / aac`.
+
+### Owner review round 5 (2026-07-27)
+
+Eight items. Two were the same undefined CSS variable.
+
+- **`--panel` is not a variable this stylesheet defines.** Both the context
+  submenu and the viewer's docked inspector rail used it, so both rendered with
+  no background — the submenu showed the page through it (what the owner saw as
+  "half transparent"), and the rail got away with it only because the viewer
+  sits on near-black.
+- **The collection picker never had Enter wired**, and had no highlight either,
+  so nothing looked selected and Enter did nothing. It now follows the tag
+  picker's rule, decided once and rendered from the same value. Both pickers
+  clear their search on close.
+- **The resume toast** is anchored to the control bar's height rather than a
+  literal near it. At 64px its bottom edge was 6px *inside* the bar — which is
+  what "it didn't move" looked like. One `--mv-controls-h`, used by both.
+- **One file menu, one file inspector.** `bundleFileMenu` replaces the two menus
+  the album grid and the inspector's file list had grown for the same file;
+  `fileFacts` normalizes `FileBrowserEntry` and `FileRead` so `FileInspector`
+  serves both surfaces instead of a second copy being written.
+- **The in-bundle view behaves like the File Browser**: grid/list switch with
+  the same control and rows, and selecting one file puts its details in the rail.
+  No breadcrumb — a bundle has no parent directories. **Path is now a row** in
+  that pane; it was deliberately omitted when the pane only described the File
+  Browser, where the tree already says where you are, but inside a bundle the
+  files can come from anywhere and that is the thing worth reading.
+- **The contact sheet's grid and width are chosen in a dialog**, which also
+  prints the resulting cell size — neither number means much alone, and a 6×6 at
+  1280 has smaller frames than a 4×4 at the same width.
+- **The submenu machinery came back out.** Its only caller was the grid list,
+  now a dialog. The cut-off it suffered at the window edge is moot, and an
+  unexercised code path is worth less than the lines it costs.
+
+Verified live in the web UI against the demo library: both pickers highlighting
+and accepting on Enter and presenting an empty field on reopen; the album's
+grid/list switch with four files; the rail showing `deep_ocean.mp4` with
+dimensions, duration, frame rate and its full path; the contact-sheet dialog
+offering three grids and three widths over an opaque panel.
+
+### Owner review round 4 (2026-07-27)
+
+Nine items. The one that needed diagnosis was the contact-sheet 502.
+
+**It was a timeout, and the shape of the cost was the bug.** Sampling with
+`fps=1/n` makes ffmpeg decode every frame between the first sample and the last,
+so generation scaled with the video's *duration*, not the number of cells:
+
+| video | decode-and-sample | seek per frame |
+| --- | --- | --- |
+| 2-minute 4K | 3.9s | 0.9s |
+| 12-minute 4K | 24.3s | 2.1s (4×4), 6.1s (6×6) |
+
+The desktop relay gives up at 30s. That explains the whole report exactly:
+a long video fails, a second attempt sometimes succeeds because the abandoned
+first one still filled the cache, and a longer video fails every time. Frames
+now come from one input per cell with `-ss` before `-i` and `-noaccurate_seek`,
+so ffmpeg jumps to the nearest keyframe and stops there. A sheet wants a
+representative frame, not a precise one.
+
+The owner proposed reusing the storyboard sheets instead. Recorded as
+**considered and declined**: it helps only where a storyboard already exists,
+and its 320px tiles fall below the cell size of a wide grid. The cost was never
+where the frames came from — it was decoding everything between them.
+
+The rest:
+
+- **Contact sheets are reachable from every video** — File Browser, album grid,
+  inspector file list — through a shared `contactSheetExport`, with a grid
+  submenu (4×4/5×5/6×6). That meant teaching `ContextMenu` about submenus: a row
+  now has either an action or children.
+- **Per-cell timestamps and fps in the header.** The server reports the sampled
+  instants in `X-Contact-Sheet-Times`; the client labels from those rather than
+  reimplementing the sampling rule. Each cell carries its own gutter so the
+  sheet divides into equal cells, which is what makes the labelling a plain
+  division.
+- **Progress.** Generation is seconds, so it reports through the shell's toast,
+  which now holds any message ending in an ellipsis until a result replaces it.
+- **Double-click closes the viewer; Escape closes it from fullscreen too** —
+  previously two presses. Fullscreen is still dropped first so closing cannot
+  strand the shell there.
+- **"Next" stops at the media's edge** when the inspector is docked, and the
+  resume toast sits beside the seek bar it refers to.
+- **Escape dismisses a picker**, stopping there rather than also closing what is
+  behind it. The active row is a filled pill; the search box no longer
+  highlights itself.
+- **A collection's description sits under its title.**
+
+Verified live against the demo library: a 5×5 sheet built from the inspector's
+file list, header reading `360 MB · 2:00 · 3840×2160 · 30 fps`, cells labelled
+0:04 through 1:50; the "next" arrow ending at 904px against a rail starting at
+920px; Escape and double-click each closing the viewer; Escape closing the
+picker with the bundle still selected.
+
+### Owner review round 3 (2026-07-27)
+
+Five items. Two were the same requirement misread twice more.
+
+- **Two panels, not one.** Round 2 folded the bundle inspector *into* the info
+  panel; the owner wanted them separate. The `i` button is the media's own
+  information again — type, size, dimensions, duration, subtitles, playlist —
+  and a sidebar toggle docks the main shell's `Inspector` as a right rail. Both
+  open at once; the stage narrows instead of being covered.
+- **Click-away, third attempt.** Round 2 stopped the click, which is too late:
+  `useMarqueeSelect` clears on mousedown and mouseup. `usePopover` now consumes
+  the whole dismissing gesture in the capture phase. Verified live from the
+  grid, the inspector cover, a textarea and a field label — picker closed,
+  bundle still selected, in all four.
+- **Contact sheets in the shell.** Not a stale sidecar: `contact-sheet` was
+  missing from the Tauri media proxy's read-only allowlist, so the shell
+  refused the request before the server saw it. Proven by running the bundled
+  sidecar directly and finding the route present in its own OpenAPI.
+- **The tag picker marks what Enter will take** — single match, exact name, or
+  the create row — computed once and rendered from the same value.
+
+#### Video performance audit
+
+The owner reported seeking a 4K file feeling slower. The media pipeline
+measured clean end to end, so the cost was in the app and in how the app is
+being run:
+
+| layer | measured | verdict |
+| --- | --- | --- |
+| server range response | 2–6 ms TTFB | fine |
+| Tauri media proxy | 453 MB/s, flat across 24 abandoned ranges | fine |
+| playback decision | `direct`, no transcode | fine |
+| the file itself | faststart `moov`, keyframe every 0.4 s | fine |
+| element seek (Chrome) | 7–26 ms | fine |
+
+Two hypotheses were checked and **disconfirmed**, recorded so they are not
+re-opened: the media proxy does not degrade when a client abandons range
+requests, and Starlette's `FileResponse` does *not* keep draining a file after
+the client disconnects — instrumented at 2.2 MiB read from a 256 MiB file, not
+the whole thing, despite the range loop having no disconnect check.
+
+What was real, and fixed:
+
+- **Unthrottled keyboard seeking.** Auto-repeat fires ~30 keydowns a second and
+  each wrote `currentTime`, aborting the in-flight byte range. Relative seeks
+  accumulate and commit through the drag path's 150 ms throttle; a held key
+  still travels the same distance.
+- **Library-wide work per playback frame.** `TagEditor` and `CollectionPicker`
+  built their row trees in the render body whether open or not — every tag and
+  collection, sorted — and the newly docked inspector put that inside a subtree
+  re-rendering several times a second. Both build only while open; `Inspector`
+  is memoized; `buffered` keeps its array identity when the ranges have not
+  moved, which is what lets the bail-out fire.
+- **A frozen scrub preview and layout thrash.** The tooltip that covers for the
+  throttle never moved during a drag, and the seek bar re-read the track rect on
+  every pointer move.
+- **Three routes still pinned a DB connection while streaming.** `/file`,
+  `/file/preview` and a collection's `/thumbnail` used the yield dependency the
+  streaming routes were moved off when drag-seek pool exhaustion was diagnosed.
+  `/file` is how an unindexed File Browser video plays, so seeking one
+  reproduced that bug in full.
+
+**The measurement setup was itself a finding.** `just bundled` and `just
+desktop` both run `tauri dev`, which serves the web app from Vite — React's
+development build, unbundled modules, StrictMode double-rendering every
+component. The sidecar is the shipped one; the frontend never was. `just
+release` was added to run the optimized build, and `bundled`'s comment no
+longer calls itself "the shipped path". Any judgement about speed should come
+from `just release`.
+
+### Owner review round 2 (2026-07-27)
+
+Eleven follow-ups, all in this branch. The two that were real regressions from
+round 1:
+
+- **Videos were slower to start.** The File Browser asked for every row's
+  thumbnail at mount; with no virtualization that saturated the browser's
+  per-origin connections, and everything sharing them queued behind frame
+  extractions nobody was looking at. Thumbnails now load on visibility via an
+  IntersectionObserver — not `loading="lazy"`, which round 1 already established
+  never fires inside the listing's own scroll container.
+- **Dismissing the new right-click menu paused the video**: the menu closes on
+  mousedown, so the matching click reached the stage. The shell records the
+  dismissal in the capture phase and swallows that click.
+
+The rest: the topbar clearance was too deep and shouldn't apply in fullscreen;
+the viewer had no drag region, so the window could not be moved while media was
+open; the settings menu's cover group moved to the right-click menu (**and
+"reset cover to default" had to be re-homed there — removing the group left it
+unreachable**, caught by the fullstack cover specs); Settings → Exports used
+class names that do not exist and was rebuilt on the markup the other settings
+pages use; the contact-sheet 404 now explains itself (it means a server
+predating the feature — the route, its OpenAPI entry and a live run all check
+out).
+
+Tag picker: Enter accepts the single match or creates what was typed, the field
+clears and the picker stays open, and the dismissing click is stopped in the
+capture phase so clicking away no longer clears the bundle selection underneath.
+Tagging is optimistic and stopped force-refetching the whole grid.
+
+**The info sidebar was the misread.** Round 1 built a read-only metadata echo;
+the owner wanted *the* inspector — tags, collections, rating, notes — while
+media plays. It now embeds the real component, with its pickers portalled above
+the viewer. A collection's description was the same shape of problem: the field
+and API already existed, but navigating into a collection from the sidebar left
+the inspector empty, so it only appeared when a collection *card* was selected.
+
+Verified live against the Demo library: inspector embedded and editable during
+playback, collection description reachable from the sidebar, picker click-away
+keeping the selection, and Enter creating `probe/nested` as a hierarchy (the
+probe tags were deleted afterwards — the Demo library is back to no tags).
+
+Also this session, directly on main: the stale W6 STATUS heading fixed, and CI
+repaired — PR #33's dialog change gated the delete-files checkbox on write
+mode, and library.spec still expected it unconditionally (the full e2e suite
+had last run before that change; only the file-browser/player specs ran after).
+
+Gates: backend 815 (+8: contact sheets ×5, random view ×3), web 435 unit /
+93 e2e, Rust 102, all static checks clean, OpenAPI + schema.d.ts regenerated.
+Live-verified against the running Demo library: nav history round trip, info
+sidebar jump, context menus (video and image shapes), Random shuffle +
+reshuffle, contact sheet end-to-end ("Building…" → "saved", 1286×726 4×4
+JPEG), drop net + guidance flash. Not verifiable here: the desktop-only pieces
+(export folder picker, drop-on-bundle with write mode, titlebar clearance) are
+covered by Rust tests/typechecking and need an owner pass in the shell.
+
 ## Merged: plan 4 W6 — write-mode hardening (2026-07-26, PR #33)
 
 Branch `fix/write-mode-hardening`, rebased onto `main` at `7b767d3`. W6 is the last

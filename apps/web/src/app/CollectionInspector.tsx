@@ -6,7 +6,7 @@ import { useCollectionStats, useUpdateCollection } from '../api/hooks'
 
 /**
  * Right-pane details for a selected collection (single-click a collection card).
- * Editable title + note, plus counts: bundles directly in this collection,
+ * Editable title + description, plus counts: bundles directly in this collection,
  * total bundles across the whole subtree, and direct subcollections. Shows the
  * cover (chosen via "Set as collection cover", else auto-picked) when present.
  */
@@ -61,6 +61,22 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
         aria-label="Collection title"
       />
 
+      {/* "Description" rather than "Note": it describes the collection, and the
+          owner asked for it by that name (2026-07-27). Same column position and
+          box as a bundle's notes, so the two rails read alike. */}
+      <div className="notes-head">
+        <label className="field-label">Description</label>
+      </div>
+      <textarea
+        className="edit edit--note"
+        value={note}
+        placeholder="Describe this collection…"
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={commitNote}
+        aria-label="Collection description"
+        rows={4}
+      />
+
       <div className="prop">
         <span className="prop__k">Bundles (here)</span>
         <span className="prop__v">{stats.data?.direct_bundles ?? '—'}</span>
@@ -73,17 +89,6 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
         <span className="prop__k">Subcollections</span>
         <span className="prop__v">{stats.data?.subcollections ?? '—'}</span>
       </div>
-
-      <label className="field-label">Note</label>
-      <textarea
-        className="edit edit--note"
-        value={note}
-        placeholder="Add a note…"
-        onChange={(e) => setNote(e.target.value)}
-        onBlur={commitNote}
-        aria-label="Collection note"
-        rows={4}
-      />
     </aside>
   )
 }

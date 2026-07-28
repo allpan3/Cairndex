@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 
 import type { FileRead } from '../api/client'
 import { MissingFileRepairAction } from './Inspector'
@@ -27,6 +27,11 @@ vi.mock('../api/hooks', () => ({
   useUpdateBundle: vi.fn(),
 }))
 
+// The hook mocks live at module scope, so each test starts from a clean slate.
+beforeEach(() => {
+  hooks.repair.mutate.mockClear()
+})
+
 const missingFile = {
   id: 'missing',
   bundle_id: 'target-bundle',
@@ -34,10 +39,26 @@ const missingFile = {
 } as FileRead
 
 test('offers one compact relink action for the unique current-path match', () => {
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<MissingFileRepairAction bundleId="target-bundle" file={missingFile} />)
 
-  const button = screen.getByRole('button', { name: 'Relink to renamed/current.mp4' })
-  fireEvent.click(button)
+  fireEvent.click(screen.getByRole('button', { name: 'Relink to renamed/current.mp4' }))
+
+  // Relinking asks first, in a rendered dialog. It used to use `window.confirm`,
+  // which the desktop webview does not implement — there the question never
+  // appeared and the click did nothing (owner, 2026-07-27).
+  expect(hooks.repair.mutate).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog', { name: 'Relink Missing File' })).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Relink' }))
   expect(hooks.repair.mutate).toHaveBeenCalledWith('current')
+})
+
+test('cancelling the relink prompt leaves the file alone', () => {
+  render(<MissingFileRepairAction bundleId="target-bundle" file={missingFile} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Relink to renamed/current.mp4' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(hooks.repair.mutate).not.toHaveBeenCalled()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })

@@ -84,18 +84,26 @@ test('maps player utility shortcuts', () => {
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'm' }), player, actions)
   expect(player.setMuted).toHaveBeenLastCalledWith(true)
 
-  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'c' }), player, actions)
+  // Owner remap (2026-07-27): subtitles on v, frames on ,/., speed on z/x/c.
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'v' }), player, actions)
   expect(player.toggleSubtitles).toHaveBeenCalled()
 
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: '.' }), player, actions)
+  expect(player.frameStep).toHaveBeenLastCalledWith(1)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: ',' }), player, actions)
+  expect(player.frameStep).toHaveBeenLastCalledWith(-1)
+  // The shifted pair still works — same physical keys.
   handleViewerShortcut(new KeyboardEvent('keydown', { key: '>' }), player, actions)
   expect(player.frameStep).toHaveBeenLastCalledWith(1)
   handleViewerShortcut(new KeyboardEvent('keydown', { key: '<' }), player, actions)
   expect(player.frameStep).toHaveBeenLastCalledWith(-1)
 
-  handleViewerShortcut(new KeyboardEvent('keydown', { key: '.' }), player, actions)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'c' }), player, actions)
   expect(player.setRate).toHaveBeenLastCalledWith(1.25)
-  handleViewerShortcut(new KeyboardEvent('keydown', { key: ',' }), player, actions)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'x' }), player, actions)
   expect(player.setRate).toHaveBeenLastCalledWith(0.75)
+  handleViewerShortcut(new KeyboardEvent('keydown', { key: 'z' }), player, actions)
+  expect(player.setRate).toHaveBeenLastCalledWith(1)
 
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'S' }), player, actions)
   expect(actions.snapshot).toHaveBeenCalled()
@@ -157,26 +165,31 @@ test('navigates files from the menu even with no video player', () => {
   expect(runViewerCommand('snapshot', null, actions)).toBe(false)
 })
 
-test('escape leaves native fullscreen before it closes the viewer', () => {
-  // In the shell, fullscreen is the native window, so document.fullscreenElement is
-  // null and only the viewer-supplied state reveals it.
+test('escape closes the viewer, dropping fullscreen on the way out', () => {
+  // One press puts the player away (owner, 2026-07-27). Fullscreen is left
+  // first so closing cannot strand the shell there; `f` is still how you leave
+  // fullscreen and keep watching.
+  // In the shell, fullscreen is the native window, so document.fullscreenElement
+  // is null and only the viewer-supplied state reveals it.
   const actions = { ...mockActions(), isFullscreen: vi.fn(() => true) }
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'Escape' }), mockPlayer(), actions)
   expect(actions.exitFullscreen).toHaveBeenCalled()
-  expect(actions.close).not.toHaveBeenCalled()
+  expect(actions.close).toHaveBeenCalled()
 
   const windowed = mockActions()
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'Escape' }), mockPlayer(), windowed)
+  expect(windowed.exitFullscreen).not.toHaveBeenCalled()
   expect(windowed.close).toHaveBeenCalled()
 })
 
 test('escape leaves fullscreen on an image bundle, which has no player', () => {
   // Regression: this keyed off player.fullscreen, so a fullscreen image viewer
-  // closed and left the workspace window stuck in fullscreen.
+  // left the workspace window stuck in fullscreen. It must still drop
+  // fullscreen even though there is no player to ask.
   const actions = { ...mockActions(), isFullscreen: vi.fn(() => true) }
   handleViewerShortcut(new KeyboardEvent('keydown', { key: 'Escape' }), null, actions)
   expect(actions.exitFullscreen).toHaveBeenCalled()
-  expect(actions.close).not.toHaveBeenCalled()
+  expect(actions.close).toHaveBeenCalled()
 })
 
 test('every keymap `keys` entry reaches its declared command', () => {

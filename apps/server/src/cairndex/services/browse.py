@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Select, exists, false, func, not_, select, update
+from sqlalchemy import Select, exists, false, func, not_, select, text, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -52,6 +52,9 @@ class SystemView(StrEnum):
     UNTAGGED = "untagged"  # has no tags
     MISSING = "missing"  # has at least one missing file
     UNBUNDLED = "unbundled"  # scan-staged files awaiting bundling/confirmation
+    # Every bundle, in a seeded shuffle: the browse-by-serendipity view. The
+    # client supplies (and reseeds) the seed; identical seeds page identically.
+    RANDOM = "random"
 
 
 class BundleSort(StrEnum):
@@ -280,6 +283,23 @@ def _apply_sort(
     )
 
 
+def _shuffle_order(seed: int) -> Any:
+    """A deterministic pseudo-shuffle: order by a per-seed permutation key.
+
+    ``(rowid * odd_multiplier) % prime`` walks the rowids in an order that
+    scrambles thoroughly for shuffle purposes and — unlike SQL ``random()`` —
+    is stable for a given seed, which is what keeps offset pagination coherent
+    across pages and refetches. Pure SQL, no per-row Python, no schema change;
+    reseeding is the client sending a different seed.
+    """
+    # Knuth-mix the seed first: the multiplier must be large enough that even
+    # rowid*2 wraps the modulus, or a small library under a small seed comes out
+    # in rowid order — no shuffle at all. The modulus is prime, so any non-zero
+    # multiplier below it permutes rather than collides.
+    multiplier = (seed * 2_654_435_761 + 40_503) % 2_147_483_647 or 1
+    return text(f"(asset_bundles._rowid_ * {multiplier}) % 2147483647")
+
+
 def browse_bundles(
     session: Session,
     *,
@@ -292,6 +312,7 @@ def browse_bundles(
     limit: int = 100,
     filter_expr: FilterExpression | None = None,
     search: str | None = None,
+    seed: int | None = None,
 ) -> BundlePage:
     # A saved Smart Collection and a simple toolbar filter both arrive here as
     # the same compiled predicate, so they share one ranking/pagination path.
@@ -314,17 +335,21 @@ def browse_bundles(
     base = _scoped(select(AssetBundle.id).where(_visible_file_exists()))
     total = session.scalar(select(func.count()).select_from(base.subquery())) or 0
 
-    page_stmt = (
-        _apply_sort(
-            _scoped(select(AssetBundle).where(_visible_file_exists())),
+    page = _scoped(select(AssetBundle).where(_visible_file_exists()))
+    if view is SystemView.RANDOM:
+        # The whole point of the view is the shuffle, so the sort params are
+        # ignored rather than allowed to un-shuffle it; the id tie-break keeps
+        # paging deterministic if two rowid keys ever collide.
+        ordered = page.order_by(_shuffle_order(seed or 1), AssetBundle.id.asc())
+    else:
+        ordered = _apply_sort(
+            page,
             sort,
             descending,
             collection_id=collection_id,
             include_descendants=include_descendants,
         )
-        .offset(offset)
-        .limit(limit)
-    )
+    page_stmt = ordered.offset(offset).limit(limit)
     bundles = list(session.scalars(page_stmt))
 
     summaries = [_summarize(session, bundle) for bundle in bundles]

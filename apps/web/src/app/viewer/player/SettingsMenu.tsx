@@ -15,6 +15,10 @@ function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
 /**
  * Bundle-cover affordances for the playing file. Null when the item cannot own a
  * cover — an unindexed File Browser path has no bundle to be the cover of.
+ *
+ * The settings menu no longer shows these (owner, 2026-07-27: they belong with
+ * the other one-shot actions); the viewer's right-click menu owns them, and the
+ * shape stays here because that menu is built from the same actions object.
  */
 export interface CoverFrameActions {
   onUse: () => void
@@ -28,7 +32,6 @@ interface SettingsMenuProps {
   player: PlayerController
   fileLoop: boolean
   onFileLoop: (enabled: boolean) => void
-  cover: CoverFrameActions | null
   sourceHeight: number | null
 }
 
@@ -56,7 +59,6 @@ export function SettingsMenu({
   player,
   fileLoop,
   onFileLoop,
-  cover,
   sourceHeight,
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false)
@@ -119,7 +121,22 @@ export function SettingsMenu({
           <div className="mv-menu__group">
             <label className="mv-menu__slider-label" htmlFor="mv-playback-speed">
               <span>Speed</span>
-              <output>{player.rate}×</output>
+              <span className="mv-menu__slider-value">
+                {player.rate !== 1 && (
+                  // Only while off 1×: at normal speed there is nothing to reset,
+                  // and a permanent control would read as a second speed setting.
+                  <button
+                    type="button"
+                    className="mv-menu__reset"
+                    aria-label="Reset speed to 1×"
+                    title="Reset to 1×"
+                    onClick={() => player.setRate(1)}
+                  >
+                    ↺
+                  </button>
+                )}
+                <output>{player.rate}×</output>
+              </span>
             </label>
             <input
               id="mv-playback-speed"
@@ -228,24 +245,6 @@ export function SettingsMenu({
                   {track.label}
                 </button>
               ))}
-            </div>
-          )}
-          {cover && (
-            <div className="mv-menu__group">
-              <div className="mv-menu__label">Cover</div>
-              <div className="mv-menu__actions">
-                <button className="mv-menu__action" role="menuitem" onClick={cover.onUse}>
-                  Set frame as cover
-                </button>
-                <button
-                  className="mv-menu__action"
-                  role="menuitem"
-                  onClick={cover.onClear}
-                  disabled={!cover.hasCoverFrame}
-                >
-                  Reset cover to default
-                </button>
-              </div>
             </div>
           )}
         </div>

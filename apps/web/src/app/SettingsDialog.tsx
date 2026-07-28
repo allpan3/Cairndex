@@ -34,7 +34,7 @@ export function SettingsDialog({
   onClose: () => void
 }) {
   const desktop = getHostPlatform().kind === 'desktop'
-  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance'>('devices')
+  const [page, setPage] = useState<'devices' | 'libraries' | 'appearance' | 'exports'>('devices')
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
@@ -66,6 +66,14 @@ export function SettingsDialog({
                 Libraries
               </button>
             )}
+            {desktop && (
+              <button
+                className={`settings-nav__item${page === 'exports' ? ' settings-nav__item--active' : ''}`}
+                onClick={() => setPage('exports')}
+              >
+                Exports
+              </button>
+            )}
             <button
               className={`settings-nav__item${page === 'appearance' ? ' settings-nav__item--active' : ''}`}
               onClick={() => setPage('appearance')}
@@ -77,6 +85,8 @@ export function SettingsDialog({
             <AppearancePage />
           ) : desktop && page === 'libraries' ? (
             <LibraryMappingsPage libraries={libraries} />
+          ) : desktop && page === 'exports' ? (
+            <ExportsPage />
           ) : desktop ? (
             <PairThisDevice startPairing={startPairing} />
           ) : (
@@ -85,6 +95,66 @@ export function SettingsDialog({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Where snapshots and exports land (owner request, 2026-07-27). Desktop only —
+ * a browser can only ever download. Unset means the native save dialog asks
+ * every time; choosing a folder makes saves land there silently, keep-both on
+ * name collisions. The path is stored by the shell and only ever enters it from
+ * the OS folder picker. */
+function ExportsPage() {
+  const platform = getHostPlatform()
+  const [dir, setDir] = useState<string | null>(null)
+  useEffect(() => {
+    void platform.getExportDir?.().then(setDir)
+    // The platform singleton never changes identity within a session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <section className="devices-page" aria-labelledby="exports-title">
+      <div className="devices-page__head">
+        <div>
+          <h3 id="exports-title">Exports</h3>
+          <p>
+            Where snapshots and contact sheets are saved. Nothing here changes your library — these
+            are copies written outside it.
+          </p>
+        </div>
+      </div>
+      <div className="settings-toggle">
+        <span>
+          <strong>{dir ?? 'Ask every time'}</strong>
+          <span className="settings-toggle__hint">
+            {dir
+              ? 'Exports are saved straight here. A name already in use keeps both, never replacing the earlier file.'
+              : 'Every export opens the save dialog so you can choose where it goes.'}
+          </span>
+        </span>
+        <span className="settings-actions">
+          <button
+            className="btn"
+            onClick={() => {
+              void platform.pickExportDir?.().then((picked) => {
+                if (picked !== null) setDir(picked)
+              })
+            }}
+          >
+            Choose Folder…
+          </button>
+          {dir !== null && (
+            <button
+              className="btn"
+              onClick={() => {
+                void platform.clearExportDir?.().then(() => setDir(null))
+              }}
+            >
+              Ask Every Time
+            </button>
+          )}
+        </span>
+      </div>
+    </section>
   )
 }
 

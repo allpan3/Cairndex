@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import type { BundleSort, SortOrder } from '../api/client'
 import { type AdHocFilters, type FacetContext, anyAdHocActive } from './adHocFilters'
@@ -10,6 +10,13 @@ import { TagFilterControl } from './TagFilterControl'
 import type { BrowsePrefs, LayoutMode } from './types'
 
 interface ToolbarProps {
+  /** Leading controls before the title — the Back/Forward history buttons. */
+  leading?: ReactNode
+  /**
+   * Set in the Random view: replaces the sort control with a Reshuffle button —
+   * explicit sorting would just un-shuffle the one thing the view is for.
+   */
+  onReshuffle?: () => void
   title: string
   total: number
   search: string
@@ -38,6 +45,8 @@ const LAYOUTS: { value: LayoutMode; icon: string; label: string }[] = [
 ]
 
 export function Toolbar({
+  leading,
+  onReshuffle,
   title,
   total,
   search,
@@ -58,10 +67,20 @@ export function Toolbar({
   // The second filter row starts open when a filter is already active, so a
   // filtered view doesn't hide its own controls.
   const [filtersOpen, setFiltersOpen] = useState(filtersActive)
+  // …and it *reveals itself* when a filter turns on from elsewhere — a tag
+  // pill's "Filter Items" lands here with the row closed, and an active filter
+  // with no visible controls looks like the library shrank on its own (owner,
+  // 2026-07-27). Compared during render, so nothing flashes.
+  const [wasActive, setWasActive] = useState(filtersActive)
+  if (wasActive !== filtersActive) {
+    setWasActive(filtersActive)
+    if (filtersActive) setFiltersOpen(true)
+  }
 
   return (
     <>
       <div className="toolbar" data-tauri-drag-region="deep">
+        {leading}
         <span className="toolbar__title">{title}</span>
         <span className="toolbar__count">{total.toLocaleString()} items</span>
         <span className="toolbar__spacer" />
@@ -86,14 +105,25 @@ export function Toolbar({
           title="Search titles, filenames, tags, and collections across the whole library"
         />
 
-        <SortControl
-          sort={sort}
-          order={order}
-          onChange={onSort}
-          allowed={allowedSorts}
-          perCollection={perCollectionSort}
-          onPerCollection={onPerCollectionSort}
-        />
+        {onReshuffle ? (
+          <button
+            className="seg toolbar__reshuffle"
+            onClick={onReshuffle}
+            aria-label="Reshuffle"
+            title="Reshuffle"
+          >
+            ↺ Shuffle
+          </button>
+        ) : (
+          <SortControl
+            sort={sort}
+            order={order}
+            onChange={onSort}
+            allowed={allowedSorts}
+            perCollection={perCollectionSort}
+            onPerCollection={onPerCollectionSort}
+          />
+        )}
 
         <div className="seg" role="group" aria-label="Layout">
           {LAYOUTS.map((l) => (

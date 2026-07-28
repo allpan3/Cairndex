@@ -889,6 +889,11 @@ export interface paths {
          * @description Serve the collection's cover thumbnail — the chosen cover bundle's cover,
          *     or an auto-picked bundle from the subtree. 404 if the collection has no
          *     thumbnailable bundle; 503 if ffmpeg is unavailable.
+         *
+         *     Scoped like the other file-serving routes: generation can shell out to
+         *     ffmpeg, and a grid of collections asks for many of these at once, so the
+         *     session must not stay checked out for either the generation or the transfer
+         *     (see ``LibraryAccess``).
          */
         get: operations["get_collection_thumbnail_api_v1_libraries__library_id__collections__collection_id__thumbnail_get"];
         put?: never;
@@ -946,6 +951,11 @@ export interface paths {
          *
          *     Read-only and path-safe (same scoping as ``/file-browser/entries``). Files here
          *     need not be linked into a bundle. ``FileResponse`` honors HTTP Range.
+         *
+         *     This is the route an *unindexed* File Browser video plays through, so it sees
+         *     the same overlapping range requests as ``/files/{id}/stream`` and needs the
+         *     same scoped session — a yield dependency here pins two connections for the
+         *     whole transfer and strands them outright when a seek aborts the request.
          */
         get: operations["serve_file_api_v1_libraries__library_id__file_get"];
         put?: never;
@@ -1228,8 +1238,41 @@ export interface paths {
          *     Read-only and path-safe. Files here need not be linked into a bundle, so the
          *     cache key is derived from the normalized library-relative path plus source
          *     quick fingerprint.
+         *
+         *     Scoped like the other streaming routes: the session closes before the body
+         *     streams, so no connection is pinned for the transfer (see ``LibraryAccess``).
          */
         get: operations["serve_file_preview_api_v1_libraries__library_id__file_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/files/{file_id}/contact-sheet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Contact Sheet
+         * @description The frame grid for a contact-sheet export (plan 1 §10, first M11 slice).
+         *
+         *     Frames only — the client composes the metadata header and the per-cell
+         *     timestamps, which it can already render without dragging font discovery into
+         *     the server. Generated on demand, cached by grid shape and source
+         *     fingerprint; a scoped session so the ffmpeg run never holds a DB connection.
+         *
+         *     ``X-Contact-Sheet-Times`` carries the instant each cell was sampled from, so
+         *     the client labels cells from the same definition that chose the frames
+         *     rather than reimplementing the sampling rule. Exposed to the browser because
+         *     the desktop shell reaches this through a cross-origin relay.
+         */
+        get: operations["get_contact_sheet_api_v1_libraries__library_id__files__file_id__contact_sheet_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2099,12 +2142,36 @@ export interface paths {
         get: operations["get_tag_api_v1_libraries__library_id__tags__tag_id__get"];
         put?: never;
         post?: never;
-        /** Delete Tag */
+        /**
+         * Delete Tag
+         * @description Delete a tag. `cascade` also deletes its child tags, which is refused
+         *     without it so a parent is never taken by accident.
+         */
         delete: operations["delete_tag_api_v1_libraries__library_id__tags__tag_id__delete"];
         options?: never;
         head?: never;
         /** Update Tag */
         patch: operations["update_tag_api_v1_libraries__library_id__tags__tag_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/tags/{tag_id}/delete-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tag Delete Impact
+         * @description What deleting this tag would take with it, for the confirmation prompt.
+         */
+        get: operations["tag_delete_impact_api_v1_libraries__library_id__tags__tag_id__delete_impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/libraries/{library_id}/write-mode": {
@@ -2283,6 +2350,8 @@ export interface components {
             order: string;
             /** Q */
             q?: string | null;
+            /** Seed */
+            seed?: number | null;
             /** @default date_added */
             sort: components["schemas"]["BundleSort"];
             /** @default all */
@@ -3938,7 +4007,7 @@ export interface components {
          * SystemView
          * @enum {string}
          */
-        SystemView: "all" | "recent" | "uncategorized" | "untagged" | "missing" | "unbundled";
+        SystemView: "all" | "recent" | "uncategorized" | "untagged" | "missing" | "unbundled" | "random";
         /** TagCreate */
         TagCreate: {
             /** Color */
@@ -3947,6 +4016,16 @@ export interface components {
             name: string;
             /** Parent Id */
             parent_id?: string | null;
+        };
+        /**
+         * TagDeleteImpact
+         * @description What deleting a tag would remove, so the prompt can say so up front.
+         */
+        TagDeleteImpact: {
+            /** Bundles */
+            bundles: number;
+            /** Tags */
+            tags: number;
         };
         /** TagGroupCreate */
         TagGroupCreate: {
@@ -4892,6 +4971,7 @@ export interface operations {
                 offset?: number;
                 limit?: number;
                 q?: string | null;
+                seed?: number | null;
             };
             header?: {
                 authorization?: string | null;
@@ -6745,6 +6825,46 @@ export interface operations {
                 authorization?: string | null;
             };
             path: {
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_contact_sheet_api_v1_libraries__library_id__files__file_id__contact_sheet_get: {
+        parameters: {
+            query?: {
+                cols?: number;
+                rows?: number;
+                width?: 1280 | 1600 | 2048;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                file_id: string;
                 library_id: string;
             };
             cookie?: {
@@ -8785,7 +8905,9 @@ export interface operations {
     };
     delete_tag_api_v1_libraries__library_id__tags__tag_id__delete: {
         parameters: {
-            query?: never;
+            query?: {
+                cascade?: boolean;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -8846,6 +8968,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tag_delete_impact_api_v1_libraries__library_id__tags__tag_id__delete_impact_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                tag_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagDeleteImpact"];
                 };
             };
             /** @description Validation Error */
