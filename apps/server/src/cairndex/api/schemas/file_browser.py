@@ -28,6 +28,8 @@ class FileBrowserEntryRead(BaseModel):
     file_id: str | None
     container: str | None
     video_codec: str | None
+    # Container codec tag (hvc1/hev1); null on rows probed before v3.
+    video_codec_tag: str | None
     audio_codec: str | None
     duration: float | None
     resume_position: float | None

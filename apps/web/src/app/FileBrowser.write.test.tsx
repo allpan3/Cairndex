@@ -35,6 +35,7 @@ const FOLDER: FileBrowserEntry = {
   file_id: null,
   container: null,
   video_codec: null,
+  video_codec_tag: null,
   audio_codec: null,
   duration: null,
   resume_position: null,

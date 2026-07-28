@@ -46,6 +46,7 @@ def _method(
     default_audio_index: int | None = None,
     burn_subtitle: bool = False,
     requested_max_height: int | None = None,
+    video_codec_tag: str | None = None,
     caps: CapabilityProfile = _CAPS,
 ) -> str:
     return decide_playback(
@@ -53,6 +54,7 @@ def _method(
         ext=ext,
         video_codec=video_codec,
         audio_codec=audio_codec,
+        video_codec_tag=video_codec_tag,
         source_height=source_height,
         audio_stream_index=audio_stream_index,
         default_audio_index=default_audio_index,
@@ -81,6 +83,68 @@ def test_direct_when_container_and_codecs_supported() -> None:
     assert _method(ext="mp4", video_codec="h264", audio_codec="aac") == "direct"
     assert _method(ext="m4v", video_codec="h264", audio_codec="aac") == "direct"  # m4v→mp4
     assert _method(ext="webm", video_codec="vp9", audio_codec="opus") == "direct"
+
+
+# --- HEVC codec tags --------------------------------------------------------
+# An Apple client: HEVC decodes, but only when the container labels it `hvc1`.
+# `hev1` is advertised by MediaSource yet refused by AVFoundation, so it must
+# never reach the direct path.
+_APPLE_CAPS = CapabilityProfile.build(
+    containers=["mp4"],
+    video_codecs=["h264", "hevc", "hvc1"],
+    audio_codecs=["aac"],
+    max_height=2160,
+    native_hls=True,
+)
+
+
+def test_hvc1_tagged_hevc_plays_directly_on_an_apple_client() -> None:
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag="hvc1", caps=_APPLE_CAPS) == "direct"
+    )
+
+
+def test_hev1_tagged_hevc_remuxes_rather_than_transcoding() -> None:
+    # The codec family is supported — only the container's label is wrong — so
+    # this must stay a stream copy. Transcoding here would re-encode a whole
+    # HEVC feature film to fix four bytes of metadata.
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag="hev1", caps=_APPLE_CAPS) == "remux"
+    )
+
+
+def test_hev1_plays_directly_when_the_client_confirms_that_tag() -> None:
+    caps = CapabilityProfile.build(
+        containers=["mp4"],
+        video_codecs=["hevc", "hvc1", "hev1"],
+        audio_codecs=["aac"],
+        max_height=2160,
+        native_hls=False,
+    )
+    assert _method(ext="mp4", video_codec="hevc", video_codec_tag="hev1", caps=caps) == "direct"
+
+
+def test_missing_or_meaningless_codec_tag_stays_optimistic() -> None:
+    # Rows probed before the tag was recorded, and containers that carry no tag
+    # at all (ffprobe reports "[0][0][0][0]"), keep their pre-existing decision.
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag=None, caps=_APPLE_CAPS) == "direct"
+    )
+    assert (
+        _method(ext="mp4", video_codec="hevc", video_codec_tag="[0][0][0][0]", caps=_APPLE_CAPS)
+        == "direct"
+    )
+
+
+def test_codec_tag_does_not_override_an_unsupported_codec_family() -> None:
+    # No HEVC at all → transcode, regardless of how the source is tagged.
+    assert _method(ext="mp4", video_codec="hevc", video_codec_tag="hvc1") == "transcode"
+
+
+def test_non_discriminating_tags_are_ignored() -> None:
+    # avc1 is the only tag H.264 uses in MP4; testing it against caps would
+    # refuse every ordinary file, so only the HEVC pair is discriminating.
+    assert _method(ext="mp4", video_codec="h264", video_codec_tag="avc1") == "direct"
 
 
 def test_remux_when_codecs_supported_but_container_not() -> None:

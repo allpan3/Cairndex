@@ -2546,6 +2546,8 @@ export interface components {
             resume_relative_path: string | null;
             /** Resume Video Codec */
             resume_video_codec: string | null;
+            /** Resume Video Codec Tag */
+            resume_video_codec_tag: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -2732,6 +2734,8 @@ export interface components {
             resume_relative_path: string | null;
             /** Resume Video Codec */
             resume_video_codec: string | null;
+            /** Resume Video Codec Tag */
+            resume_video_codec_tag: string | null;
             /** Title */
             title: string | null;
             /** Total Size */
@@ -2943,6 +2947,8 @@ export interface components {
             unbundled: boolean;
             /** Video Codec */
             video_codec: string | null;
+            /** Video Codec Tag */
+            video_codec_tag: string | null;
         };
         /** FileBrowserListingRead */
         FileBrowserListingRead: {

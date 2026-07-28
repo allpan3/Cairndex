@@ -146,6 +146,28 @@ def _make_multitrack_video(path: Path) -> None:
     )
 
 
+def test_normalize_metadata_records_the_video_codec_tag() -> None:
+    # `hvc1` and `hev1` are both HEVC, but only the former plays on Apple
+    # engines, so the codec name alone cannot drive the playback decision.
+    def tag_of(video: dict) -> str | None:
+        meta = normalize_metadata({"format": {}, "streams": [video]})
+        return meta["video_codec_tag"]
+
+    assert tag_of({"codec_type": "video", "codec_name": "hevc", "codec_tag_string": "hev1"}) == (
+        "hev1"
+    )
+    assert tag_of({"codec_type": "video", "codec_name": "hevc", "codec_tag_string": "HVC1"}) == (
+        "hvc1"
+    )
+    # Containers with no codec tag (MKV, WebM) report a placeholder, not a label.
+    assert (
+        tag_of({"codec_type": "video", "codec_name": "h264", "codec_tag_string": "[0][0][0][0]"})
+        is None
+    )
+    assert tag_of({"codec_type": "video", "codec_name": "h264"}) is None
+    assert normalize_metadata({"format": {}, "streams": []})["video_codec_tag"] is None
+
+
 def test_normalize_metadata_reduces_ffprobe_json() -> None:
     raw = {
         "format": {"format_name": "mov,mp4,m4a", "duration": "12.5", "bit_rate": "800000"},

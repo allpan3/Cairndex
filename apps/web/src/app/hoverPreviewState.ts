@@ -16,6 +16,7 @@ export interface HoverPreviewSource {
   relativePath?: string | null
   container?: string | null
   videoCodec?: string | null
+  videoCodecTag?: string | null
   audioCodec?: string | null
   duration?: number | null
   startTime?: number | null
@@ -41,6 +42,7 @@ export function hoverPreviewMode(
       relativePath: source.relativePath,
       container: source.container,
       videoCodec: source.videoCodec,
+      videoCodecTag: source.videoCodecTag,
       audioCodec: source.audioCodec,
     },
     capabilities,

@@ -96,6 +96,10 @@ class SessionParams:
     max_height: int | None = None
     burn_subtitle: BurnSubtitle | None = None
     hwaccel: str | None = None
+    # Normalized source video codec, needed by the remux path to decide whether
+    # the copied stream must be relabelled (HEVC → hvc1). Constant per source, so
+    # it does not fragment the equality-based session reuse above.
+    video_codec: str | None = None
 
 
 @dataclass
@@ -279,6 +283,14 @@ def build_ffmpeg_command(session: HlsSession, start_number: int, start_s: float)
 
     if session.kind == "remux":
         args += ["-c:v", "copy"]
+        # Relabel HEVC to hvc1 on the way out. A copy preserves the source's
+        # four-character tag, and AVFoundation refuses hev1 — so without this an
+        # hev1 source remuxes into segments Safari and the desktop shell still
+        # will not play. It rewrites a container field only; the coded picture
+        # data is copied untouched, which is what keeps this a remux instead of
+        # an expensive re-encode.
+        if session.params.video_codec == "hevc":
+            args += ["-tag:v", "hvc1"]
     else:
         target_height = session.params.max_height or 1080
         maxrate, bufsize = _ladder_bitrate(target_height)

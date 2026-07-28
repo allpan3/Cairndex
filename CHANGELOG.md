@@ -119,6 +119,19 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **HEVC videos that refused to play in the desktop app.** MP4 labels its HEVC
+  either `hvc1` or `hev1`, and AVFoundation — Safari, and so the desktop shell —
+  plays only the first. Both labels normalized to plain `hevc`, and the browser
+  reported HEVC as supported on the strength of `hvc1` alone, so an `hev1` file
+  was handed straight to a video element that could not decode it: a "Playback
+  interrupted" card that no retry could clear. The probe now records the label,
+  the capability handshake reports the two separately, and an unplayable label
+  routes to a remux that copies the streams and rewrites the label — seconds,
+  not the full re-encode that fixing four bytes of metadata would otherwise
+  cost. The same check reaches card hover previews, which fall back to the
+  storyboard instead of a stalled video. Existing libraries re-probe themselves
+  to pick up the label.
+
 - **One layout control.** The toolbar's grid/justified/list now also drives the
   collections section (rows in list layout) and the in-bundle file view, which
   loses the private layout switch it briefly grew. The zoom slider reaches all

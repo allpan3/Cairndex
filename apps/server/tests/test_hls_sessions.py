@@ -323,6 +323,42 @@ def test_ffmpeg_command_remux_copies_video(monkeypatch: pytest.MonkeyPatch, tmp_
     assert "-ss" not in args  # no input seek at the start
 
 
+def test_ffmpeg_command_remux_relabels_hevc_to_hvc1(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A copy preserves the source's four-character tag, and AVFoundation refuses
+    # `hev1` — so segments produced from an hev1 source would still not play in
+    # Safari or the desktop shell without this relabel.
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    session = _session(tmp_path, kind="remux", params=SessionParams(video_codec="hevc"))
+    args = build_ffmpeg_command(session, 0, 0.0)
+    assert _value_after(args, "-c:v") == "copy"
+    assert _value_after(args, "-tag:v") == "hvc1"
+
+
+def test_ffmpeg_command_remux_does_not_tag_non_hevc_video(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Tagging an H.264 copy `hvc1` would mislabel it as HEVC and break playback.
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    session = _session(tmp_path, kind="remux", params=SessionParams(video_codec="h264"))
+    assert "-tag:v" not in build_ffmpeg_command(session, 0, 0.0)
+    # Legacy sessions carry no codec and must not be relabelled on a guess.
+    legacy = _session(tmp_path, kind="remux", params=SessionParams())
+    assert "-tag:v" not in build_ffmpeg_command(legacy, 0, 0.0)
+
+
+def test_ffmpeg_command_transcode_does_not_tag_hevc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The transcode path re-encodes to H.264; an hvc1 tag there would be a lie.
+    monkeypatch.setattr(hls, "ffmpeg_exe", lambda: "ffmpeg")
+    session = _session(tmp_path, kind="transcode", params=SessionParams(video_codec="hevc"))
+    args = build_ffmpeg_command(session, 0, 0.0)
+    assert _value_after(args, "-c:v") == "libx264"
+    assert "-tag:v" not in args
+
+
 def test_ffmpeg_command_remux_copies_aac_audio(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
