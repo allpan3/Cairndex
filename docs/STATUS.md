@@ -16,9 +16,44 @@
 > are open. Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
-> cannot be automated here. One diagnosis is parked rather than queued:
-> **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
-> inspector takes ~500 ms, deferred post-v0.1.0.
+> cannot be automated here. Two things are parked rather than queued, both
+> deferred post-v0.1.0: **[plan 5](plans/05-network-library-latency.md)** (why a
+> NAS-mounted library's inspector takes ~500 ms) and
+> **[plan 6](plans/06-folder-as-bundle-member.md)** (a folder as one item inside a
+> bundle, so an album of 1000 photos is one row).
+
+## Deferred: plan 6 — a folder as one item inside a bundle (2026-07-28)
+
+Owner wants a folder of 1000 photos to sit in a bundle without filling the
+inspector and the grouping dialog with 1000 rows. **Deferred post-v0.1.0**;
+[plan 6](plans/06-folder-as-bundle-member.md) records the approved design and
+the open questions, and stays open as a tracking PR rather than being merged.
+
+Three designs were considered in one session, and the first two were killed by
+the owner in a sentence each. *Folder as a bundle member* collides with
+`product-brief.md:67/124` and with the owner's own requirement that every file in
+the folder be in the bundle. *Automatic grouping* cannot work at all: a movie
+folder (film + subtitles + poster + cover) and a mixed-media album are
+indistinguishable from file properties, because the difference is what the folder
+*means*. That left explicit user-chosen groups — [ADR-0021](adr/0021-directory-groups-in-bundles.md),
+now **superseded** — which fell to the sharpest objection of the three: there was
+no answer to "where in the UI do I create a group?" that did not invent a new
+noun.
+
+The owner then proposed nesting bundles, and reconsidered that too as "kind of
+messy". The **accepted design is smaller**: a bundle member may be a *directory*,
+opened in the File Browser rather than entered, its files kept out of the
+playlist, never a cover, carrying no rating. Its contents stay indexed — an
+amendment made in review, because unindexed they would lose search, tags and
+playback resume, and the owner's own example is an album of short videos. The
+decision of which folders are entities is made in the grouping-suggestion
+dialog, which is what finally answered "where do I create one?".
+
+Sub-bundles were rejected on cost: **12 modules touch `AssetBundle`**, and a
+nested bundle must be invisible in every one. A directory member is not a bundle,
+so that entire class of bug does not arise. Also recorded: an early objection of
+mine that a folder could not be a bundle member misread
+`product-brief.md:67/124`, and cost two rounds of design.
 
 ## Deferred: plan 5 — network-library latency (2026-07-28)
 
