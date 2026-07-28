@@ -9,7 +9,9 @@ interface VideoStageProps {
   videoRef: (element: HTMLVideoElement | null) => void
   title: string
   artworkUrl: string
-  onError: () => void
+  /** Receives the element's `MediaError` so the shell can tell a format the
+   *  engine refused from a read that merely failed. */
+  onError: (mediaError: MediaError | null) => void
   /** Left-click on the stage. The shell owns it so a click that merely dismissed
    *  the context menu does not also toggle playback. */
   onActivate: () => void
@@ -100,7 +102,7 @@ export function VideoStage({
         className="mv-video"
         playsInline
         crossOrigin="anonymous"
-        onError={onError}
+        onError={(event) => onError(event.currentTarget.error)}
         data-testid="media-video"
         // Left click is the primary play/pause gesture, matching every other
         // video player. Right click opens the viewer's own menu, handled by the

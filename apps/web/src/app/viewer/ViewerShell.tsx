@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { type PlayableVideo, type PlaybackManifest, updatePlaybackProgress } from '../../api/client'
@@ -7,7 +7,7 @@ import { getHostPlatform, isDesktopHost } from '../../platform'
 import { contactSheetMenuItem, type ContactSheetTarget } from '../contactSheetExport'
 import { ContactSheetDialog } from '../ContactSheetDialog'
 import { ContextMenu } from '../ContextMenu'
-import { IconSidebar } from '../icons'
+import { IconAlert, IconFile, IconFilm, IconImage, IconMusic, IconSidebar } from '../icons'
 import { Inspector } from '../Inspector'
 import { type MenuEntry, useContextMenu } from '../useContextMenu'
 import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
@@ -25,6 +25,7 @@ import { usePlaybackProgressReporter } from './player/usePlaybackProgressReporte
 import { usePlayer, type PlayerController } from './player/usePlayer'
 import { useShortcuts } from './player/useShortcuts'
 import { consumeEndedTransition, handlePlaybackEnded } from './player/endBehavior'
+import { classifyMediaError, type PlaybackFailureKind } from './player/mediaError'
 
 // A native progressive video has no HLS session to re-attach, so a transient
 // media error (a dropped/slow range read while seeking into an unbuffered
@@ -108,7 +109,12 @@ export function ViewerShell({
   // "hide" survive stepping files and reopening the viewer.
   const infoOpen = playerPrefs.infoOpen
   const inspectorOpen = playerPrefs.inspectorOpen
-  const [failedKey, setFailedKey] = useState<string | null>(null)
+  // Which file failed, and how. The kind decides the card: a decode/format
+  // rejection is deterministic — the engine has already refused these bytes, so
+  // a retry replays the same refusal — while a network or aborted read is worth
+  // retrying. Conflating them is what made a hard codec failure read as a
+  // buffering hiccup with a button that could never work.
+  const [failure, setFailure] = useState<{ key: string; kind: PlaybackFailureKind } | null>(null)
   const [scrubbing, setScrubbing] = useState(false)
   const [fileLoop, setFileLoop] = useState(false)
   const endedHandledRef = useRef(false)
@@ -131,7 +137,7 @@ export function ViewerShell({
   // an unindexed path has no file id, and nothing keyed on one may fire for it.
   const fileId = current?.fileId ?? null
   const bundleId = current?.bundleId ?? null
-  const failed = currentKey !== null && failedKey === currentKey
+  const failedKind = currentKey !== null && failure?.key === currentKey ? failure.kind : null
   const isVideo = current?.mediaKind === 'video'
   const videoAvailable = current?.available === true
 
@@ -269,33 +275,44 @@ export function ViewerShell({
   const visibleResume =
     resumeNotice && resumeNotice.key === currentKey ? resumeNotice.position : null
   const { reattach, retry: retryPlayback } = hls
-  const handleStageError = useCallback(() => {
-    // An HLS session that idled out (long pause) or hit an hls.js fatal error
-    // re-attaches transparently at the current playhead.
-    if (reattach()) return
-    // Native progressive playback has no session to re-attach. A transient media
-    // error — e.g. a range read that stalls/drops while seeking into an
-    // unbuffered region — would otherwise dead-end here. Reload the source at
-    // the current playhead a bounded number of times before giving up.
-    if (source?.kind !== 'hls') {
-      // Swallow the extra error events of a single failure burst while the
-      // recovery decision is in flight (see nativeRecoveringRef).
-      if (nativeRecoveringRef.current) return
-      if (nativeRecoverRef.current < MAX_NATIVE_RECOVER) {
-        nativeRecoverRef.current += 1
-        nativeRecoveringRef.current = true
-        retryPlayback()
+  const handleStageError = useCallback(
+    (mediaError?: MediaError | null) => {
+      // A format the engine has already refused cannot be recovered by opening
+      // the same bytes again: re-attaching or reloading would replay the refusal
+      // and burn the budget on the way to the same card. Fail straight to the
+      // explanatory version instead.
+      if (classifyMediaError(mediaError) === 'unsupported') {
+        if (currentKey) setFailure({ key: currentKey, kind: 'unsupported' })
         return
       }
-    }
-    if (currentKey) setFailedKey(currentKey)
-  }, [currentKey, reattach, retryPlayback, source?.kind])
+      // An HLS session that idled out (long pause) or hit an hls.js fatal error
+      // re-attaches transparently at the current playhead.
+      if (reattach()) return
+      // Native progressive playback has no session to re-attach. A transient media
+      // error — e.g. a range read that stalls/drops while seeking into an
+      // unbuffered region — would otherwise dead-end here. Reload the source at
+      // the current playhead a bounded number of times before giving up.
+      if (source?.kind !== 'hls') {
+        // Swallow the extra error events of a single failure burst while the
+        // recovery decision is in flight (see nativeRecoveringRef).
+        if (nativeRecoveringRef.current) return
+        if (nativeRecoverRef.current < MAX_NATIVE_RECOVER) {
+          nativeRecoverRef.current += 1
+          nativeRecoveringRef.current = true
+          retryPlayback()
+          return
+        }
+      }
+      if (currentKey) setFailure({ key: currentKey, kind: 'interrupted' })
+    },
+    [currentKey, reattach, retryPlayback, source?.kind],
+  )
   // Manually recover from the failed card: clear the failure, refund the budget,
   // and re-decide at the current playhead.
   const retryFailedPlayback = useCallback(() => {
     nativeRecoverRef.current = 0
     nativeRecoveringRef.current = false
-    setFailedKey(null)
+    setFailure(null)
     retryPlayback()
   }, [retryPlayback])
   // Load watchdog (see LOAD_WATCHDOG_MS): a wedged load produces no error
@@ -603,11 +620,13 @@ export function ViewerShell({
             videoRef={videoRef}
             title={title}
             artworkUrl={artworkUrl}
-            failed={failed}
+            failedKind={failedKind}
             videoActive={videoActive}
             hls={hls}
             onError={handleStageError}
-            onFailed={() => currentKey && setFailedKey(currentKey)}
+            onFailed={(mediaError) =>
+              currentKey && setFailure({ key: currentKey, kind: classifyMediaError(mediaError) })
+            }
             onRetryFailed={retryFailedPlayback}
             onActivate={() => {
               if (dismissedMenuRef.current) {
@@ -677,7 +696,7 @@ function Stage({
   videoRef,
   title,
   artworkUrl,
-  failed,
+  failedKind,
   videoActive,
   hls,
   onActivate,
@@ -691,17 +710,19 @@ function Stage({
   videoRef: (element: HTMLVideoElement | null) => void
   title: string
   artworkUrl: string
-  failed: boolean
+  /** How the current file failed, or null while it has not. */
+  failedKind: PlaybackFailureKind | null
   videoActive: boolean
   hls: HlsSessionState
   /** Left-click on the video stage (guarded against menu-dismiss clicks). */
   onActivate: () => void
   /** Video-stage errors: routed through re-attach/reload recovery first. */
-  onError: () => void
+  onError: (mediaError?: MediaError | null) => void
   /** Unrecoverable media errors: straight to the failed card, no recovery. */
-  onFailed: () => void
+  onFailed: (mediaError: MediaError | null) => void
   onRetryFailed: () => void
 }) {
+  const failed = failedKind !== null
   if (!item.available) {
     return (
       <FallbackCard
@@ -711,14 +732,29 @@ function Stage({
       />
     )
   }
-  // A video whose playback errored out (after exhausting auto-recovery) — offer a
-  // manual retry that reloads at the current playhead instead of a dead end.
+  // The engine refused the media itself. No retry: it would replay the same
+  // refusal, and offering one invites the user to keep pressing a button that
+  // cannot work. Say the file is the problem and point somewhere useful.
+  if (item.mediaKind === 'video' && failedKind === 'unsupported') {
+    return (
+      <FallbackCard
+        item={item}
+        icon={<IconAlert />}
+        heading="This video can’t be played here."
+        message="Its format isn’t one this player can decode, so retrying won’t help. Collecting metadata for the library may let the server convert it on the fly; otherwise it will need converting."
+      />
+    )
+  }
+  // Playback stopped after auto-recovery was exhausted, but the media itself was
+  // never refused — delivery failed. A manual retry reloads at the current
+  // playhead, which genuinely can succeed.
   if (item.mediaKind === 'video' && failed) {
     return (
       <FallbackCard
         item={item}
+        icon={<IconAlert />}
         heading="Playback interrupted."
-        message="The video stopped unexpectedly — this can happen after seeking into a part that hasn’t loaded yet. Try again to resume."
+        message="The video stopped before it finished loading — a dropped or stalled read, which is common over network storage. Try again to resume from here."
         action={{ label: 'Try again', onClick: onRetryFailed }}
       />
     )
@@ -737,7 +773,7 @@ function Stage({
         src={item.contentUrl}
         controls
         autoPlay
-        onError={onFailed}
+        onError={(event) => onFailed(event.currentTarget.error)}
         data-testid="media-audio"
       />
     )
@@ -961,17 +997,37 @@ function FallbackCard({
   item,
   message,
   heading = item.title,
+  icon,
   action,
 }: {
   item: ViewerItem
   message: string
   heading?: string
+  icon?: ReactNode
   action?: { label: string; onClick: () => void }
 }) {
   const dims = formatDimensions(item.width, item.height)
   const dur = formatDuration(item.duration)
   const metaText = `${item.typeLabel} · ${dims !== '—' ? dims : dur !== '—' ? dur : formatBytes(item.sizeBytes)}`
-  return <MediaFallback heading={heading} message={message} meta={metaText} action={action} />
+  return (
+    <MediaFallback
+      heading={heading}
+      message={message}
+      meta={metaText}
+      // Absent an explicit icon, follow the media kind so an unsupported image
+      // and an unsupported video are not the same card with different words.
+      icon={icon ?? mediaKindIcon(item.mediaKind)}
+      action={action}
+    />
+  )
+}
+
+/** The stage glyph for a media kind, for fallbacks with no more specific icon. */
+function mediaKindIcon(kind: ViewerItem['mediaKind']): ReactNode {
+  if (kind === 'video') return <IconFilm />
+  if (kind === 'image') return <IconImage />
+  if (kind === 'audio') return <IconMusic />
+  return <IconFile />
 }
 
 /** Filesystem-safe-ish basename for downloaded PNG snapshots. */
