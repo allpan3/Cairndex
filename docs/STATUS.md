@@ -8,14 +8,19 @@
 > is **merged** (PR #33), closing the write-mode track; W2 stays blocked on
 > plan 1 M11. Eight rounds of UI refinement are **merged** (PR #34): contact
 > sheets, the viewer's two panels, tag pill actions with cascading deletes, and
-> one layout control across every browsing surface. One branch is open:
-> `fix/hevc-hev1-direct-play`, an owner-reported HEVC playback failure in the
-> desktop app (below). Two things still need the owner: a pass on a genuinely
+> one layout control across every browsing surface. An owner-reported HEVC
+> playback failure in the desktop app is **merged** (PR #35), which also fixed a
+> `just check-web` gate that had not been type-checking anything. No branches are
+> open. Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
-## Open: `fix/hevc-hev1-direct-play` — HEVC `hev1` sources never played (2026-07-27)
+## Merged: PR #35 — HEVC `hev1` sources never played (2026-07-28)
+
+**[PR #35](https://github.com/allpan3/Cairndex/pull/35) merged** to `main` as
+`569d972` on 2026-07-28; branch deleted. All seven CI jobs green, squashed to one
+commit off `main` at `b0b0539`.
 
 Owner reported one video in `lex` failing with the viewer's "Playback
 interrupted" card, retry never helping, and the same file having played before.
