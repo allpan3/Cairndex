@@ -130,6 +130,14 @@ grouped under `Unreleased` until the first tagged release.
   glyph for everything, and the glyph no longer gets read aloud ahead of the
   message.
 
+- **Large videos that need converting now start almost immediately.** Preparing
+  one meant finding its keyframes, and finding them meant reading the entire
+  file — twenty seconds for a 4 GB video on a NAS, longer than the player waits
+  before giving up, so the video never started at all. MP4 files already record
+  where their keyframes are, in a few megabytes of index, and that index is what
+  gets read now: the same answer in a twentieth of a second. Formats that keep
+  no such index are read the old way, as before.
+
 - **HEVC videos that refused to play in the desktop app.** MP4 labels its HEVC
   either `hvc1` or `hev1`, and AVFoundation — Safari, and so the desktop shell —
   plays only the first. Both labels normalized to plain `hevc`, and the browser

@@ -46,7 +46,7 @@ from cairndex.core.errors import (
     NotFoundError,
     ValidationError,
 )
-from cairndex.media import ffprobe
+from cairndex.media import ffprobe, mp4_index
 from cairndex.media.ffmpeg_exec import ffmpeg_exe
 
 # Segments target 6 s (plan 1 §6.2). fMP4 needs a shared init segment.
@@ -66,6 +66,18 @@ Clock = Callable[[], float]
 
 
 def _default_keyframe_prober(source: Path, timeout: float) -> list[float] | None:
+    """Keyframe times for the remux playlist: MP4 index first, ffprobe second.
+
+    Both produce the same list — verified byte-for-byte on real files — but not
+    at the same cost. ffprobe demuxes the whole source to answer, which on a
+    multi-GB file on a network volume is tens of seconds *inside the
+    playback-decision request*, past the point the client gives up. The index
+    read touches only the ``moov`` box. ffprobe still covers everything the
+    parser declines: MKV and friends, fragmented MP4, unusual edit lists.
+    """
+    times = mp4_index.keyframe_times_from_mp4(source)
+    if times:
+        return times
     return ffprobe.keyframe_times(source, timeout=timeout)
 
 
