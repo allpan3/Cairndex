@@ -119,6 +119,17 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Fixed
 
+- **The viewer no longer blames the network for a file it simply can't play.**
+  Every video failure showed one card — "Playback interrupted… this can happen
+  after seeking into a part that hasn't loaded yet" — with a Try again button,
+  including for formats the player had refused outright, where every retry
+  reproduces the same refusal. Those now get their own card that says the format
+  is the problem, points at Collect metadata, and offers no button that cannot
+  work. A genuinely interrupted read keeps its retry and says what actually
+  happened. The cards also carry real icons per state instead of one crosshatch
+  glyph for everything, and the glyph no longer gets read aloud ahead of the
+  message.
+
 - **HEVC videos that refused to play in the desktop app.** MP4 labels its HEVC
   either `hvc1` or `hev1`, and AVFoundation — Safari, and so the desktop shell —
   plays only the first. Both labels normalized to plain `hevc`, and the browser
