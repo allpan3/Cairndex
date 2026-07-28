@@ -113,12 +113,26 @@ test('File Browser image tiers skip the thumbnail rank', () => {
   expect(native.imageTiers[0]?.src).toContain('/file?path=art.jpg')
 })
 
-test('an unclassified path falls back to its extension for a type label', () => {
-  const item = viewerItemFromEntry(
+test('the type label is the container format, not the media kind', () => {
+  // A classified file still labels by extension: "video" is already visible
+  // from the thumbnail, while MP4-vs-MKV is what decides how it plays.
+  const video = viewerItemFromEntry(
+    entry({ name: 'clip.mkv', relative_path: 'clip.mkv', media_kind: 'video' }),
+  )
+  expect(video.typeLabel).toBe('MKV')
+
+  const unclassified = viewerItemFromEntry(
     entry({ name: 'notes.xyz', relative_path: 'notes.xyz', media_kind: null, supported: false }),
   )
+  expect(unclassified.mediaKind).toBeNull()
+  expect(unclassified.typeLabel).toBe('XYZ')
+  expect(unclassified.imageTiers).toEqual([])
+})
 
-  expect(item.mediaKind).toBeNull()
-  expect(item.typeLabel).toBe('xyz')
-  expect(item.imageTiers).toEqual([])
+test('a file with no usable extension falls back to its media kind', () => {
+  // Nothing else left to say about it — better than the bare word "file".
+  const item = viewerItemFromEntry(
+    entry({ name: 'README', relative_path: 'README', media_kind: 'image' }),
+  )
+  expect(item.typeLabel).toBe('image')
 })
