@@ -61,6 +61,11 @@ export interface ViewerItem {
   /** How the media is encoded, when probed. Printed on exports. */
   videoCodec: string | null
   audioCodec: string | null
+  /** Container bitrate (bits/second), HDR signalling, and colour bit depth,
+   *  when probed — the rest of what the info panel says about encoding. */
+  bitrate: number | null
+  hdr: string | null
+  bitDepth: number | null
   /** Human-readable type for info and fallback cards. */
   typeLabel: string
   /** Whether the browser can decode this image without a server derivative. */
@@ -116,6 +121,9 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
     fps: numberOrNull(meta.fps),
     videoCodec: textOrNull(meta.video_codec),
     audioCodec: textOrNull(meta.audio_codec),
+    bitrate: numberOrNull(meta.bitrate),
+    hdr: textOrNull(meta.hdr),
+    bitDepth: numberOrNull(meta.bit_depth),
     typeLabel: formatFileType(file.media_kind, file.original_filename),
     nativeImage,
     coverTime: file.cover_time,
@@ -170,6 +178,11 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     fps: null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
+    // The browser listing carries only what its cards need; an indexed path
+    // still reaches the full facts through its bundle row.
+    bitrate: null,
+    hdr: null,
+    bitDepth: null,
     // An unclassified path has no media kind; 'other' makes the label fall back
     // to the file extension, matching how a bundle file labels the same case.
     typeLabel: formatFileType(entry.media_kind ?? 'other', entry.name),
