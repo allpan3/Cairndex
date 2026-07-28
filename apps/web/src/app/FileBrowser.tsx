@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FileBrowserEntry, SortOrder } from '../api/client'
 import { fileBrowserPreviewUrl, fileThumbnailUrl } from '../api/client'
 import { useFileBrowser, useUnbundledFiles } from '../api/hooks'
-import { formatBytes, formatDate } from '../lib/format'
+import { formatBytes, formatDate, formatDuration, formatFileType } from '../lib/format'
 import type { HostLabels } from '../platform'
 import { displayName, useDisplayPrefs } from '../state/displayPrefs'
 import { usePersistentState } from '../state/usePersistentState'
@@ -1125,8 +1125,11 @@ function FileCard({
           <div className="card__title">{label}</div>
         )}
         <div className="card__sub">
-          <span>{isDir ? 'Folder' : (entry.extension ?? 'file')}</span>
+          <span>{isDir ? 'Folder' : formatFileType(entry.media_kind ?? 'other', entry.name)}</span>
           {!isDir && <span>{formatBytes(entry.size_bytes)}</span>}
+          {!isDir && entry.duration != null && entry.duration > 0 && (
+            <span>{formatDuration(entry.duration)}</span>
+          )}
         </div>
       </div>
     </div>

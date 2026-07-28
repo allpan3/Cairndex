@@ -10,7 +10,15 @@ import { ContextMenu } from '../ContextMenu'
 import { IconAlert, IconFile, IconFilm, IconImage, IconMusic, IconSidebar } from '../icons'
 import { Inspector } from '../Inspector'
 import { type MenuEntry, useContextMenu } from '../useContextMenu'
-import { formatBytes, formatClock, formatDimensions, formatDuration } from '../../lib/format'
+import {
+  formatBitrate,
+  formatBytes,
+  formatClock,
+  formatCodec,
+  formatDimensions,
+  formatDuration,
+  formatVideoEncoding,
+} from '../../lib/format'
 import type { PlayerPrefs } from '../types'
 import { ImageStage } from './ImageStage'
 import { MediaFallback } from './MediaFallback'
@@ -950,6 +958,33 @@ function InfoPanel({
           <dt>Duration</dt>
           <dd>{dur}</dd>
         </div>
+        {/* Encoding is what decides whether a file plays directly or needs a
+            session, so it belongs where someone looks when it misbehaves. Rows
+            appear only for a probed file rather than printing em-dashes. */}
+        {item.videoCodec && (
+          <div>
+            <dt>Video</dt>
+            <dd>
+              {formatVideoEncoding(item.videoCodec, {
+                bitDepth: item.bitDepth,
+                hdr: item.hdr,
+                fps: item.fps,
+              })}
+            </dd>
+          </div>
+        )}
+        {item.audioCodec && (
+          <div>
+            <dt>Audio</dt>
+            <dd>{formatCodec(item.audioCodec)}</dd>
+          </div>
+        )}
+        {item.bitrate ? (
+          <div>
+            <dt>Bitrate</dt>
+            <dd>{formatBitrate(item.bitrate)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Subtitles</dt>
           <dd>{subtitles && subtitles.length > 0 ? subtitles.join(', ') : '—'}</dd>

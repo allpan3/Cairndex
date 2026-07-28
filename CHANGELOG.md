@@ -86,6 +86,29 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Changed
 
+- **File rows say everything true about the file.** The line under a file's
+  name used to pick one fact — dimensions, or duration, or size, never two of
+  them — so a video's row could not say how long it was and how large at once.
+  It now reads like `video · 3.8 GB · 1080p · 33:48`, and images include their
+  size too. The row still leads with the file's role in the bundle (video,
+  audio, subtitle) rather than its format — that slot is reserved for manually
+  assigned roles later. Common resolutions go by their short names (8K, 4K, 2K,
+  1080p, 720p); anything non-standard keeps its honest dimensions rather than
+  being rounded to a name it does not have. The right-click menu on a bundle's file
+  rows also gained "Reveal in Finder" and "Locate in File Browser" — the album
+  grid already offered both for the same file; the rail simply was not passing
+  them through.
+
+- **A file's type is now its format, and encoding is on show.** Where a file
+  used to describe itself as "video" — something the thumbnail already said —
+  it now says MP4, MKV, PNG: the fact that decides whether it plays directly.
+  The player's info panel and the file inspector also gained the encoding
+  behind it — codec, bit depth and HDR where they are not the ordinary case,
+  and bitrate — so when a file misbehaves, what it actually is can be read
+  without leaving the app. Files with no usable extension still fall back to
+  their media kind, and un-probed files simply omit the rows rather than
+  showing a column of dashes.
+
 - **The bundle inspector is available while media plays.** The viewer's side
   panel holds the real inspector — rating, notes, tags, collections, metadata,
   all editable — plus the playlist, with the current file marked and clickable.

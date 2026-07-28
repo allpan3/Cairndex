@@ -943,6 +943,20 @@ function Workspace({
     libraryMapped && platform.canRevealInFinder ? revealMappedFile : undefined
   const onOpenHostFile =
     libraryMapped && platform.canOpenWithDefaultApp ? openMappedFile : undefined
+  // Jump to a file's directory in the File Browser, highlighting the file until
+  // the user navigates away. One definition for every surface that offers
+  // "Locate in File Browser", so they cannot drift on what locating means.
+  const locateFileInBrowser = useCallback((relativePath: string) => {
+    const dir = relativePath.includes('/')
+      ? relativePath.slice(0, relativePath.lastIndexOf('/'))
+      : ''
+    setMode('file')
+    setFileScope('browse')
+    setFilePath(dir)
+    setFileEntry(null)
+    setLocatedPath(relativePath)
+    setOpenBundleId(null)
+  }, [])
 
   // Drag-out (plan 3 §6): a mapped desktop library can put its real files on the
   // OS pasteboard. The shell resolves + validates each server-provided relative
@@ -2125,17 +2139,7 @@ function Workspace({
                 onStartFileDrag={onStartFileDrag}
                 onFlash={showFlash}
                 onSelectFile={setAlbumFile}
-                onLocateFile={(relativePath) => {
-                  const dir = relativePath.includes('/')
-                    ? relativePath.slice(0, relativePath.lastIndexOf('/'))
-                    : ''
-                  setMode('file')
-                  setFileScope('browse')
-                  setFilePath(dir)
-                  setFileEntry(null)
-                  setLocatedPath(relativePath)
-                  setOpenBundleId(null)
-                }}
+                onLocateFile={locateFileInBrowser}
               />
             ) : (
               <>
@@ -2283,9 +2287,13 @@ function Workspace({
       ) : (
         <Inspector
           bundleId={activeId}
+          hostLabels={hostLabels}
           onAddFiles={(id) => setAddFilesBundleId(id)}
           onPlayBundle={(id) => setViewerTarget({ bundleId: id })}
           onPlayFile={(bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId })}
+          onOpenFile={onOpenHostFile}
+          onRevealFile={onRevealHostFile}
+          onLocateFile={locateFileInBrowser}
           onStartFileDrag={onStartFileDrag}
           onFlash={showFlash}
           onFilterByTags={(tagIds) => {
