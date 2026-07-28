@@ -10,6 +10,251 @@ grouped under `Unreleased` until the first tagged release.
 
 ### Added
 
+- **Sibling filenames collapse what they share.** Long names in the bundle
+  inspector used to truncate at the end — where sibling files differ — so
+  `…Part1.mp4` and `…Part2.mp4` looked identical. The shared stem now dims and
+  gives up its width first; the distinct tail keeps its full text and
+  brightness. Per-name, so one unrelated `poster.jpg` doesn't stop its siblings
+  from collapsing.
+
+- **A menu on a tag pill** — filter the library by that tag, rename, copy, paste
+  onto another bundle, or remove it from this one. **Shift-Cmd-C** copies the
+  selected bundle's tags and **Shift-Cmd-V** pastes them onto the selection, as a
+  union: pasting adds, it never strips.
+
+- **Save a contact sheet from anywhere a video is** — the File Browser, a
+  bundle's album grid, and the bundle inspector's file list, not just the open
+  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1280, 1600,
+  2048) together, and says what the two add up to: the cell size, which is what
+  actually decides whether a frame is legible. The header prints the frame rate and the
+  encoding, and every cell is labelled with the instant it was taken from. Generation
+  reports progress through the same toast as file operations, which holds while
+  the work is in flight.
+
+- **The in-bundle view works like the File Browser.** It switches between grid
+  and list with the same control and the same rows, and selecting one file puts
+  that file's details in the rail — the same inspector the File Browser drives,
+  including the **Path**, which is worth reading here because a bundle's files
+  can come from anywhere. Both surfaces also share one right-click menu, so the
+  same file offers the same actions wherever you click it.
+
+- **A bundle-inspector rail in the viewer.** The `i` button shows the media's own
+  information — type, size, dimensions, duration, subtitles, and the playlist.
+  Beside it, a sidebar toggle docks the same bundle inspector the main shell
+  uses, so rating, notes, tags and collections are editable without leaving the
+  video. Two panels on two toggles; both can be open at once, and the stage
+  gives up width rather than sitting underneath.
+
+- **`just release`.** Runs the desktop shell as it ships — optimized Rust and a
+  minified web build. `just bundled` and `just desktop` both go through
+  `tauri dev`, which serves the web app from Vite: React's development build,
+  every module unbundled, and StrictMode rendering each component twice. Fine
+  for exercising behaviour, misleading for judging speed.
+
+- **Contact sheets.** Right-click a playing video → **Save Contact Sheet**: a
+  metadata header (title, size, duration, resolution) above a 4×4 grid of frames
+  sampled evenly across the video, saved as one JPEG through the export
+  destination. The server cuts the frame grid with ffmpeg and caches it like
+  every other derived asset; the header is drawn client-side, where text
+  rendering needs no font configuration. Needs the file probed (Collect
+  metadata) and indexed; the first slice of the plan-1 §10 export family.
+
+- **A Random view.** Every bundle in a seeded shuffle, for browsing by
+  serendipity. The toolbar's sort control becomes a **Shuffle** button there —
+  explicit sorting would un-shuffle the one thing the view is for — and manual
+  reordering is disabled so a shuffled display can never rewrite an order you
+  arranged on purpose. The arrangement is stable while you scroll and page;
+  Shuffle (or a new session) deals a new one.
+
+- **Back / Forward navigation.** A compact pair at the left of the top bar, on
+  both the Bundles and Files surfaces, stepping through recently visited
+  places — views, collections, open bundles, and File Browser folders.
+
+- **Files can be removed or deleted from inside a bundle.** The bundle album's
+  right-click menu gains **Remove from Bundle** (metadata-only; the file falls
+  back into Unbundled) and, with write mode on, **Move to Trash** — the same
+  journaled, recoverable deletion the File Browser offers.
+
+- **Dropping a file onto a bundle card adds it to that bundle** (write mode).
+  The file is imported into the library (journaled, keep-both on name
+  collisions) and linked into the bundle; the card highlights while a drag
+  hovers it.
+
+- **Creating a nested tag: type `/`.** `genre/noir` creates (or reuses) each
+  segment under the previous one and assigns the leaf — in both the bundle tag
+  editor and the multi-bundle inspector.
+
+### Changed
+
+- **The bundle inspector is available while media plays.** The viewer's side
+  panel holds the real inspector — rating, notes, tags, collections, metadata,
+  all editable — plus the playlist, with the current file marked and clickable.
+  Whether it is open persists across files and sessions. Toggle with `i`, the
+  topbar button, or the right-click menu.
+
+- **A collection's description is reachable from the sidebar.** Opening a
+  collection there now shows its inspector, so the description sits where a
+  bundle's notes do rather than only appearing when you select a collection
+  *card*.
+
+- **The tag picker takes the keyboard.** Enter accepts the single match, or
+  creates what you typed; either way the field clears and the picker stays open
+  for the next one. Clicking away closes the picker without also clearing the
+  bundle selection underneath it.
+
+- **Right-click in the viewer opens Cairndex's own menu** — play/pause, frame
+  steps, subtitles, loop, snapshot, contact sheet, set-frame-as-cover, info,
+  fullscreen — instead of the browser's native video menu, whose entries drove
+  the raw element the custom player exists to replace.
+
+- **Player keys, remapped** (owner request): `,` / `.` step frames; `z` resets
+  the speed to 1×, `x` slower, `c` faster; subtitles moved from `c` to `v`
+  (mpv's binding). The speed slider shows a reset control while off 1×. The
+  in-app shortcut reference follows.
+
+- **Snapshots and exports have a configurable destination** (desktop). Settings
+  → Exports: unset asks via the native save dialog every time; a chosen folder
+  saves silently with keep-both naming. In the desktop shell the viewer's
+  snapshot now saves through this path too.
+
+### Fixed
+
+- **One layout control.** The toolbar's grid/justified/list now also drives the
+  collections section (rows in list layout) and the in-bundle file view, which
+  loses the private layout switch it briefly grew. The zoom slider reaches all
+  of it too — tiles on the card ramp, rows on the row-height curve.
+
+- **Pasted tags appear immediately.** The copy/paste chords are optimistic like
+  the pill menu: toast and pills update at the keystroke, the network catches up
+  behind. Filtering from a tag pill reveals the filter row instead of silently
+  shrinking the library.
+
+- **Tag and collection pills** no longer show a text cursor, and hover with a
+  quiet glow. The copy/paste chords are desktop-only — in a browser tab,
+  Shift-Cmd-C belongs to DevTools.
+
+- **Renaming and deleting a tag work in the desktop app.** Both asked through
+  `window.prompt` / `window.confirm`, which Tauri's webview does not implement —
+  so the rename silently did nothing and the delete never asked. Every question
+  the app needs to ask is now a rendered dialog.
+
+- **Filtering from a tag pill uses the tag you clicked**, not every tag on the
+  bundle.
+
+- **A contact sheet's last slice was never sampled.** Each cell came from the
+  leading edge of its slice, so the final one was skipped, and the edge trim was
+  a flat 4% of the duration. On a one-hour video that hid the last 5.8 minutes
+  entirely. Cells now come from the middle of their slice and the trim is capped
+  at five seconds.
+
+- **Deleting a parent tag works.** It was refused so the children could be moved
+  first; it now asks how many tags and bundles the delete would touch, and takes
+  the subtree once confirmed. A tag on nothing with no children skips the prompt.
+
+- **The context menu closes wherever you click** — the sidebar included — and no
+  longer clears the bundle selection on its way out.
+
+- **Enter works in the collection picker**, which never had it wired, and both
+  pickers now clear what was typed when they close instead of presenting a stale
+  search next time.
+
+- **The context submenu and the viewer's inspector rail had no background** —
+  both asked for a CSS variable that does not exist, so the page showed through
+  them.
+
+- **The resume toast sits above the control bar** rather than 6px inside it.
+
+- **Contact sheets no longer time out on long videos.** The 502 was the desktop
+  shell's relay giving up, not a failure: sampling with `fps=1/n` decodes every
+  frame between the first sample and the last, so the work scaled with the
+  video's duration — 24s for a twelve-minute 4K file, and worse from there.
+  Frames are now taken by seeking to each one, which costs the same whatever the
+  video's length: the same file takes 2.1s, and one ten times longer takes about
+  as long.
+
+- **Double-click closes the viewer**, and Escape closes it whether or not it is
+  fullscreen — it used to take two presses. `f` still leaves fullscreen and
+  keeps playing.
+
+- **The viewer's "next" arrow stays over the picture** instead of sitting on top
+  of the docked inspector, and the resume toast moved down beside the seek bar it
+  refers to.
+
+- **Escape dismisses a tag or collection picker**, without also closing whatever
+  is behind it. The active row is a filled pill rather than an outline, and the
+  search box no longer highlights itself — it is focused the whole time the panel
+  is open, so the accent border said nothing and competed with the row that does.
+
+- **A collection's description sits under its title**, not below the bundle
+  counts.
+
+- **Seeking a large video no longer degrades as you go.** Holding an arrow key
+  auto-repeats about thirty times a second, and each repeat wrote
+  `video.currentTime` — aborting the in-flight byte range and opening a new one,
+  which a 25 Mbps 4K source feels acutely. Relative seeks now accumulate and
+  commit through the same throttle the drag path uses, so a held key covers the
+  same distance while the element sees one seek per window.
+
+- **The viewer stopped doing library-wide work on every frame.** The tag and
+  collection pickers built their row trees — walking and sorting every tag and
+  collection in the library — on every render, open or not, and playback
+  re-renders the viewer several times a second. They build only while open now,
+  and the inspector is memoized so a playback tick stops at its boundary.
+
+- **The scrub preview tracks the pointer again.** The seek throttle deliberately
+  lags the video and the storyboard tooltip is what covers for it, but the drag
+  handler left it frozen wherever the press landed. The seek bar also re-read
+  the track's geometry on every pointer move, forcing a layout of a document it
+  had just restyled; it measures once per gesture now.
+
+- **Contact sheets work in the desktop shell.** The route was missing from the
+  media proxy's read-only allowlist, so the shell refused the request before the
+  server saw it — which is why the browser worked, the shell returned 404, and
+  restarting the sidecar never helped.
+
+- **Clicking away closes a picker without clearing the selection.** Dismissal is
+  handled in the capture phase now; stopping the click alone was too late,
+  because marquee selection acts on mousedown and mouseup.
+
+- **The tag picker shows what Enter will take** — the single match, an exact
+  name, or the "create what I typed" row — decided once and marked from the same
+  value, so the highlight cannot drift from the action.
+
+- **Three file-serving routes no longer pin a database connection while
+  streaming.** `/file`, `/file/preview` and a collection's `/thumbnail` still
+  used the yield dependency that the streaming routes were moved off when
+  drag-seek pool exhaustion was diagnosed. `/file` is how an unindexed File
+  Browser video plays, so seeking one reproduced that bug in full.
+
+- **Tagging is immediate again.** The chip now appears on click instead of after
+  a round trip, and tagging no longer forces the whole grid to refetch — only
+  Untagged membership depends on tags, so that refresh waits until the view is
+  next shown.
+
+- **Videos start faster.** The File Browser was asking for every row's thumbnail
+  the moment a folder opened, saturating the browser's connections to the server
+  so anything sharing them — a video starting, most visibly — queued behind frame
+  extractions nobody was looking at. Thumbnails now load only once on screen.
+
+
+- **Dropping a file anywhere but a drop target no longer replaces the app with
+  the file.** In the desktop shell an OS drop lands as a plain browser drop, and
+  any surface without a handler let the webview navigate to the dropped file
+  with no way back. Every file drop is now intercepted; unhandled ones get a
+  hint about where drops work.
+
+- **The viewer title no longer sits under the macOS window controls** in the
+  desktop shell; the topbar clears them the way the sidebar always has, by just
+  enough, and not in fullscreen where the controls are hidden anyway.
+
+- **The window can be dragged by the player's top bar again.** The viewer covers
+  the whole window, so while media was open there was no grab area at all.
+
+- **Dismissing the viewer's right-click menu no longer pauses the video** — the
+  click that closed the menu was reaching the video underneath it.
+
+### Added
+
 - **File Browser and Unbundled show thumbnails.** Both surfaces rendered a
   media-kind icon for every row, so a folder of videos — or the whole Unbundled
   queue — was a wall of identical glyphs. They now show a still: an indexed file

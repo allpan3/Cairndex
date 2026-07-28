@@ -10,6 +10,9 @@ interface VideoStageProps {
   title: string
   artworkUrl: string
   onError: () => void
+  /** Left-click on the stage. The shell owns it so a click that merely dismissed
+   *  the context menu does not also toggle playback. */
+  onActivate: () => void
 }
 
 /** Direct-play video stage with native text tracks driven by custom controls. */
@@ -20,6 +23,7 @@ export function VideoStage({
   title,
   artworkUrl,
   onError,
+  onActivate,
 }: VideoStageProps) {
   const trackRefs = useRef<Array<HTMLTrackElement | null>>([])
   const commandsRef = useRef<{
@@ -99,9 +103,9 @@ export function VideoStage({
         onError={onError}
         data-testid="media-video"
         // Left click is the primary play/pause gesture, matching every other
-        // video player. Right click is deliberately NOT handled here so it stays
-        // available for viewer context-menu actions (plan 3 §7, owner 2026-07-19).
-        onClick={player.playPause}
+        // video player. Right click opens the viewer's own menu, handled by the
+        // shell (plan 3 §7; seam reserved 2026-07-19, filled 2026-07-27).
+        onClick={onActivate}
       >
         {withSrc.map((track, index) => (
           <track

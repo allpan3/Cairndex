@@ -140,6 +140,13 @@ async function mockApi(page: Page) {
   return previewRequests
 }
 
+// Deliberately narrower than the default. The Back/Forward control shares the
+// toolbar's leading slot with this breadcrumb, and at this width a deep trail
+// overflows — which used to leave the root crumb painted nowhere but still
+// hit-testing to the toolbar, so it could not be clicked. CI's wider fonts hit
+// it first; the default viewport never did.
+test.use({ viewport: { width: 1180, height: 800 } })
+
 test('browses a library read-only with badges and breadcrumbs', async ({ page }) => {
   const previewRequests = await mockApi(page)
   await page.goto('/')

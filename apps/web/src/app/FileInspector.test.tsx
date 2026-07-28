@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 
 import { hostLabelsFor } from '../platform'
 import { FileInspector } from './FileInspector'
+import { factsFromEntry } from './fileFacts'
 import { linkedVideoEntry as entry } from './testFixtures'
 
 const labels = hostLabelsFor('macos')
@@ -12,7 +13,7 @@ test('passes only the server relative path to mapped FileInspector actions', () 
   const onOpenFile = vi.fn()
   render(
     <FileInspector
-      entry={entry}
+      entry={factsFromEntry(entry)}
       hostLabels={labels}
       onRevealFile={onRevealFile}
       onOpenFile={onOpenFile}
@@ -27,7 +28,7 @@ test('passes only the server relative path to mapped FileInspector actions', () 
 })
 
 test('hides FileInspector host actions for an unmapped library', () => {
-  render(<FileInspector entry={entry} hostLabels={labels} />)
+  render(<FileInspector entry={factsFromEntry(entry)} hostLabels={labels} />)
 
   expect(screen.queryByRole('button', { name: 'Open in Default App' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
@@ -36,7 +37,11 @@ test('hides FileInspector host actions for an unmapped library', () => {
 test('drags the selected file out by its relative path when drag-out is enabled', () => {
   const onStartFileDrag = vi.fn()
   const { container } = render(
-    <FileInspector entry={entry} hostLabels={labels} onStartFileDrag={onStartFileDrag} />,
+    <FileInspector
+      entry={factsFromEntry(entry)}
+      hostLabels={labels}
+      onStartFileDrag={onStartFileDrag}
+    />,
   )
 
   const title = container.querySelector('.inspector__title') as HTMLElement
@@ -47,7 +52,7 @@ test('drags the selected file out by its relative path when drag-out is enabled'
 })
 
 test('leaves the FileInspector title inert without drag-out', () => {
-  const { container } = render(<FileInspector entry={entry} hostLabels={labels} />)
+  const { container } = render(<FileInspector entry={factsFromEntry(entry)} hostLabels={labels} />)
 
   expect(container.querySelector('.inspector__title')).toHaveAttribute('draggable', 'false')
 })

@@ -33,7 +33,7 @@ from cairndex.core.errors import NotFoundError, ValidationError
 from cairndex.core.paths import PathSafetyError
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import MediaKind
-from cairndex.media import playback, previews, storyboards, thumbnails
+from cairndex.media import contact_sheets, playback, previews, storyboards, thumbnails
 from cairndex.media.subtitles import extension_of
 from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
 from cairndex.services import collections as collection_service
@@ -326,6 +326,47 @@ def file_preview(
 
 
 # Serve a cached storyboard index without request-path generation
+@router.get("/files/{file_id}/contact-sheet")
+def get_contact_sheet(
+    file_id: str,
+    access: LibraryAccessDep,
+    cols: Annotated[int, Query(ge=contact_sheets.MIN_COLS, le=contact_sheets.MAX_COLS)] = 4,
+    rows: Annotated[int, Query(ge=contact_sheets.MIN_ROWS, le=contact_sheets.MAX_ROWS)] = 4,
+    width: Annotated[
+        int, Query(json_schema_extra={"enum": list(contact_sheets.SHEET_WIDTHS)})
+    ] = 1600,
+) -> FileResponse:
+    """The frame grid for a contact-sheet export (plan 1 §10, first M11 slice).
+
+    Frames only — the client composes the metadata header and the per-cell
+    timestamps, which it can already render without dragging font discovery into
+    the server. Generated on demand, cached by grid shape and source
+    fingerprint; a scoped session so the ffmpeg run never holds a DB connection.
+
+    ``X-Contact-Sheet-Times`` carries the instant each cell was sampled from, so
+    the client labels cells from the same definition that chose the frames
+    rather than reimplementing the sampling rule. Exposed to the browser because
+    the desktop shell reaches this through a cross-origin relay.
+    """
+    with access.session() as db:
+        try:
+            path, times = contact_sheets.sheet_for_file(
+                db, file_id, cols=cols, rows=rows, width=width
+            )
+        except contact_sheets.ContactSheetError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return FileResponse(
+        str(path),
+        media_type="image/jpeg",
+        filename=path.name,
+        headers={
+            "Cache-Control": contact_sheets.CACHE_CONTROL,
+            "X-Contact-Sheet-Times": ",".join(f"{at:.3f}" for at in times),
+            "Access-Control-Expose-Headers": "X-Contact-Sheet-Times",
+        },
+    )
+
+
 @router.get("/files/{file_id}/storyboard.vtt")
 def storyboard_vtt(file_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve a cached storyboard WebVTT index, never generating on request."""

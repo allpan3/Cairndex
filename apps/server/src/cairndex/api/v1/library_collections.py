@@ -7,7 +7,7 @@ so a collection created in one library is invisible to another.
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
-from cairndex.api.deps import IfMatchVersion, LibrarySession, Pagination
+from cairndex.api.deps import IfMatchVersion, LibraryAccessDep, LibrarySession, Pagination
 from cairndex.api.schemas.browse import CountsResponse
 from cairndex.api.schemas.common import Page
 from cairndex.api.schemas.taxonomy import (
@@ -107,17 +107,24 @@ def update_collection(
 
 
 @router.get("/{collection_id}/thumbnail")
-def get_collection_thumbnail(collection_id: str, db: LibrarySession) -> FileResponse:
+def get_collection_thumbnail(collection_id: str, access: LibraryAccessDep) -> FileResponse:
     """Serve the collection's cover thumbnail — the chosen cover bundle's cover,
     or an auto-picked bundle from the subtree. 404 if the collection has no
-    thumbnailable bundle; 503 if ffmpeg is unavailable."""
-    bundle_id = service.resolve_cover_bundle_id(db, collection_id)
-    if bundle_id is None:
-        raise NotFoundError(f"collection {collection_id!r} has no cover")
-    try:
-        path = thumbnails.generate_for_bundle(db, bundle_id)
-    except thumbnails.ThumbnailError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    thumbnailable bundle; 503 if ffmpeg is unavailable.
+
+    Scoped like the other file-serving routes: generation can shell out to
+    ffmpeg, and a grid of collections asks for many of these at once, so the
+    session must not stay checked out for either the generation or the transfer
+    (see ``LibraryAccess``).
+    """
+    with access.session() as db:
+        bundle_id = service.resolve_cover_bundle_id(db, collection_id)
+        if bundle_id is None:
+            raise NotFoundError(f"collection {collection_id!r} has no cover")
+        try:
+            path = thumbnails.generate_for_bundle(db, bundle_id)
+        except thumbnails.ThumbnailError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     if path is None:
         raise NotFoundError(f"collection {collection_id!r} has no cover")
     return FileResponse(str(path), media_type=thumbnails.thumbnail_media_type(path))

@@ -254,7 +254,7 @@ fn media_route_library_id(path: &str) -> Option<&str> {
         ["bundles", _, "thumbnail"]
         | ["bundles", _, "files", _, "thumbnail"]
         | ["collections", _, "thumbnail"]
-        | ["files", _, "stream" | "content" | "preview" | "storyboard.vtt"]
+        | ["files", _, "stream" | "content" | "preview" | "storyboard.vtt" | "contact-sheet"]
         | ["subtitles", _, "vtt"]
         | ["file"]
         | ["file", "preview"] => true,
@@ -503,8 +503,18 @@ mod tests {
             media_route_library_id("/api/v1/libraries/lib/files/file/playback-sessions/s/art.m4s"),
             Some("lib")
         );
+        // Every read-only media route the web layer fetches has to be listed
+        // here or the shell 404s it before the server ever sees it — which is
+        // exactly how contact sheets shipped broken in the desktop app while
+        // working in a browser (owner, 2026-07-27).
+        assert_eq!(
+            media_route_library_id("/api/v1/libraries/lib/files/file/contact-sheet"),
+            Some("lib")
+        );
         assert!(media_route_library_id("/api/v1/libraries/lib/bundles/bundle").is_none());
         assert!(media_route_library_id("/api/v1/auth/devices").is_none());
+        // Still a strict allowlist: a neighbouring write route stays refused.
+        assert!(media_route_library_id("/api/v1/libraries/lib/files/file/cover-frame").is_none());
     }
 
     // Rejects authority and credential forwarding while preserving range headers

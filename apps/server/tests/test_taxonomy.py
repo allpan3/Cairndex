@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from cairndex.core.errors import ConflictError, ValidationError
+from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.persistence.models import AssetBundle, AssetFile, Collection, Tag
 from cairndex.services import bundles as bundle_service
 from cairndex.services import collections as collection_service
@@ -41,9 +41,10 @@ def test_sibling_name_conflict(session: Session) -> None:
         tag_service.create_tag(session, name="dup", parent_id=parent.id)
 
 
-def test_deleting_parent_with_children_is_blocked(session: Session) -> None:
-    # First-version safe delete: a tag with child tags cannot be deleted (no
-    # cascade); the owner must move/delete the children first.
+def test_deleting_a_parent_needs_the_cascade_said_out_loud(session: Session) -> None:
+    # A parent is never taken by accident: the plain delete refuses and explains
+    # that the children come too. It used to refuse outright, which made
+    # deleting a parent look broken rather than guarded (owner, 2026-07-27).
     parent = tag_service.create_tag(session, name="parent")
     child = tag_service.create_tag(session, name="child", parent_id=parent.id)
     with pytest.raises(ConflictError):
@@ -52,6 +53,38 @@ def test_deleting_parent_with_children_is_blocked(session: Session) -> None:
     session.expire_all()
     assert session.get(Tag, parent.id) is not None  # still there
     assert session.get(Tag, child.id) is not None
+
+
+def test_cascade_deletes_the_whole_subtree(session: Session) -> None:
+    parent = tag_service.create_tag(session, name="parent")
+    child = tag_service.create_tag(session, name="child", parent_id=parent.id)
+    grandchild = tag_service.create_tag(session, name="grandchild", parent_id=child.id)
+    bystander = tag_service.create_tag(session, name="bystander")
+
+    tag_service.delete_tag(session, parent.id, cascade=True)
+
+    session.expire_all()
+    assert session.get(Tag, parent.id) is None
+    assert session.get(Tag, child.id) is None
+    assert session.get(Tag, grandchild.id) is None
+    assert session.get(Tag, bystander.id) is not None  # nothing else touched
+
+
+def test_delete_impact_counts_the_subtree_and_the_bundles_it_touches(
+    session: Session,
+) -> None:
+    # What the confirmation prompt prints, so it can say what the delete costs.
+    parent = tag_service.create_tag(session, name="parent")
+    child = tag_service.create_tag(session, name="child", parent_id=parent.id)
+    bundle = bundle_service.create_bundle(session, title="tagged")
+    other = bundle_service.create_bundle(session, title="also tagged")
+    bundle_service.set_bundle_tags(session, bundle.id, [parent.id])
+    bundle_service.set_bundle_tags(session, other.id, [child.id])
+
+    tags, bundles = tag_service.tag_delete_impact(session, parent.id)
+
+    assert tags == 2  # the parent and its child
+    assert bundles == 2  # one carrying each
 
 
 def test_deleting_leaf_tag_removes_assignments(session: Session) -> None:
@@ -458,3 +491,10 @@ def test_reorder_collections_refuses_to_nest_a_collection_inside_itself(session:
 
     assert outer.parent_id is None
     assert inner.parent_id == outer.id
+
+
+def test_delete_impact_404s_for_an_unknown_tag(session: Session) -> None:
+    # Same guard as every other tag route: the prompt must not quote numbers for
+    # a tag that is not there.
+    with pytest.raises(NotFoundError):
+        tag_service.tag_delete_impact(session, "01JUNKJUNKJUNKJUNKJUNKJUNK")

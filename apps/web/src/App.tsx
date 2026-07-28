@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type {
@@ -11,7 +11,14 @@ import type {
   SmartCollectionRead,
   SortOrder,
 } from './api/client'
-import { setActiveLibraryId } from './api/client'
+import {
+  addUnbundledFilesToBundle,
+  fetchBundleTags,
+  type FileRead,
+  importFile,
+  setActiveLibraryId,
+  setBundleTags,
+} from './api/client'
 import {
   useBatchUpdate,
   useBrowse,
@@ -52,6 +59,9 @@ import { Browser } from './app/Browser'
 import { BundleAlbum } from './app/BundleAlbum'
 import { DeleteBundlesDialog } from './app/DeleteBundlesDialog'
 import { FileInspector } from './app/FileInspector'
+import { ConfirmDialog } from './app/PromptDialog'
+import { getCopiedTags, setCopiedTags } from './app/tagClipboard'
+import { factsFromBundleFile, factsFromEntry } from './app/fileFacts'
 import { ImportProgress } from './app/ImportProgress'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
@@ -65,6 +75,7 @@ import {
   type AdHocFilters,
   type FacetContext,
   adHocFiltersToExpression,
+  emptyTagFilter,
   combineFilters,
   emptyAdHocFilters,
 } from './app/adHocFilters'
@@ -91,6 +102,7 @@ import { Toolbar } from './app/Toolbar'
 import { ZOOM_MAX, ZOOM_MIN } from './app/layout'
 import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
+import { consumeHtmlFileDropHandled } from './app/htmlFileDrop'
 import { useHostImports } from './desktop/useHostImports'
 import {
   connectToServer,
@@ -120,6 +132,7 @@ import { usePersistentState } from './state/usePersistentState'
 import {
   getHostLabels,
   getHostPlatform,
+  isDesktopHost,
   hasHostDeviceAccess,
   hasHostDeviceToken,
   hostOperationErrorMessage,
@@ -582,6 +595,28 @@ interface WorkspaceProps {
   onLock: () => void
 }
 
+/** One navigable place, for the Back/Forward history. */
+interface NavDestination {
+  mode: AppMode
+  selection: Selection
+  openBundleId: string | null
+  fileScope: 'browse' | 'unbundled' | 'trash'
+  filePath: string
+}
+
+const NAV_HISTORY_LIMIT = 50
+
+function sameNavDestination(a: NavDestination, b: NavDestination): boolean {
+  return (
+    a.mode === b.mode &&
+    a.selection.view === b.selection.view &&
+    (a.selection.collectionId ?? null) === (b.selection.collectionId ?? null) &&
+    a.openBundleId === b.openBundleId &&
+    a.fileScope === b.fileScope &&
+    a.filePath === b.filePath
+  )
+}
+
 function Workspace({
   libraries,
   libraryId,
@@ -669,6 +704,13 @@ function Workspace({
     parentId: string | null
   } | null>(null)
   const [addFilesBundleId, setAddFilesBundleId] = useState<string | null>(null)
+  // The single file selected inside an open bundle. When there is one, the rail
+  // describes *that file* rather than the bundle around it — the same pane the
+  // File Browser shows, which is where a file's path is worth reading (owner,
+  // 2026-07-27).
+  const [albumFile, setAlbumFile] = useState<FileRead | null>(null)
+  // The smart collection awaiting a delete confirmation.
+  const [deletingSmart, setDeletingSmart] = useState<SmartCollectionRead | null>(null)
   // Transient success banner after a manual bundling action.
   const [flash, setFlash] = useState<string | null>(null)
   // The Undo behind a completed file operation (ADR-0013 §3.1), when the toast
@@ -677,6 +719,10 @@ function Workspace({
   const [flashUndo, setFlashUndo] = useState<(() => void) | null>(null)
   useEffect(() => {
     if (flash === null) return
+    // A message ending in an ellipsis reports work still in flight — building a
+    // contact sheet takes a few seconds — so it stays until the result replaces
+    // it. Anything else is a conclusion and expires on its own.
+    if (flash.endsWith('…')) return
     // An offer to undo is worth reading twice; a plain confirmation is not.
     const t = setTimeout(
       () => {
@@ -689,6 +735,37 @@ function Workspace({
   }, [flash, flashUndo])
 
   // Show a message, optionally with the action that reverses what it reports.
+  // The webview must never navigate to a dropped file. With the shell's Tauri
+  // drop pipeline off (PR #31), an OS drop lands as an ordinary HTML5 Files
+  // drop — and anywhere without a handler, the browser's default action is to
+  // *display the file*, replacing the app with no way back (owner report,
+  // 2026-07-27: dropping an image over a bundle card). The net preventDefaults
+  // every Files drag/drop at the window; real targets mark the drops they
+  // route (htmlFileDrop.ts), and anything unrouted gets guidance instead of a
+  // vanished app.
+  useEffect(() => {
+    const isFiles = (e: DragEvent) => Boolean(e.dataTransfer?.types.includes('Files'))
+    const onDragOver = (e: DragEvent) => {
+      if (!isFiles(e)) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!isFiles(e)) return
+      e.preventDefault()
+      if (!consumeHtmlFileDropHandled()) {
+        setFlash('To add files, drop them into the File Browser or onto a bundle.')
+        setFlashUndo(null)
+      }
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [])
+
   const showFlash = useCallback((message: string, undo?: () => void) => {
     setFlash(message)
     // Stored as a thunk: `setState` calls a bare function argument instead of
@@ -711,6 +788,91 @@ function Workspace({
   // A file to highlight after "Locate in File Browser" (until the user navigates
   // or picks another entry), independent of the loaded fileEntry object.
   const [locatedPath, setLocatedPath] = useState<string | null>(null)
+
+  // --- Navigation history (owner request, 2026-07-27) -----------------------
+  // Where the user *is* is spread across five pieces of state (mode, browse
+  // selection, the open bundle, and the Files surface's scope+path). A
+  // destination snapshots all five, and every user navigation pushes the place
+  // being left; Back/Forward re-apply snapshots without recording themselves.
+  // Refs rather than state for the stacks — nothing renders their contents,
+  // only whether each side is non-empty — with a version counter to refresh
+  // the buttons' disabled state.
+  const navDestination = useMemo<NavDestination>(
+    () => ({ mode, selection, openBundleId, fileScope, filePath }),
+    [mode, selection, openBundleId, fileScope, filePath],
+  )
+  const navPastRef = useRef<NavDestination[]>([])
+  const navFutureRef = useRef<NavDestination[]>([])
+  const navCurrentRef = useRef<NavDestination>(navDestination)
+  const navApplyingRef = useRef(false)
+  // Rendered state is only "is each side non-empty" — the lint rule is right
+  // that the stacks themselves must not be read during render.
+  const [navReach, setNavReach] = useState({ canBack: false, canForward: false })
+  const syncNavReach = useCallback(() => {
+    setNavReach({
+      canBack: navPastRef.current.length > 0,
+      canForward: navFutureRef.current.length > 0,
+    })
+  }, [])
+  useEffect(() => {
+    const previous = navCurrentRef.current
+    if (sameNavDestination(previous, navDestination)) return
+    navCurrentRef.current = navDestination
+    if (navApplyingRef.current) {
+      // This change *is* a Back/Forward being applied — the stacks were already
+      // adjusted by the caller, so recording it would double it.
+      navApplyingRef.current = false
+      return
+    }
+    navPastRef.current = [...navPastRef.current.slice(-(NAV_HISTORY_LIMIT - 1)), previous]
+    navFutureRef.current = []
+    syncNavReach()
+  }, [navDestination, syncNavReach])
+  const applyNavDestination = useCallback((destination: NavDestination) => {
+    navApplyingRef.current = true
+    setMode(destination.mode)
+    setSelection(destination.selection)
+    setOpenBundleId(destination.openBundleId)
+    setFileScope(destination.fileScope)
+    setFilePath(destination.filePath)
+    // Sidebar/file-entry residue from the place being left, not the place
+    // being returned to.
+    setFileEntry(null)
+    setLocatedPath(null)
+  }, [])
+  const navBack = useCallback(() => {
+    const past = navPastRef.current
+    const destination = past[past.length - 1]
+    if (!destination) return
+    navPastRef.current = past.slice(0, -1)
+    navFutureRef.current = [...navFutureRef.current, navCurrentRef.current]
+    applyNavDestination(destination)
+    syncNavReach()
+  }, [applyNavDestination, syncNavReach])
+  const navForward = useCallback(() => {
+    const future = navFutureRef.current
+    const destination = future[future.length - 1]
+    if (!destination) return
+    navFutureRef.current = future.slice(0, -1)
+    navPastRef.current = [...navPastRef.current, navCurrentRef.current]
+    applyNavDestination(destination)
+    syncNavReach()
+  }, [applyNavDestination, syncNavReach])
+  const navButtons = (
+    <div className="seg nav-history" role="group" aria-label="Navigation history">
+      <button onClick={navBack} disabled={!navReach.canBack} aria-label="Back" title="Back">
+        ‹
+      </button>
+      <button
+        onClick={navForward}
+        disabled={!navReach.canForward}
+        aria-label="Forward"
+        title="Forward"
+      >
+        ›
+      </button>
+    </div>
+  )
 
   // Apply a cairndex:// target once this workspace is mounted for the right
   // library. App owns the library switch and this component is keyed on
@@ -988,7 +1150,13 @@ function Workspace({
   // another view falls back to Date Added rather than showing something the
   // menu can no longer express.
   const isRecentView = selection.view === 'recent' && selection.collectionId === null
+  // Random's whole point is the shuffle, so explicit sorting is disabled there —
+  // the toolbar shows a Reshuffle button in the sort control's place instead.
+  const isRandomView = selection.view === 'random' && selection.collectionId === null
   const allowedSorts: BundleSort[] = isRecentView ? RECENT_SORTS : STANDARD_SORTS
+  // The seed the shuffle is keyed on. Fresh per session (a revisit is already a
+  // new arrangement), replaced on demand by the toolbar's Reshuffle.
+  const [randomSeed, setRandomSeed] = useState(() => Math.floor(Math.random() * 2 ** 31))
   const storedSort: SortPref =
     prefs.sortScope === 'collection'
       ? (prefs.collectionSorts[sortKey] ?? { sort: prefs.sort, order: prefs.order })
@@ -1033,6 +1201,7 @@ function Workspace({
     limit: 100,
     filter: combinedFilter,
     search: debouncedSearch.trim() || null,
+    seed: isRandomView ? randomSeed : null,
   })
 
   // Context the toolbar's facet-count popovers need (each strips its own category).
@@ -1053,8 +1222,18 @@ function Workspace({
   // multi-selection summary (see the right panel below).
   const singleSelectedCollectionId =
     selectedCollectionIds.size === 1 ? [...selectedCollectionIds][0] : null
-  const selectedCollection = singleSelectedCollectionId
-    ? (collections.data?.find((c) => c.id === singleSelectedCollectionId) ?? null)
+  // A selected collection *card* is the obvious case; the collection you have
+  // navigated into is the other one. Without it, opening a collection from the
+  // sidebar left the inspector empty — so its description was unreachable
+  // exactly where you would look for it (owner, 2026-07-27). A bundle or
+  // multi-selection still wins; this is the fallback for "nothing else picked".
+  const navigatedCollectionId =
+    selectedIds.size === 0 && selectedCollectionIds.size === 0 && activeSmartCollection === null
+      ? selection.collectionId
+      : null
+  const inspectedCollectionId = singleSelectedCollectionId ?? navigatedCollectionId
+  const selectedCollection = inspectedCollectionId
+    ? (collections.data?.find((c) => c.id === inspectedCollectionId) ?? null)
     : null
 
   const title = useMemo(() => {
@@ -1334,6 +1513,35 @@ function Workspace({
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const queryClient = useQueryClient()
   const fileOperations = useFileOperations()
+  // OS files dropped onto a bundle card: import each into the library root
+  // (journaled, keep-both on a name collision), then link the landed paths into
+  // that bundle. Only offered with write mode on — without it the drop falls
+  // through to the window net's guidance, which is the honest answer.
+  const dropFilesOnBundle = useCallback(
+    (bundleId: string, files: File[]) => {
+      if (files.length === 0) return
+      void (async () => {
+        try {
+          const landed: string[] = []
+          for (const file of files) {
+            const result = await importFile(file, { destDir: '', onConflict: 'suffix' })
+            if (!result.skipped) landed.push(result.path)
+          }
+          if (landed.length > 0) {
+            await addUnbundledFilesToBundle(bundleId, { relativePaths: landed })
+          }
+          invalidateAfterFileOperation(queryClient)
+          queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
+          const n = landed.length
+          showFlash(n === 1 ? 'Added 1 file to the bundle.' : `Added ${n} files to the bundle.`)
+        } catch (error) {
+          showFlash(error instanceof Error ? error.message : 'The files could not be added.')
+        }
+      })()
+    },
+    [queryClient, showFlash],
+  )
+
   const hostImports = useHostImports({
     libraryId,
     // Where a drop lands: the folder on screen when the Files surface is open,
@@ -1432,13 +1640,14 @@ function Workspace({
         {
           label: 'Clean Up Order…',
           onClick: () => setCleaningBundles(true),
-          // A flattened list has no single manual order to tidy; everywhere
-          // else does, the All view included.
-          disabled: headerFlattened,
+          // A flattened list has no single manual order to tidy, and Random's
+          // display order is a shuffle — rewriting the manual order from it
+          // would destroy an arrangement the owner made on purpose.
+          disabled: headerFlattened || isRandomView,
         },
       ])
     },
-    [menu, headerFlattened, newCollectionHere],
+    [menu, headerFlattened, isRandomView, newCollectionHere],
   )
 
   const onManualBundlingApplied = useCallback(
@@ -1595,22 +1804,9 @@ function Workspace({
     [removingCollections, deleteCollection, collections.data, selection.collectionId],
   )
 
-  const removeSmartCollection = useCallback(
-    (sc: SmartCollectionRead) => {
-      if (
-        !window.confirm(`Delete smart collection “${sc.name}”? This removes the saved filter only.`)
-      )
-        return
-      smartCollectionMutations.remove.mutate(sc.id, {
-        onSuccess: () => {
-          if (selection.smartCollectionId === sc.id) {
-            setSelection({ view: 'all', collectionId: null })
-          }
-        },
-      })
-    },
-    [smartCollectionMutations.remove, selection.smartCollectionId],
-  )
+  // Asked in a rendered dialog: `window.confirm` is a no-op in the desktop
+  // webview, so this silently did nothing there (owner, 2026-07-27).
+  const removeSmartCollection = useCallback((sc: SmartCollectionRead) => setDeletingSmart(sc), [])
 
   const moveSelection = useCallback(
     (delta: number) => {
@@ -1629,8 +1825,91 @@ function Workspace({
     [filtered, activeId],
   )
 
+  // Shift-Cmd-C / Shift-Cmd-V on a bundle selection. Copy takes the tags of the
+  // one active bundle — "these tags" only means something for a single source.
+  // Paste is a *union* onto every selected bundle: it adds what was copied and
+  // keeps what is already there, so it can never silently strip a tag (owner,
+  // 2026-07-27).
+  const copySelectedTags = useCallback(() => {
+    if (!activeId) return
+    // The active bundle's pills are on screen, so its tag list is in the cache;
+    // read it there and the toast is immediate. The fetch is only the cold path.
+    const cached = queryClient.getQueryData<{ tag_ids: string[] }>(['bundle-tags', activeId])
+    const finish = (ids: string[]) => {
+      setCopiedTags(ids)
+      showFlash(
+        ids.length === 0
+          ? 'That bundle has no tags to copy.'
+          : `Copied ${ids.length} tag${ids.length === 1 ? '' : 's'}.`,
+      )
+    }
+    if (cached) {
+      finish(cached.tag_ids)
+      return
+    }
+    void fetchBundleTags(activeId).then(({ tag_ids }) => finish(tag_ids))
+  }, [activeId, showFlash, queryClient])
+
+  // Optimistic end to end, matching the pill menu's own paste: the toast and the
+  // pills move now, the PUTs catch up behind. Waiting on fetch+PUT for the toast
+  // and a refetch for the pills read as two separate one-second stalls (owner,
+  // 2026-07-27).
+  const pasteTagsOntoSelection = useCallback(() => {
+    const copied = getCopiedTags()
+    const targets = selectedIds.size > 0 ? [...selectedIds] : activeId ? [activeId] : []
+    if (copied.length === 0 || targets.length === 0) return
+    showFlash(
+      `Pasted ${copied.length} tag${copied.length === 1 ? '' : 's'} onto ${targets.length} bundle${targets.length === 1 ? '' : 's'}.`,
+    )
+    void Promise.all(
+      targets.map(async (id) => {
+        const key = ['bundle-tags', id]
+        // Cancel any in-flight refetch so it cannot land on top of the
+        // optimistic value (the same guard useSetBundleTags takes).
+        await queryClient.cancelQueries({ queryKey: key })
+        const cached = queryClient.getQueryData<{ bundle_id: string; tag_ids: string[] }>(key)
+        const existing = cached?.tag_ids ?? (await fetchBundleTags(id)).tag_ids
+        const union = [...new Set([...existing, ...copied])]
+        // Nothing new for this bundle — leave its version alone.
+        if (union.length === existing.length) return
+        queryClient.setQueryData(key, { bundle_id: id, tag_ids: union })
+        await setBundleTags(id, union)
+      }),
+    )
+      .then(() => {
+        // The pills are already right; only the aggregates catch up, and the
+        // grid lazily (only the Untagged view's membership depends on tags).
+        void queryClient.invalidateQueries({ queryKey: ['tag-counts'] })
+        void queryClient.invalidateQueries({ queryKey: ['view-counts'] })
+        void queryClient.invalidateQueries({ queryKey: ['browse'], refetchType: 'none' })
+      })
+      .catch((error: unknown) => {
+        // Roll everything back to the server's truth before reporting.
+        void queryClient.invalidateQueries({ queryKey: ['bundle-tags'] })
+        showFlash(error instanceof Error ? error.message : 'Could not paste tags.')
+      })
+  }, [activeId, selectedIds, showFlash, queryClient])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Command chords first, and *before* the typing guard: Shift-Cmd-C is not
+      // something anyone types into a field, and clicking a card can leave focus
+      // on one — which silently swallowed the shortcut (2026-07-27).
+      //
+      // Desktop shell only: in a browser tab Shift-Cmd-C is Chrome's Inspect
+      // Element, so the pair would work unevenly there — the owner would rather
+      // have neither than one (2026-07-27).
+      const chord = (e.metaKey || e.ctrlKey) && isDesktopHost()
+      if (chord && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault()
+        copySelectedTags()
+        return
+      }
+      if (chord && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault()
+        pasteTagsOntoSelection()
+        return
+      }
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
       if (openBundleId !== null) return
@@ -1646,7 +1925,7 @@ function Workspace({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveSelection, clearSelection, openBundleId])
+  }, [moveSelection, clearSelection, openBundleId, copySelectedTags, pasteTagsOntoSelection])
 
   return (
     <div
@@ -1780,6 +2059,7 @@ function Workspace({
           <TrashView writeMode={writeMode} onFlash={showFlash} />
         ) : mode === 'file' ? (
           <FileBrowser
+            headerLeading={navButtons}
             libraryName={libraryName}
             scope={fileScope === 'unbundled' ? 'unbundled' : 'browse'}
             path={filePath}
@@ -1808,6 +2088,10 @@ function Workspace({
         ) : (
           <>
             <Toolbar
+              leading={navButtons}
+              onReshuffle={
+                isRandomView ? () => setRandomSeed(Math.floor(Math.random() * 2 ** 31)) : undefined
+              }
               title={title}
               total={total}
               search={search}
@@ -1829,13 +2113,18 @@ function Workspace({
             {openBundleId ? (
               <BundleAlbum
                 bundleId={openBundleId}
+                layout={prefs.layout}
+                zoom={prefs.zoom}
                 playerPrefs={prefs.player}
                 onPlayerPrefs={setPlayerPrefs}
                 onBack={() => setOpenBundleId(null)}
+                writeMode={writeMode}
                 hostLabels={hostLabels}
                 onRevealFile={onRevealHostFile}
                 onOpenFile={onOpenHostFile}
                 onStartFileDrag={onStartFileDrag}
+                onFlash={showFlash}
+                onSelectFile={setAlbumFile}
                 onLocateFile={(relativePath) => {
                   const dir = relativePath.includes('/')
                     ? relativePath.slice(0, relativePath.lastIndexOf('/'))
@@ -1853,6 +2142,7 @@ function Workspace({
                 {headerCollections.length > 0 && (
                   <CollectionHeader
                     subcollections={headerCollections}
+                    layout={prefs.layout}
                     sectionLabel={selection.collectionId ? 'Subcollections' : 'Collections'}
                     counts={collectionCounts.data}
                     subcounts={subCounts}
@@ -1922,6 +2212,7 @@ function Workspace({
                     onContextMenu={bundleContextMenu}
                     contextMenuOpen={menu.state !== null}
                     onEmptyContextMenu={emptyContextMenu}
+                    onDropFilesOnBundle={writeMode ? dropFilesOnBundle : undefined}
                     onReorder={
                       // Reordering only makes sense on a scoped, non-flattened
                       // list — a single collection's own bundles or a system-view
@@ -1934,7 +2225,7 @@ function Workspace({
                       // view is excluded: its cards span several parents, so
                       // dragging there would silently rewrite the global order
                       // while appearing to arrange one collection.
-                      effectiveSort.sort === 'manual' && !headerFlattened
+                      effectiveSort.sort === 'manual' && !headerFlattened && !isRandomView
                         ? ({ movedIds, beforeId }) =>
                             reorderBundles.mutate({
                               collectionId: manualScopeCollectionId,
@@ -1961,12 +2252,20 @@ function Workspace({
 
       {mode === 'tags' || !inspectorVisible ? null : mode === 'file' ? (
         <FileInspector
-          entry={fileEntry}
+          entry={fileEntry ? factsFromEntry(fileEntry) : null}
           hostLabels={hostLabels}
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
           onRename={writeMode && fileScope === 'browse' ? renameSelectedFile : undefined}
+        />
+      ) : openBundleId && albumFile ? (
+        <FileInspector
+          entry={factsFromBundleFile(albumFile)}
+          hostLabels={hostLabels}
+          onRevealFile={onRevealHostFile}
+          onOpenFile={onOpenHostFile}
+          onStartFileDrag={onStartFileDrag}
         />
       ) : selectedCollection ? (
         <CollectionInspector key={selectedCollection.id} collection={selectedCollection} />
@@ -1988,6 +2287,16 @@ function Workspace({
           onPlayBundle={(id) => setViewerTarget({ bundleId: id })}
           onPlayFile={(bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId })}
           onStartFileDrag={onStartFileDrag}
+          onFlash={showFlash}
+          onFilterByTags={(tagIds) => {
+            // Replace the tag filter with exactly these, and leave any bundle
+            // open — the point is to see everything sharing the tag.
+            setAdHocFilters((previous) => ({
+              ...previous,
+              tags: { ...emptyTagFilter(), include: tagIds },
+            }))
+            setOpenBundleId(null)
+          }}
         />
       )}
 
@@ -2159,6 +2468,31 @@ function Workspace({
           onReplace={hostImports.replace}
           onCancel={hostImports.dismiss}
           busy={false}
+        />
+      )}
+
+      {deletingSmart && (
+        <ConfirmDialog
+          title="Delete Smart Collection"
+          pending={smartCollectionMutations.remove.isPending}
+          onCancel={() => setDeletingSmart(null)}
+          onConfirm={() => {
+            const target = deletingSmart
+            setDeletingSmart(null)
+            smartCollectionMutations.remove.mutate(target.id, {
+              onSuccess: () => {
+                if (selection.smartCollectionId === target.id) {
+                  setSelection({ view: 'all', collectionId: null })
+                }
+              },
+            })
+          }}
+          body={
+            <>
+              Delete smart collection “{deletingSmart.name}”? This removes the saved filter only —
+              no bundle or file is touched.
+            </>
+          }
         />
       )}
 

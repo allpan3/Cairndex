@@ -42,17 +42,54 @@ export function usePopover() {
   useEffect(() => {
     if (!open) return
     reposition()
+    // One capture-phase mousedown does both jobs: close, and stop the gesture
+    // there. Stopping only the *click* was not enough — the bundle grid selects
+    // and clears on mousedown/mouseup (see useMarqueeSelect), so clicking away
+    // to dismiss the picker still wiped the selection, taking the inspector and
+    // the picker's own anchor with it (owner, twice: 2026-07-27).
+    //
+    // Capture, so this runs before React's root listener and before any
+    // element-level handler underneath. A dismissing gesture does one thing.
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node
       if (ref.current?.contains(t) || panelRef.current?.contains(t)) return
       setOpen(false)
+      e.stopPropagation()
     }
-    window.addEventListener('mousedown', onDown)
+    // The click that dismisses the popover has done its job and must not also
+    // act on whatever was underneath — clicking away to close the tag picker was
+    // clearing the bundle selection, taking the inspector (and the picker's own
+    // anchor) with it (owner, 2026-07-27). Captured, so it is stopped before it
+    // reaches React's root listener.
+    // The click and mouseup that follow that mousedown belong to it too — the
+    // marquee finishes its gesture on mouseup, and React's onClick handlers
+    // would otherwise still fire.
+    const onAway = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (ref.current?.contains(t) || panelRef.current?.contains(t)) return
+      e.stopPropagation()
+    }
+    // Escape dismisses the picker, and stops there — the viewer and the shell
+    // both close on Escape, and dismissing a picker should not also put away
+    // whatever is behind it (owner, 2026-07-27). Captured for the same reason.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    window.addEventListener('mousedown', onDown, true)
+    window.addEventListener('mouseup', onAway, true)
+    window.addEventListener('click', onAway, true)
+    window.addEventListener('keydown', onKey, true)
     window.addEventListener('resize', reposition)
     // Capture phase so a scroll on the inspector (or any ancestor) repositions.
     window.addEventListener('scroll', reposition, true)
     return () => {
-      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('mousedown', onDown, true)
+      window.removeEventListener('mouseup', onAway, true)
+      window.removeEventListener('click', onAway, true)
+      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('resize', reposition)
       window.removeEventListener('scroll', reposition, true)
     }

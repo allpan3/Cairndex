@@ -119,3 +119,12 @@ class SetTagsRequest(BaseModel):
 class TagGroupTags(BaseModel):
     group_id: str
     tag_ids: list[str]
+
+
+class TagDeleteImpact(BaseModel):
+    """What deleting a tag would remove, so the prompt can say so up front."""
+
+    #: The tag itself plus every descendant.
+    tags: int
+    #: Distinct bundles currently carrying any of those tags.
+    bundles: int
