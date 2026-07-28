@@ -10,9 +10,10 @@
 > sheets, the viewer's two panels, tag pill actions with cascading deletes, and
 > one layout control across every browsing surface. An owner-reported HEVC
 > playback failure in the desktop app is **merged** (PR #35), which also fixed a
-> `just check-web` gate that had not been type-checking anything. Branch
-> `feat/file-facts-display` is open (file formats, encoding facts, richer file
-> rows). Two things still need the owner: a pass on a genuinely
+> `just check-web` gate that had not been type-checking anything. The viewer's
+> failure copy (PR #36) and the MP4 keyframe-index read (PR #37) are **merged**,
+> as are file formats, encoding facts and richer file rows (PR #38). No branches
+> are open. Two things still need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here. One diagnosis is parked rather than queued:
