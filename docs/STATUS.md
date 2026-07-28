@@ -60,6 +60,15 @@ consequence — **plan 4 W2** (save exports into the library) waited on M11 and 
 now a slice rather than a blocked item, since the export seam and one real export
 both exist.
 
+**Also corrected while checking.** The plan index still said "plans 2 and 4 have
+not started" and counted "four major initiatives" (there are five, and plan 4 is
+done bar W2); its phase **H** still read "(next)" though write mode closed with
+W6, so H is ticked and a new **H2 — publish v0.1.0** sits between it and the
+Android client, which is the real next step. And the release runbook's review
+step still expected "both DMGs", written before Intel was dropped from the
+matrix (2026-07-23) — it now expects one of each artifact and says what
+restoring Intel would change.
+
 **Still owner-only, unchanged:** a pass on a genuinely downloaded build (deferred
 from D7 to after write mode — that is now) and the native Finder drag gesture on
 a packaged build.

@@ -1,15 +1,18 @@
 # Client platform & media experience plans
 
 > Status: written as planning documents (owner-requested, 2026-07-04) and now
-> **partly built** — plans 1 and 3 have shipped most of their milestones, plans
-> 2 and 4 have not started. The build order below is the live view; each plan's
-> own milestone table marks what has landed. Consequential decisions are
+> **mostly built** — plan 3 is complete, plan 1 has everything but its deferred
+> bucket, and plan 4's unblocked track closed with W6 (only W2 remains, and it
+> is no longer blocked). Plan 2 has T0 (pairing) and nothing else; plan 5 is a
+> parked diagnosis. The build order below is the live view; each plan's own
+> milestone table marks what has landed. Consequential decisions are
 > gathered in [ADR-0012](../adr/0012-client-platform-strategy.md), **accepted
 > (owner-ratified) 2026-07-04** after review.
 
-Four major initiatives. The first three were planned together because they
-share most of their server-side media foundations; the fourth (write mode)
-is its own server-side track. Owner re-prioritized 2026-07-10 and added M12 on
+Five initiatives. The first three were planned together because they share most
+of their server-side media foundations; the fourth (write mode) is its own
+server-side track, and the fifth is a latency diagnosis parked until after
+v0.1.0. Owner re-prioritized 2026-07-10 and added M12 on
 2026-07-11: **plan 1 M9 + M12 → pairing/device tokens (plan 2 T0) → macOS
 desktop shell (plan 3) → write mode (plan 4, so media can be dragged into the
 app) → Android client (plan 2 T1–T7)**. Plan 1 M8/M10/M11 moved to the future
@@ -146,7 +149,8 @@ letters. Current order:
 | E ✅   | **macOS desktop shell** (plan 3 D1–D5)                                                                                  | Merged as #15–#21. Built cross-platform-first so a Linux (and Windows) shell later is packaging + CI, not a rewrite (plan 3 §2–§3)                                                                 |
 | F ✅   | **Library ownership lease + local-server sidecar** ([ADR-0018](../adr/0018-library-ownership-lease-and-local-server.md), accepted 2026-07-19) — the server-side lease (§2–§4) and §6 checkpoint hygiene, then the plan 3 D6 sidecar | Merged as #27, with the unified library add/remove flow following in #28. The lease enforces one server per library and landed server-side first (it hardens the NAS deployment on its own and is a precondition for write-mode operations); the shell's sidecar + connections model then lets local library folders open without server administration |
 | G ✅   | **First public release** (plan 3 D7, [ADR-0019](../adr/0019-open-source-distribution-model.md))                     | Went ahead of write mode because it is what makes everything already built reach anyone else, and D6's bundled sidecar is what created the packaging obligation. Shipped: a pinned static ffmpeg, a tag-triggered release workflow proven by a real `v0.1.0` run, install docs, and the GPL source offer. Building it found two defects planning would not have: an invalid bundle signature, and a GPL encoder linked in for a codec path Cairndex never calls. One owner-verification item — a pass on a genuinely downloaded build — is deferred to after phase H at the owner's request |
-| H (next) | **Library write mode** (plan 4), re-ordered W0 → W1 → W5                                                          | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). Needs the phase F lease underneath it. W3/W4 (move/trash) follow; W2 waits on M11 (deferred) |
+| H ✅   | **Library write mode** (plan 4), re-ordered W0 → W1 → W5                                                          | Driving use case: **drag media from Finder into the app** (plan 3 §6 drag-in + W5 import-external). Needed the phase F lease underneath it. Shipped W0/W1/W3/W4/W5 (2026-07-23) and W6 hardening (2026-07-26, PR #33). **W2** (save exports into the library) is the only slice left: it waited on plan 1 M11, whose contact-sheet half shipped in PR #34, so it is now a slice rather than a blocked item |
+| H2 (next) | **Publish v0.1.0** — push the tag, then the owner's pass on a genuinely downloaded build                       | Phase G built and proved the pipeline but nothing is published: the remote has no tags and no releases. The D7 verification the owner deferred *until after write mode* is this step, and last time doing it for real is what found the invalid bundle signature |
 | I      | **Android client** (plan 2 T1–T7)                                                                                       | Largest new surface; by then every server API it needs exists and is proven (pairing landed in phase D)                                                                                            |
 | Future | Plan 1 M8 (subtitle depth), M10 (web video wall), M11 (exports) + plan 4 W2, Linux/Windows shells, TV wall follow-ups   | Deferred by owner 2026-07-10                                                                                                                                                                       |
 
