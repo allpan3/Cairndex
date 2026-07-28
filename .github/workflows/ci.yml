@@ -42,11 +42,11 @@ jobs:
       run:
         working-directory: apps/server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install ffmpeg (for scanner/probe/thumbnail tests)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.11.23"
           enable-cache: true
@@ -74,11 +74,11 @@ jobs:
       run:
         working-directory: apps/server
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install ffmpeg (the smoke test scans and previews real fixtures)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.11.23"
           enable-cache: true
@@ -102,8 +102,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -131,14 +131,14 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.11.23"
           enable-cache: true
@@ -160,7 +160,7 @@ jobs:
       run:
         working-directory: apps/desktop/src-tauri
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Update apt metadata
         run: sudo apt-get update
         working-directory: .
@@ -176,7 +176,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -213,14 +213,14 @@ jobs:
       run:
         working-directory: apps/desktop/src-tauri
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -237,7 +237,7 @@ jobs:
         run: npm run build
         working-directory: apps/web
       - name: Install uv (for the sidecar bundle)
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           version: "0.11.23"
           enable-cache: true
@@ -248,7 +248,7 @@ jobs:
       # reuses ~125 MB of binaries. The vendor directory is platform-scoped, so
       # this key and path name the same architecture the runner builds.
       - name: Cache the pinned static ffmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/server/packaging/vendor/ffmpeg/macos-arm64
           key: ffmpeg-macos-arm64-${{ hashFiles('apps/server/packaging/ffmpeg-manifest.json') }}
@@ -295,7 +295,7 @@ jobs:
     name: Docker build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build dev images
         run: docker compose build
       - name: Build production image
