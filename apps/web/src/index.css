@@ -4208,13 +4208,30 @@ code {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  justify-content: flex-end;
   min-width: 0;
-  overflow: hidden;
+  /* Scrolls rather than clips. `overflow: hidden` left a long trail's leading
+     crumbs with boxes outside the visible area — painted nowhere, but still
+     hit-testing to whatever sits there, which since the Back/Forward control
+     joined this row is the toolbar. The root crumb became unclickable on a
+     narrow window (CI caught it; a wider font is all it takes). Scrolling keeps
+     every crumb reachable. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   gap: 2px;
+  /* Right-aligned by an auto margin on the first crumb, not
+     `justify-content: flex-end`: content overflowing the *start* of a flex
+     container is unreachable by scrolling under `flex-end`, which is why making
+     it scrollable alone did not restore the root crumb. */
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 600;
+}
+.file-browser__crumbs::-webkit-scrollbar {
+  display: none;
+}
+.file-browser__crumbs > :first-child {
+  margin-left: auto;
 }
 .file-browser__crumbs > span {
   display: flex;
