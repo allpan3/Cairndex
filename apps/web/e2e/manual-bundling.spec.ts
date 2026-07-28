@@ -239,7 +239,14 @@ test('File view grid layout supports drag-to-select', async ({ page }) => {
   await cards.nth(0).click({ button: 'right' })
   await expect(page.getByRole('menuitem', { name: 'Add 3 files to bundle…' })).toBeVisible()
 
-  // A plain click on empty space (no drag) clears the selection.
+  // Dismissing the menu is its own gesture and leaves the selection alone —
+  // otherwise right-clicking a set, then closing the menu, would silently throw
+  // that set away (owner, 2026-07-27). The same rule the pickers follow.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.context-menu')).toHaveCount(0)
+  await expect(cards.nth(0)).toHaveClass(/card--selected/)
+
+  // With no menu open, a plain click on empty space (no drag) clears it.
   await page.mouse.click(gutterX, wrapperBox.y + 2)
   await expect(cards.nth(0)).not.toHaveClass(/card--selected/)
 })
