@@ -18,8 +18,25 @@ at `8fb7125`. A whole-branch review pass before the PR caught three things no
 single round would have: the tag delete skipped its own confirmation when the
 impact lookup failed (an unknown cost is a reason to *ask*), the filename scan
 was O(files²) and unmemoized in a component that re-renders on every drag move,
-and `--mv-controls-h` had gone circular. Browser e2e is 91/92 — the one failure
-predates this branch and is spun off. The owner's
+and `--mv-controls-h` had gone circular. Browser e2e is **92/92**.
+
+CI then failed on two things the local run had not. One was a **real bug this
+branch introduced**: the Back/Forward control shares the toolbar's leading slot
+with the File Browser's breadcrumb, and once the trail stopped fitting,
+`overflow: hidden` left the leading crumbs with boxes outside the visible area —
+painted nowhere, still hit-testing to the toolbar — so the library-root crumb
+could not be clicked. Reproduced at 1180px; CI's wider fonts reach it sooner,
+which is the whole reason only CI saw it. The trail scrolls now, right-aligned
+by an auto margin rather than `justify-content: flex-end` (start-overflow is
+unreachable by scrolling under `flex-end`, so scrolling alone did not fix it),
+and that spec runs at the reproducing width so the default viewport cannot hide
+it again.
+
+The other was `manual-bundling`'s drag-to-select, which had been red on `main`
+too: it asserted that a click on empty space clears the selection *while a
+context menu is open*, which this branch deliberately changed — dismissing a
+menu now leaves the selection alone. The spec dismisses first, checks the
+selection survived, then clears it. The owner's
 refinement list, each its own commit: (1) viewer topbar clears the traffic
 lights in the shell; (2) Back/Forward history over views/collections/bundles/
 File Browser paths; (3) album tiles gain Remove from Bundle + write-gated Move
