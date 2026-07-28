@@ -2,11 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-This project does not yet follow semantic versioning releases; entries are
-grouped under `Unreleased` until the first tagged release.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+and this project follows [Semantic Versioning](https://semver.org/) from 0.1.0
+onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
+
+_Nothing yet._
+
+## [0.1.0] — 2026-07-28
+
+First public release: a macOS desktop app, and the server and web client behind
+it. Everything below landed before the tag, so this section is the whole history
+rather than a delta — later releases will be short.
+
+**What it is.** Cairndex indexes a folder of media you already own and keeps its
+own records beside it. It never renames, moves, or deletes anything unless you
+turn write mode on for that library, and even then every operation is journaled
+and undoable. Bundles group the files that belong together; collections and tags
+organize the bundles.
+
+**Highlights.**
+
+- A real video player — direct play, remux, or HLS transcode chosen per client
+  from what that client can actually decode — with storyboard scrubbing,
+  chapters, subtitle tracks, frame stepping, and resume.
+- An image viewer with generated previews, so HEIC and TIFF open like anything
+  else.
+- A File Browser over the library root alongside the bundle view, sharing one
+  media viewer and one file inspector.
+- Optional **write mode**: rename, move, trash, and drag files in from Finder,
+  all journaled, with a trash you can restore from.
+- **Contact sheets** — a grid of frames from a video, saved wherever you can see
+  one.
+- The desktop app runs its own bundled server, so a local folder opens without
+  administering anything.
+
+**Known limits.** Apple Silicon only for the packaged app (Intel stays pinned
+and locally buildable). The app is signed ad-hoc rather than with a Developer ID,
+so the first launch has to be approved once through **System Settings → Privacy
+& Security → Open Anyway** — see the README's install section for the exact
+steps, including that it repeats after each update until the updater lands. One
+library is served by one machine at a time, enforced by a lease.
 
 ### Added
 
