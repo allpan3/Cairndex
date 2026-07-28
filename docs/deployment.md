@@ -760,11 +760,14 @@ gh run list --workflow=Release --limit 1
 gh run watch <run-id> --exit-status
 ```
 
-**4. Review the draft** at `gh release view v0.1.0 --web`. Both DMGs, both
-`.sha256` files, and `THIRD-PARTY-NOTICES.md` should be attached. Download the
-DMG for your own Mac and actually open it — the workflow proves the bundle is
-signed and correctly architected, but only a real download carries
-`com.apple.quarantine`, which is the one thing local builds never reproduce.
+**4. Review the draft** at `gh release view v0.1.0 --web`. The Apple Silicon
+DMG, its `.sha256`, and `THIRD-PARTY-NOTICES.md` should be attached — one of
+each, since Intel was dropped from the matrix after the first run (2026-07-23);
+restoring it means uncommenting the matrix entry in `release.yml` and this
+step then expects two of each. Download the DMG and actually open it — the
+workflow proves the bundle is signed and correctly architected, but only a real
+download carries `com.apple.quarantine`, which is the one thing local builds
+never reproduce.
 
 **5. Publish** when satisfied:
 
