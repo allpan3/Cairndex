@@ -6,13 +6,18 @@
 > (owner-reported: the sidebar "+" nested instead of creating at the top level,
 > and creating one was unreachable from the grid and the shell menu). Plan 4 W6
 > is **merged** (PR #33), closing the write-mode track; W2 stays blocked on
-> plan 1 M11. No branches are open. Two things still need the owner: a pass on a genuinely downloaded build (deferred from D7),
+> plan 1 M11. Eight rounds of UI refinement are **merged** (PR #34): contact
+> sheets, the viewer's two panels, tag pill actions with cascading deletes, and
+> one layout control across every browsing surface. No branches are open. Two things still need the owner: a pass on a genuinely downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here.
 
-## In review: PR #34 — UI refinements, eight owner rounds (2026-07-27)
+## Merged: PR #34 — UI refinements, eight owner rounds (2026-07-28)
 
-Branch `fix/ui-refinements` → **[PR #34](https://github.com/allpan3/Cairndex/pull/34)**,
+**[PR #34](https://github.com/allpan3/Cairndex/pull/34) merged** to `main` as
+`d7967ca` on 2026-07-28; branch deleted. All seven CI jobs green, and `main`
+re-verified after the merge: full gate plus **92/92** browser e2e — the suite had
+been red on `main` before this. It went in
 squashed to four commits by subsystem (server / desktop / web / docs), off `main`
 at `8fb7125`. A whole-branch review pass before the PR caught three things no
 single round would have: the tag delete skipped its own confirmation when the
