@@ -8,6 +8,13 @@
 // uses for remux/transcode). A codec the browser can decode via *either* path is
 // playable, because the server can deliver it either directly or over HLS.
 //
+// Codec *tags* are the exception, and are probed with `canPlayType` alone. A tag
+// answers a narrower question — "can the browser play this source as-is, without
+// a session?" — which is precisely what progressive playback measures. WebKit
+// reports `isTypeSupported: true` for `hev1` while `canPlayType` returns "", so
+// OR-ing the two would advertise a tag that only MSE can handle and send an
+// unplayable source down the direct path.
+//
 // Computed once at module load and memoized; the result is a stable object for
 // the lifetime of the tab.
 
@@ -27,6 +34,8 @@ export interface DirectVideoSource {
   relativePath?: string | null
   container?: string | null
   videoCodec?: string | null
+  /** Container codec tag (`hvc1`/`hev1`); absent on rows probed before v3. */
+  videoCodecTag?: string | null
   audioCodec?: string | null
 }
 
@@ -40,6 +49,17 @@ const VIDEO_CODEC_PROBES: Record<string, string[]> = {
   vp9: ['video/mp4; codecs="vp09.00.10.08"', 'video/webm; codecs="vp9"'],
   av1: ['video/mp4; codecs="av01.0.05M.08"', 'video/webm; codecs="av01.0.05M.08"'],
   vp8: ['video/webm; codecs="vp8"'],
+}
+
+// Four-character container tags that decide direct playability on their own.
+// HEVC rides as either `hvc1` or `hev1`; AVFoundation plays only `hvc1`, so the
+// codec family alone cannot answer whether a given HEVC source is directly
+// playable. Advertised alongside the family names in `video_codecs` — the server
+// tests the source's tag against this list and falls back to a remux (copy and
+// relabel, no re-encode) when it is absent.
+const VIDEO_TAG_PROBES: Record<string, string[]> = {
+  hvc1: ['video/mp4; codecs="hvc1.1.6.L93.B0"'],
+  hev1: ['video/mp4; codecs="hev1.1.6.L93.B0"'],
 }
 
 const AUDIO_CODEC_PROBES: Record<string, string[]> = {
@@ -71,6 +91,13 @@ function supported(probe: CapabilityProbe, candidates: string[]): boolean {
 function names(probe: CapabilityProbe, table: Record<string, string[]>): string[] {
   return Object.entries(table)
     .filter(([, candidates]) => supported(probe, candidates))
+    .map(([name]) => name)
+}
+
+// Direct-play only: `canPlayType` without the MSE fallback (see the file header).
+function directNames(probe: CapabilityProbe, table: Record<string, string[]>): string[] {
+  return Object.entries(table)
+    .filter(([, candidates]) => candidates.some((type) => probe.canPlayType(type) !== ''))
     .map(([name]) => name)
 }
 
@@ -136,6 +163,13 @@ export function canDirectPlayVideo(
   const rawVideoCodec = source.videoCodec?.trim().toLowerCase()
   const videoCodec = rawVideoCodec ? (CODEC_ALIASES[rawVideoCodec] ?? rawVideoCodec) : null
   if (videoCodec && !(capabilities.video_codecs ?? []).includes(videoCodec)) return false
+  // The family passing is not enough when the source carries a discriminating
+  // tag: `hev1` normalizes to `hevc` like `hvc1` does, but only one of them
+  // plays without a session. Legacy rows carry no tag and stay optimistic.
+  const tag = source.videoCodecTag?.trim().toLowerCase()
+  if (tag && tag in VIDEO_TAG_PROBES && !(capabilities.video_codecs ?? []).includes(tag)) {
+    return false
+  }
   const rawAudioCodec = source.audioCodec?.trim().toLowerCase()
   const audioCodec = rawAudioCodec ? (AUDIO_CODEC_ALIASES[rawAudioCodec] ?? rawAudioCodec) : null
   return !audioCodec || (capabilities.audio_codecs ?? []).includes(audioCodec)
@@ -150,7 +184,7 @@ export function computeCapabilities(probe: CapabilityProbe): ClientCapabilities 
   return {
     protocols,
     containers: names(probe, CONTAINER_PROBES),
-    video_codecs: names(probe, VIDEO_CODEC_PROBES),
+    video_codecs: [...names(probe, VIDEO_CODEC_PROBES), ...directNames(probe, VIDEO_TAG_PROBES)],
     audio_codecs: names(probe, AUDIO_CODEC_PROBES),
     // No browser API reports a maximum decode height, and capping optimistically
     // would force needless transcodes of content the browser can decode. Leave

@@ -93,6 +93,7 @@ class BundleSummary:
     resume_mime_type: str | None
     resume_container: str | None
     resume_video_codec: str | None
+    resume_video_codec_tag: str | None
     resume_audio_codec: str | None
     resume_duration: float | None
     resume_position: float | None
@@ -568,6 +569,7 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
         resume_mime_type=preview.mime_type if preview else None,
         resume_container=meta.get("container") if preview else None,
         resume_video_codec=meta.get("video_codec") if preview else None,
+        resume_video_codec_tag=meta.get("video_codec_tag") if preview else None,
         resume_audio_codec=meta.get("audio_codec") if preview else None,
         resume_duration=meta.get("duration") if preview else None,
         resume_position=resume_position(

@@ -76,6 +76,9 @@ class FileBrowserEntry:
     file_id: str | None
     container: str | None
     video_codec: str | None
+    # Container codec tag: hvc1-tagged HEVC previews directly, hev1-tagged does
+    # not (see media/playback.py). Null on rows probed before v3.
+    video_codec_tag: str | None
     audio_codec: str | None
     duration: float | None
     resume_position: float | None
@@ -93,6 +96,7 @@ class _Link:
     file_id: str
     container: str | None
     video_codec: str | None
+    video_codec_tag: str | None
     audio_codec: str | None
     duration: float | None
     resume_position: float | None
@@ -200,6 +204,9 @@ def list_unbundled_files(
             AssetFile.mtime.label("mtime"),
             func.json_extract(AssetFile.tech_metadata, "$.container").label("container"),
             func.json_extract(AssetFile.tech_metadata, "$.video_codec").label("video_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.video_codec_tag").label(
+                "video_codec_tag"
+            ),
             func.json_extract(AssetFile.tech_metadata, "$.audio_codec").label("audio_codec"),
             func.json_extract(AssetFile.tech_metadata, "$.duration").label("duration"),
             PlaybackProgress.position_s.label("resume_position"),
@@ -223,6 +230,7 @@ def list_unbundled_files(
             row.mtime,
             row.container,
             row.video_codec,
+            row.video_codec_tag,
             row.audio_codec,
             row.duration,
             progress_resume_position(row.resume_position, row.progress_completed),
@@ -241,6 +249,7 @@ def _unbundled_entry(
     mtime: datetime | None,
     container: str | None,
     video_codec: str | None,
+    video_codec_tag: str | None,
     audio_codec: str | None,
     duration: float | None,
     resume_position: float | None,
@@ -265,6 +274,7 @@ def _unbundled_entry(
         file_id=file_id,
         container=container,
         video_codec=video_codec,
+        video_codec_tag=video_codec_tag,
         audio_codec=audio_codec,
         duration=duration,
         resume_position=resume_position,
@@ -342,6 +352,7 @@ def _build_entry(
             file_id=None,
             container=None,
             video_codec=None,
+            video_codec_tag=None,
             audio_codec=None,
             duration=None,
             resume_position=None,
@@ -368,6 +379,7 @@ def _build_entry(
         file_id=link.file_id if link is not None else None,
         container=link.container if link is not None else None,
         video_codec=link.video_codec if link is not None else None,
+        video_codec_tag=link.video_codec_tag if link is not None else None,
         audio_codec=link.audio_codec if link is not None else None,
         duration=link.duration if link is not None else None,
         resume_position=link.resume_position if link is not None else None,
@@ -412,6 +424,7 @@ def _linked_paths(session: Session, parent_rel: str) -> tuple[dict[str, _Link], 
             file_id=asset_file.id,
             container=meta.get("container"),
             video_codec=meta.get("video_codec"),
+            video_codec_tag=meta.get("video_codec_tag"),
             audio_codec=meta.get("audio_codec"),
             duration=meta.get("duration"),
             resume_position=progress_resume_position(resume_position, progress_completed),

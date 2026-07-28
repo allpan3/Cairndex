@@ -121,6 +121,29 @@ _AUDIO_CODEC_ALIASES: dict[str, str] = {
     "mp3float": "mp3",
 }
 
+# Codec tags a client must confirm *by tag* before we hand it the source
+# directly. The codec family alone is not enough for HEVC: it rides as either
+# ``hvc1`` (decoder config in the container header) or ``hev1`` (config allowed
+# in-band and allowed to change), and AVFoundation — Safari, and so the desktop
+# shell's WKWebView — plays only ``hvc1``. Since both tags normalize to ``hevc``,
+# a family-only test sends an ``hev1`` source down the direct path where it
+# cannot play at all. Tags outside this set are not discriminating and are
+# ignored, so nothing else changes behaviour.
+_TAG_SENSITIVE_CODECS: dict[str, frozenset[str]] = {
+    "hevc": frozenset({"hvc1", "hev1"}),
+}
+_ALL_DISCRIMINATING_TAGS: frozenset[str] = frozenset().union(*_TAG_SENSITIVE_CODECS.values())
+
+
+def normalize_codec_tag(value: str | None) -> str | None:
+    """Canonical four-character codec tag, or ``None`` when absent/meaningless."""
+    if not value:
+        return None
+    token = value.strip().lower()
+    if not token or token.startswith("[") or set(token) <= {"0"}:
+        return None
+    return token
+
 
 def _normalize_token(value: str | None, aliases: Mapping[str, str]) -> str | None:
     if not value:
@@ -157,6 +180,11 @@ class CapabilityProfile:
 
     containers: frozenset[str] = field(default_factory=frozenset)
     video_codecs: frozenset[str] = field(default_factory=frozenset)
+    # Discriminating codec tags the client confirmed it can play *directly*,
+    # parsed out of the same wire list as ``video_codecs``. Kept separate because
+    # normalization deliberately folds ``hvc1``/``hev1`` into ``hevc``, which is
+    # right for the family test and fatal for the tag test.
+    video_codec_tags: frozenset[str] = field(default_factory=frozenset)
     audio_codecs: frozenset[str] = field(default_factory=frozenset)
     max_height: int | None = None
     native_hls: bool = False
@@ -177,6 +205,13 @@ class CapabilityProfile:
             ),
             video_codecs=frozenset(
                 t for c in (video_codecs or []) if (t := normalize_video_codec(c)) is not None
+            ),
+            # Tag entries also normalize into the family set above, so a client
+            # that advertises only "hvc1" still reports HEVC support.
+            video_codec_tags=frozenset(
+                t
+                for c in (video_codecs or [])
+                if (t := normalize_codec_tag(c)) is not None and t in _ALL_DISCRIMINATING_TAGS
             ),
             audio_codecs=frozenset(
                 t for c in (audio_codecs or []) if (t := normalize_audio_codec(c)) is not None
@@ -233,6 +268,7 @@ def decide_playback(
     ext: str | None,
     video_codec: str | None,
     audio_codec: str | None,
+    video_codec_tag: str | None = None,
     source_height: int | None = None,
     audio_stream_index: int | None = None,
     default_audio_index: int | None = None,
@@ -246,9 +282,11 @@ def decide_playback(
     - otherwise → ``transcode``.
 
     Burn-in subtitles and downscaling force ``transcode`` (they re-encode video);
-    a non-default audio track or an unsupported audio codec force at least
-    ``remux`` (progressive streams can't switch/replace tracks). Missing probe
-    metadata degrades toward the more permissive choice rather than erroring.
+    a non-default audio track, an unsupported audio codec, or a codec *tag* the
+    client did not confirm force at least ``remux`` (progressive streams can't
+    switch/replace tracks, and a tag is fixed by copying, not re-encoding).
+    Missing probe metadata degrades toward the more permissive choice rather
+    than erroring.
     """
     container = normalize_container(ext)
     vcodec = normalize_video_codec(video_codec)
@@ -262,6 +300,14 @@ def decide_playback(
     max_h = effective_max_height(caps.max_height, requested_max_height)
     too_tall = source_height is not None and max_h is not None and source_height > max_h
     non_default_audio = audio_stream_index is not None and audio_stream_index != default_audio_index
+    # A discriminating tag the client did not confirm blocks *direct* play only.
+    # The coded video is fine — just labelled in a way the engine refuses — so
+    # this is a remux (copy + relabel), never a re-encode. Legacy rows probed
+    # before the tag was recorded have ``tag is None`` and keep their old
+    # behaviour until a reprobe fills it in.
+    tag = normalize_codec_tag(video_codec_tag)
+    discriminating = _TAG_SENSITIVE_CODECS.get(vcodec or "", frozenset())
+    tag_ok = tag is None or tag not in discriminating or tag in caps.video_codec_tags
 
     if burn_subtitle:
         return PlaybackDecision("transcode", "Subtitle burn-in requires transcoding")
@@ -270,6 +316,10 @@ def decide_playback(
     if too_tall:
         return PlaybackDecision(
             "transcode", f"Source height {source_height} exceeds the client height cap"
+        )
+    if not tag_ok:
+        return PlaybackDecision(
+            "remux", f"{tag} codec tag is not in client capabilities (copy and relabel)"
         )
     if not container_ok:
         label = container or "unknown"
