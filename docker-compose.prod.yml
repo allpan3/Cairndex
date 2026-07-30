@@ -4,7 +4,7 @@
 # docker-compose.yml (which bind-mounts source and hot-reloads). One container
 # serves the API and the built SPA on port 8000. See docs/deployment.md.
 #
-#   cp .env.example .env      # then edit MEDIA_HOST_PATH etc.
+#   cp .env.example .env      # then edit CAIRNDEX_LIBRARY_PATH etc.
 #   docker compose -f docker-compose.prod.yml up --build -d
 #
 # Building on the NAS itself gives you its architecture for free. To build on a
@@ -52,9 +52,9 @@ services:
       # per-library package stores .cairndex/{manifest.json,library.db,cache/}
       # inside the library root. Cairndex remains metadata-only for source media:
       # normal app flows do not move, rename, delete, or rewrite media files.
-      - "${MEDIA_HOST_PATH:-./media}:/storage/media:rw"
+      - "${CAIRNDEX_LIBRARY_PATH:-./media}:/libraries/main:rw"
     # Defense in depth: the app only needs writable mounted volumes (/data and
-    # /storage/media/.cairndex), so the rest of the container filesystem can be
+    # /libraries/main/.cairndex), so the rest of the container filesystem can be
     # read-only.
     read_only: true
     tmpfs:
