@@ -75,6 +75,26 @@ def list_jobs(
     return keyset_page(session, select(JobQueueEntry), JobQueueEntry.id, limit, cursor)
 
 
+def list_active_jobs(session: Session, *, library_id: str | None = None) -> list[JobQueueEntry]:
+    """Jobs that are running or waiting to run, oldest first.
+
+    This is what a client asks on load to find work already in progress. The
+    paged ``list_jobs`` cannot answer it: it walks every job ever queued, from
+    the oldest, so finding the live ones means reading the whole history.
+
+    Unpaged deliberately — the queue runs one job at a time and only a handful
+    are ever waiting, so a cursor would be ceremony around a list of two.
+    """
+    stmt = select(JobQueueEntry).where(
+        JobQueueEntry.status.in_((JobStatus.RUNNING, JobStatus.QUEUED))
+    )
+    if library_id is not None:
+        stmt = stmt.where(JobQueueEntry.library_id == library_id)
+    # ULID ids sort chronologically, so this is queue order: what is running
+    # now, then what is waiting behind it.
+    return list(session.scalars(stmt.order_by(JobQueueEntry.id)))
+
+
 def claim_next_queued(session: Session) -> JobQueueEntry | None:
     """Atomically move the oldest queued job to RUNNING and return it."""
     stmt = (

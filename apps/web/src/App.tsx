@@ -49,6 +49,7 @@ import {
   useStoryboards,
   useSmartCollectionMutations,
   useSmartCollections,
+  useActiveJobs,
   useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
@@ -904,6 +905,24 @@ function Workspace({
   // Reuses the snapshots the sidebar progress bar already polls, so a long
   // scan/probe/storyboard run can tell the owner it is done while they are away.
   useJobNotifications(activeJob)
+  // The server's view of what is running, so a page load finds work already in
+  // progress. `activeJob` alone lives inside the mutation that started it, so a
+  // refresh mid-scan used to lose the indicator while the scan carried on.
+  const serverJobs = useActiveJobs(libraryId)
+  const activeJobs = useMemo(() => {
+    // Array.isArray, not `?? []`: this is a network boundary, and a shape that
+    // is not a list (an error envelope, a stub in a test that does not mock
+    // this route) should degrade to "nothing running" rather than throw during
+    // render.
+    const rows = Array.isArray(serverJobs.data) ? serverJobs.data : []
+    // The local snapshot is fresher than the poll and appears before the first
+    // one lands; the server's list is authoritative about what exists. Prefer
+    // the local copy of the same job, keep the server's ordering.
+    if (!activeJob) return rows
+    return rows.some((job) => job.id === activeJob.id)
+      ? rows.map((job) => (job.id === activeJob.id ? activeJob : job))
+      : [...rows, activeJob]
+  }, [serverJobs.data, activeJob])
   const platform = getHostPlatform()
   const hostLabels = getHostLabels()
   // Shares the Settings Libraries page's cache entry, so locate/clear there
@@ -2042,7 +2061,7 @@ function Workspace({
           probing={probe.isPending}
           onGenerateStoryboards={() => storyboards.mutate()}
           generatingStoryboards={storyboards.isPending}
-          activeJob={activeJob}
+          activeJobs={activeJobs}
           maintenanceError={
             updateLibrary.error?.message ??
             scanFiles.error?.message ??
