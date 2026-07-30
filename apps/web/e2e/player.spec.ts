@@ -364,6 +364,15 @@ function makeLongVideo(path: string) {
     'yuv420p',
     '-c:v',
     'libx264',
+    // Storyboard sampling takes keyframes, so the fixture has to say where they
+    // are: 8 frames at 4 fps is one every 2s, the interval a 65s video samples
+    // at, and `scenecut=0` stops x264 adding others of its own. Left to the
+    // encoder's defaults this clip has almost no keyframes, and which cue a
+    // hover lands in becomes a property of scene detection.
+    '-g',
+    '8',
+    '-x264-params',
+    'scenecut=0',
     '-y',
     path,
   ])
