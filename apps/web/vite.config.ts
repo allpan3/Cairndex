@@ -6,17 +6,27 @@ import react from '@vitejs/plugin-react'
 // relative URLs and never needs CORS configuration (see docs/development.md).
 const API_TARGET = process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000'
 
+const API_PROXY = {
+  '/api': {
+    target: API_TARGET,
+    changeOrigin: true,
+  },
+}
+
 export default defineConfig({
   plugins: [react()],
   server: {
     // Honor an externally assigned port (preview/CI tooling); default 5173
     port: Number(process.env.PORT) || 5173,
-    proxy: {
-      '/api': {
-        target: API_TARGET,
-        changeOrigin: true,
-      },
-    },
+    proxy: API_PROXY,
+  },
+  // `vite preview` serves the production bundle, and it needs the same proxy to
+  // reach the backend. Without it the built app could only be exercised through
+  // the packaged desktop shell — which is a slow loop for the one question the
+  // production bundle answers that the dev server cannot: how fast the app
+  // really is, with no StrictMode double-render and no dev-mode React.
+  preview: {
+    proxy: API_PROXY,
   },
   test: {
     environment: 'jsdom',

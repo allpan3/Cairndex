@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from cairndex.domain.enums import GroupingState
@@ -772,3 +772,60 @@ def test_image_only_bundle_divides_per_file(
     children = [p for p in divided.json()["proposals"] if p["parent_proposal_id"] == row["id"]]
     assert len(children) == 3
     assert all(len(c["files"]) == 1 for c in children)
+
+
+def _count_statements(session: Session) -> tuple[list[str], object]:
+    """Record every SQL statement issued on this session's connection."""
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):  # noqa: ANN001
+        statements.append(statement)
+
+    bind = session.get_bind()
+    event.listen(bind, "before_cursor_execute", record)
+    return statements, record
+
+
+def test_reading_a_plan_costs_the_same_number_of_queries_at_any_size(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A plan read must not issue a query per suggestion.
+
+    ``plan.proposals`` and ``proposal.files`` both load lazily, and the response
+    carries the whole plan — so serializing it walked the files one proposal at a
+    time. Local SSD hid that at a fraction of a millisecond per round trip; a
+    NAS-mounted library pays network latency for every one, which is what turned a
+    conversion in a large library into a stall (owner-reported, 2026-07-30).
+
+    The assertion is on *round trips*, not seconds, because that is the thing that
+    scales with the plan and the thing a network filesystem multiplies.
+    """
+    for index in range(12):
+        folder = library_root / f"Set{index:02d}"
+        folder.mkdir()
+        (folder / f"clip{index}.mp4").write_text("v")
+        (folder / f"clip{index}.jpg").write_text("i")
+    scan_library(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+
+    statements, listener = _count_statements(session)
+    try:
+        big = client.get(f"{base}/plans/{plan_id}")
+        assert big.status_code == 200
+        assert len(big.json()["proposals"]) >= 12
+        for_many = len(statements)
+
+        statements.clear()
+        listed = client.get(f"{base}/plans")
+        assert listed.status_code == 200
+        assert listed.json()[0]["proposal_count"] >= 12
+        for_list = len(statements)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", listener)
+
+    # Three: the plan, its proposals, their files. The bound is deliberately
+    # loose — what matters is that it does not grow with the 12+ proposals.
+    assert for_many <= 8, f"plan read issued {for_many} queries for 12+ proposals"
+    # The summary needs the counts, not the rows.
+    assert for_list <= 4, f"plans list issued {for_list} queries"

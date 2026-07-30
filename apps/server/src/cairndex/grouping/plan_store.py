@@ -8,8 +8,8 @@ supersedes any earlier still-open plan so there is a single active plan.
 
 from __future__ import annotations
 
-from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import Session, selectinload
 
 from cairndex.core.errors import ConflictError, NotFoundError, ValidationError
 from cairndex.domain.enums import GroupingPlanStatus, GroupingState, ProposalKind, StemMode
@@ -35,7 +35,21 @@ from cairndex.persistence.models import (
 
 
 def get_plan(session: Session, plan_id: str) -> GroupingPlan:
-    plan = session.get(GroupingPlan, plan_id)
+    """Load one plan with its proposals and their files already in hand.
+
+    Both relationships load lazily by default, and the response carries the whole
+    plan — so serializing it walked ``proposal.files`` one proposal at a time:
+    one query per suggestion, thousands of round trips for a large library. Local
+    SSD hid it at about 0.3 ms each; a NAS-mounted library pays network latency
+    per round trip, which is where a conversion went from "a moment" to a stall
+    (owner-reported, 2026-07-30). ``selectinload`` makes it three queries
+    whatever the size.
+    """
+    plan = session.scalar(
+        select(GroupingPlan)
+        .where(GroupingPlan.id == plan_id)
+        .options(selectinload(GroupingPlan.proposals).selectinload(GroupingProposal.files))
+    )
     if plan is None:
         raise NotFoundError(f"grouping plan {plan_id!r} not found")
     return plan
@@ -43,6 +57,22 @@ def get_plan(session: Session, plan_id: str) -> GroupingPlan:
 
 def list_plans(session: Session) -> list[GroupingPlan]:
     return list(session.scalars(select(GroupingPlan).order_by(GroupingPlan.generated_at.desc())))
+
+
+def proposal_counts(session: Session, plan_ids: list[str]) -> dict[str, int]:
+    """How many proposals each of these plans holds, in one query.
+
+    The plans list only needs the numbers; reading the rows to call ``len`` on
+    them meant loading every proposal of every plan ever generated.
+    """
+    if not plan_ids:
+        return {}
+    rows = session.execute(
+        select(GroupingProposal.plan_id, func.count())
+        .where(GroupingProposal.plan_id.in_(plan_ids))
+        .group_by(GroupingProposal.plan_id)
+    )
+    return {plan_id: count for plan_id, count in rows}
 
 
 # Resolve one editable proposal and enforce the open-plan boundary
@@ -81,21 +111,30 @@ def _proposal_observations(
     session: Session,
     proposal_files: list[GroupingProposalFile],
 ) -> list[FileObservation]:
-    """Resolve stable proposal-file ids into current media observations."""
-    observations: list[FileObservation] = []
-    for proposal_file in proposal_files:
-        asset_file = session.get(AssetFile, proposal_file.asset_file_id)
-        if asset_file is None:
-            continue
-        observations.append(
-            FileObservation(
-                asset_file_id=asset_file.id,
-                relative_path=asset_file.relative_path,
-                media_kind=asset_file.media_kind,
-                bundle_id=asset_file.bundle_id,
-            )
+    """Resolve stable proposal-file ids into current media observations.
+
+    One query for the whole set rather than ``session.get`` per file: a folder of
+    300 images made 300 round trips on every conversion, which local SSD hides and
+    a NAS-mounted library does not. Order follows ``proposal_files``, which is the
+    reviewed order and is what the callers depend on.
+    """
+    wanted = [proposal_file.asset_file_id for proposal_file in proposal_files]
+    if not wanted:
+        return []
+    by_id = {
+        asset_file.id: asset_file
+        for asset_file in session.scalars(select(AssetFile).where(AssetFile.id.in_(wanted)))
+    }
+    return [
+        FileObservation(
+            asset_file_id=asset_file.id,
+            relative_path=asset_file.relative_path,
+            media_kind=asset_file.media_kind,
+            bundle_id=asset_file.bundle_id,
         )
-    return observations
+        for asset_file_id in wanted
+        if (asset_file := by_id.get(asset_file_id)) is not None
+    ]
 
 
 # Rewrite dense sequence and derived roles after a proposal edit
@@ -300,16 +339,15 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
         )
         session.add(child)
         session.flush()
+        # Indexed once per group rather than scanned per file, which was quadratic
+        # in the size of the group being split.
+        path_by_id = {o.asset_file_id: o.relative_path for o in ordered}
         for proposed in _roles_in_order(ordered):
             session.add(
                 GroupingProposalFile(
                     proposal_id=child.id,
                     asset_file_id=proposed.asset_file_id,
-                    relative_path=next(
-                        o.relative_path
-                        for o in ordered
-                        if o.asset_file_id == proposed.asset_file_id
-                    ),
+                    relative_path=path_by_id[proposed.asset_file_id],
                     proposed_role=proposed.role,
                     sequence=proposed.sequence,
                 )
@@ -333,14 +371,16 @@ def _container_to_bundle(session: Session, proposal: GroupingProposal) -> None:
             "bundle, which cannot be merged into a new one"
         )
 
+    # One resolve for every descendant's files together, not one per descendant:
+    # a collection of 300 bundles made 300 round trips here.
+    every_file = [proposal_file for row in descendants for proposal_file in row.files]
     observations: list[FileObservation] = []
     seen: set[str] = set()
-    for row in descendants:
-        for observation in _proposal_observations(session, list(row.files)):
-            if observation.asset_file_id in seen:
-                continue
-            seen.add(observation.asset_file_id)
-            observations.append(observation)
+    for observation in _proposal_observations(session, every_file):
+        if observation.asset_file_id in seen:
+            continue
+        seen.add(observation.asset_file_id)
+        observations.append(observation)
 
     # Delete deepest-first so no row is orphaned mid-way through.
     for row in reversed(descendants):
@@ -348,14 +388,13 @@ def _container_to_bundle(session: Session, proposal: GroupingProposal) -> None:
     session.flush()
 
     ordered = _media_first(observations)
+    path_by_id = {o.asset_file_id: o.relative_path for o in ordered}
     for proposed in _roles_in_order(ordered):
         session.add(
             GroupingProposalFile(
                 proposal_id=proposal.id,
                 asset_file_id=proposed.asset_file_id,
-                relative_path=next(
-                    o.relative_path for o in ordered if o.asset_file_id == proposed.asset_file_id
-                ),
+                relative_path=path_by_id[proposed.asset_file_id],
                 proposed_role=proposed.role,
                 sequence=proposed.sequence,
             )
