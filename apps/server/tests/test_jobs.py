@@ -226,3 +226,76 @@ def test_safe_error_message_redacts_paths() -> None:
     msg2 = safe_error_message(ValueError("bad file /tmp/private/x.txt"))
     assert "/tmp/private/x.txt" not in msg2
     assert msg2.startswith("ValueError")
+
+
+def test_a_new_phase_clears_the_previous_phase_total(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """A total belongs to the phase that set it, and must not outlive it.
+
+    `update_progress` treats `None` as "leave alone", so `set_phase` could zero
+    `processed` but never clear `total` — leaving the next phase showing a count
+    it would never reach. A real scan finished at `0/79`: the 79 came from a
+    discovery pass that had ended, and grouping and finalizing (which report no
+    total) inherited it (owner-reported, 2026-07-30).
+    """
+
+    captured: dict[str, object] = {}
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.DISCOVERING)
+        ctx.checkpoint(processed=79, total=79)
+        ctx.set_phase(JobPhase.GROUPING, "Generating grouping suggestions")
+        # Read mid-run: a finished job clears its phase (see
+        # test_finished_job_clears_phase), so the state under test is only
+        # visible from inside the handler.
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured["phase"] = row.phase
+            captured["processed"] = row.processed
+            captured["total"] = row.total
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert captured["phase"] == JobPhase.GROUPING.value
+    assert captured["processed"] == 0
+    # The important half: not 79.
+    assert captured["total"] is None
+
+
+def test_progress_reports_without_committing_the_content_session(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """`progress` is a display concern; `checkpoint` is a durability boundary.
+
+    They were the same call, which welded how often the bar moved to how often
+    the scanner committed — every 200 files. Any library smaller than one batch
+    reported nothing at all.
+    """
+    committed: list[str] = []
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.DISCOVERING)
+        original = ctx.session.commit
+        ctx.session.commit = lambda: committed.append("content")  # type: ignore[method-assign]
+        try:
+            # Well under the throttle interval, but `processed >= total` forces
+            # the write so the final state is visible.
+            ctx.progress(7, 7)
+        finally:
+            ctx.session.commit = original  # type: ignore[method-assign]
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert committed == []  # progress never touched the content session
+    with registry_session_factory() as reg:
+        job = job_service.get_job(reg, job_id)
+        assert (job.processed, job.total) == (7, 7)
