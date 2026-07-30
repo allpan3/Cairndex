@@ -52,8 +52,17 @@
 > the owner's "why is storyboard generation so slow" — it was decoding every
 > frame of every video. Running it against a network-mounted library then showed
 > the remaining cost is the read, not the decode; the section below records both
-> the fixture numbers and what the share actually did. **Next up is job
-> control** — no running job can be stopped from the UI today.
+> the fixture numbers and what the share actually did. **Job control followed
+> and is merged** (PR #5, `48b447d`): every running job can now be stopped from
+> the sidebar, and a job whose server died no longer claims to be running.
+>
+> **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
+> — four more owner reports from using the app. The Bundle Inspector shown during
+> playback is now the shell's own pane rather than a starved copy of it; a bundle
+> filed into a collection is in that collection's listing when you open it;
+> collection covers appear and refresh with membership; and a video's cover frame
+> no longer reassigns the bundle's cover. Independent of the WAL journal-mode
+> work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -64,11 +73,12 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: job control (2026-07-30)
+## Merged: job control (2026-07-30)
 
-Branch `fix/job-control` off `main` at `d9b53a3`. Everything here came out of
-using the app while testing the storyboard change — including one fault an agent
-caused, by switching branches under a running dev server.
+Branch `fix/job-control` off `main` at `d9b53a3`, **merged as PR #5**
+(`48b447d`). Everything here came out of using the app while testing the
+storyboard change — including one fault an agent caused, by switching branches
+under a running dev server.
 
 **Nothing in the UI could stop a job.** The backend had cancellation end to end
 — `POST /jobs/{id}/cancel` → `checkpoint()` → CANCELLED, with a test — and the
@@ -130,10 +140,88 @@ long scan. And whether a cancellation should raise a red alert at all: it
 currently reports "Background job was cancelled" as an error, which is a
 failure's register for something the owner asked for.
 
-## In progress: collection counts refresh late, or never (2026-07-30)
+## In progress: one inspector, collection consistency, cover scope (2026-07-30)
+
+Branch `fix/inspector-parity-and-collection-covers`, rebased onto `main` at
+`48b447d` (the job-control merge). Four owner reports from using the app, three
+of them about collections. **Not yet reviewed; no PR opened** (owner-triggered).
+
+**The Bundle Inspector shown during playback was starved, not forked.** It has
+always been the same `Inspector` the shell's rail renders. The shell passed
+eleven handlers; `ViewerShell` passed `bundleId`. Every menu entry gated on an
+optional handler was therefore absent in the viewer, and `onFlash` was missing
+so a tag edit completed with nothing to report it — the owner's "unresponsive
+when adding new tags". The width differed because the viewer wrapped the pane in
+a rail element declaring its own `min(360px, 40vw)`, border and background.
+
+The handlers are now `BundleInspectorActions`: one object the shell provides
+once and the inspector reads from context, with `bundleId` its only prop. That
+is the point of the change rather than parity today — an action added to the
+interface later is supplied in one place and arrives on every surface, where two
+call sites left the next one free to go missing. A surface needing an action to
+*mean* something different overrides those entries and inherits the rest.
+
+Four do differ inside an open viewer, resolved deliberately: Play steps within
+the playlist (falling back to the shell's retarget when the file is not in it);
+Locate, Add files and Filter by tag close the viewer first, because each
+navigates the shell and doing that under an opaque overlay is what "nothing
+happened" looks like; and flash routes to the viewer's own notice anchor, since
+the shell's toast sits below the viewer's z-index. The rail element is gone —
+the inspector is placed straight into the viewer's grid and takes
+`--inspector-w`, so the two are the same width by construction. The viewer's
+root context-menu handler also fired for right-clicks inside the rail, stacking
+the playback menu on the one being asked for; it now defers to the rail.
+
+**Collection listings lagged their counts.** Filing a bundle in moved the count
+at once and left the contents behind: the destination's *cached* listing
+rendered first, without the bundle, while the refetch was in flight. Only
+previously-visited collections showed it, which is why it read as intermittent.
+Measured here at ~60 ms against a local SQLite; on the owner's network-mounted
+library that is the beat they described. The optimistic projection already
+pruned the listings a bundle left, so the missing half — inserting into the ones
+it joins — now runs off the same membership change, reusing
+`countingCollectionIds` for the subtree rule. Filtered and searched listings are
+skipped rather than guessed at.
+
+**Collection covers had two independent faults.** The card latched a failed
+cover image in `useState`, so the 404 answered before a thumbnail exists (or
+while the collection is empty) pinned the folder glyph for the life of the
+component. And membership changes never moved `updated_at`, which is the cover's
+cache-busting key — so filing a bundle into an empty collection changed what its
+auto cover *should* be while the URL stayed identical and the browser served its
+cached 404. Both sides of a move and their ancestors are now touched;
+`invalidateCollectionCounts` refetches the collection rows as well as the counts.
+
+**A video's cover frame is the video's.** `set_cover_frame` also wrote
+`bundle.cover_file_id`, so picking a frame silently reassigned what represented
+the bundle. It now touches that file only; the bundle is touched solely when the
+file already *is* the cover, where its picture genuinely changed. That left
+`AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
+with nothing to do, so it is removed along with its repair-time rewrite.
+
+Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (523 pass) in
+`apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass) in
+`apps/server`. Verified by hand in a browser against a synthetic fixture library
+(six generated clips, invented names): inspector width 300 px matching
+`--inspector-w` with the shell's border, background and padding; a tag created
+and applied from inside the player; a single context menu on a file row; a
+collection created empty gaining its cover the moment a bundle was filed in,
+cache key stamped at the drop; and a previously-visited collection showing the
+right contents on the first frame where it had shown the stale listing.
+
+Not done, and deliberately: no "Set as Bundle Cover" entry was added to the
+viewer's own menu — the inspector's file list already carries that affordance
+and it is now docked in the viewer, so the step is reachable. No resizer was
+added inside the viewer either; the widths are shared, but changing one is done
+from the shell. Playwright was not run for this branch (the checks above were
+made against a live app instead).
+
+## Merged: collection counts refresh late, or never (2026-07-30)
 
 Branch `fix/collection-count-refresh`, rebased onto `main` at `9a4a24a` (the
-storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`.
+storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`, **merged
+as PR #4** (`d9b53a3`). The section above continues this work: the counts moved
+with the drop, and the listings under them did not.
 Owner-reported: dragging a bundle from one collection to another
 does not immediately update the count in the sidebar; after related work landed,
 "visibly faster … but still not instant".
