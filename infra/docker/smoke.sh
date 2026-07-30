@@ -22,12 +22,30 @@ LIBRARY_DIR="$(mktemp -d)"
 cleanup() {
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
     docker volume rm "${CONTAINER}-data" >/dev/null 2>&1 || true
+    # The .cairndex/ tree belongs to uid 10001 on the host as well (see
+    # in_library below), so this user cannot unlink it. Root in a container can.
+    in_library rm -rf /storage/media/.cairndex >/dev/null 2>&1 || true
     rm -rf "$LIBRARY_DIR"
 }
 trap cleanup EXIT
 
 fail() { echo "SMOKE FAIL: $*" >&2; docker logs "$CONTAINER" 2>&1 | tail -40 >&2; exit 1; }
 step() { echo "==> $*"; }
+
+# Inspect the library mount from inside a container, as root.
+#
+# A Linux bind mount preserves real uids, so everything the container writes
+# into the library is owned on the host by its uid 10001: the lease file (mode
+# 0600) is unreadable to this user and the .cairndex/ tree is unremovable.
+# Docker Desktop for macOS instead remaps ownership to the invoking user, which
+# is why every host-side check below passed locally and this only broke the
+# first time it ran on Linux — the same trap that made the entrypoint's
+# permission preflight untestable on a Mac. Reading through a container makes
+# the checks mean the same thing on both, and matches what the NAS will do.
+in_library() {
+    docker run --rm --user 0:0 --entrypoint "$1" \
+        -v "${LIBRARY_DIR}:/storage/media" "$IMAGE" "${@:2}"
+}
 
 api() { curl -fsS "http://127.0.0.1:${PORT}/api/v1$1" "${@:2}"; }
 post_json() { api "$1" -X POST -H 'content-type: application/json' -d "$2"; }
@@ -70,7 +88,7 @@ step "creating a library on the mounted volume"
 library_id=$(post_json /libraries/create \
     '{"display_name":"Smoke","root_path":"/storage/media"}' \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-[ -f "${LIBRARY_DIR}/.cairndex/library.db" ] \
+in_library test -f /storage/media/.cairndex/library.db \
     || fail "library package was not written to the mounted volume"
 
 step "generating a real video and scanning it"
@@ -98,17 +116,18 @@ has_cover=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"vi
 
 step "graceful stop releases the ownership lease"
 docker stop --timeout 30 "$CONTAINER" >/dev/null
-lease="${LIBRARY_DIR}/.cairndex/locks/active-owner.json"
-[ -f "$lease" ] || fail "no ownership lease was ever written"
+lease_json=$(in_library cat /storage/media/.cairndex/locks/active-owner.json 2>/dev/null) \
+    || fail "no ownership lease was ever written"
 python3 -c "
 import json, sys
-lease = json.load(open('$lease'))
+lease = json.load(sys.stdin)
 if not lease.get('released_at'):
     sys.exit('lease was not released on shutdown: %r' % lease)
-" || fail "lease not released — a restart would be blocked until it ages out"
+" <<<"$lease_json" || fail "lease not released — a restart would be blocked until it ages out"
 
 # A clean shutdown folds the WAL back in, so the library should be one file.
-[ -f "${LIBRARY_DIR}/.cairndex/library.db-wal" ] \
-    && fail "WAL left behind after clean shutdown (checkpoint did not run)"
+if in_library test -f /storage/media/.cairndex/library.db-wal; then
+    fail "WAL left behind after clean shutdown (checkpoint did not run)"
+fi
 
 echo "SMOKE OK: $IMAGE serves, scans, and shuts down cleanly"

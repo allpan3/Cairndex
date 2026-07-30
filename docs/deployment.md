@@ -56,7 +56,13 @@ disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   installed for scanning, thumbnails, and subtitle conversion.
 - **Non-root**: runs as a fixed UID/GID `10001:10001`. Give the app-data volume
   and the library root enough permissions for that id to write `/data` and the
-  library's `.cairndex/` package.
+  library's `.cairndex/` package. On Linux that id is literal in both
+  directions: a bind mount preserves real uids, so everything Cairndex creates
+  in the library is owned by `10001:10001` **on the host too**, and your own
+  account may not be able to read all of it — the ownership lease is mode `0600`.
+  Plan for it in [Backups](#backups): share a group with `10001`, or read the
+  package from inside a container. Docker Desktop for macOS remaps ownership to
+  whoever invoked it, so a trial on a Mac will not show you any of this.
 - **Writable app data**: the `cairndex-data` named volume at `/data` holds the
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.

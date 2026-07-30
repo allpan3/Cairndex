@@ -128,6 +128,21 @@ its own data volume.
   `hmr update /src/index.css` — with the app rendering correctly in a browser
   against the containerized backend.
 
+**And what verifying on a Mac could not tell us** (2026-07-30, first CI run on
+Linux). The smoke test failed on `ubuntu-latest` at its last assertion, reading
+the ownership lease from the host after the container stopped:
+`PermissionError: … /.cairndex/locks/active-owner.json`. The image was fine —
+*the test* was macOS-shaped. A Linux bind mount preserves real uids, so
+everything the container writes into the library is owned on the host by its uid
+10001, and the lease is mode `0600`; Docker Desktop remaps ownership to the
+invoking user, so the host-side reads passed locally and the cleanup `rm -rf`
+worked. This is the same trap already recorded two bullets up for the entrypoint
+preflight, applied to the harness rather than the thing under test — knowing
+about it in one place did not make the other obvious. The post-stop checks and
+the cleanup now go through a root container, so they mean the same thing on both
+platforms, and `docs/deployment.md` states the ownership consequence, which
+affects host-side backups on a NAS.
+
 **Not done, deliberately.** The amd64 cross-build (`just docker-build-nas`) is
 written and documented but **has not been run against a real NAS** — there is no
 amd64 host here to load the image onto, and an emulated build proving it
