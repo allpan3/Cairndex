@@ -216,6 +216,30 @@ test('tagging moves the tag count and Untagged with the chip', async () => {
   expect(views(client)?.untagged).toBe(VIEW_COUNTS.untagged - 1)
 })
 
+test('the open collection inspector moves with the sidebar, subtree and direct apart', async () => {
+  const client = seedClient()
+  client.setQueryData(['bundle-collections', 'b1'], { bundle_id: 'b1', collection_ids: [] })
+  // Inspecting the parent while a bundle is filed into its child: the parent's
+  // subtree total gains it, its own "directly in this collection" does not.
+  client.setQueryData(['collection-stats', 'shelf'], {
+    direct_bundles: 3,
+    total_bundles: 5,
+    subcollections: 1,
+  })
+  api.batchUpdate.mockResolvedValue({ updated: 1 })
+  const { result } = renderHook(() => useBatchUpdate(), { wrapper: wrapper(client) })
+
+  await act(() =>
+    result.current.mutateAsync({ bundle_ids: ['b1'], add_collection_ids: ['shelf-nested'] }),
+  )
+
+  expect(client.getQueryData(['collection-stats', 'shelf'])).toEqual({
+    direct_bundles: 3,
+    total_bundles: 6,
+    subcollections: 1,
+  })
+})
+
 test('dragging a collection into another refetches the counts its subtree changed', async () => {
   const client = seedClient()
   const invalidate = vi.spyOn(client, 'invalidateQueries')
@@ -227,6 +251,8 @@ test('dragging a collection into another refetches the counts its subtree change
   )
 
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['collection-counts'] })
+  // The inspector's own figures are the same fact, so they refresh together.
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['collection-stats'] })
 })
 
 test('reordering within one parent changes no count, so it refetches none', async () => {

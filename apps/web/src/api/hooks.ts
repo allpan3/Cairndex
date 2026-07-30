@@ -20,6 +20,7 @@ import {
   type CleanupSort,
   type CollectionCreate,
   type CollectionRead,
+  type CollectionStats,
   type ConflictPolicy,
   type SortOrder,
   type FacetParams,
@@ -142,9 +143,9 @@ import {
   type MembershipChange,
   applyCountDeltas,
   collectionCountDeltas,
+  directMembershipDeltas,
   emptyMembershipDelta,
   nextMembership,
-  tagCountDeltas,
 } from './counts'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
@@ -188,12 +189,25 @@ async function watchOptionalJob(
   }
 }
 
+/**
+ * Refresh what a collection's bundle count is shown as. The sidebar's
+ * per-collection numbers and the inspector's own three figures are the same
+ * fact at two altitudes, so nothing may refresh one and leave the other — the
+ * inspector's used to go stale on every membership change because no
+ * invalidation named it at all.
+ */
+function invalidateCollectionCounts(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['collection-counts'] })
+  qc.invalidateQueries({ queryKey: ['collection-stats'] })
+}
+
 // Invalidate all library surfaces whose content changes after a maintenance job
 function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
   for (const key of [
     'browse',
     'view-counts',
     'collection-counts',
+    'collection-stats',
     'tag-counts',
     'file-browser',
     'unbundled-files',
@@ -906,6 +920,7 @@ export function useApplyGroupingPlan() {
         'view-counts',
         'collections',
         'collection-counts',
+        'collection-stats',
         'unbundled-files',
         'file-browser',
         'grouping-plans',
@@ -1285,19 +1300,39 @@ function projectMemberships(
   return { changes, snapshots }
 }
 
-/** Move the per-collection counts and the Uncategorized view count by what these
- *  membership changes imply. */
+/** Move the sidebar's per-collection counts, the open collection inspector's own
+ *  figures, and the Uncategorized view count by what these membership changes
+ *  imply. */
 function applyCollectionCounts(qc: QueryClient, changes: MembershipChange[]): CacheSnapshot[] {
   const collections = qc.getQueryData<CollectionRead[]>(['collections'])
   // Without the tree there are no ancestors to walk, and every delta would land
   // on the dropped-on collection alone — the flat ±1 this exists to avoid.
   if (changes.length === 0 || collections === undefined) return []
   const snapshots: CacheSnapshot[] = []
-  const deltas = collectionCountDeltas(collections, changes)
+  const subtree = collectionCountDeltas(collections, changes)
   const counts = qc.getQueryData<Record<string, number>>(['collection-counts'])
   if (counts) {
     snapshots.push([['collection-counts'], counts])
-    qc.setQueryData(['collection-counts'], applyCountDeltas(counts, deltas))
+    qc.setQueryData(['collection-counts'], applyCountDeltas(counts, subtree))
+  }
+  // The inspector shows the same collection's numbers beside the sidebar's, so
+  // they move together: its subtree total is the count above, and its "directly
+  // in this collection" figure is plain membership.
+  const direct = directMembershipDeltas(changes)
+  for (const [key, stats] of qc.getQueriesData<CollectionStats>({
+    queryKey: ['collection-stats'],
+  })) {
+    const id = key[1]
+    if (typeof id !== 'string' || !stats) continue
+    const totalDelta = subtree.get(id) ?? 0
+    const directDelta = direct.get(id) ?? 0
+    if (totalDelta === 0 && directDelta === 0) continue
+    snapshots.push([key, stats])
+    qc.setQueryData<CollectionStats>(key, {
+      ...stats,
+      total_bundles: Math.max(0, stats.total_bundles + totalDelta),
+      direct_bundles: Math.max(0, stats.direct_bundles + directDelta),
+    })
   }
   // A bundle is Uncategorized exactly while it is in no collection at all.
   snapshots.push(...applyViewCountDelta(qc, 'uncategorized', emptyMembershipDelta(changes)))
@@ -1311,7 +1346,7 @@ function applyTagCounts(qc: QueryClient, changes: MembershipChange[]): CacheSnap
   const counts = qc.getQueryData<Record<string, number>>(['tag-counts'])
   if (counts) {
     snapshots.push([['tag-counts'], counts])
-    qc.setQueryData(['tag-counts'], applyCountDeltas(counts, tagCountDeltas(changes)))
+    qc.setQueryData(['tag-counts'], applyCountDeltas(counts, directMembershipDeltas(changes)))
   }
   snapshots.push(...applyViewCountDelta(qc, 'untagged', emptyMembershipDelta(changes)))
   return snapshots
@@ -1460,6 +1495,7 @@ export function useSetBundleCollections(id: string) {
       await Promise.all([
         qc.cancelQueries({ queryKey: key }),
         qc.cancelQueries({ queryKey: ['collection-counts'] }),
+        qc.cancelQueries({ queryKey: ['collection-stats'] }),
         qc.cancelQueries({ queryKey: ['view-counts'] }),
       ])
       const previous = qc.getQueryData<{ bundle_id: string; collection_ids: string[] }>(key)
@@ -1476,7 +1512,7 @@ export function useSetBundleCollections(id: string) {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
-      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+      invalidateCollectionCounts(qc)
       qc.invalidateQueries({ queryKey: ['view-counts'] })
       // Membership *does* decide which bundles a collection view lists, so this
       // one still refetches — but only the collection-scoped grids, when shown.
@@ -1607,6 +1643,7 @@ export function useDeleteBundles() {
         'browse',
         'view-counts',
         'collection-counts',
+        'collection-stats',
         'tag-counts',
         'unbundled-files',
         'file-browser',
@@ -1633,6 +1670,7 @@ export function useDeleteCollection() {
       for (const key of [
         'collections',
         'collection-counts',
+        'collection-stats',
         'view-counts',
         'browse',
         'bundle-collections',
@@ -1650,7 +1688,7 @@ export function useCreateCollection() {
     mutationFn: (payload: CollectionCreate) => createCollection(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
-      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+      invalidateCollectionCounts(qc)
     },
   })
 }
@@ -1694,7 +1732,7 @@ export function useUpdateCollection() {
     }) => updateCollection(id, patch, version),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['collections'] })
-      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+      invalidateCollectionCounts(qc)
     },
   })
 }
@@ -1745,7 +1783,7 @@ export function useReorderCollections() {
         const moved = byId.get(c.id)
         return moved !== undefined && (moved.parent_id ?? null) !== (c.parent_id ?? null)
       })
-      if (reparented) qc.invalidateQueries({ queryKey: ['collection-counts'] })
+      if (reparented) invalidateCollectionCounts(qc)
     },
     onError: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
@@ -1975,9 +2013,14 @@ export function useBatchUpdate() {
       // derives nothing at all, leaving the counts to the invalidation rather
       // than showing a number that is neither the old one nor the new one.
       await Promise.all(
-        ['collection-counts', 'tag-counts', 'view-counts', 'bundle-collections', 'bundle-tags'].map(
-          (key) => qc.cancelQueries({ queryKey: [key] }),
-        ),
+        [
+          'collection-counts',
+          'collection-stats',
+          'tag-counts',
+          'view-counts',
+          'bundle-collections',
+          'bundle-tags',
+        ].map((key) => qc.cancelQueries({ queryKey: [key] })),
       )
       const snapshots: CacheSnapshot[] = []
       const collections = projectMemberships(
@@ -2009,7 +2052,7 @@ export function useBatchUpdate() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
       qc.invalidateQueries({ queryKey: ['tag-counts'] })
-      qc.invalidateQueries({ queryKey: ['collection-counts'] })
+      invalidateCollectionCounts(qc)
       qc.invalidateQueries({ queryKey: ['view-counts'] })
       qc.invalidateQueries({ queryKey: ['bundle-tags'] })
       qc.invalidateQueries({ queryKey: ['bundle-collections'] })
