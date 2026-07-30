@@ -648,3 +648,112 @@ def test_stem_mode_change_relinks_subdirectory_children(
     for child_id in child_ids:
         child = next(p for p in after["proposals"] if p["id"] == child_id)
         assert child["parent_proposal_id"] == fresh_container["id"]
+
+
+def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Merging a collection whose bundles live in subfolders leaves one row whose
+    ``directory`` is the parent — a folder the suggester proposes nothing for.
+    Splicing it would delete the row and put nothing back, dropping the files out
+    of the plan; refuse instead. The UI also stops offering the control there."""
+    show = library_root / "Show"
+    (show / "A").mkdir(parents=True)
+    (show / "B").mkdir()
+    (show / "A" / "a.mp4").write_text("v")
+    (show / "B" / "b.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    container = next(
+        p for p in plan["proposals"] if p["kind"] == "container" and p["directory"] == "Show"
+    )
+    merged = client.put(
+        f"{base}/plans/{plan_id}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    ).json()
+    row = next(p for p in merged["proposals"] if p["directory"] == "Show")
+    assert len(row["files"]) == 2
+
+    refused = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+    )
+    assert refused.status_code == 422, refused.text
+
+    # The merged row and both files are untouched.
+    after = client.get(f"{base}/plans/{plan_id}").json()
+    kept = [p for p in after["proposals"] if p["directory"] == "Show"]
+    assert [p["kind"] for p in kept] == ["bundle"]
+    assert len(kept[0]["files"]) == 2
+
+
+def test_single_item_bundle_cannot_become_a_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A collection of one identical bundle adds no structure — and because that
+    child is convertible too, allowing it let collections nest without limit
+    (owner-reported, 2026-07-30)."""
+    (library_root / "Solo").mkdir()
+    (library_root / "Solo" / "Solo.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
+
+    refused = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{solo['id']}/kind", json={"kind": "container"}
+    )
+    assert refused.status_code == 422, refused.text
+
+    # The plan is untouched: still one bundle holding its file.
+    after = client.get(f"{base}/plans/{plan['id']}").json()
+    assert [(p["kind"], len(p["files"])) for p in after["proposals"]] == [("bundle", 1)]
+
+
+def test_one_video_with_sidecars_is_one_subject_and_does_not_divide(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Splitting per file here would put the subtitle in a bundle of its own."""
+    _seed(session, library_root)  # Cosmos: one video + poster + subtitle
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    cosmos = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+    assert len(cosmos["files"]) == 3
+
+    refused = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{cosmos['id']}/kind", json={"kind": "container"}
+    )
+    assert refused.status_code == 422, refused.text
+
+
+def test_image_only_bundle_divides_per_file(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """With no video to centre a bundle on, a photo dump divides per file — the
+    one case where the per-file split is the right reading."""
+    shots = library_root / "Shots"
+    shots.mkdir()
+    for name in ("a", "b", "c"):
+        (shots / f"{name}.jpg").write_text("i")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    # The suggester already splits an image folder per file, so merge first to
+    # get a single multi-image bundle to divide.
+    container = next(p for p in plan["proposals"] if p["kind"] == "container")
+    merged = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    ).json()
+    row = next(p for p in merged["proposals"] if p["kind"] == "bundle")
+    assert len(row["files"]) == 3
+
+    divided = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{row['id']}/kind", json={"kind": "container"}
+    )
+    assert divided.status_code == 200, divided.text
+    children = [p for p in divided.json()["proposals"] if p["parent_proposal_id"] == row["id"]]
+    assert len(children) == 3
+    assert all(len(c["files"]) == 1 for c in children)
