@@ -37,6 +37,21 @@ services:
     # under you. :latest is the convenient default; the choice is yours.
     image: ghcr.io/allpan3/cairndex:${CAIRNDEX_IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Who the app runs as. Left alone it is uid 10001, a user created in the
+    # image, and every path you mount must be writable by *that* id — which on a
+    # NAS means chowning your own directories to a number you did not choose.
+    #
+    # Uncomment with your own id instead (`id -u` and `id -g` on the NAS) and no
+    # ownership changes are needed anywhere: the app writes as you, into
+    # directories you already own. It also means files Cairndex creates stay
+    # readable to your backups, rather than belonging to 10001.
+    #
+    # This works because the app writes only to /data, /tmp and the library
+    # mounts — all supplied from outside — and the smoke test checks that stays
+    # true. One caveat: /data must be a bind mount, as below. A *named* volume
+    # takes its ownership from the image, i.e. 10001, and would lock you out.
+    #
+    # user: "1000:1000"
     ports:
       # 0.0.0.0 — reachable from other machines on your network, which is the
       # point of running this on a NAS. (The repository-root compose file
