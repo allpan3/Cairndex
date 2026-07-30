@@ -222,7 +222,7 @@ covers (so ffmpeg and ffprobe work in the dev image), confirmed the backend
 reloads on a source edit, and stopped with `down` so the lease was released.
 
 **And it is deployed.** The owner has the production image running on their NAS
-under `user: "1002:10"` with a bind-mounted `/data` — which demonstrated the
+under a `user:` override with a bind-mounted `/data` — which demonstrated the
 arbitrary-uid path in real use before CI had a test for it. Scan, probe and
 storyboard jobs all ran against a real library.
 
