@@ -63,9 +63,9 @@
 
 ## In progress: storyboard generation was decoding everything (2026-07-30)
 
-Branch `perf/storyboard-keyframe-sampling` off `main` at `81f3929`, one commit
-(`9b687de`). Owner question: why does generating storyboards take so long over a
-library on an SMB share?
+Branch `perf/storyboard-keyframe-sampling`, rebased onto `main` at `2bd4694`
+(the job-progress merge plus changelog-driven release notes). Owner question:
+why does generating storyboards take so long over a library on an SMB share?
 
 **The answer was in the filter, not in Cairndex's job logic.** Sampling used
 `fps=1/n`, which gives ffmpeg no reason to seek, so every storyboard cost a
