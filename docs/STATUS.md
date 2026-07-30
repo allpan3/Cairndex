@@ -1,14 +1,9 @@
 # Project status
 
-> **In progress (2026-07-29):** branch
-> `fix/grouping-review-state-and-collection-conversion` — owner-reported: Narrow
-> and Widen discarded the review dialog's selection, and a folder the suggester
-> called one bundle could not be made a collection. Both fixed; complete and
-> gate-green, not merged. See
-> [Grouping review](#in-progress-grouping-review-state-and-collection-conversion-2026-07-29)
-> below. Two other owner-requested branches are also open and unreviewed —
-> `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each with its own
-> status entry. All three edit this file and will conflict on merge.
+> **In progress (2026-07-29):** two owner-requested branches are open and
+> unreviewed — `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each
+> with its own status entry below. Both edit this file and `CHANGELOG.md`, so both
+> need a rebase onto the merged grouping work (PR #40) before review.
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
@@ -27,18 +22,25 @@
 > (2026-07-28) — tag `v0.1.0` at `e73f251`, one Apple Silicon DMG with its
 > checksum and the third-party notices, verified by the owner on a genuinely
 > downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
-> *not* in this release. **Next is phase I, the Android client** (plan 2
-> T1–T7). No other branches are open. Two things still need the owner: a pass on a genuinely
+> *not* in this release. Ten owner-reported faults in the Suggest-grouping review
+> dialog are **merged** (PR #40), two of which could silently drop files from a
+> plan. **Next is phase I, the Android client** (plan 2 T1–T7). Two
+> owner-requested branches are open and unreviewed. Two things still need the
+> owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: grouping review state and collection conversion (2026-07-29)
+## Merged: grouping review state and collection conversion (PR #40, 2026-07-29)
 
 Branch `fix/grouping-review-state-and-collection-conversion`, off `main` at
-`d0dc125`. Two owner-reported problems in the Suggest-grouping dialog.
+`d0dc125`, merged as PR #40. It started as the two owner-reported problems below
+and grew to ten across eight feedback rounds. Before merge the branch's ten
+commits were restructured into four, squashing only those that superseded an
+earlier commit on the same branch; each of the four lands on a tree that existed
+as a real commit before, so `git bisect` still works.
 
 **1. Narrow/Widen discarded the review state.** Reported as "it seems like it
 refreshes the page… it forgets my selections and reselects everything" — and on
@@ -265,9 +267,16 @@ general invariant, which is what caught that the first guard ("refuse when the
 directory yields nothing") was too narrow, since the suggester *does* still
 propose a bare container for `Show`.
 
-**Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
-(860 passed); web `lint`, `format:check`, `typecheck`, `test` (466 passed),
-`build`. Two existing tests needed correcting rather than the code: one asserted
+**Gates run** (final, at merge): backend `ruff format --check`, `ruff check`,
+`mypy src packaging`, `pytest` (860 passed); web `lint`, `format:check`,
+`typecheck`, `test` (469 passed), `build`; `test:e2e:frontend` (91 passed, 1
+failed). That failure is `transparently re-attaches a fresh session when HLS
+segments fail` (`e2e/player.spec.ts:2230`), which fails on clean `main` at
+`d0dc125` too — verified in isolation as well as in the full suite, so neither
+flake nor cross-test interference; it belongs to the ADR-0014 HLS session path
+and is untouched here. Desktop gates were not run locally, no Rust or
+`apps/desktop` file having changed; all seven CI jobs passed on the merged head.
+Two existing tests needed correcting rather than the code: one asserted
 a container reason that is now deliberately absent, and one stem-control fixture
 had file paths that disagreed with its own `directory` — which the new
 file-derived rule correctly reads as a hand-merged row.
