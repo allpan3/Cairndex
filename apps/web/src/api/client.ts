@@ -866,6 +866,33 @@ export const reparentGroupingProposal = (
     { parent_proposal_id: parentProposalId },
   )
 
+/** Set one directory's stem sensitivity and re-suggest that directory in place.
+ *
+ * Unlike generating a plan, this edits the open plan: every proposal outside the
+ * directory keeps its identity (and with it every owner edit), so the response
+ * is the same plan with only that directory's rows replaced.
+ */
+export const setGroupingDirectoryStemMode = (
+  planId: string,
+  directory: string,
+  mode: GroupingStemMode,
+): Promise<GroupingPlan> =>
+  send<GroupingPlan>(`${lib()}/grouping/plans/${planId}/stem-modes`, 'PUT', { directory, mode })
+
+/** Turn a bundle suggestion into a collection of bundles, or back into one bundle.
+ *
+ * Returns the whole plan, not the one proposal: a conversion adds or removes
+ * sibling rows, so the client's tree has changed shape.
+ */
+export const setGroupingProposalKind = (
+  planId: string,
+  proposalId: string,
+  kind: 'bundle' | 'container',
+): Promise<GroupingPlan> =>
+  send<GroupingPlan>(`${lib()}/grouping/plans/${planId}/proposals/${proposalId}/kind`, 'PUT', {
+    kind,
+  })
+
 /** Apply selected plan proposals: confirm bundles, create collections, link subtitles. */
 export const applyGroupingPlan = (
   id: string,

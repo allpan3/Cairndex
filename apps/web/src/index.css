@@ -2782,16 +2782,12 @@ code {
 .grp-stem {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   padding-left: 6px;
   border-left: 1px solid var(--border);
 }
-.grp-stem__button {
-  padding: 2px 6px;
-  line-height: 16px;
-}
 .grp-stem__mode {
-  min-width: 48px;
+  min-width: 46px;
   color: var(--text-muted);
   font-size: 10px;
   text-align: center;
