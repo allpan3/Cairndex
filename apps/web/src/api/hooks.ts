@@ -31,6 +31,7 @@ import {
   type GroupingPlan,
   type GroupingPlanSummary,
   type GroupingProposal,
+  type GroupingStemMode,
   type GroupingStemModes,
   type JobRead,
   type LibraryCreate,
@@ -107,7 +108,9 @@ import {
   repairFile,
   revokeDevice,
   renameGroupingProposal,
+  setGroupingDirectoryStemMode,
   setGroupingProposalDestination,
+  setGroupingProposalKind,
   moveGroupingProposalFile,
   reparentGroupingProposal,
   renameCollection,
@@ -829,6 +832,33 @@ export function useReparentGroupingProposal(planId: string | null) {
       return reparentGroupingProposal(planId, proposalId, parentProposalId)
     },
     onSuccess: (updated) => updateGroupingProposals(qc, planId, [updated]),
+  })
+}
+
+export function useSetGroupingStemMode(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ directory, mode }: { directory: string; mode: GroupingStemMode }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return setGroupingDirectoryStemMode(planId, directory, mode)
+    },
+    // The plan id is unchanged and only one directory's rows were replaced, so
+    // the response is the new truth for the whole plan cache entry.
+    onSuccess: (plan) => qc.setQueryData<GroupingPlan>(['grouping-plan', planId], plan),
+  })
+}
+
+export function useSetGroupingProposalKind(planId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proposalId, kind }: { proposalId: string; kind: 'bundle' | 'container' }) => {
+      if (!planId) throw new Error('no grouping plan selected')
+      return setGroupingProposalKind(planId, proposalId, kind)
+    },
+    // The whole plan is replaced rather than patched proposal-by-proposal: a
+    // conversion creates or deletes children, so there is no id-wise mapping
+    // from the old tree to the new one.
+    onSuccess: (plan) => qc.setQueryData<GroupingPlan>(['grouping-plan', planId], plan),
   })
 }
 
