@@ -64,6 +64,72 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: job control (2026-07-30)
+
+Branch `fix/job-control` off `main` at `d9b53a3`. Everything here came out of
+using the app while testing the storyboard change — including one fault an agent
+caused, by switching branches under a running dev server.
+
+**Nothing in the UI could stop a job.** The backend had cancellation end to end
+— `POST /jobs/{id}/cancel` → `checkpoint()` → CANCELLED, with a test — and the
+frontend never called it, so a run you no longer wanted had to be waited out or
+the server killed. Every active row now carries a stop control.
+
+**Cancelling was only as prompt as the next checkpoint**, which for a storyboard
+pass over a network-mounted library is a whole file: ~30s inside one ffmpeg
+call, so the button would have read as broken. `core/abort` puts a cooperative
+abort signal in a context variable, the worker binds it for the life of the
+handler, and `run_ffmpeg` waits in slices so it stops the process where it
+stands. `OperationAborted` is deliberately not an `FfmpegError`, so a stop is
+recorded as cancelled rather than as a derivative that failed. Outside a job —
+HLS sessions, request-path derivatives, tests — nothing changes.
+
+**A job whose process died stayed RUNNING forever.** Nothing reconciled those
+rows: they sat in the sidebar as live work, absorbed cancels nobody was there to
+observe, and did not even suppress a duplicate, since dedupe matches QUEUED. A
+worker taking over the queue now closes them out as failed-interrupted — both
+the moment it is knowable and unambiguous, since the registry is server-local
+and its worker runs in-process, so a RUNNING row at startup cannot belong to
+anything alive. Not resumed, deliberately: a rerun of any library-wide job skips
+what is already current, so recovery costs only what was lost.
+
+**Cancelling a queued job left it queued** for a worker to start later, and **a
+queued row rendered the same moving bar as a running one** — which is how two
+Update presses produced two indistinguishable rows. Both fixed; a job that has
+been asked to stop now says so.
+
+**One storyboard leak, same family:** an interrupted pass left its temp
+directory in the cache, because cleanup lived on the failure path and a stop is
+not a failure. Cleanup moved to a `finally`, and a library pass sweeps what
+earlier interruptions already left behind.
+
+**Two more the owner found by using the button** once it existed. A cancelled
+job stayed on screen until a page refresh, reading as though the stop had not
+taken: the server had already dropped it (cancelled is terminal, so it leaves
+the active list) and the app was holding the last snapshot deliberately —
+correct for a *failure*, which nobody asked for and whose row is the only
+account of it, wrong for a stop someone requested. And the maintenance error
+rendered at the top of the sidebar under the button that started the work, while
+the job it described was reported at the bottom; it now sits with the job rows,
+which is where the work reports for the same reason the rows moved there.
+
+**Tests run:** backend `ruff`/`format`/`mypy`/`pytest`, frontend
+`lint`/`format`/`typecheck`/`test`, plus browser e2e. New coverage: a worker
+closing out a stranded RUNNING row while leaving terminal rows alone, a queued
+cancel that never runs, a cancel stopping a 60-second external call in under
+15s, `run_ffmpeg` unchanged without an abort scope, no temp directory left by a
+stopped pass, the sweep, the sidebar's waiting/stopping states and stop button,
+a cancelled snapshot clearing while a failed one stays, and the error rendering
+inside the sidebar foot. Both UI changes were looked at in a real browser, not
+only asserted — and the cancelled-row test was checked against the unfixed code
+to be sure it fails there.
+
+**Open, non-blocking:** whether an interrupted job should offer to resume rather
+than just report itself interrupted — cheap for storyboards, less obvious for a
+long scan. And whether a cancellation should raise a red alert at all: it
+currently reports "Background job was cancelled" as an error, which is a
+failure's register for something the owner asked for.
+
 ## In progress: collection counts refresh late, or never (2026-07-30)
 
 Branch `fix/collection-count-refresh`, rebased onto `main` at `9a4a24a` (the
