@@ -111,12 +111,17 @@ Three of those columns are names, and they are not interchangeable.
 `relative_path` is where the file is; `original_filename` is what it was called
 when it entered the library and never changes; `display_title` is the name every
 bundle surface renders (the inspector's file rail, the album, the viewer's file
-list) and is owner-editable via `PATCH …/files/{file_id}`. A journaled rename
-carries `display_title` along with the path, but only while it still equals the
-old basename — a title someone chose is left alone. Leaving it behind is what
-made a renamed file show its new name in the File Browser and its old one inside
-its bundle (fixed 2026-07-30); rows renamed before that fix keep the stale title,
-since nothing backfills it.
+list) and is owner-editable via `PATCH …/files/{file_id}`. Three code paths repoint a row — a
+rename or move Cairndex performs, a rename it discovers during a scan, and a
+missing file repaired by hand — and all three carry `display_title` with the path
+under one rule (`domain.file_names.display_title_after_move`): it follows only
+while it still equals the old basename, so a title someone chose is left alone.
+Leaving it behind is what made a renamed file show its new name in the File
+Browser and its old one inside its bundle (fixed 2026-07-30). A scan heals rows
+left stale by the pre-fix rename path, identified by `display_title` still
+equalling `original_filename` while the basename has moved on; rows left stale by
+the pre-fix *scan* path cannot be told apart from a chosen title and are not
+guessed at.
 
 Filesystem device/inode identities preserve the unsigned 64-bit `stat()` value
 as signed two's-complement SQLite integers. This avoids overflow on network
