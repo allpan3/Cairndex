@@ -135,6 +135,7 @@ docs/
   reference/eagle/    # Eagle UI reference screenshots (not committed media)
 infra/
   docker/   # Dockerfiles for local/dev and NAS deployment
+deploy/     # What a server needs: compose file, env sample, runbook
 ```
 
 ## Quickstart (local development)
@@ -216,15 +217,41 @@ each build re-registers the build-directory bundle. See
 
 ## Quickstart (Docker)
 
+**Self-hosting on a NAS or server** — one hardened container serving the API and
+the built web app, pulled from GitHub Container Registry.
+
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) is the whole
+deployment: every setting has a working default, so it runs as-is once you point
+it at your library. Paste it into your NAS's **Project** / **Stack** / **Compose**
+section (Synology, UGREEN, QNAP, TrueNAS all have one) and manage it from there
+with logs and stats, or run it from a shell:
+
 ```bash
+docker compose up -d
+```
+
+The library directory must be writable by uid 10001, the container's non-root
+user. Do not expose this to the public internet — there is no authentication
+yet; reach it over your LAN or Tailscale.
+[deploy/README.md](deploy/README.md) is the runbook (permissions, updating,
+backups); [docs/deployment.md](docs/deployment.md) has the reasoning, the full
+environment table, and how to build the image yourself instead of pulling it.
+
+**Developing in containers instead of natively:**
+
+```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-This starts the backend (`:8000`) and frontend dev server (`:5173`). Requires
-Docker with the Compose v2 plugin (Docker Desktop on macOS, or `docker-ce` +
-`docker-compose-plugin` on Linux). See [docs/deployment.md](docs/deployment.md)
-for NAS deployment notes and `docker-compose.prod.yml` for the hardened
-single-container production stack.
+Backend on `:8000` and the Vite dev server on `:5173`, both hot-reloading from
+bind-mounted source. See
+[docs/development.md](docs/development.md#running-with-docker) — in particular
+the note that a library may be open on only one server at a time, so the dev
+stack wants a scratch library rather than one your desktop app is serving.
+
+Both need Docker with the Compose v2 plugin (Docker Desktop on macOS, or
+`docker-ce` + `docker-compose-plugin` on Linux).
 
 ## Documentation
 

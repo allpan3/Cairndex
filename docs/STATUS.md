@@ -10,9 +10,10 @@
 > written; each is labelled with its subject, which is what the record needs.
 >
 > **In progress (2026-07-30):** one owner-requested branch is open and unreviewed —
-> `chore/docker-dev-and-deploy`, which has its own status entry. It predates the
-> repository recreation, so it needs a rebase onto current `main` and will conflict
-> on this file and `CHANGELOG.md`. Half-star ratings are **merged**. The grouping
+> `chore/docker-dev-and-deploy`, which has its own status entry. It is **rebased
+> onto current `main`** and gate-green; what it still needs is the owner's own
+> test, since the parts that matter (a real NAS, the amd64 image) cannot be
+> exercised from here. Half-star ratings are **merged**. The grouping
 > round-trip work is merged too, but was never reproduced against the owner's
 > reported 30-second stall; if it recurs, that entry records what was and was not
 > measured.
@@ -55,6 +56,180 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## In progress: Docker dev and deployment (2026-07-28)
+
+Branch `chore/docker-dev-and-deploy`, rebased onto `main` at `387c5aa`
+(2026-07-30; it was written before the repository was recreated, so its original
+base SHA no longer exists). Owner-requested:
+make Docker the real path for regular use (a Linux NAS) while staying usable on
+an Apple Silicon Mac for testing, and make iterating inside it fast enough to be
+a genuine second option beside the native `just dev` loop.
+
+**What was actually wrong, measured rather than assumed.** The Docker files were
+last touched 2026-06-25/30 and predate write mode, HLS, device pairing, and the
+ownership lease. The production image turned out to be in **better** shape than
+its age suggested — built, started, served the SPA, created a library on a
+mounted volume, scanned, and generated a cover, all under a read-only root
+filesystem as the non-root user, and released its lease cleanly on `docker stop`
+(~0.5 s). The **dev stack** was the broken half:
+
+- **No ffmpeg.** `python:3.12-slim` ships none and the Dockerfile installed
+  none, so the container started and then failed at the first scan — which is
+  the first thing anyone does. This was the difference between "stale" and
+  "unusable".
+- **No library mount**, so there was nothing to point the app at at all.
+- **No data volume**, so `registry.db` — and every registered library — was lost
+  on each rebuild.
+- **`--reload` watched the whole bind-mount**, `.venv` and `var/` included.
+
+And one thing that was misleading rather than broken: the production entrypoint
+ran `alembic upgrade head` against an empty `alembic/versions/`. It exits 0 and
+does nothing — the real mechanism is `create_all` plus additive patching on open
+— but it printed a line claiming migrations had been applied, which is exactly
+the sort of thing an operator would later build a procedure around.
+
+**Why CI never caught any of it:** the Docker job only ran `docker compose build`
+and `docker build`. Both passed throughout. `infra/docker/smoke.sh` now starts
+the production image and exercises the parts that actually rot — startup under
+the read-only rootfs, the non-root user writing its volumes, ffprobe/ffmpeg in a
+real scan (asserted via `has_cover`, which is what distinguishes a working media
+pipeline from a working web layer), and a graceful shutdown releasing the lease
+and folding the WAL back in. It runs in CI and as `just docker-smoke`.
+
+**The dev library needed its own seeder.** The obvious candidate,
+`devtools.synthetic_library`, writes database rows for files that never touch
+disk — correct for benchmarking query plans at 100k bundles, useless as
+something to develop against, since every file reads as missing and no
+thumbnail or playback path runs. Confirmed by seeding one and finding an empty
+directory beside a populated `library.db`. `infra/docker/dev-library.sh`
+generates fourteen real files instead (2-second clips, JPEG covers, subtitles,
+arranged into a multi-part film, an episodic set, and loose media), using
+ffmpeg from a container so no local ffmpeg is needed.
+
+**One collision worth recording**, because it is not obvious and it bit during
+this work: one `.env` now serves both stacks, and the first draft had the dev
+compose read `CAIRNDEX_MACHINE_NAME`. The production stack sets that key, so the
+dev container introduced itself to the lease as `nas`. The dev stack reads
+`CAIRNDEX_DEV_*` keys throughout for exactly this reason. The related hazard —
+the dev container and the native `just dev` server sharing `apps/server/var` and
+therefore contending for the same libraries' leases — is why the dev stack has
+its own data volume.
+
+**Verified on this machine** (Docker 29.5.3, arm64), not just built:
+
+- production image: builds, serves, scans, releases its lease — `just docker-smoke`;
+- entrypoint preflight: exits 1 with a legible message on an unwritable
+  `/data` (checked via a read-only mount, since macOS bind mounts remap
+  ownership and a permissions-based test passes spuriously there), warns and
+  continues on a read-only library mount;
+- dev stack: ffmpeg present, library created on the host mount, scan produced a
+  bundle with a cover, backend restarted on a source edit, and Vite reported
+  `hmr update /src/index.css` — with the app rendering correctly in a browser
+  against the containerized backend.
+
+**And what verifying on a Mac could not tell us** (2026-07-30, first CI run on
+Linux). The smoke test failed on `ubuntu-latest` at its last assertion, reading
+the ownership lease from the host after the container stopped:
+`PermissionError: … /.cairndex/locks/active-owner.json`. The image was fine —
+*the test* was macOS-shaped. A Linux bind mount preserves real uids, so
+everything the container writes into the library is owned on the host by its uid
+10001, and the lease is mode `0600`; Docker Desktop remaps ownership to the
+invoking user, so the host-side reads passed locally and the cleanup `rm -rf`
+worked. This is the same trap already recorded two bullets up for the entrypoint
+preflight, applied to the harness rather than the thing under test — knowing
+about it in one place did not make the other obvious. The post-stop checks and
+the cleanup now go through a root container, so they mean the same thing on both
+platforms, and `docs/deployment.md` states the ownership consequence, which
+affects host-side backups on a NAS.
+
+**CI is green on the whole matrix** (2026-07-30, dispatched by hand
+— note that `ci.yml` runs on push only for `main`, so a branch push starts
+nothing). The Docker job reaches `SMOKE OK` on `ubuntu-latest`, which is the
+deployment's own architecture and OS: the image starts under the read-only root
+filesystem as its non-root user, serves the SPA, has ffmpeg and ffprobe, creates
+a library on a bind mount, scans a video into a bundle with a cover, and releases
+its lease on a graceful stop with the WAL checkpointed. That is the closest thing
+to the NAS obtainable without one.
+
+**Registry publishing, added on owner request (2026-07-30).** The original branch
+assumed the server would build from a checkout. The owner asked instead for the
+path other self-hosted projects use — publish an image, ship a compose file —
+so `.github/workflows/publish-image.yml` pushes `ghcr.io/allpan3/cairndex` and
+`deploy/` holds what a NAS actually needs (compose file, env sample, runbook).
+Three decisions worth keeping:
+
+- **Publication is never automatic from `main`** — a version tag or a manual
+  dispatch, mirroring `release.yml`'s draft release. A registry has no draft
+  state, so the trigger is where that judgement has to live.
+- **The image is smoke-tested before the push, not after.** Built to the
+  runner's daemon, run through `smoke.sh`, then pushed with the layer cache
+  reused. Test-after would leave a broken image pullable in the gap with
+  `:latest` already moved — and this branch exists because a build-only gate
+  stayed green for a month.
+- **amd64 only.** arm64 would be an emulated build of the whole Node + Python
+  stack every release, serving nobody, and it could not go through the smoke
+  gate anyway (`load: true` takes one platform), so it would publish untested.
+
+**Not done, deliberately.** The amd64 cross-build (`just docker-build-nas`) is
+written and documented but **has not been run against a real NAS** — there is no
+amd64 host here to load the image onto, and an emulated build proving it
+compiles is not the same as proving it runs. It also matters less now that the
+NAS pulls a published image rather than building one. That, plus the deployment
+itself, is what this branch leaves to the owner.
+
+**Mount naming, settled on owner challenge (2026-07-30).** The owner, mid-setup
+on the NAS, pushed back on `/storage/media`: the mount can hold several
+libraries, so "media" names the wrong thing. They proposed `/mount`; that names
+the mechanism rather than the contents, and everything in a container arrives by
+mounting. It is `/libraries` now, with one mount per share beneath it, and
+`CAIRNDEX_LIBRARY_PATH` on the host side. The codebase had already settled the
+vocabulary — the entrypoint has called it `CAIRNDEX_LIBRARY_MOUNT` all along —
+so only the path string disagreed.
+
+The reason mounts are *children* of `/libraries` rather than the root itself is
+worth keeping: the registry records each library under the path the container
+saw at registration, so re-pathing a mount orphans everything inside it. A
+deployment that starts with one share must be able to gain a second without
+moving the first. The entrypoint's preflight had to change with it — testing the
+root would warn on every start, since the root is an image directory and the
+container filesystem is read-only. It now warns when nothing is mounted (the
+first-run mistake) and checks each mount separately; all four branches were
+exercised directly.
+
+Cheap to do only because nothing was deployed yet: `/storage/media` appeared in
+no server or web code, purely in compose files, the smoke test, the entrypoint
+default and docs.
+
+That "nothing was deployed" was not quite true, and the owner found the hole by
+opening the dev stack: its registry lives in a volume that survives rebuilds, so
+it still held a library at `/storage/media` and the app reported it unavailable.
+The reasoning about re-pathing was written into the docs for other people's
+deployments in the same commit that broke a running one here — the failure was
+applying it outward and not to the machine in front of me. Recovery is what the
+docs already said: the library package is path-independent, so deregistering the
+orphan and registering the new path restored it whole. CHANGELOG now carries the
+upgrade note. ADR-0005 mentions the old path once and was deliberately left alone —
+it records what was decided then.
+
+**Verified at the branch tip** (2026-07-30): CI green on all seven
+jobs, dispatched by hand. The Docker job reaches `SMOKE OK` including the new
+`runs as an arbitrary uid` step, so the image is proven to start under a foreign
+uid with a bind-mounted `/data` and write a package its invoker can read. The
+containerized dev stack was run end to end on the Mac after the rename —
+registered the library at `/libraries/main`, scanned it into bundles with
+covers (so ffmpeg and ffprobe work in the dev image), confirmed the backend
+reloads on a source edit, and stopped with `down` so the lease was released.
+
+**And it is deployed.** The owner has the production image running on their NAS
+under a `user:` override with a bind-mounted `/data` — which demonstrated the
+arbitrary-uid path in real use before CI had a test for it. Scan, probe and
+storyboard jobs all ran against a real library.
+
+**Untested here: the publish workflow.** It parses and its actions are pinned,
+but it has never run — dispatching it publishes a real package under the owner's
+account, and the first push creates a **private** package that needs its
+visibility changed by hand before a server can pull without credentials.
 
 ## Merged: half-star ratings (2026-07-30)
 **Owner test, 2026-07-30 — a half star could not be set in the desktop shell.**

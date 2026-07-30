@@ -60,6 +60,54 @@ release:
     @echo ""
     @echo "→ open {{tauri_dir}}/target/release/cairndex-desktop"
 
+# -------------------------------------------------------------------- docker --
+
+# Needs a .env (`cp .env.example .env`). Ctrl-C stops it; see `docker-dev-down`.
+#
+# Containerized dev stack: API on :8000, Vite on :5173, both hot-reloading.
+docker-dev *ARGS:
+    docker compose up --build {{ARGS}}
+
+# Without --volumes it keeps the registry DB, so registered libraries survive.
+#
+# Stop the dev stack (preferred over killing it: shutdown releases leases).
+docker-dev-down *ARGS:
+    docker compose down {{ARGS}}
+
+# Real (tiny) generated media, so grouping, covers, and playback all work. For a
+# large library to benchmark against, use devtools.synthetic_library instead.
+#
+# Seed a small scratch library for the dev stack at var/docker-library.
+docker-dev-library *ARGS:
+    ./infra/docker/dev-library.sh {{ARGS}}
+
+# Same image the NAS runs; no source mount, no reload.
+#
+# Run the production stack locally, to check a deployment change before shipping.
+docker-prod *ARGS:
+    docker compose -f docker-compose.prod.yml up --build {{ARGS}}
+
+# Stop the local production stack.
+docker-prod-down *ARGS:
+    docker compose -f docker-compose.prod.yml down {{ARGS}}
+
+# --load leaves it in the local daemon so you can `docker save` it; add a
+# registry and swap --load for --push if you have somewhere to push it.
+#
+# Cross-build the production image for an amd64 NAS from this arm64 Mac.
+docker-build-nas tag="cairndex:nas":
+    docker buildx build --platform linux/amd64 \
+      -f infra/docker/production.Dockerfile -t {{tag}} --load .
+    @echo ""
+    @echo "→ docker save {{tag}} | gzip | ssh nas 'gunzip | docker load'"
+
+# Starts it against a throwaway library, creates one through the API, scans a
+# generated video, and checks a graceful stop releases the lease. CI runs this.
+#
+# Prove the production image actually serves, not just that it builds.
+docker-smoke:
+    ./infra/docker/smoke.sh
+
 # ---------------------------------------------------------------------- gates --
 
 # Everything: server, web, desktop. What CI checks.

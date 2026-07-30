@@ -8,35 +8,121 @@
 
 ## Local development stack
 
-`docker-compose.yml` (repo root) defines two services for local iteration:
-
-- `server` — FastAPI app via `uvicorn --reload`, port `8000`, source
-  bind-mounted from `apps/server`.
-- `web` — Vite dev server, port `5173`, source bind-mounted from `apps/web`.
-
-```bash
-docker compose up --build
-docker compose down
-```
-
-This is for local iteration only (source bind-mounts, hot reload). It is not how
+`docker-compose.yml` (repo root) is the containerized *development* stack —
+bind-mounted source, hot reload on both halves, its own registry volume, and a
+scratch library mount. It is documented in
+[development.md](development.md#running-with-docker), not here; it is not how
 the app runs in production.
 
 ## Production deployment (NAS / self-host)
 
 One hardened container serves the API and the built frontend on port `8000`.
 
+**The server pulls a published image.**
+[`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole
+deployment — every setting carries a working default, so it needs no `.env`
+beside it and can be pasted straight into a NAS Docker UI's Project / Stack /
+Compose section, which is how most of these boxes are administered.
+[`deploy/README.md`](../deploy/README.md) is the runbook: install both ways,
+permissions, updating, backups. Nothing else goes on the box — no checkout, no
+build toolchain, no source.
+
 ```bash
-cp .env.example .env          # then edit MEDIA_HOST_PATH and bind addr/port
+docker compose up -d          # or start the project from the NAS UI
+```
+
+Note that the image will **not** appear in a NAS Docker app's image-search tab.
+Those search Docker Hub; this image is on GHCR. Pulling it by full name in a
+compose file is unaffected — the search index and the pull are unrelated
+mechanisms — and a Project created from the compose file is managed by the UI
+exactly like one created from a search result.
+
+**Building from source is the fallback**, for running an unreleased branch or a
+change you have not published. The compose file at the repository root builds
+the same image locally, and needs a checkout on the server:
+
+```bash
+cp .env.example .env          # then edit CAIRNDEX_LIBRARY_PATH and bind addr/port
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-Then open the bound address (default `http://127.0.0.1:8000`), use the app's
-library manager to create or register the mounted path, and run **Update**. A
-Cairndex library root contains its portable `.cairndex/` package:
+Building on the NAS gives you its architecture for free. To build elsewhere —
+an Apple Silicon Mac for an amd64 NAS — see
+[Building for the NAS from another machine](#building-for-the-nas-from-another-machine).
+
+### Publishing the image
+
+`.github/workflows/publish-image.yml` pushes to
+`ghcr.io/allpan3/cairndex`. It runs on a version tag (`v1.2.3` publishes `1.2.3`,
+`1.2`, and moves `latest` unless it is a prerelease) and on manual dispatch,
+which publishes exactly the tag you name and never touches `latest`. It does
+**not** run on pushes to `main`: publication should be a deliberate act, the same
+reason `release.yml` produces a *draft* release rather than a published one.
+
+The image is smoke-tested before it is pushed, not after — built to the runner's
+local daemon, put through `infra/docker/smoke.sh`, and only then pushed, with the
+second build reusing the layer cache. Publishing first and testing after would
+leave a broken image pullable in between, and `:latest` already moved.
+
+Two things to know about GHCR:
+
+- **Check the package is public before the server tries to pull.** Published
+  from a public repository it inherits that visibility (verified 2026-07-30, on
+  the first publish). If a package ever does come out private, `docker pull`
+  fails with an authentication error rather than "not found", and the fix is
+  *Packages → cairndex → Package settings → Change visibility*.
+- **Only `linux/amd64` is published**, which is the deployment target. Adding
+  `linux/arm64` is a one-line change on the push step plus a QEMU setup action —
+  and it costs an emulated build of the whole Node and Python stack on every
+  release, which is why it is not on. The comment in the workflow says where.
+
+Then open the bound address, use the app's library manager to create or register
+a path under the mount, and run **Update**.
+
+### Mounts and libraries are not the same thing
+
+Cairndex can see exactly what you mount, and nothing else. Mounts live under
+`/libraries`, one per **share**:
 
 ```text
-/storage/media/
+/libraries/
+  main/         <- /volume1/media on the host
+  archive/      <- /volume2/archive
+```
+
+A mount is not a library. **One mount can hold any number of libraries**, and
+they are created live in the app — no compose change, no restart:
+
+```text
+/libraries/main/films/.cairndex/       <- one library
+/libraries/main/photos/.cairndex/      <- another
+```
+
+There is no allow-list of paths in the server: any directory it can see can
+become a library, and creating one will make the directory if it does not exist.
+So you never enumerate libraries in compose — you enumerate shares. You come
+back to the compose file only when files live somewhere the container cannot see
+at all, and then you add a sibling mount:
+
+```yaml
+- "/volume2/archive:/libraries/archive:rw"
+```
+
+**Add mounts as siblings; do not re-path an existing one.** The registry records
+the path each library was registered under, as the container sees it, so moving
+a mount orphans every library inside it and they must be registered again. That
+is also why every mount is a child of `/libraries` rather than `/libraries`
+itself — a deployment that starts with one share can gain a second without
+disturbing the first.
+
+The paths you type in the app are container paths (`/libraries/main/films`), not
+host paths. Typing the host path gives "root path does not exist", which is the
+app being accurate from where it is standing.
+
+Each library root holds its own portable package:
+
+```text
+/libraries/main/films/
   media files...
   .cairndex/
     manifest.json
@@ -44,12 +130,12 @@ Cairndex library root contains its portable `.cairndex/` package:
     cache/
 ```
 
-The production library mount must be writable because Cairndex creates and
-updates `.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache
-files. Source media is a separate question: it is untouched by every ordinary
-flow (scanning, grouping, playback, thumbnails), and changes only through an
-explicit write-mode operation, which is **off by default per library** and can be
-disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
+A library mount must be writable because Cairndex creates and updates
+`.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache files.
+Source media is a separate question: it is untouched by every ordinary flow
+(scanning, grouping, playback, thumbnails), and changes only through an explicit
+write-mode operation, which is **off by default per library** and can be disabled
+deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 
 ### Topology
 
@@ -58,17 +144,87 @@ disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   `python:3.12-slim` runtime that serves the built frontend from FastAPI
   (`CAIRNDEX_STATIC_DIR=/app/web`) behind `/api`. `ffmpeg`/`ffprobe` are
   installed for scanning, thumbnails, and subtitle conversion.
-- **Non-root**: runs as a fixed UID/GID `10001:10001`. Give the app-data volume
+- **Non-root**: runs as UID/GID `10001:10001` by default, and **runs correctly
+  as any uid** — `user: "1000:1000"` in compose lets a deployment write as its
+  owner instead, needing no ownership changes on the host and leaving what
+  Cairndex creates readable to that owner's backups. The image writes only to
+  `/data`, `/tmp` and the library mounts, all supplied from outside, which is
+  what makes the override safe; `smoke.sh` exercises the image under a foreign
+  uid so it stays true. The one constraint is that `/data` must then be a bind
+  mount, since a named volume inherits the image's ownership. Otherwise: give the app-data volume
   and the library root enough permissions for that id to write `/data` and the
-  library's `.cairndex/` package.
+  library's `.cairndex/` package. On Linux that id is literal in both
+  directions: a bind mount preserves real uids, so everything Cairndex creates
+  in the library is owned by `10001:10001` **on the host too**, and your own
+  account may not be able to read all of it — the ownership lease is mode `0600`.
+  Plan for it in [Backups](#backups): share a group with `10001`, or read the
+  package from inside a container. Docker Desktop for macOS remaps ownership to
+  whoever invoked it, so a trial on a Mac will not show you any of this.
 - **Writable app data**: the `cairndex-data` named volume at `/data` holds the
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.
-- **Writable library root**: `MEDIA_HOST_PATH` is mounted at `/storage/media`.
-  The app writes the `.cairndex/` package and generated cache; it writes source
-  media only through the opt-in write mode described below (ADR-0013).
+- **Writable library mounts**: `CAIRNDEX_LIBRARY_PATH` is mounted at
+  `/libraries/main`, and further shares mount beside it under `/libraries`. The
+  app writes each library's `.cairndex/` package and generated cache; it writes
+  source media only through the opt-in write mode described below (ADR-0013).
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
+- **Startup preflight**: the entrypoint refuses to start if `CAIRNDEX_DATA_DIR`
+  is not writable by uid 10001. It warns, without refusing, when nothing is
+  mounted under `/libraries` at all, and for each mount that is not writable. A
+  read-only library mount is a legitimate browse-only deployment; an
+  unwritable `/data` is not, and without the check it surfaces much later as an
+  opaque SQLite "unable to open database file" from whichever request happened
+  to touch the registry first. This is the most common NAS misconfiguration,
+  because a bind-mounted host directory arrives with the host's ownership.
+- **Graceful stop matters**: `stop_grace_period` is 30s, above Docker's 10s
+  default. Shutdown releases each library's ownership lease and checkpoints its
+  WAL (see [One server per library](#one-server-per-library)); being SIGKILLed
+  part-way through strands the lease until it ages out.
+- **Bounded logs**: `json-file` with `max-size: 10m`, `max-file: 3`. Unbounded
+  container logs are a slow way to fill a NAS volume.
+
+### Building for the NAS from another machine
+
+The image is architecture-agnostic — every base it uses is multi-arch — so
+building it *on* the NAS needs no special handling and is the simplest path.
+Building on an Apple Silicon Mac for an amd64 NAS needs an explicit platform,
+because Docker otherwise builds for the host's architecture:
+
+```bash
+just docker-build-nas              # docker buildx build --platform linux/amd64 …
+```
+
+That leaves `cairndex:nas` in the local daemon. With no registry between the two
+machines, ship it over SSH:
+
+```bash
+docker save cairndex:nas | gzip | ssh nas 'gunzip | docker load'
+```
+
+Then on the NAS, point compose at the loaded image (`image: cairndex:nas`) and
+bring it up without `--build`. With a registry available, swap `--load` for
+`--push` in the recipe and pull on the NAS instead.
+
+Cross-building is emulated, so it is slower than building natively on the NAS —
+prefer building there when you can.
+
+### Verifying an image actually works
+
+```bash
+just docker-smoke
+```
+
+Starts the production image against a throwaway library, waits for health,
+checks the SPA is served and ffmpeg/ffprobe are present, creates a library
+through the API, generates a video and scans it, asserts a cover was produced
+(which is what proves the media pipeline, not just the web layer), then stops
+the container and asserts the ownership lease was released and the WAL folded
+back in. CI runs the same script after building.
+
+This exists because *building* an image proves very little. The Docker CI job
+was green for a month while the production entrypoint ran a migration command
+that no longer did anything and the dev image had no ffmpeg at all.
 
 ### Environment variables
 
@@ -183,8 +339,20 @@ worth in the worst case of a fully-scrubbed transcode); on the `/data` volume a
 few GB of headroom is ample for the default 2-session bound.
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
-`CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
-root mounted at `/storage/media`).
+`CAIRNDEX_PORT` (default `8000`), and `CAIRNDEX_LIBRARY_PATH` (host Cairndex library
+root mounted at `/libraries/main`). One `.env` serves both stacks; the dev stack
+reads the separate `CAIRNDEX_DEV_*` keys, so configuring one never silently
+reconfigures the other.
+
+**A schema note, since the entrypoint no longer implies otherwise.** Cairndex has
+no migration chain in use. The registry DB is bootstrapped by `create_all` on
+first open, and each library's schema is created with its `.cairndex` package and
+patched additively on every open (`persistence.engine.ensure_content_indexes`
+adds missing columns, tables, and indexes; `ensure_search_schema` rebuilds the
+FTS index when its column set changes). Nothing needs to be run before or after
+an upgrade — starting the new image is the whole procedure. The entrypoint used
+to call `alembic upgrade head`, which had quietly become a no-op that still
+printed a line claiming migrations were applied.
 
 ### One server per library
 
@@ -216,7 +384,7 @@ To inspect who holds a library, read the lease directly — it is plain JSON and
 safe to `cat`:
 
 ```bash
-cat /storage/media/.cairndex/locks/active-owner.json
+cat /libraries/main/.cairndex/locks/active-owner.json
 ```
 
 Or ask a server: `GET /api/v1/libraries/{library_id}/ownership` answers even when
@@ -292,7 +460,7 @@ ADR-0008 split persistent state across multiple SQLite DBs:
 
 - registry DB: `/data/registry.db` inside the container;
 - each library DB: `<library-root>/.cairndex/library.db`, for example
-  `/storage/media/.cairndex/library.db`.
+  `/libraries/main/.cairndex/library.db`.
 
 Back up the registry plus every library DB you care about. Generated cache files
 under `.cairndex/cache/` are reproducible and can usually be regenerated, and
@@ -331,7 +499,7 @@ online backup API and integrity-checks it:
 docker exec <container> /app/infra/backup.sh /data/registry.db /data/backups
 
 # Back up a mounted library's portable content metadata.
-docker exec <container> /app/infra/backup.sh /storage/media/.cairndex/library.db /data/backups
+docker exec <container> /app/infra/backup.sh /libraries/main/.cairndex/library.db /data/backups
 
 # Pull the copies off the box.
 docker cp <container>:/data/backups ./backups

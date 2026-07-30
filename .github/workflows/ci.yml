@@ -300,3 +300,12 @@ jobs:
         run: docker compose build
       - name: Build production image
         run: docker build -f infra/docker/production.Dockerfile -t cairndex:ci .
+      # Building only proves the Dockerfile parses and the dependencies resolve.
+      # This job was green for a month while the image's entrypoint ran a
+      # migration command that no longer did anything and the dev image had no
+      # ffmpeg at all. The smoke test starts the image and exercises the paths
+      # that actually rot: startup under the read-only root filesystem, the
+      # non-root user writing its volumes, ffprobe/ffmpeg during a scan, and a
+      # graceful shutdown releasing the ownership lease.
+      - name: Smoke-test the production image
+        run: ./infra/docker/smoke.sh cairndex:ci
