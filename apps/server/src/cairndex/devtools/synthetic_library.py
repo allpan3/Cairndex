@@ -231,7 +231,9 @@ def generate_synthetic_library(
             {
                 "id": bundle_id,
                 "title": f"Synthetic Bundle {i:06d}",
-                "rating": rng.choice([None, 1, 2, 3, 4, 5]),
+                # Half stars included so benchmark libraries exercise the mixed
+                # INTEGER/REAL storage a half-star scale produces (domain/rating.py).
+                "rating": rng.choice([None, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5]),
                 "grouping_state": GroupingState.CONFIRMED.name,
                 "grouping_source": GroupingSource.MANUAL.name,
                 "created_at": created_at,

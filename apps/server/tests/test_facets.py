@@ -9,6 +9,7 @@ shown.
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from cairndex.domain.rating import UNRATED_KEY
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import AssetBundle
@@ -140,7 +141,26 @@ def test_rating_facet_includes_unrated(session: Session) -> None:
     assert result.ratings is not None
     assert result.ratings.get("5") == 1
     assert result.ratings.get("3") == 1
-    assert result.ratings.get(browse_service.UNRATED_KEY) == 1
+    assert result.ratings.get(UNRATED_KEY) == 1
+
+
+def test_rating_facet_keys_half_and_whole_stars_distinctly(session: Session) -> None:
+    """Whole stars key as ``"4"``, half stars as ``"3.5"``.
+
+    SQLite hands 4 back as an int and 3.5 as a float from the same column, so
+    without one canonical formatter the same scale would produce both ``"4"``
+    and ``"4.0"`` depending on the value.
+    """
+    for rating in (3, 3.5, 3.5, 4):
+        bundle_service.create_bundle(session, title=f"rated {rating}", rating=rating)
+    session.commit()
+
+    ratings = browse_service.facet_counts(session, want_ratings=True).ratings
+    assert ratings is not None
+    assert ratings.get("3") == 1
+    assert ratings.get("3.5") == 2
+    assert ratings.get("4") == 1
+    assert "4.0" not in ratings and "3.0" not in ratings
 
 
 # --- API ---------------------------------------------------------------------

@@ -36,6 +36,7 @@ import { CollectionPicker } from './CollectionPicker'
 import { fileDragProps } from './dragOut'
 import { IconPlay, IconPlus } from './icons'
 import { moveTo } from './reorder'
+import { StarRating } from './Stars'
 import { TagEditor } from './TagEditor'
 
 /** Shown when an edit was rejected because the bundle changed elsewhere
@@ -105,24 +106,6 @@ function BundleTitleEditor({
       }}
       aria-label="Title"
     />
-  )
-}
-
-export function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  return (
-    <span className="stars" role="radiogroup" aria-label="Rating">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          className="star-btn"
-          aria-label={`${n} star${n > 1 ? 's' : ''}`}
-          aria-pressed={n <= value}
-          onClick={() => onChange(n === value ? 0 : n)} // clicking current rating clears it
-        >
-          {n <= value ? '★' : '☆'}
-        </button>
-      ))}
-    </span>
   )
 }
 

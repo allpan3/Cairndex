@@ -8,7 +8,8 @@ from cairndex.domain.enums import GroupingState
 class BundleSummary(BaseModel):
     id: str
     title: str | None
-    rating: int | None
+    # 0–5 stars in half-star steps (domain/rating.py); None means unrated.
+    rating: float | None
     file_count: int
     total_size: int
     has_missing: bool
