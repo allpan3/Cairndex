@@ -1,8 +1,13 @@
-# Local development stack for Cairndex.
+# Cairndex development stack.
 #
-# This is a developer convenience (source bind-mounts + hot reload), NOT the
-# NAS production deployment — that is documented as Phase 8 work in
-# docs/deployment.md. Start with: `docker compose up --build`.
+# A containerized alternative to the native `just dev` loop, not a replacement
+# for it: source is bind-mounted and both halves hot-reload. The NAS/self-host
+# deployment is docker-compose.prod.yml. See docs/development.md.
+#
+#   cp .env.example .env      # then set CAIRNDEX_DEV_LIBRARY_PATH
+#   docker compose up --build
+#
+# Everything below reads from .env, which is git-ignored.
 
 services:
   server:
@@ -10,20 +15,44 @@ services:
       context: ./apps/server
       dockerfile: ../../infra/docker/server.Dockerfile
     ports:
-      - "8000:8000"
+      - "${CAIRNDEX_DEV_API_PORT:-8000}:8000"
     environment:
       CAIRNDEX_ENVIRONMENT: development
+      # Own data dir, deliberately *not* the repo's apps/server/var that the
+      # native `just dev` server uses. Sharing one registry.db would make the two
+      # servers register the same libraries and then contend for their ADR-0018
+      # ownership leases — each stealing the library from the other.
+      CAIRNDEX_DATA_DIR: /data
+      # Otherwise the lease records the container's hex id, so "this library is
+      # served by 79cd6c7e81a3" is what another machine (or your desktop app)
+      # would show you. Deliberately its own key rather than reusing
+      # CAIRNDEX_MACHINE_NAME: one .env serves both stacks, and the production
+      # stack's value for that key would otherwise make the dev container
+      # introduce itself as the NAS.
+      CAIRNDEX_MACHINE_NAME: ${CAIRNDEX_DEV_MACHINE_NAME:-cairndex-dev-container}
     volumes:
       # Live-reload source. The virtualenv lives at /opt/venv (outside this
       # mount), so host code changes don't clobber installed dependencies.
       - ./apps/server:/app
+      # Registry DB and runtime state, kept in a named volume so a rebuild does
+      # not lose your registered libraries.
+      - cairndex-dev-data:/data
+      # The library to work against. Point this at a scratch library, not one a
+      # desktop app or the native dev server is also serving — one server per
+      # library at a time (ADR-0018). `just docker-dev-library` seeds one.
+      - "${CAIRNDEX_DEV_LIBRARY_PATH:-./var/docker-library}:/storage/media:rw"
+    # The shutdown path releases library leases, checkpoints each WAL, and folds
+    # it back into library.db. A SIGKILL part-way through leaves the lease behind
+    # for another five minutes (CAIRNDEX_LEASE_TTL). Measured at ~0.5s on a small
+    # local library; the headroom is for a large or network-mounted one.
+    stop_grace_period: 30s
 
   web:
     build:
       context: ./apps/web
       dockerfile: ../../infra/docker/web.Dockerfile
     ports:
-      - "5173:5173"
+      - "${CAIRNDEX_DEV_WEB_PORT:-5173}:5173"
     environment:
       # The Vite dev proxy forwards /api to the backend service over the
       # compose network instead of localhost.
@@ -31,7 +60,13 @@ services:
     volumes:
       - ./apps/web:/app
       # Anonymous volume keeps the container's node_modules from being shadowed
-      # by the host bind-mount above.
+      # by the host bind-mount above. It is populated at image build time, so a
+      # package.json change needs `docker compose up --build --force-recreate`
+      # — a plain rebuild reuses the old volume and the new dependency is
+      # missing at runtime.
       - /app/node_modules
     depends_on:
       - server
+
+volumes:
+  cairndex-dev-data:
