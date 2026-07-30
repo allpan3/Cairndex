@@ -4,14 +4,19 @@ Jobs live on the registry queue (ADR-0008); each job names a library, and the
 worker opens that library's content DB to run a handler.
 """
 
+import sys
+import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.core.abort import OperationAborted, abort_scope
 from cairndex.domain.enums import JobPhase, JobStatus, JobType
 from cairndex.jobs.errors import safe_error_message
 from cairndex.jobs.worker import HandlerRegistry, JobContext, Worker, execute_job
+from cairndex.media.ffmpeg_exec import FfmpegError, run_ffmpeg
 from cairndex.registry import jobs as job_service
 
 
@@ -386,3 +391,88 @@ def test_a_newly_known_total_is_written_immediately(
 
     assert captured[0] == (0, 50)  # the total appears at once
     assert captured[1] == (0, 50)  # the follow-up count is throttled, as designed
+
+
+def test_a_worker_closes_out_jobs_a_dead_process_left_running(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """A `--reload` restart (or any crash) leaves the row behind; nothing else clears it."""
+    stranded = _new_job(registry_session_factory, library_id, {})
+    finished = _new_job(registry_session_factory, library_id, {})
+    with registry_session_factory() as reg:
+        job_service.mark_running(reg, stranded)
+        job_service.mark_finished(reg, finished, status=JobStatus.SUCCEEDED, result={})
+        reg.commit()
+
+    worker = Worker(registry_session_factory, {})
+    worker.start()
+    worker.stop()
+
+    with registry_session_factory() as reg:
+        closed = job_service.get_job(reg, stranded)
+        assert closed.status == JobStatus.FAILED
+        assert closed.error is not None and "interrupted" in closed.error
+        assert closed.finished_at is not None
+        # A job that reached its own terminal state is not touched.
+        assert job_service.get_job(reg, finished).status == JobStatus.SUCCEEDED
+
+
+def test_cancelling_a_queued_job_ends_it_instead_of_starting_the_work(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    ran = {"count": 0}
+
+    def handler(_ctx: JobContext) -> None:
+        ran["count"] += 1
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    with registry_session_factory() as reg:
+        cancelled = job_service.request_cancel(reg, job_id)
+        assert cancelled.status == JobStatus.CANCELLED
+        reg.commit()
+
+    worker = Worker(registry_session_factory, {JobType.SCAN: handler})
+
+    assert worker.run_once() is False  # never claimed
+    assert ran["count"] == 0
+    with registry_session_factory() as reg:
+        job = job_service.get_job(reg, job_id)
+        assert job.status == JobStatus.CANCELLED
+        assert job.finished_at is not None
+
+
+def test_cancelling_stops_external_work_without_waiting_for_a_checkpoint(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """The point of the abort path: a long ffmpeg call is not a checkpoint.
+
+    Over a network-mounted library one storyboard pass can hold a job inside a
+    single ffmpeg call for ~30s, so a cancel that only lands at the next
+    checkpoint reads as a button that does nothing.
+    """
+    job_id = _new_job(registry_session_factory, library_id, {})
+    with registry_session_factory() as reg:
+        job_service.request_cancel(reg, job_id)
+        reg.commit()
+
+    def handler(_ctx: JobContext) -> None:
+        # Stands in for an ffmpeg pass long enough to outlive the test.
+        run_ffmpeg([sys.executable, "-c", "import time; time.sleep(60)"], timeout=120.0)
+
+    started = time.monotonic()
+    status = execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+    elapsed = time.monotonic() - started
+
+    assert status == JobStatus.CANCELLED
+    assert elapsed < 15.0  # stopped where it stood, not at the 60s mark
+
+
+def test_run_ffmpeg_is_unaffected_without_an_abort_scope() -> None:
+    assert run_ffmpeg([sys.executable, "-c", "print('ok')"], timeout=30.0) == ""
+    with pytest.raises(FfmpegError, match="timed out"):
+        run_ffmpeg([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.4)
+
+
+def test_abort_scope_stops_a_running_process_and_leaves_none_behind() -> None:
+    with abort_scope(lambda: True), pytest.raises(OperationAborted):
+        run_ffmpeg([sys.executable, "-c", "import time; time.sleep(60)"], timeout=120.0)
