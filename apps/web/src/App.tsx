@@ -84,6 +84,10 @@ import {
 } from './app/adHocFilters'
 import { Inspector } from './app/Inspector'
 import {
+  BundleInspectorActionsContext,
+  type BundleInspectorActions,
+} from './app/bundleInspectorActions'
+import {
   AddFilesToBundleDialog,
   AddToBundleDialog,
   CreateBundleDialog,
@@ -994,6 +998,34 @@ function Workspace({
     [libraryId, platform],
   )
   const onStartFileDrag = platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
+
+  // Everything the Bundle Inspector can do, defined once and provided to the
+  // whole shell. Both places the inspector appears read it from context, so
+  // neither has a prop list of its own to fall behind the other's — see
+  // `bundleInspectorActions.ts` for why that is the shape.
+  const inspectorActions = useMemo<BundleInspectorActions>(
+    () => ({
+      hostLabels,
+      onAddFiles: (id) => setAddFilesBundleId(id),
+      onPlayBundle: (id) => setViewerTarget({ bundleId: id }),
+      onPlayFile: (bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId }),
+      onOpenFile: onOpenHostFile,
+      onRevealFile: onRevealHostFile,
+      onLocateFile: locateFileInBrowser,
+      onStartFileDrag,
+      onFlash: showFlash,
+      onFilterByTags: (tagIds) => {
+        // Replace the tag filter with exactly these, and leave any bundle
+        // open — the point is to see everything sharing the tag.
+        setAdHocFilters((previous) => ({
+          ...previous,
+          tags: { ...emptyTagFilter(), include: tagIds },
+        }))
+        setOpenBundleId(null)
+      },
+    }),
+    [hostLabels, locateFileInBrowser, onOpenHostFile, onRevealHostFile, onStartFileDrag, showFlash],
+  )
 
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
@@ -1988,7 +2020,7 @@ function Workspace({
     return () => window.removeEventListener('keydown', onKey)
   }, [moveSelection, clearSelection, openBundleId, copySelectedTags, pasteTagsOntoSelection])
 
-  return (
+  const shell = (
     <div
       className={`app${mode === 'tags' || !inspectorVisible ? ' app--no-inspector' : ''}`}
       style={
@@ -2342,27 +2374,7 @@ function Workspace({
           onClear={clearSelection}
         />
       ) : (
-        <Inspector
-          bundleId={activeId}
-          hostLabels={hostLabels}
-          onAddFiles={(id) => setAddFilesBundleId(id)}
-          onPlayBundle={(id) => setViewerTarget({ bundleId: id })}
-          onPlayFile={(bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId })}
-          onOpenFile={onOpenHostFile}
-          onRevealFile={onRevealHostFile}
-          onLocateFile={locateFileInBrowser}
-          onStartFileDrag={onStartFileDrag}
-          onFlash={showFlash}
-          onFilterByTags={(tagIds) => {
-            // Replace the tag filter with exactly these, and leave any bundle
-            // open — the point is to see everything sharing the tag.
-            setAdHocFilters((previous) => ({
-              ...previous,
-              tags: { ...emptyTagFilter(), include: tagIds },
-            }))
-            setOpenBundleId(null)
-          }}
-        />
+        <Inspector bundleId={activeId} />
       )}
 
       {sidebarVisible && (
@@ -2605,5 +2617,12 @@ function Workspace({
         </div>
       )}
     </div>
+  )
+
+  // Provided here rather than wrapped around the JSX above so the shell's tree
+  // keeps its indentation: this is a context boundary, not a layout one, and a
+  // whole-file re-indent would bury every real change in whitespace.
+  return (
+    <BundleInspectorActionsContext value={inspectorActions}>{shell}</BundleInspectorActionsContext>
   )
 }

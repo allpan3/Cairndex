@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { ConflictError, type BundleRead, type FileRead, thumbnailUrl } from '../api/client'
+import { useBundleInspectorActions } from './bundleInspectorActions'
 import { bundleFileMenuEntries } from './bundleFileMenu'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { ConfirmDialog } from './PromptDialog'
@@ -113,41 +114,24 @@ function BundleTitleEditor({
 // `currentTime` re-renders the viewer several times a second, and without a
 // bail-out here every one of those walks the whole library's tags and
 // collections below (2026-07-27).
-export const Inspector = memo(function Inspector({
-  bundleId,
-  hostLabels,
-  onAddFiles,
-  onPlayBundle,
-  onPlayFile,
-  onOpenFile,
-  onRevealFile,
-  onLocateFile,
-  onStartFileDrag,
-  onFlash,
-  onFilterByTags,
-}: {
-  bundleId: string | null
-  /** Open/Reveal wording for this host; omitted where those are not wired. */
-  hostLabels?: HostLabels
-  /** Open the "Add files" manual bundling dialog for this bundle. */
-  onAddFiles?: (bundleId: string) => void
-  /** Open the unified media viewer for this bundle. */
-  onPlayBundle?: (bundleId: string) => void
-  /** Open one supported file directly in the unified media viewer. */
-  onPlayFile?: (bundleId: string, fileId: string) => void
-  /** Open this file with the OS default app (mapped desktop library only). */
-  onOpenFile?: (relativePath: string) => void
-  /** Reveal this file in Finder (mapped desktop library only). */
-  onRevealFile?: (relativePath: string) => void
-  /** Jump to this file's directory in the File Browser. */
-  onLocateFile?: (relativePath: string) => void
-  /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
-  onStartFileDrag?: (relativePaths: string[]) => void
-  /** Report a transient message (export progress, results) to the shell. */
-  onFlash?: (message: string) => void
-  /** Filter the library by these tags, from a tag pill's menu. */
-  onFilterByTags?: (tagIds: string[]) => void
-}) {
+//
+// `bundleId` is the only prop: everything this pane can *do* comes from
+// `BundleInspectorActions` context, so the shell's rail and the viewer's docked
+// rail are the same component with the same abilities by construction rather
+// than by two call sites being kept in step (owner, 2026-07-30).
+export const Inspector = memo(function Inspector({ bundleId }: { bundleId: string | null }) {
+  const {
+    hostLabels,
+    onAddFiles,
+    onPlayBundle,
+    onPlayFile,
+    onOpenFile,
+    onRevealFile,
+    onLocateFile,
+    onStartFileDrag,
+    onFlash,
+    onFilterByTags,
+  } = useBundleInspectorActions()
   const { data: bundle } = useBundle(bundleId)
 
   if (bundleId === null) {
