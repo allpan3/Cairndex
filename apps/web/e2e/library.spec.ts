@@ -568,7 +568,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
   await expect(checkbox).toBeChecked()
-  const additionTitle = page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })
+  const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
   const dragHandle = page.locator('.grp-row--bundle', { has: additionTitle })
   const destinationButton = page.getByRole('button', {
     name: 'Create a new bundle from these files',
@@ -654,7 +654,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(addBackButton).toBeEnabled()
 
   await addBackButton.click()
-  await expect(page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })
 

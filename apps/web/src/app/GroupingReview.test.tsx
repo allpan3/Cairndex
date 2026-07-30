@@ -406,7 +406,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
     name: 'Accept Sex On The Beach - 4K',
   })
   expect(checkbox).toBeChecked()
-  expect(screen.getByText('Add to 🎬 Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
   expect(screen.queryByText('➕')).not.toBeInTheDocument()
   expect(screen.getByText('3 new files')).toBeInTheDocument()
   expect(screen.queryByText('Create new bundle instead')).not.toBeInTheDocument()
@@ -447,7 +447,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
       name: 'Add these files to “Sun, Sand, Sea & Sex - 4K” instead',
     }),
   )
-  await screen.findByText('Add to 🎬 Sun, Sand, Sea & Sex - 4K')
+  await screen.findByText('Add to Sun, Sand, Sea & Sex - 4K')
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
 
@@ -466,7 +466,7 @@ test('uses the legacy proposal title when the target snapshot title is absent', 
   )
   renderReview()
 
-  expect(await screen.findByText('Add to 🎬 Legacy Target')).toBeInTheDocument()
+  expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   expect(
     await screen.findByRole('button', {
@@ -503,7 +503,7 @@ test('disables destination actions while saving and surfaces a switch error', as
 
   await screen.findByText('Existing bundle disappeared')
   expect(switchButton).toBeEnabled()
-  expect(screen.getByText('Add to 🎬 Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to Sun, Sand, Sea & Sex - 4K')).toBeInTheDocument()
 })
 
 test('regenerating suggestions keeps returned candidates visible immediately', async () => {
@@ -961,15 +961,36 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
   ).toBeInTheDocument()
 })
 
-test('a single-item bundle is offered no collection override', async () => {
-  // A collection of one identical bundle adds nothing, and the child would be
-  // convertible in turn — which is how collections came to nest without limit.
+test('a single-subject bundle may still become a collection', async () => {
+  // The owner may be making a home for siblings to drag in, so this is offered
+  // even though nothing divides.
   vi.stubGlobal('fetch', mockGroupingApi())
   renderReview()
 
   const soloRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
   expect(
-    within(soloRow as HTMLElement).queryByRole('button', {
+    within(soloRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  ).toBeInTheDocument()
+})
+
+test('a single-subject bundle already inside its own folder collection is not', async () => {
+  // Another layer would just repeat the name it is already inside — and since the
+  // child of a conversion always lands here, this is what bounds the nesting.
+  const collection: GroupingProposal = {
+    ...PROPOSALS[0]!,
+    id: 'own-folder',
+    title: 'Second',
+    directory: 'Second',
+  }
+  const child: GroupingProposal = { ...PROPOSALS[2]!, parent_proposal_id: collection.id }
+  vi.stubGlobal('fetch', mockGroupingApi([collection, child]))
+  renderReview()
+
+  const childRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
+  expect(
+    within(childRow as HTMLElement).queryByRole('button', {
       name: 'Make this a collection of bundles instead',
     }),
   ).toBeNull()
@@ -987,4 +1008,59 @@ test('an addition suggestion offers no collection override', async () => {
       name: 'Make this a collection of bundles instead',
     }),
   ).toBeNull()
+})
+
+// --- Tooltips do not outlive the control they belong to ----------------------
+
+/** Hover a control the way React sees it: `onMouseEnter` is synthesised from
+ * `mouseover`, so a native `mouseenter` never reaches the handler. */
+function hover(element: HTMLElement) {
+  fireEvent.mouseOver(element, { relatedTarget: document.body })
+}
+
+test('a tooltip is dismissed when its control is clicked', async () => {
+  // Clicking is what moves the row out from under the pointer, and nothing makes
+  // the pointer *leave* the button — so without an explicit dismiss the tooltip
+  // hung around at its old coordinates, showing the new label.
+  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
+  renderReview()
+
+  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  const convert = within(row as HTMLElement).getByRole('button', {
+    name: 'Make this a collection of bundles instead',
+  })
+  hover(convert.closest('.grp-tip-anchor') as HTMLElement)
+  expect(
+    screen.getByText('Make this a collection of bundles instead', { selector: '.grp-tip' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(convert)
+  await waitFor(() => expect(document.querySelector('.grp-tip')).toBeNull())
+
+  // And the conversion still went through.
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+})
+
+test('a tooltip is dismissed when its label changes underneath it', async () => {
+  // Belt and braces for the same shape: a control whose action is applied
+  // elsewhere still flips its own label, and a stale tooltip would contradict it.
+  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
+  renderReview()
+
+  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  const convert = within(row as HTMLElement).getByRole('button', {
+    name: 'Make this a collection of bundles instead',
+  })
+  fireEvent.click(convert)
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+
+  // Re-hover the same control, now labelled the other way, and confirm the
+  // tooltip that appears is the current one rather than a leftover.
+  const flipped = within(
+    screen.getByText('Two Subjects').closest('.grp-row') as HTMLElement,
+  ).getByRole('button', { name: 'Make this one bundle instead' })
+  hover(flipped.closest('.grp-tip-anchor') as HTMLElement)
+  const tips = document.querySelectorAll('.grp-tip')
+  expect(tips).toHaveLength(1)
+  expect(tips[0]!.textContent).toBe('Make this one bundle instead')
 })
