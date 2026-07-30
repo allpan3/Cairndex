@@ -48,9 +48,12 @@
 > viewer's two notices sitting apart, and a rename box selecting the extension;
 > the grouping review's per-suggestion round trips; and half-star ratings.
 >
-> **Open, unreviewed (2026-07-30):** `perf/storyboard-keyframe-sampling`, which
-> answers the owner's "why is storyboard generation so slow" — it was decoding
-> every frame of every video. See the section below.
+> **Merged (2026-07-30):** `perf/storyboard-keyframe-sampling`, which answers
+> the owner's "why is storyboard generation so slow" — it was decoding every
+> frame of every video. Running it against a network-mounted library then showed
+> the remaining cost is the read, not the decode; the section below records both
+> the fixture numbers and what the share actually did. **Next up is job
+> control** — no running job can be stopped from the UI today.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -61,7 +64,7 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: storyboard generation was decoding everything (2026-07-30)
+## Merged: storyboard generation was decoding everything (2026-07-30)
 
 Branch `perf/storyboard-keyframe-sampling`, rebased onto `main` at `2bd4694`
 (the job-progress merge plus changelog-driven release notes). Owner question:
@@ -119,10 +122,40 @@ scratch data dir and running the real scan → probe → storyboard path: 3
 generated, a rerun skipping all 3, and every VTT checked for ascending cues,
 one cue per tile, sheets that exist, and full timeline coverage.
 
-**Not done:** no measurement on network-mounted storage — the benchmark's
-fixtures are local, and the owner's own library is out of bounds for testing.
-The direction of the result is not in doubt (strictly less decode, one
-sequential read per file), but the size of the win on the NAS is unmeasured.
+**What a run over a network-mounted library then showed, and it matters more
+than the fixture numbers.** The owner ran the regeneration the format bump
+forces, over a share, and reported it still felt slow. It was: the pass now
+moves bytes at the share's own read throughput — the job's effective rate
+matched a direct read of the same share, measured while the two competed — so
+**decode has left the critical path entirely and the wall clock is now the
+transfer**. `-skip_frame nokey` stops ffmpeg *decoding* every frame; it does not
+stop the demuxer *reading* every byte. On a local disk that read is free and the
+fixture speedups are what you see; on a share it is the whole cost, and no
+decode saving can go below it.
+
+That reframes the fixture benchmark rather than contradicting it, and it is the
+regime the seek-per-cue rejection above was *not* measured in: those numbers
+came from a local SSD, where re-reading a group costs nothing but decode.
+
+**Next lever, not taken here:** read less, using the container's own keyframe
+table. `media/mp4_index.py` already reads MP4 `stss` from the header, so
+keyframe timestamps are knowable without a full pass, and seeking to exactly
+those (one `xstack` batch per sheet, the shape prototyped and rejected for local
+libraries) would move a fraction of the bytes on sources whose GOP is long
+relative to the sampling interval. It also makes cue times exact by
+construction, with no `showinfo` parsing. Unknown until measured: per-seek
+latency over SMB at a few hundred seeks per file. Non-MP4 sources and MP4s
+without a keyframe table would keep today's pass.
+
+**Also queued, from testing this:** job control. Cancellation exists end to end
+in the backend (`POST /jobs/{id}/cancel` → `checkpoint()` → `CANCELLED`) but
+**nothing in the UI calls it**, so no job can be stopped from the app. In the
+same area: a job whose worker dies with the server stays `RUNNING` forever —
+nothing reconciles those rows at startup, they cannot be cancelled since nothing
+is alive to see the flag, and they do not suppress a duplicate either, because
+dedupe matches only `QUEUED`; a queued job renders with a moving bar
+indistinguishable from a running one; and a killed pass leaves its `.tmp-`
+directory in the storyboard cache with nothing to sweep it. One branch.
 
 ## In progress: Docker dev and deployment (2026-07-28)
 

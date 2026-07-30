@@ -54,7 +54,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   instead was measured too and rejected: storyboard cues are spaced about as far
   apart as a keyframe, so each seek re-reads a group its neighbours already read
   and the whole run came out *3× slower* than the full decode it replaced.
-  (Contact sheets sample far more sparsely and correctly still seek.)
+  (Contact sheets sample far more sparsely and correctly still seek.) **On a
+  library over a network share, expect the run to finish at the share's read
+  speed rather than in a fraction of the old time**: skipping the decode does
+  not skip the read — ffmpeg still streams each file once — so the transfer is
+  now the whole cost, where before it was hidden behind decoding.
 - **A storyboard cue now states the time of the frame it is actually showing.**
   Tiles land on the keyframe at or before each sample point, so a cue can cover
   an uneven slice of the timeline — the VTT says which slice rather than
