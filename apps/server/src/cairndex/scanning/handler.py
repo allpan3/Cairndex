@@ -18,10 +18,13 @@ from cairndex.scanning.scanner import scan_library
 def scan_job_handler(ctx: JobContext) -> dict[str, Any]:
     batch_size = int(ctx.payload.get("batch_size", 200))
 
+    # ctx.progress, not ctx.checkpoint: the scanner now reports every file and
+    # commits on its own batch schedule, so this must not force a commit per
+    # call. Both throttle their registry writes identically.
     summary = scan_library(
         ctx.session,
         ctx.library_root,
-        on_progress=lambda processed, total: ctx.checkpoint(processed, total),
+        on_progress=lambda processed, total: ctx.progress(processed, total),
         on_phase=lambda name: ctx.set_phase(JobPhase(name)),
         batch_size=batch_size,
     )
