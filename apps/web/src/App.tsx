@@ -35,6 +35,7 @@ import {
   useDeploymentWriteMode,
   useFileOperations,
   invalidateAfterFileOperation,
+  prefetchBundleMemberships,
   useLibraries,
   useLibraryAuth,
   useTrash,
@@ -2282,7 +2283,16 @@ function Workspace({
                             })
                         : undefined
                     }
-                    onBundleDragStart={(ids) => updateDragItem({ kind: 'bundles', ids })}
+                    onBundleDragStart={(ids) => {
+                      updateDragItem({ kind: 'bundles', ids })
+                      // Load what the sidebar counts will need the moment this
+                      // drag is dropped: which collections these bundles are
+                      // already in. Dragging an unselected card carries a bundle
+                      // no inspector has ever asked about, and without its
+                      // memberships the counts wait for the server instead of
+                      // moving with the drop.
+                      prefetchBundleMemberships(queryClient, ids)
+                    }}
                     onBundleDragEnd={() => updateDragItem(null)}
                     isLoading={browse.isLoading}
                     isError={browse.isError}

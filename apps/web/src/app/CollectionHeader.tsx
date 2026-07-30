@@ -17,7 +17,8 @@ interface CollectionHeaderProps {
   // Heading for the folder section — "Subcollections" inside a collection,
   // "Collections" at the top level (All view).
   sectionLabel: string
-  // Direct (non-recursive) bundle count per collection id.
+  // Bundle count per collection id, across that collection's whole subtree —
+  // the same figure the sidebar shows beside it (`['collection-counts']`).
   counts?: Record<string, number>
   // Direct subcollection count per collection id.
   subcounts?: Record<string, number>
