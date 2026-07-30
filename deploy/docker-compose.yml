@@ -5,9 +5,13 @@
 # pulled from a registry.
 #
 # ┌─ EDIT BEFORE STARTING ──────────────────────────────────────────────────┐
-# │ 1. MEDIA_HOST_PATH below — the host path of your library.               │
+# │ 1. CAIRNDEX_LIBRARY_PATH below — the host path of your media.           │
 # │ 2. CAIRNDEX_MACHINE_NAME — what this server calls itself.               │
 # └─────────────────────────────────────────────────────────────────────────┘
+#
+# Cairndex sees only what you mount. Mounts live under /libraries, one per
+# share (/libraries/main, /libraries/archive) — a mount is not a library, and
+# one mount can hold many. Details at the volumes section below.
 #
 # Every setting has a working default written into this file, so a NAS Docker
 # UI that pastes or uploads a compose file works with no `.env` beside it. If
@@ -62,15 +66,32 @@ services:
       # Server-local runtime state: registry.db, transcode scratch, backups.
       # Per-library content metadata lives in each library's own .cairndex/.
       - cairndex-data:/data
-      # >>> EDIT: the host path of your library, before the colon. <<<
+      # >>> EDIT: the host path of your media, before the colon. <<<
+      #
+      # Everything Cairndex can see, it sees because you mounted it here. Each
+      # mount is a child of /libraries, and the name you give it is yours —
+      # /libraries/main below is just a starting one.
+      #
+      # A mount is a *share*, not a library. One mount can hold many libraries:
+      # with this line, /volume1/media/films and /volume1/media/photos can each
+      # be a separate library, created live in the app, with no change here and
+      # no restart. You only come back to this file when files live somewhere
+      # the container cannot see at all — a different volume or share:
+      #
+      #   - "/volume2/archive:/libraries/archive:rw"
+      #   - "/volume3/photos:/libraries/photos:rw"
+      #
+      # Mount each share under its own name rather than moving this one. The
+      # registry records the path a library was registered under, so re-pathing
+      # an existing mount means re-registering everything inside it.
       #
       # It must be writable by uid 10001, the container's non-root user:
       # Cairndex keeps each library's portable package at
-      # <root>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
+      # <library>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
       # Your media files are not moved, renamed, deleted, or rewritten by any
       # ordinary flow — only by an explicit write-mode operation (ADR-0013),
       # which is off by default per library.
-      - "${MEDIA_HOST_PATH:-/volume1/media}:/storage/media:rw"
+      - "${CAIRNDEX_LIBRARY_PATH:-/volume1/media}:/libraries/main:rw"
     # The app only needs its mounted volumes to be writable, so the rest of the
     # container filesystem is not.
     read_only: true

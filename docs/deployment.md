@@ -42,7 +42,7 @@ change you have not published. The compose file at the repository root builds
 the same image locally, and needs a checkout on the server:
 
 ```bash
-cp .env.example .env          # then edit MEDIA_HOST_PATH and bind addr/port
+cp .env.example .env          # then edit CAIRNDEX_LIBRARY_PATH and bind addr/port
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
@@ -66,21 +66,63 @@ leave a broken image pullable in between, and `:latest` already moved.
 
 Two things to know about GHCR:
 
-- **The first push creates a private package.** GitHub does not inherit the
-  repository's visibility. Until you set it to public under *Packages → cairndex
-  → Package settings → Change visibility*, `docker pull` from the server needs
-  authentication. This is a one-time step.
+- **Check the package is public before the server tries to pull.** Published
+  from a public repository it inherits that visibility (verified 2026-07-30, on
+  the first publish). If a package ever does come out private, `docker pull`
+  fails with an authentication error rather than "not found", and the fix is
+  *Packages → cairndex → Package settings → Change visibility*.
 - **Only `linux/amd64` is published**, which is the deployment target. Adding
   `linux/arm64` is a one-line change on the push step plus a QEMU setup action —
   and it costs an emulated build of the whole Node and Python stack on every
   release, which is why it is not on. The comment in the workflow says where.
 
-Then open the bound address (default `http://127.0.0.1:8000`), use the app's
-library manager to create or register the mounted path, and run **Update**. A
-Cairndex library root contains its portable `.cairndex/` package:
+Then open the bound address, use the app's library manager to create or register
+a path under the mount, and run **Update**.
+
+### Mounts and libraries are not the same thing
+
+Cairndex can see exactly what you mount, and nothing else. Mounts live under
+`/libraries`, one per **share**:
 
 ```text
-/storage/media/
+/libraries/
+  main/         <- /volume1/media on the host
+  archive/      <- /volume2/archive
+```
+
+A mount is not a library. **One mount can hold any number of libraries**, and
+they are created live in the app — no compose change, no restart:
+
+```text
+/libraries/main/films/.cairndex/       <- one library
+/libraries/main/photos/.cairndex/      <- another
+```
+
+There is no allow-list of paths in the server: any directory it can see can
+become a library, and creating one will make the directory if it does not exist.
+So you never enumerate libraries in compose — you enumerate shares. You come
+back to the compose file only when files live somewhere the container cannot see
+at all, and then you add a sibling mount:
+
+```yaml
+- "/volume2/archive:/libraries/archive:rw"
+```
+
+**Add mounts as siblings; do not re-path an existing one.** The registry records
+the path each library was registered under, as the container sees it, so moving
+a mount orphans every library inside it and they must be registered again. That
+is also why every mount is a child of `/libraries` rather than `/libraries`
+itself — a deployment that starts with one share can gain a second without
+disturbing the first.
+
+The paths you type in the app are container paths (`/libraries/main/films`), not
+host paths. Typing the host path gives "root path does not exist", which is the
+app being accurate from where it is standing.
+
+Each library root holds its own portable package:
+
+```text
+/libraries/main/films/
   media files...
   .cairndex/
     manifest.json
@@ -88,12 +130,12 @@ Cairndex library root contains its portable `.cairndex/` package:
     cache/
 ```
 
-The production library mount must be writable because Cairndex creates and
-updates `.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache
-files. Source media is a separate question: it is untouched by every ordinary
-flow (scanning, grouping, playback, thumbnails), and changes only through an
-explicit write-mode operation, which is **off by default per library** and can be
-disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
+A library mount must be writable because Cairndex creates and updates
+`.cairndex/manifest.json`, `.cairndex/library.db`, and generated cache files.
+Source media is a separate question: it is untouched by every ordinary flow
+(scanning, grouping, playback, thumbnails), and changes only through an explicit
+write-mode operation, which is **off by default per library** and can be disabled
+deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 
 ### Topology
 
@@ -114,14 +156,16 @@ disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
 - **Writable app data**: the `cairndex-data` named volume at `/data` holds the
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.
-- **Writable library root**: `MEDIA_HOST_PATH` is mounted at `/storage/media`.
-  The app writes the `.cairndex/` package and generated cache; it writes source
-  media only through the opt-in write mode described below (ADR-0013).
+- **Writable library mounts**: `CAIRNDEX_LIBRARY_PATH` is mounted at
+  `/libraries/main`, and further shares mount beside it under `/libraries`. The
+  app writes each library's `.cairndex/` package and generated cache; it writes
+  source media only through the opt-in write mode described below (ADR-0013).
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
 - **Startup preflight**: the entrypoint refuses to start if `CAIRNDEX_DATA_DIR`
-  is not writable by uid 10001, and warns (but continues) if the library mount
-  is not. A read-only library mount is a legitimate browse-only deployment; an
+  is not writable by uid 10001. It warns, without refusing, when nothing is
+  mounted under `/libraries` at all, and for each mount that is not writable. A
+  read-only library mount is a legitimate browse-only deployment; an
   unwritable `/data` is not, and without the check it surfaces much later as an
   opaque SQLite "unable to open database file" from whichever request happened
   to touch the registry first. This is the most common NAS misconfiguration,
@@ -288,8 +332,8 @@ worth in the worst case of a fully-scrubbed transcode); on the `/data` volume a
 few GB of headroom is ample for the default 2-session bound.
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
-`CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
-root mounted at `/storage/media`). One `.env` serves both stacks; the dev stack
+`CAIRNDEX_PORT` (default `8000`), and `CAIRNDEX_LIBRARY_PATH` (host Cairndex library
+root mounted at `/libraries/main`). One `.env` serves both stacks; the dev stack
 reads the separate `CAIRNDEX_DEV_*` keys, so configuring one never silently
 reconfigures the other.
 
@@ -333,7 +377,7 @@ To inspect who holds a library, read the lease directly — it is plain JSON and
 safe to `cat`:
 
 ```bash
-cat /storage/media/.cairndex/locks/active-owner.json
+cat /libraries/main/.cairndex/locks/active-owner.json
 ```
 
 Or ask a server: `GET /api/v1/libraries/{library_id}/ownership` answers even when
@@ -409,7 +453,7 @@ ADR-0008 split persistent state across multiple SQLite DBs:
 
 - registry DB: `/data/registry.db` inside the container;
 - each library DB: `<library-root>/.cairndex/library.db`, for example
-  `/storage/media/.cairndex/library.db`.
+  `/libraries/main/.cairndex/library.db`.
 
 Back up the registry plus every library DB you care about. Generated cache files
 under `.cairndex/cache/` are reproducible and can usually be regenerated, and
@@ -448,7 +492,7 @@ online backup API and integrity-checks it:
 docker exec <container> /app/infra/backup.sh /data/registry.db /data/backups
 
 # Back up a mounted library's portable content metadata.
-docker exec <container> /app/infra/backup.sh /storage/media/.cairndex/library.db /data/backups
+docker exec <container> /app/infra/backup.sh /libraries/main/.cairndex/library.db /data/backups
 
 # Pull the copies off the box.
 docker cp <container>:/data/backups ./backups

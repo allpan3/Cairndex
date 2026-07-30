@@ -178,6 +178,31 @@ compiles is not the same as proving it runs. It also matters less now that the
 NAS pulls a published image rather than building one. That, plus the deployment
 itself, is what this branch leaves to the owner.
 
+**Mount naming, settled on owner challenge (2026-07-30).** The owner, mid-setup
+on the NAS, pushed back on `/storage/media`: the mount can hold several
+libraries, so "media" names the wrong thing. They proposed `/mount`; that names
+the mechanism rather than the contents, and everything in a container arrives by
+mounting. It is `/libraries` now, with one mount per share beneath it, and
+`CAIRNDEX_LIBRARY_PATH` on the host side. The codebase had already settled the
+vocabulary — the entrypoint has called it `CAIRNDEX_LIBRARY_MOUNT` all along —
+so only the path string disagreed.
+
+The reason mounts are *children* of `/libraries` rather than the root itself is
+worth keeping: the registry records each library under the path the container
+saw at registration, so re-pathing a mount orphans everything inside it. A
+deployment that starts with one share must be able to gain a second without
+moving the first. The entrypoint's preflight had to change with it — testing the
+root would warn on every start, since the root is an image directory and the
+container filesystem is read-only. It now warns when nothing is mounted (the
+first-run mistake) and checks each mount separately; all four branches were
+exercised directly.
+
+Cheap to do only because nothing was deployed yet: `/storage/media` appeared in
+no server or web code, purely in compose files, the smoke test, the entrypoint
+default and docs. After a deployment it would have meant re-registering every
+library. ADR-0005 mentions the old path once and was deliberately left alone —
+it records what was decided then.
+
 **Untested here: the publish workflow.** It parses and its actions are pinned,
 but it has never run — dispatching it publishes a real package under the owner's
 account, and the first push creates a **private** package that needs its

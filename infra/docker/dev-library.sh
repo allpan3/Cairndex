@@ -82,4 +82,4 @@ echo
 echo "Next:"
 echo "  1. set CAIRNDEX_DEV_LIBRARY_PATH=$TARGET in .env"
 echo "  2. just docker-dev"
-echo "  3. add the library in the app (root /storage/media), then Update"
+echo "  3. add the library in the app (root /libraries/main), then Update"

@@ -24,15 +24,34 @@ if ! mkdir -p "$data_dir" 2>/dev/null || ! [ -w "$data_dir" ]; then
     exit 1
 fi
 
-# Only a warning: a read-only library is a legitimate way to run Cairndex for
-# browsing alone. But creating or scanning one writes .cairndex/{manifest.json,
-# library.db,cache/} into the root, so this is worth saying once at startup
-# rather than leaving it to be discovered at "create library".
-library_dir="${CAIRNDEX_LIBRARY_MOUNT:-/storage/media}"
-if [ -d "$library_dir" ] && ! [ -w "$library_dir" ]; then
-    echo "WARNING: library mount '$library_dir' is not writable by uid $(id -u)." >&2
-    echo "         Existing libraries can be browsed, but creating or scanning" >&2
-    echo "         one needs to write its .cairndex/ package." >&2
+# Warnings, not failures: a read-only library is a legitimate way to run
+# Cairndex for browsing alone, and an empty root is simply what a container
+# looks like before anyone has mounted a share into it.
+#
+# Every mount is a *child* of the root — /libraries/main, /libraries/archive —
+# and never the root itself. Two reasons, one of which is this check:
+#
+#   * the root is a directory baked into the image, so under `read_only: true`
+#     it is never writable, and testing it would print a warning every start;
+#   * a deployment that starts with one share and later adds a second does not
+#     have to move the first. Moving it would change the path every library is
+#     registered under, and the registry stores that path.
+library_root="${CAIRNDEX_LIBRARY_ROOT:-/libraries}"
+shopt -s nullglob
+library_mounts=("$library_root"/*/)
+if [ ${#library_mounts[@]} -eq 0 ]; then
+    echo "WARNING: nothing is mounted under '$library_root'." >&2
+    echo "         Cairndex can only see files you mount into the container." >&2
+    echo "         Add at least one, e.g. '/your/share:$library_root/main'." >&2
+    echo "         See docs/deployment.md." >&2
+else
+    for mount in "${library_mounts[@]}"; do
+        if ! [ -w "$mount" ]; then
+            echo "WARNING: library mount '${mount%/}' is not writable by uid $(id -u)." >&2
+            echo "         Existing libraries can be browsed, but creating or" >&2
+            echo "         scanning one needs to write its .cairndex/ package." >&2
+        fi
+    done
 fi
 
 # Hand off to the image CMD (uvicorn) as PID 1 so signals propagate cleanly —

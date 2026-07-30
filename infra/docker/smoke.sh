@@ -24,7 +24,7 @@ cleanup() {
     docker volume rm "${CONTAINER}-data" >/dev/null 2>&1 || true
     # The .cairndex/ tree belongs to uid 10001 on the host as well (see
     # in_library below), so this user cannot unlink it. Root in a container can.
-    in_library rm -rf /storage/media/.cairndex >/dev/null 2>&1 || true
+    in_library rm -rf /libraries/main/.cairndex >/dev/null 2>&1 || true
     rm -rf "$LIBRARY_DIR"
 }
 trap cleanup EXIT
@@ -44,7 +44,7 @@ step() { echo "==> $*"; }
 # the checks mean the same thing on both, and matches what the NAS will do.
 in_library() {
     docker run --rm --user 0:0 --entrypoint "$1" \
-        -v "${LIBRARY_DIR}:/storage/media" "$IMAGE" "${@:2}"
+        -v "${LIBRARY_DIR}:/libraries/main" "$IMAGE" "${@:2}"
 }
 
 api() { curl -fsS "http://127.0.0.1:${PORT}/api/v1$1" "${@:2}"; }
@@ -63,7 +63,7 @@ step "starting container (read-only root fs, non-root user)"
 docker run -d --name "$CONTAINER" \
     -p "127.0.0.1:${PORT}:8000" \
     -v "${CONTAINER}-data:/data" \
-    -v "${LIBRARY_DIR}:/storage/media:rw" \
+    -v "${LIBRARY_DIR}:/libraries/main:rw" \
     --read-only --tmpfs /tmp \
     --security-opt no-new-privileges:true \
     "$IMAGE" >/dev/null
@@ -86,9 +86,9 @@ docker exec "$CONTAINER" ffprobe -version >/dev/null 2>&1 || fail "ffprobe missi
 
 step "creating a library on the mounted volume"
 library_id=$(post_json /libraries/create \
-    '{"display_name":"Smoke","root_path":"/storage/media"}' \
+    '{"display_name":"Smoke","root_path":"/libraries/main"}' \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
-in_library test -f /storage/media/.cairndex/library.db \
+in_library test -f /libraries/main/.cairndex/library.db \
     || fail "library package was not written to the mounted volume"
 
 step "generating a real video and scanning it"
@@ -96,7 +96,7 @@ step "generating a real video and scanning it"
 # exercises writing into the library mount as the non-root user.
 docker exec "$CONTAINER" ffmpeg -v error \
     -f lavfi -i testsrc=size=160x120:rate=10:duration=2 \
-    -pix_fmt yuv420p /storage/media/smoke.mp4 || fail "could not write into library mount"
+    -pix_fmt yuv420p /libraries/main/smoke.mp4 || fail "could not write into library mount"
 post_json "/libraries/${library_id}/jobs/scan" '{}' >/dev/null
 
 step "waiting for the scan to surface a bundle"
@@ -116,7 +116,7 @@ has_cover=$(post_json "/libraries/${library_id}/bundles/browse" '{"limit":10,"vi
 
 step "graceful stop releases the ownership lease"
 docker stop --timeout 30 "$CONTAINER" >/dev/null
-lease_json=$(in_library cat /storage/media/.cairndex/locks/active-owner.json 2>/dev/null) \
+lease_json=$(in_library cat /libraries/main/.cairndex/locks/active-owner.json 2>/dev/null) \
     || fail "no ownership lease was ever written"
 python3 -c "
 import json, sys
@@ -126,7 +126,7 @@ if not lease.get('released_at'):
 " <<<"$lease_json" || fail "lease not released — a restart would be blocked until it ages out"
 
 # A clean shutdown folds the WAL back in, so the library should be one file.
-if in_library test -f /storage/media/.cairndex/library.db-wal; then
+if in_library test -f /libraries/main/.cairndex/library.db-wal; then
     fail "WAL left behind after clean shutdown (checkpoint did not run)"
 fi
 

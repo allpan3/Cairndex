@@ -57,11 +57,38 @@ docker compose up -d
 
 ## First run
 
-Open `http://<nas>:8000`, create or register the library at `/storage/media` in
-the app's library manager, and run **Update** to scan it.
+Open `http://<nas>:8000`, add a library in the app's library manager, and run
+**Update** to scan it.
 
-The path you register is the one *inside* the container — `/storage/media` —
-not the host path you put in the compose file.
+**The path you type is the one *inside* the container.** If you mounted
+`/volume1/media` at `/libraries/main`, then the folder you think of as
+`/volume1/media/films` is `/libraries/main/films` to the app. Type the host path
+and you get "root path does not exist" — accurate, from where the app is
+standing.
+
+## Mounts and libraries
+
+A mount is a **share**. A library is a folder Cairndex indexes. They are not the
+same thing, and the compose file lists the first, not the second.
+
+**One mount holds as many libraries as you like.** With `/volume1/media` mounted,
+`/libraries/main/films` and `/libraries/main/photos` can each be a separate
+library, added whenever you feel like it, live — no compose change, no restart.
+Creating one even makes the folder if it is not there yet.
+
+**You edit compose only when files live somewhere the container cannot see** —
+a different volume or share. Then you add a sibling mount:
+
+```yaml
+- "/volume1/media:/libraries/main:rw"
+- "/volume2/archive:/libraries/archive:rw"
+```
+
+**Add mounts beside each other; never re-path one that is in use.** The registry
+records each library under the path the container saw when it was registered, so
+moving a mount orphans everything inside it and you have to register it all
+again. That is why mounts hang under `/libraries` rather than being `/libraries`
+— starting with one share and adding a second later costs nothing.
 
 ## Permissions — read this before the first run
 

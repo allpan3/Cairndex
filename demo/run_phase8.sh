@@ -20,7 +20,7 @@ cd "$REPO_ROOT"
 COMPOSE=(docker compose -f docker-compose.prod.yml)
 # No real media for the demo; mount the repo as a harmless read-only placeholder
 # so compose has a valid bind source. Bind to localhost only.
-export MEDIA_HOST_PATH="$REPO_ROOT"
+export CAIRNDEX_LIBRARY_PATH="$REPO_ROOT"
 export CAIRNDEX_BIND_ADDR=127.0.0.1
 export CAIRNDEX_PORT=8000
 

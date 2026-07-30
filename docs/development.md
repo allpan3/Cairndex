@@ -627,7 +627,7 @@ hot-updates the browser.
   fails at the first scan, since probing, thumbnails, storyboards, subtitle
   conversion, and HLS all shell out to them.
 - **A library is mounted.** `CAIRNDEX_DEV_LIBRARY_PATH` is bind-mounted at
-  `/storage/media`; without a mount there is nothing to point the app at.
+  `/libraries/main`; without a mount there is nothing to point the app at.
 - **Registry state survives a rebuild**, in the `cairndex-dev-data` volume.
 - **Reload is scoped to `src`.** A bare `--reload` watches the whole
   bind-mount, which on a developer machine includes `.venv` (tens of thousands

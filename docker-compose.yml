@@ -40,7 +40,7 @@ services:
       # The library to work against. Point this at a scratch library, not one a
       # desktop app or the native dev server is also serving — one server per
       # library at a time (ADR-0018). `just docker-dev-library` seeds one.
-      - "${CAIRNDEX_DEV_LIBRARY_PATH:-./var/docker-library}:/storage/media:rw"
+      - "${CAIRNDEX_DEV_LIBRARY_PATH:-./var/docker-library}:/libraries/main:rw"
     # The shutdown path releases library leases, checkpoints each WAL, and folds
     # it back into library.db. A SIGKILL part-way through leaves the lease behind
     # for another five minutes (CAIRNDEX_LEASE_TTL). Measured at ~0.5s on a small
