@@ -258,6 +258,15 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """
     observations = _proposal_observations(session, list(proposal.files))
     groups = split_for_collection(observations)
+    if len(groups) < 2:
+        # A collection of one identical bundle adds no structure, and since that
+        # child is itself convertible it let the owner nest collections without
+        # limit (owner-reported, 2026-07-30). The client hides the control on
+        # such a row; this is the backstop.
+        raise ValidationError(
+            "this suggestion holds a single item, so there is nothing to divide "
+            "into a collection of bundles"
+        )
 
     for order, group in enumerate(groups):
         ordered = _media_first(group)
@@ -413,6 +422,30 @@ def set_directory_stem_mode(
 
     existing = [p for p in plan.proposals if p.directory == directory]
     existing_ids = {p.id for p in existing}
+
+    # A splice must never lose a file. Every file the replaced rows hold has to
+    # end up somewhere: still claimed by a surviving row, or carried by one of
+    # the fresh ones. Anything else would silently drop it out of the plan, and
+    # an unproposed file is one the owner can no longer bundle from here.
+    #
+    # This is reachable whenever a row's ``directory`` is a folder the suggester
+    # does not propose bundles for — which is exactly what a hand-merged
+    # cross-directory bundle looks like: merging a collection whose bundles live
+    # in subfolders leaves one row whose ``directory`` is the parent, while the
+    # suggester still proposes only a container there. The client no longer
+    # offers a stem control on such a row (see ``bundleDirectories`` in
+    # GroupingReview.tsx); this refuses it rather than trusting that.
+    survivor_files = {
+        pf.asset_file_id for p in plan.proposals if p.id not in existing_ids for pf in p.files
+    }
+    fresh_files = {pf.asset_file_id for p in fresh for pf in p.files}
+    dropped = {pf.asset_file_id for p in existing for pf in p.files} - survivor_files - fresh_files
+    if dropped:
+        raise ValidationError(
+            f"adjusting stem matching for {directory or 'the library root'!r} would drop "
+            f"{len(dropped)} file(s) from the plan; it applies to a folder's own media files, "
+            "and this suggestion holds files from elsewhere"
+        )
     # Where the folder sat in the review list, so the fresh rows take its place
     # rather than jumping to the bottom.
     insert_at = min(

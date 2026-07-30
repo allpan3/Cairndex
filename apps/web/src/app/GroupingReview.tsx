@@ -19,6 +19,7 @@ import {
   useSetGroupingProposalKind,
   useSetGroupingStemMode,
 } from '../api/hooks'
+import { formatFileRole } from '../lib/format'
 import { IconChevronsIn, IconChevronsOut, IconGroup, IconRefreshCw, IconUngroup } from './icons'
 
 /**
@@ -31,18 +32,26 @@ import { IconChevronsIn, IconChevronsOut, IconGroup, IconRefreshCw, IconUngroup 
  * and links subtitles; nothing on disk is touched. Conflicts (files that moved,
  * vanished, or were already grouped by hand) are reported, not silently forced.
  */
-const ROLE_LABEL: Record<string, string> = {
+/** The coarse media kind behind a suggester-assigned role.
+ *
+ * The review rows deliberately do **not** show the in-bundle role itself. The
+ * suggester assigns roles by guessing intent from filenames — the first image
+ * becomes `cover`, a second video `alternate_version` — and those guesses are
+ * neither reliable nor (yet) editable, so labelling a row "alt version" invites
+ * a guess to be read as a fact. `lib/format.ts` made that call for the
+ * inspector; this keeps the review dialog speaking the same vocabulary
+ * (video / image / subtitle), and falls back to the extension for roles that
+ * carry no kind, exactly as `formatFileRole` does.
+ */
+const ROLE_MEDIA_KIND: Record<string, string> = {
   primary_video: 'video',
-  video_part: 'video part',
-  alternate_version: 'alt version',
-  cover: 'cover',
+  video_part: 'video',
+  alternate_version: 'video',
+  cover: 'image',
   image: 'image',
-  screenshot: 'screenshot',
+  screenshot: 'image',
   album_image: 'image',
   subtitle: 'subtitle',
-  attachment: 'file',
-  generated_derivative: 'derivative',
-  other: 'file',
 }
 
 function baseName(path: string): string {
@@ -164,12 +173,27 @@ function collectKeys(nodes: TreeNode[]): Map<string, string> {
   return keys
 }
 
-/** Collect every bundle directory represented below one review node. */
+/** The folder one file lives in, from its library-relative path. */
+function fileDirectory(relativePath: string): string {
+  const slash = relativePath.lastIndexOf('/')
+  return slash === -1 ? '' : relativePath.slice(0, slash)
+}
+
+/** Every folder whose files are represented below one review node.
+ *
+ * Derived from the files' own paths, deliberately not from `proposal.directory`.
+ * Those agree for a suggested row, but not after the owner restructures: merging
+ * a collection into one bundle leaves a row whose `directory` is the parent
+ * folder while its files come from subfolders. Keying off `directory` there put
+ * a stem control on a folder with no direct media of its own — a control that
+ * could not narrow or widen anything, and whose one job (re-suggest this folder)
+ * would delete the merged row and propose nothing in its place.
+ */
 function bundleDirectories(node: TreeNode, cache: Map<string, Set<string>>): Set<string> {
   const cached = cache.get(node.proposal.id)
   if (cached) return cached
   const directories = new Set<string>()
-  if (node.proposal.kind === 'bundle') directories.add(node.proposal.directory)
+  for (const file of node.proposal.files) directories.add(fileDirectory(file.relative_path))
   for (const child of node.children) {
     for (const directory of bundleDirectories(child, cache)) directories.add(directory)
   }
@@ -205,7 +229,11 @@ function stemControlOwners(nodes: TreeNode[]): Map<string, string> {
     claimed.add(directory)
   }
   for (const node of bundles) {
-    const directory = node.proposal.directory
+    // A bundle speaks for a folder only when all of its files live in that one
+    // folder; a hand-merged row spanning several gets no control (see above).
+    const directories = [...bundleDirectories(node, directoryCache)]
+    if (directories.length !== 1) continue
+    const directory = directories[0]!
     if (claimed.has(directory)) continue
     owners.set(node.proposal.id, directory)
     claimed.add(directory)
@@ -282,6 +310,27 @@ function canConvertKind(proposal: GroupingProposal): boolean {
   return !(proposal.target_bundle_id !== null && !proposal.create_new_bundle)
 }
 
+/** Whether turning this bundle into a collection would actually divide it.
+ *
+ * Mirrors `suggester.split_for_collection`, which is the authority (the server
+ * refuses a pointless conversion regardless). Duplicated here only to decide
+ * whether to *offer* the control: without it, a single-item row got a button
+ * that wrapped it in a collection of one identical bundle — and since that child
+ * was itself convertible, the owner could nest collections forever
+ * (owner-reported, 2026-07-30).
+ *
+ * Two or more videos divide per video, sidecars following their own. No videos
+ * divides per file (a photo dump). Exactly one video is one subject however many
+ * sidecars it has, so it does not divide at all.
+ */
+function canBecomeCollection(proposal: GroupingProposal): boolean {
+  const videos = proposal.files.filter(
+    (file) => ROLE_MEDIA_KIND[file.proposed_role] === 'video',
+  ).length
+  if (videos >= 2) return true
+  return videos === 0 && proposal.files.length >= 2
+}
+
 function kindActionLabel(proposal: GroupingProposal): string {
   return proposal.kind === 'bundle'
     ? 'Make this a collection of bundles instead'
@@ -316,19 +365,28 @@ const STEM_MODES: GroupingStemMode[] = ['narrow', 'balanced', 'wide']
 
 /** Render one-step narrower/wider controls for a represented folder.
  *
- * Compact icon buttons in the same shape as the destination and kind toggles
- * (owner feedback: the text buttons dominated every row). Inward chevrons
- * narrow — more of each filename, more bundles; outward chevrons widen. The
- * current mode stays as a small text label between them, since an icon alone
- * cannot show a three-state value.
+ * These belong to a **folder**, not to the row they sit on. Exactly one pair is
+ * placed per folder (``stemControlOwners``), on whichever row speaks for it —
+ * which is a collection row when the folder became a collection and a bundle row
+ * when it became one bundle. That made it look like two different controls
+ * (owner-reported, 2026-07-30), so the tooltips name the folder and say what
+ * will happen to it in plain terms rather than talking about "stem matching".
+ *
+ * Two compact icon buttons in the same shape as the destination and kind
+ * toggles. The current mode is named in each tooltip rather than printed between
+ * them: a third piece of text per folder row was more clutter than the
+ * three-state value was worth, and the buttons already disable at the ends.
  */
 function StemModeControls({ directory, stem }: { directory: string; stem: StemControls }) {
   const current = stem.modes[directory] ?? 'balanced'
   const index = STEM_MODES.indexOf(current)
   const label = directory || 'library root'
   const change = (delta: -1 | 1) => stem.set(directory, STEM_MODES[index + delta]!)
-  const narrowTip = `Narrow stem matching in ${label}: use more of each filename, splitting into more bundles`
-  const widenTip = `Widen stem matching in ${label}: use a broader filename prefix, merging into fewer bundles`
+  // "Folder X:" leads both, because the pair applies to the folder rather than to
+  // the bundle or collection row it happens to be attached to.
+  const scope = `Folder ${label} (matching: ${current})`
+  const narrowTip = `${scope} — split into more bundles by matching more of each filename`
+  const widenTip = `${scope} — merge into fewer bundles by matching a shorter filename prefix`
   return (
     <span className="grp-stem" aria-label={`Stem matching for ${label}`}>
       <button
@@ -341,7 +399,6 @@ function StemModeControls({ directory, stem }: { directory: string; stem: StemCo
       >
         <IconChevronsIn />
       </button>
-      <span className="grp-stem__mode">{current}</span>
       <button
         type="button"
         className="grp-destination tip"
@@ -585,7 +642,9 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
-          {canConvertKind(proposal) && hasItems && <KindToggle proposal={proposal} kind={kind} />}
+          {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal) && (
+            <KindToggle proposal={proposal} kind={kind} />
+          )}
           {stemOwners.has(proposal.id) && (
             <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
           )}
@@ -666,7 +725,9 @@ function ProposalNode({
               </button>
             )}
             <span className="grp-file__name">{baseName(f.relative_path)}</span>
-            <span className="grp-file__role">{ROLE_LABEL[f.proposed_role] ?? f.proposed_role}</span>
+            <span className="grp-file__role">
+              {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
+            </span>
           </li>
         ))}
       </ul>
@@ -1023,16 +1084,23 @@ export function GroupingReview({
         </div>
 
         <div className="modal__body grp-body">
+          {/* Deliberately short. The paragraph this replaced documented every
+              affordance in the dialog, which put a wall of prose above the thing
+              the owner came to read (owner-reported, 2026-07-29). Each control
+              now carries its own tooltip, so only what a row cannot say for
+              itself is left: what is in scope, what Accept does, and the safety
+              guarantee. */}
           <p className="grp-intro">
-            Suggestions cover still-unbundled files and new additions. Review the proposed bundles
-            and collections, drag files between bundles or bundles into collections, then accept
-            only the checked items. Every suggestion has a control to turn it into a collection of
-            bundles or back into one bundle. Use Narrow or Widen beside a folder to re-suggest just
-            that folder with stricter or broader filename stems. Double-click either title to rename
-            it. Newly confirmed bundles join their selected parent collection; existing confirmed
-            bundles stay untouched unless a reviewed addition targets them. Suggestions reflect the
-            latest scan; run Scan new files after changing the filesystem. Nothing on disk changes.
+            Proposed grouping for unbundled files and new additions.{' '}
+            <strong>Nothing on disk changes.</strong>
           </p>
+          <ul className="grp-intro-points">
+            <li>Accept applies only the checked rows.</li>
+            <li>
+              Drag files between bundles, or bundles into collections; double-click to rename.
+            </li>
+            <li>Reflects the last scan — run Scan new files if the folder changed since.</li>
+          </ul>
 
           {error && <div className="grp-error">{error.message}</div>}
           {renameError && <div className="grp-error">{renameError}</div>}
