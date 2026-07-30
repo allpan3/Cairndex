@@ -543,9 +543,7 @@ def test_addition_sits_inside_the_collection_its_folder_becomes() -> None:
         bundle_title="StudioAlpha - Lead Player - #1",
     )
     # A sidecar for the confirmed bundle -> an addition to it.
-    addition = _f(
-        "Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.srt", MediaKind.SUBTITLE
-    )
+    addition = _f("Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.srt", MediaKind.SUBTITLE)
     # Two unrelated subjects in the same folder, so the folder is a collection.
     others = [
         _f("Studios/StudioAlpha/Alpha.Title.mp4", MediaKind.VIDEO),
@@ -554,9 +552,7 @@ def test_addition_sits_inside_the_collection_its_folder_becomes() -> None:
 
     plan = suggest_grouping([confirmed, addition, *others])
 
-    container = next(
-        p for p in _containers(plan.proposals) if p.directory == "Studios/StudioAlpha"
-    )
+    container = next(p for p in _containers(plan.proposals) if p.directory == "Studios/StudioAlpha")
     added = next(p for p in plan.proposals if p.target_bundle_id == "bundle-1")
     assert added.parent_directory == container.directory
 
