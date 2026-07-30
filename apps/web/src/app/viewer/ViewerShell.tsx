@@ -57,10 +57,13 @@ const MAX_NATIVE_RECOVER = 3
 // retryable "Playback interrupted" card instead of a dead player.
 const LOAD_WATCHDOG_MS = 15_000
 
-/** Bundle-cover actions the owning surface supplies, when it has a bundle. */
+/** Cover-frame actions the owning surface supplies, when the item is indexed. */
 export interface ShellCoverActions {
-  /** Set the bundle cover to the frame at this playhead offset. */
+  /** Use the frame at this playhead offset as *this file's* cover thumbnail.
+   *  It does not decide which member represents the bundle — that is the file
+   *  list's own affordance (owner, 2026-07-30). */
   onUseFrame: (time: number) => void
+  /** Return this file's thumbnail to an automatically extracted frame. */
   onClear: () => void
 }
 
@@ -584,11 +587,17 @@ export function ViewerShell({
       )
       if (coverActions) {
         entries.push(
-          { label: 'Set Frame as Cover', onClick: coverActions.onUse },
+          // "Video", not "cover", because this sets the thumbnail of the file
+          // being watched and nothing else. It used to promote that file to the
+          // bundle's cover as well, which made choosing a nicer frame for one
+          // video quietly re-pick what represented the whole bundle (owner,
+          // 2026-07-30). That promotion is its own step — the star beside each
+          // row in the inspector's file list, which is docked right here.
+          { label: 'Set Frame as Video Cover', onClick: coverActions.onUse },
           {
             // Its only home now that the settings menu dropped the cover group —
-            // without it, a chosen cover could be set but never undone.
-            label: 'Reset Cover to Default',
+            // without it, a chosen frame could be set but never undone.
+            label: 'Reset Video Cover to Default',
             disabled: !coverActions.hasCoverFrame,
             onClick: coverActions.onClear,
           },
