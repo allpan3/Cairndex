@@ -154,6 +154,43 @@ def test_rating_out_of_range_rejected_by_schema(client: TestClient, library_id: 
     assert resp.status_code == 422
 
 
+# --- Half-star ratings (domain/rating.py) ------------------------------------
+def test_half_star_rating_roundtrips(client: TestClient, library_id: str) -> None:
+    """A half star round-trips through the API. Compatibility with the column
+    shape an older library actually has is covered in ``test_rating_scale.py``."""
+    base = f"/api/v1/libraries/{library_id}"
+    created = client.post(f"{base}/bundles", json={"rating": 3.5}).json()
+    assert created["rating"] == 3.5
+    assert client.get(f"{base}/bundles/{created['id']}").json()["rating"] == 3.5
+
+    patched = client.patch(f"{base}/bundles/{created['id']}", json={"rating": 0.5}).json()
+    assert patched["rating"] == 0.5
+
+
+def test_whole_star_rating_still_reads_back_as_a_whole_number(
+    client: TestClient, library_id: str
+) -> None:
+    """SQLite stores 4.0 as INTEGER 4 — a saved ``rating = 4`` filter must still hit."""
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={"rating": 4}).json()["id"]
+    assert client.get(f"{base}/bundles/{bundle_id}").json()["rating"] == 4
+
+
+def test_rating_off_the_half_star_grid_is_rejected(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]
+    assert client.patch(f"{base}/bundles/{bundle_id}", json={"rating": 3.3}).status_code == 422
+    assert client.post(f"{base}/bundles", json={"rating": 2.25}).status_code == 422
+
+
+def test_rating_can_be_cleared(client: TestClient, library_id: str) -> None:
+    base = f"/api/v1/libraries/{library_id}"
+    bundle_id = client.post(f"{base}/bundles", json={"rating": 2.5}).json()["id"]
+    assert (
+        client.patch(f"{base}/bundles/{bundle_id}", json={"rating": None}).json()["rating"] is None
+    )
+
+
 def test_set_tags_rejects_unknown_id(client: TestClient, library_id: str) -> None:
     base = f"/api/v1/libraries/{library_id}"
     bundle_id = client.post(f"{base}/bundles", json={}).json()["id"]

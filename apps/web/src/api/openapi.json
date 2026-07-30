@@ -559,7 +559,7 @@
               {
                 "maximum": 5.0,
                 "minimum": 0.0,
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
@@ -699,7 +699,7 @@
           "rating": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
@@ -896,7 +896,7 @@
           "rating": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
@@ -1138,7 +1138,7 @@
               {
                 "maximum": 5.0,
                 "minimum": 0.0,
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"
@@ -1546,7 +1546,7 @@
           "rating": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "number"
               },
               {
                 "type": "null"

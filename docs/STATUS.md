@@ -44,6 +44,95 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: half-star ratings (2026-07-28)
+**Owner test, 2026-07-30 — a half star could not be set in the desktop shell.**
+Clicking a star did nothing at all. `setPointerCapture` retargets *every* later
+event of the gesture to the capturing element, the click included, so taking it on
+`pointerdown` meant the half button's own `onClick` could never fire — picking had
+to be reconstructed from the release and the click swallowed to stop it
+double-firing. Chromium happens to make that work; the shell did not.
+
+Capture is now taken on the first move that changes value, the moment the gesture
+is a sweep and the only thing that needs it. A press-and-release never captures, so
+its click reaches the button, and a `<button>` click is the portable path. A second
+defect surfaced while measuring: `suppressClick` could be left set (a sweep
+released outside the row dispatches no trailing click to consume it) and then
+silently swallowed the next pick for good; it is cleared when a fresh gesture
+starts.
+
+Verified with a real mouse against the server rather than the optimistic UI — a
+click on "3½ stars" stores 3.5, a sweep from "1 star" to "4½ stars" stores 4.5.
+**Not verified on WebKit**, which cannot be driven from here; the fix removes the
+dependency on capture semantics rather than patching a quirk, which is the reason
+to expect it to hold there.
+
+
+Branch `feat/half-star-ratings`, off `main` at `ae44ef4`. Owner-requested:
+ratings go to half-star granularity.
+
+**The design decision worth recording.** A rating is stored as a **number of
+stars** (`3.5`), not a count of half-star units (`7`). The obvious alternative —
+rescaling the column to 0–10 — would have required rewriting stored values *and*
+every rating literal inside saved Smart Collections' `filter_json`, plus
+rebuilding `asset_bundles` to widen its `CHECK (rating >= 0 AND rating <= 5)`,
+because SQLite cannot alter a constraint in place and there is no migration
+chain here (library DBs are bootstrapped by `create_all` and patched additively
+on open). Storing stars needs none of that: the range CHECK still holds, whole
+stars keep their meaning, saved filters keep theirs, and libraries move freely
+between this version and the previous one in both directions.
+
+It works because SQLite is dynamically typed: on a pre-half-star library the
+column is declared `INTEGER`, and INTEGER affinity narrows a REAL only when the
+conversion is lossless — so `3.5` stores as REAL, `4.0` as INTEGER `4`, and the
+two storage classes compare, sort, and group numerically. Half steps are exact
+in binary floating point, so equality never misses. `tests/test_rating_scale.py`
+pins this against the *old* DDL rather than the current model, since the current
+model is not what an existing library has.
+
+Two consequences that needed handling rather than assuming:
+
+- **Facet keys are formatted, not stringified** (`domain.rating.rating_facet_key`),
+  because the same column returns an int for `4` and a float for `3.5`. Whole
+  stars keep the `"4"` key clients already used.
+- **The step is enforced above the database** (bundle service + write schemas),
+  since an existing CHECK covers only the range. `3.3` is a 422.
+
+**UI.** One half-star primitive in `Stars.tsx` serves all four surfaces; the
+inspector's editor moved there from `Inspector.tsx` so the geometry exists once.
+A star is a muted ★ with a gold ★ clipped over it to 0/50/100% — the same glyph
+in both layers, so the clip lands on the true midpoint in any font, which an
+outline-☆ base would not guarantee. Two transparent half-width buttons per star,
+exposed as ten radios (`½ stars` … `5 stars`). The filter popover's per-star
+count now follows the hovered half, so it always answers "how many would
+clicking here match?" — with nothing hovered it shows the whole-star count, which
+is what it showed before.
+
+**Usability round (owner feedback, 2026-07-29).** "Does not seem to work" was
+most likely a stale build — this branch is unmerged, so a dev server or desktop
+app running `main` still shows whole stars; re-verified here with *coordinate*
+clicks against a real backend (left half of star 4 → PATCH stored `3.5`).
+Reworked regardless: glyphs enlarged (20→26px popover, 17→22px inspector) with
+tighter spacing; **drag-to-rate** (press anywhere on the row, sweep, commit on
+release — pointer capture keeps the sweep alive outside the row, and the
+synthetic click after a gesture is swallowed so a drag ending on a half button
+does not double-fire or toggle-clear); and a reserved-width text hint names the
+hovered/swept value ("3½ stars"). A sweep ending on the current value writes
+nothing; only a click on the current value clears. Verified in-browser: click →
+3.5, drag star 1→4½ → 4.5 stored, hint visible while hovering.
+
+**Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
+(867 passed); web `lint`, `format:check`, `typecheck`, `test` (472 passed),
+`build`; rating e2e specs (16 passed). Verified visually in a real browser at 4×
+scale: the half fill and the hover-swapped facet count both behave.
+
+**One pre-existing failure, not from this branch.** The e2e test
+`transparently re-attaches a fresh session when HLS segments fail`
+(`e2e/player.spec.ts:2230`) fails on `main` too — confirmed against a clean
+worktree at `66f4b65`, in isolation as well as in the full suite, so it is
+neither flake nor cross-test interference. Only the initial playback decision is
+recorded where the test expects a re-attach. Untouched here; it belongs to the
+ADR-0014 HLS session path.
+
 ## Merged: grouping review round trips (2026-07-30)
 
 Branch `perf/grouping-plan-round-trips`, off `main` at `17e3efc`, merged

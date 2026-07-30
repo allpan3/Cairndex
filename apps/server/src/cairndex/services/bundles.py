@@ -22,6 +22,7 @@ from cairndex.core.paths import (
 )
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
+from cairndex.domain.rating import RATING_MAX, RATING_MIN, RATING_STEP, is_valid_rating
 from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import (
@@ -32,7 +33,6 @@ from cairndex.persistence.models import (
 )
 from cairndex.services.pagination import keyset_page
 
-_RATING_MIN, _RATING_MAX = 0, 5
 _BUNDLE_SCALAR_FIELDS = {"title"}
 # Guardrail against an abusive/accidental payload; the inspector never nears it.
 _MAX_NOTES = 50
@@ -91,7 +91,7 @@ def create_bundle(
     *,
     title: str | None = None,
     notes: list[str] | None = None,
-    rating: int | None = None,
+    rating: float | None = None,
 ) -> AssetBundle:
     _validate_rating(rating)
     # A manually created bundle is a direct user grouping decision, so it is
@@ -374,9 +374,11 @@ def batch_update_bundles(
 
 
 # --- helpers -----------------------------------------------------------------
-def _validate_rating(rating: int | None) -> None:
-    if rating is not None and not (_RATING_MIN <= rating <= _RATING_MAX):
-        raise ValidationError(f"rating must be between {_RATING_MIN} and {_RATING_MAX}")
+def _validate_rating(rating: float | None) -> None:
+    if rating is not None and not is_valid_rating(rating):
+        raise ValidationError(
+            f"rating must be between {RATING_MIN:g} and {RATING_MAX:g} in steps of {RATING_STEP:g}"
+        )
 
 
 def _validate_member_file(session: Session, bundle: AssetBundle, file_id: str | None) -> str | None:
