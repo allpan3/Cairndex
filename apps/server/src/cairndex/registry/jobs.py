@@ -99,7 +99,13 @@ def claim_next_queued(session: Session) -> JobQueueEntry | None:
     """Atomically move the oldest queued job to RUNNING and return it."""
     stmt = (
         select(JobQueueEntry)
-        .where(JobQueueEntry.status == JobStatus.QUEUED)
+        .where(
+            JobQueueEntry.status == JobStatus.QUEUED,
+            # Belt and braces: a cancelled queue entry is closed out where it is
+            # cancelled, so this should never match. Starting work someone has
+            # already asked to stop is the one outcome worth two guards.
+            JobQueueEntry.cancel_requested.is_(False),
+        )
         .order_by(JobQueueEntry.id)
         .limit(1)
     )
@@ -153,12 +159,54 @@ def update_progress(
     session.flush()
 
 
+# Close out a queued job that will now never run
+def _cancel_before_start(job: JobQueueEntry, message: str) -> None:
+    # Cancellation of a *running* job is cooperative: the handler notices at its
+    # next checkpoint. A queued job has no handler to notice, so flagging it and
+    # walking away would leave it sitting in the queue until a worker started
+    # the very work the user asked to stop. It ends here instead.
+    job.cancel_requested = True
+    job.status = JobStatus.CANCELLED
+    job.phase = None
+    job.message = message
+    job.finished_at = utcnow()
+
+
 def request_cancel(session: Session, job_id: str) -> JobQueueEntry:
     job = get_job(session, job_id)
-    if job.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+    if job.status == JobStatus.QUEUED:
+        _cancel_before_start(job, "cancelled before it started")
+        session.flush()
+    elif job.status == JobStatus.RUNNING:
         job.cancel_requested = True
         session.flush()
     return job
+
+
+def fail_interrupted_jobs(session: Session) -> int:
+    """Close out jobs a previous process left RUNNING. Returns how many.
+
+    The registry is server-local and its worker runs in-process, so a RUNNING
+    row at startup cannot belong to anything alive — whatever was executing it
+    is gone. Left alone such a row is worse than untidy: it shows as work in
+    progress forever, cancelling it does nothing because nobody is watching the
+    flag, and it does not even suppress a duplicate, since dedupe matches
+    QUEUED. A `--reload` restart during development produces one every time.
+
+    Recorded as FAILED rather than CANCELLED because nobody asked for it to
+    stop; the error says what happened. Re-running is the caller's call — the
+    library-wide jobs all skip work that is already current, so a rerun costs
+    only what was actually lost.
+    """
+    stmt = select(JobQueueEntry).where(JobQueueEntry.status == JobStatus.RUNNING)
+    interrupted = list(session.scalars(stmt))
+    for job in interrupted:
+        job.status = JobStatus.FAILED
+        job.phase = None
+        job.error = "interrupted: the server stopped while this job was running"
+        job.finished_at = utcnow()
+    session.flush()
+    return len(interrupted)
 
 
 def request_cancel_for_library(session: Session, library_id: str) -> int:
@@ -176,7 +224,10 @@ def request_cancel_for_library(session: Session, library_id: str) -> int:
     )
     flagged = 0
     for job in session.scalars(stmt):
-        job.cancel_requested = True
+        if job.status == JobStatus.QUEUED:
+            _cancel_before_start(job, "stopped: another server took over this library")
+        else:
+            job.cancel_requested = True
         flagged += 1
     if flagged:
         session.flush()

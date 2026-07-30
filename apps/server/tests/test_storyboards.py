@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.core.abort import OperationAborted
 from cairndex.core.config import get_settings
 from cairndex.domain.enums import FileRole, JobStatus, JobType, MediaKind
 from cairndex.jobs.worker import execute_job
@@ -584,3 +585,45 @@ def test_storyboard_job_honors_cancellation(
     )
 
     assert status == JobStatus.CANCELLED
+
+
+def test_a_stopped_generation_leaves_no_half_built_directory(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+
+    def stopped_pass(
+        _source: Path, output_dir: Path, _interval: float, _duration: float, **_kwargs: object
+    ) -> list[float]:
+        (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
+        raise OperationAborted("ffmpeg stopped")
+
+    monkeypatch.setattr(storyboards, "_generate_sheets", stopped_pass)
+    with pytest.raises(OperationAborted):
+        storyboards.generate_for_file(session, asset_file.id)
+
+    # A stop is not a failure, so it does not unwind through the failure path —
+    # which is exactly how interrupted runs used to leave temp dirs behind.
+    cache_dir = storyboards.storyboard_cache_dir(library_root, asset_file.id)
+    assert list(cache_dir.parent.glob("*.tmp-*")) == []
+
+
+def test_library_pass_sweeps_what_an_interrupted_run_left_behind(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+    monkeypatch.setattr(storyboards, "_generate_sheets", _fake_generate_sheets)
+    cache_dir = storyboards.storyboard_cache_dir(library_root, asset_file.id)
+    cache_dir.parent.mkdir(parents=True, exist_ok=True)
+    stray = cache_dir.parent / f"{cache_dir.name}.tmp-9f3c1a"
+    stray.mkdir()
+    (stray / "sb_001.jpg").write_bytes(_jpeg_bytes())
+    interrupted_swap = cache_dir.parent / f"{cache_dir.name}.old"
+    interrupted_swap.mkdir()
+
+    summary = storyboards.generate_for_library(session)
+
+    assert not stray.exists()
+    assert not interrupted_swap.exists()
+    assert summary.generated == 1
+    assert (cache_dir / "index.vtt").exists()

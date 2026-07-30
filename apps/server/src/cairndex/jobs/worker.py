@@ -11,6 +11,7 @@ polls for cancellation through ``JobContext``; raising ``JobCancelled`` unwinds
 cleanly to a CANCELLED terminal state.
 """
 
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -19,6 +20,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from cairndex.core.abort import OperationAborted, abort_scope
 from cairndex.core.errors import LibraryLeaseError
 from cairndex.domain.enums import JobPhase, JobStatus, JobType, LibraryStatus
 from cairndex.jobs.errors import safe_error_message
@@ -27,11 +29,17 @@ from cairndex.registry import jobs as job_service
 from cairndex.registry import services as registry_service
 from cairndex.registry.library_engine import get_library_sessionmaker
 
+logger = logging.getLogger(__name__)
+
 # Minimum seconds between registry progress writes on the hot checkpoint path.
 # A huge scan checkpoints every batch; without throttling that is one registry
 # commit per batch. Phase changes and progress completion bypass the throttle so
 # the UI never misses a transition or stalls at "almost done".
 _PROGRESS_MIN_INTERVAL = 0.5
+
+# Minimum seconds between registry reads of the cancel flag on the abort path,
+# which is polled from inside external work rather than at checkpoints.
+_STOP_CHECK_INTERVAL = 0.5
 
 
 class JobCancelled(Exception):
@@ -93,6 +101,8 @@ class JobContext:
         # throttle. It is a one-time event per phase, not the chatter the
         # throttle exists to suppress.
         self._last_total: int | None = None
+        self._last_stop_check = 0.0
+        self._stop_requested = False
 
     def set_phase(self, phase: JobPhase, message: str | None = None) -> None:
         """Move to a new phase, write it immediately, and honour cancellation.
@@ -195,6 +205,24 @@ class JobContext:
             self._last_total = total
         self._raise_if_cancelled()
 
+    def stop_requested(self) -> bool:
+        """Whether this job should stop now, as a question rather than a raise.
+
+        This is what long external work polls through ``core/abort``, so unlike
+        the checkpoint path it must not raise (the raise happens where the work
+        unwinds) and must be cheap to call often: the answer is cached for
+        ``_STOP_CHECK_INTERVAL`` so a 250 ms poll is not a registry read every
+        250 ms.
+        """
+        now = time.monotonic()
+        if (now - self._last_stop_check) < _STOP_CHECK_INTERVAL:
+            return self._stop_requested
+        self._last_stop_check = now
+        self._stop_requested = not self._owns_library() or job_service.is_cancel_requested(
+            self.registry_session, self.job_id
+        )
+        return self._stop_requested
+
     def _raise_if_cancelled(self) -> None:
         # Ownership first: it is a local lookup, and if we no longer own the
         # library the very next thing this job would do is write to a library
@@ -271,7 +299,11 @@ def execute_job(
                 owns_library=lambda: lease_manager.holds(library.id, library_root),
             )
             try:
-                result = handler(ctx)
+                # Long external steps (an ffmpeg pass over a network-mounted
+                # file) observe this and stop where they are, instead of a
+                # cancel waiting for the next checkpoint behind them.
+                with abort_scope(ctx.stop_requested):
+                    result = handler(ctx)
                 content.commit()
                 job_service.mark_finished(
                     reg, job_id, status=JobStatus.SUCCEEDED, result=result or {}
@@ -288,9 +320,22 @@ def execute_job(
                 )
                 reg.commit()
                 return JobStatus.CANCELLED
-            except JobCancelled:
+            except (JobCancelled, OperationAborted) as exc:
                 content.rollback()
-                job_service.mark_finished(reg, job_id, status=JobStatus.CANCELLED)
+                # An abort raised from inside external work never passed through
+                # `_raise_if_cancelled`, so it cannot say *why* it stopped. Ask
+                # the lease, rather than reporting a takeover as a user's cancel.
+                took_over = isinstance(exc, OperationAborted) and not lease_manager.holds(
+                    library.id, library_root
+                )
+                job_service.mark_finished(
+                    reg,
+                    job_id,
+                    status=JobStatus.CANCELLED,
+                    message=(
+                        "stopped: another server took over this library" if took_over else None
+                    ),
+                )
                 reg.commit()
                 return JobStatus.CANCELLED
             except Exception as exc:  # noqa: BLE001 — record any handler failure
@@ -321,6 +366,22 @@ class Worker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
+    def _reconcile_interrupted(self) -> None:
+        """Close out jobs the previous process left RUNNING.
+
+        Taking over the queue is the moment this is knowable: nothing else runs
+        these jobs, so anything still marked RUNNING died with whatever wrote
+        it. Doing it here rather than in the API means a job cannot be observed
+        as live before the worker that would have to finish it exists.
+        """
+        with self._registry_factory() as reg:
+            interrupted = job_service.fail_interrupted_jobs(reg)
+            reg.commit()
+        if interrupted:
+            logger.warning(
+                "closed out %d job(s) left running by a previous server process", interrupted
+            )
+
     def run_once(self) -> bool:
         """Claim and run a single queued job. Returns True if one ran."""
         with self._registry_factory() as reg:
@@ -344,6 +405,7 @@ class Worker:
     def start(self) -> None:
         if self._thread is not None:
             return
+        self._reconcile_interrupted()
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="cairndex-worker", daemon=True)
         self._thread.start()
