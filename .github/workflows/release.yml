@@ -203,6 +203,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
+          # Tags, so the body step can name the previous one. A shallow
+          # checkout has none, and `git describe` would find nothing.
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -210,6 +213,39 @@ jobs:
 
       - name: List what will be attached
         run: ls -la artifacts
+
+      # The release body is the changelog's own section for this version, not
+      # GitHub's generated pull-request list. The generated list only describes
+      # a release when every change arrived through a PR: v0.1.1 was mostly
+      # merged directly onto `main` after the repository was recreated, so it
+      # named one PR for a release carrying a feature, eleven fixes and a
+      # breaking change, and had to be rewritten by hand afterwards.
+      #
+      # A missing section fails the job. The documented procedure (deployment.md,
+      # "Cutting a release") is to move Unreleased under the new version before
+      # tagging; failing here is what makes forgetting it visible while it can
+      # still be fixed, instead of publishing an empty release.
+      - name: Build the release body from CHANGELOG.md
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          {
+            cat .github/release-preamble.md
+            echo
+            echo "## What's Changed"
+            echo
+            python3 infra/release_notes.py "$TAG"
+            echo
+            # The previous tag is not always the previous *release* (prereleases
+            # get tags too), so this is a convenience link, not a claim about
+            # what shipped. Omitted when there is no earlier tag.
+            if prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null); then
+              echo "**Full diff:** https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${TAG}"
+            fi
+          } > release-body.md
+          echo "--- release body ---"
+          cat release-body.md
 
       # Draft, so the owner reviews and publishes. The GPL notices ride along
       # because the release artifacts bundle a GPL ffmpeg and the written offer
@@ -219,33 +255,12 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           draft: true
-          generate_release_notes: true
+          # The body comes from CHANGELOG.md via the step above. Generated notes
+          # are off: they list pull requests, which describes a release only when
+          # every change arrived as one.
+          generate_release_notes: false
+          body_path: release-body.md
           files: |
             artifacts/*.dmg
             artifacts/*.dmg.sha256
             THIRD-PARTY-NOTICES.md
-          body: |
-            ## Install
-
-            **Apple Silicon Macs only.** Download the `.dmg`, open it, and drag
-            **Cairndex** to Applications. There is no Intel build; on an Intel
-            Mac, build from source (see `docs/deployment.md`).
-
-            Cairndex is not signed with an Apple Developer ID, so the first
-            launch is blocked. Open it once, choose **Done**, then go to
-            **System Settings → Privacy & Security → Open Anyway**. The
-            README's install section has the full walkthrough — including that
-            **this step repeats on every update**, because each update is a
-            fresh quarantined download with a new ad-hoc signature.
-
-            Verify a download with the matching `.sha256` file:
-
-            ```bash
-            shasum -a 256 -c Cairndex_<version>_<arch>.dmg.sha256
-            ```
-
-            ## Licensing
-
-            Cairndex is MIT licensed. Release artifacts bundle a GPL-licensed
-            FFmpeg; see the attached `THIRD-PARTY-NOTICES.md` for the written
-            source offer and the exact build that is included.

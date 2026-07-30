@@ -30,6 +30,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   is still open. **Every running job is now shown, not just the newest**, since
   scan, probe, thumbnail and storyboard jobs overlap and a single slot hid
   whichever lost.
+- **Release notes come from the changelog rather than the pull-request list.**
+  GitHub's generated notes describe a release only when every change arrived as
+  a PR; v0.1.1 was mostly merged directly onto `main` after the repository was
+  recreated, so they named one PR for a release carrying a feature, eleven fixes
+  and a breaking change, and the notes had to be rewritten by hand. The release
+  body is now the install/licensing preamble plus that version's own changelog
+  section, extracted by `infra/release_notes.py`. A missing section fails the
+  release job — the procedure already said to move `Unreleased` under the new
+  version before tagging, and this is what makes forgetting it visible while it
+  can still be fixed.
 
 ## [0.1.1] — 2026-07-30
 
