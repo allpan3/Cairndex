@@ -27,16 +27,25 @@ logger = logging.getLogger(__name__)
 
 STORYBOARD_INDEX_CACHE_CONTROL = "no-cache"
 STORYBOARD_CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
-STORYBOARD_FORMAT_VERSION = 2
+STORYBOARD_FORMAT_VERSION = 3
 STORYBOARD_TILE_WIDTH = 320
 STORYBOARD_GRID_COLUMNS = 5
 STORYBOARD_GRID_ROWS = 5
 STORYBOARD_TILES_PER_SHEET = STORYBOARD_GRID_COLUMNS * STORYBOARD_GRID_ROWS
 
 ProgressFn = Callable[[int, int | None], None]
+SamplingMode = Literal["keyframe", "exact"]
+
+# Below this a keyframe-sampled storyboard is not a storyboard — a video encoded
+# as one long GOP yields a single tile — so it is worth one full decode instead.
+_MIN_KEYFRAME_SAMPLES = 2
 
 _SHEET_STEM = re.compile(r"^sb_\d{3}$")
 _ANSI_ESCAPE = re.compile(r"\x1b(?:[@-_]|\[[0-?]*[ -/]*[@-~])")
+# One showinfo line per sampled frame, before `tile` packs it into a sheet.
+_SHOWINFO_FRAME = re.compile(
+    r"showinfo[^\n]*\bn:\s*\d+[^\n]*\bpts_time:\s*(-?\d+(?:\.\d+)?)",
+)
 _FINGERPRINT_NOTE = "NOTE cairndex-quick-fingerprint:"
 _JPEG_SOF_MARKERS = {
     0xC0,
@@ -129,9 +138,14 @@ def render_vtt(cues: Iterable[StoryboardCue], quick_fingerprint: str | None) -> 
     return "\n".join(lines)
 
 
-# Combine the source fingerprint and storyboard format for sidecar validation
+# Combine the source fingerprint, format, and sampling mode for sidecar validation
 def storyboard_cache_key(quick_fingerprint: str | None) -> str:
-    return f"sb{STORYBOARD_FORMAT_VERSION}:{quick_fingerprint or ''}"
+    # The sampling mode is part of the key because it decides what the tiles
+    # are, not just how fast they were made: switching modes has to invalidate
+    # cached sheets deliberately rather than leave a library holding a mix of
+    # two qualities that nothing distinguishes.
+    sampling = get_settings().storyboard_sampling
+    return f"sb{STORYBOARD_FORMAT_VERSION}:{sampling}:{quick_fingerprint or ''}"
 
 
 # Return a URL-safe token that invalidates sheets when sampling semantics change
@@ -229,15 +243,43 @@ def _storyboard_timeout(duration: float) -> float:
     return max(120.0, duration / 4.0)
 
 
-# Generate tiled storyboard sheets in one ffmpeg pass
-def _generate_sheets(
-    source: Path, output_dir: Path, interval: float, duration: float
-) -> int | None:
-    # showinfo reports each sampled frame before tile pads the final sheet, so
-    # its final n value is the real tile count without a second decode pass
+# Build the frame-selection filter for one sampling mode
+def _selection_filter(interval: float, sampling: SamplingMode) -> str:
+    if sampling == "keyframe":
+        # Paired with `-skip_frame nokey`, only keyframes reach this filter, so
+        # it keeps the first one and then the next keyframe at least `interval`
+        # after the one it last kept. Sampling can therefore only be as fine as
+        # the source's GOP; the cue records where the tile really came from.
+        return f"select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{interval:g})'"
     # Anchoring and upward rounding select the frame active at each VTT cue start
+    return f"fps=1/{interval:g}:start_time=0:round=up"
+
+
+# Generate tiled storyboard sheets in one ffmpeg pass, returning each tile's time
+def _generate_sheets(
+    source: Path,
+    output_dir: Path,
+    interval: float,
+    duration: float,
+    *,
+    sampling: SamplingMode = "keyframe",
+) -> list[float] | None:
+    # showinfo sits after selection and scaling but before `tile`, so it reports
+    # one line per tile, timed as that tile is timed: keyframe sampling passes
+    # the source timestamp through untouched, and `fps` has already rewritten
+    # its output onto the interval grid it sampled at. The tile list and the cue
+    # list are therefore the same list and cannot disagree about either.
+    decode = ["-skip_frame", "nokey"] if sampling == "keyframe" else []
+    # Keyframe sampling emits sheets at whatever irregular intervals the source's
+    # keyframes fall on, and the image muxer's default rate sync answers that by
+    # *duplicating* sheets to fill a constant frame rate — measured at 300 files
+    # for 30 sampled tiles, which would have pointed every cue past the first
+    # sheet at a copy. `fps` output is already constant, so exact sampling keeps
+    # the command it has always run. (ffmpeg 5.0+; on anything older the keyframe
+    # pass fails outright and falls back to a full decode.)
+    sync = ["-fps_mode", "passthrough"] if sampling == "keyframe" else []
     vf = (
-        f"fps=1/{interval:g}:start_time=0:round=up,"
+        f"{_selection_filter(interval, sampling)},"
         f"scale={STORYBOARD_TILE_WIDTH}:-2,showinfo,tile=5x5"
     )
     try:
@@ -245,10 +287,13 @@ def _generate_sheets(
             [
                 ffmpeg_exe(),
                 "-y",
+                *decode,
                 "-i",
                 str(source),
+                "-an",
                 "-vf",
                 vf,
+                *sync,
                 "-q:v",
                 "5",
                 str(output_dir / "sb_%03d.jpg"),
@@ -259,8 +304,35 @@ def _generate_sheets(
     except FfmpegError as exc:
         raise StoryboardError(str(exc)) from exc
     clean_stderr = _ANSI_ESCAPE.sub("", stderr)
-    frames = [int(value) for value in re.findall(r"showinfo[^\n]*\bn:\s*(\d+)", clean_stderr)]
-    return max(frames) + 1 if frames else None
+    times = [float(value) for value in _SHOWINFO_FRAME.findall(clean_stderr)]
+    return times or None
+
+
+# Sample tiles, decoding a video in full only when its keyframes cannot describe it
+def _sample_sheets(
+    source: Path,
+    output_dir: Path,
+    interval: float,
+    duration: float,
+    sampling: SamplingMode,
+) -> list[float] | None:
+    if sampling == "exact":
+        return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
+    try:
+        times = _generate_sheets(source, output_dir, interval, duration, sampling="keyframe")
+    except StoryboardError as exc:
+        reason = f"keyframe pass failed: {exc}"
+        times = None
+    else:
+        if times is not None and len(times) >= _MIN_KEYFRAME_SAMPLES:
+            return times
+        reason = f"{len(times or [])} usable keyframe samples"
+    # Falling back rather than shipping a one-tile storyboard costs one full
+    # decode, but only for the encodes that cannot be sampled cheaply at all.
+    logger.info("storyboard keyframe sampling unusable (%s); decoding in full", reason)
+    for stale in output_dir.glob("sb_*.jpg"):
+        stale.unlink()
+    return _generate_sheets(source, output_dir, interval, duration, sampling="exact")
 
 
 # Read JPEG dimensions from SOF metadata without adding an image dependency
@@ -298,33 +370,57 @@ def _jpeg_dimensions(path: Path) -> tuple[int, int]:
     raise StoryboardError(f"could not read dimensions from {path.name}")
 
 
-# Build cues from the sheets ffmpeg actually emitted
-def _build_cues_from_sheets(
+# Keep the leading run of sample times that can carry cues, in tile order
+def _usable_starts(times: list[float], duration: float) -> list[float]:
+    # A tile's position in the sheet is its position in this list, so a bad
+    # timestamp truncates the run rather than being skipped: dropping one from
+    # the middle would shift every later cue onto the wrong tile.
+    starts: list[float] = []
+    for value in times:
+        if not math.isfinite(value) or value >= duration:
+            break
+        start = max(value, 0.0)
+        if starts and start <= starts[-1]:
+            break
+        starts.append(start)
+    return starts
+
+
+# Build cues from the frames ffmpeg reported, bounded by the sheets it emitted
+def _build_cues(
     *,
     duration: float,
     interval: float,
+    times: list[float] | None,
     sheets: list[Path],
     sheet_width: int,
     sheet_height: int,
-    frame_count: int,
 ) -> list[StoryboardCue]:
     tile_width = sheet_width // STORYBOARD_GRID_COLUMNS
     tile_height = sheet_height // STORYBOARD_GRID_ROWS
     if tile_width <= 0 or tile_height <= 0:
         raise StoryboardError("invalid storyboard sheet dimensions")
-    nominal_cues = max(1, math.ceil(duration / interval))
-    cue_count = min(nominal_cues, frame_count, len(sheets) * STORYBOARD_TILES_PER_SHEET)
+    capacity = len(sheets) * STORYBOARD_TILES_PER_SHEET
+    if times is None:
+        # No showinfo output: assume the nominal sampling grid, which is what
+        # `exact` sampling would have produced, and let sheet capacity cap it.
+        nominal = max(1, math.ceil(duration / interval))
+        times = [index * interval for index in range(nominal)]
+    starts = _usable_starts(times, duration)[:capacity]
     cues: list[StoryboardCue] = []
-    for index in range(cue_count):
+    for index, start in enumerate(starts):
         sheet = (index // STORYBOARD_TILES_PER_SHEET) + 1
         within = index % STORYBOARD_TILES_PER_SHEET
         column = within % STORYBOARD_GRID_COLUMNS
         row = within // STORYBOARD_GRID_COLUMNS
-        start = index * interval
+        # A cue runs to the next sampled frame, so hovering anywhere in it shows
+        # the frame that was actually on screen there — keyframe sampling makes
+        # cues as uneven as the source's keyframes, and the VTT says so.
+        end = starts[index + 1] if index + 1 < len(starts) else duration
         cues.append(
             StoryboardCue(
                 start=start,
-                end=min(start + interval, duration),
+                end=min(end, duration),
                 sheet=sheet,
                 x=column * tile_width,
                 y=row * tile_height,
@@ -375,23 +471,22 @@ def generate_for_file(
         interval = storyboard_interval(duration)
         cache_dir.parent.mkdir(parents=True, exist_ok=True)
         temp_dir = Path(tempfile.mkdtemp(prefix=f"{cache_dir.name}.tmp-", dir=cache_dir.parent))
-        frame_count = _generate_sheets(source, temp_dir, interval, duration)
+        times = _sample_sheets(source, temp_dir, interval, duration, settings.storyboard_sampling)
         sheets = sorted(temp_dir.glob("sb_*.jpg"))
         if not sheets:
             raise StoryboardError("ffmpeg produced no storyboard sheets")
-        if frame_count is None:
-            frame_count = len(sheets) * STORYBOARD_TILES_PER_SHEET
+        if times is None:
             logger.warning(
                 "ffmpeg showinfo frame count unavailable; using storyboard sheet capacity"
             )
         sheet_width, sheet_height = _jpeg_dimensions(sheets[0])
-        cues = _build_cues_from_sheets(
+        cues = _build_cues(
             duration=duration,
             interval=interval,
+            times=times,
             sheets=sheets,
             sheet_width=sheet_width,
             sheet_height=sheet_height,
-            frame_count=frame_count,
         )
         (temp_dir / "index.vtt").write_text(
             render_vtt(cues, asset_file.quick_fingerprint),

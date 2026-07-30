@@ -1,14 +1,17 @@
 # Performance baselines (large libraries)
 
 Cairndex targets multi-terabyte libraries with large item counts, so the
-browse/query paths must stay fast as a library grows. This document records the
-tooling used to measure them and the changes (targeted indexes + one query
-rewrite) that the measurements justify. Re-run the tools after schema or query
-changes and update the numbers.
+browse/query paths must stay fast as a library grows, and the media jobs that
+walk every file must not scale with how expensive each one is to decode. This
+document records the tooling used to measure both and the changes the
+measurements justify — targeted indexes and one query rewrite for the query
+paths, keyframe sampling for storyboard generation. Re-run the tools after
+schema, query, or media-pipeline changes and update the numbers.
 
 ## Tooling
 
-Two devtools live under `apps/server` (`cairndex.devtools`):
+Two devtools for the query paths live under `apps/server` (`cairndex.devtools`);
+a third, for storyboard generation, is described in its own section below:
 
 - **`synthetic_library`** — generates a real `.cairndex/` library on disk and
   bulk-populates it with synthetic bundles/files/collections/tags using batched
@@ -124,6 +127,70 @@ comfortably interactive:
 
 † Remeasured after descendant rollup on 100,000 bundles / 300,212 files and
 1,000 collections.
+
+## Storyboard generation (2026-07-30)
+
+Trickplay sheets are the most expensive derived artifact Cairndex produces, and
+the owner asked why a run over a library on an SMB share took so long. The
+answer was the sampling filter: `fps=1/n` gives ffmpeg no reason to seek, so it
+**decodes every frame from start to finish**. The cost per video was therefore a
+full decode, and the cost per library a full decode — and, on a network mount, a
+full read — of every eligible video.
+
+Generation now samples **keyframes only** (`-skip_frame nokey` plus a `select`
+that keeps the first keyframe and then the next one at least an interval later).
+
+### Tooling
+
+- **`benchmark_storyboards`** — encodes fixtures of stated GOP length with
+  ffmpeg (never user media), then times each sampling mode end to end, reporting
+  wall clock, tiles, cues, and sheet bytes.
+
+  ```bash
+  uv run python -m cairndex.devtools.benchmark_storyboards \
+      --fixtures-dir /tmp/cairndex-storyboard-fixtures --json /tmp/sb.json
+  ```
+
+### Results
+
+Five-minute 1280x720 fixtures, 30 fps, on an Apple Silicon laptop with local
+SSD storage — so this measures **decode only**; the network read a real library
+adds is on top, and is what makes the saving matter more there than here.
+
+| Fixture (300 s) | Sampling | Wall clock | Tiles | Sheet bytes |
+| --------------- | -------- | ---------: | ----: | ----------: |
+| H.264, GOP 2 s  | keyframe |   **0.38 s** |   150 |     804 KiB |
+| H.264, GOP 2 s  | exact    |     1.11 s |   150 |     804 KiB |
+| H.264, GOP 10 s | keyframe |   **0.17 s** |    30 |     172 KiB |
+| H.264, GOP 10 s | exact    |     1.06 s |   150 |     803 KiB |
+| HEVC, GOP 5 s   | keyframe |   **0.27 s** |    35 |     197 KiB |
+| HEVC, GOP 5 s   | exact    |     3.63 s |   150 |     804 KiB |
+
+2.9× to 13.4× faster, and the harder the codec is to decode the more it saves —
+the HEVC row is the shape a real library has. Where the GOP matches the sampling
+interval the two modes produce the *same* 150 tiles; where it is coarser, the
+storyboard is coarser, which is the trade below.
+
+### The trade, and what was rejected
+
+Tiles land on the keyframe at or before each sample point, so scrubbing is only
+as fine as the source's GOP. Rather than let a cue claim a time it did not
+sample, each cue carries the timestamp of the frame it actually holds and runs
+to the next sampled frame — cues are as uneven as the keyframes are. The hover
+path already seeks to a cue's own timestamp, so it now lands exactly on the
+frame it displayed. A video whose keyframes cannot describe it at all (a
+single-keyframe encode) still gets one full decode. `exact` sampling remains
+available per deployment for a local library where decode is cheap.
+
+**Seeking to each cue with `-ss`, the way contact sheets do, was measured and
+rejected.** On a 10-minute 1080p fixture: 4.1 s for the full decode it would
+replace, 12.0 s seeking accurately to each cue, 15.1 s seeking to the nearest
+keyframe, and 0.7 s for the keyframe pass. Seeking wins only when samples are
+spaced much further apart than keyframes — which is exactly the contact-sheet
+case (16–60 frames across a whole film) and exactly not the storyboard case: a
+storyboard samples every 2–30 s, so consecutive cues keep landing in the same
+group and re-reading it. The keyframe pass reads each file once, sequentially,
+which is also the friendlier pattern for a network mount.
 
 ## Remaining / future work
 

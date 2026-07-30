@@ -41,6 +41,52 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   version before tagging, and this is what makes forgetting it visible while it
   can still be fixed.
 
+- **Storyboard generation no longer decodes every frame of every video.** The
+  sampling filter it used (`fps=1/n`) forces ffmpeg to decode a video linearly
+  from start to finish, so generating trickplay sheets cost a full decode per
+  file and a full read of every video in the library — which is why an owner's
+  run over a library on a network share took as long as it did. Sampling now
+  decodes **only keyframes** (`-skip_frame nokey`). Measured on 5-minute 720p
+  fixtures: **2.9× faster** on an H.264 source keyed every 2s (producing the
+  identical 150 tiles), **6.2×** on one keyed every 10s, and **13.4×** on HEVC —
+  the harder the video is to decode, the more this saves, and it holds the whole
+  library's read down to one sequential pass per file. Seeking to each cue
+  instead was measured too and rejected: storyboard cues are spaced about as far
+  apart as a keyframe, so each seek re-reads a group its neighbours already read
+  and the whole run came out *3× slower* than the full decode it replaced.
+  (Contact sheets sample far more sparsely and correctly still seek.) **On a
+  library over a network share, expect the run to finish at the share's read
+  speed rather than in a fraction of the old time**: skipping the decode does
+  not skip the read — ffmpeg still streams each file once — so the transfer is
+  now the whole cost, where before it was hidden behind decoding.
+- **A storyboard cue now states the time of the frame it is actually showing.**
+  Tiles land on the keyframe at or before each sample point, so a cue can cover
+  an uneven slice of the timeline — the VTT says which slice rather than
+  claiming an exact grid it did not sample. Scrubbing is therefore only as fine
+  as the source's keyframes: a video keyed every 10s gets a tile every 10s where
+  it would previously have had one every 2s. Sheets get correspondingly smaller.
+  A video whose keyframes cannot describe it at all — a single-keyframe encode —
+  still gets one full decode rather than a one-tile storyboard. Set
+  `CAIRNDEX_STORYBOARD_SAMPLING=exact` to decode in full everywhere, which is
+  only worth it for a local library.
+- **Storyboard cache format v3.** Existing sheets stay in place but are ignored,
+  as with any format change; one Update/storyboards run regenerates them. The
+  sampling mode is part of the cache key too, so switching it retires cached
+  sheets rather than leaving a library holding a mix of two qualities.
+
+### Internal
+
+- **`cairndex.devtools.benchmark_storyboards`** generates fixtures of known GOP
+  length with ffmpeg and times each sampling mode over them, reporting wall
+  clock, tiles, cues and sheet bytes. The numbers above come from it and are
+  recorded in `docs/performance.md`.
+- **The sheet count is now asserted, not assumed.** Sampling at irregular
+  intervals made the image muxer's default rate sync duplicate sheets to fill a
+  constant frame rate — 300 files for 30 tiles in the benchmark — which would
+  have pointed every cue past the first sheet at a copy of it. Generation pins
+  the sync mode, and a test fails if a pass writes more sheets than its tiles
+  fill.
+
 ## [0.1.1] — 2026-07-30
 
 ### Fixed

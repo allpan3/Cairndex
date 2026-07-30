@@ -156,6 +156,15 @@ class Settings(BaseSettings):
     # Minimum probed duration before a video is eligible for storyboards
     storyboard_min_duration: float = 10.0
 
+    # How storyboard tiles are sampled. "keyframe" decodes only keyframes, so
+    # the cost stops scaling with how hard the video is to decode — the reason a
+    # network-mounted library finishes at all. Tiles then land on the keyframe
+    # at or before each sample point, so sampling is only as fine as the GOP;
+    # each VTT cue carries the timestamp the tile really came from. "exact"
+    # decodes every frame to hit exact interval boundaries, which is worth it
+    # only on a local library where decode is cheap (docs/performance.md).
+    storyboard_sampling: Literal["keyframe", "exact"] = "keyframe"
+
     # Maximum concurrent interactive HLS remux/transcode sessions (plan 1 §6.2,
     # ADR-0014). Sessions run one ffmpeg each and are bounded so a couple of
     # players can't exhaust the box; starting one beyond this returns 429.
