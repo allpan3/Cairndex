@@ -26,6 +26,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   actually belongs to was being ignored whenever the folder happened to suggest
   somewhere else. An addition now surfaces where the bundle it joins already
   lives, falling back to its own folder when that bundle is in no collection.
+- **A tooltip could stay on screen after its button was clicked.** Clicking is
+  what moves the row, and since nothing makes the pointer *leave* the button, no
+  hover-out ever fires — so the tooltip hung there at its old position, showing
+  the new label. It is now dismissed on click, and a position computed for a label
+  that has since changed is never shown.
 - **Tooltips were clipped by the panel edge.** The controls' tooltips are the
   longest text in the dialog and the dialog body scrolls, so an absolutely
   positioned tooltip got cut off. They now render outside the panel and clamp
@@ -82,6 +87,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   trimmed so it never ends mid-word. A multipart video gains from the same rule:
   "Trip.part1" becomes "Trip". A bundle filling its own folder still takes the
   folder's name, and a single subject still its own filename.
+- **Double-clicking a name puts the caret where you clicked**, instead of
+  selecting the whole title. These names are long and mostly right, so the usual
+  edit is a tweak in the middle of one — and a select-all threw the name away the
+  moment you typed. Keyboard entry (Enter/F2) lands at the end.
+- **A single-subject bundle can become a collection again.** Refusing it outright
+  left rows with no way to become one at all; you may simply be making a home for
+  siblings to drag in. What is still refused is a single subject that already sits
+  in a collection for its own folder, where another layer would only repeat the
+  name it is inside — and since the child of a conversion always lands exactly
+  there, that is what keeps the nesting bounded.
+- **The bundle icon is no longer a film clapper.** A bundle is whatever its files
+  are — photos, audio, documents — and the clapper read as a claim that it is a
+  video. Bundles now use stacked sheets and collections an outlined folder, both
+  drawn like the rest of the app's icons rather than as emoji. The addition rows
+  drop their clapper too: "Add to <bundle>", since the row already shows an icon.
+- **Row alignment is now exact rather than nearly right.** The checkbox, kind icon
+  and title share one centre line, a bundle's files indent to the first character
+  of its title, and the conversion/Narrow/Widen buttons sit on the title's line —
+  all measured at 0px offset instead of tuned by eye. The leading controls have
+  fixed sizes so a platform-default checkbox width cannot shift any of it.
 - **The ⠿ drag handles are gone.** Every bundle and file row is draggable in its
   entirety — the file rows already were, which made their handle pure decoration
   taking horizontal space on every line. The rows carry a grab cursor instead,

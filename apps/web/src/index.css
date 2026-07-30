@@ -2687,23 +2687,47 @@ code {
   align-items: flex-start;
   gap: 8px;
 }
+/* Fixed sizes so the leading run is deterministic: it decides both the vertical
+   centring below and the file list's indent, and a platform-default checkbox
+   width would make either a guess. --grp-lead is the width of everything before
+   the title. */
+.grp-node--bundle,
+.grp-node--container {
+  --grp-check: 14px;
+  --grp-icon: 16px;
+  --grp-lead-gap: 3px;
+  --grp-lead: calc(var(--grp-check) + var(--grp-icon) + 2 * var(--grp-lead-gap));
+}
 .grp-row > .grp-check {
-  margin-top: 2px;
+  flex: 0 0 auto;
+  width: var(--grp-check);
+  height: var(--grp-check);
+  /* Centre in the title's 18px line box (see .grp-title line-height). */
+  margin-top: calc((18px - var(--grp-check)) / 2);
 }
 .grp-row > .grp-kind {
-  margin-top: 1px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--grp-icon);
+  height: 18px;
+  margin-top: 0;
+  color: var(--text-muted);
+}
+.grp-row > .grp-kind .icon {
+  width: 14px;
+  height: 14px;
 }
 .grp-row--bundle {
-  gap: 2px;
+  gap: var(--grp-lead-gap);
   /* The row itself is the drag affordance now that the ⠿ handle is gone. */
   cursor: grab;
 }
 .grp-row--bundle:active {
   cursor: grabbing;
 }
-.grp-row--bundle .grp-check {
-  margin-right: 2px;
-}
+
 .grp-row__content {
   display: flex;
   flex: 1 1 auto;
@@ -2723,6 +2747,7 @@ code {
   gap: 4px;
 }
 .grp-row--collection {
+  gap: var(--grp-lead-gap);
   border-radius: 5px;
   padding: 2px 4px;
 }
@@ -2811,6 +2836,7 @@ code {
 .grp-stem {
   display: inline-flex;
   align-items: center;
+  align-self: center;
   gap: 2px;
   padding-left: 6px;
   border-left: 1px solid var(--border);
@@ -2821,6 +2847,7 @@ code {
 .grp-tip-anchor {
   display: inline-flex;
   flex: 0 0 auto;
+  align-self: center;
 }
 /* Fixed and portalled to <body>, so the dialog's scrolling body cannot clip it. */
 .grp-tip {
@@ -2841,8 +2868,9 @@ code {
 .grp-destination {
   display: inline-flex;
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  align-self: center;
+  width: 20px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -2875,7 +2903,10 @@ code {
 }
 .grp-files {
   min-height: 25px;
-  margin: 4px 0 6px 24px;
+  /* Indented to the title's first character — the leading run less this list's
+     own left padding and border — so a bundle's files read as belonging to its
+     name rather than to its checkbox (owner-reported, 2026-07-30). */
+  margin: 4px 0 6px calc(var(--grp-lead) - 4px - 1px);
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 5px;

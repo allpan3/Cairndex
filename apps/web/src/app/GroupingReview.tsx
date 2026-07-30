@@ -29,7 +29,15 @@ import {
   useSetGroupingStemMode,
 } from '../api/hooks'
 import { formatFileRole } from '../lib/format'
-import { IconChevronsIn, IconChevronsOut, IconGroup, IconRefreshCw, IconUngroup } from './icons'
+import {
+  IconChevronsIn,
+  IconChevronsOut,
+  IconFolder,
+  IconGroup,
+  IconLayers,
+  IconRefreshCw,
+  IconUngroup,
+} from './icons'
 
 /**
  * Review grouping suggestions and apply them (ADR-0009 phase 4).
@@ -90,6 +98,7 @@ function TipButton({
   tip,
   children,
   className,
+  onClick,
   ...buttonProps
 }: {
   tip: string
@@ -97,22 +106,32 @@ function TipButton({
   className: string
 } & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'>) {
   const ref = useRef<HTMLButtonElement>(null)
-  const [placement, setPlacement] = useState<React.CSSProperties | null>(null)
+  // The tip text is stored with the position, so a placement computed for a label
+  // that has since changed is simply not rendered — see below.
+  const [shown, setShown] = useState<{ tip: string; style: React.CSSProperties } | null>(null)
 
   const show = () => {
     const rect = ref.current?.getBoundingClientRect()
     if (!rect) return
-    // Right-aligned via `right`, so the width never has to be measured; the
-    // clamp keeps a long tooltip on a right-hand control inside the viewport.
+    // Right-aligned via the CSS `right` property, so the width never has to be
+    // measured; the clamp keeps a long tooltip on a right-hand control inside the
+    // viewport. Above by default, below when a control near the top has no room.
     const right = Math.max(8, window.innerWidth - rect.right)
-    setPlacement(
-      // Above by default, below when a control near the top has no room there.
+    const style =
       rect.top > 72
         ? { right, bottom: window.innerHeight - rect.top + 6 }
-        : { right, top: rect.bottom + 6 },
-    )
+        : { right, top: rect.bottom + 6 }
+    setShown({ tip, style })
   }
-  const hide = () => setPlacement(null)
+  const hide = () => setShown(null)
+
+  // Only show a placement that was computed for the label being shown now. The
+  // label flips once the action lands ("…a collection" → "…one bundle") and the
+  // rows move in the same commit, while nothing makes the pointer leave the
+  // button — so no `mouseleave` fires and the tooltip would otherwise hang around
+  // at its old coordinates with the new text (owner-reported, 2026-07-30).
+  // Derived rather than cleared in an effect, which would cascade a render.
+  const placement = shown?.tip === tip ? shown.style : null
 
   // A fixed tooltip does not follow its button, and this list scrolls under the
   // pointer often enough that a stale one would be noticed.
@@ -135,6 +154,12 @@ function TipButton({
         data-tip={tip}
         onFocus={show}
         onBlur={hide}
+        // Dismiss on activation: the click is what moves the row out from under
+        // the pointer, and a tooltip anchored to where it used to be is noise.
+        onClick={(event) => {
+          hide()
+          onClick?.(event)
+        }}
         {...buttonProps}
       >
         {children}
@@ -150,12 +175,33 @@ function TipButton({
   )
 }
 
+/** The character index under a point, for placing the caret where it was clicked.
+ *
+ * `caretPositionFromPoint` is the standard spelling and `caretRangeFromPoint` the
+ * WebKit one, which matters because the desktop shell is a WKWebView. Returns
+ * `null` when neither exists, and the caller then falls back to the end of the
+ * text — anything rather than selecting the whole title, which threw away the
+ * name the moment you typed (owner-reported, 2026-07-30).
+ */
+function caretOffsetFromPoint(clientX: number, clientY: number): number | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  const position = doc.caretPositionFromPoint?.(clientX, clientY)
+  if (position) return position.offset
+  const range = doc.caretRangeFromPoint?.(clientX, clientY)
+  return range ? range.startOffset : null
+}
+
 /** Coordinate one persisted inline rename across the recursive proposal tree. */
 interface RenameControls {
   canEdit: boolean
   editingId: string | null
   pending: boolean
-  start: (proposal: GroupingProposal) => void
+  /** ``caretOffset`` places the caret where the title was double-clicked. */
+  start: (proposal: GroupingProposal, caretOffset?: number | null) => void
+  caretOffset: number | null
   commit: (proposalId: string, title: string) => void
   cancel: () => void
 }
@@ -351,7 +397,7 @@ function targetTitle(proposal: GroupingProposal): string {
 /** Build the title shown for the proposal's current destination mode. */
 function proposalDisplayTitle(proposal: GroupingProposal): string {
   return proposal.target_bundle_id && !proposal.create_new_bundle
-    ? `Add to 🎬 ${targetTitle(proposal)}`
+    ? `Add to ${targetTitle(proposal)}`
     : proposal.title || '(untitled)'
 }
 
@@ -396,25 +442,33 @@ function canConvertKind(proposal: GroupingProposal): boolean {
   return !(proposal.target_bundle_id !== null && !proposal.create_new_bundle)
 }
 
-/** Whether turning this bundle into a collection would actually divide it.
+/** Whether turning this bundle into a collection is offered.
  *
- * Mirrors `suggester.split_for_collection`, which is the authority (the server
- * refuses a pointless conversion regardless). Duplicated here only to decide
- * whether to *offer* the control: without it, a single-item row got a button
- * that wrapped it in a collection of one identical bundle — and since that child
- * was itself convertible, the owner could nest collections forever
- * (owner-reported, 2026-07-30).
+ * Mirrors `plan_store._bundle_to_container`, which is the authority (the server
+ * refuses regardless). Duplicated here only to decide whether to *show* the
+ * control.
  *
- * Two or more videos divide per video, sidecars following their own. No videos
- * divides per file (a photo dump). Exactly one video is one subject however many
- * sidecars it has, so it does not divide at all.
+ * A bundle that would genuinely divide always may — two or more videos divide per
+ * video with sidecars following their own, and a video-less bundle of several
+ * files divides per file. A **single subject** may too: the owner may be making a
+ * home for siblings they are about to drag in, and refusing that outright left
+ * rows with no way to become a collection at all (owner-reported, 2026-07-30).
+ *
+ * What is refused is a single subject that already sits in a collection for its
+ * *own folder*, where another layer would only repeat the name it is inside. That
+ * is also what bounds the nesting the owner first reported: the child a conversion
+ * creates always lands in exactly that position, so it cannot be converted again.
  */
-function canBecomeCollection(proposal: GroupingProposal): boolean {
+function canBecomeCollection(
+  proposal: GroupingProposal,
+  parent: GroupingProposal | undefined,
+): boolean {
   const videos = proposal.files.filter(
     (file) => ROLE_MEDIA_KIND[file.proposed_role] === 'video',
   ).length
-  if (videos >= 2) return true
-  return videos === 0 && proposal.files.length >= 2
+  const divides = videos >= 2 || (videos === 0 && proposal.files.length >= 2)
+  if (divides) return true
+  return !(parent?.kind === 'container' && parent.directory === proposal.directory)
 }
 
 function kindActionLabel(proposal: GroupingProposal): string {
@@ -515,9 +569,19 @@ function ProposalTitleEditor({
 }) {
   const [value, setValue] = useState(proposal.title ?? '')
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // Captured once: this positions the caret on mount only, and re-reading it
+  // later would yank the caret back mid-edit.
+  const initialCaret = useRef(rename.caretOffset)
   useLayoutEffect(() => {
-    inputRef.current?.focus({ preventScroll: true })
-    inputRef.current?.select()
+    const input = inputRef.current
+    if (!input) return
+    input.focus({ preventScroll: true })
+    // Caret where the title was double-clicked, not a select-all: these names are
+    // long and mostly right, so the usual edit is a tweak in the middle of one.
+    // The offset is a character index taken from the rendered title, so it stays
+    // correct even though this textarea lays the text out slightly differently.
+    const caret = Math.min(initialCaret.current ?? input.value.length, input.value.length)
+    input.setSelectionRange(caret, caret)
   }, [])
   return (
     <span className="grp-title grp-title-editor" data-value={value || ' '}>
@@ -568,11 +632,15 @@ function ProposalTitle({
         className="grp-title grp-title--editable"
         aria-label={`Rename ${kindLabel} suggestion ${displayTitle}`}
         title="Double-click to rename"
-        onDoubleClick={() => rename.start(proposal)}
+        onDoubleClick={(event) =>
+          rename.start(proposal, caretOffsetFromPoint(event.clientX, event.clientY))
+        }
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === 'F2') {
             event.preventDefault()
-            rename.start(proposal)
+            // Keyboard entry has no point to aim at; end of the name is the least
+            // surprising place to land.
+            rename.start(proposal, null)
           }
         }}
       >
@@ -593,6 +661,7 @@ function ProposalNode({
   stem,
   stemOwners,
   kind,
+  parent,
 }: {
   node: TreeNode
   selectedIds: Set<string>
@@ -603,6 +672,9 @@ function ProposalNode({
   stem: StemControls
   stemOwners: Map<string, string>
   kind: KindControls
+  /** The enclosing suggestion, which decides whether a single-subject bundle is
+   * offered the collection override (see ``canBecomeCollection``). */
+  parent?: GroupingProposal
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -635,7 +707,9 @@ function ProposalNode({
             onChange={(e) => onToggle(node, e.currentTarget.checked)}
             aria-label={`Accept ${proposal.title || baseName(proposal.directory) || 'collection'}`}
           />
-          <span className="grp-kind">📁</span>
+          <span className="grp-kind">
+            <IconFolder />
+          </span>
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
             {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
@@ -659,6 +733,7 @@ function ProposalNode({
                 stem={stem}
                 stemOwners={stemOwners}
                 kind={kind}
+                parent={proposal}
               />
             ))}
           </ul>
@@ -703,7 +778,11 @@ function ProposalNode({
           onChange={(e) => onToggle(node, e.currentTarget.checked)}
           aria-label={`Accept ${proposal.title || 'bundle'}`}
         />
-        {!isAddition && <span className="grp-kind">🎬</span>}
+        {!isAddition && (
+          <span className="grp-kind">
+            <IconLayers />
+          </span>
+        )}
         <span className="grp-row__content">
           <span className="grp-title-cluster">
             <ProposalTitle proposal={proposal} isAddition={isAddition} rename={rename} />
@@ -718,7 +797,7 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
-          {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal) && (
+          {canConvertKind(proposal) && hasItems && canBecomeCollection(proposal, parent) && (
             <KindToggle proposal={proposal} kind={kind} />
           )}
           {stemOwners.has(proposal.id) && (
@@ -848,7 +927,11 @@ export function GroupingReview({
   // does not silently re-check everything the owner had unchecked. See
   // ``proposalKey``.
   const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
-  const [editing, setEditing] = useState<{ id: string; original: string } | null>(null)
+  const [editing, setEditing] = useState<{
+    id: string
+    original: string
+    caretOffset: number | null
+  } | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [dragItem, setDragItem] = useState<ReviewDragItem | null>(null)
   const [dropSlot, setDropSlot] = useState<ReviewDropSlot | null>(null)
@@ -929,10 +1012,10 @@ export function GroupingReview({
     )
   }
 
-  const startRename = (proposal: GroupingProposal) => {
+  const startRename = (proposal: GroupingProposal, caretOffset: number | null = null) => {
     rename.reset()
     setRenameError(null)
-    setEditing({ id: proposal.id, original: proposal.title?.trim() ?? '' })
+    setEditing({ id: proposal.id, original: proposal.title?.trim() ?? '', caretOffset })
   }
 
   const cancelRename = () => {
@@ -1098,6 +1181,7 @@ export function GroupingReview({
     editingId: editing?.id ?? null,
     pending: rename.isPending,
     start: startRename,
+    caretOffset: editing?.caretOffset ?? null,
     commit: commitRename,
     cancel: cancelRename,
   }

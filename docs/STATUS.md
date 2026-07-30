@@ -142,6 +142,44 @@ Second round, on the review dialog's density and vocabulary:
   row when it became one bundle, which is exactly why it looked like two
   different controls. The aria-labels are unchanged, so the tests still pin them.
 
+**Eighth round.** A tooltip could stick on screen: `TipButton` hid only on
+`mouseleave` / `blur` / scroll, and clicking a control is precisely the case where
+the pointer never leaves it — the *row* moves instead. So the portal kept its
+stale coordinates while the button's label flipped underneath. Fixed twice over:
+dismiss on activation, and store the tip text alongside the position so a
+placement computed for a label that has since changed is not rendered. The second
+guard is derived during render rather than cleared in an effect, which the
+`react-hooks/set-state-in-effect` rule (rightly) rejected as a cascading render.
+Both guards have tests; the click one was confirmed to fail without the fix, and
+the behaviour was re-checked in a real browser with an actual hover-then-click,
+which is the gesture jsdom cannot reproduce.
+
+**Seventh round**, mostly presentation with one behaviour change.
+
+- **Caret on double-click.** `ProposalTitleEditor` called `select()`; it now takes
+  a character offset from `caretPositionFromPoint` (with the WebKit
+  `caretRangeFromPoint` fallback, which the desktop shell needs) captured on the
+  dblclick and applied via `setSelectionRange`. Captured into a ref, because
+  re-reading it would yank the caret back mid-edit. Keyboard entry passes `null`
+  and lands at the end.
+- **Single-subject conversion allowed again, bounded differently.** The previous
+  rule ("refuse unless it divides into 2+") left rows with no path to becoming a
+  collection, which the owner wanted. The bound is now *positional*: refuse only
+  when the row already sits in a collection for its own directory
+  (`_sits_in_a_collection_for_its_own_folder`). That still terminates, because the
+  child a conversion creates always lands in exactly that position — and it no
+  longer blocks the legitimate case.
+- **Neutral kind icons.** 🎬 → `IconLayers`, 📁 → `IconFolder`, and the clapper
+  dropped from the "Add to …" title. A bundle is not necessarily a video, and the
+  clapper asserted otherwise.
+- **Alignment made deterministic instead of tuned.** Fixed `--grp-check` /
+  `--grp-icon` / `--grp-lead-gap` custom properties give a known leading width, so
+  the checkbox centres in the title's 18px line box by calculation rather than a magic 2px,
+  `.grp-files` indents by `calc(var(--grp-lead) - 4px - 1px)` (padding and border
+  accounted for), and the icon buttons take `align-self: center` at 18px tall.
+  Verified in-browser: file indent and every icon button measure **0px** offset
+  from the title, and checkbox/icon/title share one mid-Y.
+
 **Sixth round.** The ⠿ drag handles are removed: the file `<li>` already carried
 `draggable` + `onDragStart` itself, so its handle had been decoration for a while;
 the bundle row gained the same and both handles went. `draggable` is suppressed

@@ -248,6 +248,18 @@ def _is_addition(proposal: GroupingProposal) -> bool:
     return proposal.target_bundle_id is not None and not proposal.create_new_bundle
 
 
+def _sits_in_a_collection_for_its_own_folder(session: Session, proposal: GroupingProposal) -> bool:
+    """Whether this suggestion's parent is a collection for its own directory."""
+    if proposal.parent_proposal_id is None:
+        return False
+    parent = session.get(GroupingProposal, proposal.parent_proposal_id)
+    return (
+        parent is not None
+        and parent.kind is ProposalKind.CONTAINER
+        and parent.directory == proposal.directory
+    )
+
+
 def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """Turn one bundle suggestion into a collection holding its files' bundles.
 
@@ -258,14 +270,17 @@ def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
     """
     observations = _proposal_observations(session, list(proposal.files))
     groups = split_for_collection(observations)
-    if len(groups) < 2:
-        # A collection of one identical bundle adds no structure, and since that
-        # child is itself convertible it let the owner nest collections without
-        # limit (owner-reported, 2026-07-30). The client hides the control on
-        # such a row; this is the backstop.
+    if len(groups) < 2 and _sits_in_a_collection_for_its_own_folder(session, proposal):
+        # Converting a single subject is allowed — the owner may be making a home
+        # for siblings they are about to drag in — but not when it already sits in
+        # a collection for this very folder. There the new layer would just repeat
+        # the name it is already inside, and since the child it creates is in the
+        # same position it could be converted again without limit
+        # (owner-reported, 2026-07-30). This is also what bounds the recursion:
+        # the child of a conversion always lands in exactly that position.
         raise ValidationError(
-            "this suggestion holds a single item, so there is nothing to divide "
-            "into a collection of bundles"
+            "this suggestion is already inside a collection for its own folder, so "
+            "another one would add no structure"
         )
 
     for order, group in enumerate(groups):
