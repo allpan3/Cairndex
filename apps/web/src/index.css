@@ -3461,6 +3461,10 @@ code {
   height: 32px;
   font-size: 15px;
 }
+/* The readout is also the fit control — clicking it cycles fit/actual/fill, the
+   home that gesture moved to when double-click became "close the viewer"
+   (owner, 2026-07-30). Styled exactly as the read-only badge it replaced, so the
+   overlay looks unchanged. */
 .mv-zoom {
   min-width: 54px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -3471,6 +3475,11 @@ code {
   font-variant-numeric: tabular-nums;
   padding: 7px 8px;
   text-align: center;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.mv-zoom:hover {
+  border-color: var(--accent);
 }
 /* With the inspector docked, "next" belongs at the media's edge — the rail is
    not part of the picture, and an arrow floating over the tag list is aiming at
@@ -3527,29 +3536,27 @@ code {
   );
   transition: opacity 0.18s;
 }
-/* Transient export feedback, mirroring the resume notice's placement. */
-.mv-export-notice {
+/* The one place transient viewer messages appear, so they stack in a column
+   rather than each choosing its own height. Anchored just above the seek track,
+   which is what the resume notice refers to; sitting clear of the whole bar left
+   it 52px from the track, above the button row — near the controls, but not near
+   the playhead (owner, 2026-07-27). It overlaps the button row's empty middle,
+   where the spacer is. With no control bar (an image) the fallback
+   `--mv-seek-top` puts the column the same distance off the bottom. */
+.mv-toasts {
   position: absolute;
   z-index: 6;
   left: 50%;
-  transform: translateX(-50%);
-  bottom: 96px;
-  background: rgba(0, 0, 0, 0.72);
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 16px;
-  font-size: 13px;
-}
-.mv-resume {
-  position: absolute;
-  z-index: 6;
-  left: 50%;
-  /* Just above the seek track, which is what it refers to. Sitting clear of the
-     whole bar left it 52px from the track, above the button row — near the
-     controls, but not near the playhead (owner, 2026-07-27). It overlaps the
-     button row's empty middle, where the spacer is. */
   bottom: calc(var(--mv-seek-top) + 8px);
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  /* The column is a layout box, not a target; each toast takes its own hits. */
+  pointer-events: none;
+}
+.mv-toast {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -3561,10 +3568,13 @@ code {
   padding: 8px 11px;
   font-size: 12px;
   font-weight: 650;
-  cursor: pointer;
+  pointer-events: auto;
   transition:
     opacity 0.18s,
     border-color 0.12s;
+}
+.mv-resume {
+  cursor: pointer;
 }
 .mv-resume:hover {
   border-color: var(--accent);
