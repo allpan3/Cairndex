@@ -61,7 +61,6 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("asset_bundles", "manual_order", "INTEGER NOT NULL DEFAULT 0"),
     ("asset_files", "directory_path", "TEXT NOT NULL DEFAULT ''"),
     ("asset_files", "cover_time", "REAL"),
-    ("asset_files", "cover_previous_file_id", "VARCHAR(26)"),
     # Owner-edited grouping plans may explicitly override confirmed membership
     ("grouping_proposals", "base_bundle_id", "VARCHAR(26)"),
     ("grouping_proposals", "owner_edited", "BOOLEAN NOT NULL DEFAULT 0"),

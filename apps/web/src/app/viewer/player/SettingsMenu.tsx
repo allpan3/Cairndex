@@ -13,8 +13,8 @@ function seekStepAt(index: number): (typeof PLAYER_SEEK_STEPS)[number] {
 }
 
 /**
- * Bundle-cover affordances for the playing file. Null when the item cannot own a
- * cover — an unindexed File Browser path has no bundle to be the cover of.
+ * Cover-frame affordances for the playing file. Null when the item cannot own a
+ * cover frame — an unindexed File Browser path has no file row to store one on.
  *
  * The settings menu no longer shows these (owner, 2026-07-27: they belong with
  * the other one-shot actions); the viewer's right-click menu owns them, and the
