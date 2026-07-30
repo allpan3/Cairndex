@@ -8,6 +8,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.1.1] — 2026-07-30
+
 ### Fixed
 
 - **The grouping review dialog stalled on a large library.** Every read of a plan
