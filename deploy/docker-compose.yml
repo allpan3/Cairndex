@@ -80,6 +80,18 @@ services:
     volumes:
       # Server-local runtime state: registry.db, transcode scratch, backups.
       # Per-library content metadata lives in each library's own .cairndex/.
+      #
+      # A named volume, which Docker creates already owned by the image's uid
+      # 10001 — so it works with no setup at all, but ONLY while the container
+      # runs as that default user. If you set `user:` above, swap this for a
+      # host path you own and create it yourself first:
+      #
+      #   - /volume1/docker/cairndex/data:/data
+      #
+      # (and delete the `volumes:` block at the end of this file). Docker would
+      # otherwise create a missing host path as root, which your id then cannot
+      # write either. A host path also puts registry.db somewhere your backups
+      # can see it, which a named volume does not.
       - cairndex-data:/data
       # >>> EDIT: the host path of your media, before the colon. <<<
       #
@@ -100,8 +112,10 @@ services:
       # registry records the path a library was registered under, so re-pathing
       # an existing mount means re-registering everything inside it.
       #
-      # It must be writable by uid 10001, the container's non-root user:
-      # Cairndex keeps each library's portable package at
+      # It must be writable by whoever the container runs as — uid 10001 by
+      # default, or your own id if you set `user:` above, in which case a share
+      # you already own needs nothing done to it. Cairndex keeps each library's
+      # portable package at
       # <library>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
       # Your media files are not moved, renamed, deleted, or rewritten by any
       # ordinary flow — only by an explicit write-mode operation (ADR-0013),
