@@ -1,9 +1,16 @@
 # Project status
 
-> **In progress (2026-07-29):** two owner-requested branches are open and
-> unreviewed — `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each
-> with its own status entry below. Both edit this file and `CHANGELOG.md`, so both
-> need a rebase onto the merged grouping work (PR #40) before review.
+> **In progress (2026-07-30):** branch
+> `fix/drop-destination-rename-and-toasts` — five owner-reported faults found by
+> using the app: a renamed file kept its old name inside its bundle, a drop onto a
+> bundle copied into the library root, double-clicking an image zoomed instead of
+> closing the viewer, the viewer's two notices sat in different places, and a
+> rename box could select the extension. All fixed and gate-green, not merged. See
+> [Five owner-reported fixes](#in-progress-drop-destination-rename-and-toasts-2026-07-30)
+> below. Two other owner-requested branches are also open and unreviewed —
+> `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each with its own
+> status entry. All three edit this file and `CHANGELOG.md`, so all three need a
+> rebase before review.
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
@@ -32,6 +39,99 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## In progress: drop destination, rename and toasts (2026-07-30)
+
+Branch `fix/drop-destination-rename-and-toasts`, off `main` at `05aabbf`. Five
+owner-reported faults, found by using the app after PR #40 landed. Two are
+behaviour bugs with a data or filesystem edge, three are interaction faults; one
+latent bug turned up while tracing another.
+
+**1. A renamed file kept its old name inside its bundle.** Reported as "renamed
+in file browser, but going back to bundle browser the file name is still old".
+Reproduced against a live backend, then traced: `repoint_linked_rows` moved
+`relative_path` and left `display_title` — the field every bundle surface
+actually renders (`Inspector`, `BundleAlbum`, the viewer's file list). So the
+File Browser, which reads the listing, showed the new name while the bundle showed
+the old one. The title now follows a rename, but **only when it still is the old
+basename**: it is owner-editable via `PATCH …/files/{id}`, so a deliberately
+chosen title is not the filename's to overwrite. `original_filename` deliberately
+does not move — it records the name at import. The fix is in the helper the
+reconciler shares, so an externally detected rename gets the same treatment.
+
+*Known gap:* rows renamed **before** this fix keep their stale title. Nothing
+backfills them — there is no migration chain (ADR-0008), and the field is
+cosmetic. Renaming such a file again corrects it.
+
+**2. A drop onto a bundle landed in the library root.** `dropFilesOnBundle`
+passed `destDir: ''`, so the copy was linked into the bundle correctly but filed
+nowhere near the bundle's own files. It now asks: `DirectoryPicker` gained
+`startIn`, `heading` and `confirmLabel`, and a new `BundleDropDestination` opens
+it in the folder the bundle's first file lives in. It renders only once the
+bundle's files are known, so the picker never opens at the root and then jumps.
+
+**3. Double-clicking an image did not close the viewer.** The mechanism was not
+what the code read like. `ImageStage` calls `setPointerCapture` on pointerdown to
+pan, and **capture retargets the later click and dblclick to the capturing
+element** — so a double-click on the picture arrived at `.mv-stage` with the
+*stage div* as its target, which `isStageSurface` did not accept (it accepted
+`IMG` and `mv-video-stage`). The close was skipped and `onDoubleClick={cycleFit}`
+ran instead: it zoomed and stayed open. Verified in a browser by logging event
+targets — `mousedown` on `mv-image`, `click` and `dblclick` on `mv-image-stage`.
+`mv-image-stage` is now a stage surface, the stage's own double-click handler is
+gone, and cycling fit moved to the zoom readout, which is now a button (so
+`nextFitMode` keeps a production caller; `0`/`1`/`+`/`-` and the wheel are
+unchanged).
+
+**A latent bug found in the same trace:** that capture also swallowed clicks on
+the overlay controls, so **the image background toggle did nothing at all** —
+`mousedown` reached the button but the `click` was retargeted to the stage, so the
+button's handler never ran. Presses that start inside `.mv-image-tools` no longer
+capture. Fixed here because it is the same retargeting, and because making a
+stage double-click close the viewer would otherwise have made a double-click on
+those buttons close it too.
+
+**4. The viewer's two notices sat in different places.** `.mv-export-notice` was
+at `bottom: 96px` with its own shape (16px radius, no border, 13px) while
+`.mv-resume` sat at `calc(var(--mv-seek-top) + 8px)` with a bordered 7px frame —
+despite a comment claiming it mirrored the resume notice's placement. A single
+`.mv-toasts` column now anchors both and they share one `.mv-toast` frame,
+stacking with the export notice above. The idle fade still applies to the resume
+notice only, so an export in progress stays visible.
+
+**5. A rename box could select the extension.** Both rename inputs already
+selected the stem on focus, and a genuine double-click in the in-app Chromium
+lands on the stem — measured: `selected: "Alpha.Show.S01.cover"` of
+`Alpha.Show.S01.cover.jpg`. **So this does not reproduce in a browser**, and the
+report is almost certainly the desktop shell: WebKit can settle its own
+double-click selection on the newly focused input *after* focus, overriding the
+programmatic one — the same engine difference that already forced the
+`caretRangeFromPoint` fallback in the grouping dialog. The selection is now
+re-asserted on the next animation frame, which lands after either ordering, via a
+shared `renameSelection` helper used by both inputs. **Unverified on WebKit**: it
+cannot be driven from here, so this is a reasoned fix rather than a reproduced
+one.
+
+**Gates run:** backend `ruff format --check`, `ruff check`, `mypy src packaging`,
+`pytest` (863 passed, +3); web `lint`, `format:check`, `typecheck`, `test` (476
+passed, +7), `build`; `test:e2e:frontend` (93 passed, +2, and the same 1
+pre-existing HLS re-attach failure recorded under PR #40 — it fails on clean
+`main` and is untouched here). Desktop gates not run locally: no Rust or
+`apps/desktop` file changed.
+
+Each fix has a test that was **confirmed to fail without it**: the `display_title`
+carry, the pointer-capture guard, `isStageSurface` accepting the image stage, the
+toast column (measured in Playwright — same centre axis, 8px stack gap), the
+next-frame selection re-assert, and the drop picker's default folder. Two further
+tests pin boundaries rather than the bug: a chosen title is left alone, and a
+directory rename does not touch titles beneath it.
+
+**Verified against a live backend** on a generated library (`Studios/Alpha` with
+two parts, a cover and a subtitle; `Studios/Beta`; `Photos`): renaming through
+the API and reading both surfaces showed `SecondPart.mp4` in the bundle inspector
+and the File Browser together, with `original_filename` still
+`Alpha.Show.S01.part2.mp4` — and a row renamed before the fix visibly kept its
+stale title, which is the known gap above.
 
 ## Merged: grouping review state and collection conversion (PR #40, 2026-07-29)
 
