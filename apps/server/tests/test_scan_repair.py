@@ -168,50 +168,6 @@ def test_a_rename_found_by_scan_carries_the_shown_name(
     assert f.display_title == "Catalogue 0251.webp"
 
 
-def test_a_scan_heals_a_title_an_old_rename_left_behind(
-    session: Session, library_root: Path
-) -> None:
-    """Rows already wrong before the fix are corrected by the next scan.
-
-    The fix to the rename paths cannot reach history, and the owner's library has
-    rows in exactly this state (report, 2026-07-30). The signature is a title that
-    still equals ``original_filename`` while the path has moved on.
-    """
-    path = library_root / "SET-0251.webp"
-    path.write_text("image bytes")
-    scan_library(session, library_root)
-
-    # Reproduce a pre-fix rename: path moved, both names left behind.
-    row = _only_file(session)
-    path.rename(library_root / "Catalogue 0251.webp")
-    row.relative_path = "Catalogue 0251.webp"
-    session.commit()
-    assert row.display_title == "SET-0251.webp"
-
-    scan_library(session, library_root)
-
-    session.refresh(row)
-    assert row.display_title == "Catalogue 0251.webp"
-    # The import name is history and stays as it was.
-    assert row.original_filename == "SET-0251.webp"
-
-
-def test_a_scan_does_not_guess_at_a_title_someone_chose(
-    session: Session, library_root: Path
-) -> None:
-    """A chosen title differs from ``original_filename``, so healing skips it."""
-    (library_root / "clip.mp4").write_text("bytes")
-    scan_library(session, library_root)
-    row = _only_file(session)
-    row.display_title = "Opening titles"
-    session.commit()
-
-    scan_library(session, library_root)
-
-    session.refresh(row)
-    assert row.display_title == "Opening titles"
-
-
 def test_a_rename_found_by_scan_leaves_a_chosen_title_alone(
     session: Session, library_root: Path
 ) -> None:

@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -192,6 +193,28 @@ class FileRead(BaseModel):
     @model_validator(mode="after")
     def derive_supported(self) -> "FileRead":
         self.supported = is_openable_media(self.media_kind, self.relative_path)
+        return self
+
+    # The name a file is shown under is its *current* filename, derived here
+    # rather than served from the stored column.
+    #
+    # The column is a copy of the filename made when the row was created, and a
+    # copy can drift: three separate code paths repoint a row, and each one that
+    # forgot to update the copy left the file showing its old name inside its
+    # bundle while the File Browser showed the new one (owner reports,
+    # 2026-07-30 — three rounds, because fixing one writer at a time never
+    # reaches the rows already wrong). Deriving it makes that class of bug
+    # impossible instead of fixing it once per writer, and needs no guess about
+    # which stored titles are stale.
+    #
+    # The column is still kept in step by those paths, because the search index
+    # reads it — but nothing renders it. A real "call this file something else"
+    # feature would add its own nullable override and be preferred here, which is
+    # the distinction the current column cannot make: it cannot tell a title
+    # someone chose from a filename it happens to equal.
+    @model_validator(mode="after")
+    def derive_display_title(self) -> "FileRead":
+        self.display_title = PurePosixPath(self.relative_path).name
         return self
 
 

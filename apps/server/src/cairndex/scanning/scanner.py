@@ -333,8 +333,6 @@ def scan_library(
     still_missing = [row for row in missing_rows if row.id not in repaired_row_ids]
     missing = _mark_missing(still_missing, keep=frozenset())
 
-    _heal_titles_left_behind_by_an_old_rename(session)
-
     session.commit()
     if on_progress is not None:
         on_progress(processed, total)
@@ -347,41 +345,6 @@ def scan_library(
         missing_total=_missing_total(session),
         repaired=len(repairs),
     )
-
-
-def _heal_titles_left_behind_by_an_old_rename(session: Session) -> int:
-    """Correct shown names that a rename *before* the 2026-07-30 fix left stale.
-
-    Until then, a rename Cairndex performed moved ``relative_path`` and left
-    ``display_title`` behind, so those rows still show a name their file no longer
-    has. Fixing the rename paths cannot reach rows that were already wrong, and
-    there is no migration chain to carry a one-off correction (ADR-0008), so the
-    scan — which is already the "make the database agree with the disk" pass —
-    does it.
-
-    Only a **provably** stale title is touched: one that still equals
-    ``original_filename`` while the path's basename has moved on. That is the
-    signature of exactly this bug, because a rename records the new name in
-    neither field. A title someone chose through ``PATCH …/files/{file_id}`` is
-    left alone unless it happens to equal the import name, in which case the
-    correction is what they would want anyway.
-
-    Deliberately narrower than "any title that differs from its basename". After
-    the scanner's *own* repair path left a title behind, ``original_filename`` had
-    already been updated to the new name — which makes that row indistinguishable
-    from a deliberately chosen title, so it is not guessed at. Renaming such a
-    file again now corrects it.
-    """
-    healed = 0
-    rows = session.scalars(
-        select(AssetFile).where(AssetFile.display_title == AssetFile.original_filename)
-    )
-    for row in rows:
-        basename = row.relative_path.rsplit("/", 1)[-1]
-        if row.display_title != basename:
-            row.display_title = basename
-            healed += 1
-    return healed
 
 
 def _mark_missing(files: Iterable[AssetFile], keep: frozenset[str] | set[str]) -> int:

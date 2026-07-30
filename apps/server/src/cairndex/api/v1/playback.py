@@ -9,6 +9,7 @@ which honors HTTP Range (206 + Content-Range). Subtitles are served as WebVTT.
 
 import math
 import mimetypes
+from pathlib import PurePosixPath
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -114,7 +115,8 @@ def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> Pl
         videos.append(
             PlayableVideo(
                 file_id=f.id,
-                display_title=f.display_title,
+                # The current filename, for the same reason FileRead derives it.
+                display_title=PurePosixPath(f.relative_path).name,
                 playable=cap.playable,
                 reason=cap.reason,
                 mime_type=cap.mime_type,

@@ -72,21 +72,37 @@ Lesson worth keeping: the first fix was made at the one call site the reported
 symptom pointed at, without asking what *else* writes that column. `grep` for
 every writer of the field, not for the path in the report.
 
-**Existing rows are healed by the next scan.** A forward fix cannot reach rows
-already wrong, and there is no migration chain (ADR-0008), so
-`_heal_titles_left_behind_by_an_old_rename` runs in the scan — already the pass
-that makes the database agree with the disk. It corrects only a **provably** stale
-title: one that still equals `original_filename` while the basename has moved on,
-which is the signature of the first path's bug, since a rename recorded the new
-name in neither field.
+**Then the owner reported it a third time, with screenshots** — one file, 442 KB,
+showing as `dist_44921set07pl.webp` in the bundle rail and `SET-025.webp` in the
+File Browser. Two things were true at once: the fixes were on an unmerged branch
+they were not running, *and* a scan-time heal added in round two deliberately
+skipped their case. Once the scanner's repair path has left a title behind,
+`original_filename` is already the new name, which makes the row
+indistinguishable from a deliberately chosen title — so no heuristic can safely
+correct it.
 
-It is deliberately narrower than "any title that differs from its basename". Once
-the *scanner's* repair path had left a title behind, `original_filename` was
-already the new name — which makes that row indistinguishable from a deliberately
-chosen title, so it is not guessed at. Those correct themselves the next time the
-file is renamed. Verified on real stale data: a row left by the actual pre-fix
-code went from `Alpha.Show.S01.part1.mp4` to `RENAMED.part1.mp4` on one scan,
-with `original_filename` and every other row untouched.
+**So the shown name is now derived, not stored.** `FileRead` computes it from
+`relative_path` (beside the existing `derive_supported` validator), and the
+playback manifest does the same. That removes the class of bug rather than fixing
+it once per writer: no path can leave the name behind, rows that are already
+stale read correctly with no scan or repair step, and nothing has to guess which
+stored titles are leftovers. The heal was deleted — it rewrote data on a guess and
+now earns nothing.
+
+The column stays, and the three repoint paths still keep it in step, because the
+FTS index reads it (`search/index.py` indexes
+`display_title || original_filename || relative_path`) — a stale copy there is
+harmless and even helps, since it finds a file by the name it used to have.
+Nothing renders it. A real "call this file something else" feature would add its
+own nullable override and be preferred in the same validator; that is the
+distinction the current column cannot make, since it cannot tell a chosen title
+from a filename it happens to equal.
+
+Verified live on the exact un-healable shape: a row whose stored name was
+`dist_44921set07pl.webp` while `original_filename` had already moved on served its
+real filename through the running server. An API-level test pins it by leaving a
+row deliberately stale and asserting the listing still reads correctly; it fails
+with the validator removed.
 
 **2. A drop onto a bundle landed in the library root.** `dropFilesOnBundle`
 passed `destDir: ''`, so the copy was linked into the bundle correctly but filed
@@ -138,29 +154,25 @@ cannot be driven from here, so this is a reasoned fix rather than a reproduced
 one.
 
 **Gates run:** backend `ruff format --check`, `ruff check`, `mypy src packaging`,
-`pytest` (867 passed, +7); web `lint`, `format:check`, `typecheck`, `test` (476
+`pytest` (866 passed, +6); web `lint`, `format:check`, `typecheck`, `test` (476
 passed, +7), `build`; `test:e2e:frontend` (93 passed, +2, and the same 1
 pre-existing HLS re-attach failure recorded under PR #40 — it fails on clean
 `main` and is untouched here). Desktop gates not run locally: no Rust or
 `apps/desktop` file changed.
 
-Each fix has a test that was **confirmed to fail without it**: the `display_title`
-carry in all three repoint paths, the scan-time healing of an old one, the
-pointer-capture guard, `isStageSurface` accepting the image stage, the toast
+Each fix has a test that was **confirmed to fail without it**: the derived shown
+name (an API listing left deliberately stale), the `display_title` carry in all
+three repoint paths, the pointer-capture guard, `isStageSurface` accepting the image stage, the toast
 column (measured in Playwright — same centre axis, 8px stack gap), the next-frame
-selection re-assert, and the drop picker's default folder. Four further tests pin
-boundaries rather than a bug: a chosen title survives a Cairndex rename, a
-scan-found rename and a scan's healing pass, and a directory rename does not touch
-the titles beneath it.
+selection re-assert, and the drop picker's default folder. Three further tests pin
+boundaries rather than a bug: a chosen title survives a Cairndex rename and a
+scan-found rename, and a directory rename does not touch the titles beneath it.
 
 **Verified against a live backend** on a generated library (`Studios/Alpha` with
 two parts, a cover and a subtitle; `Studios/Beta`; `Photos`): renaming through the
 API and reading both surfaces showed `SecondPart.mp4` in the bundle inspector and
 the File Browser together, with `original_filename` still
-`Alpha.Show.S01.part2.mp4`. The healing pass was then verified on the row the
-*actual* pre-fix code had left stale in that same library — one scan took it from
-`Alpha.Show.S01.part1.mp4` to `RENAMED.part1.mp4`, leaving `original_filename` and
-the three other rows alone.
+`Alpha.Show.S01.part2.mp4`.
 
 ## Merged: grouping review state and collection conversion (PR #40, 2026-07-29)
 
