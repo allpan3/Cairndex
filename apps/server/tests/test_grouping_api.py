@@ -688,44 +688,59 @@ def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
     assert len(kept[0]["files"]) == 2
 
 
-def test_single_item_bundle_cannot_become_a_collection(
+def test_single_item_bundle_converts_once_then_stops(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
-    """A collection of one identical bundle adds no structure — and because that
-    child is convertible too, allowing it let collections nest without limit
-    (owner-reported, 2026-07-30)."""
+    """A single subject may become a collection — the owner may be making a home
+    for siblings to drag in — but only once.
+
+    What made this nest without limit was that the child of a conversion could be
+    converted again, each click repeating the same name one level deeper
+    (owner-reported, 2026-07-30). The child always lands inside a collection for
+    its own folder, and that is exactly the position where another is refused.
+    """
     (library_root / "Solo").mkdir()
     (library_root / "Solo" / "Solo.mp4").write_text("v")
     scan_library(session, library_root)
 
     base = f"/api/v1/libraries/{library_id}/grouping"
     plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
     solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
 
-    refused = client.put(
-        f"{base}/plans/{plan['id']}/proposals/{solo['id']}/kind", json={"kind": "container"}
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind", json={"kind": "container"}
     )
-    assert refused.status_code == 422, refused.text
+    assert converted.status_code == 200, converted.text
+    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == solo["id"]]
+    assert len(children) == 1
 
-    # The plan is untouched: still one bundle holding its file.
-    after = client.get(f"{base}/plans/{plan['id']}").json()
-    assert [(p["kind"], len(p["files"])) for p in after["proposals"]] == [("bundle", 1)]
+    # The child sits in a collection for its own folder: no further layer.
+    again = client.put(
+        f"{base}/plans/{plan_id}/proposals/{children[0]['id']}/kind",
+        json={"kind": "container"},
+    )
+    assert again.status_code == 422, again.text
 
 
-def test_one_video_with_sidecars_is_one_subject_and_does_not_divide(
+def test_one_video_with_sidecars_stays_one_bundle_when_divided(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
-    """Splitting per file here would put the subtitle in a bundle of its own."""
+    """Dividing keeps a video's sidecars with it rather than splitting per file."""
     _seed(session, library_root)  # Cosmos: one video + poster + subtitle
     base = f"/api/v1/libraries/{library_id}/grouping"
     plan = client.post(f"{base}/plans").json()
     cosmos = next(p for p in plan["proposals"] if p["kind"] == "bundle")
     assert len(cosmos["files"]) == 3
 
-    refused = client.put(
+    converted = client.put(
         f"{base}/plans/{plan['id']}/proposals/{cosmos['id']}/kind", json={"kind": "container"}
     )
-    assert refused.status_code == 422, refused.text
+    assert converted.status_code == 200, converted.text
+    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == cosmos["id"]]
+    # One subject in, one bundle out — all three files together, not one each.
+    assert len(children) == 1
+    assert len(children[0]["files"]) == 3
 
 
 def test_image_only_bundle_divides_per_file(

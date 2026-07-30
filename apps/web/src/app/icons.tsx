@@ -319,6 +319,18 @@ export const IconChevronsOut = () => (
   </Svg>
 )
 
+/** Stacked sheets (Lucide "layers") — an asset bundle: several files that belong
+ * together. Deliberately not a film clapper: a bundle is whatever its files are
+ * — photos, audio, documents — and the clapper read as a claim that it is a video
+ * (owner-reported, 2026-07-30). */
+export const IconLayers = () => (
+  <Svg>
+    <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+    <path d="m2 12 10 5 10-5" />
+    <path d="m2 17 10 5 10-5" />
+  </Svg>
+)
+
 /** One block splitting into two (Lucide "ungroup") — the grouping review's
  * "make this bundle a collection of bundles" action. */
 export const IconUngroup = () => (
