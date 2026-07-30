@@ -77,9 +77,13 @@ export function collectionCountDeltas(
   return deltas
 }
 
-/** Per-tag change for a batch of bundles. Tag counts are direct membership, so
- * this is a ±1 per bundle that did not already have (or still has) the tag. */
-export function tagCountDeltas(changes: Iterable<MembershipChange>): Map<string, number> {
+/**
+ * Change in *direct* membership per id — a plain ±1 per bundle that did not
+ * already hold it (or no longer does). This is what tag counts are made of, and
+ * also a collection's own "bundles in this collection" figure, as opposed to the
+ * subtree count above.
+ */
+export function directMembershipDeltas(changes: Iterable<MembershipChange>): Map<string, number> {
   const deltas = new Map<string, number>()
   const bump = (id: string, by: number) => deltas.set(id, (deltas.get(id) ?? 0) + by)
   for (const { before, after } of changes) {
