@@ -144,7 +144,14 @@ deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   `python:3.12-slim` runtime that serves the built frontend from FastAPI
   (`CAIRNDEX_STATIC_DIR=/app/web`) behind `/api`. `ffmpeg`/`ffprobe` are
   installed for scanning, thumbnails, and subtitle conversion.
-- **Non-root**: runs as a fixed UID/GID `10001:10001`. Give the app-data volume
+- **Non-root**: runs as UID/GID `10001:10001` by default, and **runs correctly
+  as any uid** — `user: "1000:1000"` in compose lets a deployment write as its
+  owner instead, needing no ownership changes on the host and leaving what
+  Cairndex creates readable to that owner's backups. The image writes only to
+  `/data`, `/tmp` and the library mounts, all supplied from outside, which is
+  what makes the override safe; `smoke.sh` exercises the image under a foreign
+  uid so it stays true. The one constraint is that `/data` must then be a bind
+  mount, since a named volume inherits the image's ownership. Otherwise: give the app-data volume
   and the library root enough permissions for that id to write `/data` and the
   library's `.cairndex/` package. On Linux that id is literal in both
   directions: a bind mount preserves real uids, so everything Cairndex creates

@@ -18,14 +18,20 @@ CONTAINER="cairndex-smoke-$$"
 PORT="${CAIRNDEX_SMOKE_PORT:-18000}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LIBRARY_DIR="$(mktemp -d)"
+ALT_CONTAINER="${CONTAINER}-altuid"
+ALT_LIBRARY_DIR="$(mktemp -d)"
+ALT_DATA_DIR="$(mktemp -d)"
+ALT_PORT=$((PORT + 1))
 
 cleanup() {
-    docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    docker rm -f "$CONTAINER" "$ALT_CONTAINER" >/dev/null 2>&1 || true
     docker volume rm "${CONTAINER}-data" >/dev/null 2>&1 || true
     # The .cairndex/ tree belongs to uid 10001 on the host as well (see
     # in_library below), so this user cannot unlink it. Root in a container can.
     in_library rm -rf /libraries/main/.cairndex >/dev/null 2>&1 || true
     rm -rf "$LIBRARY_DIR"
+    # The alternate-uid run wrote as *this* user, so no container is needed.
+    rm -rf "$ALT_LIBRARY_DIR" "$ALT_DATA_DIR"
 }
 trap cleanup EXIT
 
@@ -130,4 +136,45 @@ if in_library test -f /libraries/main/.cairndex/library.db-wal; then
     fail "WAL left behind after clean shutdown (checkpoint did not run)"
 fi
 
-echo "SMOKE OK: $IMAGE serves, scans, and shuts down cleanly"
+# --- The image under somebody else's uid -------------------------------------
+#
+# A NAS owner should not have to hand ownership of their shares to uid 10001
+# just to run this. The alternative is to run the container as *their* id
+# (`user: "1000:1000"`), which needs no chown at all and leaves everything
+# Cairndex creates owned by them — including the files a host-side backup has to
+# read.
+#
+# That only works while the image writes nowhere it has to own: /data, /tmp, and
+# the library mounts, all of them supplied from outside. It is one `pip install`
+# of a library with a cache directory away from quietly becoming false, so it is
+# tested rather than assumed. /data is bind-mounted here on purpose — a *named*
+# volume inherits the image's 10001 ownership and would defeat the override.
+step "runs as an arbitrary uid, with no chown anywhere"
+docker run -d --name "$ALT_CONTAINER" \
+    -p "127.0.0.1:${ALT_PORT}:8000" \
+    --user "$(id -u):$(id -g)" \
+    -v "${ALT_DATA_DIR}:/data" \
+    -v "${ALT_LIBRARY_DIR}:/libraries/main:rw" \
+    --read-only --tmpfs /tmp \
+    --security-opt no-new-privileges:true \
+    "$IMAGE" >/dev/null
+
+for _ in $(seq 1 60); do
+    if curl -fsS "http://127.0.0.1:${ALT_PORT}/api/v1/health" >/dev/null 2>&1; then break; fi
+    docker ps -q --filter "name=$ALT_CONTAINER" | grep -q . \
+        || fail "container exited during startup as uid $(id -u) — it needs a path it does not own"
+    sleep 1
+done
+curl -fsS "http://127.0.0.1:${ALT_PORT}/api/v1/health" >/dev/null 2>&1 \
+    || fail "never became healthy as uid $(id -u)"
+
+curl -fsS "http://127.0.0.1:${ALT_PORT}/api/v1/libraries/create" \
+    -X POST -H 'content-type: application/json' \
+    -d '{"display_name":"AltUid","root_path":"/libraries/main"}' >/dev/null \
+    || fail "could not create a library as uid $(id -u)"
+# Readable from the host without a container, which is the whole point.
+[ -f "${ALT_LIBRARY_DIR}/.cairndex/library.db" ] \
+    || fail "library package not written, or not readable by the invoking user"
+docker stop --timeout 30 "$ALT_CONTAINER" >/dev/null
+
+echo "SMOKE OK: $IMAGE serves, scans, shuts down cleanly, and runs as any uid"

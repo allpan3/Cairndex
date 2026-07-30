@@ -90,27 +90,63 @@ moving a mount orphans everything inside it and you have to register it all
 again. That is why mounts hang under `/libraries` rather than being `/libraries`
 — starting with one share and adding a second later costs nothing.
 
-## Permissions — read this before the first run
+## Permissions — pick one of two approaches
 
-The container runs as uid/gid **10001**, not root. On Linux that id is literal
-on the host as well, in both directions:
+By default the container runs as uid/gid **10001**, a user created in the image.
+On Linux that id is literal on the host too, so every path you mount has to be
+writable by it.
 
-- Cairndex must be able to write `<library root>/.cairndex/`, where it keeps
-  each library's portable package (`manifest.json`, `library.db`, `cache/`).
-  Your media files themselves are only ever read.
-- Files it creates there end up **owned by `10001:10001` on the host**, so your
-  own account may not be able to read all of them — the ownership lease is mode
-  `0600`. That matters for host-side backups; see [Backups](#backups).
+### Simplest: run as yourself
 
-Grant it whichever way suits the box:
+Set `user:` in the compose file to your own id and **change no ownership at
+all**. Find it on the NAS with:
 
 ```bash
-sudo setfacl -R -m u:10001:rwx /path/to/library
+id -u && id -g
+```
+
+```yaml
+    user: "1000:1000"
+```
+
+The app then writes as you, into directories you already own. Files Cairndex
+creates stay yours, so a host-side backup can read them — the whole ownership
+problem below simply does not arise.
+
+This works because the app writes only to `/data`, `/tmp` and the library
+mounts, all supplied from outside; `infra/docker/smoke.sh` tests the image under
+an arbitrary uid so that stays true. **One requirement: `/data` must be a bind
+mount.** A named volume takes its ownership from the image — uid 10001 — and
+would lock your id out of it.
+
+### Or: grant uid 10001 access
+
+Leave `user:` alone and give that id what it needs. Two grants, and note what
+each one is *not*:
+
+```bash
+sudo mkdir -p /volume1/docker/cairndex/data && sudo chown -R 10001:10001 /volume1/docker/cairndex/data
 ```
 
 ```bash
-sudo chown -R 10001:10001 /path/to/library/.cairndex
+sudo setfacl -m u:10001:rwx /path/to/library/root
 ```
+
+The first is recursive because that directory belongs to Cairndex alone. The
+second is **not recursive on purpose**: Cairndex only needs to create
+`.cairndex/` in the library root, and everything it writes goes inside that.
+Your media files just need to stay readable. Do not `chown -R` a media share —
+it rewrites ownership of every file you have and can lock your own account out.
+
+If `setfacl` is unavailable:
+
+```bash
+sudo chgrp 10001 /path/to/library/root && sudo chmod g+rwx /path/to/library/root
+```
+
+With this approach, files Cairndex creates are owned by `10001:10001` and the
+ownership lease is mode `0600`, so your own account may not be able to read all
+of them. That matters for host-side backups; see [Backups](#backups).
 
 **If the container exits immediately, read the log first.** A startup preflight
 refuses to run when `/data` is not writable by uid 10001 and says so in one

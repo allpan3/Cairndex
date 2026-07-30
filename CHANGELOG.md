@@ -148,6 +148,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   The startup preflight follows: it now warns when nothing is mounted at all
   (the first-run mistake) and checks each mount separately.
 
+  **And you do not have to hand your directories to uid 10001.** The image runs
+  correctly as any uid, so `user: "1000:1000"` in the compose file lets the app
+  write as the machine's owner instead — no `chown` anywhere, and what Cairndex
+  creates stays readable to that owner's own backups. This holds because the app
+  writes only to `/data`, `/tmp` and the library mounts, all supplied from
+  outside; `smoke.sh` now starts the image under a foreign uid and creates a
+  library through it, so the property is tested rather than assumed. `/data`
+  must be a bind mount to use it — a named volume takes its ownership from the
+  image.
+
   **The image is smoke-tested before it is pushed, not after.** It is built to
   the runner's local daemon, put through the same `infra/docker/smoke.sh` that
   CI runs, and only then pushed — the second build reuses the layer cache, so

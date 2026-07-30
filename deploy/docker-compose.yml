@@ -37,6 +37,21 @@ services:
     # under you. :latest is the convenient default; the choice is yours.
     image: ghcr.io/allpan3/cairndex:${CAIRNDEX_IMAGE_TAG:-latest}
     restart: unless-stopped
+    # Who the app runs as. Left alone it is uid 10001, a user created in the
+    # image, and every path you mount must be writable by *that* id — which on a
+    # NAS means chowning your own directories to a number you did not choose.
+    #
+    # Uncomment with your own id instead (`id -u` and `id -g` on the NAS) and no
+    # ownership changes are needed anywhere: the app writes as you, into
+    # directories you already own. It also means files Cairndex creates stay
+    # readable to your backups, rather than belonging to 10001.
+    #
+    # This works because the app writes only to /data, /tmp and the library
+    # mounts — all supplied from outside — and the smoke test checks that stays
+    # true. One caveat: /data must be a bind mount, as below. A *named* volume
+    # takes its ownership from the image, i.e. 10001, and would lock you out.
+    #
+    # user: "1000:1000"
     ports:
       # 0.0.0.0 — reachable from other machines on your network, which is the
       # point of running this on a NAS. (The repository-root compose file
@@ -65,6 +80,18 @@ services:
     volumes:
       # Server-local runtime state: registry.db, transcode scratch, backups.
       # Per-library content metadata lives in each library's own .cairndex/.
+      #
+      # A named volume, which Docker creates already owned by the image's uid
+      # 10001 — so it works with no setup at all, but ONLY while the container
+      # runs as that default user. If you set `user:` above, swap this for a
+      # host path you own and create it yourself first:
+      #
+      #   - /volume1/docker/cairndex/data:/data
+      #
+      # (and delete the `volumes:` block at the end of this file). Docker would
+      # otherwise create a missing host path as root, which your id then cannot
+      # write either. A host path also puts registry.db somewhere your backups
+      # can see it, which a named volume does not.
       - cairndex-data:/data
       # >>> EDIT: the host path of your media, before the colon. <<<
       #
@@ -85,8 +112,10 @@ services:
       # registry records the path a library was registered under, so re-pathing
       # an existing mount means re-registering everything inside it.
       #
-      # It must be writable by uid 10001, the container's non-root user:
-      # Cairndex keeps each library's portable package at
+      # It must be writable by whoever the container runs as — uid 10001 by
+      # default, or your own id if you set `user:` above, in which case a share
+      # you already own needs nothing done to it. Cairndex keeps each library's
+      # portable package at
       # <library>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
       # Your media files are not moved, renamed, deleted, or rewritten by any
       # ordinary flow — only by an explicit write-mode operation (ADR-0013),
