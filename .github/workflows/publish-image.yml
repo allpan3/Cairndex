@@ -1,0 +1,125 @@
+name: Publish image
+
+# Builds the production container image and pushes it to GitHub Container
+# Registry, so a server can run Cairndex with a compose file and nothing else —
+# no git checkout, no build toolchain, no source on the box. See `deploy/`.
+#
+# Publication is tied to a deliberate act, never to a push to `main`: a version
+# tag, or a manual dispatch. That matches how `release.yml` treats the desktop
+# app (it builds a *draft* release and leaves publishing to a human). A registry
+# has no draft state, so the trigger is where that decision lives instead.
+#
+# The image is **smoke-tested before it is pushed**, not after. It is built to
+# the runner's local daemon first, `infra/docker/smoke.sh` starts it and
+# exercises a real scan, and only then is it pushed — the second build step
+# reuses the layer cache, so it costs seconds. The alternative, publishing and
+# then testing, means a broken image is reachable by anyone who pulls in
+# between, and `:latest` would have to be rolled back rather than never moved.
+# This whole workflow exists downstream of a month in which a build-only CI job
+# stayed green while the image's entrypoint ran a no-op migration command and
+# the dev image had no ffmpeg at all.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish (e.g. edge, or a branch name)"
+        required: true
+        default: edge
+        type: string
+
+# Least privilege: read the repository, write packages. Nothing here creates a
+# release or moves a ref.
+permissions:
+  contents: read
+  packages: write
+
+env:
+  # github.repository would be "allpan3/Cairndex" — GHCR requires a lowercase
+  # path, and a capital letter is rejected at push time rather than normalized.
+  IMAGE: ghcr.io/${{ github.repository_owner }}/cairndex
+
+jobs:
+  publish:
+    name: Build, smoke-test, push
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # Non-GitHub-owned actions are pinned by commit SHA, as in release.yml:
+      # this produces an artifact that machines pull and run unattended, so a
+      # repointed tag must not be able to change what runs here.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # A tag push publishes 1.2.3 and 1.2; `latest=auto` moves :latest with
+          # it, and leaves it alone for a prerelease (v1.2.3-rc1). A dispatch
+          # publishes exactly the tag asked for and never touches :latest.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+          flavor: latest=auto
+
+      # Single-platform on purpose: the deployment target is an amd64 NAS, and
+      # the arm64 half would be a QEMU-emulated build of the whole Node + Python
+      # stack on every release to serve nobody. To add it, put
+      # `platforms: linux/amd64,linux/arm64` on the push step below and give it
+      # a docker/setup-qemu-action — note that the smoke step cannot come with
+      # it, because `load: true` only accepts one platform, so the arm64 image
+      # would be published untested.
+      - name: Build the candidate image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: infra/docker/production.Dockerfile
+          load: true
+          tags: cairndex:candidate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The gate. Starts the image under its real hardening, creates a library
+      # through the API, scans a generated video, asserts a cover came out, and
+      # checks that a graceful stop released the ownership lease.
+      - name: Smoke-test the candidate
+        run: ./infra/docker/smoke.sh cairndex:candidate
+
+      # Login happens here rather than at the top: nothing before this point
+      # needs the registry, and a failed smoke test should not have left an
+      # authenticated session lying around on the runner.
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same context, same cache, so this re-tags what was just tested rather
+      # than compiling anything again.
+      - name: Push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: infra/docker/production.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "Pull on the server with \`docker compose pull && docker compose up -d\`."
+          } >> "$GITHUB_STEP_SUMMARY"

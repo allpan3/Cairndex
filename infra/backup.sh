@@ -14,7 +14,7 @@
 #
 # Recommended (run against the live container so the paths + python are present):
 #   docker exec cairndex-app-1 /app/infra/backup.sh /data/registry.db /data/backups
-#   docker exec cairndex-app-1 /app/infra/backup.sh /storage/media/.cairndex/library.db /data/backups
+#   docker exec cairndex-app-1 /app/infra/backup.sh /libraries/main/.cairndex/library.db /data/backups
 #   docker cp cairndex-app-1:/data/backups ./backups
 #
 # Restore is a file copy while the app is STOPPED:
