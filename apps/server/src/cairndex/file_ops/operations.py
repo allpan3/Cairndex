@@ -81,13 +81,26 @@ def repoint_linked_rows(session: Session, *, source: str, destination: str) -> i
     subtitle links, notes, ratings and cache identity survive the rename. Shared
     with the reconciler, which applies exactly this metadata side to an
     operation whose filesystem half already happened.
+
+    ``display_title`` follows the rename, but only when it still *is* the old
+    filename. It is seeded from the filename at scan and at fast-add, so for
+    almost every row it is the name — and leaving it behind is how a renamed file
+    kept its old name everywhere a bundle is shown while the File Browser showed
+    the new one (owner report, 2026-07-30). It is also owner-editable, though, so
+    a title someone chose deliberately is not the filename's to overwrite.
+    ``original_filename`` deliberately does *not* move: it records what the file
+    was called when it entered the library, which is the whole point of keeping
+    it separately.
     """
     rows = _linked_rows_under(session, source)
     for row in rows:
+        was_named_after_its_file = row.display_title == PurePosixPath(row.relative_path).name
         if row.relative_path == source:
             row.relative_path = destination
         else:
             row.relative_path = destination + row.relative_path[len(source) :]
+        if was_named_after_its_file:
+            row.display_title = PurePosixPath(row.relative_path).name
     return len(rows)
 
 
