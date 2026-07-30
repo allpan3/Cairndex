@@ -64,6 +64,53 @@ def test_rename_and_undo_round_trip(client: TestClient, writable: str, library_r
     assert (library_root / "a.mkv").is_file()
 
 
+def test_a_bundle_shows_a_file_under_its_current_name(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """A stale stored title cannot reach a bundle surface.
+
+    ``display_title`` is a copy of the filename made when the row was created, and
+    three separate code paths repoint a row — so the copy kept drifting, and the
+    same file appeared under one name in the File Browser and another inside its
+    bundle across three rounds of owner reports (2026-07-30). It is derived from
+    the current path now, so the whole class is gone rather than fixed per writer:
+    this row is left deliberately stale and still reads correctly.
+    """
+    (library_root / "dist_44921set07pl.webp").write_bytes(b"image")
+    bundle = AssetBundle(title="SET-025", grouping_state=GroupingState.CONFIRMED)
+    session.add(bundle)
+    session.flush()
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path="dist_44921set07pl.webp",
+            original_filename="dist_44921set07pl.webp",
+            display_title="dist_44921set07pl.webp",
+            role=FileRole.COVER,
+            media_kind=MediaKind.IMAGE,
+        )
+    )
+    session.commit()
+
+    renamed = _rename(client, writable, path="dist_44921set07pl.webp", new_name="SET-025.webp")
+    assert renamed.status_code == 200, renamed.text
+
+    # Put the stored copy back to the old name, the state the owner's library was
+    # in: whatever left it stale, the bundle must not render it.
+    stale = session.scalar(select(AssetFile).where(AssetFile.bundle_id == bundle.id))
+    assert stale is not None
+    stale.display_title = "dist_44921set07pl.webp"
+    session.commit()
+
+    listed = client.get(f"/api/v1/libraries/{writable}/bundles/{bundle.id}/files")
+
+    assert listed.status_code == 200, listed.text
+    shown = listed.json()[0]
+    assert shown["display_title"] == "SET-025.webp"
+    # The name it arrived under is still reported, because that is its own field.
+    assert shown["original_filename"] == "dist_44921set07pl.webp"
+
+
 def test_mkdir_creates_and_reports_the_new_folder(
     client: TestClient, writable: str, library_root: Path
 ) -> None:
