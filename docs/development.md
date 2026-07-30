@@ -7,7 +7,7 @@
 | `uv`                       | Backend dependency + Python version management | Installs Python 3.12 for you even though the host may ship an older system Python.                   |
 | Node.js 20+                | Frontend tooling                               | `npm` ships with Node; no separate package manager required.                                         |
 | Stable Rust + Cargo        | Tauri 2 desktop host                           | Required only for `apps/desktop`; install with rustup and include `clippy` + `rustfmt`.               |
-| Docker + Compose v2 plugin | Optional, for the containerized dev stack      | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`.                         |
+| Docker + Compose v2 plugin | Optional, for the containerized dev stack and for building the deployment image | macOS: install Docker Desktop. Linux: `docker-ce` + `docker-compose-plugin`. See [Running with Docker](#running-with-docker). |
 | `ffmpeg` / `ffprobe`       | Media probing, thumbnails, subtitle conversion | Required for full media behavior. macOS: `brew install ffmpeg`. Debian/Ubuntu: `apt install ffmpeg`. |
 
 Cairndex is developed on macOS and deployed on Linux; avoid macOS-only or
@@ -605,13 +605,90 @@ uses the server URL stored by its first-run screen instead.
 
 ## Running with Docker
 
+The native loop above is the primary one. The containerized stack is the
+alternative for when you want the deployment's environment rather than your
+Mac's — checking Linux behavior, reproducing something a NAS does, or working
+without a local `uv`/Node toolchain. Both halves hot-reload, so iterating in it
+is not meaningfully slower once the images are built.
+
 ```bash
-docker compose up --build
+cp .env.example .env          # then set CAIRNDEX_DEV_LIBRARY_PATH
+just docker-dev-library       # optional: seed a scratch library
+just docker-dev               # == docker compose up --build
 ```
 
-Starts the backend on `:8000` and the frontend dev server on `:5173` with source
-bind-mounted for live reload. This is a development convenience, not the NAS
-production deployment shape — see `docs/deployment.md`.
+Backend on `:8000`, Vite on `:5173` (both configurable — see below). Source is
+bind-mounted: editing `apps/server/src` restarts uvicorn, editing `apps/web/src`
+hot-updates the browser.
+
+### What the stack gives you that a bare `docker compose up` did not
+
+- **ffmpeg and ffprobe are installed.** Without them the server starts and then
+  fails at the first scan, since probing, thumbnails, storyboards, subtitle
+  conversion, and HLS all shell out to them.
+- **A library is mounted.** `CAIRNDEX_DEV_LIBRARY_PATH` is bind-mounted at
+  `/storage/media`; without a mount there is nothing to point the app at.
+- **Registry state survives a rebuild**, in the `cairndex-dev-data` volume.
+- **Reload is scoped to `src`.** A bare `--reload` watches the whole
+  bind-mount, which on a developer machine includes `.venv` (tens of thousands
+  of files, plus a second one for x86_64 sidecar builds) and `var/`.
+
+### Two collisions to know about
+
+**The dev container has its own registry**, deliberately not the
+`apps/server/var` that native `just dev` uses. If they shared one `registry.db`
+both servers would register the same libraries and then contend for their
+ADR-0018 ownership leases, each taking the library from the other.
+
+**A library may be open on one server at a time** (ADR-0018). Point
+`CAIRNDEX_DEV_LIBRARY_PATH` at a scratch library, not at one your desktop app or
+native dev server is also serving — the second server to try is refused, and it
+will name the first. `just docker-dev-library` seeds one at `var/docker-library`:
+fourteen generated files — 2-second clips, JPEG covers, and subtitles, arranged
+into a multi-part film, an episodic set, and some loose images — so multi-file
+bundling, grouping, covers, and playback all have something real to work on. It
+uses ffmpeg from a container, so no local ffmpeg is needed. Under a megabyte
+total.
+
+This is deliberately not `devtools.synthetic_library`, which writes rows for
+files that do not exist. That is right for benchmarking query plans at 100k
+bundles (see [Large-library performance tooling](#large-library-performance-tooling))
+and wrong here: every file would show as missing and no thumbnail or playback
+path would ever run.
+
+To run the container stack *alongside* native `just dev` rather than instead of
+it, set `CAIRNDEX_DEV_API_PORT` / `CAIRNDEX_DEV_WEB_PORT` to free ports.
+
+### Stopping it
+
+```bash
+just docker-dev-down                 # keeps the registry volume
+just docker-dev-down --volumes       # and discards it
+```
+
+Prefer this to killing the container. Shutdown releases each library's ownership
+lease and checkpoints its WAL; a SIGKILL part-way through leaves the lease
+behind until it ages out (`CAIRNDEX_LEASE_TTL`, five minutes), during which
+nothing else will open that library without a confirmed takeover.
+
+### Changing dependencies
+
+A `uv.lock` or `package.json` change needs a rebuild, and the frontend needs
+more than that: `node_modules` lives in an anonymous volume that is populated at
+image build time, and a plain `up --build` reuses the existing one.
+
+```bash
+docker compose up --build --force-recreate
+```
+
+### Testing the production image locally
+
+`just docker-prod` runs the same single-container image the NAS runs — no source
+mount, no reload, SPA served by the backend. `just docker-smoke` starts it
+against a throwaway library, creates one through the API, scans a generated
+video, and checks that a graceful stop releases the lease; CI runs the same
+script after building. See [deployment.md](deployment.md) for the deployment
+itself, including building an amd64 image for the NAS from an Apple Silicon Mac.
 
 ## Repository conventions
 

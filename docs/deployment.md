@@ -8,18 +8,10 @@
 
 ## Local development stack
 
-`docker-compose.yml` (repo root) defines two services for local iteration:
-
-- `server` — FastAPI app via `uvicorn --reload`, port `8000`, source
-  bind-mounted from `apps/server`.
-- `web` — Vite dev server, port `5173`, source bind-mounted from `apps/web`.
-
-```bash
-docker compose up --build
-docker compose down
-```
-
-This is for local iteration only (source bind-mounts, hot reload). It is not how
+`docker-compose.yml` (repo root) is the containerized *development* stack —
+bind-mounted source, hot reload on both halves, its own registry volume, and a
+scratch library mount. It is documented in
+[development.md](development.md#running-with-docker), not here; it is not how
 the app runs in production.
 
 ## Production deployment (NAS / self-host)
@@ -30,6 +22,10 @@ One hardened container serves the API and the built frontend on port `8000`.
 cp .env.example .env          # then edit MEDIA_HOST_PATH and bind addr/port
 docker compose -f docker-compose.prod.yml up --build -d
 ```
+
+Building on the NAS gives you its architecture for free. To build elsewhere —
+an Apple Silicon Mac for an amd64 NAS — see
+[Building for the NAS from another machine](#building-for-the-nas-from-another-machine).
 
 Then open the bound address (default `http://127.0.0.1:8000`), use the app's
 library manager to create or register the mounted path, and run **Update**. A
@@ -60,7 +56,13 @@ disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   installed for scanning, thumbnails, and subtitle conversion.
 - **Non-root**: runs as a fixed UID/GID `10001:10001`. Give the app-data volume
   and the library root enough permissions for that id to write `/data` and the
-  library's `.cairndex/` package.
+  library's `.cairndex/` package. On Linux that id is literal in both
+  directions: a bind mount preserves real uids, so everything Cairndex creates
+  in the library is owned by `10001:10001` **on the host too**, and your own
+  account may not be able to read all of it — the ownership lease is mode `0600`.
+  Plan for it in [Backups](#backups): share a group with `10001`, or read the
+  package from inside a container. Docker Desktop for macOS remaps ownership to
+  whoever invoked it, so a trial on a Mac will not show you any of this.
 - **Writable app data**: the `cairndex-data` named volume at `/data` holds the
   server-local `registry.db`, job state, and backups. It is not portable content
   metadata.
@@ -69,6 +71,61 @@ disabled deployment-wide with `CAIRNDEX_WRITE_MODE=disabled` (ADR-0013, below).
   media only through the opt-in write mode described below (ADR-0013).
 - **Hardening**: read-only container root filesystem, `tmpfs` `/tmp`, and
   `no-new-privileges`. Writable state is limited to mounted volumes.
+- **Startup preflight**: the entrypoint refuses to start if `CAIRNDEX_DATA_DIR`
+  is not writable by uid 10001, and warns (but continues) if the library mount
+  is not. A read-only library mount is a legitimate browse-only deployment; an
+  unwritable `/data` is not, and without the check it surfaces much later as an
+  opaque SQLite "unable to open database file" from whichever request happened
+  to touch the registry first. This is the most common NAS misconfiguration,
+  because a bind-mounted host directory arrives with the host's ownership.
+- **Graceful stop matters**: `stop_grace_period` is 30s, above Docker's 10s
+  default. Shutdown releases each library's ownership lease and checkpoints its
+  WAL (see [One server per library](#one-server-per-library)); being SIGKILLed
+  part-way through strands the lease until it ages out.
+- **Bounded logs**: `json-file` with `max-size: 10m`, `max-file: 3`. Unbounded
+  container logs are a slow way to fill a NAS volume.
+
+### Building for the NAS from another machine
+
+The image is architecture-agnostic — every base it uses is multi-arch — so
+building it *on* the NAS needs no special handling and is the simplest path.
+Building on an Apple Silicon Mac for an amd64 NAS needs an explicit platform,
+because Docker otherwise builds for the host's architecture:
+
+```bash
+just docker-build-nas              # docker buildx build --platform linux/amd64 …
+```
+
+That leaves `cairndex:nas` in the local daemon. With no registry between the two
+machines, ship it over SSH:
+
+```bash
+docker save cairndex:nas | gzip | ssh nas 'gunzip | docker load'
+```
+
+Then on the NAS, point compose at the loaded image (`image: cairndex:nas`) and
+bring it up without `--build`. With a registry available, swap `--load` for
+`--push` in the recipe and pull on the NAS instead.
+
+Cross-building is emulated, so it is slower than building natively on the NAS —
+prefer building there when you can.
+
+### Verifying an image actually works
+
+```bash
+just docker-smoke
+```
+
+Starts the production image against a throwaway library, waits for health,
+checks the SPA is served and ffmpeg/ffprobe are present, creates a library
+through the API, generates a video and scans it, asserts a cover was produced
+(which is what proves the media pipeline, not just the web layer), then stops
+the container and asserts the ownership lease was released and the WAL folded
+back in. CI runs the same script after building.
+
+This exists because *building* an image proves very little. The Docker CI job
+was green for a month while the production entrypoint ran a migration command
+that no longer did anything and the dev image had no ffmpeg at all.
 
 ### Environment variables
 
@@ -184,7 +241,19 @@ few GB of headroom is ample for the default 2-session bound.
 
 Compose-only host knobs (`.env`): `CAIRNDEX_BIND_ADDR` (default `127.0.0.1`),
 `CAIRNDEX_PORT` (default `8000`), and `MEDIA_HOST_PATH` (host Cairndex library
-root mounted at `/storage/media`).
+root mounted at `/storage/media`). One `.env` serves both stacks; the dev stack
+reads the separate `CAIRNDEX_DEV_*` keys, so configuring one never silently
+reconfigures the other.
+
+**A schema note, since the entrypoint no longer implies otherwise.** Cairndex has
+no migration chain in use. The registry DB is bootstrapped by `create_all` on
+first open, and each library's schema is created with its `.cairndex` package and
+patched additively on every open (`persistence.engine.ensure_content_indexes`
+adds missing columns, tables, and indexes; `ensure_search_schema` rebuilds the
+FTS index when its column set changes). Nothing needs to be run before or after
+an upgrade — starting the new image is the whole procedure. The entrypoint used
+to call `alembic upgrade head`, which had quietly become a no-op that still
+printed a line claiming migrations were applied.
 
 ### One server per library
 

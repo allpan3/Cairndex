@@ -7,6 +7,10 @@
 #   cp .env.example .env      # then edit MEDIA_HOST_PATH etc.
 #   docker compose -f docker-compose.prod.yml up --build -d
 #
+# Building on the NAS itself gives you its architecture for free. To build on a
+# Mac for an amd64 NAS instead, see `just docker-build-nas` and the
+# "Building for the NAS from another machine" section of docs/deployment.md.
+#
 # Do NOT expose this directly to the public internet — there is no
 # authentication yet (AGENTS.md §12). Reach it over a private network/Tailscale.
 
@@ -26,9 +30,23 @@ services:
       # if you remap the volumes below.
       CAIRNDEX_STATIC_DIR: /app/web
       CAIRNDEX_DATA_DIR: /data
+      # ADR-0018: recorded in each library's ownership lease and shown to anyone
+      # whose other machine finds this server holding a library. Unset, it
+      # defaults to the container's hostname — a hex id that identifies nothing.
+      CAIRNDEX_MACHINE_NAME: ${CAIRNDEX_MACHINE_NAME:-cairndex-server}
+      # The URL other machines can reach this server at. Set it and a machine
+      # that finds this server holding a library can offer "connect there
+      # instead" rather than only naming a host. Only non-loopback URLs are ever
+      # offered as a redirect, so leaving it unset is correct for a local trial.
+      CAIRNDEX_ADVERTISED_URL: ${CAIRNDEX_ADVERTISED_URL:-}
+      # ADR-0013 deployment master switch. `allowed` lets each library's own
+      # opt-in (off by default) decide; `disabled` forces every library
+      # read-only and makes the per-library toggle un-flippable.
+      CAIRNDEX_WRITE_MODE: ${CAIRNDEX_WRITE_MODE:-allowed}
     volumes:
-      # Writable server-local runtime state: registry.db and backups. Per-library
-      # content metadata lives in each library's own .cairndex/library.db.
+      # Writable server-local runtime state: registry.db, HLS transcode scratch,
+      # and backups. Per-library content metadata lives in each library's own
+      # .cairndex/library.db instead.
       - cairndex-data:/data
       # Your Cairndex library root. This must be writable because the current
       # per-library package stores .cairndex/{manifest.json,library.db,cache/}
@@ -43,6 +61,27 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
+    # Shutdown releases each library's ownership lease, checkpoints its WAL, and
+    # folds it back into library.db, leaving a single consistent file (ADR-0018
+    # §6). A SIGKILL part-way through strands the lease until it ages out
+    # (CAIRNDEX_LEASE_TTL, 5 min by default), during which no other server —
+    # including your desktop app — will open that library without a confirmed
+    # takeover. Docker's default grace period is 10s; this buys room for a large
+    # or network-mounted library.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    # Unbounded json-file logs are a classic way to fill a NAS volume months
+    # after a deployment anyone has stopped thinking about.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   cairndex-data:
