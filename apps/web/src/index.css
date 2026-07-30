@@ -2616,7 +2616,10 @@ code {
 
 /* --- Grouping review (ADR-0009 phase 4) ----------------------------------- */
 .grp-modal {
-  width: min(780px, 94vw);
+  /* Wide, because the rows are long release filenames and every wrap costs a
+     line of vertical space in a list the owner is scanning (owner-reported,
+     2026-07-30). Still capped by viewport width. */
+  width: min(1100px, 96vw);
 }
 .grp-body {
   overflow: auto;
@@ -2630,6 +2633,13 @@ code {
   color: var(--text-muted);
   margin: 0;
   line-height: 1.45;
+}
+.grp-intro-points {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 .grp-error {
   font-size: 12px;
@@ -2669,8 +2679,19 @@ code {
 }
 .grp-row {
   display: flex;
-  align-items: center;
+  /* Not `center`: a row whose content wraps to two lines would float the
+     checkbox, drag handle and kind glyph to the vertical middle, leaving them
+     visibly detached from the title they belong to (owner-reported,
+     2026-07-30). Aligning to the top pins them to the first line; the offsets
+     below centre each within that line's 18px box. */
+  align-items: flex-start;
   gap: 8px;
+}
+.grp-row > .grp-check {
+  margin-top: 2px;
+}
+.grp-row > .grp-kind {
+  margin-top: 1px;
 }
 .grp-row--bundle {
   gap: 4px;
@@ -2682,8 +2703,11 @@ code {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  align-items: center;
+  /* Baseline, so a wrapped row's controls line up with the text on their own
+     line rather than with the tallest item across both. */
+  align-items: baseline;
   gap: 8px;
+  row-gap: 2px;
   flex-wrap: wrap;
 }
 .grp-title-cluster {
@@ -2785,13 +2809,6 @@ code {
   gap: 2px;
   padding-left: 6px;
   border-left: 1px solid var(--border);
-}
-.grp-stem__mode {
-  min-width: 46px;
-  color: var(--text-muted);
-  font-size: 10px;
-  text-align: center;
-  text-transform: capitalize;
 }
 .grp-destination {
   display: inline-flex;

@@ -10,6 +10,24 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Turning a single-item bundle into a collection nested forever.** It produced
+  a collection wrapping one identical bundle — and because that child was itself
+  convertible, each click added another layer of collections with the same name
+  and nothing inside them. A folder holding one video is one subject however many
+  covers or subtitles sit beside it, so there is nothing to divide: the control
+  is no longer offered on such a row, and the server refuses it. Dividing still
+  works wherever it means something — two or more videos split per video with
+  sidecars following their own, and an image-only bundle splits per file.
+- **A merged collection could lose its files.** Merging a collection whose
+  bundles live in subfolders leaves one bundle whose folder is the *parent* — a
+  folder with no media of its own. That row was offered Narrow/Widen anyway, and
+  using it deleted the row while the suggester had nothing to put back, so both
+  files dropped out of the plan silently and could no longer be bundled. The
+  control is no longer offered on a row whose files span more than one folder
+  (it could not have narrowed or widened anything there), and the server now
+  refuses any stem change that would drop a file rather than performing it.
+  This also fixes the reported symptom: such a row kept its Narrow/Widen buttons
+  after being turned back into a collection.
 - **Narrow and Widen no longer discard your review work.** They used to
   regenerate the whole plan server-side — new rows, new ids — so adjusting one
   folder reset every checkbox and every edit everywhere. They now re-suggest
@@ -43,13 +61,45 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Changed
 
+- **A grouped bundle is named by the part its files share**, not by whichever
+  file came first. Four files matched on a common prefix were titled
+  "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes" — one
+  member's name, implying the other three were behind-the-scenes clips. They now
+  read "StudioAlpha.19.12", the shared part that actually grouped them,
+  trimmed so it never ends mid-word. A multipart video gains from the same rule:
+  "Trip.part1" becomes "Trip". A bundle filling its own folder still takes the
+  folder's name, and a single subject still its own filename.
+- **The suggestion panel is wider** (1100px, was 780px) and its rows no longer
+  misalign when a long name wraps — the checkbox, drag handle and kind glyph
+  stayed vertically centred against the taller row, drifting away from the title
+  they belong to; they now sit on its first line.
+- **Narrow/Widen tooltips say what they do to which folder** — "Folder Trip
+  (matching: balanced) — split into more bundles by matching more of each
+  filename". The pair belongs to a *folder*, and is attached to whichever row
+  speaks for that folder, which is a collection row sometimes and a bundle row
+  other times; the old "stem matching" wording made that read as two unrelated
+  controls.
 - The review dialog drops two pieces of noise: single-file suggestions no longer
   say "single file on its own" (the row already shows exactly that), and
   converted rows no longer explain that you converted them.
 - Narrow/Widen are compact icon buttons too — inward chevrons narrow, outward
-  widen, with the current mode as a small label between them — matching the
-  destination and conversion toggles instead of dominating every folder row
-  with text buttons.
+  widen — matching the destination and conversion toggles instead of dominating
+  every folder row with text buttons. The current mode is named in the tooltip
+  rather than printed between them.
+- **The dialog's intro is three short lines instead of a paragraph.** It had
+  grown to document every affordance in the dialog, above the thing you opened it
+  to read; each control now carries its own tooltip.
+- **Collection rows no longer carry a reason.** Three code paths had each grown
+  their own phrasing for the same fact ("holds 2 sub-item(s)", "3 unrelated
+  files", "2 filename-matched bundle(s) from 4 files"), so identical rows read
+  differently depending on which produced them — and the row already shows the
+  bundles it holds. Bundle reasons stay, since "3 parts of one video" says
+  something the row does not.
+- **File rows show the media kind, not the suggester's guessed role.** They were
+  labelled `video part`, `alt version`, `cover`, `derivative` — guesses from
+  filenames that are neither reliable nor editable, so the label invited a guess
+  to be read as a fact. The rest of the app settled this already; the review
+  dialog now speaks the same vocabulary (video / image / subtitle).
 
 ## [0.1.0] — 2026-07-28
 
