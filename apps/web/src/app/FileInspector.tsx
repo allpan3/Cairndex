@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import {
   formatBitrate,
@@ -13,6 +13,7 @@ import {
 import type { HostLabels } from '../platform'
 import { fileDragProps } from './dragOut'
 import type { FileFacts } from './fileFacts'
+import { focusRenameInput } from './renameSelection'
 
 /**
  * Right-pane details for one file, wherever it was selected. Deliberately *not*
@@ -44,6 +45,7 @@ export function FileInspector({
   onRename?: (relativePath: string, newName: string) => void
 }) {
   const [editing, setEditing] = useState(false)
+  const titleRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState('')
   // Abandon any in-progress edit when the selection changes underneath it —
   // adjusted during render (React's pattern for resetting state on a prop
@@ -54,6 +56,14 @@ export function FileInspector({
     setLastPath(relativePath)
     setEditing(false)
   }
+
+  // Focus and stem-selection together, so the extension stays unselected on
+  // every engine — see renameSelection. Above the early return below, since a
+  // hook cannot sit behind one.
+  useEffect(() => {
+    const input = titleRef.current
+    return editing && input ? focusRenameInput(input) : undefined
+  }, [editing])
 
   if (entry === null) {
     return (
@@ -127,16 +137,11 @@ export function FileInspector({
     <aside className="inspector" data-tauri-drag-region>
       {editing ? (
         <input
+          ref={titleRef}
           className="edit inspector__title-edit"
           value={draft}
           aria-label={`Rename ${entry.name}`}
-          autoFocus
           spellCheck={false}
-          onFocus={(event) => {
-            // Select the stem, not the extension — renaming rarely retypes the type.
-            const dot = draft.lastIndexOf('.')
-            event.target.setSelectionRange(0, dot > 0 ? dot : draft.length)
-          }}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
           onKeyDown={(event) => {

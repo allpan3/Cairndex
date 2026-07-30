@@ -93,7 +93,7 @@ import { CollectionHeader } from './app/CollectionHeader'
 import { CollectionInspector } from './app/CollectionInspector'
 import { MultiBundleInspector } from './app/MultiBundleInspector'
 import { RemoveCollectionDialog } from './app/RemoveCollectionDialog'
-import { ConflictDialog } from './app/FileWriteDialogs'
+import { BundleDropDestination, ConflictDialog } from './app/FileWriteDialogs'
 import { Sidebar } from './app/Sidebar'
 import { TrashView } from './app/TrashView'
 import { SettingsDialog } from './app/SettingsDialog'
@@ -1527,33 +1527,58 @@ function Workspace({
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const queryClient = useQueryClient()
   const fileOperations = useFileOperations()
-  // OS files dropped onto a bundle card: import each into the library root
-  // (journaled, keep-both on a name collision), then link the landed paths into
-  // that bundle. Only offered with write mode on — without it the drop falls
-  // through to the window net's guidance, which is the honest answer.
-  const dropFilesOnBundle = useCallback(
-    (bundleId: string, files: File[]) => {
-      if (files.length === 0) return
+  // OS files dropped onto a bundle card: ask where on disk they should land,
+  // then import each there (journaled, keep-both on a name collision) and link
+  // the landed paths into that bundle. Only offered with write mode on — without
+  // it the drop falls through to the window net's guidance, which is the honest
+  // answer.
+  //
+  // The destination is asked rather than assumed. It used to be the library
+  // root, which is almost never where the bundle's own files live, so a drop
+  // filed the copy in the wrong folder and left the owner to move it (owner
+  // report, 2026-07-30). The picker defaults to the bundle's own folder.
+  const [pendingBundleDrop, setPendingBundleDrop] = useState<{
+    bundleId: string
+    files: File[]
+  } | null>(null)
+  const [bundleDropBusy, setBundleDropBusy] = useState(false)
+  const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
+    if (files.length === 0) return
+    setPendingBundleDrop({ bundleId, files })
+  }, [])
+  const importDroppedFiles = useCallback(
+    (destDir: string) => {
+      const pending = pendingBundleDrop
+      if (!pending) return
+      setBundleDropBusy(true)
       void (async () => {
         try {
           const landed: string[] = []
-          for (const file of files) {
-            const result = await importFile(file, { destDir: '', onConflict: 'suffix' })
+          for (const file of pending.files) {
+            const result = await importFile(file, { destDir, onConflict: 'suffix' })
             if (!result.skipped) landed.push(result.path)
           }
           if (landed.length > 0) {
-            await addUnbundledFilesToBundle(bundleId, { relativePaths: landed })
+            await addUnbundledFilesToBundle(pending.bundleId, { relativePaths: landed })
           }
           invalidateAfterFileOperation(queryClient)
-          queryClient.invalidateQueries({ queryKey: ['bundle', bundleId] })
+          queryClient.invalidateQueries({ queryKey: ['bundle', pending.bundleId] })
+          const where = destDir ? (destDir.split('/').pop() as string) : 'the library root'
           const n = landed.length
-          showFlash(n === 1 ? 'Added 1 file to the bundle.' : `Added ${n} files to the bundle.`)
+          showFlash(
+            n === 1
+              ? `Added 1 file to the bundle, in ${where}.`
+              : `Added ${n} files to the bundle, in ${where}.`,
+          )
         } catch (error) {
           showFlash(error instanceof Error ? error.message : 'The files could not be added.')
+        } finally {
+          setBundleDropBusy(false)
+          setPendingBundleDrop(null)
         }
       })()
     },
-    [queryClient, showFlash],
+    [pendingBundleDrop, queryClient, showFlash],
   )
 
   const hostImports = useHostImports({
@@ -2476,6 +2501,16 @@ function Workspace({
           onReplace={hostImports.replace}
           onCancel={hostImports.dismiss}
           busy={false}
+        />
+      )}
+
+      {pendingBundleDrop && (
+        <BundleDropDestination
+          bundleId={pendingBundleDrop.bundleId}
+          fileCount={pendingBundleDrop.files.length}
+          onChoose={importDroppedFiles}
+          onCancel={() => setPendingBundleDrop(null)}
+          busy={bundleDropBusy}
         />
       )}
 

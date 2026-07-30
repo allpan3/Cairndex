@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { useFileBrowser } from '../api/hooks'
+import { useBundleFiles, useFileBrowser } from '../api/hooks'
+import { focusRenameInput } from './renameSelection'
 
 /**
  * The collision prompt (ADR-0013 §3.3) — Finder's and Eagle's three answers.
@@ -128,7 +129,8 @@ export function DeleteDialog({
 }
 
 /**
- * The destination picker for Move to… (ADR-0013 §7, plan 4 W3).
+ * The destination picker for Move to… (ADR-0013 §7, plan 4 W3), and for any
+ * other operation that has to land somewhere the owner chose.
  *
  * Navigates the library's own directory tree one level at a time — the same
  * listing the File Browser shows — rather than a free-text path, so the
@@ -137,20 +139,33 @@ export function DeleteDialog({
  * itself, and offering to descend into one would only lead to that dead end.
  * Choosing the directory an item already sits in is harmless — the server
  * reports it moved nothing.
+ *
+ * `startIn` opens the picker already inside a folder. Callers use it to make the
+ * likely answer the default one — a drop onto a bundle starts where the bundle's
+ * own files live — while leaving every other folder one click away.
  */
 export function DirectoryPicker({
-  moving,
+  moving = [],
   onChoose,
   onCancel,
   busy,
+  startIn = '',
+  heading,
+  confirmLabel,
 }: {
   /** Library-relative paths being moved, excluded from the tree. */
-  moving: string[]
+  moving?: string[]
   onChoose: (destDir: string) => void
   onCancel: () => void
   busy: boolean
+  /** Library-relative directory to open in; '' is the library root. */
+  startIn?: string
+  /** Dialog title; defaults to the Move to… wording. */
+  heading?: string
+  /** Confirm-button label, given the chosen directory's display name. */
+  confirmLabel?: (where: string) => string
 }) {
-  const [here, setHere] = useState('')
+  const [here, setHere] = useState(startIn)
   const { data, isLoading } = useFileBrowser(here || null)
   const excluded = new Set(moving)
   const subdirs = (data?.entries ?? [])
@@ -166,10 +181,10 @@ export function DirectoryPicker({
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Move to"
+        aria-label={heading ?? 'Move to'}
       >
         <div className="modal__head">
-          <h2>{count === 1 ? 'Move to…' : `Move ${count} items to…`}</h2>
+          <h2>{heading ?? (count === 1 ? 'Move to…' : `Move ${count} items to…`)}</h2>
         </div>
         <nav className="dir-picker__crumbs" aria-label="Destination folder">
           <button
@@ -225,11 +240,58 @@ export function DirectoryPicker({
             onClick={() => onChoose(here)}
             disabled={busy}
           >
-            {here ? `Move here` : 'Move to Library root'}
+            {confirmLabel
+              ? confirmLabel(here ? (here.split('/').pop() as string) : 'Library root')
+              : here
+                ? `Move here`
+                : 'Move to Library root'}
           </button>
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Where files dropped onto a bundle should land on disk.
+ *
+ * A drop used to copy straight into the library root, which is almost never
+ * where the bundle's own files live — so the new file arrived correctly linked
+ * but filed in the wrong folder, and putting it right meant a second, manual
+ * move (owner report, 2026-07-30). The picker opens in the folder the bundle's
+ * first file sits in, which is the answer nearly every time, and any other
+ * folder is still one click away.
+ *
+ * Rendered only once the bundle's files are known, so the picker never opens at
+ * the root and then jumps: `startIn` is read once, when the picker mounts.
+ */
+export function BundleDropDestination({
+  bundleId,
+  fileCount,
+  onChoose,
+  onCancel,
+  busy,
+}: {
+  bundleId: string
+  /** How many dropped files this destination is for, for the heading. */
+  fileCount: number
+  onChoose: (destDir: string) => void
+  onCancel: () => void
+  busy: boolean
+}) {
+  const { data, isLoading } = useBundleFiles(bundleId)
+  if (isLoading) return null
+  const first = data?.[0]?.relative_path ?? ''
+  const slash = first.lastIndexOf('/')
+  return (
+    <DirectoryPicker
+      startIn={slash > 0 ? first.slice(0, slash) : ''}
+      heading={fileCount === 1 ? 'Copy the file into…' : `Copy ${fileCount} files into…`}
+      confirmLabel={(where) => `Copy into ${where}`}
+      onChoose={onChoose}
+      onCancel={onCancel}
+      busy={busy}
+    />
   )
 }
 
@@ -256,6 +318,14 @@ export function NameEditor({
   // Guards the blur handler: committing on Enter also blurs, which would
   // otherwise submit the same name twice.
   const [settled, setSettled] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus and stem-selection together, so the extension stays unselected on
+  // every engine — see renameSelection.
+  useEffect(() => {
+    const input = inputRef.current
+    return input ? focusRenameInput(input) : undefined
+  }, [])
 
   const commit = () => {
     if (settled) return
@@ -265,17 +335,11 @@ export function NameEditor({
 
   return (
     <input
+      ref={inputRef}
       className="edit file-row__rename"
       value={value}
       aria-label={label}
-      autoFocus
       spellCheck={false}
-      onFocus={(event) => {
-        // Select the stem, not the extension: renaming a file almost never
-        // means renaming its type.
-        const dot = value.lastIndexOf('.')
-        event.target.setSelectionRange(0, dot > 0 ? dot : value.length)
-      }}
       onChange={(event) => setValue(event.target.value)}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
