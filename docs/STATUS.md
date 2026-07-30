@@ -143,6 +143,15 @@ the cleanup now go through a root container, so they mean the same thing on both
 platforms, and `docs/deployment.md` states the ownership consequence, which
 affects host-side backups on a NAS.
 
+**CI is green on the whole matrix** at `d45f836` (2026-07-30, dispatched by hand
+— note that `ci.yml` runs on push only for `main`, so a branch push starts
+nothing). The Docker job reaches `SMOKE OK` on `ubuntu-latest`, which is the
+deployment's own architecture and OS: the image starts under the read-only root
+filesystem as its non-root user, serves the SPA, has ffmpeg and ffprobe, creates
+a library on a bind mount, scans a video into a bundle with a cover, and releases
+its lease on a graceful stop with the WAL checkpointed. That is the closest thing
+to the NAS obtainable without one.
+
 **Not done, deliberately.** The amd64 cross-build (`just docker-build-nas`) is
 written and documented but **has not been run against a real NAS** — there is no
 amd64 host here to load the image onto, and an emulated build proving it
