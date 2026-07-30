@@ -10,11 +10,11 @@
 > written; each is labelled with its subject, which is what the record needs.
 >
 > **In progress (2026-07-30):** two owner-requested branches are open and
-> unreviewed — `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — plus
-> `perf/grouping-plan-round-trips` (the grouping review's per-suggestion round
-> trips; fixed and gate-green, but never reproduced against the owner's reported
-> 30-second stall). Each has its own status entry. All three edit this file and
-> `CHANGELOG.md`, so all three need a rebase before review.
+> unreviewed — `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each
+> with its own status entry. Both edit this file and `CHANGELOG.md`, so both need a
+> rebase before review. The grouping round-trip work is **merged**, but was never
+> reproduced against the owner's reported 30-second stall; if it recurs, that entry
+> records what was and was not measured.
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
@@ -44,9 +44,10 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: grouping review round trips (2026-07-30)
+## Merged: grouping review round trips (2026-07-30)
 
-Branch `perf/grouping-plan-round-trips`, off `main` at `17e3efc`. Owner report:
+Branch `perf/grouping-plan-round-trips`, off `main` at `17e3efc`, merged
+fast-forward. Owner report:
 pressing the bundle/collection conversion on one folder froze the panel for 30
 seconds. **Not reproduced at that magnitude** — see the honesty note below — but
 profiling found four query patterns that scale with plan size, and removing them
