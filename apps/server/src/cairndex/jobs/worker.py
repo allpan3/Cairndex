@@ -89,6 +89,10 @@ class JobContext:
         self.message: str | None = None
         self._progress_min_interval = progress_min_interval
         self._last_write = 0.0
+        # The total last written, so a total *becoming known* can bypass the
+        # throttle. It is a one-time event per phase, not the chatter the
+        # throttle exists to suppress.
+        self._last_total: int | None = None
 
     def set_phase(self, phase: JobPhase, message: str | None = None) -> None:
         """Move to a new phase, write it immediately, and honour cancellation.
@@ -113,6 +117,7 @@ class JobContext:
         )
         self.registry_session.commit()
         self._last_write = time.monotonic()
+        self._last_total = None
         self._raise_if_cancelled()
 
     def progress(self, processed: int, total: int | None = None) -> None:
@@ -132,7 +137,15 @@ class JobContext:
         """
         now = time.monotonic()
         complete = total is not None and processed >= total
-        if not complete and (now - self._last_write) < self._progress_min_interval:
+        # A newly known total is written straight away. Otherwise the first
+        # report of a phase is swallowed by the throttle that set_phase just
+        # reset, and the bar shows a label with no count until the first item
+        # finishes — seconds, for work like storyboard generation.
+        learned_total = total is not None and total != self._last_total
+        if (
+            not (complete or learned_total)
+            and (now - self._last_write) < self._progress_min_interval
+        ):
             return
         job_service.update_progress(
             self.registry_session,
@@ -144,6 +157,7 @@ class JobContext:
         )
         self.registry_session.commit()
         self._last_write = now
+        self._last_total = total
         self._raise_if_cancelled()
 
     def checkpoint(
@@ -162,7 +176,12 @@ class JobContext:
             self.message = message
         now = time.monotonic()
         complete = total is not None and processed >= total
-        if complete or (now - self._last_write) >= self._progress_min_interval:
+        # See `progress`: a newly known total bypasses the throttle so the count
+        # appears as soon as the work has been sized, rather than after the
+        # first item finishes. This is the path storyboard and probe jobs use,
+        # where one item can take seconds.
+        learned_total = total is not None and total != self._last_total
+        if complete or learned_total or (now - self._last_write) >= self._progress_min_interval:
             job_service.update_progress(
                 self.registry_session,
                 self.job_id,
@@ -173,6 +192,7 @@ class JobContext:
             )
             self.registry_session.commit()
             self._last_write = now
+            self._last_total = total
         self._raise_if_cancelled()
 
     def _raise_if_cancelled(self) -> None:
