@@ -136,6 +136,19 @@ if in_library test -f /libraries/main/.cairndex/library.db-wal; then
     fail "WAL left behind after clean shutdown (checkpoint did not run)"
 fi
 
+# …and the file must no longer be *flagged* as WAL, which is a different claim
+# and the one that bit in production (ADR-0021). Byte 18 of the SQLite header is
+# the write format version: 2 means WAL, 1 means a rollback journal. A library
+# left at 2 cannot be opened over SMB or NFS at all, so this container would have
+# locked every other machine out of the share it serves.
+in_library python3 -c "
+import sys
+with open('/libraries/main/.cairndex/library.db', 'rb') as f:
+    version = f.read(19)[18]
+if version != 1:
+    sys.exit('library.db is still flagged WAL (header write version %d) after a clean stop' % version)
+" || fail "library left in WAL journal mode — unopenable from any machine using SMB or NFS"
+
 # --- The image under somebody else's uid -------------------------------------
 #
 # A NAS owner should not have to hand ownership of their shares to uid 10001

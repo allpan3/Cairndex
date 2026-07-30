@@ -76,8 +76,11 @@
 > Cairndex mark; the middle row is labelled Details, and probe format v5 supplies
 > separate primary video/audio bitrates plus the audio sample rate. Their width
 > presets are now 1600, 2048, and 2560 px, with 2048 selected by default.
-> Independent of the WAL
-> journal-mode work.
+> **Open, unreviewed (2026-07-30):** `fix/library-journal-mode-portability` — an
+> owner-reported production incident where a library served by the NAS container
+> became unopenable from any machine reaching it over SMB. See the section below
+> and ADR-0021; the residual unclean-shutdown risk was accepted by the owner
+> deliberately.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -476,6 +479,66 @@ is alive to see the flag, and they do not suppress a duplicate either, because
 dedupe matches only `QUEUED`; a queued job renders with a moving bar
 indistinguishable from a running one; and a killed pass leaves its `.tmp-`
 directory in the storyboard cache with nothing to sweep it. One branch.
+
+## In progress: library journal-mode lifecycle (2026-07-30)
+
+Branch `fix/library-journal-mode-portability`, off `main` at `81f3929`.
+Owner-reported production incident, fully diagnosed before implementation began:
+a library became unopenable from the owner's Mac after the NAS container served
+it, surfacing as HTTP 500 from `/bundles/browse` with a traceback ending at
+`PRAGMA journal_mode=WAL`.
+
+**The premise that was wrong.** `_apply_sqlite_pragmas` set four pragmas on
+every connection, its docstring saying "these are per-connection in SQLite".
+True of three of them; `journal_mode` is recorded in the database *file header*
+and is a property of the file. So the hook was rewriting every library on every
+connect — and a WAL database cannot be opened over SMB or NFS at all, not even
+read-only, because WAL needs a `-shm` index that every connection memory-maps.
+Setting the pragma from a machine on the share had always failed *silently*
+(SQLite keeps the mode and returns it, no error), which is why nothing looked
+wrong for months; the first server with local access flipped the file for good.
+
+**What was built** (ADR-0021, owner-ratified): WAL while a server holds the
+library open, converted back to a rollback journal on clean close, so a library
+at rest is one portable file. The registry keeps WAL unconditionally — it never
+leaves the server's disk. A filesystem that cannot host WAL never gets it, and
+the pragma's return value is now read back rather than assumed. A library found
+in WAL where it should not be is healed on open. An open failure is diagnosed
+from outside SQLite (header bytes + filesystem kind) and raised as
+`LibraryDatabaseOpenError` → 409 `library_database_unopenable`, distinguishing a
+journal-mode problem from a permissions one and carrying the recovery command.
+
+**The residual risk is real and was chosen knowingly.** An unclean stop —
+`docker kill`, power loss, OOM — never reaches the conversion and leaves the
+library in WAL. The owner was shown this and took it for WAL's performance while
+a library is in use, so the design minimises and explains it (the legible 409,
+the heal-on-open, the runbook) rather than pretending it away.
+
+**Tests run** (all from `apps/server`): `ruff check`, `ruff format --check`,
+`mypy src packaging`, `pytest` — **924 passed**, 28 of them new in
+`tests/test_journal_mode.py`. Assertions are on the file header bytes wherever
+the claim is about the file, because a `PRAGMA journal_mode` answer would pass
+just as happily against a mode nobody achieved — which is the shape of the
+original bug.
+
+**Verified beyond the suite**, not just built:
+
+- a real `create_app()` lifespan against a real library package: WAL while
+  serving, `rollback` after shutdown, registry still WAL, no `-wal`/`-shm` left;
+- `just docker-smoke` (Docker 29.5.3, arm64) — the production image now asserts
+  the header byte after `docker stop`, not only the absence of a `-wal` file.
+  Confirmed the new assertion has teeth by running it against a deliberately-WAL
+  file, where it exits 1.
+
+Linux mount-table parsing (`/proc/self/mountinfo`) is unit-tested from a
+synthetic table, including the nearest-enclosing-mount rule and `mountinfo`'s
+octal-escaped spaces; macOS `statfs`/`MNT_LOCAL` is exercised for real by the
+suite running here. An unidentifiable filesystem deliberately still attempts WAL
+and settles the question by reading back what SQLite did.
+
+**Not done / next:** nothing outstanding on this branch. No PR opened — that is
+owner-triggered. Independent of `fix/job-progress` and
+`feat/release-notes-from-changelog`, both open.
 
 ## In progress: Docker dev and deployment (2026-07-28)
 
