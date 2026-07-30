@@ -41,6 +41,7 @@ import {
   type SmartCollectionUpdate,
   type TagCreate,
   type TagRead,
+  type ViewCounts,
   addUnbundledFilesToBundle,
   batchUpdate,
   browseBundles,
@@ -137,6 +138,14 @@ import {
   undoFileOperation,
   updateSmartCollection,
 } from './client'
+import {
+  type MembershipChange,
+  applyCountDeltas,
+  collectionCountDeltas,
+  emptyMembershipDelta,
+  nextMembership,
+  tagCountDeltas,
+} from './counts'
 
 export type BrowseQuery = Omit<BrowseParams, 'offset'>
 
@@ -1203,6 +1212,148 @@ export function useBundleCollections(id: string | null) {
 // After a write, invalidate the queries whose results may have changed so the
 // UI reflects the edit (and survives a manual reload).
 
+// --- Optimistic sidebar counts ------------------------------------------------
+// Filing a bundle is a metadata write with a fully predictable outcome, so the
+// numbers beside the collections move with the drop rather than one round trip
+// later — on a library whose database sits on a network share, that round trip
+// is plainly visible. `counts.ts` owns the arithmetic; the helpers here read the
+// caches it needs, write the result, and hand back what to put back on failure.
+
+/** A cache entry captured before an optimistic write, for rollback on error. */
+type CacheSnapshot = [readonly unknown[], unknown]
+
+/** Undo optimistic writes. Newest first, so a key captured twice in one mutation
+ *  (view counts move for both collections and tags) ends on its original value. */
+function restoreSnapshots(qc: QueryClient, snapshots: CacheSnapshot[] | undefined) {
+  for (const [key, data] of [...(snapshots ?? [])].reverse()) qc.setQueryData(key, data)
+}
+
+type MembershipEntry = { bundle_id: string; collection_ids?: string[]; tag_ids?: string[] }
+
+/** The two membership axes that feed counts, and where each lives in the cache. */
+const MEMBERSHIP_AXES = {
+  collections: {
+    key: 'bundle-collections',
+    read: (entry: MembershipEntry) => entry.collection_ids,
+    write: (entry: MembershipEntry, ids: string[]): MembershipEntry => ({
+      ...entry,
+      collection_ids: ids,
+    }),
+  },
+  tags: {
+    key: 'bundle-tags',
+    read: (entry: MembershipEntry) => entry.tag_ids,
+    write: (entry: MembershipEntry, ids: string[]): MembershipEntry => ({ ...entry, tag_ids: ids }),
+  },
+} as const
+
+type MembershipAxis = keyof typeof MEMBERSHIP_AXES
+
+/**
+ * Each bundle's membership before the write, and the set it will hold after —
+ * with the after-set written into the cache so the inspector's chips move at the
+ * same moment as the counts (and so a second drag computes its delta from the
+ * first one's result rather than from a stale membership).
+ *
+ * Returns null when *any* bundle's membership is unknown: the arithmetic needs
+ * the whole membership to know which ancestors a bundle already counts toward,
+ * and a partial guess would put a number on screen that is neither the old count
+ * nor the new one. Callers then leave the counts to the invalidation. Drag start
+ * warms this cache (`prefetchBundleMemberships`) so the common gesture has it.
+ */
+function projectMemberships(
+  qc: QueryClient,
+  axis: MembershipAxis,
+  bundleIds: readonly string[],
+  add: readonly string[],
+  remove: readonly string[],
+): { changes: MembershipChange[]; snapshots: CacheSnapshot[] } | null {
+  if (add.length === 0 && remove.length === 0) return { changes: [], snapshots: [] }
+  const { key, read, write } = MEMBERSHIP_AXES[axis]
+  const changes: MembershipChange[] = []
+  const snapshots: CacheSnapshot[] = []
+  for (const bundleId of bundleIds) {
+    const queryKey = [key, bundleId]
+    const cached = qc.getQueryData<MembershipEntry>(queryKey)
+    const before = cached === undefined ? undefined : read(cached)
+    if (cached === undefined || before === undefined) return null
+    const after = nextMembership(before, add, remove)
+    changes.push({ before, after })
+    snapshots.push([queryKey, cached])
+    qc.setQueryData<MembershipEntry>(queryKey, write(cached, after))
+  }
+  return { changes, snapshots }
+}
+
+/** Move the per-collection counts and the Uncategorized view count by what these
+ *  membership changes imply. */
+function applyCollectionCounts(qc: QueryClient, changes: MembershipChange[]): CacheSnapshot[] {
+  const collections = qc.getQueryData<CollectionRead[]>(['collections'])
+  // Without the tree there are no ancestors to walk, and every delta would land
+  // on the dropped-on collection alone — the flat ±1 this exists to avoid.
+  if (changes.length === 0 || collections === undefined) return []
+  const snapshots: CacheSnapshot[] = []
+  const deltas = collectionCountDeltas(collections, changes)
+  const counts = qc.getQueryData<Record<string, number>>(['collection-counts'])
+  if (counts) {
+    snapshots.push([['collection-counts'], counts])
+    qc.setQueryData(['collection-counts'], applyCountDeltas(counts, deltas))
+  }
+  // A bundle is Uncategorized exactly while it is in no collection at all.
+  snapshots.push(...applyViewCountDelta(qc, 'uncategorized', emptyMembershipDelta(changes)))
+  return snapshots
+}
+
+/** The same for tags: per-tag counts are direct membership, plus Untagged. */
+function applyTagCounts(qc: QueryClient, changes: MembershipChange[]): CacheSnapshot[] {
+  if (changes.length === 0) return []
+  const snapshots: CacheSnapshot[] = []
+  const counts = qc.getQueryData<Record<string, number>>(['tag-counts'])
+  if (counts) {
+    snapshots.push([['tag-counts'], counts])
+    qc.setQueryData(['tag-counts'], applyCountDeltas(counts, tagCountDeltas(changes)))
+  }
+  snapshots.push(...applyViewCountDelta(qc, 'untagged', emptyMembershipDelta(changes)))
+  return snapshots
+}
+
+function applyViewCountDelta(
+  qc: QueryClient,
+  view: 'uncategorized' | 'untagged',
+  delta: number,
+): CacheSnapshot[] {
+  const counts = qc.getQueryData<ViewCounts>(['view-counts'])
+  if (!counts || delta === 0) return []
+  qc.setQueryData<ViewCounts>(['view-counts'], {
+    ...counts,
+    [view]: Math.max(0, counts[view] + delta),
+  })
+  return [[['view-counts'], counts]]
+}
+
+/** Beyond this many bundles a drag stops warming memberships — see below. */
+const MEMBERSHIP_PREFETCH_LIMIT = 50
+
+/**
+ * Warm the membership cache for bundles that are about to be filed. Called when
+ * a drag starts: dragging an *unselected* card carries only that card, whose
+ * membership no open inspector has ever asked for, and without it the counts
+ * fall back to waiting for the server. The drag itself takes far longer than
+ * these requests, so by the time the cursor reaches the sidebar the arithmetic
+ * has what it needs.
+ */
+export function prefetchBundleMemberships(qc: QueryClient, bundleIds: readonly string[]) {
+  // One request per bundle; a very large multi-selection is not worth a burst of
+  // them, and the invalidation still settles those counts a beat later.
+  if (bundleIds.length === 0 || bundleIds.length > MEMBERSHIP_PREFETCH_LIMIT) return
+  for (const id of bundleIds) {
+    void qc.ensureQueryData({
+      queryKey: ['bundle-collections', id],
+      queryFn: ({ signal }) => fetchBundleCollections(id, signal),
+    })
+  }
+}
+
 // Apply the bundle fields represented directly by a metadata PATCH
 function applyBundlePatch(previous: BundleRead, patch: BundlePatch): BundleRead {
   return {
@@ -1269,14 +1420,22 @@ export function useSetBundleTags(id: string) {
     // `browse` refetch competing for the same connections.
     onMutate: async (ids: string[]) => {
       const key = ['bundle-tags', id]
-      await qc.cancelQueries({ queryKey: key })
+      await Promise.all([
+        qc.cancelQueries({ queryKey: key }),
+        qc.cancelQueries({ queryKey: ['tag-counts'] }),
+        qc.cancelQueries({ queryKey: ['view-counts'] }),
+      ])
       const previous = qc.getQueryData<{ bundle_id: string; tag_ids: string[] }>(key)
-      if (previous) qc.setQueryData(key, { ...previous, tag_ids: ids })
-      return { previous }
+      if (!previous) return { previous, snapshots: [] }
+      qc.setQueryData(key, { ...previous, tag_ids: ids })
+      // The picker shows a count per tag; it moves with the chip, not after it.
+      const snapshots = applyTagCounts(qc, [{ before: previous.tag_ids, after: ids }])
+      return { previous, snapshots }
     },
     onError: (_error, _ids, context) => {
       // Put the old set back; the server rejected the change.
       if (context?.previous) qc.setQueryData(['bundle-tags', id], context.previous)
+      restoreSnapshots(qc, context?.snapshots)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle-tags', id] })
@@ -1298,13 +1457,22 @@ export function useSetBundleCollections(id: string) {
     // Optimistic for the same reason as tags — see useSetBundleTags.
     onMutate: async (ids: string[]) => {
       const key = ['bundle-collections', id]
-      await qc.cancelQueries({ queryKey: key })
+      await Promise.all([
+        qc.cancelQueries({ queryKey: key }),
+        qc.cancelQueries({ queryKey: ['collection-counts'] }),
+        qc.cancelQueries({ queryKey: ['view-counts'] }),
+      ])
       const previous = qc.getQueryData<{ bundle_id: string; collection_ids: string[] }>(key)
-      if (previous) qc.setQueryData(key, { ...previous, collection_ids: ids })
-      return { previous }
+      if (!previous) return { previous, snapshots: [] }
+      qc.setQueryData(key, { ...previous, collection_ids: ids })
+      // Same arithmetic as a drag — the picker's checkbox files a bundle just as
+      // a drop does, and the sidebar should say so at the same moment.
+      const snapshots = applyCollectionCounts(qc, [{ before: previous.collection_ids, after: ids }])
+      return { previous, snapshots }
     },
     onError: (_error, _ids, context) => {
       if (context?.previous) qc.setQueryData(['bundle-collections', id], context.previous)
+      restoreSnapshots(qc, context?.snapshots)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['bundle-collections', id] })
@@ -1560,9 +1728,24 @@ export function useReorderCollections() {
     // `orderedIds` contract survived a clean type check.
     onSuccess: (group) => {
       const byId = new Map(group.map((c) => [c.id, c]))
+      const previous = qc.getQueryData<CollectionRead[]>(['collections'])
       qc.setQueryData<CollectionRead[]>(['collections'], (old) =>
         old?.map((c) => byId.get(c.id) ?? c),
       )
+      // This drag reparents as well as reorders, and a subtree that changed
+      // parents changes what every collection above it — on both sides of the
+      // move — counts. Nothing else was telling the sidebar, so the numbers sat
+      // on the old tree until something unrelated refetched them. The exact
+      // deltas are not computable here (an ancestor counts *distinct* bundles
+      // across its whole subtree, and the client holds no membership for the
+      // bundles inside the one being moved), so this refetches rather than
+      // guesses. A pure reorder within one parent changes nothing and is left
+      // alone.
+      const reparented = previous?.some((c) => {
+        const moved = byId.get(c.id)
+        return moved !== undefined && (moved.parent_id ?? null) !== (c.parent_id ?? null)
+      })
+      if (reparented) qc.invalidateQueries({ queryKey: ['collection-counts'] })
     },
     onError: () => qc.invalidateQueries({ queryKey: ['collections'] }),
   })
@@ -1757,10 +1940,11 @@ export function useBatchUpdate() {
     // Dropping bundles on a collection is pure metadata, but the UI used to sit
     // still until the whole browse listing refetched — a round trip plus a page
     // rebuild for an action with a fully predictable outcome. Apply the visible
-    // parts up front: pull the moved bundles out of the listings they left, and
-    // bump the collection counts. The invalidations below then reconcile with
-    // the server's answer, correcting the guess if it was wrong.
-    onMutate: (payload) => {
+    // parts up front: pull the moved bundles out of the listings they left, move
+    // their memberships, and move the counts those memberships feed. The
+    // invalidations below then reconcile with the server's answer, correcting
+    // the guess if it was wrong.
+    onMutate: async (payload) => {
       const removed = payload.remove_collection_ids ?? []
       if (removed.length > 0 && payload.bundle_ids.length > 0) {
         const gone = new Set(payload.bundle_ids)
@@ -1783,12 +1967,44 @@ export function useBatchUpdate() {
             },
         )
       }
-      // Deliberately no optimistic *count* math. The server counts a collection's
-      // subtree (moving a bundle between a parent and its own child leaves the
-      // parent's number unchanged), so a flat ±1 here disagrees with the truth
-      // for exactly the common gesture — filing a bundle into a subcollection —
-      // and a wrong number on screen is worse than one arriving a beat later.
-      // The invalidation below brings the real counts with the next round trip.
+      // Counts. Not a flat ±1 on the drop target: the server counts a
+      // collection's subtree, so filing a bundle into a subcollection of the one
+      // being viewed must leave that collection's number alone. `counts.ts`
+      // derives the real deltas from the collection tree, which the client
+      // already holds — and if any moved bundle's membership is unknown it
+      // derives nothing at all, leaving the counts to the invalidation rather
+      // than showing a number that is neither the old one nor the new one.
+      await Promise.all(
+        ['collection-counts', 'tag-counts', 'view-counts', 'bundle-collections', 'bundle-tags'].map(
+          (key) => qc.cancelQueries({ queryKey: [key] }),
+        ),
+      )
+      const snapshots: CacheSnapshot[] = []
+      const collections = projectMemberships(
+        qc,
+        'collections',
+        payload.bundle_ids,
+        payload.add_collection_ids ?? [],
+        removed,
+      )
+      if (collections) {
+        snapshots.push(...collections.snapshots, ...applyCollectionCounts(qc, collections.changes))
+      }
+      const tags = projectMemberships(
+        qc,
+        'tags',
+        payload.bundle_ids,
+        payload.add_tag_ids ?? [],
+        payload.remove_tag_ids ?? [],
+      )
+      if (tags) snapshots.push(...tags.snapshots, ...applyTagCounts(qc, tags.changes))
+      return { snapshots }
+    },
+    onError: (_error, _payload, context) => {
+      // The browse pruning above is not rolled back here: the invalidation below
+      // refetches those listings, and a card flying back into a grid it was
+      // never removed from is worse than one that reappears when the list does.
+      restoreSnapshots(qc, context?.snapshots)
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['browse'] })
