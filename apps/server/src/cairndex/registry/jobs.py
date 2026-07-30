@@ -109,11 +109,22 @@ def update_progress(
     total: int | None = None,
     phase: str | None = None,
     message: str | None = None,
+    clear_total: bool = False,
 ) -> None:
+    """Patch a job's progress. ``None`` means "leave alone", not "set to null".
+
+    That is what makes ``clear_total`` necessary rather than redundant: a phase
+    change has to *remove* a total belonging to the phase that just ended, and
+    passing ``total=None`` cannot say so. Without it, a scan that discovered 79
+    files left `0/79` on screen through grouping and finalizing — a count that
+    could never advance, because those phases report no total of their own.
+    """
     job = get_job(session, job_id)
     if processed is not None:
         job.processed = processed
-    if total is not None:
+    if clear_total:
+        job.total = None
+    elif total is not None:
         job.total = total
     if phase is not None:
         job.phase = phase

@@ -94,7 +94,11 @@ class JobContext:
         """Move to a new phase, write it immediately, and honour cancellation.
 
         Phase transitions are infrequent, so they always flush to the registry
-        (bypassing the progress throttle) and reset the per-phase count.
+        (bypassing the progress throttle) and reset the per-phase count — both
+        halves of it. ``clear_total`` is what makes the reset real: the previous
+        phase's total has to go, or a phase that counts nothing inherits one it
+        can never reach. A scan used to end at `0/79` for exactly that reason,
+        the 79 belonging to a discovery pass that had finished.
         """
         self.phase = phase
         self.message = message
@@ -103,12 +107,43 @@ class JobContext:
             self.registry_session,
             self.job_id,
             processed=0,
-            total=None,
+            clear_total=True,
             phase=phase.value,
             message=message,
         )
         self.registry_session.commit()
         self._last_write = time.monotonic()
+        self._raise_if_cancelled()
+
+    def progress(self, processed: int, total: int | None = None) -> None:
+        """Report progress without committing the content session.
+
+        Separate from ``checkpoint`` because the two answer different questions.
+        A checkpoint is a durability boundary: commit what has been done, in
+        batches sized so a large library is not committing per row. Progress is
+        a display concern, and tying it to that batch size meant a library
+        smaller than one batch never reported anything at all — a 79-file scan
+        with a batch size of 200 moved its bar exactly once, at the end.
+
+        Writes are throttled the same way, so calling this per item is cheap:
+        the cost of a no-op call is a clock read. Cancellation is only checked
+        when a write actually happens, since that is a registry query and this
+        runs in the hot loop.
+        """
+        now = time.monotonic()
+        complete = total is not None and processed >= total
+        if not complete and (now - self._last_write) < self._progress_min_interval:
+            return
+        job_service.update_progress(
+            self.registry_session,
+            self.job_id,
+            processed=processed,
+            total=total,
+            phase=self.phase.value if self.phase is not None else None,
+            message=self.message,
+        )
+        self.registry_session.commit()
+        self._last_write = now
         self._raise_if_cancelled()
 
     def checkpoint(
