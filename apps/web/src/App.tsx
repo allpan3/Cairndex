@@ -51,6 +51,7 @@ import {
   useSmartCollectionMutations,
   useSmartCollections,
   useActiveJobs,
+  useCancelJob,
   useUpdateLibrary,
   useViewCounts,
 } from './api/hooks'
@@ -910,6 +911,7 @@ function Workspace({
   // progress. `activeJob` alone lives inside the mutation that started it, so a
   // refresh mid-scan used to lose the indicator while the scan carried on.
   const serverJobs = useActiveJobs(libraryId)
+  const cancelJobMutation = useCancelJob()
   const activeJobs = useMemo(() => {
     // Array.isArray, not `?? []`: this is a network boundary, and a shape that
     // is not a list (an error envelope, a stub in a test that does not mock
@@ -2063,6 +2065,7 @@ function Workspace({
           onGenerateStoryboards={() => storyboards.mutate()}
           generatingStoryboards={storyboards.isPending}
           activeJobs={activeJobs}
+          onCancelJob={(jobId) => cancelJobMutation.mutate(jobId)}
           maintenanceError={
             updateLibrary.error?.message ??
             scanFiles.error?.message ??

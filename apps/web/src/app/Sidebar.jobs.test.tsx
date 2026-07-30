@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { expect, test } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { expect, test, vi } from 'vitest'
 
 import type { JobRead } from '../api/client'
 import { Sidebar } from './Sidebar'
@@ -25,7 +25,7 @@ function job(overrides: Partial<JobRead> = {}): JobRead {
   } as JobRead
 }
 
-function renderSidebar(activeJobs: JobRead[]) {
+function renderSidebar(activeJobs: JobRead[], onCancelJob?: (jobId: string) => void) {
   render(
     <Sidebar
       mode="collection"
@@ -54,6 +54,7 @@ function renderSidebar(activeJobs: JobRead[]) {
       onEditSmartCollection={() => undefined}
       onDeleteSmartCollection={() => undefined}
       activeJobs={activeJobs}
+      onCancelJob={onCancelJob}
     />,
   )
 }
@@ -94,4 +95,36 @@ test('a job with no total still reports its phase', () => {
 
   expect(screen.getByText('Generating thumbnails')).toBeInTheDocument()
   expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull()
+})
+
+test('a waiting job says so instead of looking like it is working', () => {
+  // A queued job carries no phase, so it used to render the job name beside the
+  // same moving bar a running job has — waiting and working looked identical,
+  // and pressing Update twice made two of them.
+  renderSidebar([job({ status: 'queued', phase: null, total: null, processed: 0 })])
+
+  expect(screen.getByText('Scan — waiting')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar').className).toContain('job-progress__track--waiting')
+  expect(screen.getByRole('progressbar').className).not.toContain('indeterminate')
+})
+
+test('a running job can be stopped from the row it is on', () => {
+  const onCancel = vi.fn()
+  renderSidebar([job({ id: 'sb1', job_type: 'storyboard', phase: 'storyboarding' })], onCancel)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Stop storyboards' }))
+
+  expect(onCancel).toHaveBeenCalledWith('sb1')
+})
+
+test('a job already asked to stop says so and cannot be asked twice', () => {
+  renderSidebar([job({ cancel_requested: true })], () => undefined)
+
+  expect(screen.getByText('Stopping scan…')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^Stop/ })).toBeNull()
+})
+
+test('no stop control appears when the caller cannot cancel', () => {
+  renderSidebar([job()])
+  expect(screen.queryByRole('button', { name: /^Stop/ })).toBeNull()
 })
