@@ -482,7 +482,7 @@ directory in the storyboard cache with nothing to sweep it. One branch.
 
 ## In progress: library journal-mode lifecycle (2026-07-30)
 
-Branch `fix/library-journal-mode-portability`, off `main` at `81f3929`.
+Branch `fix/library-journal-mode-portability`, rebased onto `main` at `2589ea3`.
 Owner-reported production incident, fully diagnosed before implementation began:
 a library became unopenable from the owner's Mac after the NAS container served
 it, surfacing as HTTP 500 from `/bundles/browse` with a traceback ending at
@@ -515,8 +515,9 @@ a library is in use, so the design minimises and explains it (the legible 409,
 the heal-on-open, the runbook) rather than pretending it away.
 
 **Tests run** (all from `apps/server`): `ruff check`, `ruff format --check`,
-`mypy src packaging`, `pytest` — **924 passed**, 28 of them new in
-`tests/test_journal_mode.py`. Assertions are on the file header bytes wherever
+`mypy src packaging`, `pytest` — **957 passed** (re-run clean after the rebase
+onto `2589ea3`), 29 of them new in `tests/test_journal_mode.py`. Assertions are
+on the file header bytes wherever
 the claim is about the file, because a `PRAGMA journal_mode` answer would pass
 just as happily against a mode nobody achieved — which is the shape of the
 original bug.
@@ -532,13 +533,20 @@ original bug.
 
 Linux mount-table parsing (`/proc/self/mountinfo`) is unit-tested from a
 synthetic table, including the nearest-enclosing-mount rule and `mountinfo`'s
-octal-escaped spaces; macOS `statfs`/`MNT_LOCAL` is exercised for real by the
-suite running here. An unidentifiable filesystem deliberately still attempts WAL
-and settles the question by reading back what SQLite did.
+octal-escaped spaces. macOS `statfs`/`MNT_LOCAL` was checked against a **real
+SMB mount**, not only the monkeypatched seam the suite uses: the share reports
+`smbfs`, `local=False`, WAL refused, while the local disk reports `apfs`,
+`local=True`, WAL allowed. That is the exact discrimination the incident turned
+on, so it was worth confirming on real hardware rather than a fixture. An
+unidentifiable filesystem deliberately still attempts WAL and settles the
+question by reading back what SQLite did.
 
 **Not done / next:** nothing outstanding on this branch. No PR opened — that is
-owner-triggered. Independent of `fix/job-progress` and
-`feat/release-notes-from-changelog`, both open.
+owner-triggered. Rebased twice as `main` moved: first onto `2bd4694`
+(`fix/job-progress` and `feat/release-notes-from-changelog` merging), then onto
+`2589ea3` (PR #6, inspector/collection/file-workflow polish, merging). Each
+rebase's only real overlap was the shared `Unreleased` changelog section; the
+full gate was re-run clean after both.
 
 ## In progress: Docker dev and deployment (2026-07-28)
 
