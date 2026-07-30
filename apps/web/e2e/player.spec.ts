@@ -1662,6 +1662,74 @@ test('opens and remembers the bundle cursor in ordered file navigation', async (
   await expect.poll(() => cursors.at(-1)).toBe('f1')
 })
 
+test('double-clicking an image closes the viewer, and the zoom readout cycles fit', async ({
+  page,
+}) => {
+  // The image stage captures the pointer to pan, and capture retargets the later
+  // double-click to the stage — so the close check never recognised it as media
+  // and the fit-cycling handler ran instead: a double-click zoomed and stayed
+  // open (owner report, 2026-07-30). Fit moved to the zoom readout.
+  await mockMedia(page)
+  await mockApi(page, { resumeFileId: 'img1' })
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').dblclick()
+  const stage = page.getByTestId('image-stage')
+  await expect(stage).toBeVisible()
+
+  // The readout is the fit control now, so it takes its own clicks rather than
+  // letting them through to the stage. (Which fit each click lands on is unit
+  // tested; here the mocked image is small enough that fit and actual are both
+  // 100%.)
+  const zoom = page.getByTestId('image-zoom')
+  await zoom.click()
+  await expect(page.locator('.media-viewer')).toBeVisible()
+
+  // The background toggle is a sibling of the readout; capture used to swallow
+  // its click too, so it did nothing at all.
+  const background = page.getByRole('button', { name: /toggle image background/i })
+  await background.click()
+  await expect(stage).not.toHaveClass(/mv-image-stage--dark/)
+
+  // Centre, not a corner: the prev/next arrows overlay the stage's edges and the
+  // zoom/background controls its bottom-right, and a double-click on any of those
+  // is a control press rather than a press on the picture.
+  await stage.dblclick()
+  await expect(page.locator('.media-viewer')).toHaveCount(0)
+})
+
+test('every viewer notice shares one anchor and stacks', async ({ page }) => {
+  // The export notice sat 64px higher than the resume notice, in its own shape,
+  // so two messages about the same playback appeared at two unrelated places
+  // (owner, 2026-07-30). They share one container now.
+  await mockMedia(page)
+  await mockApi(page, { progress: { position_s: 45, duration_s: 120, completed: false } })
+  // Hang the sheet request so "Building contact sheet…" stays up to be measured.
+  await page.route('**/contact-sheet**', () => {})
+  await page.goto('/')
+
+  const video = await openMovie(page)
+  await expect(page.locator('.mv-resume')).toContainText('Resumed at')
+
+  await video.click({ button: 'right' })
+  await page.getByText('Save Contact Sheet…').click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('.mv-export-notice')).toContainText('Building contact sheet')
+
+  const [resume, exporting] = await Promise.all([
+    page.locator('.mv-resume').boundingBox(),
+    page.locator('.mv-export-notice').boundingBox(),
+  ])
+  // Same vertical axis, to the pixel.
+  expect(resume!.x + resume!.width / 2).toBeCloseTo(exporting!.x + exporting!.width / 2, 0)
+  // Stacked in one column: the export notice sits directly above the resume
+  // notice, separated only by the container's own 8px gap.
+  expect(Math.round(resume!.y - (exporting!.y + exporting!.height))).toBe(8)
+  // And both are in the shared container rather than positioning themselves.
+  await expect(page.locator('.mv-toasts > .mv-resume')).toHaveCount(1)
+  await expect(page.locator('.mv-toasts > .mv-export-notice')).toHaveCount(1)
+})
+
 test('escape closes the viewer in one press, from fullscreen too', async ({ page }) => {
   // Two presses used to be needed — one to leave fullscreen, one to close — and
   // the owner expects one (2026-07-27). Fullscreen is still dropped on the way

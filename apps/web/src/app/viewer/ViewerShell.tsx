@@ -647,13 +647,20 @@ export function ViewerShell({
         )}
       </div>
 
-      {visibleResume !== null && (
-        <button className="mv-resume" type="button" onClick={restartFromBeginning}>
-          Resumed at {formatClock(visibleResume)} <span>Click to restart</span>
-        </button>
+      {/* Every transient viewer message shares one anchor and one frame, so two
+          of them stack instead of sitting at two different heights in two
+          different styles (owner, 2026-07-30). The export notice goes above the
+          resume notice, which stays nearest the seek track it refers to. */}
+      {(visibleResume !== null || exportNotice !== null) && (
+        <div className="mv-toasts">
+          {exportNotice !== null && <div className="mv-toast mv-export-notice">{exportNotice}</div>}
+          {visibleResume !== null && (
+            <button className="mv-toast mv-resume" type="button" onClick={restartFromBeginning}>
+              Resumed at {formatClock(visibleResume)} <span>Click to restart</span>
+            </button>
+          )}
+        </div>
       )}
-
-      {exportNotice !== null && <div className="mv-export-notice">{exportNotice}</div>}
 
       {videoActive && playable && (
         <ControlBar
@@ -841,13 +848,22 @@ function Stage({
   )
 }
 
-/** Whether a double-click landed on the media rather than an overlay control. */
+/**
+ * Whether a double-click landed on the media rather than an overlay control.
+ *
+ * `mv-image-stage` has to be here even though the image itself is an `IMG`:
+ * the image stage captures the pointer to pan, and capture retargets the later
+ * click and double-click to the capturing element. So a double-click on a
+ * picture arrives with the *stage* as its target, and without this the viewer
+ * would not close on one (owner report, 2026-07-30).
+ */
 function isStageSurface(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   return (
     target.tagName === 'VIDEO' ||
     target.tagName === 'IMG' ||
     target.classList.contains('mv-video-stage') ||
+    target.classList.contains('mv-image-stage') ||
     target.classList.contains('mv-state')
   )
 }

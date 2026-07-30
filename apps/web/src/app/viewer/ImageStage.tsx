@@ -249,6 +249,13 @@ export function ImageStage({ item, onError }: { item: ViewerItem; onError: () =>
     (event: React.PointerEvent<HTMLDivElement>) => {
       const element = stageRef.current
       if (!element || event.button !== 0) return
+      // Never capture a press that started on the overlay controls. Capture
+      // retargets every later event to the capturing element, so a press on the
+      // background or zoom button arrived at the stage as its own click and the
+      // button's handler never ran — the background toggle simply did nothing
+      // (found while tracing the double-click report, 2026-07-30). Panning still
+      // captures, which is what it is for.
+      if (event.target instanceof Element && event.target.closest('.mv-image-tools')) return
       element.focus()
       element.setPointerCapture(event.pointerId)
       const point = eventPoint(event, element)
@@ -341,7 +348,10 @@ export function ImageStage({ item, onError }: { item: ViewerItem; onError: () =>
       onPointerMove={onPointerMove}
       onPointerUp={finishPointer}
       onPointerCancel={finishPointer}
-      onDoubleClick={cycleFit}
+      // No double-click handler here: double-click closes the viewer, the way it
+      // already did for video, and cycling the fit stole that gesture (owner,
+      // 2026-07-30). The zoom readout below cycles it instead, and 0/1/+/- and
+      // the wheel are unchanged.
       data-testid="image-stage"
     >
       <img
@@ -370,9 +380,16 @@ export function ImageStage({ item, onError }: { item: ViewerItem; onError: () =>
         >
           ◩
         </button>
-        <span className="mv-zoom" data-testid="image-zoom">
+        <button
+          type="button"
+          className="mv-zoom"
+          data-testid="image-zoom"
+          aria-label={`Zoom ${zoomPercent}%. Click to cycle fit`}
+          title="Cycle fit: fit, actual size, fill"
+          onClick={cycleFit}
+        >
           {zoomPercent}%
-        </span>
+        </button>
       </div>
     </div>
   )

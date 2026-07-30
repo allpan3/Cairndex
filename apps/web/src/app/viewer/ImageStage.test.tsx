@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest'
 
 import type { FileRead } from '../../api/client'
 import { setActiveLibraryId } from '../../api/client'
@@ -207,5 +207,51 @@ describe('ImageStage', () => {
     expect(decodes[1]!.src).toContain('size=2560')
     await act(async () => decodes[1]!.resolve())
     await waitFor(() => expect(img.src).toContain('size=2560'))
+  })
+
+  test('does not capture the pointer for a press on the overlay controls', () => {
+    installBrowserMocks(false)
+    // jsdom implements no pointer capture at all, so it has to be defined rather
+    // than spied on — and removed by hand, since restoreAllMocks only knows about
+    // spies.
+    const capture = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      value: capture,
+      configurable: true,
+      writable: true,
+    })
+    onTestFinished(() => {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).setPointerCapture
+    })
+    renderStage(file())
+    const stage = screen.getByTestId('image-stage')
+
+    // Capture retargets every later event to the capturing element, so a press
+    // that starts on a button arrived at the stage as its own click and the
+    // button's handler never ran — the background toggle simply did nothing.
+    fireEvent.pointerDown(screen.getByLabelText('Toggle image background'), {
+      button: 0,
+      pointerId: 1,
+    })
+    expect(capture).not.toHaveBeenCalled()
+
+    // Panning still captures, which is what capture is for.
+    fireEvent.pointerDown(stage, { button: 0, pointerId: 2 })
+    expect(capture).toHaveBeenCalledWith(2)
+  })
+
+  test('the zoom readout cycles fit, since double-click now closes the viewer', async () => {
+    installBrowserMocks(false)
+    renderStage(file())
+    const zoom = screen.getByTestId('image-zoom')
+
+    // fit → actual → fill → fit. A 1600x1000 image in the jsdom viewport starts
+    // at fit; what matters is that clicking moves it and comes back around.
+    const start = zoom.textContent
+    fireEvent.click(zoom)
+    await waitFor(() => expect(zoom).toHaveTextContent('100%'))
+    fireEvent.click(zoom)
+    fireEvent.click(zoom)
+    await waitFor(() => expect(zoom.textContent).toBe(start))
   })
 })
