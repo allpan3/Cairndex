@@ -2694,10 +2694,15 @@ code {
   margin-top: 1px;
 }
 .grp-row--bundle {
-  gap: 4px;
+  gap: 2px;
+  /* The row itself is the drag affordance now that the ⠿ handle is gone. */
+  cursor: grab;
+}
+.grp-row--bundle:active {
+  cursor: grabbing;
 }
 .grp-row--bundle .grp-check {
-  margin-right: 4px;
+  margin-right: 2px;
 }
 .grp-row__content {
   display: flex;
@@ -2810,6 +2815,29 @@ code {
   padding-left: 6px;
   border-left: 1px solid var(--border);
 }
+/* Anchor for a portalled tooltip: hugs the button so the wrapper adds no
+   layout, and carries the hover handlers so a *disabled* button still explains
+   itself (a disabled button fires no mouse events of its own). */
+.grp-tip-anchor {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+/* Fixed and portalled to <body>, so the dialog's scrolling body cannot clip it. */
+.grp-tip {
+  position: fixed;
+  z-index: 200;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
 .grp-destination {
   display: inline-flex;
   flex: 0 0 auto;
@@ -2904,30 +2932,6 @@ code {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0 5px;
-}
-.grp-drag-handle {
-  width: 18px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: grab;
-  font-size: 14px;
-  line-height: 20px;
-}
-.grp-drag-handle:hover,
-.grp-drag-handle:focus-visible {
-  color: var(--text-strong);
-}
-.grp-drag-handle:active {
-  cursor: grabbing;
-}
-.grp-drag-handle:disabled {
-  cursor: default;
-}
-.grp-drag-handle--file {
-  margin-left: -2px;
 }
 .grp-root-drop {
   margin: 2px 0;

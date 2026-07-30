@@ -18,6 +18,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   is no longer offered on such a row, and the server refuses it. Dividing still
   works wherever it means something — two or more videos split per video with
   sidecars following their own, and an image-only bundle splits per file.
+- **An "Add to …" suggestion sat outside the collection it was joining.** A new
+  file in `Studios/StudioAlpha/` showed up under *Studios*, beside that
+  collection rather than inside it — reading as unrelated to the very bundle it
+  adds to. Two causes, both fixed: an addition was pinned to the top level
+  regardless of where its files live, and the collection its target bundle
+  actually belongs to was being ignored whenever the folder happened to suggest
+  somewhere else. An addition now surfaces where the bundle it joins already
+  lives, falling back to its own folder when that bundle is in no collection.
+- **Tooltips were clipped by the panel edge.** The controls' tooltips are the
+  longest text in the dialog and the dialog body scrolls, so an absolutely
+  positioned tooltip got cut off. They now render outside the panel and clamp
+  themselves into the viewport — and a disabled Narrow/Widen still explains
+  itself, which is exactly when you want it to.
 - **A merged collection could lose its files.** Merging a collection whose
   bundles live in subfolders leaves one bundle whose folder is the *parent* — a
   folder with no media of its own. That row was offered Narrow/Widen anyway, and
@@ -69,6 +82,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   trimmed so it never ends mid-word. A multipart video gains from the same rule:
   "Trip.part1" becomes "Trip". A bundle filling its own folder still takes the
   folder's name, and a single subject still its own filename.
+- **The ⠿ drag handles are gone.** Every bundle and file row is draggable in its
+  entirety — the file rows already were, which made their handle pure decoration
+  taking horizontal space on every line. The rows carry a grab cursor instead,
+  and a row being renamed is not draggable, so text selection in the edit box
+  still works.
 - **The suggestion panel is wider** (1100px, was 780px) and its rows no longer
   misalign when a long name wraps — the checkbox, drag handle and kind glyph
   stayed vertically centred against the taller row, drifting away from the title
