@@ -506,12 +506,20 @@ Storyboard artifacts use this cache layout:
   sb_002.jpg
 ```
 
-`index.fingerprint` stores the storyboard format version plus the source file's
-quick fingerprint for cheap request-path validation without reading the VTT;
-`index.vtt` keeps a quick-fingerprint note for artifact inspection. Storyboard
-format v2 anchors ffmpeg sampling at t=0 and selects the source frame active at
-each VTT cue boundary. Old-format indexes are rejected even when their source
-fingerprint still matches. Manifest `storyboard_url` values and VTT sheet
+`index.fingerprint` stores the storyboard format version, the sampling mode, and
+the source file's quick fingerprint for cheap request-path validation without
+reading the VTT; `index.vtt` keeps a quick-fingerprint note for artifact
+inspection. Storyboard format v3 samples **keyframes only** (`-skip_frame
+nokey`), so generation cost stops scaling with how hard a video is to decode —
+`fps=1/n` sampling decodes a video from end to end, which is what made a
+network-mounted library slow (docs/performance.md). Tiles land on the keyframe
+at or before each sample point, so scrubbing is only as fine as the source's
+GOP, and each cue carries the timestamp of the frame it holds rather than a
+nominal grid position: cues are as uneven as the source's keyframes and run to
+the next sampled frame. `CAIRNDEX_STORYBOARD_SAMPLING=exact` restores
+full-decode sampling on exact interval boundaries. The mode is part of the cache
+key, so changing it invalidates cached sheets. Old-format indexes are rejected
+even when their source fingerprint still matches. Manifest `storyboard_url` values and VTT sheet
 payloads include a URL-encoded token derived from the format plus quick
 fingerprint. VTT responses use `Cache-Control: no-cache` so clients revalidate
 the index; versioned JPEG
@@ -543,8 +551,12 @@ single `-ss` frame extraction at that timestamp instead of the representative
 frame filter; clearing it restores automatic extraction. Browse cover keys and
 file thumbnail URLs include a changing version only for custom-frame covers so
 TanStack invalidation also bypasses immutable browser image caches. Storyboard
-generation now parses `showinfo` frame indices from its existing ffmpeg pass and
-limits VTT cues to real sampled frames before the tile filter pads a final sheet.
+generation parses `showinfo` sample timestamps from its existing ffmpeg pass and
+builds one cue per sampled frame, so the tile list and the cue list are the same
+list; sheet capacity still caps them where the tile filter pads a final sheet.
+Keyframe sampling emits sheets at irregular intervals, so the pass pins the
+output sync mode — the muxer's default duplicates sheets to reach a constant
+frame rate, which would point every cue past the first sheet at a copy.
 EOF requests clamp to a decodable frame 100 ms before probed duration, and reset
 restores the bundle cover displaced by the selection. Bundle detail surfaces use
 `updated_at` as their image version. Cover-file selection optimistically updates
@@ -555,7 +567,10 @@ reconciliation. Cover-frame mutations optimistically update file queries and
 refetch version-bearing bundle/browse/collection data. Collection timestamps
 are touched through reverse membership plus ancestor traversal, not
 an all-collection scan. Storyboard parsing removes ANSI control sequences and
-falls back to emitted-sheet capacity with a warning when `showinfo` is absent.
+falls back to the nominal sampling grid, capped by emitted-sheet capacity and
+warned about, when `showinfo` is absent. A video whose keyframes cannot describe
+it — fewer than two usable samples, or a keyframe pass ffmpeg rejects — is
+decoded in full once rather than reduced to a one-tile storyboard.
 
 Bundle browse summaries keep the cover key solely for static artwork and expose
 the effective bundle cursor separately: file id/update time, media kind/path,
