@@ -148,6 +148,14 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   The startup preflight follows: it now warns when nothing is mounted at all
   (the first-run mistake) and checks each mount separately.
 
+  **If you ran an earlier build of this, re-register your libraries.** A server
+  records each library under the path *it* saw, so one registered at
+  `/storage/media` reads as "currently unavailable" once the mount moves — the
+  library package itself is untouched and re-registering at the new path
+  restores it, along with everything it knows. The containerized dev stack keeps
+  its registry in a volume that survives rebuilds, so it is affected too:
+  re-register, or `just docker-dev-down --volumes` to start its registry over.
+
   **And you do not have to hand your directories to uid 10001.** The image runs
   correctly as any uid, so `user: "1000:1000"` in the compose file lets the app
   write as the machine's owner instead — no `chown` anywhere, and what Cairndex
