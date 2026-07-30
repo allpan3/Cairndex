@@ -1592,7 +1592,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Plans */
+        /**
+         * List Plans
+         * @description Every plan with how many suggestions it holds.
+         *
+         *     The count comes from one grouped query rather than `len(plan.proposals)`,
+         *     which lazily loaded every proposal of every plan — thousands of rows read and
+         *     discarded to produce a handful of integers, on the request the review dialog
+         *     makes when it opens.
+         */
         get: operations["list_plans_api_v1_libraries__library_id__grouping_plans_get"];
         put?: never;
         /**
