@@ -45,6 +45,10 @@ storage/
 var/cache/
 var/thumbnails/
 var/media/
+# Scratch libraries served by the Docker dev stack. Real media and a library.db
+# live here, so this must be ignored on every branch, not only the one that
+# creates it — a `git add -A` on another branch would otherwise commit them.
+var/docker-library/
 # The server keeps its runtime data dir at apps/server/var (DB, caches,
 # thumbnails, seeded demo media). The patterns above are anchored to the repo
 # root, so cover that path explicitly too.

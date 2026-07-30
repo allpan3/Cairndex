@@ -212,6 +212,62 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
         (proposal) => updated.find((item) => item.id === proposal.id) ?? proposal,
       )
       body = updated
+    } else if (url.match(/\/stem-modes$/) && init?.method === 'PUT') {
+      const { directory, mode } = JSON.parse(init.body as string) as {
+        directory: string
+        mode: 'narrow' | 'balanced' | 'wide'
+      }
+      if (mode === 'balanced') delete stemModes[directory]
+      else stemModes[directory] = mode
+      // In place: only the adjusted directory's rows are replaced (new ids).
+      proposals = proposals.map((proposal) =>
+        proposal.directory === directory ? { ...proposal, id: `${proposal.id}-regen` } : proposal,
+      )
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      }
+    } else if (url.match(/\/proposals\/[^/]+\/kind$/) && init?.method === 'PUT') {
+      // The server returns the whole plan, because a conversion adds or removes
+      // sibling proposals rather than editing one in place.
+      const proposalId = url.split('/').at(-2)!
+      const kind = (JSON.parse(init.body as string) as { kind: 'bundle' | 'container' }).kind
+      const source = proposals.find((proposal) => proposal.id === proposalId)!
+      const children: GroupingProposal[] =
+        kind === 'container'
+          ? source.files.map((file, index) => ({
+              ...source,
+              id: `${proposalId}-child${index}`,
+              kind: 'bundle' as const,
+              title: file.relative_path.split('/').pop()!,
+              parent_proposal_id: proposalId,
+              files: [{ ...file, sequence: 0 }],
+            }))
+          : []
+      proposals = [
+        ...proposals.map((proposal) =>
+          proposal.id === proposalId
+            ? { ...proposal, kind, files: kind === 'container' ? [] : proposal.files }
+            : proposal,
+        ),
+        ...children,
+      ]
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      }
     } else if (url.match(/\/proposals\/[^/]+\/parent$/) && init?.method === 'PUT') {
       const proposalId = url.split('/').at(-2)!
       const parentProposalId = (
@@ -429,7 +485,7 @@ test('regenerating suggestions keeps returned candidates visible immediately', a
   ).toBe(true)
 })
 
-test('widens one folder and preserves that mode in the regenerated plan', async () => {
+test('widens one folder in place and keeps the mode', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
@@ -442,12 +498,18 @@ test('widens one folder and preserves that mode in the regenerated plan', async 
   await screen.findByText('SRCV-005 now uses wide stem matching.')
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Widen stem matching in SRCV-005' })).toBeDisabled()
-  const post = fetchMock.mock.calls.find(
-    ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+  // One directory's mode, sent to the in-place endpoint — no plan regeneration.
+  const put = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/stem-modes') && init?.method === 'PUT',
   )
-  expect(post?.[1]).toMatchObject({
-    body: JSON.stringify({ stem_modes: { 'SRCV-005': 'wide' } }),
+  expect(put?.[1]).toMatchObject({
+    body: JSON.stringify({ directory: 'SRCV-005', mode: 'wide' }),
   })
+  expect(
+    fetchMock.mock.calls.some(
+      ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+    ),
+  ).toBe(false)
 })
 
 test('places a folder stem control on the deepest matching container row', async () => {
@@ -660,4 +722,197 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   expect(reparentCall?.[1]).toMatchObject({
     body: JSON.stringify({ parent_proposal_id: null }),
   })
+})
+
+// --- Selection survives a Narrow/Widen regeneration ---------------------------
+
+/** A grouping API whose regeneration mints fresh proposal ids, as the server does.
+ *
+ * `mockGroupingApi` reuses one proposal array across regeneration, so selection
+ * tracked by id happens to survive there — the opposite of production, where
+ * generating supersedes every row and issues new ULIDs. This mock reproduces the
+ * real behavior so the regression is actually reachable.
+ */
+function mockRegeneratingApi() {
+  let generation = 0
+  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  const proposalsFor = (gen: number): GroupingProposal[] =>
+    structuredClone(PROPOSALS).map((p) => ({ ...p, id: `${p.id}-gen${gen}` }))
+
+  return vi.fn((url: string, init?: RequestInit) => {
+    const planId = `plan-gen${generation}`
+    let body: unknown
+    if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
+      generation += 1
+      stemModes = (
+        JSON.parse(init.body as string) as {
+          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
+        }
+      ).stem_modes
+      body = {
+        id: `plan-gen${generation}`,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: null,
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:01:00Z',
+        applied_at: null,
+        proposals: proposalsFor(generation),
+      }
+    } else if (url.endsWith('/grouping/plans')) {
+      body = [
+        {
+          id: planId,
+          status: 'open',
+          rule_version: 5,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: PROPOSALS.length,
+        },
+      ]
+    } else if (url.match(/\/grouping\/plans\/plan-gen\d+$/)) {
+      const gen = Number(url.match(/plan-gen(\d+)$/)![1])
+      body = {
+        id: `plan-gen${gen}`,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals: proposalsFor(gen),
+      }
+    } else {
+      body = {}
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  })
+}
+
+function renderReviewAt(planId: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <GroupingReview initialPlanId={planId} onClose={vi.fn()} />
+    </QueryClientProvider>,
+  )
+}
+
+test('Widen keeps the suggestions the owner had already unchecked', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  // The "Movies" container has no children, so it is empty and never selectable:
+  // two of the three fixture proposals count.
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  await screen.findByText('2 selected')
+  fireEvent.click(second)
+  expect(second).not.toBeChecked()
+  await screen.findByText('1 selected')
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
+  await screen.findByText('SRCV-005 now uses wide stem matching.')
+
+  // The adjusted directory's row returns as a fresh (checked) suggestion; the
+  // deselection elsewhere survives.
+  await waitFor(() =>
+    expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).not.toBeChecked(),
+  )
+  expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeChecked()
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+})
+
+test('a conversion elsewhere survives Widen', async () => {
+  // The larger owner-reported problem: adjusting one folder must not undo the
+  // bundle→collection override made on another.
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  const secondRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
+  fireEvent.click(
+    within(secondRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  )
+  await screen.findByText('“Second bundle” is now a collection of bundles.')
+  expect(await screen.findByRole('checkbox', { name: 'Accept second.mp4' })).toBeInTheDocument()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
+  await screen.findByText('SRCV-005 now uses wide stem matching.')
+
+  // Still a collection, child row intact, and the way back still offered.
+  expect(screen.getByRole('checkbox', { name: 'Accept second.mp4' })).toBeInTheDocument()
+  const converted = screen.getByText('Second bundle').closest('.grp-row')!
+  expect(
+    within(converted as HTMLElement).getByRole('button', { name: 'Make this one bundle instead' }),
+  ).toBeInTheDocument()
+})
+
+test('an explicit Suggest grouping starts from a clean selection', async () => {
+  vi.stubGlobal('fetch', mockRegeneratingApi())
+  renderReviewAt('plan-gen0')
+
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  fireEvent.click(second)
+  await screen.findByText('1 selected')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Suggest grouping' }))
+  await screen.findByText('Suggestions generated from the current library state.')
+
+  // Unlike Narrow/Widen, this is an explicit fresh start rather than an
+  // adjustment, so everything comes back checked.
+  await waitFor(() =>
+    expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).toBeChecked(),
+  )
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+})
+
+// --- Bundle <-> collection override ------------------------------------------
+test('turns a bundle suggestion into a collection of bundles', async () => {
+  const fetchMock = mockGroupingApi()
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const bundleRow = (await screen.findByText('SRCV-005 - cut')).closest('.grp-row')!
+  fireEvent.click(
+    within(bundleRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  )
+
+  await screen.findByText('“SRCV-005 - cut” is now a collection of bundles.')
+  const put = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/proposal1/kind') && init?.method === 'PUT',
+  )
+  expect(put?.[1]).toMatchObject({ body: JSON.stringify({ kind: 'container' }) })
+
+  // Its files are now bundles of their own, nested under it.
+  expect(await screen.findByRole('checkbox', { name: 'Accept SRCV-005.mp4' })).toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: 'Accept cover.jpg' })).toBeInTheDocument()
+  // And the row offers the way back, so the override is not a one-way door.
+  const converted = (await screen.findByText('SRCV-005 - cut')).closest('.grp-row')!
+  expect(
+    within(converted as HTMLElement).getByRole('button', {
+      name: 'Make this one bundle instead',
+    }),
+  ).toBeInTheDocument()
+})
+
+test('an addition suggestion offers no collection override', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, ADDITION]))
+  renderReview()
+
+  // An addition puts its files into a bundle that already exists, which is not
+  // going to become a collection.
+  const additionRow = (await screen.findByText(/Add to/)).closest('.grp-row')!
+  expect(
+    within(additionRow as HTMLElement).queryByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  ).toBeNull()
 })

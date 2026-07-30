@@ -1,5 +1,15 @@
 # Project status
 
+> **In progress (2026-07-29):** branch
+> `fix/grouping-review-state-and-collection-conversion` — owner-reported: Narrow
+> and Widen discarded the review dialog's selection, and a folder the suggester
+> called one bundle could not be made a collection. Both fixed; complete and
+> gate-green, not merged. See
+> [Grouping review](#in-progress-grouping-review-state-and-collection-conversion-2026-07-29)
+> below. Two other owner-requested branches are also open and unreviewed —
+> `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each with its own
+> status entry. All three edit this file and will conflict on merge.
+
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
 > app's real media viewer (PR #32) and the collection-creation affordances
@@ -24,6 +34,82 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## In progress: grouping review state and collection conversion (2026-07-29)
+
+Branch `fix/grouping-review-state-and-collection-conversion`, off `main` at
+`d0dc125`. Two owner-reported problems in the Suggest-grouping dialog.
+
+**1. Narrow/Widen discarded the review state.** Reported as "it seems like it
+refreshes the page… it forgets my selections and reselects everything" — and on
+the second pass the owner confirmed the deeper version: it also reverted
+bundle↔collection conversions, "to me this is just a persistent state so long
+as the grouping window is open". Both had one cause: `setStemMode` called the
+same full-regeneration path as Suggest grouping, `generate_plan` superseded the
+open plan and wrote entirely new rows, and everything keyed to the old rows —
+the client's id-based selection *and every server-side owner edit* — was lost.
+
+Fixed structurally rather than by carry-forward matching:
+`PUT /plans/{id}/stem-modes` re-suggests **one directory in place**. The
+suggester still runs over the whole library (a directory's grouping is not
+computable in isolation), but only its output for that directory is spliced
+into the open plan. Rows outside the directory are never touched, so renames,
+destination switches, drag edits, conversions, and checkboxes survive because
+nothing happened to them — there is no cross-plan identity matching to get
+wrong. Three splice subtleties worth remembering: files the owner dragged *out*
+of the directory are not re-proposed (a fresh row claiming a file another row
+still holds would bundle it twice); subdirectory bundles hanging under a
+replaced container re-link to its successor; and a conversion made *inside* the
+adjusted directory is replaced — that is the folder the owner just asked to
+redo. An explicit **Suggest grouping** still resets everything; that is a fresh
+start, not an adjustment.
+
+Client-side, deselection is additionally keyed by *content* (`proposalKey`: a
+bundle is its sorted file-id set plus addition target, a collection its
+directory) rather than by row id — a second line of defense now that ids are
+mostly stable, and the thing that keeps behavior sane around conversions.
+
+The considered-and-rejected alternative, for the record: keep full regeneration
+and re-apply owner edits onto the fresh plan by content matching. Rejected
+because it must answer "which new row is the old row?" for every edit type
+separately, and has no good answer for conversions (a converted container's
+children exist in no fresh plan).
+
+**2. No way to say "this folder is a collection, not a bundle".** The real gap
+was narrower than "the suggester guessed wrong": `_bundle_groups` short-circuits
+on `_is_multipart` **ahead of the stem-mode check**, so a folder whose files
+carry part markers (`Trip.part1.mp4`, …) is one bundle at *every* sensitivity —
+Narrow cannot split it. That is precisely the folder an owner wants to override,
+and there was no control for it.
+
+New `PUT …/proposals/{id}/kind` converts in both directions and returns the whole
+plan, since a conversion adds or removes sibling rows. Bundle → collection splits
+via a new `suggester.split_for_collection` (one bundle per video, sidecars
+following their own video by stem — reusing `_bundle_groups` would have returned
+the input unchanged for the multipart case). Collection → bundle collapses every
+descendant back, so the override is reversible. Additions are refused in both
+directions: their files join a bundle that already exists.
+
+**Owner feedback round (2026-07-29), all applied:** the conversion control is
+now a compact split/merge icon button (matching the destination toggle) instead
+of "To collection"/"To bundle" text; Narrow/Widen are compact too — inward /
+outward chevron icon buttons with the mode as a small label between them
+(aria-labels unchanged, so every test kept passing); the "single file on its
+own" and "Split/Merged because you…" reason texts are gone (the first restated
+the visible row, the second explained the owner's own action back to them); and
+the in-place stem-modes endpoint above replaced the full regeneration.
+
+**Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
+(848 passed); web `lint`, `format:check`, `typecheck`, `test` (465 passed),
+`build`.
+
+**Verified in a browser against a real backend**, on a library seeded with
+`Trip/` (three parts + three subtitles), `Duo/` (two subjects Widen merges),
+and `Solo/`: unchecked `Solo`, converted `Trip` to a collection via the icon
+button, then clicked Widen on `Duo` — `Duo` regenerated into one wide bundle
+while `Solo` stayed unchecked and `Trip` stayed a converted collection with its
+three children. Earlier round additionally verified apply end-to-end
+(*3 bundles, 1 collection, 3 subtitles linked*) and the reverse conversion.
 
 ## Shipped: v0.1.0, the first public release (2026-07-28)
 

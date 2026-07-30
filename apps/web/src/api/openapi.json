@@ -4806,6 +4806,18 @@
         "title": "ProposalKind",
         "type": "string"
       },
+      "ProposalKindUpdate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProposalKind"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ProposalKindUpdate",
+        "type": "object"
+      },
       "ProposalRead": {
         "properties": {
           "confidence": {
@@ -5202,6 +5214,24 @@
         ],
         "title": "StemMode",
         "type": "string"
+      },
+      "StemModeUpdate": {
+        "properties": {
+          "directory": {
+            "maxLength": 4096,
+            "title": "Directory",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/StemMode"
+          }
+        },
+        "required": [
+          "directory",
+          "mode"
+        ],
+        "title": "StemModeUpdate",
+        "type": "object"
       },
       "SubtitleTrackRead": {
         "properties": {
@@ -13900,6 +13930,109 @@
         ]
       }
     },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/kind": {
+      "put": {
+        "description": "Turn a bundle suggestion into a collection of bundles, or back again.\n\nReturns the whole plan rather than the one proposal: a conversion adds or\nremoves sibling rows, so the client's tree has changed shape.",
+        "operationId": "convert_proposal_kind_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__kind_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalKindUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Convert Proposal Kind",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
       "put": {
         "description": "Move a bundle suggestion into a collection suggestion or to top level.",
@@ -13998,6 +14131,100 @@
           }
         },
         "summary": "Reparent Proposal",
+        "tags": [
+          "grouping"
+        ]
+      }
+    },
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-modes": {
+      "put": {
+        "description": "Set one directory's stem sensitivity and re-suggest that directory in\nplace. Every proposal outside the directory \u2014 and therefore every owner\nedit elsewhere \u2014 keeps its identity; `POST /plans` remains the full reset.",
+        "operationId": "set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_id",
+            "required": true,
+            "schema": {
+              "title": "Library Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "cairndex_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cairndex Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StemModeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Stem Mode",
         "tags": [
           "grouping"
         ]
