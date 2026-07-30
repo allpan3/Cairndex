@@ -3527,7 +3527,7 @@ code {
    not part of the picture, and an arrow floating over the tag list is aiming at
    the wrong thing (owner, 2026-07-27). */
 .media-viewer--railed .mv-nav--next {
-  right: calc(min(360px, 40vw) + 16px);
+  right: calc(var(--inspector-w, 300px) + 16px);
 }
 
 .mv-nav {
@@ -3948,18 +3948,20 @@ code {
 }
 /* Everything else in the viewer spans the media column only, so the rail docks
    beside the stage rather than under it. */
-.media-viewer--railed > *:not(.mv-inspector) {
+.media-viewer--railed > *:not(.inspector) {
   grid-column: 1;
 }
-.mv-inspector {
+/* Placement only. Width, border, background and padding all come from
+   `.inspector` above, which is the point: the viewer used to declare its own
+   rail in parallel — a hard-coded `min(360px, 40vw)`, a literal white border,
+   a different background — so the same pane was a different pane on the two
+   surfaces (owner, 2026-07-30). `--inspector-w` is set by the app shell, so
+   this rail is the width of the one it mirrors, and resizing that resizes
+   this. */
+.media-viewer--railed .inspector {
   grid-row: 1 / -1;
   grid-column: 2;
-  width: min(360px, 40vw);
-  overflow-y: auto;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  /* Same undefined-variable bug as the submenu had: the viewer sits on near
-     black, so a transparent rail is not obvious, but it was one. */
-  background: var(--surface);
+  width: var(--inspector-w, 300px);
   color: var(--text);
   min-width: 0;
 }
