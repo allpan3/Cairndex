@@ -25,8 +25,8 @@ _FFMPEG = shutil.which("ffmpeg")
 requires_ffmpeg = pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not installed")
 
 
-# Generate a tiny but long-enough browser video fixture
-def _make_video(path: Path, *, duration: int = 65) -> None:
+# Encode a fixture with a chosen keyframe spacing
+def _encode(path: Path, source: str, *, gop: int) -> None:
     assert _FFMPEG is not None
     subprocess.run(
         [
@@ -38,7 +38,16 @@ def _make_video(path: Path, *, duration: int = 65) -> None:
             "-f",
             "lavfi",
             "-i",
-            f"testsrc=duration={duration}:size=160x90:rate=1",
+            source,
+            "-c:v",
+            "libx264",
+            # Keyframe sampling can only sample where keyframes are, so every
+            # fixture states its GOP: `scenecut=0` keeps x264 from inserting
+            # extra keyframes and making the sampled timestamps encoder-dependent.
+            "-g",
+            str(gop),
+            "-x264-params",
+            "scenecut=0",
             "-pix_fmt",
             "yuv420p",
             str(path),
@@ -46,31 +55,16 @@ def _make_video(path: Path, *, duration: int = 65) -> None:
         check=True,
         capture_output=True,
     )
+
+
+# Generate a tiny but long-enough browser video fixture, keyframed every 2s
+def _make_video(path: Path, *, duration: int = 65) -> None:
+    _encode(path, f"testsrc=duration={duration}:size=160x90:rate=1", gop=2)
 
 
 # Generate motion-distinct frames for storyboard sampling verification
-def _make_sampling_video(path: Path) -> None:
-    assert _FFMPEG is not None
-    subprocess.run(
-        [
-            _FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "testsrc2=duration=4:size=160x90:rate=30",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:v",
-            "libx264",
-            str(path),
-        ],
-        check=True,
-        capture_output=True,
-    )
+def _make_sampling_video(path: Path, *, gop: int = 60) -> None:
+    _encode(path, "testsrc2=duration=4:size=160x90:rate=30", gop=gop)
 
 
 # Decode one RGB frame with an optional exact seek and crop/scale filter
@@ -135,10 +129,10 @@ def _jpeg_bytes(width: int = 1600, height: int = 900) -> bytes:
 
 # Write one fake storyboard sheet so tests can avoid invoking ffmpeg
 def _fake_generate_sheets(
-    _source: Path, output_dir: Path, _interval: float, _duration: float
-) -> int:
+    _source: Path, output_dir: Path, interval: float, _duration: float, **_kwargs: object
+) -> list[float]:
     (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
-    return 25
+    return [index * interval for index in range(25)]
 
 
 @requires_ffmpeg
@@ -179,11 +173,11 @@ def test_generates_vtt_with_exact_interval_tiles_and_coords(
 
 
 @requires_ffmpeg
-def test_storyboard_tiles_match_frames_active_at_vtt_cue_starts(tmp_path: Path) -> None:
+def test_storyboard_tiles_match_frames_at_their_own_vtt_cue_starts(tmp_path: Path) -> None:
     source = tmp_path / "sampling.mp4"
-    _make_sampling_video(source)
+    _make_sampling_video(source)  # keyframes at 0s and 2s
 
-    assert storyboards._generate_sheets(source, tmp_path, 2, 4) == 2
+    assert storyboards._generate_sheets(source, tmp_path, 2, 4) == [0.0, 2.0]
     sheet = tmp_path / "sb_001.jpg"
     tile_zero = _rgb_frame(sheet, "crop=320:180:0:0")
     tile_two = _rgb_frame(sheet, "crop=320:180:320:0")
@@ -200,13 +194,136 @@ def test_storyboard_tiles_match_frames_active_at_vtt_cue_starts(tmp_path: Path) 
     assert two_error < _mean_absolute_error(tile_two, source_three) / 2
 
 
+@requires_ffmpeg
+def test_keyframe_sampling_cues_the_keyframes_a_video_actually_has(
+    session: Session, library_root: Path
+) -> None:
+    # Sampling wants a tile every 2s; this source only offers a keyframe every
+    # 5s, so the cues must describe the frames that exist rather than claim
+    # tiles at 2s boundaries that were never sampled.
+    _encode(library_root / "movie.mp4", "testsrc=duration=40:size=160x90:rate=1", gop=5)
+    asset_file = _video_file(
+        session,
+        library_root,
+        duration=40.0,
+        size=(library_root / "movie.mp4").read_bytes(),
+    )
+
+    result = storyboards.generate_for_file(session, asset_file.id)
+    assert result.path is not None
+    lines = result.path.read_text(encoding="utf-8").splitlines()
+    payloads = [line for line in lines if "#xywh=" in line]
+    timings = [line for line in lines if "-->" in line]
+
+    assert storyboards.storyboard_interval(40.0) == 2.0
+    assert len(payloads) == 8
+    assert len(timings) == len(payloads)  # one cue per sampled tile, never per slot
+    assert timings[0] == "00:00:00.000 --> 00:00:05.000"
+    assert timings[1] == "00:00:05.000 --> 00:00:10.000"
+    assert timings[-1] == "00:00:35.000 --> 00:00:40.000"
+    assert payloads[7] == payloads[7].replace("sb_002", "sb_001")  # still the first sheet
+    # Sheets are addressed by index, so the pass must write exactly the sheets
+    # the tiles fill: rate-syncing irregular sampling into a constant frame rate
+    # duplicates sheets and points every later cue at a copy.
+    assert sorted(path.name for path in result.path.parent.glob("sb_*.jpg")) == ["sb_001.jpg"]
+
+
+@requires_ffmpeg
+def test_video_without_usable_keyframes_falls_back_to_full_decode(
+    caplog: pytest.LogCaptureFixture, session: Session, library_root: Path
+) -> None:
+    _encode(library_root / "movie.mp4", "testsrc=duration=40:size=160x90:rate=1", gop=10_000)
+    asset_file = _video_file(
+        session,
+        library_root,
+        duration=40.0,
+        size=(library_root / "movie.mp4").read_bytes(),
+    )
+
+    with caplog.at_level("INFO"):
+        result = storyboards.generate_for_file(session, asset_file.id)
+
+    assert result.path is not None
+    payloads = [
+        line for line in result.path.read_text(encoding="utf-8").splitlines() if "#xywh=" in line
+    ]
+    assert len(payloads) == 20  # the full 40s / 2s grid, not the source's one keyframe
+    assert "decoding in full" in caplog.text
+
+
+def test_exact_sampling_setting_skips_keyframe_sampling(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+    modes: list[object] = []
+
+    def capture(
+        source: Path,
+        output_dir: Path,
+        interval: float,
+        duration: float,
+        *,
+        sampling: str = "keyframe",
+    ) -> list[float]:
+        modes.append(sampling)
+        return _fake_generate_sheets(source, output_dir, interval, duration)
+
+    monkeypatch.setattr(storyboards, "_generate_sheets", capture)
+    monkeypatch.setenv("CAIRNDEX_STORYBOARD_SAMPLING", "exact")
+    get_settings.cache_clear()
+    try:
+        storyboards.generate_for_file(session, asset_file.id)
+    finally:
+        get_settings.cache_clear()
+
+    assert modes == ["exact"]
+
+
+def test_switching_sampling_mode_retires_cached_sheets(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    asset_file = _video_file(session, library_root, duration=60.0)
+    monkeypatch.setattr(storyboards, "_generate_sheets", _fake_generate_sheets)
+    storyboards.generate_for_file(session, asset_file.id)
+
+    assert storyboards.is_current_index(library_root, asset_file.id, asset_file.quick_fingerprint)
+
+    monkeypatch.setenv("CAIRNDEX_STORYBOARD_SAMPLING", "exact")
+    get_settings.cache_clear()
+    try:
+        # Sheets sampled the other way are a different artifact, not a stale one
+        assert not storyboards.is_current_index(
+            library_root, asset_file.id, asset_file.quick_fingerprint
+        )
+        assert storyboards.generate_for_file(session, asset_file.id).status == "generated"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_cues_stop_at_the_first_unusable_sample_time() -> None:
+    # Tile position is list position, so a sample past the probed duration ends
+    # the cue list; skipping it would put every later cue on the wrong tile.
+    cues = storyboards._build_cues(
+        duration=10.0,
+        interval=2.0,
+        times=[0.0, 2.0, 11.0, 4.0],
+        sheets=[Path("sb_001.jpg")],
+        sheet_width=1600,
+        sheet_height=900,
+    )
+
+    assert [(cue.start, cue.end) for cue in cues] == [(0.0, 2.0), (2.0, 10.0)]
+
+
 def test_job_idempotence_and_fingerprint_invalidation(
     monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
 ) -> None:
     asset_file = _video_file(session, library_root, duration=120.0)
     calls = {"count": 0}
 
-    def fake(source: Path, output_dir: Path, interval: float, duration: float) -> int:
+    def fake(
+        source: Path, output_dir: Path, interval: float, duration: float, **_kwargs: object
+    ) -> list[float]:
         calls["count"] += 1
         return _fake_generate_sheets(source, output_dir, interval, duration)
 
@@ -245,9 +362,11 @@ def test_generate_for_file_trims_padding_tiles_mid_sheet(
 ) -> None:
     asset_file = _video_file(session, library_root, duration=60.0)
 
-    def short_stream(_source: Path, output_dir: Path, _interval: float, _duration: float) -> int:
+    def short_stream(
+        _source: Path, output_dir: Path, interval: float, _duration: float, **_kwargs: object
+    ) -> list[float]:
         (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
-        return 17
+        return [index * interval for index in range(17)]
 
     monkeypatch.setattr(storyboards, "_generate_sheets", short_stream)
     result = storyboards.generate_for_file(session, asset_file.id)
@@ -258,7 +377,7 @@ def test_generate_for_file_trims_padding_tiles_mid_sheet(
     assert payloads[-1].endswith("#xywh=320,540,320,180")
 
 
-def test_generate_sheets_counts_showinfo_frames_in_same_pass(
+def test_generate_sheets_reads_sample_times_from_showinfo_in_same_pass(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     captured: list[str] = []
@@ -266,21 +385,44 @@ def test_generate_sheets_counts_showinfo_frames_in_same_pass(
     def fake_run(args: list[str], **_kwargs: object) -> str:
         captured.extend(args)
         Path(args[-1].replace("%03d", "001")).write_bytes(_jpeg_bytes())
-        return "[Parsed_showinfo_2] n:   0 pts:0\n[Parsed_showinfo_2] n:  16 pts:16"
+        return (
+            "[Parsed_showinfo_2] n:   0 pts:0 pts_time:0\n"
+            "[Parsed_showinfo_2] n:   1 pts:76800 pts_time:5.12"
+        )
 
     monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
-    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 17
+    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == [0.0, 5.12]
+    assert "-skip_frame" in captured
+    assert "prev_selected_t" in next(arg for arg in captured if "select=" in arg)
+
+
+def test_generate_sheets_exact_mode_decodes_every_frame_on_the_interval_grid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: list[str] = []
+
+    def fake_run(args: list[str], **_kwargs: object) -> str:
+        captured.extend(args)
+        return "[Parsed_showinfo_2] n: 0 pts:0 pts_time:0"
+
+    monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
+    storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60, sampling="exact")
+
+    assert "-skip_frame" not in captured
     assert "fps=1/2:start_time=0:round=up" in next(arg for arg in captured if "fps=" in arg)
 
 
-def test_generate_sheets_strips_ansi_before_counting_showinfo(
+def test_generate_sheets_strips_ansi_before_reading_showinfo(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     def fake_run(_args: list[str], **_kwargs: object) -> str:
-        return "\x1b[32m[Parsed_showinfo_2]\x1b[0m n: 0\n\x1b[31mshowinfo\x1b[0m n: 8"
+        return (
+            "\x1b[32m[Parsed_showinfo_2]\x1b[0m n: 0 pts_time:0\n"
+            "\x1b[31mshowinfo\x1b[0m n: 8 pts_time:16.5"
+        )
 
     monkeypatch.setattr(storyboards, "run_ffmpeg", fake_run)
-    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == 9
+    assert storyboards._generate_sheets(tmp_path / "in.mp4", tmp_path, 2, 60) == [0.0, 16.5]
 
 
 def test_generate_for_file_falls_back_to_sheet_capacity_without_showinfo(
@@ -291,7 +433,9 @@ def test_generate_for_file_falls_back_to_sheet_capacity_without_showinfo(
 ) -> None:
     asset_file = _video_file(session, library_root, duration=60.0)
 
-    def no_count(_source: Path, output_dir: Path, _interval: float, _duration: float) -> None:
+    def no_count(
+        _source: Path, output_dir: Path, _interval: float, _duration: float, **_kwargs: object
+    ) -> None:
         (output_dir / "sb_001.jpg").write_bytes(_jpeg_bytes())
 
     monkeypatch.setattr(storyboards, "_generate_sheets", no_count)
