@@ -130,6 +130,24 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   and the two refusals that look like failures but are not. Building from source
   still works and is documented as the way to run an unreleased branch.
 
+  **Mounts are named for what they hold.** The container path is `/libraries`,
+  with one mount per share beneath it (`/libraries/main`, `/libraries/archive`),
+  replacing the single `/storage/media` — which named the wrong thing twice
+  over: a mount holds *libraries*, not "media", and it holds as many as you
+  care to make. Nothing in the server or the web app referred to the old path;
+  it was a deployment convention throughout, and the host-side variable is now
+  `CAIRNDEX_LIBRARY_PATH` to match.
+
+  The shape matters more than the spelling. **A mount is a share, not a
+  library**: one mount can hold any number of libraries, created live in the
+  app with no compose change and no restart, and you edit the compose file only
+  when files sit somewhere the container cannot see at all. Mounting each share
+  as a *child* of `/libraries` is what makes that cheap — adding a second share
+  later never moves the first, and moving one would orphan every library
+  registered inside it, since the registry records the path the container saw.
+  The startup preflight follows: it now warns when nothing is mounted at all
+  (the first-run mistake) and checks each mount separately.
+
   **The image is smoke-tested before it is pushed, not after.** It is built to
   the runner's local daemon, put through the same `infra/docker/smoke.sh` that
   CI runs, and only then pushed — the second build reuses the layer cache, so

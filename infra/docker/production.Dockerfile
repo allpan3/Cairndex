@@ -75,6 +75,13 @@ RUN chmod +x /usr/local/bin/entrypoint.sh /app/infra/backup.sh
 RUN mkdir -p /data && chown -R app:app /data
 VOLUME ["/data"]
 
+# The root every library mount hangs under: /libraries/main, /libraries/archive.
+# Created here rather than left to Docker so that it exists even when nothing is
+# mounted — which is what lets the entrypoint tell "you mounted nothing" apart
+# from "your mount is not writable". It stays empty and read-only in the image;
+# only its children are ever mounts.
+RUN mkdir -p /libraries
+
 USER app
 EXPOSE 8000
 
