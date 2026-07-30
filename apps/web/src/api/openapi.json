@@ -13259,6 +13259,7 @@
     },
     "/api/v1/libraries/{library_id}/grouping/plans": {
       "get": {
+        "description": "Every plan with how many suggestions it holds.\n\nThe count comes from one grouped query rather than `len(plan.proposals)`,\nwhich lazily loaded every proposal of every plan \u2014 thousands of rows read and\ndiscarded to produce a handful of integers, on the request the review dialog\nmakes when it opens.",
         "operationId": "list_plans_api_v1_libraries__library_id__grouping_plans_get",
         "parameters": [
           {

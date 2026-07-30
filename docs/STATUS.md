@@ -44,6 +44,71 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: grouping review round trips (2026-07-30)
+
+Branch `perf/grouping-plan-round-trips`, off `main` at `17e3efc`. Owner report:
+pressing the bundle/collection conversion on one folder froze the panel for 30
+seconds. **Not reproduced at that magnitude** — see the honesty note below — but
+profiling found four query patterns that scale with plan size, and removing them
+made the operation 13× faster at 3,000 files.
+
+Measured through the HTTP API on a generated library of 3,030 files in ten folders
+(3,041 proposals):
+
+| Operation | Before | After |
+| --- | --- | --- |
+| `GET /plans` (dialog opens) | read every proposal of every plan | **3 ms** |
+| `GET /plans/{id}` | — | **63 ms** (0.97 MB) |
+| Convert bundle → collection | 0.70 s | **0.06 s** |
+| Convert collection → bundle | ~1.0 s | **0.47 s** |
+
+Four causes, all the same shape — work proportional to the plan, one round trip at
+a time:
+
+1. `get_plan` returned the ORM object and let serialization walk
+   `proposal.files` lazily: **one query per suggestion**. Now one `selectinload`
+   chain, three queries at any size.
+2. `_summary` called `len(plan.proposals)`, lazily loading every proposal of every
+   plan to produce a handful of integers. Now one grouped `COUNT`.
+3. `_proposal_observations` did `session.get(AssetFile, …)` per file — 300 round
+   trips for a folder of 300 images. Now one `IN` query.
+4. `_container_to_bundle` called that helper once *per descendant*, and both
+   conversion directions scanned the group linearly per file to find a path
+   (quadratic in group size). Now one resolve for all descendants, and a dict.
+
+The regression guard asserts **round trips, not seconds**: a plan read must stay
+under 8 queries for 12+ proposals, and the plans list under 4. It was confirmed to
+fail with the eager loads reverted (14 queries for 12 proposals). A timing
+assertion would be flaky and would not describe the defect; the query count is
+exactly what scales.
+
+**Honesty note on the numbers.** An earlier pass reported 9–14 s for trivial
+interactions. That was a measurement error: the clock was read in a separate
+browser call from the click, so the tool round trip was counted as app time.
+Measured inside one call, ticking a checkbox on a 2,738-row panel is 90 ms and a
+conversion was ~1.0 s end to end (0.8 s of it server-side). Client-side rendering
+was never the problem, and StrictMode/dev-mode was not either — the production
+bundle measured the same.
+
+**So the 30 s is still unexplained** by anything reproducible here. The remaining
+candidate is scale on network storage: the owner's real library is a NAS mount
+(`/Volumes/media`), and [plan 5](plans/05-network-library-latency.md) already
+records ~500 ms for a NAS-mounted inspector read. At that per-round-trip cost the
+*thousands* of round trips removed above are exactly the shape of a 30-second
+stall. `apps/web/vite.config.ts` gained a `preview` proxy so the production bundle
+can be measured against a local backend without packaging the desktop app, which
+is how the dev-versus-production question got settled.
+
+**Gates:** backend `ruff format --check`, `ruff check`, `mypy src packaging`,
+`pytest` (867 passed, +1); web `lint`, `format:check`, `typecheck`, `test` (476
+passed), `build`; `just api` regenerated (one docstring line). No client behaviour
+changed, so the browser e2e suite is unaffected.
+
+**Still to do if this is not enough:** the collapse direction is 0.47 s at 3,000
+files because it issues one ORM `DELETE` per descendant. Bulk-deleting would need
+care with the `delete-orphan` cascade, so it is left until there is evidence it
+matters.
+
 ## Merged: drop destination, rename and toasts (2026-07-30)
 
 Branch `fix/drop-destination-rename-and-toasts`, off `main` at `57a931d`, merged

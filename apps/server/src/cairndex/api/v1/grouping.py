@@ -26,18 +26,19 @@ from cairndex.api.schemas.grouping import (
 )
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
+from cairndex.persistence.models import GroupingPlan
 
 router = APIRouter(prefix="/libraries/{library_id}/grouping", tags=["grouping"])
 
 
-def _summary(plan: object) -> PlanSummary:
+def _summary(plan: GroupingPlan, proposal_count: int) -> PlanSummary:
     return PlanSummary(
-        id=plan.id,  # type: ignore[attr-defined]
-        status=plan.status,  # type: ignore[attr-defined]
-        rule_version=plan.rule_version,  # type: ignore[attr-defined]
-        generated_at=plan.generated_at,  # type: ignore[attr-defined]
-        applied_at=plan.applied_at,  # type: ignore[attr-defined]
-        proposal_count=len(plan.proposals),  # type: ignore[attr-defined]
+        id=plan.id,
+        status=plan.status,
+        rule_version=plan.rule_version,
+        generated_at=plan.generated_at,
+        applied_at=plan.applied_at,
+        proposal_count=proposal_count,
     )
 
 
@@ -55,7 +56,16 @@ def generate_plan(db: LibrarySession, payload: PlanGenerateRequest | None = None
 
 @router.get("/plans", response_model=list[PlanSummary])
 def list_plans(db: LibrarySession) -> list[PlanSummary]:
-    return [_summary(p) for p in plan_store.list_plans(db)]
+    """Every plan with how many suggestions it holds.
+
+    The count comes from one grouped query rather than `len(plan.proposals)`,
+    which lazily loaded every proposal of every plan — thousands of rows read and
+    discarded to produce a handful of integers, on the request the review dialog
+    makes when it opens.
+    """
+    plans = plan_store.list_plans(db)
+    counts = plan_store.proposal_counts(db, [plan.id for plan in plans])
+    return [_summary(plan, counts.get(plan.id, 0)) for plan in plans]
 
 
 @router.get("/plans/{plan_id}", response_model=PlanRead)

@@ -10,6 +10,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The grouping review dialog stalled on a large library.** Every read of a plan
+  fetched its suggestions' files one suggestion at a time — a query per row, so a
+  library with thousands of suggestions made thousands of round trips for a single
+  conversion, and opening the dialog loaded every proposal of every plan ever
+  generated just to show how many each holds. Measured on a 3,000-file library:
+  splitting a folder into a collection went from 0.70 s to **0.06 s**, collapsing
+  one back from about 1.0 s to **0.47 s**, and the dialog's opening request from
+  reading every proposal to **3 ms**. The saving is in round trips rather than
+  arithmetic, so it should matter most for a library on network storage, where each
+  round trip costs far more than it does on a local disk.
 - **A file showed one name in the File Browser and another inside its bundle.**
   The bundle's file list, the inspector and the viewer render a *stored copy* of
   the filename, and the copy could drift: three separate code paths move a file's
