@@ -6371,6 +6371,60 @@
         ]
       }
     },
+    "/api/v1/jobs/active": {
+      "get": {
+        "description": "Jobs running or waiting, oldest first \u2014 what a client asks on load.\n\nProgress used to live only in the mutation that started a job, so reloading\nthe page lost track of work that was still going: the owner reported coming\nback to a scan indicator that had simply vanished while the scan ran on\n(2026-07-30). The queue is server state, so a fresh client can pick it up.\n\nUnpaged: one job runs at a time and only a few ever queue behind it.",
+        "operationId": "list_active_jobs_api_v1_jobs_active_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "library_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Library Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobRead"
+                  },
+                  "title": "Response List Active Jobs Api V1 Jobs Active Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Active Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/jobs/{job_id}": {
       "get": {
         "operationId": "get_job_api_v1_jobs__job_id__get",

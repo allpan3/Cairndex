@@ -734,6 +734,15 @@ export const enqueueStoryboards = () => send<JobRead>(`${lib()}/jobs/storyboards
 export const fetchJob = (id: string, signal?: AbortSignal) =>
   getJson<JobRead>(`/api/v1/jobs/${id}`, signal)
 
+/** Jobs running or waiting for a library, oldest first.
+ *
+ * What a freshly loaded page asks to find work already in progress: job
+ * progress otherwise lives only in the mutation that started it, so a reload
+ * used to lose track of a scan that was still running.
+ */
+export const fetchActiveJobs = (libraryId: string, signal?: AbortSignal) =>
+  getJson<JobRead[]>(`/api/v1/jobs/active?library_id=${encodeURIComponent(libraryId)}`, signal)
+
 // --- Per-library passphrase lock (ADR-0010) ----------------------------------
 export const fetchAuthStatus = (libraryId: string, signal?: AbortSignal) =>
   getJson<AuthStatus>(`/api/v1/libraries/${libraryId}/auth/status`, signal)
