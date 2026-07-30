@@ -1705,6 +1705,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/kind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Convert Proposal Kind
+         * @description Turn a bundle suggestion into a collection of bundles, or back again.
+         *
+         *     Returns the whole plan rather than the one proposal: a conversion adds or
+         *     removes sibling rows, so the client's tree has changed shape.
+         */
+        put: operations["convert_proposal_kind_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__kind_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
         parameters: {
             query?: never;
@@ -1718,6 +1741,28 @@ export interface paths {
          * @description Move a bundle suggestion into a collection suggestion or to top level.
          */
         put: operations["reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/stem-modes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Stem Mode
+         * @description Set one directory's stem sensitivity and re-suggest that directory in
+         *     place. Every proposal outside the directory — and therefore every owner
+         *     edit elsewhere — keeps its identity; `POST /plans` remains the full reset.
+         */
+        put: operations["set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3846,6 +3891,10 @@ export interface components {
          * @enum {string}
          */
         ProposalKind: "bundle" | "container";
+        /** ProposalKindUpdate */
+        ProposalKindUpdate: {
+            kind: components["schemas"]["ProposalKind"];
+        };
         /** ProposalRead */
         ProposalRead: {
             /** Confidence */
@@ -3966,6 +4015,12 @@ export interface components {
          * @enum {string}
          */
         StemMode: "narrow" | "balanced" | "wide";
+        /** StemModeUpdate */
+        StemModeUpdate: {
+            /** Directory */
+            directory: string;
+            mode: components["schemas"]["StemMode"];
+        };
         /** SubtitleTrackRead */
         SubtitleTrackRead: {
             /** Format */
@@ -7778,6 +7833,47 @@ export interface operations {
             };
         };
     };
+    convert_proposal_kind_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__kind_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                plan_id: string;
+                proposal_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalKindUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put: {
         parameters: {
             query?: never;
@@ -7806,6 +7902,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProposalRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_stem_mode_api_v1_libraries__library_id__grouping_plans__plan_id__stem_modes_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                plan_id: string;
+                library_id: string;
+            };
+            cookie?: {
+                cairndex_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StemModeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRead"];
                 };
             };
             /** @description Validation Error */

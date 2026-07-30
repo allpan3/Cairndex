@@ -248,7 +248,10 @@ def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
     videos = [f for f in files if f.media_kind is MediaKind.VIDEO]
     sidecars = len(files) - len(videos)
     if len(files) == 1:
-        return 0.5, "single file on its own"
+        # No reason text: "single file on its own" restates what the row already
+        # shows (one file), and a library of loose files repeats it hundreds of
+        # times (owner-reported noise, 2026-07-29).
+        return 0.5, ""
     if len(videos) == 1:
         return 0.9, f"one video with {sidecars} sidecar file(s)"
     if _is_multipart(videos):
@@ -333,6 +336,47 @@ def _bundle_groups(
             unassigned.append(f)
         else:
             matched_group.append(f)
+    groups.extend([f] for f in unassigned)
+    return groups
+
+
+def split_for_collection(media: list[FileObservation]) -> list[list[FileObservation]]:
+    """Split one bundle's files into per-subject bundles for a collection.
+
+    Used when the owner overrides the suggester and says a folder is a
+    *collection* rather than one bundle. Deliberately **not**
+    ``_bundle_groups(..., NARROW)``: that returns the whole folder as a single
+    group whenever the videos look like parts of one title
+    (``_is_multipart`` short-circuits ahead of the mode check), and a folder of
+    parts is precisely the shape this override exists to reject. Asking it to
+    split would return the input unchanged.
+
+    One group per video, with each non-video file attached to the video whose
+    stem it matches, so covers and subtitles follow their video instead of
+    becoming bundles of their own. A file matching nothing becomes its own
+    bundle, as it would in a normal suggestion. With fewer than two videos there
+    is no subject to split on, so every file stands alone — that is the only
+    reading of "make this several bundles" available for, say, a photo folder.
+    """
+    if not media:
+        return []
+    videos = sorted((f for f in media if f.media_kind is MediaKind.VIDEO), key=_obs_sort_key)
+    others = sorted((f for f in media if f.media_kind is not MediaKind.VIDEO), key=_obs_sort_key)
+    if len(videos) < 2:
+        return [[f] for f in sorted(media, key=_obs_sort_key)]
+
+    groups = [[video] for video in videos]
+    stems = [_comparison_stem(video.relative_path, StemMode.NARROW) for video in videos]
+    unassigned: list[FileObservation] = []
+    for f in others:
+        stem = _comparison_stem(f.relative_path, StemMode.NARROW)
+        exact = [i for i, video_stem in enumerate(stems) if stem == video_stem]
+        prefix = [i for i, video_stem in enumerate(stems) if stem.startswith(f"{video_stem} ")]
+        matched = exact[0] if len(exact) == 1 else prefix[0] if len(prefix) == 1 else None
+        if matched is None:
+            unassigned.append(f)
+        else:
+            groups[matched].append(f)
     groups.extend([f] for f in unassigned)
     return groups
 

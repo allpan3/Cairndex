@@ -16,8 +16,10 @@ import {
   useRenameGroupingProposal,
   useReparentGroupingProposal,
   useSetGroupingProposalDestination,
+  useSetGroupingProposalKind,
+  useSetGroupingStemMode,
 } from '../api/hooks'
-import { IconRefreshCw } from './icons'
+import { IconChevronsIn, IconChevronsOut, IconGroup, IconRefreshCw, IconUngroup } from './icons'
 
 /**
  * Review grouping suggestions and apply them (ADR-0009 phase 4).
@@ -77,6 +79,13 @@ interface StemControls {
   set: (directory: string, mode: GroupingStemMode) => void
 }
 
+/** Coordinate the bundle-versus-collection override on one suggestion. */
+interface KindControls {
+  canEdit: boolean
+  pending: boolean
+  set: (proposal: GroupingProposal) => void
+}
+
 type ReviewDragItem =
   | { kind: 'file'; proposalId: string; assetFileId: string }
   | { kind: 'bundle'; proposalId: string }
@@ -119,6 +128,40 @@ function buildTree(proposals: GroupingProposal[]): TreeNode[] {
 
 function collectIds(nodes: TreeNode[]): string[] {
   return nodes.flatMap((node) => [node.proposal.id, ...collectIds(node.children)])
+}
+
+/**
+ * A key for one suggestion that survives a change of proposal id.
+ *
+ * Narrow/Widen replaces the adjusted directory's rows in place (new ids for
+ * those rows only), and a bundle↔collection conversion rebuilds a row's
+ * subtree — so tracking which suggestions the owner unchecked by *id* is
+ * fragile. These keys are derived from content instead: a bundle is its set of
+ * files, a collection is its directory. A row whose content survives an edit
+ * keeps its checkbox; rows that genuinely are new suggestions come back
+ * checked.
+ */
+function proposalKey(proposal: GroupingProposal): string {
+  if (proposal.kind === 'container') return `c:${proposal.directory}`
+  const files = proposal.files
+    .map((f) => f.asset_file_id)
+    .sort()
+    .join(',')
+  // An addition targets one existing bundle, so that is part of its identity —
+  // two additions to different bundles can otherwise hold the same file set.
+  return `b:${proposal.target_bundle_id ?? ''}:${files}`
+}
+
+function collectKeys(nodes: TreeNode[]): Map<string, string> {
+  const keys = new Map<string, string>()
+  const visit = (items: TreeNode[]) => {
+    for (const node of items) {
+      keys.set(node.proposal.id, proposalKey(node.proposal))
+      visit(node.children)
+    }
+  }
+  visit(nodes)
+  return keys
 }
 
 /** Collect every bundle directory represented below one review node. */
@@ -230,36 +273,84 @@ function DestinationToggle({
   )
 }
 
+/** Whether this suggestion can be flipped between bundle and collection.
+ *
+ * An addition puts its files into a bundle that already exists and is not going
+ * to become a collection, so the override does not apply to it.
+ */
+function canConvertKind(proposal: GroupingProposal): boolean {
+  return !(proposal.target_bundle_id !== null && !proposal.create_new_bundle)
+}
+
+function kindActionLabel(proposal: GroupingProposal): string {
+  return proposal.kind === 'bundle'
+    ? 'Make this a collection of bundles instead'
+    : 'Make this one bundle instead'
+}
+
+/** Flip one suggestion between being a bundle and being a collection.
+ *
+ * The suggester decides from filenames alone whether a folder holds one thing
+ * or several, and Narrow/Widen cannot always overrule it — a folder whose files
+ * carry explicit part markers reads as one bundle at every sensitivity. This is
+ * the direct override, and it works in both directions so it is not a one-way
+ * door. Same compact icon-button shape as the destination toggle beside it.
+ */
+function KindToggle({ proposal, kind }: { proposal: GroupingProposal; kind: KindControls }) {
+  const label = kindActionLabel(proposal)
+  return (
+    <button
+      type="button"
+      className="grp-destination tip"
+      aria-label={label}
+      data-tip={label}
+      disabled={!kind.canEdit || kind.pending}
+      onClick={() => kind.set(proposal)}
+    >
+      {proposal.kind === 'bundle' ? <IconUngroup /> : <IconGroup />}
+    </button>
+  )
+}
+
 const STEM_MODES: GroupingStemMode[] = ['narrow', 'balanced', 'wide']
 
-/** Render one-step narrower/wider controls for a represented folder. */
+/** Render one-step narrower/wider controls for a represented folder.
+ *
+ * Compact icon buttons in the same shape as the destination and kind toggles
+ * (owner feedback: the text buttons dominated every row). Inward chevrons
+ * narrow — more of each filename, more bundles; outward chevrons widen. The
+ * current mode stays as a small text label between them, since an icon alone
+ * cannot show a three-state value.
+ */
 function StemModeControls({ directory, stem }: { directory: string; stem: StemControls }) {
   const current = stem.modes[directory] ?? 'balanced'
   const index = STEM_MODES.indexOf(current)
   const label = directory || 'library root'
   const change = (delta: -1 | 1) => stem.set(directory, STEM_MODES[index + delta]!)
+  const narrowTip = `Narrow stem matching in ${label}: use more of each filename, splitting into more bundles`
+  const widenTip = `Widen stem matching in ${label}: use a broader filename prefix, merging into fewer bundles`
   return (
     <span className="grp-stem" aria-label={`Stem matching for ${label}`}>
       <button
         type="button"
-        className="btn btn--compact grp-stem__button"
+        className="grp-destination tip"
         disabled={!stem.canEdit || stem.pending || index === 0}
         aria-label={`Narrow stem matching in ${label}`}
-        title="Use more of each filename and regenerate this folder as more bundles"
+        data-tip={narrowTip}
         onClick={() => change(-1)}
       >
-        Narrow
+        <IconChevronsIn />
       </button>
       <span className="grp-stem__mode">{current}</span>
       <button
         type="button"
-        className="btn btn--compact grp-stem__button"
+        className="grp-destination tip"
         disabled={!stem.canEdit || stem.pending || index === STEM_MODES.length - 1}
         aria-label={`Widen stem matching in ${label}`}
-        title="Use a broader filename prefix and regenerate this folder as fewer bundles"
+        data-tip={widenTip}
         onClick={() => change(1)}
       >
-        Widen
+        <IconChevronsOut />
       </button>
     </span>
   )
@@ -361,6 +452,7 @@ function ProposalNode({
   destination,
   stem,
   stemOwners,
+  kind,
 }: {
   node: TreeNode
   selectedIds: Set<string>
@@ -370,6 +462,7 @@ function ProposalNode({
   destination: DestinationControls
   stem: StemControls
   stemOwners: Map<string, string>
+  kind: KindControls
 }) {
   const { proposal, children } = node
   const checked = selectedIds.has(proposal.id)
@@ -406,6 +499,7 @@ function ProposalNode({
           <span className="grp-row__content">
             <ProposalTitle proposal={proposal} isAddition={false} rename={rename} />
             {proposal.reason && <span className="grp-reason">{proposal.reason}</span>}
+            <KindToggle proposal={proposal} kind={kind} />
             {stemOwners.has(proposal.id) && (
               <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
             )}
@@ -424,6 +518,7 @@ function ProposalNode({
                 destination={destination}
                 stem={stem}
                 stemOwners={stemOwners}
+                kind={kind}
               />
             ))}
           </ul>
@@ -490,6 +585,7 @@ function ProposalNode({
           <span className="grp-reason">
             {hasDestinationChoice ? additionFileCount(proposal) : proposal.reason}
           </span>
+          {canConvertKind(proposal) && hasItems && <KindToggle proposal={proposal} kind={kind} />}
           {stemOwners.has(proposal.id) && (
             <StemModeControls directory={stemOwners.get(proposal.id)!} stem={stem} />
           )}
@@ -620,10 +716,15 @@ export function GroupingReview({
   const moveProposalFile = useMoveGroupingProposalFile(planId)
   const reparentProposal = useReparentGroupingProposal(planId)
   const destination = useSetGroupingProposalDestination(planId)
+  const proposalKindMutation = useSetGroupingProposalKind(planId)
+  const stemModeMutation = useSetGroupingStemMode(planId)
   const apply = useApplyGroupingPlan()
   const [result, setResult] = useState<GroupingApplyResult | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
+  // Keyed by content rather than proposal id, so a Narrow/Widen regeneration
+  // does not silently re-check everything the owner had unchecked. See
+  // ``proposalKey``.
+  const [deselectedKeys, setDeselectedKeys] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ id: string; original: string } | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [dragItem, setDragItem] = useState<ReviewDragItem | null>(null)
@@ -633,20 +734,25 @@ export function GroupingReview({
   const tree = useMemo(() => buildTree(plan.data?.proposals ?? []), [plan.data])
   const stemOwners = useMemo(() => stemControlOwners(tree), [tree])
   const allProposalIds = useMemo(() => collectIds(tree), [tree])
+  const keyById = useMemo(() => collectKeys(tree), [tree])
   const emptyProposalIds = useMemo(() => new Set(collectEmptyIds(tree)), [tree])
   const selectedIds = useMemo(
     () =>
-      new Set(allProposalIds.filter((id) => !deselectedIds.has(id) && !emptyProposalIds.has(id))),
-    [allProposalIds, deselectedIds, emptyProposalIds],
+      new Set(
+        allProposalIds.filter(
+          (id) => !deselectedKeys.has(keyById.get(id) ?? id) && !emptyProposalIds.has(id),
+        ),
+      ),
+    [allProposalIds, deselectedKeys, emptyProposalIds, keyById],
   )
 
   const toggleNode = (node: TreeNode, checked: boolean) => {
-    const ids = collectIds([node])
-    setDeselectedIds((prev) => {
+    const keys = [...collectKeys([node]).values()]
+    setDeselectedKeys((prev) => {
       const next = new Set(prev)
-      for (const id of ids) {
-        if (checked) next.delete(id)
-        else next.add(id)
+      for (const key of keys) {
+        if (checked) next.delete(key)
+        else next.add(key)
       }
       return next
     })
@@ -660,7 +766,10 @@ export function GroupingReview({
     setDragItem(null)
     setDropSlot(null)
     destination.reset()
-    setDeselectedIds(new Set())
+    // "Suggest grouping" is an explicit fresh start from the current library
+    // state, so stale deselections do not carry into it. Narrow/Widen no longer
+    // comes through here at all — it edits the open plan in place.
+    setDeselectedKeys(new Set())
     setNotice(message)
   }
 
@@ -671,17 +780,30 @@ export function GroupingReview({
       },
     })
 
-  const setStemMode = (directory: string, mode: GroupingStemMode) => {
-    const modes = { ...(plan.data?.stem_modes ?? {}) }
-    if (mode === 'balanced') delete modes[directory]
-    else modes[directory] = mode
-    generate.mutate(modes, {
-      onSuccess: (generated) =>
-        finishGeneration(
-          generated,
-          `${directory || 'Library root'} now uses ${mode} stem matching.`,
-        ),
-    })
+  // In-place: only the adjusted directory's rows are replaced, so every other
+  // suggestion — and every owner edit and checkbox on it — survives untouched.
+  const setStemMode = (directory: string, mode: GroupingStemMode) =>
+    stemModeMutation.mutate(
+      { directory, mode },
+      {
+        onSuccess: () =>
+          setNotice(`${directory || 'Library root'} now uses ${mode} stem matching.`),
+      },
+    )
+
+  const convertKind = (proposal: GroupingProposal) => {
+    const next = proposal.kind === 'bundle' ? 'container' : 'bundle'
+    proposalKindMutation.mutate(
+      { proposalId: proposal.id, kind: next },
+      {
+        onSuccess: () =>
+          setNotice(
+            next === 'container'
+              ? `“${proposal.title ?? 'This folder'}” is now a collection of bundles.`
+              : `“${proposal.title ?? 'This collection'}” is now a single bundle.`,
+          ),
+      },
+    )
   }
 
   const startRename = (proposal: GroupingProposal) => {
@@ -780,11 +902,14 @@ export function GroupingReview({
     if (!plan.data) return
     const byId = new Map(updated.map((proposal) => [proposal.id, proposal]))
     const projected = plan.data.proposals.map((proposal) => byId.get(proposal.id) ?? proposal)
-    const emptied = collectEmptyIds(buildTree(projected)).filter(
-      (proposalId) => !emptyProposalIds.has(proposalId),
-    )
+    const projectedTree = buildTree(projected)
+    const projectedKeys = collectKeys(projectedTree)
+    const emptied = collectEmptyIds(projectedTree)
+      .filter((proposalId) => !emptyProposalIds.has(proposalId))
+      .map((proposalId) => projectedKeys.get(proposalId))
+      .filter((key): key is string => key !== undefined)
     if (emptied.length === 0) return
-    setDeselectedIds((current) => new Set([...current, ...emptied]))
+    setDeselectedKeys((current) => new Set([...current, ...emptied]))
   }
 
   const dropFile = (targetProposalId: string, targetIndex: number) => {
@@ -833,12 +958,16 @@ export function GroupingReview({
     destination.isPending ||
     moveProposalFile.isPending ||
     reparentProposal.isPending ||
+    proposalKindMutation.isPending ||
+    stemModeMutation.isPending ||
     apply.isPending
   const actionBlocked = busy || editing !== null
   const error = (generate.error ??
     destination.error ??
     moveProposalFile.error ??
     reparentProposal.error ??
+    proposalKindMutation.error ??
+    stemModeMutation.error ??
     apply.error) as Error | null
   const selectedCount = selectedIds.size
   const renameControls: RenameControls = {
@@ -872,6 +1001,11 @@ export function GroupingReview({
     modes: plan.data?.stem_modes ?? {},
     set: setStemMode,
   }
+  const kindControls: KindControls = {
+    canEdit: status === 'open' && editing === null,
+    pending: busy,
+    set: convertKind,
+  }
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -892,11 +1026,12 @@ export function GroupingReview({
           <p className="grp-intro">
             Suggestions cover still-unbundled files and new additions. Review the proposed bundles
             and collections, drag files between bundles or bundles into collections, then accept
-            only the checked items. Use Narrow or Widen beside a folder to regenerate with stricter
-            or broader filename stems. Double-click either title to rename it. Newly confirmed
-            bundles join their selected parent collection; existing confirmed bundles stay untouched
-            unless a reviewed addition targets them. Suggestions reflect the latest scan; run Scan
-            new files after changing the filesystem. Nothing on disk changes.
+            only the checked items. Every suggestion has a control to turn it into a collection of
+            bundles or back into one bundle. Use Narrow or Widen beside a folder to re-suggest just
+            that folder with stricter or broader filename stems. Double-click either title to rename
+            it. Newly confirmed bundles join their selected parent collection; existing confirmed
+            bundles stay untouched unless a reviewed addition targets them. Suggestions reflect the
+            latest scan; run Scan new files after changing the filesystem. Nothing on disk changes.
           </p>
 
           {error && <div className="grp-error">{error.message}</div>}
@@ -913,12 +1048,12 @@ export function GroupingReview({
             <>
               <div className="grp-selectbar">
                 <span>{selectedCount} selected</span>
-                <button className="btn btn--compact" onClick={() => setDeselectedIds(new Set())}>
+                <button className="btn btn--compact" onClick={() => setDeselectedKeys(new Set())}>
                   Select all
                 </button>
                 <button
                   className="btn btn--compact"
-                  onClick={() => setDeselectedIds(new Set(allProposalIds))}
+                  onClick={() => setDeselectedKeys(new Set(keyById.values()))}
                 >
                   Deselect all
                 </button>
@@ -951,6 +1086,7 @@ export function GroupingReview({
                     destination={destinationControls}
                     stem={stemControls}
                     stemOwners={stemOwners}
+                    kind={kindControls}
                   />
                 ))}
               </ul>

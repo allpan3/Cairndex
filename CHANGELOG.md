@@ -8,7 +8,48 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Narrow and Widen no longer discard your review work.** They used to
+  regenerate the whole plan server-side — new rows, new ids — so adjusting one
+  folder reset every checkbox and every edit everywhere. They now re-suggest
+  **only that folder, in place**: every suggestion outside it keeps its
+  identity, so your selections, renames, destination switches, drag edits, and
+  bundle↔collection conversions all survive an adjustment to some other folder.
+  The adjusted folder itself comes back as fresh (checked) suggestions, which is
+  what asking to re-group it means. Selection is additionally tracked by what a
+  suggestion *contains* rather than by its row id, as a second line of defense.
+
+  An explicit **Suggest grouping** still starts from a clean slate — that is
+  a fresh start rather than an adjustment.
+
+### Added
+
+- **Turn a suggested bundle into a collection, and back.** The suggester decides
+  from filenames alone whether a folder holds one thing or several, and it gets
+  it wrong in a way Narrow could not fix: a folder whose files carry explicit
+  part markers reads as a single bundle at *every* stem sensitivity, so there
+  was no way to say "this folder is a collection". Each suggestion now carries a
+  compact split/merge icon button (tooltip: *Make this a collection of bundles
+  instead* / *Make this one bundle instead*), matching the destination toggle
+  beside it.
+
+  Converting to a collection splits the folder into one bundle per video, with
+  each cover and subtitle following its own video rather than becoming a bundle
+  of its own. Converting back merges everything under the collection into one
+  bundle again, so the override is reversible rather than a one-way door. A
+  suggestion that adds files to an already-confirmed bundle cannot be converted,
+  since its files join a bundle that is not going to become a collection.
+
+### Changed
+
+- The review dialog drops two pieces of noise: single-file suggestions no longer
+  say "single file on its own" (the row already shows exactly that), and
+  converted rows no longer explain that you converted them.
+- Narrow/Widen are compact icon buttons too — inward chevrons narrow, outward
+  widen, with the current mode as a small label between them — matching the
+  destination and conversion toggles instead of dominating every folder row
+  with text buttons.
 
 ## [0.1.0] — 2026-07-28
 

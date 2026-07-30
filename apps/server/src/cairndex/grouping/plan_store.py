@@ -17,8 +17,10 @@ from cairndex.grouping.service import suggest_for_session
 from cairndex.grouping.suggester import (
     FileObservation,
     _addition_roles_in_order,
+    _media_first,
     _new_bundle_title,
     _roles_in_order,
+    split_for_collection,
 )
 from cairndex.grouping.suggester import (
     GroupingPlan as PlanData,
@@ -217,6 +219,321 @@ def reparent_bundle_proposal(
     proposal.owner_edited = True
     session.flush()
     return proposal
+
+
+def _descendants(session: Session, proposal: GroupingProposal) -> list[GroupingProposal]:
+    """Every proposal below ``proposal``, deepest last (breadth-first order)."""
+    all_in_plan = list(
+        session.scalars(
+            select(GroupingProposal).where(GroupingProposal.plan_id == proposal.plan_id)
+        )
+    )
+    by_parent: dict[str | None, list[GroupingProposal]] = {}
+    for row in all_in_plan:
+        by_parent.setdefault(row.parent_proposal_id, []).append(row)
+
+    found: list[GroupingProposal] = []
+    frontier = [proposal.id]
+    while frontier:
+        children = [child for parent in frontier for child in by_parent.get(parent, [])]
+        if not children:
+            break
+        found.extend(children)
+        frontier = [child.id for child in children]
+    return found
+
+
+def _is_addition(proposal: GroupingProposal) -> bool:
+    """Whether this proposal adds files to an already-confirmed bundle."""
+    return proposal.target_bundle_id is not None and not proposal.create_new_bundle
+
+
+def _bundle_to_container(session: Session, proposal: GroupingProposal) -> None:
+    """Turn one bundle suggestion into a collection holding its files' bundles.
+
+    The split is per *video subject* rather than per file, so cover art and
+    subtitles follow their video instead of becoming bundles of their own — see
+    ``split_for_collection`` for why the ordinary suggester grouping cannot be
+    reused here.
+    """
+    observations = _proposal_observations(session, list(proposal.files))
+    groups = split_for_collection(observations)
+
+    for order, group in enumerate(groups):
+        ordered = _media_first(group)
+        child = GroupingProposal(
+            plan_id=proposal.plan_id,
+            kind=ProposalKind.BUNDLE,
+            title=_new_bundle_title(ordered, proposal.directory),
+            directory=proposal.directory,
+            parent_proposal_id=proposal.id,
+            confidence=proposal.confidence,
+            # No reason text: the owner just performed the split themselves, so
+            # a row explaining it is noise (owner-reported, 2026-07-29).
+            reason=None,
+            sort_order=order,
+            owner_edited=True,
+        )
+        session.add(child)
+        session.flush()
+        for proposed in _roles_in_order(ordered):
+            session.add(
+                GroupingProposalFile(
+                    proposal_id=child.id,
+                    asset_file_id=proposed.asset_file_id,
+                    relative_path=next(
+                        o.relative_path
+                        for o in ordered
+                        if o.asset_file_id == proposed.asset_file_id
+                    ),
+                    proposed_role=proposed.role,
+                    sequence=proposed.sequence,
+                )
+            )
+
+    # A container carries no files of its own; its members are its children.
+    for proposal_file in list(proposal.files):
+        session.delete(proposal_file)
+    session.expire(proposal, ["files"])
+    proposal.kind = ProposalKind.CONTAINER
+    proposal.reason = None
+
+
+def _container_to_bundle(session: Session, proposal: GroupingProposal) -> None:
+    """Collapse a collection suggestion and everything under it into one bundle."""
+    descendants = _descendants(session, proposal)
+    additions = [row for row in descendants if _is_addition(row)]
+    if additions:
+        raise ValidationError(
+            "this collection contains a suggestion that adds files to an existing "
+            "bundle, which cannot be merged into a new one"
+        )
+
+    observations: list[FileObservation] = []
+    seen: set[str] = set()
+    for row in descendants:
+        for observation in _proposal_observations(session, list(row.files)):
+            if observation.asset_file_id in seen:
+                continue
+            seen.add(observation.asset_file_id)
+            observations.append(observation)
+
+    # Delete deepest-first so no row is orphaned mid-way through.
+    for row in reversed(descendants):
+        session.delete(row)
+    session.flush()
+
+    ordered = _media_first(observations)
+    for proposed in _roles_in_order(ordered):
+        session.add(
+            GroupingProposalFile(
+                proposal_id=proposal.id,
+                asset_file_id=proposed.asset_file_id,
+                relative_path=next(
+                    o.relative_path for o in ordered if o.asset_file_id == proposed.asset_file_id
+                ),
+                proposed_role=proposed.role,
+                sequence=proposed.sequence,
+            )
+        )
+    session.expire(proposal, ["files"])
+    proposal.kind = ProposalKind.BUNDLE
+    proposal.reason = None
+
+
+def convert_proposal_kind(
+    session: Session, plan_id: str, proposal_id: str, kind: ProposalKind
+) -> GroupingPlan:
+    """Switch a suggestion between being one bundle and being a collection.
+
+    The suggester decides from filenames alone whether a folder holds one thing
+    or several, and it cannot know which the owner meant. This is the manual
+    override in both directions, applied to the open plan in place — every other
+    suggestion in the plan keeps its identity and any edits made to it.
+
+    Returns the whole plan: a conversion adds or removes proposals, so the
+    client's tree has changed shape rather than one row having changed.
+    """
+    proposal = _open_proposal(session, plan_id, proposal_id)
+    if proposal.kind is kind:
+        raise ValidationError(f"this suggestion is already a {kind.value}")
+    if _is_addition(proposal):
+        raise ValidationError(
+            "a suggestion that adds files to an existing bundle cannot become a collection"
+        )
+
+    if kind is ProposalKind.CONTAINER:
+        _bundle_to_container(session, proposal)
+    else:
+        _container_to_bundle(session, proposal)
+
+    proposal.owner_edited = True
+    session.flush()
+    return get_plan(session, plan_id)
+
+
+def set_directory_stem_mode(
+    session: Session, plan_id: str, directory: str, mode: StemMode
+) -> GroupingPlan:
+    """Re-suggest ONE directory inside the open plan, leaving everything else be.
+
+    Narrow/Widen used to regenerate the whole plan, which superseded every
+    proposal row — discarding the owner's other decisions (renames, destination
+    switches, drag edits, bundle↔collection conversions, and the client's
+    selection) to adjust one folder. Splicing just that directory makes their
+    persistence structural: rows outside it are never touched, so there is
+    nothing to carry forward or to get carry-forward wrong.
+
+    The suggester still runs over the whole library (a directory's grouping is
+    not computable in isolation), but only its output for ``directory`` is used.
+    Within that directory the rows genuinely are new suggestions — including any
+    conversion the owner had made *there*, which is the folder they just asked
+    to redo. ``POST /plans`` (Suggest grouping) remains the full reset.
+
+    Files the owner dragged out of this directory into surviving suggestions are
+    not re-proposed: a fresh row claiming a file that another row still holds
+    would put it in two bundles at apply time.
+    """
+    plan = get_plan(session, plan_id)
+    if plan.status is not GroupingPlanStatus.OPEN:
+        raise ConflictError("only an open grouping plan can be adjusted")
+
+    modes: dict[str, str] = dict(plan.stem_modes or {})
+    if mode is StemMode.BALANCED:
+        modes.pop(directory, None)
+    else:
+        modes[directory] = mode.value
+    # Same bound as PlanGenerateRequest.stem_modes, enforced here too because
+    # this path grows the stored map one directory at a time.
+    if len(modes) > 500:
+        raise ValidationError("too many per-directory stem overrides")
+
+    data = suggest_for_session(session, stem_modes={d: StemMode(m) for d, m in modes.items()})
+    fresh = [p for p in data.proposals if p.directory == directory]
+
+    existing = [p for p in plan.proposals if p.directory == directory]
+    existing_ids = {p.id for p in existing}
+    # Where the folder sat in the review list, so the fresh rows take its place
+    # rather than jumping to the bottom.
+    insert_at = min(
+        (p.sort_order for p in existing),
+        default=max((p.sort_order for p in plan.proposals), default=-1) + 1,
+    )
+    # Children of a replaced container that live in *other* directories (e.g.
+    # subdirectory bundles under this directory's container). The FK is SET
+    # NULL, so without re-linking they would silently fall to the top level.
+    orphaned_ids = [
+        p.id
+        for p in plan.proposals
+        if p.parent_proposal_id in existing_ids and p.id not in existing_ids
+    ]
+
+    for row in existing:
+        session.delete(row)
+    session.flush()
+    session.expire(plan, ["proposals"])
+
+    survivors = list(plan.proposals)
+    claimed = {pf.asset_file_id for p in survivors for pf in p.files}
+    container_by_dir = {p.directory: p.id for p in survivors if p.kind is ProposalKind.CONTAINER}
+
+    path_by_id = _relative_paths(session)
+    inserted_parents: list[tuple[GroupingProposal, str | None]] = []
+    fresh_container_id: str | None = None
+    for proposal in fresh:
+        kept = [pf for pf in proposal.files if pf.asset_file_id not in claimed]
+        if proposal.kind is ProposalKind.BUNDLE and not kept:
+            continue  # every file here was dragged elsewhere by the owner
+        row = GroupingProposal(
+            plan_id=plan.id,
+            kind=proposal.kind,
+            title=proposal.title or None,
+            directory=proposal.directory,
+            confidence=proposal.confidence,
+            reason=proposal.reason or None,
+            # All fresh rows share the folder's old position; the renumber below
+            # spreads them out in this (suggester) order via the id tiebreak.
+            sort_order=insert_at,
+            target_bundle_id=proposal.target_bundle_id,
+            target_bundle_title=proposal.target_bundle_title,
+            create_new_bundle=proposal.create_new_bundle,
+            base_bundle_id=proposal.base_bundle_id,
+        )
+        session.add(row)
+        session.flush()
+        if len(kept) != len(proposal.files):
+            # Roles were derived for the full file set; recompute for what is left
+            # (e.g. the group's video was dragged away, leaving sidecars).
+            observations = [
+                FileObservation(
+                    asset_file_id=af.id,
+                    relative_path=af.relative_path,
+                    media_kind=af.media_kind,
+                    bundle_id=af.bundle_id,
+                )
+                for pf in kept
+                if (af := session.get(AssetFile, pf.asset_file_id)) is not None
+            ]
+            proposed = (
+                _addition_roles_in_order(observations)
+                if _is_addition(row)
+                else _roles_in_order(observations)
+            )
+        else:
+            proposed = tuple(proposal.files)
+        for sequence, pf in enumerate(proposed):
+            session.add(
+                GroupingProposalFile(
+                    proposal_id=row.id,
+                    asset_file_id=pf.asset_file_id,
+                    relative_path=path_by_id.get(pf.asset_file_id, ""),
+                    proposed_role=pf.role,
+                    sequence=sequence,
+                )
+            )
+        if proposal.kind is ProposalKind.CONTAINER:
+            fresh_container_id = row.id
+        inserted_parents.append((row, proposal.parent_directory))
+
+    # Link fresh rows to their parents: the directory's own fresh container, or
+    # a surviving container for an ancestor directory.
+    lookup = dict(container_by_dir)
+    if fresh_container_id is not None:
+        lookup[directory] = fresh_container_id
+    for row, parent_dir in inserted_parents:
+        row.parent_proposal_id = lookup.get(parent_dir) if parent_dir is not None else None
+
+    # Children of the replaced container follow it to its successor (or the top
+    # level if the directory no longer warrants one).
+    for orphan_id in orphaned_ids:
+        orphan = session.get(GroupingProposal, orphan_id)
+        if orphan is not None:
+            orphan.parent_proposal_id = fresh_container_id
+
+    # A fresh container whose bundles were all claimed away holds nothing —
+    # drop it rather than showing an empty collection suggestion.
+    if fresh_container_id is not None:
+        has_children = bool(orphaned_ids) or any(
+            row.parent_proposal_id == fresh_container_id
+            for row, _ in inserted_parents
+            if row.id != fresh_container_id
+        )
+        if not has_children:
+            childless = session.get(GroupingProposal, fresh_container_id)
+            if childless is not None:
+                session.delete(childless)
+
+    session.flush()
+    session.expire(plan, ["proposals"])
+    # Deterministic order: survivors keep their unique sort_orders; the fresh
+    # rows share insert_at and fall back to id order, which is creation (and
+    # therefore suggester) order because ids are ULIDs.
+    for position, row in enumerate(sorted(plan.proposals, key=lambda p: (p.sort_order, p.id))):
+        row.sort_order = position
+    plan.stem_modes = modes
+    session.flush()
+    session.expire(plan, ["proposals"])
+    return plan
 
 
 def supersede_open_plans(session: Session) -> None:
