@@ -9,12 +9,13 @@
 > individual commits never entered `main` and have no counterpart. They are left as
 > written; each is labelled with its subject, which is what the record needs.
 >
-> **In progress (2026-07-30):** two owner-requested branches are open and
-> unreviewed — `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each
-> with its own status entry. Both edit this file and `CHANGELOG.md`, so both need a
-> rebase before review. The grouping round-trip work is **merged**, but was never
-> reproduced against the owner's reported 30-second stall; if it recurs, that entry
-> records what was and was not measured.
+> **In progress (2026-07-30):** one owner-requested branch is open and unreviewed —
+> `chore/docker-dev-and-deploy`, which has its own status entry. It predates the
+> repository recreation, so it needs a rebase onto current `main` and will conflict
+> on this file and `CHANGELOG.md`. Half-star ratings are **merged**. The grouping
+> round-trip work is merged too, but was never reproduced against the owner's
+> reported 30-second stall; if it recurs, that entry records what was and was not
+> measured.
 
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
@@ -44,7 +45,7 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: half-star ratings (2026-07-28)
+## Merged: half-star ratings (2026-07-30)
 **Owner test, 2026-07-30 — a half star could not be set in the desktop shell.**
 Clicking a star did nothing at all. `setPointerCapture` retargets *every* later
 event of the gesture to the capturing element, the click included, so taking it on
