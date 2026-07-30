@@ -107,6 +107,17 @@ root relative), indexed derived `directory_path`, `original_filename`,
 `filesystem_inode`, `identity_available`, `availability`, `version`, timestamps.
 `relative_path` is unique within a library.
 
+Three of those columns are names, and they are not interchangeable.
+`relative_path` is where the file is; `original_filename` is what it was called
+when it entered the library and never changes; `display_title` is the name every
+bundle surface renders (the inspector's file rail, the album, the viewer's file
+list) and is owner-editable via `PATCH …/files/{file_id}`. A journaled rename
+carries `display_title` along with the path, but only while it still equals the
+old basename — a title someone chose is left alone. Leaving it behind is what
+made a renamed file show its new name in the File Browser and its old one inside
+its bundle (fixed 2026-07-30); rows renamed before that fix keep the stale title,
+since nothing backfills it.
+
 Filesystem device/inode identities preserve the unsigned 64-bit `stat()` value
 as signed two's-complement SQLite integers. This avoids overflow on network
 filesystems while preserving exact equality for moved-file repair.
