@@ -31,6 +31,7 @@ from cairndex.persistence.models import (
     Collection,
     Tag,
 )
+from cairndex.services import collections as collection_service
 from cairndex.services.pagination import keyset_page
 
 _BUNDLE_SCALAR_FIELDS = {"title"}
@@ -331,9 +332,13 @@ def set_bundle_collections(
     session: Session, bundle_id: str, collection_ids: list[str]
 ) -> AssetBundle:
     bundle = get_bundle(session, bundle_id)
+    # Both sides of the move: a collection losing this bundle can lose the cover
+    # it was showing, exactly as one gaining it can acquire a new one.
+    touched = {collection.id for collection in bundle.collections} | set(collection_ids)
     bundle.collections = _resolve_all(session, Collection, collection_ids, label="collection")
     bundle.updated_at = utcnow()
     session.flush()
+    collection_service.touch_membership_collections(session, touched)
     return bundle
 
 
@@ -357,6 +362,8 @@ def batch_update_bundles(
     )
     remove_tag_set = set(remove_tag_ids or [])
     remove_collection_set = set(remove_collection_ids or [])
+    # Every collection a bundle leaves or joins, gathered as the loop goes.
+    touched_collections: set[str] = set(add_collection_ids or []) | remove_collection_set
 
     for bundle in bundles:
         tags = {t.id: t for t in bundle.tags if t.id not in remove_tag_set}
@@ -365,11 +372,15 @@ def batch_update_bundles(
 
         collections = {c.id: c for c in bundle.collections if c.id not in remove_collection_set}
         collections.update({c.id: c for c in add_collections})
+        touched_collections.update(collections)
         bundle.collections = list(collections.values())
 
         bundle.updated_at = utcnow()
 
     session.flush()
+    # A collection's auto-picked cover is derived from its membership, so the
+    # tiles for everything on both sides of this move need a fresh cache key.
+    collection_service.touch_membership_collections(session, touched_collections)
     return len(bundles)
 
 

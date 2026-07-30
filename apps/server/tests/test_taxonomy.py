@@ -339,6 +339,80 @@ def test_touch_cover_collections_checks_only_membership_ancestors_and_explicit_c
     assert unrelated.updated_at == unrelated_updated_at
 
 
+def _image_bundle(session: Session, title: str) -> str:
+    """A bundle with one thumbnailable file, so it can be a collection's cover."""
+    from cairndex.domain.enums import FileRole, MediaKind
+
+    bundle = bundle_service.create_bundle(session, title=title)
+    session.add(
+        AssetFile(
+            bundle_id=bundle.id,
+            relative_path=f"{title}.jpg",
+            original_filename=f"{title}.jpg",
+            display_title=f"{title}.jpg",
+            role=FileRole.OTHER,
+            media_kind=MediaKind.IMAGE,
+        )
+    )
+    session.flush()
+    return bundle.id
+
+
+def test_filing_a_bundle_refreshes_the_collection_cover_cache_key(session: Session) -> None:
+    """A collection's auto cover comes from its membership, so a drop changes it.
+
+    The cover thumbnail is fetched with ``updated_at`` as the cache-busting key.
+    Nothing used to move it on a membership change, so a collection that had
+    just received its first bundle went on serving the 404 it had cached
+    (owner: "collection covers are not displaying correctly", 2026-07-30).
+    """
+    parent = collection_service.create_collection(session, name="parent")
+    child = collection_service.create_collection(session, name="child", parent_id=parent.id)
+    session.flush()
+    parent_before, child_before = parent.updated_at, child.updated_at
+    assert collection_service.resolve_cover_bundle_id(session, child.id) is None
+
+    bundle_id = _image_bundle(session, "filed")
+    bundle_service.set_bundle_collections(session, bundle_id, [child.id])
+
+    session.refresh(child)
+    session.refresh(parent)
+    assert collection_service.resolve_cover_bundle_id(session, child.id) == bundle_id
+    assert child.updated_at > child_before
+    # The parent's auto cover resolves through the subtree, so it moved too.
+    assert parent.updated_at > parent_before
+
+
+def test_removing_the_cover_bundle_refreshes_the_collection_it_left(session: Session) -> None:
+    """The case the bundle-scoped touch cannot see.
+
+    ``touch_cover_collections_for_bundle`` only marks collections whose cover
+    still resolves to *that* bundle — after a removal it resolves to a different
+    one, or none, which is exactly when the tile is wrong.
+    """
+    source = collection_service.create_collection(session, name="source")
+    target = collection_service.create_collection(session, name="target")
+    only = _image_bundle(session, "only")
+    bundle_service.set_bundle_collections(session, only, [source.id])
+    session.flush()
+    session.refresh(source)
+    source_before = source.updated_at
+    assert collection_service.resolve_cover_bundle_id(session, source.id) == only
+
+    bundle_service.batch_update_bundles(
+        session,
+        bundle_ids=[only],
+        add_collection_ids=[target.id],
+        remove_collection_ids=[source.id],
+    )
+
+    session.refresh(source)
+    session.refresh(target)
+    assert collection_service.resolve_cover_bundle_id(session, source.id) is None
+    assert source.updated_at > source_before, "the collection it left has a new cover to show"
+    assert collection_service.resolve_cover_bundle_id(session, target.id) == only
+
+
 # --- Tag groups (many-to-many, independent of hierarchy) ---------------------
 def test_tag_belongs_to_multiple_groups_without_changing_hierarchy(session: Session) -> None:
     parent = tag_service.create_tag(session, name="genre")
