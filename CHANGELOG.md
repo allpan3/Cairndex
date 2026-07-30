@@ -198,17 +198,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   **A library now uses WAL while a server has it open and a rollback journal at
   rest**, so a closed library is a single portable file that opens anywhere
   (ADR-0021). A library on a filesystem that cannot host WAL is never put into
-  it, and one found in WAL where it should not be is converted back on open — so
-  a library left in the bad state repairs itself the first time a capable machine
-  opens it. The server's own `registry.db` keeps WAL: it never leaves the server's
-  disk.
+  it, and the server checks what SQLite actually did rather than assuming the
+  pragma worked. The server's own `registry.db` keeps WAL: it never leaves the
+  server's disk.
 
   **One case still needs care.** An *unclean* stop — `docker kill`, a power cut,
-  the OOM killer — never reaches the conversion, and leaves the library in WAL.
-  Stop containers with `docker stop`. If a library is locked out anyway, the
-  error now says so: HTTP 409 `library_database_unopenable`, distinguishing a
-  journal-mode problem from a permissions one and carrying the command that
-  fixes it. `docs/deployment.md` has the recovery procedure.
+  the OOM killer — never reaches the conversion and leaves the library in WAL, so
+  stop containers with `docker stop`. Nothing is lost when it happens: no data is
+  at risk, and restarting the server that crashed and stopping it cleanly
+  converts the library back. If one is locked out, the error now says so — HTTP
+  409 `library_database_unopenable`, distinguishing a journal-mode problem from a
+  permissions one and carrying the command that fixes it, where before it was a
+  bare 500. `docs/deployment.md` has the full procedure.
 - **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
   that said nothing about what was happening or how far along it was. Two causes,
   both in the reporting rather than the work: a phase change could not clear the
