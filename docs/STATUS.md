@@ -64,6 +64,91 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: collection counts refresh late, or never (2026-07-30)
+
+Branch `fix/collection-count-refresh`, rebased onto `main` at `9a4a24a` (the
+storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`.
+Owner-reported: dragging a bundle from one collection to another
+does not immediately update the count in the sidebar; after related work landed,
+"visibly faster … but still not instant".
+
+**The server was never the problem.** Measured against a live library either
+side of a real drag, the subtree arithmetic and the membership were both right
+and the response was prompt. What was slow was the client waiting for it:
+`useBatchUpdate` invalidated `['collection-counts']` in `onSettled`, so the
+numbers only moved after a round trip — which on a library whose SQLite lives on
+an SMB share is a beat you can see.
+
+**Why it had been left that way, and why that reasoning did not survive.** The
+mutation deliberately skipped optimistic count math: the server counts a
+collection's *subtree*, so filing a bundle into a subcollection of the one being
+viewed must leave that collection's number unchanged, and a flat ±1 would be
+wrong for exactly the commonest gesture. True — but it does not follow that
+nothing can be computed. The client already holds the collection tree, so the
+real deltas are: the collections counting a bundle are each of its memberships
+plus every ancestor; diff that set before against after. A parent↔child move
+leaves the shared ancestors in both sets and they do not move, with no special
+case. `apps/web/src/api/counts.ts` holds the arithmetic as pure functions;
+`hooks.ts` reads and writes the caches.
+
+The arithmetic needs each moved bundle's *whole* membership (a bundle can be in
+several collections), so when any of it is uncached the counts are left to the
+server rather than guessed partway — and dragging an **unselected** card, the one
+gesture whose bundle no inspector has loaded, now warms that cache on
+`dragstart`, capped at 50 bundles.
+
+**Two counts that were not late but simply wrong** turned up while checking
+everything else that moves a count:
+
+- **A collection reparent never refreshed the counts at all.** Every nesting
+  drag in the sidebar — the "into" drop *and* a gap drop into another parent's
+  group — goes through `useReorderCollections`, which by design invalidates
+  nothing (a reorder must not re-answer its own question). But it also reparents,
+  which changes what every collection above it on both sides counts. It now
+  refetches the counts when a moved collection's parent actually changed, and
+  still nothing when the drag only reordered. Exact deltas are not computable
+  client-side: an ancestor counts *distinct* bundles across its subtree, and the
+  client holds no membership for the bundles inside the collection being moved.
+- **`['collection-stats']` — the collection inspector's three figures — was
+  invalidated by nothing in the entire app.** Filing a bundle into that
+  collection, deleting a bundle, adding a subcollection, a scan, a grouping
+  apply: none of them touched it, so the pane showed whatever it had said when it
+  opened. The sidebar count and the inspector figures are the same fact at two
+  altitudes and now refresh through one helper; a membership change moves both
+  optimistically (subtree total takes the ancestor arithmetic, "bundles here" a
+  plain ±1).
+
+**Also made optimistic, since they are the same mechanism:** the collection
+picker (`useSetBundleCollections`), the tag picker (`useSetBundleTags` — tag
+counts are direct membership, so ±1), and the Uncategorized/Untagged system
+views, which move when a bundle gains its first membership or loses its last.
+Everything rolls back on error and is still reconciled by the existing
+invalidation.
+
+**Tests.** `apps/web/src/api/counts.test.ts` covers the arithmetic on a fixture
+tree: sibling→sibling, parent→own child and back, already-a-member, a second
+membership under a shared ancestor, multi-select, copy-not-move, the
+Uncategorized edges, and the no-negative clamp.
+`apps/web/src/api/hooks.counts.test.tsx` covers the cache behaviour: counts have
+moved *while the write is still in flight*, an unknown membership moves nothing,
+a rejected write puts every number back, the inspector's subtree and direct
+figures move apart, and a reparenting reorder refetches while a plain reorder
+does not. Full web gate green (lint, format, typecheck, 515 tests, build).
+
+**Verified in the browser**, on the containerized dev stack against a seeded
+scratch library with the batch write artificially delayed 4 s, so the optimistic
+state is observable on its own: a drag into a subcollection moved the child, its
+parent and Uncategorized 120 ms after the drop with the request still in flight,
+and the settled state agreed; a parent→child move left the parent's number
+alone; a child→parent move took the inspector from 2/2 to 1/1 mid-flight; and
+nesting a 2-bundle collection under an empty one took the empty one to 2 without
+a reload.
+
+**Not done:** the paste-tags flow in `App.tsx` still updates its aggregate counts
+on the round trip (it already writes the pills optimistically and fetches
+memberships it lacks); no e2e test was added, the drag being covered at the hook
+layer instead.
+
 ## Merged: storyboard generation was decoding everything (2026-07-30)
 
 Branch `perf/storyboard-keyframe-sampling`, rebased onto `main` at `2bd4694`
