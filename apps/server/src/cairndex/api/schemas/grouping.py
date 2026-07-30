@@ -54,6 +54,17 @@ class ProposalReparent(BaseModel):
     parent_proposal_id: str | None
 
 
+# Validate a suggestion's bundle-versus-collection override
+class ProposalKindUpdate(BaseModel):
+    kind: ProposalKind
+
+
+# Validate one directory's stem-sensitivity change (in-place re-suggestion)
+class StemModeUpdate(BaseModel):
+    directory: str = Field(max_length=4096)
+    mode: StemMode
+
+
 # Validate bounded per-directory stem sensitivity overrides
 class PlanGenerateRequest(BaseModel):
     stem_modes: dict[str, StemMode] = Field(default_factory=dict, max_length=500)

@@ -83,7 +83,7 @@ const ADDITION: GroupingProposal = {
   target_bundle_title: 'Sky, Sand, Sea & Salt - 4K',
   create_new_bundle: false,
   confidence: 0.8,
-  reason: 'add 2 new file(s) to existing bundle',
+  reason: 'add 3 new file(s) to existing bundle',
   files: [
     {
       asset_file_id: 'new-video',
@@ -91,10 +91,51 @@ const ADDITION: GroupingProposal = {
       proposed_role: 'video_part',
       sequence: 0,
     },
+    // A second video, so this row *could* divide — which is what makes the
+    // "additions offer no collection override" test prove the addition rule
+    // rather than pass because the row was indivisible anyway.
+    {
+      asset_file_id: 'new-video-2',
+      relative_path: 'Western/Nora Vance/Surf On The Ridge - 4K alt.mp4',
+      proposed_role: 'alternate_version',
+      sequence: 1,
+    },
     {
       asset_file_id: 'new-cover',
       relative_path: 'Western/Nora Vance/Surf On The Ridge - 4K.jpg',
       proposed_role: 'image',
+      sequence: 2,
+    },
+  ],
+}
+
+/** A bundle that can genuinely divide: two video subjects in one folder.
+ *
+ * Turning a *single*-subject bundle into a collection is refused (it would wrap
+ * it in a collection of one identical bundle), so the conversion tests need a
+ * row with something to divide. */
+const DIVISIBLE: GroupingProposal = {
+  id: 'divisible1',
+  kind: 'bundle',
+  title: 'Two Subjects',
+  directory: 'Two',
+  parent_proposal_id: null,
+  target_bundle_id: null,
+  target_bundle_title: null,
+  create_new_bundle: false,
+  confidence: 0.7,
+  reason: '2 unrelated files',
+  files: [
+    {
+      asset_file_id: 'two-a',
+      relative_path: 'Two/alpha.mp4',
+      proposed_role: 'primary_video',
+      sequence: 0,
+    },
+    {
+      asset_file_id: 'two-b',
+      relative_path: 'Two/beta.mp4',
+      proposed_role: 'alternate_version',
       sequence: 1,
     },
   ],
@@ -212,6 +253,62 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
         (proposal) => updated.find((item) => item.id === proposal.id) ?? proposal,
       )
       body = updated
+    } else if (url.match(/\/stem-modes$/) && init?.method === 'PUT') {
+      const { directory, mode } = JSON.parse(init.body as string) as {
+        directory: string
+        mode: 'narrow' | 'balanced' | 'wide'
+      }
+      if (mode === 'balanced') delete stemModes[directory]
+      else stemModes[directory] = mode
+      // In place: only the adjusted directory's rows are replaced (new ids).
+      proposals = proposals.map((proposal) =>
+        proposal.directory === directory ? { ...proposal, id: `${proposal.id}-regen` } : proposal,
+      )
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      }
+    } else if (url.match(/\/proposals\/[^/]+\/kind$/) && init?.method === 'PUT') {
+      // The server returns the whole plan, because a conversion adds or removes
+      // sibling proposals rather than editing one in place.
+      const proposalId = url.split('/').at(-2)!
+      const kind = (JSON.parse(init.body as string) as { kind: 'bundle' | 'container' }).kind
+      const source = proposals.find((proposal) => proposal.id === proposalId)!
+      const children: GroupingProposal[] =
+        kind === 'container'
+          ? source.files.map((file, index) => ({
+              ...source,
+              id: `${proposalId}-child${index}`,
+              kind: 'bundle' as const,
+              title: file.relative_path.split('/').pop()!,
+              parent_proposal_id: proposalId,
+              files: [{ ...file, sequence: 0 }],
+            }))
+          : []
+      proposals = [
+        ...proposals.map((proposal) =>
+          proposal.id === proposalId
+            ? { ...proposal, kind, files: kind === 'container' ? [] : proposal.files }
+            : proposal,
+        ),
+        ...children,
+      ]
+      body = {
+        id: planId,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals,
+      }
     } else if (url.match(/\/proposals\/[^/]+\/parent$/) && init?.method === 'PUT') {
       const proposalId = url.split('/').at(-2)!
       const parentProposalId = (
@@ -309,9 +406,9 @@ test('switches one addition proposal to a renameable new bundle and back', async
     name: 'Accept Surf On The Ridge - 4K',
   })
   expect(checkbox).toBeChecked()
-  expect(screen.getByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
   expect(screen.queryByText('➕')).not.toBeInTheDocument()
-  expect(screen.getByText('2 new files')).toBeInTheDocument()
+  expect(screen.getByText('3 new files')).toBeInTheDocument()
   expect(screen.queryByText('Create new bundle instead')).not.toBeInTheDocument()
   const createNew = screen.getByRole('button', {
     name: 'Create a new bundle from these files',
@@ -330,9 +427,9 @@ test('switches one addition proposal to a renameable new bundle and back', async
     'data-tip',
     'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
   )
-  expect(screen.getByText('2 files')).toBeInTheDocument()
+  expect(screen.getByText('3 files')).toBeInTheDocument()
   expect(screen.queryByText('manual')).not.toBeInTheDocument()
-  expect(screen.queryByText('create 2 files as a new bundle')).not.toBeInTheDocument()
+  expect(screen.queryByText('create 3 files as a new bundle')).not.toBeInTheDocument()
   expect(checkbox).toBeChecked()
   fireEvent.doubleClick(
     screen.getByRole('button', { name: 'Rename bundle suggestion Surf On The Ridge - 4K' }),
@@ -350,7 +447,7 @@ test('switches one addition proposal to a renameable new bundle and back', async
       name: 'Add these files to “Sky, Sand, Sea & Salt - 4K” instead',
     }),
   )
-  await screen.findByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')
+  await screen.findByText('Add to Sky, Sand, Sea & Salt - 4K')
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   await screen.findByRole('button', { name: 'Rename bundle suggestion Separate Feature' })
 
@@ -369,7 +466,7 @@ test('uses the legacy proposal title when the target snapshot title is absent', 
   )
   renderReview()
 
-  expect(await screen.findByText('Add to 🎬 Legacy Target')).toBeInTheDocument()
+  expect(await screen.findByText('Add to Legacy Target')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Create a new bundle from these files' }))
   expect(
     await screen.findByRole('button', {
@@ -406,7 +503,7 @@ test('disables destination actions while saving and surfaces a switch error', as
 
   await screen.findByText('Existing bundle disappeared')
   expect(switchButton).toBeEnabled()
-  expect(screen.getByText('Add to 🎬 Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
+  expect(screen.getByText('Add to Sky, Sand, Sea & Salt - 4K')).toBeInTheDocument()
 })
 
 test('regenerating suggestions keeps returned candidates visible immediately', async () => {
@@ -429,7 +526,7 @@ test('regenerating suggestions keeps returned candidates visible immediately', a
   ).toBe(true)
 })
 
-test('widens one folder and preserves that mode in the regenerated plan', async () => {
+test('widens one folder in place and keeps the mode', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
@@ -442,12 +539,18 @@ test('widens one folder and preserves that mode in the regenerated plan', async 
   await screen.findByText('SRCV-005 now uses wide stem matching.')
   expect(screen.getByText('SRCV-005 - cut')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Widen stem matching in SRCV-005' })).toBeDisabled()
-  const post = fetchMock.mock.calls.find(
-    ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+  // One directory's mode, sent to the in-place endpoint — no plan regeneration.
+  const put = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/stem-modes') && init?.method === 'PUT',
   )
-  expect(post?.[1]).toMatchObject({
-    body: JSON.stringify({ stem_modes: { 'SRCV-005': 'wide' } }),
+  expect(put?.[1]).toMatchObject({
+    body: JSON.stringify({ directory: 'SRCV-005', mode: 'wide' }),
   })
+  expect(
+    fetchMock.mock.calls.some(
+      ([url, init]) => url.endsWith('/grouping/plans') && init?.method === 'POST',
+    ),
+  ).toBe(false)
 })
 
 test('places a folder stem control on the deepest matching container row', async () => {
@@ -459,10 +562,17 @@ test('places a folder stem control on the deepest matching container row', async
     directory: 'Western/Nora Vance',
     parent_proposal_id: outer.id,
   }
+  // File paths must agree with `directory`: the stem control is placed from where
+  // a row's files actually live, so a fixture whose paths point elsewhere would
+  // read as a hand-merged cross-folder row and (correctly) get no control.
   const bundle: GroupingProposal = {
     ...PROPOSALS[1]!,
     directory: 'Western/Nora Vance',
     parent_proposal_id: inner.id,
+    files: PROPOSALS[1]!.files.map((file) => ({
+      ...file,
+      relative_path: `Western/Nora Vance/${file.relative_path.split('/').pop()}`,
+    })),
   }
   vi.stubGlobal('fetch', mockGroupingApi([outer, inner, bundle]))
   renderReview()
@@ -524,15 +634,30 @@ function dragData() {
   return { effectAllowed: 'none', dropEffect: 'none', setData: vi.fn() }
 }
 
+/** The row element a drag now starts from.
+ *
+ * The ⠿ handles are gone: a bundle row and a file row are each draggable in
+ * their entirety, which is how the file rows already behaved. */
+function fileRow(name: string): HTMLElement {
+  const row = screen.getByText(name).closest('.grp-file')
+  if (!row) throw new Error(`missing file row for ${name}`)
+  return row as HTMLElement
+}
+
+function bundleRow(title: string): HTMLElement {
+  const row = screen.getByText(title).closest('.grp-row--bundle')
+  if (!row) throw new Error(`missing bundle row for ${title}`)
+  return row as HTMLElement
+}
+
 test('drags proposal files to reorder within a bundle', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   const review = renderReview()
   const dataTransfer = dragData()
 
-  fireEvent.dragStart(await screen.findByRole('button', { name: 'Drag file SRCV-005.mp4' }), {
-    dataTransfer,
-  })
+  await screen.findByText('SRCV-005.mp4')
+  fireEvent.dragStart(fileRow('SRCV-005.mp4'), { dataTransfer })
   const fileList = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(fileList, { dataTransfer })
   fireEvent.drop(fileList, { dataTransfer })
@@ -587,9 +712,7 @@ test('auto-deselects a bundle after its last file is dragged away', async () => 
 
   const sourceCheckbox = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
   expect(sourceCheckbox).toBeChecked()
-  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag file second.mp4' }), {
-    dataTransfer,
-  })
+  fireEvent.dragStart(fileRow('second.mp4'), { dataTransfer })
   const target = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(target, { dataTransfer })
   fireEvent.drop(target, { dataTransfer })
@@ -612,9 +735,8 @@ test('drags a bundle suggestion into a collection suggestion', async () => {
   renderReview()
   const dataTransfer = dragData()
 
-  fireEvent.dragStart(await screen.findByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
-    dataTransfer,
-  })
+  await screen.findByText('SRCV-005 - cut')
+  fireEvent.dragStart(bundleRow('SRCV-005 - cut'), { dataTransfer })
   const title = screen.getByRole('button', { name: 'Rename collection suggestion Movies' })
   const collectionRow = title.closest('.grp-row')
   if (!collectionRow) throw new Error('missing collection row')
@@ -642,9 +764,7 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   const collectionCheckbox = await screen.findByRole('checkbox', { name: 'Accept Movies' })
   expect(collectionCheckbox).toBeChecked()
   expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
-  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
-    dataTransfer,
-  })
+  fireEvent.dragStart(bundleRow('SRCV-005 - cut'), { dataTransfer })
   const rootTarget = review.container.querySelector('.grp-root-drop')
   if (!rootTarget) throw new Error('missing root drop target')
   fireEvent.dragOver(rootTarget, { dataTransfer })
@@ -660,4 +780,287 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   expect(reparentCall?.[1]).toMatchObject({
     body: JSON.stringify({ parent_proposal_id: null }),
   })
+})
+
+// --- Selection survives a Narrow/Widen regeneration ---------------------------
+
+/** A grouping API whose regeneration mints fresh proposal ids, as the server does.
+ *
+ * `mockGroupingApi` reuses one proposal array across regeneration, so selection
+ * tracked by id happens to survive there — the opposite of production, where
+ * generating supersedes every row and issues new ULIDs. This mock reproduces the
+ * real behavior so the regression is actually reachable.
+ */
+function mockRegeneratingApi() {
+  let generation = 0
+  let stemModes: Record<string, 'narrow' | 'balanced' | 'wide'> = {}
+  const proposalsFor = (gen: number): GroupingProposal[] =>
+    structuredClone(PROPOSALS).map((p) => ({ ...p, id: `${p.id}-gen${gen}` }))
+
+  return vi.fn((url: string, init?: RequestInit) => {
+    const planId = `plan-gen${generation}`
+    let body: unknown
+    if (url.endsWith('/grouping/plans') && init?.method === 'POST') {
+      generation += 1
+      stemModes = (
+        JSON.parse(init.body as string) as {
+          stem_modes: Record<string, 'narrow' | 'balanced' | 'wide'>
+        }
+      ).stem_modes
+      body = {
+        id: `plan-gen${generation}`,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: null,
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:01:00Z',
+        applied_at: null,
+        proposals: proposalsFor(generation),
+      }
+    } else if (url.endsWith('/grouping/plans')) {
+      body = [
+        {
+          id: planId,
+          status: 'open',
+          rule_version: 5,
+          generated_at: '2026-07-13T00:00:00Z',
+          applied_at: null,
+          proposal_count: PROPOSALS.length,
+        },
+      ]
+    } else if (url.match(/\/grouping\/plans\/plan-gen\d+$/)) {
+      const gen = Number(url.match(/plan-gen(\d+)$/)![1])
+      body = {
+        id: `plan-gen${gen}`,
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job1',
+        stem_modes: stemModes,
+        generated_at: '2026-07-13T00:00:00Z',
+        applied_at: null,
+        proposals: proposalsFor(gen),
+      }
+    } else {
+      body = {}
+    }
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  })
+}
+
+function renderReviewAt(planId: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <GroupingReview initialPlanId={planId} onClose={vi.fn()} />
+    </QueryClientProvider>,
+  )
+}
+
+test('Widen keeps the suggestions the owner had already unchecked', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  // The "Movies" container has no children, so it is empty and never selectable:
+  // two of the three fixture proposals count.
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  await screen.findByText('2 selected')
+  fireEvent.click(second)
+  expect(second).not.toBeChecked()
+  await screen.findByText('1 selected')
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
+  await screen.findByText('SRCV-005 now uses wide stem matching.')
+
+  // The adjusted directory's row returns as a fresh (checked) suggestion; the
+  // deselection elsewhere survives.
+  await waitFor(() =>
+    expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).not.toBeChecked(),
+  )
+  expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeChecked()
+  expect(screen.getByText('1 selected')).toBeInTheDocument()
+})
+
+test('a conversion elsewhere survives Widen', async () => {
+  // The larger owner-reported problem: adjusting one folder must not undo the
+  // bundle→collection override made on another.
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, DIVISIBLE]))
+  renderReview()
+
+  const secondRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  fireEvent.click(
+    within(secondRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  )
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+  expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
+  await screen.findByText('SRCV-005 now uses wide stem matching.')
+
+  // Still a collection, child row intact, and the way back still offered.
+  expect(screen.getByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
+  const converted = screen.getByText('Two Subjects').closest('.grp-row')!
+  expect(
+    within(converted as HTMLElement).getByRole('button', { name: 'Make this one bundle instead' }),
+  ).toBeInTheDocument()
+})
+
+test('an explicit Suggest grouping starts from a clean selection', async () => {
+  vi.stubGlobal('fetch', mockRegeneratingApi())
+  renderReviewAt('plan-gen0')
+
+  const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
+  fireEvent.click(second)
+  await screen.findByText('1 selected')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Suggest grouping' }))
+  await screen.findByText('Suggestions generated from the current library state.')
+
+  // Unlike Narrow/Widen, this is an explicit fresh start rather than an
+  // adjustment, so everything comes back checked.
+  await waitFor(() =>
+    expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).toBeChecked(),
+  )
+  expect(screen.getByText('2 selected')).toBeInTheDocument()
+})
+
+// --- Bundle <-> collection override ------------------------------------------
+test('turns a bundle suggestion into a collection of bundles', async () => {
+  const fetchMock = mockGroupingApi([DIVISIBLE])
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const bundleRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  fireEvent.click(
+    within(bundleRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  )
+
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+  const put = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/divisible1/kind') && init?.method === 'PUT',
+  )
+  expect(put?.[1]).toMatchObject({ body: JSON.stringify({ kind: 'container' }) })
+
+  // Its subjects are now bundles of their own, nested under it.
+  expect(await screen.findByRole('checkbox', { name: 'Accept alpha.mp4' })).toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: 'Accept beta.mp4' })).toBeInTheDocument()
+  // And the row offers the way back, so the override is not a one-way door.
+  const converted = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  expect(
+    within(converted as HTMLElement).getByRole('button', {
+      name: 'Make this one bundle instead',
+    }),
+  ).toBeInTheDocument()
+})
+
+test('a single-subject bundle may still become a collection', async () => {
+  // The owner may be making a home for siblings to drag in, so this is offered
+  // even though nothing divides.
+  vi.stubGlobal('fetch', mockGroupingApi())
+  renderReview()
+
+  const soloRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
+  expect(
+    within(soloRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  ).toBeInTheDocument()
+})
+
+test('a single-subject bundle already inside its own folder collection is not', async () => {
+  // Another layer would just repeat the name it is already inside — and since the
+  // child of a conversion always lands here, this is what bounds the nesting.
+  const collection: GroupingProposal = {
+    ...PROPOSALS[0]!,
+    id: 'own-folder',
+    title: 'Second',
+    directory: 'Second',
+  }
+  const child: GroupingProposal = { ...PROPOSALS[2]!, parent_proposal_id: collection.id }
+  vi.stubGlobal('fetch', mockGroupingApi([collection, child]))
+  renderReview()
+
+  const childRow = (await screen.findByText('Second bundle')).closest('.grp-row')!
+  expect(
+    within(childRow as HTMLElement).queryByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  ).toBeNull()
+})
+
+test('an addition suggestion offers no collection override', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi([...PROPOSALS, ADDITION]))
+  renderReview()
+
+  // An addition puts its files into a bundle that already exists, which is not
+  // going to become a collection.
+  const additionRow = (await screen.findByText(/Add to/)).closest('.grp-row')!
+  expect(
+    within(additionRow as HTMLElement).queryByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  ).toBeNull()
+})
+
+// --- Tooltips do not outlive the control they belong to ----------------------
+
+/** Hover a control the way React sees it: `onMouseEnter` is synthesised from
+ * `mouseover`, so a native `mouseenter` never reaches the handler. */
+function hover(element: HTMLElement) {
+  fireEvent.mouseOver(element, { relatedTarget: document.body })
+}
+
+test('a tooltip is dismissed when its control is clicked', async () => {
+  // Clicking is what moves the row out from under the pointer, and nothing makes
+  // the pointer *leave* the button — so without an explicit dismiss the tooltip
+  // hung around at its old coordinates, showing the new label.
+  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
+  renderReview()
+
+  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  const convert = within(row as HTMLElement).getByRole('button', {
+    name: 'Make this a collection of bundles instead',
+  })
+  hover(convert.closest('.grp-tip-anchor') as HTMLElement)
+  expect(
+    screen.getByText('Make this a collection of bundles instead', { selector: '.grp-tip' }),
+  ).toBeInTheDocument()
+
+  fireEvent.click(convert)
+  await waitFor(() => expect(document.querySelector('.grp-tip')).toBeNull())
+
+  // And the conversion still went through.
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+})
+
+test('a tooltip is dismissed when its label changes underneath it', async () => {
+  // Belt and braces for the same shape: a control whose action is applied
+  // elsewhere still flips its own label, and a stale tooltip would contradict it.
+  vi.stubGlobal('fetch', mockGroupingApi([DIVISIBLE]))
+  renderReview()
+
+  const row = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  const convert = within(row as HTMLElement).getByRole('button', {
+    name: 'Make this a collection of bundles instead',
+  })
+  fireEvent.click(convert)
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+
+  // Re-hover the same control, now labelled the other way, and confirm the
+  // tooltip that appears is the current one rather than a leftover.
+  const flipped = within(
+    screen.getByText('Two Subjects').closest('.grp-row') as HTMLElement,
+  ).getByRole('button', { name: 'Make this one bundle instead' })
+  hover(flipped.closest('.grp-tip-anchor') as HTMLElement)
+  const tips = document.querySelectorAll('.grp-tip')
+  expect(tips).toHaveLength(1)
+  expect(tips[0]!.textContent).toBe('Make this one bundle instead')
 })

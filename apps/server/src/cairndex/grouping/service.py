@@ -123,33 +123,49 @@ def _matches_directory(context: _CollectionContext, directory: str) -> bool:
     return len(context.path) <= len(parts) and names == prefix
 
 
-# Choose one relevant existing collection for a top-level bundle proposal
+# Rank collections most-specific first, with a stable tie-break
+def _by_depth(context: _CollectionContext) -> tuple[object, ...]:
+    return (
+        -len(context.path),
+        context.collection.sort_order,
+        context.collection.name.casefold(),
+        context.collection.id,
+    )
+
+
+# Choose one relevant existing collection for a bundle proposal
 def _proposal_collection(
     proposal: GroupingProposal,
     contexts: dict[str, _CollectionContext],
     memberships: dict[str, list[str]],
-) -> _CollectionContext | None:
-    """Prefer the target bundle's membership, then a matching directory hierarchy."""
+) -> tuple[_CollectionContext | None, bool]:
+    """Pick the existing collection to nest a bundle suggestion under.
+
+    Returns the choice and whether it came from the **target bundle's own
+    membership**, which is the stronger of the two signals: an "Add to X" row
+    belongs where X already lives, whatever its files' folder would suggest.
+
+    Membership candidates are ranked by depth alone. They used to be re-ranked by
+    whether the collection's name path also prefixed the proposal's directory,
+    which let a shallow collection outrank the bundle's real one whenever the
+    deeper name did not happen to match a folder — so "Add to <a bundle in
+    Studios/StudioAlpha>" surfaced under *Studios*, outside the collection it
+    was joining (owner-reported, 2026-07-30). The directory heuristic is still
+    what places a proposal with no membership to go on.
+    """
     direct = [
         contexts[collection_id]
         for collection_id in memberships.get(proposal.target_bundle_id or "", [])
         if collection_id in contexts
     ]
-    candidates = direct or [
+    if direct:
+        return min(direct, key=_by_depth), True
+    matching = [
         context for context in contexts.values() if _matches_directory(context, proposal.directory)
     ]
-    if not candidates:
-        return None
-    return min(
-        candidates,
-        key=lambda context: (
-            -(len(context.path) if _matches_directory(context, proposal.directory) else -1),
-            -len(context.path),
-            context.collection.sort_order,
-            context.collection.name.casefold(),
-            context.collection.id,
-        ),
-    )
+    if not matching:
+        return None, False
+    return min(matching, key=_by_depth), False
 
 
 # Add only the existing collection branches needed by current bundle suggestions
@@ -177,10 +193,15 @@ def _with_collection_context(session: Session, plan: GroupingPlan) -> GroupingPl
     chosen: dict[int, _CollectionContext] = {}
     needed_ids: set[str] = set()
     for index, proposal in enumerate(plan.proposals):
-        if proposal.kind is not ProposalKind.BUNDLE or proposal.parent_directory is not None:
+        if proposal.kind is not ProposalKind.BUNDLE:
             continue
-        context = _proposal_collection(proposal, contexts, memberships)
+        context, by_membership = _proposal_collection(proposal, contexts, memberships)
         if context is None:
+            continue
+        # A suggestion already nested under a proposed folder collection keeps
+        # that place — except when the target bundle's own membership says
+        # otherwise, which outranks anything inferred from a folder.
+        if proposal.parent_directory is not None and not by_membership:
             continue
         chosen[index] = context
         current: Collection | None = context.collection
