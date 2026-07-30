@@ -99,6 +99,21 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   An explicit **Suggest grouping** still starts from a clean slate — that is
   a fresh start rather than an adjustment.
 
+- **The Docker development stack was not usable.** Its image had no
+  `ffmpeg`/`ffprobe`, so the server started and then failed at the first scan —
+  probing, thumbnails, storyboards, subtitle conversion, and playback all shell
+  out to them. It also mounted no library, so there was nothing to point the app
+  at, and kept no data volume, so registered libraries were lost on every
+  rebuild. All three are fixed, and the stack is now verified working end to end:
+  scan, cover generation, backend reload, and browser hot-module reload.
+- **The production container's startup claimed to apply database migrations and
+  did not.** The entrypoint ran `alembic upgrade head` against an empty
+  migrations directory — exit 0, no effect, and a log line saying migrations had
+  been applied. Cairndex has no migration chain: the registry DB is bootstrapped
+  on first open and each library's schema is patched additively when it opens.
+  Upgrading is still just starting the new image; the startup line no longer
+  suggests a step that does not exist.
+
 ### Added
 
 - **Turn a suggested bundle into a collection, and back.** The suggester decides
@@ -116,6 +131,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bundle again, so the override is reversible rather than a one-way door. A
   suggestion that adds files to an already-confirmed bundle cannot be converted,
   since its files join a bundle that is not going to become a collection.
+
+- **The production image is now smoke-tested, not just built.**
+  `infra/docker/smoke.sh` (`just docker-smoke`, and a new CI step) starts the
+  image against a throwaway library and exercises what actually rots: startup
+  under the read-only root filesystem, the non-root user writing its volumes,
+  ffprobe and ffmpeg during a real scan, and a graceful shutdown releasing the
+  library's ownership lease. The two bugs above lived behind a green
+  build-only CI job for a month.
+- **A startup preflight on the production container.** It refuses to start when
+  the app-data dir is not writable by its non-root uid — the most common NAS
+  misconfiguration, and one that otherwise surfaces much later as an opaque
+  SQLite error — and warns, without refusing, when the library mount is
+  read-only, since browse-only is a legitimate deployment.
+- **`just docker-dev`, `docker-dev-down`, `docker-dev-library`, `docker-prod`,
+  `docker-build-nas`, and `docker-smoke`.** `docker-build-nas` cross-builds the
+  amd64 deployment image from an Apple Silicon Mac. `docker-dev-library` seeds a
+  scratch library from generated media — a multi-part film with cover and
+  subtitles, an episodic set, loose images and a loose clip — so bundling,
+  grouping, covers, and playback all have something real to work on. It uses
+  ffmpeg from a container, so no local ffmpeg is required.
 
 ### Changed
 
@@ -184,8 +219,6 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   to be read as a fact. The rest of the app settled this already; the review
   dialog now speaks the same vocabulary (video / image / subtitle).
 
-### Changed
-
 - **Ratings now go in half stars.** The scale is 0–5 in 0.5 steps everywhere it
   appears: the inspector, the multi-select batch bar, the toolbar Rating filter,
   and the Smart Collection editor. Each star is two click targets — the left half
@@ -211,6 +244,21 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   clicking here match?", and the inspector's empty stars are muted solid rather
   than hollow outlines, matching the filter popover. The facets API gained half
   keys (`"3.5"`); whole stars keep the key they had (`"4"`, never `"4.0"`).
+
+- **Both stacks are configured from one `.env`** (`.env.example` covers both).
+  The dev stack reads separate `CAIRNDEX_DEV_*` keys — library path, ports, and
+  machine name — so configuring one stack never silently reconfigures the other,
+  and so the dev stack can run alongside a native `just dev` on other ports
+  rather than instead of it.
+- **The production stack identifies itself properly.** `CAIRNDEX_MACHINE_NAME`
+  and `CAIRNDEX_ADVERTISED_URL` are wired into the compose file; without the
+  first, a library's ownership lease recorded the container's hex id, so another
+  machine could only report "served by 79cd6c7e81a3". It also gained a
+  `stop_grace_period` above Docker's 10s default (shutdown releases leases and
+  checkpoints WALs, and a SIGKILL part-way through strands the lease until it
+  ages out), a compose-level healthcheck, and bounded log rotation.
+- The dev backend reloads on `src` only. A bare `--reload` watched the entire
+  bind-mount, including `.venv` and `var/`.
 
 ### Internal
 
