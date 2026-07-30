@@ -299,3 +299,54 @@ def test_progress_reports_without_committing_the_content_session(
     with registry_session_factory() as reg:
         job = job_service.get_job(reg, job_id)
         assert (job.processed, job.total) == (7, 7)
+
+
+def test_active_jobs_lists_running_and_queued_in_queue_order(
+    registry_session_factory: sessionmaker[Session], library_id: str, client: TestClient
+) -> None:
+    """A fresh client has to be able to find work already in progress.
+
+    Progress lived only in the mutation that started the job, so a page reload
+    lost it while the job ran on (owner-reported, 2026-07-30). The queue is
+    server state; this is how a client picks it up.
+    """
+    with registry_session_factory() as reg:
+        running = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.SCAN, payload={}
+        )
+        queued = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.PROBE, payload={}
+        )
+        finished = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.THUMBNAIL, payload={}
+        )
+        running.status = JobStatus.RUNNING
+        finished.status = JobStatus.SUCCEEDED
+        reg.commit()
+        running_id, queued_id, finished_id = running.id, queued.id, finished.id
+
+    body = client.get("/api/v1/jobs/active").json()
+    ids = [j["id"] for j in body]
+
+    assert ids == [running_id, queued_id]  # oldest first: running, then waiting
+    assert finished_id not in ids  # settled work is not "in progress"
+
+
+def test_active_jobs_can_be_scoped_to_one_library(
+    registry_session_factory: sessionmaker[Session], library_id: str, client: TestClient
+) -> None:
+    with registry_session_factory() as reg:
+        mine = job_service.create_job(reg, library_id=library_id, job_type=JobType.SCAN, payload={})
+        reg.commit()
+        mine_id = mine.id
+
+    assert [j["id"] for j in client.get(f"/api/v1/jobs/active?library_id={library_id}").json()] == [
+        mine_id
+    ]
+    # A different library does not see it. (Jobs carry a foreign key to a
+    # registered library, so an unregistered id cannot own one — which makes an
+    # empty result the only correct answer here.)
+    assert client.get("/api/v1/jobs/active?library_id=01JQQQQQQQQQQQQQQQQQQQQQQQ").json() == []
+
+    # "active" must not be swallowed by the /{job_id} route below it.
+    assert client.get("/api/v1/jobs/active").status_code == 200
