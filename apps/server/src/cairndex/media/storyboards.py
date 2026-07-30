@@ -498,10 +498,42 @@ def generate_for_file(
         _replace_cache_dir(cache_dir, temp_dir)
         temp_dir = None
     except (StoryboardError, FfmpegError, OSError, PathSafetyError) as exc:
+        return StoryboardFileResult("failed", reason=str(exc))
+    finally:
+        # `finally`, not the `except` above: a stopped job unwinds through
+        # `OperationAborted`, which this deliberately does not catch, and the
+        # half-built directory would otherwise stay in the cache forever. That
+        # is where the strays a killed pass leaves behind come from.
         if temp_dir is not None and temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
-        return StoryboardFileResult("failed", reason=str(exc))
     return StoryboardFileResult("generated", path=cache_dir / "index.vtt")
+
+
+# Delete half-built storyboard directories left by an interrupted pass
+def sweep_orphaned_artifacts(library_root: Path) -> int:
+    """Remove `.tmp-`/`.old` storyboard directories. Returns how many.
+
+    Generation builds into a temp directory and swaps it in with a rename, so a
+    process killed mid-file (a server restart, a `--reload` in development)
+    leaves the temp directory behind — correct, in that no partial artifact is
+    ever served, but nothing collected them and they accumulated.
+
+    Safe to do unconditionally at the start of a library pass: one server owns a
+    library at a time (ADR-0018) and its worker runs one job at a time, so no
+    other writer can own a directory this matches.
+    """
+    root = library_package.cache_dir(library_root) / "storyboards"
+    if not root.is_dir():
+        return 0
+    swept = 0
+    for path in root.glob("*/*"):
+        if not path.is_dir() or (".tmp-" not in path.name and not path.name.endswith(".old")):
+            continue
+        shutil.rmtree(path, ignore_errors=True)
+        swept += 1
+    if swept:
+        logger.info("removed %d interrupted storyboard director(ies)", swept)
+    return swept
 
 
 # Count library files that are candidates for storyboard skip/generate decisions
@@ -528,6 +560,7 @@ def generate_for_library(
 ) -> StoryboardSummary:
     settings = get_settings()
     library_root = library_root_for_session(session)
+    sweep_orphaned_artifacts(library_root)
     total = _candidate_count(session)
     generated = skipped = failed = 0
     stmt = (
