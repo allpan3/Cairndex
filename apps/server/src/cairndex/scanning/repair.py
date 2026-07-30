@@ -11,7 +11,7 @@ its established bundle metadata survive.
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from cairndex.core.errors import ConflictError, NotFoundError
@@ -193,11 +193,6 @@ def _repair_references(session: Session, missing: AssetFile, replacement: AssetF
                 continue
             track.source_file_id = missing.id
 
-    session.execute(
-        update(AssetFile)
-        .where(AssetFile.cover_previous_file_id == replacement.id)
-        .values(cover_previous_file_id=missing.id)
-    )
     _merge_progress(session, missing, replacement)
 
 

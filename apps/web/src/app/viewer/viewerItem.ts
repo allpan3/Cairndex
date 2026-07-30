@@ -70,11 +70,11 @@ export interface ViewerItem {
   typeLabel: string
   /** Whether the browser can decode this image without a server derivative. */
   nativeImage: boolean
-  /** Bundle cover frame offset; null when this item has no cover to reset. */
+  /** This file's chosen cover-frame offset; null when it has none to reset. */
   coverTime: number | null
   /**
-   * Whether the bundle-cover affordance applies. A cover belongs to a bundle, so
-   * an unindexed path cannot set one.
+   * Whether the cover-frame affordance applies. A chosen frame is stored on the
+   * file's row, so an unindexed path cannot have one.
    */
   canSetCover: boolean
 }
