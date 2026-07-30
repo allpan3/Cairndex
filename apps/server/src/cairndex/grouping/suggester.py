@@ -753,12 +753,37 @@ def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     return _addition_roles_in_order(_media_first(files))
 
 
-def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingProposal:
+def _enclosing_container(directory: str, container_directories: set[str]) -> str | None:
+    """The collection suggestion an item in ``directory`` belongs inside.
+
+    Its own folder when that folder is being proposed as a collection, otherwise
+    the nearest ancestor that is. ``None`` when nothing encloses it, which is the
+    top level.
+    """
+    candidate = directory
+    while candidate:
+        if candidate in container_directories:
+            return candidate
+        parent = _dirname(candidate)
+        if parent == candidate:
+            break
+        candidate = parent
+    return None
+
+
+def _addition_proposal(
+    owner: _Owner, files: list[FileObservation], container_directories: set[str]
+) -> GroupingProposal:
     directory = _dirname(files[0].relative_path)
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
-        parent_directory=None,
+        # Where the files live decides where the suggestion sits, exactly as it
+        # does for a fresh bundle from the same folder. This was hardcoded to
+        # None, so an addition always sat at the top level — outside the very
+        # collection its folder was being proposed as, which reads as though it
+        # were unrelated to its siblings (owner-reported, 2026-07-30).
+        parent_directory=_enclosing_container(directory, container_directories),
         title=_new_bundle_title(files, directory),
         confidence=0.8,
         reason=f"add {len(files)} new file(s) to existing bundle",
@@ -809,8 +834,14 @@ def suggest_grouping(
             else:
                 additions.setdefault(owner.bundle_id, (owner, []))[1].extend(group)
 
-    addition_proposals = [_addition_proposal(owner, group) for owner, group in additions.values()]
+    # Classify first: an addition's parent is one of the collections this produces,
+    # so the set of proposed collection folders has to exist before they are built.
     proposals = _classify(_build_tree(fresh), parent=None, stem_modes=stem_modes)
+    container_directories = {p.directory for p in proposals if p.kind is ProposalKind.CONTAINER}
+    addition_proposals = [
+        _addition_proposal(owner, group, container_directories)
+        for owner, group in additions.values()
+    ]
     return GroupingPlan(
         rule_version=SUGGESTER_RULE_VERSION,
         proposals=(*addition_proposals, *proposals),

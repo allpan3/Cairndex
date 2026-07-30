@@ -634,15 +634,30 @@ function dragData() {
   return { effectAllowed: 'none', dropEffect: 'none', setData: vi.fn() }
 }
 
+/** The row element a drag now starts from.
+ *
+ * The ⠿ handles are gone: a bundle row and a file row are each draggable in
+ * their entirety, which is how the file rows already behaved. */
+function fileRow(name: string): HTMLElement {
+  const row = screen.getByText(name).closest('.grp-file')
+  if (!row) throw new Error(`missing file row for ${name}`)
+  return row as HTMLElement
+}
+
+function bundleRow(title: string): HTMLElement {
+  const row = screen.getByText(title).closest('.grp-row--bundle')
+  if (!row) throw new Error(`missing bundle row for ${title}`)
+  return row as HTMLElement
+}
+
 test('drags proposal files to reorder within a bundle', async () => {
   const fetchMock = mockGroupingApi()
   vi.stubGlobal('fetch', fetchMock)
   const review = renderReview()
   const dataTransfer = dragData()
 
-  fireEvent.dragStart(await screen.findByRole('button', { name: 'Drag file SRCV-005.mp4' }), {
-    dataTransfer,
-  })
+  await screen.findByText('SRCV-005.mp4')
+  fireEvent.dragStart(fileRow('SRCV-005.mp4'), { dataTransfer })
   const fileList = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(fileList, { dataTransfer })
   fireEvent.drop(fileList, { dataTransfer })
@@ -697,9 +712,7 @@ test('auto-deselects a bundle after its last file is dragged away', async () => 
 
   const sourceCheckbox = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
   expect(sourceCheckbox).toBeChecked()
-  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag file second.mp4' }), {
-    dataTransfer,
-  })
+  fireEvent.dragStart(fileRow('second.mp4'), { dataTransfer })
   const target = screen.getByRole('list', { name: 'Files in SRCV-005 - cut' })
   fireEvent.dragOver(target, { dataTransfer })
   fireEvent.drop(target, { dataTransfer })
@@ -722,9 +735,8 @@ test('drags a bundle suggestion into a collection suggestion', async () => {
   renderReview()
   const dataTransfer = dragData()
 
-  fireEvent.dragStart(await screen.findByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
-    dataTransfer,
-  })
+  await screen.findByText('SRCV-005 - cut')
+  fireEvent.dragStart(bundleRow('SRCV-005 - cut'), { dataTransfer })
   const title = screen.getByRole('button', { name: 'Rename collection suggestion Movies' })
   const collectionRow = title.closest('.grp-row')
   if (!collectionRow) throw new Error('missing collection row')
@@ -752,9 +764,7 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   const collectionCheckbox = await screen.findByRole('checkbox', { name: 'Accept Movies' })
   expect(collectionCheckbox).toBeChecked()
   expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
-  fireEvent.dragStart(screen.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' }), {
-    dataTransfer,
-  })
+  fireEvent.dragStart(bundleRow('SRCV-005 - cut'), { dataTransfer })
   const rootTarget = review.container.querySelector('.grp-root-drop')
   if (!rootTarget) throw new Error('missing root drop target')
   fireEvent.dragOver(rootTarget, { dataTransfer })

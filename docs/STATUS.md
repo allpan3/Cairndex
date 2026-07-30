@@ -142,6 +142,56 @@ Second round, on the review dialog's density and vocabulary:
   row when it became one bundle, which is exactly why it looked like two
   different controls. The aria-labels are unchanged, so the tests still pin them.
 
+**Sixth round.** The ⠿ drag handles are removed: the file `<li>` already carried
+`draggable` + `onDragStart` itself, so its handle had been decoration for a while;
+the bundle row gained the same and both handles went. `draggable` is suppressed
+while a row's title is being renamed, because `draggable` on an ancestor hijacks
+text selection inside the edit box. Four unit tests and two e2e locators targeted
+the handles by `aria-label` and now target the rows (`fileRow` / `bundleRow`
+helpers).
+
+**Fifth round.**
+
+- **Additions now nest where the bundle they join lives.** Took two passes, and
+  the second is the one that mattered — worth recording because the first looked
+  sufficient and was not.
+
+  Pass one: `_addition_proposal` hardcoded `parent_directory=None`, so an
+  "Add to …" row always sat at the top level. Fixed by resolving the nearest
+  enclosing proposed-collection folder (`_enclosing_container`), which required
+  building additions *after* `_classify`, since the set of proposed collections
+  is its output.
+
+  Pass two, after the owner reported it unchanged: the folder is not enough.
+  `grouping/service.py` is a second placement layer that nests suggestions under
+  *existing* collections, and it had two faults. Its `_proposal_collection`
+  docstring promised "prefer the target bundle's membership, then a matching
+  directory hierarchy", but the sort key re-ranked membership candidates by
+  whether the collection's name path also prefixed the proposal's directory — so
+  a shallow collection outranked the bundle's real one whenever the deeper name
+  did not happen to match a folder. And `_with_collection_context` skipped any
+  proposal that already had a parent, which pass one had just given every
+  addition. Membership is now ranked by depth alone and outranks a folder-derived
+  parent. In the reported layout the folder-derived parent really is the
+  *grandparent*: once the folder's remaining fresh files form one bundle they own
+  that folder, so no collection is proposed for it and walking up lands on
+  `Studios`. Both failure modes have tests that were confirmed to fail without
+  the fix.
+- **Tooltips no longer clip.** `.tip::after` is absolutely positioned inside
+  `.grp-body { overflow: auto }`, so the dialog's own scroll container cut it
+  off — worst for these controls, whose tooltips are the dialog's longest text.
+  A local `TipButton` portals the tooltip to `document.body` at
+  `position: fixed`, right-aligned via `right` so the width never needs
+  measuring, clamped into the viewport, and flipped below the control when there
+  is no room above. Hover handlers live on a wrapper rather than the button
+  because a *disabled* button fires no mouse events, and Narrow/Widen disable at
+  the ends of their scale — precisely when the tooltip is wanted. `data-tip`
+  stays on the button, which is what two existing tests read. Deliberately scoped
+  to this dialog rather than replacing `.tip` app-wide.
+- **Drag-handle gap tightened**: the handle's box was 18px around a ~8px glyph,
+  which read as a gap before the title. Now 12px, with the bundle row's gaps at
+  2px.
+
 **A third round found the nesting bug.** Owner screenshot: five collections deep,
 each named `StudioBeta.E003.Lead`, each holding one bundle of the same name. Cause
 was in `split_for_collection`'s `len(videos) < 2` branch, which returned one group
@@ -178,7 +228,7 @@ directory yields nothing") was too narrow, since the suggester *does* still
 propose a bare container for `Show`.
 
 **Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
-(855 passed); web `lint`, `format:check`, `typecheck`, `test` (466 passed),
+(860 passed); web `lint`, `format:check`, `typecheck`, `test` (466 passed),
 `build`. Two existing tests needed correcting rather than the code: one asserted
 a container reason that is now deliberately absent, and one stem-control fixture
 had file paths that disagreed with its own `directory` — which the new

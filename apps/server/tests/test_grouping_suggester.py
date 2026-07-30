@@ -527,3 +527,48 @@ def test_single_subject_bundle_keeps_its_own_filename() -> None:
     plan = suggest_grouping(files)
     cosmos = next(p for p in _bundles(plan.proposals) if len(p.files) == 2)
     assert cosmos.title == "cosmos"
+
+
+def test_addition_sits_inside_the_collection_its_folder_becomes() -> None:
+    """An addition belongs where its files live, like any other suggestion.
+
+    Reported: an "Add to …" row sat at the top level, outside the very collection
+    its own folder was being proposed as, reading as unrelated to its siblings.
+    """
+    confirmed = _f(
+        "Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.mp4",
+        MediaKind.VIDEO,
+        confirmed=True,
+        bundle_id="bundle-1",
+        bundle_title="StudioAlpha - Lead Player - #1",
+    )
+    # A sidecar for the confirmed bundle -> an addition to it.
+    addition = _f(
+        "Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.srt", MediaKind.SUBTITLE
+    )
+    # Two unrelated subjects in the same folder, so the folder is a collection.
+    others = [
+        _f("Studios/StudioAlpha/Alpha.Title.mp4", MediaKind.VIDEO),
+        _f("Studios/StudioAlpha/Beta.Title.mp4", MediaKind.VIDEO),
+    ]
+
+    plan = suggest_grouping([confirmed, addition, *others])
+
+    container = next(
+        p for p in _containers(plan.proposals) if p.directory == "Studios/StudioAlpha"
+    )
+    added = next(p for p in plan.proposals if p.target_bundle_id == "bundle-1")
+    assert added.parent_directory == container.directory
+
+
+def test_addition_with_no_enclosing_collection_stays_at_the_top_level() -> None:
+    """Nothing to nest inside, so the previous behaviour is still right."""
+    confirmed = _f(
+        "Solo/movie.mp4", MediaKind.VIDEO, confirmed=True, bundle_id="b", bundle_title="Movie"
+    )
+    addition = _f("Solo/movie.en.srt", MediaKind.SUBTITLE)
+
+    plan = suggest_grouping([confirmed, addition])
+
+    added = next(p for p in plan.proposals if p.target_bundle_id == "b")
+    assert added.parent_directory is None
