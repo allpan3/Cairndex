@@ -1,4 +1,13 @@
-import { type DragEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type DragEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { createPortal } from 'react-dom'
 
 import type {
   GroupingApplyResult,
@@ -61,6 +70,84 @@ function baseName(path: string): string {
 interface TreeNode {
   proposal: GroupingProposal
   children: TreeNode[]
+}
+
+/**
+ * A compact icon button whose tooltip escapes the dialog's scrolling body.
+ *
+ * The body is `overflow: auto`, which clips an absolutely positioned `::after`
+ * tooltip against the panel edge — reported for exactly these controls, whose
+ * tooltips are the longest in the dialog (owner-reported, 2026-07-30). This
+ * renders the tooltip into `document.body` at `position: fixed`, placed from the
+ * button's own rect, so no ancestor can cut it off.
+ *
+ * The hover handlers sit on a wrapper rather than the button because a *disabled*
+ * button fires no mouse events, and Narrow/Widen are disabled at the ends of
+ * their scale — precisely when someone wants to know why. `data-tip` stays on the
+ * button: it keeps the markup self-describing and is what the review tests read.
+ */
+function TipButton({
+  tip,
+  children,
+  className,
+  ...buttonProps
+}: {
+  tip: string
+  children: ReactNode
+  className: string
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'className'>) {
+  const ref = useRef<HTMLButtonElement>(null)
+  const [placement, setPlacement] = useState<React.CSSProperties | null>(null)
+
+  const show = () => {
+    const rect = ref.current?.getBoundingClientRect()
+    if (!rect) return
+    // Right-aligned via `right`, so the width never has to be measured; the
+    // clamp keeps a long tooltip on a right-hand control inside the viewport.
+    const right = Math.max(8, window.innerWidth - rect.right)
+    setPlacement(
+      // Above by default, below when a control near the top has no room there.
+      rect.top > 72
+        ? { right, bottom: window.innerHeight - rect.top + 6 }
+        : { right, top: rect.bottom + 6 },
+    )
+  }
+  const hide = () => setPlacement(null)
+
+  // A fixed tooltip does not follow its button, and this list scrolls under the
+  // pointer often enough that a stale one would be noticed.
+  useEffect(() => {
+    if (!placement) return
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+    }
+  }, [placement])
+
+  return (
+    <span className="grp-tip-anchor" onMouseEnter={show} onMouseLeave={hide}>
+      <button
+        ref={ref}
+        type="button"
+        className={className}
+        data-tip={tip}
+        onFocus={show}
+        onBlur={hide}
+        {...buttonProps}
+      >
+        {children}
+      </button>
+      {placement &&
+        createPortal(
+          <span className="grp-tip" style={placement} role="tooltip">
+            {tip}
+          </span>,
+          document.body,
+        )}
+    </span>
+  )
 }
 
 /** Coordinate one persisted inline rename across the recursive proposal tree. */
@@ -287,17 +374,16 @@ function DestinationToggle({
 }) {
   const label = destinationActionLabel(proposal)
   return (
-    <button
-      type="button"
-      className="grp-destination tip"
+    <TipButton
+      className="grp-destination"
+      tip={label}
       aria-label={label}
       aria-pressed={proposal.create_new_bundle}
-      data-tip={label}
       disabled={!destination.canEdit || destination.pending || !hasItems}
       onClick={() => destination.set(proposal, !proposal.create_new_bundle)}
     >
       <IconRefreshCw />
-    </button>
+    </TipButton>
   )
 }
 
@@ -348,16 +434,15 @@ function kindActionLabel(proposal: GroupingProposal): string {
 function KindToggle({ proposal, kind }: { proposal: GroupingProposal; kind: KindControls }) {
   const label = kindActionLabel(proposal)
   return (
-    <button
-      type="button"
-      className="grp-destination tip"
+    <TipButton
+      className="grp-destination"
+      tip={label}
       aria-label={label}
-      data-tip={label}
       disabled={!kind.canEdit || kind.pending}
       onClick={() => kind.set(proposal)}
     >
       {proposal.kind === 'bundle' ? <IconUngroup /> : <IconGroup />}
-    </button>
+    </TipButton>
   )
 }
 
@@ -389,26 +474,24 @@ function StemModeControls({ directory, stem }: { directory: string; stem: StemCo
   const widenTip = `${scope} — merge into fewer bundles by matching a shorter filename prefix`
   return (
     <span className="grp-stem" aria-label={`Stem matching for ${label}`}>
-      <button
-        type="button"
-        className="grp-destination tip"
+      <TipButton
+        className="grp-destination"
+        tip={narrowTip}
         disabled={!stem.canEdit || stem.pending || index === 0}
         aria-label={`Narrow stem matching in ${label}`}
-        data-tip={narrowTip}
         onClick={() => change(-1)}
       >
         <IconChevronsIn />
-      </button>
-      <button
-        type="button"
-        className="grp-destination tip"
+      </TipButton>
+      <TipButton
+        className="grp-destination"
+        tip={widenTip}
         disabled={!stem.canEdit || stem.pending || index === STEM_MODES.length - 1}
         aria-label={`Widen stem matching in ${label}`}
-        data-tip={widenTip}
         onClick={() => change(1)}
       >
         <IconChevronsOut />
-      </button>
+      </TipButton>
     </span>
   )
 }
@@ -591,6 +674,13 @@ function ProposalNode({
     <li className="grp-node grp-node--bundle">
       <div
         className={`grp-row grp-row--bundle${fileListDrop ? ' grp-row--file-drop' : ''}`}
+        // The whole row is the drag affordance — the file rows below already
+        // worked this way, which is what made their ⠿ handles redundant. Not
+        // draggable while this row's title is being renamed: `draggable` on an
+        // ancestor hijacks text selection inside the edit box.
+        draggable={drag.canEdit && !drag.pending && rename.editingId !== proposal.id}
+        onDragStart={(event) => drag.startBundle(event, proposal.id)}
+        onDragEnd={drag.end}
         onDragOver={(event) => {
           if (drag.item?.kind !== 'file') return
           event.preventDefault()
@@ -613,20 +703,6 @@ function ProposalNode({
           onChange={(e) => onToggle(node, e.currentTarget.checked)}
           aria-label={`Accept ${proposal.title || 'bundle'}`}
         />
-        {drag.canEdit && (
-          <button
-            type="button"
-            className="grp-drag-handle"
-            draggable={!drag.pending}
-            disabled={drag.pending}
-            aria-label={`Drag bundle ${displayTitle}`}
-            title="Drag bundle into a collection"
-            onDragStart={(event) => drag.startBundle(event, proposal.id)}
-            onDragEnd={drag.end}
-          >
-            ⠿
-          </button>
-        )}
         {!isAddition && <span className="grp-kind">🎬</span>}
         <span className="grp-row__content">
           <span className="grp-title-cluster">
@@ -710,20 +786,6 @@ function ProposalNode({
               drag.dropFile(proposal.id, index + (before ? 0 : 1))
             }}
           >
-            {drag.canEdit && (
-              <button
-                type="button"
-                className="grp-drag-handle grp-drag-handle--file"
-                draggable={!drag.pending}
-                disabled={drag.pending}
-                aria-label={`Drag file ${baseName(f.relative_path)}`}
-                title="Drag to reorder or move into another bundle"
-                onDragStart={(event) => drag.startFile(event, proposal.id, f.asset_file_id)}
-                onDragEnd={drag.end}
-              >
-                ⠿
-              </button>
-            )}
             <span className="grp-file__name">{baseName(f.relative_path)}</span>
             <span className="grp-file__role">
               {formatFileRole(ROLE_MEDIA_KIND[f.proposed_role] ?? 'other', f.relative_path)}
