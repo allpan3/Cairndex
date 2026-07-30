@@ -1378,3 +1378,63 @@ test('layout choice persists across reload', async ({ page }) => {
   // Still in list layout after reload (persisted to localStorage).
   await expect(page.getByText('Dimensions')).toBeVisible()
 })
+
+test('a maintenance error is reported with the job rows, not under the button', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/api/v1/jobs/active**', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/v1/libraries/lib1/jobs/storyboards', (r) =>
+    r.fulfill({ status: 500, json: { message: 'Background job was cancelled.' } }),
+  )
+  await page.goto('/')
+  await page.getByRole('button', { name: 'More library maintenance actions' }).click()
+  await page.getByRole('button', { name: 'Generate storyboards' }).click()
+  // Docked in the foot beside the job rows: the message outlives the button
+  // that started the work, and one place for "what is happening" and "what went
+  // wrong" beats two.
+  await expect(page.locator('.sidebar__foot').getByRole('alert')).toBeVisible()
+})
+
+test('the sidebar tells a waiting job from a running one, and can stop either', async ({
+  page,
+}) => {
+  const job = (over: Record<string, unknown>) => ({
+    id: 'j1',
+    library_id: 'lib1',
+    job_type: 'storyboard',
+    status: 'running',
+    phase: 'storyboarding',
+    message: null,
+    payload: {},
+    processed: 8,
+    total: 50,
+    result: null,
+    error: null,
+    cancel_requested: false,
+    created_at: '2026-07-30T00:00:00Z',
+    started_at: '2026-07-30T00:00:00Z',
+    finished_at: null,
+    ...over,
+  })
+  await mockApi(page)
+  await page.route('**/api/v1/jobs/active**', (r) =>
+    r.fulfill({
+      json: [job({}), job({ id: 'j2', status: 'queued', phase: null, processed: 0, total: null })],
+    }),
+  )
+  const cancelled = page.waitForRequest(
+    (request) => request.url().includes('/api/v1/jobs/j1/cancel') && request.method() === 'POST',
+  )
+  await page.route('**/api/v1/jobs/j1/cancel', (r) => r.fulfill({ json: job({}) }))
+  await page.goto('/')
+
+  // The running one names its phase and counts; the queued one says it is waiting
+  // rather than borrowing a moving bar (the two were indistinguishable).
+  await expect(page.getByText('Generating storyboards')).toBeVisible()
+  await expect(page.getByText('8/50')).toBeVisible()
+  await expect(page.getByText('Storyboards — waiting')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Stop storyboards' }).first().click()
+  await cancelled
+})
