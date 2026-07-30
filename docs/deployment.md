@@ -458,11 +458,27 @@ back on a clean close (ADR-0021):
   performance WAL buys while a library is in use. **Stop the container with
   `docker stop`, and give it a timeout it can meet** — the compose files already
   do.
-- **The next capable open repairs it.** A server that opens the library and
-  finds it in WAL on a filesystem where it should not be converts it back there
-  and then. So if the locked-out machine can be given local access — or if the
-  container that crashed is simply restarted and stopped cleanly — the library
-  fixes itself.
+**It is always recoverable, and no data is at risk** — the committed contents of
+an abandoned `-wal` are replayed by the next server that opens the library, which
+is ordinary SQLite crash recovery. What is lost is only the ability to open the
+library from a machine that reaches it over a share, and only until one of these
+runs. Both must happen on a machine with **local** access to the storage; the
+locked-out machine cannot repair it, because it cannot open the file at all.
+
+- **Restart the crashed server and stop it cleanly.** `docker start` then
+  `docker stop` is the whole procedure: the restart replays the WAL, and the
+  clean stop converts the file back. This is the easy path and it is usually
+  available, since the machine that crashed is by definition one with local
+  access.
+- **Or convert it by hand**, with nothing holding the library open — the command
+  is below.
+
+There is also an automatic heal, but it is narrower than it sounds and should
+not be relied on: a server converts a library it finds in WAL only when it has
+*decided that library should not be in WAL*, i.e. when the library is on a
+network filesystem and the open nevertheless succeeded. That covers a mount that
+tolerates WAL, or one Cairndex identifies as network conservatively. It does not
+rescue the ordinary SMB lockout, where the open never gets that far.
 
 **If a library is already locked out**, the symptom is HTTP 409 with code
 `library_database_unopenable` and reason `wal_on_network_filesystem`; the error
