@@ -111,17 +111,24 @@ Three of those columns are names, and they are not interchangeable.
 `relative_path` is where the file is; `original_filename` is what it was called
 when it entered the library and never changes; `display_title` is the name every
 bundle surface renders (the inspector's file rail, the album, the viewer's file
-list) and is owner-editable via `PATCH …/files/{file_id}`. Three code paths repoint a row — a
-rename or move Cairndex performs, a rename it discovers during a scan, and a
-missing file repaired by hand — and all three carry `display_title` with the path
-under one rule (`domain.file_names.display_title_after_move`): it follows only
-while it still equals the old basename, so a title someone chose is left alone.
-Leaving it behind is what made a renamed file show its new name in the File
-Browser and its old one inside its bundle (fixed 2026-07-30). A scan heals rows
-left stale by the pre-fix rename path, identified by `display_title` still
-equalling `original_filename` while the basename has moved on; rows left stale by
-the pre-fix *scan* path cannot be told apart from a chosen title and are not
-guessed at.
+list) and is owner-editable via `PATCH …/files/{file_id}`. **`display_title` is not what the API serves as a
+file's name.** `FileRead` derives that from `relative_path`, and the playback
+manifest does the same, because a stored copy of a filename drifts: three code
+paths repoint a row — a rename or move Cairndex performs, a rename it discovers
+during a scan, and a missing file repaired by hand — and each one that forgot to
+update the copy left a file showing its new name in the File Browser and its old
+one inside its bundle (fixed 2026-07-30, after three rounds of fixing it one
+writer at a time). Deriving it also needs no guess about which stored titles are
+stale, which is the part no heuristic could get right: once the scan path had
+updated `original_filename`, a leftover title is indistinguishable from a chosen
+one.
+
+The column remains, and all three paths keep it in step through one rule
+(`domain.file_names.display_title_after_move` — it follows the file only while it
+still equals the old basename), because the FTS index reads it and a stale copy
+there is harmless. Nothing renders it. A future "call this file something else"
+feature should add its own nullable override and prefer it in that same
+validator.
 
 Filesystem device/inode identities preserve the unsigned 64-bit `stat()` value
 as signed two's-complement SQLite integers. This avoids overflow on network
