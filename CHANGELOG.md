@@ -10,6 +10,28 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Collection counts now move with the drop.** Dragging a bundle into a
+  collection left every number beside the collections on its old value until a
+  refetch came back — plainly visible on a library whose database lives on a
+  network share. The counts are now worked out on the spot from the collection
+  tree the app already holds: the collections counting a bundle are each of its
+  memberships plus every ancestor, so filing into a subcollection raises the
+  child and its parents while a move between a parent and its own child leaves
+  the shared ancestors alone — the case a naive ±1 would have got wrong, and the
+  reason this was left waiting for the server. The same applies to the collection
+  picker, to Uncategorized and Untagged, and to tag counts in the tag picker. The
+  server's answer still reconciles it, and a rejected write puts every number
+  back.
+- **Nesting one collection inside another left the counts on the old tree.**
+  Dropping a collection into another changes what every collection above it — on
+  both sides of the move — counts, and nothing was refreshing those numbers, so
+  they sat wrong until something unrelated happened to refetch them.
+- **The collection inspector's own figures never refreshed.** "Bundles (here)",
+  "Bundles (total)" and "Subcollections" came from a query nothing in the app
+  invalidated: filing a bundle into that collection, deleting one, adding a
+  subcollection, or running a scan all left the pane showing whatever it had said
+  when it opened. They now move with the sidebar's count, immediately for a
+  membership change and on a refetch for everything else.
 - **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
   that said nothing about what was happening or how far along it was. Two causes,
   both in the reporting rather than the work: a phase change could not clear the
