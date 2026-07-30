@@ -326,3 +326,449 @@ def test_apply_plan_rejects_empty_selection(
     resp = client.post(f"{base}/plans/{plan['id']}/apply", json={"proposal_ids": []})
 
     assert resp.status_code == 409
+
+
+# --- Bundle <-> collection conversion ----------------------------------------
+def _seed_mixed_folder(session: Session, root: Path) -> None:
+    """A folder the suggester is certain is one bundle, but the owner is not.
+
+    Explicit part markers make ``_is_multipart`` true, so the whole folder
+    becomes a single bundle at *every* stem sensitivity — Narrow cannot break it
+    up. That is exactly the case the owner has no way out of today: three
+    recordings that happen to be named as parts, each with its own subtitle,
+    which they want as a collection of three bundles.
+    """
+    folder = root / "Trip"
+    folder.mkdir()
+    for index in (1, 2, 3):
+        (folder / f"Trip.part{index}.mp4").write_text("v")
+        (folder / f"Trip.part{index}.srt").write_text("s")
+    scan_library(session, root)
+
+
+def _proposal_tree(plan: dict) -> dict[str | None, list[dict]]:
+    tree: dict[str | None, list[dict]] = {}
+    for proposal in plan["proposals"]:
+        tree.setdefault(proposal["parent_proposal_id"], []).append(proposal)
+    return tree
+
+
+def test_bundle_converts_to_a_collection_of_bundles(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_mixed_folder(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+
+    bundles = [p for p in plan["proposals"] if p["kind"] == "bundle"]
+    target = max(bundles, key=lambda p: len(p["files"]))
+    file_count = len(target["files"])
+
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{target['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+    plan = converted.json()
+
+    by_id = {p["id"]: p for p in plan["proposals"]}
+    assert by_id[target["id"]]["kind"] == "container"
+    # A container holds no files of its own; its members are its children.
+    assert by_id[target["id"]]["files"] == []
+
+    children = _proposal_tree(plan).get(target["id"], [])
+    assert len(children) > 1, "converting should split the folder into several bundles"
+    assert all(c["kind"] == "bundle" for c in children)
+    # Every file survives the split exactly once.
+    moved = [f["asset_file_id"] for c in children for f in c["files"]]
+    assert len(moved) == file_count
+    assert len(set(moved)) == file_count
+
+    # Each subtitle stayed with its own video rather than becoming its own
+    # bundle — the reason the split reuses the suggester's grouping.
+    for child in children:
+        paths = [f["relative_path"] for f in child["files"]]
+        assert any(p.endswith(".mp4") for p in paths), paths
+
+
+def test_converted_collection_applies_as_a_real_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_mixed_folder(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    target = max(
+        (p for p in plan["proposals"] if p["kind"] == "bundle"), key=lambda p: len(p["files"])
+    )
+
+    plan = client.put(
+        f"{base}/plans/{plan_id}/proposals/{target['id']}/kind", json={"kind": "container"}
+    ).json()
+    child_count = len(_proposal_tree(plan).get(target["id"], []))
+
+    applied = client.post(f"{base}/plans/{plan_id}/apply")
+    assert applied.status_code == 200, applied.text
+    result = applied.json()
+    assert result["collections_created"] >= 1
+    assert result["bundles_added_to_collections"] == child_count
+
+    session.expire_all()
+    collection = session.scalar(select(Collection).where(Collection.name == "Trip"))
+    assert collection is not None
+    members = session.scalars(
+        select(AssetBundle).where(AssetBundle.collections.any(Collection.id == collection.id))
+    ).all()
+    assert len(members) == child_count
+
+
+def test_collection_converts_back_into_one_bundle(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The conversion is reversible, so a misclick is not a one-way door."""
+    _seed_mixed_folder(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    target = max(
+        (p for p in plan["proposals"] if p["kind"] == "bundle"), key=lambda p: len(p["files"])
+    )
+    original_files = {f["asset_file_id"] for f in target["files"]}
+
+    client.put(f"{base}/plans/{plan_id}/proposals/{target['id']}/kind", json={"kind": "container"})
+    back = client.put(
+        f"{base}/plans/{plan_id}/proposals/{target['id']}/kind", json={"kind": "bundle"}
+    )
+    assert back.status_code == 200, back.text
+    plan = back.json()
+
+    by_id = {p["id"]: p for p in plan["proposals"]}
+    assert by_id[target["id"]]["kind"] == "bundle"
+    assert {f["asset_file_id"] for f in by_id[target["id"]]["files"]} == original_files
+    # The child bundles the split created are gone, not orphaned.
+    assert _proposal_tree(plan).get(target["id"], []) == []
+
+
+def test_converting_to_the_same_kind_is_rejected(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    bundle = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+    resp = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{bundle['id']}/kind", json={"kind": "bundle"}
+    )
+    assert resp.status_code == 422
+
+
+def test_addition_suggestion_cannot_become_a_collection(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """An addition targets an existing confirmed bundle; a collection cannot."""
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+    client.post(f"{base}/plans/{plan_id}/apply")
+
+    # A new sibling file next to the now-confirmed bundle becomes an addition.
+    (library_root / "Cosmos" / "cosmos.extra.mp4").write_text("v2")
+    scan_library(session, library_root)
+    plan = client.post(f"{base}/plans").json()
+    addition = next(
+        (p for p in plan["proposals"] if p["target_bundle_id"] and not p["create_new_bundle"]),
+        None,
+    )
+    assert addition is not None, "expected an addition suggestion"
+
+    resp = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{addition['id']}/kind", json={"kind": "container"}
+    )
+    assert resp.status_code == 422
+
+
+# --- In-place per-directory stem adjustment -----------------------------------
+def _seed_three_folders(session: Session, root: Path) -> None:
+    """Trip (multipart), Duo (two subjects that Widen merges), Solo (one file)."""
+    _seed_mixed_folder(session, root)  # Trip/
+    duo = root / "Duo"
+    duo.mkdir()
+    (duo / "City Tour - Part One - Morning.mp4").write_text("v")
+    (duo / "City Tour - Part One - Evening.mp4").write_text("v")
+    (root / "Solo").mkdir()
+    (root / "Solo" / "Solo.mp4").write_text("v")
+    scan_library(session, root)
+
+
+def test_stem_mode_change_preserves_every_other_row_and_edit(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The reported bug, at the root: adjusting one folder must not rebuild the
+    plan. Rows outside the folder keep their ids, so renames, conversions, and
+    the client's selection survive structurally."""
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+
+    # Owner edits outside Duo: convert Trip to a collection, rename Solo.
+    trip = next(p for p in plan["proposals"] if p["title"] == "Trip")
+    solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
+    plan = client.put(
+        f"{base}/plans/{plan_id}/proposals/{trip['id']}/kind", json={"kind": "container"}
+    ).json()
+    client.patch(f"{base}/plans/{plan_id}/proposals/{solo['id']}", json={"title": "My Solo"})
+
+    before = {p["id"]: p for p in client.get(f"{base}/plans/{plan_id}").json()["proposals"]}
+    duo_ids = {pid for pid, p in before.items() if p["directory"] == "Duo"}
+    kept_ids = set(before) - duo_ids
+    duo_bundles_before = [
+        p for p in before.values() if p["directory"] == "Duo" and p["kind"] == "bundle"
+    ]
+    assert len(duo_bundles_before) == 2, "balanced mode should propose two Duo bundles"
+
+    adjusted = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+    )
+    assert adjusted.status_code == 200, adjusted.text
+    after = adjusted.json()
+
+    # Same plan, same rows everywhere except Duo.
+    assert after["id"] == plan_id
+    assert after["stem_modes"] == {"Duo": "wide"}
+    after_by_id = {p["id"]: p for p in after["proposals"]}
+    assert kept_ids <= set(after_by_id), "rows outside Duo must keep their identity"
+    assert after_by_id[trip["id"]]["kind"] == "container"
+    assert after_by_id[solo["id"]]["title"] == "My Solo"
+    trip_children = [p for p in after["proposals"] if p["parent_proposal_id"] == trip["id"]]
+    assert len(trip_children) == 3, "the conversion's children survive too"
+
+    # Duo itself genuinely regenerated: one wide bundle (no container needed
+    # around a single group), new ids.
+    duo_after = [p for p in after["proposals"] if p["directory"] == "Duo"]
+    assert [p["kind"] for p in duo_after] == ["bundle"]
+    assert len(duo_after[0]["files"]) == 2
+    assert not duo_ids & {p["id"] for p in duo_after}
+
+
+def test_stem_mode_back_to_balanced_clears_the_override(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+
+    wide = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "wide"}
+    ).json()
+    assert wide["stem_modes"] == {"Duo": "wide"}
+    duo_wide = [p for p in wide["proposals"] if p["directory"] == "Duo"]
+    assert [p["kind"] for p in duo_wide] == ["bundle"]
+
+    balanced = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "balanced"}
+    ).json()
+    assert balanced["stem_modes"] == {}
+    duo_balanced = [p for p in balanced["proposals"] if p["directory"] == "Duo"]
+    assert sorted(p["kind"] for p in duo_balanced) == ["bundle", "bundle", "container"]
+
+
+def test_stem_mode_change_requires_an_open_plan(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan_id = client.post(f"{base}/plans").json()["id"]
+    client.post(f"{base}/plans/{plan_id}/apply")
+    resp = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Cosmos", "mode": "narrow"}
+    )
+    assert resp.status_code == 409
+
+
+def test_stem_mode_change_does_not_reclaim_a_dragged_out_file(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A file the owner moved out of the directory must not come back in the
+    fresh rows — a plan holding the same file twice would bundle it twice."""
+    _seed_three_folders(session, library_root)
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+
+    duo = [p for p in plan["proposals"] if p["directory"] == "Duo" and p["kind"] == "bundle"]
+    solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
+    moved_file = duo[0]["files"][0]["asset_file_id"]
+    client.put(
+        f"{base}/plans/{plan_id}/proposals/{duo[0]['id']}/files/{moved_file}/move",
+        json={"target_proposal_id": solo["id"], "target_index": 1},
+    )
+
+    after = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Duo", "mode": "narrow"}
+    ).json()
+
+    holders = [
+        p["id"]
+        for p in after["proposals"]
+        if any(f["asset_file_id"] == moved_file for f in p["files"])
+    ]
+    assert holders == [solo["id"]], "the dragged file must stay only where the owner put it"
+
+
+def test_stem_mode_change_relinks_subdirectory_children(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Replacing a directory's container must not orphan bundles from its
+    subdirectories — they follow the container to its successor."""
+    show = library_root / "Show"
+    (show / "A").mkdir(parents=True)
+    (show / "B").mkdir()
+    (show / "A" / "a.mp4").write_text("v")
+    (show / "B" / "b.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    container = next(
+        p for p in plan["proposals"] if p["kind"] == "container" and p["directory"] == "Show"
+    )
+    child_ids = {p["id"] for p in plan["proposals"] if p["parent_proposal_id"] == container["id"]}
+    assert len(child_ids) == 2
+
+    after = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+    ).json()
+
+    fresh_container = next(
+        p for p in after["proposals"] if p["kind"] == "container" and p["directory"] == "Show"
+    )
+    assert fresh_container["id"] != container["id"]
+    for child_id in child_ids:
+        child = next(p for p in after["proposals"] if p["id"] == child_id)
+        assert child["parent_proposal_id"] == fresh_container["id"]
+
+
+def test_stem_change_refuses_to_wipe_a_hand_merged_cross_directory_bundle(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Merging a collection whose bundles live in subfolders leaves one row whose
+    ``directory`` is the parent — a folder the suggester proposes nothing for.
+    Splicing it would delete the row and put nothing back, dropping the files out
+    of the plan; refuse instead. The UI also stops offering the control there."""
+    show = library_root / "Show"
+    (show / "A").mkdir(parents=True)
+    (show / "B").mkdir()
+    (show / "A" / "a.mp4").write_text("v")
+    (show / "B" / "b.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    container = next(
+        p for p in plan["proposals"] if p["kind"] == "container" and p["directory"] == "Show"
+    )
+    merged = client.put(
+        f"{base}/plans/{plan_id}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    ).json()
+    row = next(p for p in merged["proposals"] if p["directory"] == "Show")
+    assert len(row["files"]) == 2
+
+    refused = client.put(
+        f"{base}/plans/{plan_id}/stem-modes", json={"directory": "Show", "mode": "narrow"}
+    )
+    assert refused.status_code == 422, refused.text
+
+    # The merged row and both files are untouched.
+    after = client.get(f"{base}/plans/{plan_id}").json()
+    kept = [p for p in after["proposals"] if p["directory"] == "Show"]
+    assert [p["kind"] for p in kept] == ["bundle"]
+    assert len(kept[0]["files"]) == 2
+
+
+def test_single_item_bundle_converts_once_then_stops(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """A single subject may become a collection — the owner may be making a home
+    for siblings to drag in — but only once.
+
+    What made this nest without limit was that the child of a conversion could be
+    converted again, each click repeating the same name one level deeper
+    (owner-reported, 2026-07-30). The child always lands inside a collection for
+    its own folder, and that is exactly the position where another is refused.
+    """
+    (library_root / "Solo").mkdir()
+    (library_root / "Solo" / "Solo.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    plan_id = plan["id"]
+    solo = next(p for p in plan["proposals"] if p["title"] == "Solo")
+
+    converted = client.put(
+        f"{base}/plans/{plan_id}/proposals/{solo['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == solo["id"]]
+    assert len(children) == 1
+
+    # The child sits in a collection for its own folder: no further layer.
+    again = client.put(
+        f"{base}/plans/{plan_id}/proposals/{children[0]['id']}/kind",
+        json={"kind": "container"},
+    )
+    assert again.status_code == 422, again.text
+
+
+def test_one_video_with_sidecars_stays_one_bundle_when_divided(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """Dividing keeps a video's sidecars with it rather than splitting per file."""
+    _seed(session, library_root)  # Cosmos: one video + poster + subtitle
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    cosmos = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+    assert len(cosmos["files"]) == 3
+
+    converted = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{cosmos['id']}/kind", json={"kind": "container"}
+    )
+    assert converted.status_code == 200, converted.text
+    children = [p for p in converted.json()["proposals"] if p["parent_proposal_id"] == cosmos["id"]]
+    # One subject in, one bundle out — all three files together, not one each.
+    assert len(children) == 1
+    assert len(children[0]["files"]) == 3
+
+
+def test_image_only_bundle_divides_per_file(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """With no video to centre a bundle on, a photo dump divides per file — the
+    one case where the per-file split is the right reading."""
+    shots = library_root / "Shots"
+    shots.mkdir()
+    for name in ("a", "b", "c"):
+        (shots / f"{name}.jpg").write_text("i")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    # The suggester already splits an image folder per file, so merge first to
+    # get a single multi-image bundle to divide.
+    container = next(p for p in plan["proposals"] if p["kind"] == "container")
+    merged = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{container['id']}/kind", json={"kind": "bundle"}
+    ).json()
+    row = next(p for p in merged["proposals"] if p["kind"] == "bundle")
+    assert len(row["files"]) == 3
+
+    divided = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{row['id']}/kind", json={"kind": "container"}
+    )
+    assert divided.status_code == 200, divided.text
+    children = [p for p in divided.json()["proposals"] if p["parent_proposal_id"] == row["id"]]
+    assert len(children) == 3
+    assert all(len(c["files"]) == 1 for c in children)

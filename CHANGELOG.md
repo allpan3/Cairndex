@@ -8,7 +8,141 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Turning a single-item bundle into a collection nested forever.** It produced
+  a collection wrapping one identical bundle — and because that child was itself
+  convertible, each click added another layer of collections with the same name
+  and nothing inside them. A folder holding one video is one subject however many
+  covers or subtitles sit beside it, so there is nothing to divide: the control
+  is no longer offered on such a row, and the server refuses it. Dividing still
+  works wherever it means something — two or more videos split per video with
+  sidecars following their own, and an image-only bundle splits per file.
+- **An "Add to …" suggestion sat outside the collection it was joining.** A new
+  file in `Studios/StudioAlpha/` showed up under *Studios*, beside that
+  collection rather than inside it — reading as unrelated to the very bundle it
+  adds to. Two causes, both fixed: an addition was pinned to the top level
+  regardless of where its files live, and the collection its target bundle
+  actually belongs to was being ignored whenever the folder happened to suggest
+  somewhere else. An addition now surfaces where the bundle it joins already
+  lives, falling back to its own folder when that bundle is in no collection.
+- **A tooltip could stay on screen after its button was clicked.** Clicking is
+  what moves the row, and since nothing makes the pointer *leave* the button, no
+  hover-out ever fires — so the tooltip hung there at its old position, showing
+  the new label. It is now dismissed on click, and a position computed for a label
+  that has since changed is never shown.
+- **Tooltips were clipped by the panel edge.** The controls' tooltips are the
+  longest text in the dialog and the dialog body scrolls, so an absolutely
+  positioned tooltip got cut off. They now render outside the panel and clamp
+  themselves into the viewport — and a disabled Narrow/Widen still explains
+  itself, which is exactly when you want it to.
+- **A merged collection could lose its files.** Merging a collection whose
+  bundles live in subfolders leaves one bundle whose folder is the *parent* — a
+  folder with no media of its own. That row was offered Narrow/Widen anyway, and
+  using it deleted the row while the suggester had nothing to put back, so both
+  files dropped out of the plan silently and could no longer be bundled. The
+  control is no longer offered on a row whose files span more than one folder
+  (it could not have narrowed or widened anything there), and the server now
+  refuses any stem change that would drop a file rather than performing it.
+  This also fixes the reported symptom: such a row kept its Narrow/Widen buttons
+  after being turned back into a collection.
+- **Narrow and Widen no longer discard your review work.** They used to
+  regenerate the whole plan server-side — new rows, new ids — so adjusting one
+  folder reset every checkbox and every edit everywhere. They now re-suggest
+  **only that folder, in place**: every suggestion outside it keeps its
+  identity, so your selections, renames, destination switches, drag edits, and
+  bundle↔collection conversions all survive an adjustment to some other folder.
+  The adjusted folder itself comes back as fresh (checked) suggestions, which is
+  what asking to re-group it means. Selection is additionally tracked by what a
+  suggestion *contains* rather than by its row id, as a second line of defense.
+
+  An explicit **Suggest grouping** still starts from a clean slate — that is
+  a fresh start rather than an adjustment.
+
+### Added
+
+- **Turn a suggested bundle into a collection, and back.** The suggester decides
+  from filenames alone whether a folder holds one thing or several, and it gets
+  it wrong in a way Narrow could not fix: a folder whose files carry explicit
+  part markers reads as a single bundle at *every* stem sensitivity, so there
+  was no way to say "this folder is a collection". Each suggestion now carries a
+  compact split/merge icon button (tooltip: *Make this a collection of bundles
+  instead* / *Make this one bundle instead*), matching the destination toggle
+  beside it.
+
+  Converting to a collection splits the folder into one bundle per video, with
+  each cover and subtitle following its own video rather than becoming a bundle
+  of its own. Converting back merges everything under the collection into one
+  bundle again, so the override is reversible rather than a one-way door. A
+  suggestion that adds files to an already-confirmed bundle cannot be converted,
+  since its files join a bundle that is not going to become a collection.
+
+### Changed
+
+- **A grouped bundle is named by the part its files share**, not by whichever
+  file came first. Four files matched on a common prefix were titled
+  "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes" — one
+  member's name, implying the other three were behind-the-scenes clips. They now
+  read "StudioAlpha.19.12", the shared part that actually grouped them,
+  trimmed so it never ends mid-word. A multipart video gains from the same rule:
+  "Trip.part1" becomes "Trip". A bundle filling its own folder still takes the
+  folder's name, and a single subject still its own filename.
+- **Double-clicking a name puts the caret where you clicked**, instead of
+  selecting the whole title. These names are long and mostly right, so the usual
+  edit is a tweak in the middle of one — and a select-all threw the name away the
+  moment you typed. Keyboard entry (Enter/F2) lands at the end.
+- **A single-subject bundle can become a collection again.** Refusing it outright
+  left rows with no way to become one at all; you may simply be making a home for
+  siblings to drag in. What is still refused is a single subject that already sits
+  in a collection for its own folder, where another layer would only repeat the
+  name it is inside — and since the child of a conversion always lands exactly
+  there, that is what keeps the nesting bounded.
+- **The bundle icon is no longer a film clapper.** A bundle is whatever its files
+  are — photos, audio, documents — and the clapper read as a claim that it is a
+  video. Bundles now use stacked sheets and collections an outlined folder, both
+  drawn like the rest of the app's icons rather than as emoji. The addition rows
+  drop their clapper too: "Add to <bundle>", since the row already shows an icon.
+- **Row alignment is now exact rather than nearly right.** The checkbox, kind icon
+  and title share one centre line, a bundle's files indent to the first character
+  of its title, and the conversion/Narrow/Widen buttons sit on the title's line —
+  all measured at 0px offset instead of tuned by eye. The leading controls have
+  fixed sizes so a platform-default checkbox width cannot shift any of it.
+- **The ⠿ drag handles are gone.** Every bundle and file row is draggable in its
+  entirety — the file rows already were, which made their handle pure decoration
+  taking horizontal space on every line. The rows carry a grab cursor instead,
+  and a row being renamed is not draggable, so text selection in the edit box
+  still works.
+- **The suggestion panel is wider** (1100px, was 780px) and its rows no longer
+  misalign when a long name wraps — the checkbox, drag handle and kind glyph
+  stayed vertically centred against the taller row, drifting away from the title
+  they belong to; they now sit on its first line.
+- **Narrow/Widen tooltips say what they do to which folder** — "Folder Trip
+  (matching: balanced) — split into more bundles by matching more of each
+  filename". The pair belongs to a *folder*, and is attached to whichever row
+  speaks for that folder, which is a collection row sometimes and a bundle row
+  other times; the old "stem matching" wording made that read as two unrelated
+  controls.
+- The review dialog drops two pieces of noise: single-file suggestions no longer
+  say "single file on its own" (the row already shows exactly that), and
+  converted rows no longer explain that you converted them.
+- Narrow/Widen are compact icon buttons too — inward chevrons narrow, outward
+  widen — matching the destination and conversion toggles instead of dominating
+  every folder row with text buttons. The current mode is named in the tooltip
+  rather than printed between them.
+- **The dialog's intro is three short lines instead of a paragraph.** It had
+  grown to document every affordance in the dialog, above the thing you opened it
+  to read; each control now carries its own tooltip.
+- **Collection rows no longer carry a reason.** Three code paths had each grown
+  their own phrasing for the same fact ("holds 2 sub-item(s)", "3 unrelated
+  files", "2 filename-matched bundle(s) from 4 files"), so identical rows read
+  differently depending on which produced them — and the row already shows the
+  bundles it holds. Bundle reasons stay, since "3 parts of one video" says
+  something the row does not.
+- **File rows show the media kind, not the suggester's guessed role.** They were
+  labelled `video part`, `alt version`, `cover`, `derivative` — guesses from
+  filenames that are neither reliable nor editable, so the label invited a guess
+  to be read as a fact. The rest of the app settled this already; the review
+  dialog now speaks the same vocabulary (video / image / subtitle).
 
 ## [0.1.0] — 2026-07-28
 

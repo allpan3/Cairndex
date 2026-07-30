@@ -260,3 +260,104 @@ def test_new_file_in_unowned_directory_is_a_fresh_bundle(
         plan.proposals[0].files[0].asset_file_id
         == session.scalars(select(AssetFile.id).where(AssetFile.relative_path == "other.mp4")).one()
     )
+
+
+# An addition surfaces inside the collection its target bundle already belongs to
+def test_addition_nests_under_the_targets_collection_not_its_folder(
+    session: Session, library_root: Path
+) -> None:
+    """The reported shape: the bundle's collection does not mirror its folder.
+
+    A bundle whose files sit in ``Studios/`` but which the owner filed under the
+    nested ``Studios/StudioAlpha`` collection. Its addition surfaced under
+    **Studios** — outside the collection it was joining — because membership
+    candidates were re-ranked by whether the collection's name path also prefixed
+    the proposal's directory, and only the shallow "Studios" could match a
+    one-segment folder.
+    """
+    studios_dir = library_root / "Studios"
+    nested = studios_dir / "StudioAlpha"
+    nested.mkdir(parents=True)
+    (studios_dir / "sceneone.mp4").write_text("v")
+    (nested / "scenetwo.mp4").write_text("v")
+    (nested / "scenethree.mp4").write_text("v")
+    scan_library(session, library_root)
+    apply_service.apply_plan(session, plan_store.generate_plan(session))
+
+    studios = session.scalars(select(Collection).where(Collection.name == "Studios")).one()
+    premium = session.scalars(select(Collection).where(Collection.name == "StudioAlpha")).one()
+    target = next(
+        bundle
+        for bundle in session.scalars(select(AssetBundle))
+        if any(file.relative_path == "Studios/sceneone.mp4" for file in bundle.files)
+    )
+    # Filed under both the parent and the nested collection — the shape that
+    # exposed the bug, since only the shallow "Studios" can prefix-match a
+    # one-segment folder, so it used to win despite being the less specific place.
+    target.collections.clear()
+    target.collections.extend([studios, premium])
+    session.flush()
+    assert premium.parent_id == studios.id
+
+    (studios_dir / "sceneone.bts.mp4").write_text("v2")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+
+    addition = next(p for p in plan.proposals if p.target_bundle_id == target.id)
+    parent = session.get(type(addition), addition.parent_proposal_id)
+    assert parent is not None, "the addition should be nested, not left at the top level"
+    assert parent.title == "StudioAlpha"
+
+
+def test_addition_nests_with_its_siblings_from_the_same_folder(
+    session: Session, library_root: Path
+) -> None:
+    """The reported layout: everything in one folder, addition included.
+
+    The folder-derived parent is not enough here. Once the folder's remaining
+    fresh files form a single bundle it *owns* that folder, so no collection
+    suggestion exists for it and walking up lands on the grandparent — "Studios".
+    The target bundle's membership is what knows better, and it was being ignored
+    for any suggestion that already had a parent.
+    """
+    folder = library_root / "Studios" / "StudioAlpha"
+    folder.mkdir(parents=True)
+    for name in ("sceneone", "scenetwo", "scenethree"):
+        (folder / f"{name}.mp4").write_text("v")
+    scan_library(session, library_root)
+    apply_service.apply_plan(session, plan_store.generate_plan(session))
+    premium = session.scalars(select(Collection).where(Collection.name == "StudioAlpha")).one()
+    target = session.scalars(select(AssetBundle).where(AssetBundle.title == "sceneone")).one()
+    assert premium in target.collections
+
+    # A new file for the confirmed bundle, plus an unrelated new subject that
+    # takes over the folder — which is what pushes the folder-derived parent up.
+    (folder / "sceneone.bts.mp4").write_text("v")
+    (folder / "brandnew.mp4").write_text("v")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+
+    addition = next(p for p in plan.proposals if p.target_bundle_id == target.id)
+    parent = session.get(type(addition), addition.parent_proposal_id)
+    assert parent is not None and parent.title == "StudioAlpha"
+
+
+def test_addition_still_falls_back_to_its_folder_without_a_membership(
+    session: Session, library_root: Path
+) -> None:
+    """No collection to inherit, so where the files live still decides."""
+    folder = library_root / "Loose"
+    folder.mkdir()
+    (folder / "movie.mp4").write_text("v")
+    scan_library(session, library_root)
+    apply_service.apply_plan(session, plan_store.generate_plan(session))
+    target = session.scalars(select(AssetBundle)).one()
+    target.collections.clear()
+    session.flush()
+
+    (folder / "movie.en.srt").write_text("s")
+    scan_library(session, library_root)
+    plan = plan_store.generate_plan(session)
+
+    addition = next(p for p in plan.proposals if p.target_bundle_id == target.id)
+    assert addition.parent_proposal_id is None

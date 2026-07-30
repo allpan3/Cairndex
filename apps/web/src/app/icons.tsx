@@ -300,3 +300,55 @@ export const IconTrash = () => (
     <line x1="14" x2="14" y1="11" y2="17" />
   </Svg>
 )
+
+/** Chevrons pointing inward (Lucide "chevrons-right-left") — Narrow stem
+ * matching: use more of each filename, splitting a folder into more bundles. */
+export const IconChevronsIn = () => (
+  <Svg>
+    <path d="m20 17-5-5 5-5" />
+    <path d="m4 17 5-5-5-5" />
+  </Svg>
+)
+
+/** Chevrons pointing outward (Lucide "chevrons-left-right") — Widen stem
+ * matching: use a broader prefix, merging a folder into fewer bundles. */
+export const IconChevronsOut = () => (
+  <Svg>
+    <path d="m9 7-5 5 5 5" />
+    <path d="m15 7 5 5-5 5" />
+  </Svg>
+)
+
+/** Stacked sheets (Lucide "layers") — an asset bundle: several files that belong
+ * together. Deliberately not a film clapper: a bundle is whatever its files are
+ * — photos, audio, documents — and the clapper read as a claim that it is a video
+ * (owner-reported, 2026-07-30). */
+export const IconLayers = () => (
+  <Svg>
+    <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+    <path d="m2 12 10 5 10-5" />
+    <path d="m2 17 10 5 10-5" />
+  </Svg>
+)
+
+/** One block splitting into two (Lucide "ungroup") — the grouping review's
+ * "make this bundle a collection of bundles" action. */
+export const IconUngroup = () => (
+  <Svg>
+    <rect width="8" height="6" x="5" y="4" rx="1" />
+    <rect width="8" height="6" x="11" y="14" rx="1" />
+  </Svg>
+)
+
+/** Two blocks gathered into one frame (Lucide "group") — the reverse action,
+ * "make this collection one bundle". */
+export const IconGroup = () => (
+  <Svg>
+    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+    <rect width="7" height="5" x="7" y="7" rx="1" />
+    <rect width="7" height="5" x="10" y="12" rx="1" />
+  </Svg>
+)

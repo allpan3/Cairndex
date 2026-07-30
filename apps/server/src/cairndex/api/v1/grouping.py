@@ -18,9 +18,11 @@ from cairndex.api.schemas.grouping import (
     PlanSummary,
     ProposalDestinationUpdate,
     ProposalFileMove,
+    ProposalKindUpdate,
     ProposalRead,
     ProposalReparent,
     ProposalUpdate,
+    StemModeUpdate,
 )
 from cairndex.grouping import apply as apply_service
 from cairndex.grouping import plan_store
@@ -121,6 +123,30 @@ def reparent_proposal(
         db, plan_id, proposal_id, payload.parent_proposal_id
     )
     return ProposalRead.model_validate(proposal)
+
+
+# Adjust one directory's stem sensitivity without rebuilding the plan
+@router.put("/plans/{plan_id}/stem-modes", response_model=PlanRead)
+def set_stem_mode(plan_id: str, payload: StemModeUpdate, db: LibrarySession) -> PlanRead:
+    """Set one directory's stem sensitivity and re-suggest that directory in
+    place. Every proposal outside the directory — and therefore every owner
+    edit elsewhere — keeps its identity; `POST /plans` remains the full reset."""
+    plan = plan_store.set_directory_stem_mode(db, plan_id, payload.directory, payload.mode)
+    return PlanRead.model_validate(plan)
+
+
+# Override whether a suggestion is one bundle or a collection of bundles
+@router.put("/plans/{plan_id}/proposals/{proposal_id}/kind", response_model=PlanRead)
+def convert_proposal_kind(
+    plan_id: str, proposal_id: str, payload: ProposalKindUpdate, db: LibrarySession
+) -> PlanRead:
+    """Turn a bundle suggestion into a collection of bundles, or back again.
+
+    Returns the whole plan rather than the one proposal: a conversion adds or
+    removes sibling rows, so the client's tree has changed shape.
+    """
+    plan = plan_store.convert_proposal_kind(db, plan_id, proposal_id, payload.kind)
+    return PlanRead.model_validate(plan)
 
 
 @router.post("/plans/{plan_id}/apply", response_model=ApplyResultRead)
