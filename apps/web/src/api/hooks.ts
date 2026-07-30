@@ -215,6 +215,14 @@ async function watchOptionalJob(
 function invalidateCollectionCounts(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['collection-counts'] })
   qc.invalidateQueries({ queryKey: ['collection-stats'] })
+  // The collection rows themselves, because membership decides more than the
+  // counts: a collection's auto-picked cover is the earliest thumbnailable
+  // bundle in its subtree, and the tile is fetched with the row's `updated_at`
+  // as its cache key. Without this the server's freshly moved key never reaches
+  // the client and the browser keeps serving the old cover — or the folder
+  // glyph it fell back to when there was nothing to show yet (owner,
+  // 2026-07-30).
+  qc.invalidateQueries({ queryKey: ['collections'] })
 }
 
 // Invalidate all library surfaces whose content changes after a maintenance job
