@@ -75,6 +75,26 @@ def list_jobs(
     return keyset_page(session, select(JobQueueEntry), JobQueueEntry.id, limit, cursor)
 
 
+def list_active_jobs(session: Session, *, library_id: str | None = None) -> list[JobQueueEntry]:
+    """Jobs that are running or waiting to run, oldest first.
+
+    This is what a client asks on load to find work already in progress. The
+    paged ``list_jobs`` cannot answer it: it walks every job ever queued, from
+    the oldest, so finding the live ones means reading the whole history.
+
+    Unpaged deliberately — the queue runs one job at a time and only a handful
+    are ever waiting, so a cursor would be ceremony around a list of two.
+    """
+    stmt = select(JobQueueEntry).where(
+        JobQueueEntry.status.in_((JobStatus.RUNNING, JobStatus.QUEUED))
+    )
+    if library_id is not None:
+        stmt = stmt.where(JobQueueEntry.library_id == library_id)
+    # ULID ids sort chronologically, so this is queue order: what is running
+    # now, then what is waiting behind it.
+    return list(session.scalars(stmt.order_by(JobQueueEntry.id)))
+
+
 def claim_next_queued(session: Session) -> JobQueueEntry | None:
     """Atomically move the oldest queued job to RUNNING and return it."""
     stmt = (
@@ -109,11 +129,22 @@ def update_progress(
     total: int | None = None,
     phase: str | None = None,
     message: str | None = None,
+    clear_total: bool = False,
 ) -> None:
+    """Patch a job's progress. ``None`` means "leave alone", not "set to null".
+
+    That is what makes ``clear_total`` necessary rather than redundant: a phase
+    change has to *remove* a total belonging to the phase that just ended, and
+    passing ``total=None`` cannot say so. Without it, a scan that discovered 79
+    files left `0/79` on screen through grouping and finalizing — a count that
+    could never advance, because those phases report no total of their own.
+    """
     job = get_job(session, job_id)
     if processed is not None:
         job.processed = processed
-    if total is not None:
+    if clear_total:
+        job.total = None
+    elif total is not None:
         job.total = total
     if phase is not None:
         job.phase = phase

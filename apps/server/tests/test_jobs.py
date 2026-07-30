@@ -226,3 +226,163 @@ def test_safe_error_message_redacts_paths() -> None:
     msg2 = safe_error_message(ValueError("bad file /tmp/private/x.txt"))
     assert "/tmp/private/x.txt" not in msg2
     assert msg2.startswith("ValueError")
+
+
+def test_a_new_phase_clears_the_previous_phase_total(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """A total belongs to the phase that set it, and must not outlive it.
+
+    `update_progress` treats `None` as "leave alone", so `set_phase` could zero
+    `processed` but never clear `total` — leaving the next phase showing a count
+    it would never reach. A real scan finished at `0/79`: the 79 came from a
+    discovery pass that had ended, and grouping and finalizing (which report no
+    total) inherited it (owner-reported, 2026-07-30).
+    """
+
+    captured: dict[str, object] = {}
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.DISCOVERING)
+        ctx.checkpoint(processed=79, total=79)
+        ctx.set_phase(JobPhase.GROUPING, "Generating grouping suggestions")
+        # Read mid-run: a finished job clears its phase (see
+        # test_finished_job_clears_phase), so the state under test is only
+        # visible from inside the handler.
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured["phase"] = row.phase
+            captured["processed"] = row.processed
+            captured["total"] = row.total
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert captured["phase"] == JobPhase.GROUPING.value
+    assert captured["processed"] == 0
+    # The important half: not 79.
+    assert captured["total"] is None
+
+
+def test_progress_reports_without_committing_the_content_session(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """`progress` is a display concern; `checkpoint` is a durability boundary.
+
+    They were the same call, which welded how often the bar moved to how often
+    the scanner committed — every 200 files. Any library smaller than one batch
+    reported nothing at all.
+    """
+    committed: list[str] = []
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.DISCOVERING)
+        original = ctx.session.commit
+        ctx.session.commit = lambda: committed.append("content")  # type: ignore[method-assign]
+        try:
+            # Well under the throttle interval, but `processed >= total` forces
+            # the write so the final state is visible.
+            ctx.progress(7, 7)
+        finally:
+            ctx.session.commit = original  # type: ignore[method-assign]
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert committed == []  # progress never touched the content session
+    with registry_session_factory() as reg:
+        job = job_service.get_job(reg, job_id)
+        assert (job.processed, job.total) == (7, 7)
+
+
+def test_active_jobs_lists_running_and_queued_in_queue_order(
+    registry_session_factory: sessionmaker[Session], library_id: str, client: TestClient
+) -> None:
+    """A fresh client has to be able to find work already in progress.
+
+    Progress lived only in the mutation that started the job, so a page reload
+    lost it while the job ran on (owner-reported, 2026-07-30). The queue is
+    server state; this is how a client picks it up.
+    """
+    with registry_session_factory() as reg:
+        running = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.SCAN, payload={}
+        )
+        queued = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.PROBE, payload={}
+        )
+        finished = job_service.create_job(
+            reg, library_id=library_id, job_type=JobType.THUMBNAIL, payload={}
+        )
+        running.status = JobStatus.RUNNING
+        finished.status = JobStatus.SUCCEEDED
+        reg.commit()
+        running_id, queued_id, finished_id = running.id, queued.id, finished.id
+
+    body = client.get("/api/v1/jobs/active").json()
+    ids = [j["id"] for j in body]
+
+    assert ids == [running_id, queued_id]  # oldest first: running, then waiting
+    assert finished_id not in ids  # settled work is not "in progress"
+
+
+def test_active_jobs_can_be_scoped_to_one_library(
+    registry_session_factory: sessionmaker[Session], library_id: str, client: TestClient
+) -> None:
+    with registry_session_factory() as reg:
+        mine = job_service.create_job(reg, library_id=library_id, job_type=JobType.SCAN, payload={})
+        reg.commit()
+        mine_id = mine.id
+
+    assert [j["id"] for j in client.get(f"/api/v1/jobs/active?library_id={library_id}").json()] == [
+        mine_id
+    ]
+    # A different library does not see it. (Jobs carry a foreign key to a
+    # registered library, so an unregistered id cannot own one — which makes an
+    # empty result the only correct answer here.)
+    assert client.get("/api/v1/jobs/active?library_id=01JQQQQQQQQQQQQQQQQQQQQQQQ").json() == []
+
+    # "active" must not be swallowed by the /{job_id} route below it.
+    assert client.get("/api/v1/jobs/active").status_code == 200
+
+
+def test_a_newly_known_total_is_written_immediately(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """Sizing the work is a one-time event, not the chatter the throttle exists for.
+
+    `set_phase` resets the throttle, so the first report of a phase was swallowed
+    and the count only appeared once the first item finished. For storyboard
+    generation that is seconds of a labelled bar with no numbers on it — which is
+    what the owner photographed and reported as "it does not show me the
+    progress" (2026-07-30).
+    """
+    captured: list[tuple[int, int | None]] = []
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.STORYBOARDING, "Generating storyboards")
+        # Immediately after set_phase, so well inside the throttle window.
+        ctx.checkpoint(processed=0, total=50)
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured.append((row.processed, row.total))
+        # A second report at the same total stays throttled.
+        ctx.checkpoint(processed=1, total=50)
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured.append((row.processed, row.total))
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert captured[0] == (0, 50)  # the total appears at once
+    assert captured[1] == (0, 50)  # the follow-up count is throttled, as designed

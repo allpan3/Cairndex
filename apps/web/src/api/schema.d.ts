@@ -138,6 +138,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active Jobs
+         * @description Jobs running or waiting, oldest first — what a client asks on load.
+         *
+         *     Progress used to live only in the mutation that started a job, so reloading
+         *     the page lost track of work that was still going: the owner reported coming
+         *     back to a scan indicator that had simply vanished while the scan ran on
+         *     (2026-07-30). The queue is server state, so a fresh client can pick it up.
+         *
+         *     Unpaged: one job runs at a time and only a few ever queue behind it.
+         */
+        get: operations["list_active_jobs_api_v1_jobs_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -4525,6 +4552,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_JobRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_active_jobs_api_v1_jobs_active_get: {
+        parameters: {
+            query?: {
+                library_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"][];
                 };
             };
             /** @description Validation Error */

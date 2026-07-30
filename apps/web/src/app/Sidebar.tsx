@@ -79,7 +79,7 @@ export interface SidebarProps {
   onGenerateStoryboards: () => void
   generatingStoryboards?: boolean
   onReviewGrouping: () => void
-  activeJob?: JobRead | null
+  activeJobs?: JobRead[]
   maintenanceError?: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
@@ -190,7 +190,7 @@ export function Sidebar({
   onGenerateStoryboards,
   generatingStoryboards,
   onReviewGrouping,
-  activeJob,
+  activeJobs = [],
   maintenanceError,
   selection,
   onSelect,
@@ -538,12 +538,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {activeJob && (
-        <div className="sidebar__job-progress">
-          <JobProgress job={activeJob} />
-        </div>
-      )}
-      {!activeJob && maintenanceError && (
+      {activeJobs.length === 0 && maintenanceError && (
         <div className="sidebar__job-error" role="alert">
           {maintenanceError}
         </div>
@@ -765,6 +760,20 @@ export function Sidebar({
           expected rather than trailing whatever the nav happens to end at, and
           so a transfer indicator has a fixed home directly above it. */}
       <div className="sidebar__foot">
+        {/* Maintenance jobs sit with the transfer indicator rather than under
+            the Update button that started them. They outlive that button — a
+            storyboard pass keeps running after Update reports done — and one
+            place for "something is happening" beats two.
+
+            A list, not a slot: scan, probe, thumbnail and storyboard jobs
+            overlap, and showing only the newest hid the rest. */}
+        {activeJobs.length > 0 && (
+          <div className="sidebar__job-progress">
+            {activeJobs.map((job) => (
+              <JobProgress key={job.id} job={job} />
+            ))}
+          </div>
+        )}
         {footer}
         <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
           <span className="nav-item__icon">

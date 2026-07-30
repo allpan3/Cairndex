@@ -232,3 +232,33 @@ def test_scan_job_generates_grouping_plan_without_applying(
             assert states == {GroupingState.PROVISIONAL}
     finally:
         eng.dispose()
+
+
+def test_progress_is_reported_for_a_library_smaller_than_one_batch(
+    session: Session, library_root: Path
+) -> None:
+    """Progress must not be welded to the commit batch size.
+
+    It used to fire only on `processed % batch_size == 0`, with batch_size 200.
+    Any library smaller than one batch therefore reported nothing until the
+    scan was over — the owner watched a bar sit at zero for a 79-file library
+    and had no idea what the scan was doing (2026-07-30).
+
+    Committing per file is still the wrong trade on a large library, so the two
+    cadences are deliberately different: this asserts the reporting one.
+    """
+    _make_media(library_root)  # 4 media files, far below any sane batch size
+    seen: list[tuple[int, int | None]] = []
+
+    summary = scan_library(
+        session,
+        library_root,
+        on_progress=lambda processed, total: seen.append((processed, total)),
+        batch_size=200,
+    )
+
+    assert summary.discovered == 4
+    # One call per file during the walk, plus the final report.
+    assert [processed for processed, _ in seen] == [1, 2, 3, 4, 4]
+    # The total is known up front, so the bar is determinate from the first tick.
+    assert all(total == 4 for _, total in seen)

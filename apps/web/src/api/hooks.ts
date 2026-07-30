@@ -69,6 +69,7 @@ import {
   fetchLibraryOwnership,
   startLibraryTakeover,
   fetchDevices,
+  fetchActiveJobs,
   fetchJob,
   lockLibrary,
   unlockLibrary,
@@ -603,6 +604,27 @@ function scanMissingTotal(job: JobRead): number {
   const result = job.result as Record<string, unknown> | null
   const count = Number(result?.missing_total ?? 0)
   return Number.isSafeInteger(count) && count >= 0 ? count : 0
+}
+
+/** Jobs already running or queued for the active library.
+ *
+ * Job progress otherwise lives only inside the mutation that started the job,
+ * so reloading the page lost track of work that was still going — the owner
+ * reported returning to a vanished scan indicator while the scan ran on
+ * (2026-07-30). The queue is server state, so a fresh page can pick it up.
+ *
+ * Polls only while something is active: an idle library asks once on mount and
+ * then not again until a mutation invalidates this key.
+ */
+export function useActiveJobs(libraryId: string | null) {
+  return useQuery({
+    queryKey: ['active-jobs', libraryId],
+    queryFn: ({ signal }) => fetchActiveJobs(libraryId!, signal),
+    enabled: libraryId !== null,
+    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 1000 : false),
+    // A settled job should disappear promptly rather than linger for a refetch.
+    refetchOnWindowFocus: true,
+  })
 }
 
 interface MaintenanceOptions {

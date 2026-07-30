@@ -8,7 +8,28 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
+  that said nothing about what was happening or how far along it was. Two causes,
+  both in the reporting rather than the work: a phase change could not clear the
+  previous phase's total, so a finished discovery pass left its count frozen on
+  screen through the phases after it; and progress was only reported every 200
+  files, so any library smaller than that reported nothing at all until the scan
+  was already over. **Progress now moves on any library size and names what it is
+  doing** — "Discovering files", "Reconciling moves", "Generating thumbnails" —
+  with a count when the work has one.
+
+### Changed
+
+- **Job progress moved to the bottom of the sidebar, beside the file-transfer
+  indicator, and survives a page refresh.** It used to sit under the Update
+  button that started it and vanish on reload, which is misleading twice over:
+  these jobs outlive that button — a storyboard pass keeps running after Update
+  reports done — and the work continues whether or not the page that started it
+  is still open. **Every running job is now shown, not just the newest**, since
+  scan, probe, thumbnail and storyboard jobs overlap and a single slot hid
+  whichever lost.
 
 ## [0.1.1] — 2026-07-30
 

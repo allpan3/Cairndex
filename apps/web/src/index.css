@@ -4209,8 +4209,16 @@ code {
   opacity: 0.5;
   cursor: default;
 }
+/* Docked in the sidebar foot beside the transfer indicator, not under the
+   Update button: these jobs outlive that button (a storyboard pass keeps going
+   after Update reports done), and several can run at once. */
 .sidebar__job-progress {
-  padding: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
 }
 .sidebar__job-error {
   margin: 0 12px 8px;

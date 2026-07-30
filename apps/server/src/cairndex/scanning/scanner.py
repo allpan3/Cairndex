@@ -272,10 +272,17 @@ def scan_library(
             updated += 1
 
         processed += 1
+        # Two different cadences on purpose. The commit is a durability
+        # boundary and stays batched, because committing per file is what makes
+        # a large library slow. Progress is a display concern and reports every
+        # file: the callback throttles its own writes by time, so the cost of a
+        # call it decides to skip is a clock read. Reporting only at a commit
+        # boundary meant any library smaller than one batch (200 files) showed
+        # no movement whatsoever — the bar sat at zero and then the scan ended.
         if processed % batch_size == 0:
             session.commit()
-            if on_progress is not None:
-                on_progress(processed, total)
+        if on_progress is not None:
+            on_progress(processed, total)
 
     # Pass 2: repair moves before creating anything new.
     if on_phase is not None:
