@@ -113,6 +113,12 @@ Record performance baselines for representative libraries before claiming large-
 - Do not add analytics or telemetry by default.
 - Do not log notes, URLs, filenames, or paths unnecessarily.
 - Never commit secrets, databases, thumbnails, generated caches, or source media.
+- **Never commit or push user data.** Anything taken from the owner's actual library is
+  user data: filenames, folder / collection / tag names, titles, notes, ratings,
+  library names, absolute paths, and the contents of screenshots the owner supplies.
+  That is the same private data the rule above treats as user-owned — it does not stop
+  being user data because it is a *string* rather than a file. It belongs in no commit,
+  message, changelog entry, doc, test fixture, PR title or PR description.
 - Use a non-root container user where practical.
 - Validate all file paths against the active library root.
 - Do not expose arbitrary host command execution.

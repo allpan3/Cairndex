@@ -67,18 +67,18 @@ Do not implement several major milestones in one unreviewable patch.
 - Do not claim browser playback support for a format until it has been tested.
 - Do not write into an Eagle library; Eagle is reference material only.
 - Do not commit source media, private screenshots, databases, caches, thumbnails, or secrets.
-- **Never put real library filenames, folder names, titles, or any name taken from it
-  anywhere in the repository** — not in code, tests, fixtures, comments, commit
-  messages, changelog entries, `docs/`, PR titles or descriptions. This library's
-  contents are private, and the repository is public. AGENTS.md §"Security and
-  privacy rules" already covers it ("treat all metadata as user-owned private data";
-  "do not log notes, URLs, filenames, or paths unnecessarily") — this line exists
-  because a reported bug arrives *as* a real filename and the temptation is to quote
-  it. Paraphrase the shape instead: describe the pattern ("a long release-style name
-  renamed to a short catalogue-style one") and invent neutral fixtures
-  (`StudioAlpha`, `SET-025.webp`, `Set07/clip1.mp4`). The same applies to screenshots
-  the owner sends: read them, do not transcribe their contents into the repo.
-  Removing this later means rewriting published history, which cannot fully undo it.
+- **Never commit or push user data** (AGENTS.md §"Security and privacy rules"). Treat
+  anything taken from the owner's real library as user data — a name is user data just
+  as much as a file is. It goes in no commit, message, changelog entry, doc, test
+  fixture, PR title or PR description; the repository is public, and a rewrite later
+  cannot fully undo publication.
+
+  The trap is that a bug report *arrives* as user data — a filename, a folder, a
+  screenshot — and quoting it back reads like precision. It is not: the defect is
+  always in the shape, never in the specific characters. Reproduce the shape and
+  invent the fixture. "A long release-style name renamed to a short catalogue-style
+  one" is the whole bug; `StudioAlpha`, `SET-025.webp`, `Set07/clip1.mp4` are enough
+  to test it. Screenshots are for reading, not transcribing.
 
 ## Decision handling
 
