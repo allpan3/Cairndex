@@ -163,6 +163,56 @@ def test_rename_preserves_bundle_membership_and_cover(session: Session, library_
     assert [f.relative_path for f in bundle.files] == ["Movie/renamed.mkv"]
 
 
+def test_rename_carries_the_display_title_with_the_file(
+    session: Session, library_root: Path
+) -> None:
+    """The name a bundle shows for a file is ``display_title``, not the path.
+
+    Left behind, a renamed file kept its old name everywhere a bundle is shown
+    while the File Browser showed the new one — the same file under two names
+    (owner report, 2026-07-30). ``original_filename`` stays put on purpose: it
+    records what the file was called when it entered the library.
+    """
+    _touch(library_root, "Show/ep1.mkv")
+    file = _link(session, "Show/ep1.mkv")
+
+    operations.rename(session, library_root, path="Show/ep1.mkv", new_name="Episode 1.mkv")
+
+    session.refresh(file)
+    assert file.display_title == "Episode 1.mkv"
+    assert file.original_filename == "ep1.mkv"
+
+
+def test_rename_leaves_a_display_title_someone_chose_alone(
+    session: Session, library_root: Path
+) -> None:
+    """A title is owner-editable, so only a filename-shaped one follows the file."""
+    _touch(library_root, "Show/ep1.mkv")
+    file = _link(session, "Show/ep1.mkv")
+    file.display_title = "Pilot"
+    session.commit()
+
+    operations.rename(session, library_root, path="Show/ep1.mkv", new_name="Episode 1.mkv")
+
+    session.refresh(file)
+    assert file.relative_path == "Show/Episode 1.mkv"
+    assert file.display_title == "Pilot"
+
+
+def test_renaming_a_directory_leaves_the_titles_beneath_it_alone(
+    session: Session, library_root: Path
+) -> None:
+    """Moving a file between folders does not change what the file is called."""
+    _touch(library_root, "Show/S01/ep1.mkv")
+    inside = _link(session, "Show/S01/ep1.mkv")
+
+    operations.rename(session, library_root, path="Show/S01", new_name="Season 1")
+
+    session.refresh(inside)
+    assert inside.relative_path == "Show/Season 1/ep1.mkv"
+    assert inside.display_title == "ep1.mkv"
+
+
 def test_renaming_a_directory_repoints_every_row_beneath_it(
     session: Session, library_root: Path
 ) -> None:
