@@ -350,3 +350,39 @@ def test_active_jobs_can_be_scoped_to_one_library(
 
     # "active" must not be swallowed by the /{job_id} route below it.
     assert client.get("/api/v1/jobs/active").status_code == 200
+
+
+def test_a_newly_known_total_is_written_immediately(
+    registry_session_factory: sessionmaker[Session], library_id: str
+) -> None:
+    """Sizing the work is a one-time event, not the chatter the throttle exists for.
+
+    `set_phase` resets the throttle, so the first report of a phase was swallowed
+    and the count only appeared once the first item finished. For storyboard
+    generation that is seconds of a labelled bar with no numbers on it — which is
+    what the owner photographed and reported as "it does not show me the
+    progress" (2026-07-30).
+    """
+    captured: list[tuple[int, int | None]] = []
+
+    def handler(ctx: JobContext) -> None:
+        ctx.set_phase(JobPhase.STORYBOARDING, "Generating storyboards")
+        # Immediately after set_phase, so well inside the throttle window.
+        ctx.checkpoint(processed=0, total=50)
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured.append((row.processed, row.total))
+        # A second report at the same total stays throttled.
+        ctx.checkpoint(processed=1, total=50)
+        with registry_session_factory() as reg:
+            row = job_service.get_job(reg, ctx.job_id)
+            captured.append((row.processed, row.total))
+
+    job_id = _new_job(registry_session_factory, library_id, {})
+    assert (
+        execute_job(registry_session_factory, job_id, {JobType.SCAN: handler})
+        == JobStatus.SUCCEEDED
+    )
+
+    assert captured[0] == (0, 50)  # the total appears at once
+    assert captured[1] == (0, 50)  # the follow-up count is throttled, as designed
