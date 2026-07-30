@@ -189,6 +189,29 @@ def test_an_unclean_stop_leaves_the_library_in_wal(library_root: Path, library_i
     assert journal_mode_in_file(pkg.db_path(library_root)) == WAL
 
 
+def test_a_restart_and_clean_stop_recovers_a_library_left_in_wal(
+    library_root: Path, library_id: str
+) -> None:
+    """The documented recovery from an unclean stop, and the one that matters.
+
+    Not the heal below — that fires only on a network filesystem, and the
+    machine that crashed is by definition one with local access. Restarting it
+    replays the WAL and stopping it cleanly converts the file back, with every
+    committed row intact.
+    """
+    maker = get_library_sessionmaker(_registered(library_root, library_id))
+    _write_rows(maker)
+    _simulate_crash(library_id)
+    assert journal_mode_in_file(pkg.db_path(library_root)) == WAL
+
+    get_library_sessionmaker(_registered(library_root, library_id))  # docker start
+    close_library_engines()  # docker stop
+
+    assert journal_mode_in_file(pkg.db_path(library_root)) == ROLLBACK
+    with sqlite3.connect(pkg.db_path(library_root)) as conn:
+        assert conn.execute("SELECT count(*) FROM t").fetchone()[0] == 100
+
+
 def test_the_next_capable_open_heals_a_library_left_in_wal(
     library_root: Path, library_id: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

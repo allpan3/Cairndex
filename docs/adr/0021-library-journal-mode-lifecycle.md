@@ -93,9 +93,14 @@ journal at rest.** Concretely:
 
 6. **An open heals a library it finds in the wrong mode.** If this machine has
    decided the library should not be in WAL and finds it in WAL, it converts it
-   there and then. That cannot help a machine already locked out — it never gets
-   far enough to run — but it repairs the library the first time a capable
-   machine opens it, which is the ordinary way out of an unclean shutdown.
+   there and then.
+
+   Its reach is deliberately modest and should not be mistaken for the recovery
+   story. It fires only where the library is on a network filesystem *and* the
+   open still succeeded — a mount that tolerates WAL, or one identified as
+   network conservatively. The ordinary SMB lockout never gets that far. The
+   recovery that actually matters is decision 3: restart the server that crashed
+   and stop it cleanly, and the clean close converts the file back.
 
 ### The residual risk, accepted deliberately
 
@@ -105,12 +110,18 @@ flagged WAL. Any machine reaching that folder over a share is then locked out
 until something with local access converts it.
 
 The owner was shown this and chose it anyway, for the performance WAL buys while
-a library is being browsed and scanned. The design therefore minimises and
-*explains* the window rather than pretending it away: decision 5 makes the
-resulting failure legible instead of a 500, decision 6 repairs the library the
-next time a capable machine opens it, and `docs/deployment.md` carries the
-recovery command for the case where neither is enough. The alternative — never
-using WAL for a library — was rejected below.
+a library is being browsed and scanned. The alternative — never using WAL for a
+library — was rejected below.
+
+**It is always recoverable and never loses data.** An abandoned `-wal` is
+replayed by the next server to open the library, which is ordinary SQLite crash
+recovery; what is lost is only the ability to open the library from a machine
+reaching it over a share. Restarting the crashed server and stopping it cleanly
+converts the file back, and that machine has local access by definition. So the
+design minimises and *explains* the window rather than pretending it away:
+decision 5 makes the failure legible instead of a 500 and names the command,
+decision 6 covers the marginal cases, and `docs/deployment.md` carries the
+procedure.
 
 There is no automatic detection of "this library is also reached over SMB". The
 server serving it locally cannot see the other machine's mount, exactly as
