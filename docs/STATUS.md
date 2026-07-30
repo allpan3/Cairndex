@@ -143,7 +143,7 @@ the cleanup now go through a root container, so they mean the same thing on both
 platforms, and `docs/deployment.md` states the ownership consequence, which
 affects host-side backups on a NAS.
 
-**CI is green on the whole matrix** at `d45f836` (2026-07-30, dispatched by hand
+**CI is green on the whole matrix** (2026-07-30, dispatched by hand
 — note that `ci.yml` runs on push only for `main`, so a branch push starts
 nothing). The Docker job reaches `SMOKE OK` on `ubuntu-latest`, which is the
 deployment's own architecture and OS: the image starts under the read-only root
@@ -199,9 +199,32 @@ exercised directly.
 
 Cheap to do only because nothing was deployed yet: `/storage/media` appeared in
 no server or web code, purely in compose files, the smoke test, the entrypoint
-default and docs. After a deployment it would have meant re-registering every
-library. ADR-0005 mentions the old path once and was deliberately left alone —
+default and docs.
+
+That "nothing was deployed" was not quite true, and the owner found the hole by
+opening the dev stack: its registry lives in a volume that survives rebuilds, so
+it still held a library at `/storage/media` and the app reported it unavailable.
+The reasoning about re-pathing was written into the docs for other people's
+deployments in the same commit that broke a running one here — the failure was
+applying it outward and not to the machine in front of me. Recovery is what the
+docs already said: the library package is path-independent, so deregistering the
+orphan and registering the new path restored it whole. CHANGELOG now carries the
+upgrade note. ADR-0005 mentions the old path once and was deliberately left alone —
 it records what was decided then.
+
+**Verified at the branch tip** (2026-07-30): CI green on all seven
+jobs, dispatched by hand. The Docker job reaches `SMOKE OK` including the new
+`runs as an arbitrary uid` step, so the image is proven to start under a foreign
+uid with a bind-mounted `/data` and write a package its invoker can read. The
+containerized dev stack was run end to end on the Mac after the rename —
+registered the library at `/libraries/main`, scanned it into bundles with
+covers (so ffmpeg and ffprobe work in the dev image), confirmed the backend
+reloads on a source edit, and stopped with `down` so the lease was released.
+
+**And it is deployed.** The owner has the production image running on their NAS
+under a `user:` override with a bind-mounted `/data` — which demonstrated the
+arbitrary-uid path in real use before CI had a test for it. Scan, probe and
+storyboard jobs all ran against a real library.
 
 **Untested here: the publish workflow.** It parses and its actions are pinned,
 but it has never run — dispatching it publishes a real package under the owner's
