@@ -152,6 +152,37 @@ test('renaming a file sends the new name and offers to undo it', async () => {
   expect(undo).toHaveBeenCalledWith('op-1', expect.anything())
 })
 
+test('a rename box opens focused with the stem selected, and re-asserts it', async () => {
+  // Renaming rarely retypes the type. Asserting the selection once on focus was
+  // not enough: WebKit can settle its own double-click selection on the newly
+  // focused input afterwards, which selected the extension in the desktop shell
+  // and not in a browser (owner report, 2026-07-30). So it is asserted again on
+  // the next frame — the property tested here is that a later frame does not
+  // undo it.
+  renderBrowser()
+
+  fireEvent.contextMenu(row('ep1.mkv'))
+  fireEvent.click(screen.getByText('Rename…'))
+
+  const field = screen.getByLabelText('Rename ep1.mkv') as HTMLInputElement
+  expect(document.activeElement).toBe(field)
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, 'ep1'.length])
+
+  // Whatever the engine did in between, the stem is still what is selected.
+  field.setSelectionRange(0, field.value.length)
+  await waitFor(() => expect(field.selectionEnd).toBe('ep1'.length))
+})
+
+test('a name with no extension is selected whole', () => {
+  renderBrowser()
+
+  fireEvent.contextMenu(row('Season 1'))
+  fireEvent.click(screen.getByText('Rename…'))
+
+  const field = screen.getByLabelText('Rename Season 1') as HTMLInputElement
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, 'Season 1'.length])
+})
+
 test('Escape abandons a rename without sending anything', () => {
   renderBrowser()
 
