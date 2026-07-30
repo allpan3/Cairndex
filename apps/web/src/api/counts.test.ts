@@ -6,8 +6,8 @@ import {
   collectionCountDeltas,
   countingCollectionIds,
   emptyMembershipDelta,
+  directMembershipDeltas,
   nextMembership,
-  tagCountDeltas,
 } from './counts'
 
 function collection(id: string, parentId: string | null = null): CollectionRead {
@@ -100,8 +100,10 @@ test('Uncategorized moves only when the last membership goes or the first arrive
   ).toBe(-2)
 })
 
-test('tag counts are direct membership, so no ancestor arithmetic', () => {
-  expect(Object.fromEntries(tagCountDeltas([{ before: ['a'], after: ['b', 'c'] }]))).toEqual({
+test('direct membership counts (tags, a collection own bundles) skip the ancestor walk', () => {
+  expect(
+    Object.fromEntries(directMembershipDeltas([{ before: ['a'], after: ['b', 'c'] }])),
+  ).toEqual({
     a: -1,
     b: 1,
     c: 1,
