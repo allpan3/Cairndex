@@ -8,7 +8,47 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ## [Unreleased]
 
+### Added
+
+- **Any running job can now be stopped from the sidebar.** Scan, metadata,
+  thumbnails and storyboards all show a stop control on the row they are running
+  on. The server could already cancel a job; nothing in the app ever asked it
+  to, so a run you no longer wanted had to be waited out or the server killed.
+  Stopping is prompt rather than eventual: a job spending minutes inside a
+  single ffmpeg call — one storyboard file over a network share is about half a
+  minute — stops there instead of at the next checkpoint behind it.
+
 ### Fixed
+
+- **A job whose server stopped mid-run stayed "running" forever.** Restarting
+  the server — or a dev-mode reload — left the row in the sidebar as work in
+  progress that had died an hour earlier, and it could not be dismissed:
+  cancelling it did nothing because nothing was alive to notice, and it did not
+  even stop a re-run from queueing a second copy. Those rows are now closed out
+  as interrupted when the server starts, which is the moment it is knowable.
+  Re-running is safe and cheap — every library-wide job skips work that is
+  already current.
+- **Waiting looked exactly like working.** A queued job rendered the same moving
+  bar as a running one, so pressing Update twice gave two identical rows with no
+  way to tell which was live. A queued job now says it is waiting, with a still
+  bar; a job that has been asked to stop says that instead.
+- **Cancelling a queued job left it queued.** It was flagged and then started
+  anyway when a worker got to it. It ends immediately instead — nothing was
+  running it to notice the flag.
+- **An interrupted storyboard pass left its scratch directory behind.** Cleanup
+  ran on the failure path, and a stop is not a failure, so every killed run
+  leaked one. Cleanup moved to where it always happens, and a library pass now
+  sweeps whatever earlier interruptions left.
+- **A cancelled job stayed on screen until the page was refreshed**, reading as
+  though the stop had not taken. The server had already dropped it; the app was
+  holding the last snapshot on purpose, which is right for a *failure* — nobody
+  asked for it, and that row carries the only account of it — and wrong for a
+  stop someone requested. Failures still stay.
+- **A maintenance error was reported at the top of the sidebar**, under the
+  button that started the work, while the job it referred to was reported at the
+  bottom with the transfer indicator. It now sits with the job rows: the message
+  outlives the button, since a storyboard pass reports long after Update says it
+  is done.
 
 - **Collection counts now move with the drop.** Dragging a bundle into a
   collection left every number beside the collections on its old value until a
