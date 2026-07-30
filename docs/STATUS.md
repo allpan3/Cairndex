@@ -9,11 +9,11 @@
 > individual commits never entered `main` and have no counterpart. They are left as
 > written; each is labelled with its subject, which is what the record needs.
 >
-> **In progress (2026-07-30):** one owner-requested branch is open and unreviewed —
-> `chore/docker-dev-and-deploy`, which has its own status entry. It is **rebased
-> onto current `main`** and gate-green; what it still needs is the owner's own
-> test, since the parts that matter (a real NAS, the amd64 image) cannot be
-> exercised from here. Half-star ratings are **merged**. The grouping
+> **Merged and released (2026-07-30):** `chore/docker-dev-and-deploy` is
+> **merged** (PR #1) and cut as **v0.1.1** — the Docker path is now how Cairndex
+> is deployed, with a published image at `ghcr.io/allpan3/cairndex` and the
+> owner's NAS running it against a real library. Half-star ratings are
+> **merged**. The grouping
 > round-trip work is merged too, but was never reproduced against the owner's
 > reported 30-second stall; if it recurs, that entry records what was and was not
 > measured.
