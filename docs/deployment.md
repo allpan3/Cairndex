@@ -18,15 +18,24 @@ the app runs in production.
 
 One hardened container serves the API and the built frontend on port `8000`.
 
-**The server pulls a published image.** [`deploy/`](../deploy/) holds the two
-files it needs — a compose file and an env file — and
-[`deploy/README.md`](../deploy/README.md) is the runbook: install, permissions,
-updating, backups. Nothing else goes on the box: no checkout, no build
-toolchain, no source.
+**The server pulls a published image.**
+[`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole
+deployment — every setting carries a working default, so it needs no `.env`
+beside it and can be pasted straight into a NAS Docker UI's Project / Stack /
+Compose section, which is how most of these boxes are administered.
+[`deploy/README.md`](../deploy/README.md) is the runbook: install both ways,
+permissions, updating, backups. Nothing else goes on the box — no checkout, no
+build toolchain, no source.
 
 ```bash
-docker compose up -d          # in a directory holding deploy/docker-compose.yml and .env
+docker compose up -d          # or start the project from the NAS UI
 ```
+
+Note that the image will **not** appear in a NAS Docker app's image-search tab.
+Those search Docker Hub; this image is on GHCR. Pulling it by full name in a
+compose file is unaffected — the search index and the pull are unrelated
+mechanisms — and a Project created from the compose file is managed by the UI
+exactly like one created from a search result.
 
 **Building from source is the fallback**, for running an unreleased branch or a
 change you have not published. The compose file at the repository root builds

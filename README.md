@@ -218,23 +218,21 @@ each build re-registers the build-directory bundle. See
 ## Quickstart (Docker)
 
 **Self-hosting on a NAS or server** — one hardened container serving the API and
-the built web app, pulled from GitHub Container Registry:
+the built web app, pulled from GitHub Container Registry.
 
-```bash
-curl -O https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/docker-compose.yml
-```
-
-```bash
-curl -o .env https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/.env.example
-```
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) is the whole
+deployment: every setting has a working default, so it runs as-is once you point
+it at your library. Paste it into your NAS's **Project** / **Stack** / **Compose**
+section (Synology, UGREEN, QNAP, TrueNAS all have one) and manage it from there
+with logs and stats, or run it from a shell:
 
 ```bash
 docker compose up -d
 ```
 
-Set `MEDIA_HOST_PATH` in `.env` to your library first — it is required, and the
-directory must be writable by uid 10001, the container's non-root user. Do not
-expose this directly to the public internet; reach it over a LAN or Tailscale.
+The library directory must be writable by uid 10001, the container's non-root
+user. Do not expose this to the public internet — there is no authentication
+yet; reach it over your LAN or Tailscale.
 [deploy/README.md](deploy/README.md) is the runbook (permissions, updating,
 backups); [docs/deployment.md](docs/deployment.md) has the reasoning, the full
 environment table, and how to build the image yourself instead of pulling it.

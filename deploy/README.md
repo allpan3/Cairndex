@@ -1,17 +1,43 @@
 # Deploying Cairndex to a server
 
-Everything a NAS or home server needs to run Cairndex: a compose file and an
-env file. No checkout of this repository, no build toolchain, no source on the
-box — the image is pulled from GitHub Container Registry.
+Everything a NAS or home server needs to run Cairndex is
+[`docker-compose.yml`](docker-compose.yml) — one file. No checkout of this
+repository, no build toolchain, no source on the box: the image is pulled from
+GitHub Container Registry.
 
-For the reasoning behind any of it — the hardening, the ownership lease, backups,
-remote access — see [`docs/deployment.md`](../docs/deployment.md). This page is
-the runbook.
+Every setting has a working default written into that file, so it runs as-is
+once you edit the library path. That is deliberate: a NAS Docker UI that takes
+a pasted or uploaded compose file has nowhere to put an `.env`, and a compose
+file that only works beside one is a compose file that only works from a shell.
 
-> **No authentication yet** (`AGENTS.md` §12). Do not put Cairndex on the public
-> internet. A LAN, a VPN, or Tailscale is the intended reach.
+For the reasoning behind any of it — the hardening, the ownership lease,
+backups, remote access — see [`docs/deployment.md`](../docs/deployment.md). This
+page is the runbook.
 
-## Install
+> **No authentication yet** (`AGENTS.md` §12). Anyone who can reach the port can
+> use it. The compose file binds your LAN, which is the intended reach; do not
+> port-forward it. For access from outside, use Tailscale or a VPN.
+
+## Install — through your NAS's Docker UI
+
+Synology, UGREEN, QNAP and TrueNAS all have a **Project** / **Stack** /
+**Compose** section that takes a compose file and then manages the result like
+any other container, with logs and stats in the UI. That is the path to use if
+you would rather not administer this from a shell.
+
+1. Make a folder for it on the NAS, e.g. `docker/cairndex`.
+2. Create a **Project** (UGREEN and Synology call it that; QNAP calls it an
+   Application, TrueNAS a Custom App with YAML) pointed at that folder, and
+   paste in [`docker-compose.yml`](docker-compose.yml).
+3. Edit the two lines the file marks: the library path, and the machine name.
+4. Start it.
+
+The image is public, so no registry login is needed. It will **not** appear in
+the Docker app's image-search tab — that tab searches Docker Hub, and this image
+is on GitHub Container Registry. Pulling it by its full name in a compose file
+works regardless; the search index and the pull are unrelated.
+
+## Install — from a shell
 
 ```bash
 mkdir -p /volume1/docker/cairndex && cd /volume1/docker/cairndex
@@ -21,20 +47,21 @@ mkdir -p /volume1/docker/cairndex && cd /volume1/docker/cairndex
 curl -O https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/docker-compose.yml
 ```
 
-```bash
-curl -o .env https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/.env.example
-```
-
-Edit `.env`. `MEDIA_HOST_PATH` is the only required value; compose refuses to
-start without it rather than inventing an empty `./media`.
+Edit the library path in it, or put an `.env` beside it — see
+[`.env.example`](.env.example), which is optional and overrides the file's
+defaults.
 
 ```bash
 docker compose up -d
 ```
 
-Then open the bound address (`http://<host>:8000` by default), create or
-register the library at `/storage/media` in the app's library manager, and run
-**Update** to scan it.
+## First run
+
+Open `http://<nas>:8000`, create or register the library at `/storage/media` in
+the app's library manager, and run **Update** to scan it.
+
+The path you register is the one *inside* the container — `/storage/media` —
+not the host path you put in the compose file.
 
 ## Permissions — read this before the first run
 
