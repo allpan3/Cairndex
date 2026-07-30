@@ -734,6 +734,13 @@ export const enqueueStoryboards = () => send<JobRead>(`${lib()}/jobs/storyboards
 export const fetchJob = (id: string, signal?: AbortSignal) =>
   getJson<JobRead>(`/api/v1/jobs/${id}`, signal)
 
+/** Ask a running or queued job to stop.
+ *
+ * A queued job ends immediately — nothing is running it. A running one stops at
+ * its next checkpoint, or sooner: long external work watches the same flag.
+ */
+export const cancelJob = (id: string) => send<JobRead>(`/api/v1/jobs/${id}/cancel`, 'POST')
+
 /** Jobs running or waiting for a library, oldest first.
  *
  * What a freshly loaded page asks to find work already in progress: job

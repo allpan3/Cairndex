@@ -80,6 +80,7 @@ export interface SidebarProps {
   generatingStoryboards?: boolean
   onReviewGrouping: () => void
   activeJobs?: JobRead[]
+  onCancelJob?: (jobId: string) => void
   maintenanceError?: string | null
   selection: Selection
   onSelect: (selection: Selection) => void
@@ -191,6 +192,7 @@ export function Sidebar({
   generatingStoryboards,
   onReviewGrouping,
   activeJobs = [],
+  onCancelJob,
   maintenanceError,
   selection,
   onSelect,
@@ -538,12 +540,6 @@ export function Sidebar({
         </div>
       </div>
 
-      {activeJobs.length === 0 && maintenanceError && (
-        <div className="sidebar__job-error" role="alert">
-          {maintenanceError}
-        </div>
-      )}
-
       <div className="sidebar__modes" role="tablist" aria-label="Browsing surface">
         <button
           role="tab"
@@ -770,8 +766,17 @@ export function Sidebar({
         {activeJobs.length > 0 && (
           <div className="sidebar__job-progress">
             {activeJobs.map((job) => (
-              <JobProgress key={job.id} job={job} />
+              <JobProgress key={job.id} job={job} onCancel={onCancelJob} />
             ))}
+          </div>
+        )}
+        {/* Docked with the job rows, not under the buttons that started the
+            work: the message outlives the button (a storyboard pass reports
+            long after Update is done), and "what is happening" and "what went
+            wrong" reading as one place beats two. */}
+        {activeJobs.length === 0 && maintenanceError && (
+          <div className="sidebar__job-error" role="alert">
+            {maintenanceError}
           </div>
         )}
         {footer}

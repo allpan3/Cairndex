@@ -749,6 +749,27 @@ immediately, while `checkpoint(...)` throttles the registry progress write
 cancellation is still polled every checkpoint. Stored errors are redacted
 (`jobs/errors.py`) to keep private filenames/paths out of the API/UI.
 
+Stopping a job takes three paths, because a checkpoint is not always close
+enough to be the answer. A **queued** job is closed out where it is cancelled —
+nothing is running it, so flagging it and leaving it queued would only let a
+worker start work already refused. A **running** job sees the flag at its next
+checkpoint. Work that spends minutes inside a single external call sees it
+sooner: `core/abort` holds a cooperative abort signal in a context variable, the
+worker binds it to the job for the duration of the handler, and `run_ffmpeg`
+waits in short slices so it can stop the process where it stands rather than a
+whole file later. `OperationAborted` sits deliberately outside the error types
+callers treat as a failed derivative, so a stop is recorded as CANCELLED rather
+than as work that failed — and a handler building into a temp directory must
+clean up in a `finally`, since a stop does not pass through its failure path.
+
+A job whose process dies leaves its row RUNNING with nobody left to finish it.
+The registry is server-local and its worker runs in-process, so any RUNNING row
+a worker finds while taking over the queue is by definition abandoned; it closes
+them out as FAILED ("interrupted"). That is what stops a dead job occupying the
+sidebar forever, absorbing cancels no one observes, and blocking the dedupe that
+matches QUEUED. Recovery is a rerun: the library-wide jobs all skip work that is
+already current, so it costs only what was lost.
+
 The worker is intentionally single-process/single-worker for the SQLite MVP.
 Scaling should start with profiling, better scheduling, and bounded concurrency,
 not Redis/Celery.

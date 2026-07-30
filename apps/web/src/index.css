@@ -4221,7 +4221,9 @@ code {
   background: var(--bg-2);
 }
 .sidebar__job-error {
-  margin: 0 12px 8px;
+  /* Sits inside the sidebar foot beside the job rows, so it carries their
+     padding rather than the standalone margin it had further up the panel. */
+  margin: 8px 12px;
   padding: 6px 8px;
   border: 1px solid var(--error);
   border-radius: 6px;
@@ -4252,6 +4254,28 @@ code {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
 }
+.job-progress__cancel {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: -2px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.job-progress__cancel:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.job-progress__cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 .job-progress__track {
   position: relative;
   height: 4px;
@@ -4268,6 +4292,12 @@ code {
 .job-progress__track--indeterminate .job-progress__bar {
   width: 40%;
   animation: job-progress-indeterminate 1.1s ease-in-out infinite;
+}
+/* Waiting has no progress to show, so the track stays an empty channel rather
+   than borrowing the animation that means "working". */
+.job-progress__track--waiting .job-progress__bar {
+  width: 0;
+  animation: none;
 }
 .job-progress__track--error .job-progress__bar {
   background: var(--error);
