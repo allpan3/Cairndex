@@ -90,18 +90,99 @@ the input unchanged for the multipart case). Collection → bundle collapses eve
 descendant back, so the override is reversible. Additions are refused in both
 directions: their files join a bundle that already exists.
 
-**Owner feedback round (2026-07-29), all applied:** the conversion control is
-now a compact split/merge icon button (matching the destination toggle) instead
-of "To collection"/"To bundle" text; Narrow/Widen are compact too — inward /
-outward chevron icon buttons with the mode as a small label between them
-(aria-labels unchanged, so every test kept passing); the "single file on its
-own" and "Split/Merged because you…" reason texts are gone (the first restated
-the visible row, the second explained the owner's own action back to them); and
-the in-place stem-modes endpoint above replaced the full regeneration.
+**Owner feedback rounds (2026-07-29), all applied.** First round: the conversion
+control became a compact split/merge icon button (matching the destination
+toggle) instead of "To collection"/"To bundle" text; Narrow/Widen became
+inward/outward chevron icon buttons; the "single file on its own" and
+"Split/Merged because you…" reason texts went (the first restated the visible
+row, the second explained the owner's own action back to them); and the in-place
+stem-modes endpoint above replaced full regeneration.
+
+Second round, on the review dialog's density and vocabulary:
+
+- **The mode word between the chevrons is gone.** The tooltips name the current
+  mode instead, and the buttons already disable at the ends of the scale.
+- **Collection rows carry no reason.** Three `_container_proposal` call sites
+  had each grown their own phrasing for the same fact — "holds 2 sub-item(s)",
+  "3 unrelated files", "2 filename-matched bundle(s) from 4 files" — so
+  identical-looking rows read differently depending on which branch produced
+  them, which is the inconsistency the owner spotted. Bundle reasons stay:
+  "3 parts of one video" says something the row does not.
+- **The intro is a one-line lead plus three short points**, down from a
+  nine-line paragraph that documented every affordance above the thing the owner
+  opened the dialog to read. Each control carries its own tooltip now, so only
+  the non-obvious remains: scope, what Accept does, and the disk guarantee.
+- **File rows show the media kind, not the guessed role.** They read
+  `video part` / `alt version` / `cover` / `derivative` — the suggester's
+  filename guesses, which `lib/format.ts` had already decided not to surface in
+  the inspector for exactly this reason ("showing a guess as a label invited it
+  to be read as a fact"). The review dialog now routes through `formatFileRole`
+  and speaks the same video / image / subtitle vocabulary.
+
+**Fourth round — presentation, plus one substantive naming fix.**
+
+- **Bundle titles now come from the shared filename part** (`_shared_stem_title`).
+  `_bundle_proposal` used `_stem(files[0])`, so a prefix-matched group of four was
+  titled after one member — with that member's tail attached, which read as a
+  claim about the whole bundle. Computed on the *raw* stems so the owner's
+  delimiters and casing survive, then trimmed back to a delimiter so it never
+  ends mid-token (a pair of dates yields `…19.12`, not `…19.12.2`). Multipart
+  gains too: `Trip.part1` → `Trip`. Folder-owning bundles and single subjects are
+  unchanged, which is what the `videos if len(videos) > 1 else …` guard protects.
+- **Panel widened to 1100px** and the wrap misalignment fixed: `.grp-row` was
+  `align-items: center`, so a wrapped row floated its checkbox, handle and glyph
+  to the vertical middle, detached from the title. Now `flex-start` with 1–2px
+  offsets to centre each in the title's 18px line box, and `.grp-row__content`
+  aligns to `baseline` so a wrapped second line lines up with its own text.
+- **Narrow/Widen tooltips rewritten** to name the folder and drop the "stem
+  matching" jargon. The owner asked what the control applies to — bundles or
+  collections — and the honest answer is *neither*: it belongs to a **folder**,
+  one pair per folder (`stemControlOwners`), attached to whichever row speaks for
+  it. That is a collection row when the folder became a collection and a bundle
+  row when it became one bundle, which is exactly why it looked like two
+  different controls. The aria-labels are unchanged, so the tests still pin them.
+
+**A third round found the nesting bug.** Owner screenshot: five collections deep,
+each named `StudioBeta.E003.Lead`, each holding one bundle of the same name. Cause
+was in `split_for_collection`'s `len(videos) < 2` branch, which returned one group
+*per file*. For a one-file bundle that is a single group, so converting wrapped it
+in a collection of one identical bundle — and the child was convertible in turn,
+so every click added a layer. It was also wrong for one video plus sidecars: it
+would have put a subtitle in a bundle of its own.
+
+Split into the two cases it was conflating. **No videos** divides per file (a
+photo dump — the one place per-file is right). **Exactly one video** is one
+subject however many sidecars it has, so it returns a single group. And
+`_bundle_to_container` now refuses any split of fewer than two groups: a
+collection of one identical bundle adds no structure. The client hides the
+control on such a row (`canBecomeCollection`, mirroring the server, which stays
+the authority), so the refusal is a backstop rather than the normal path.
+
+Verified against the reported shape: converting `Western/StudioBeta.E003.Lead`
+(one video) returns 422 "holds a single item, so there is nothing to divide";
+merging a two-video folder and dividing it again round-trips 200/200.
+
+**And one bug the first symptom was hiding.** The owner reported that a
+collection turned into a bundle "gets widening and narrowing buttons, and when
+you change it back they stay". Reproduced, then traced: `bundleDirectories` read
+`proposal.directory`, but merging a collection whose bundles live in subfolders
+(`Show/A`, `Show/B`) leaves one row whose `directory` is the *parent* `Show` — a
+folder with no direct media. So the row was offered a stem control, and
+**using it deleted the row while the suggester produced nothing for `Show`, so
+both files dropped out of the plan entirely** (verified against the API: rows
+went to `[]`, files unproposed). Two fixes: the client derives a row's folders
+from its *files' paths*, so a cross-folder row gets no control; and the server
+refuses any splice that would drop a file rather than performing it — the
+general invariant, which is what caught that the first guard ("refuse when the
+directory yields nothing") was too narrow, since the suggester *does* still
+propose a bare container for `Show`.
 
 **Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
-(848 passed); web `lint`, `format:check`, `typecheck`, `test` (465 passed),
-`build`.
+(855 passed); web `lint`, `format:check`, `typecheck`, `test` (466 passed),
+`build`. Two existing tests needed correcting rather than the code: one asserted
+a container reason that is now deliberately absent, and one stem-control fixture
+had file paths that disagreed with its own `directory` — which the new
+file-derived rule correctly reads as a hand-merged row.
 
 **Verified in a browser against a real backend**, on a library seeded with
 `Trip/` (three parts + three subtitles), `Duo/` (two subjects Widen merges),
