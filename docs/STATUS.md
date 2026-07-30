@@ -48,20 +48,45 @@ behaviour bugs with a data or filesystem edge, three are interaction faults; one
 latent bug turned up while tracing another.
 
 **1. A renamed file kept its old name inside its bundle.** Reported as "renamed
-in file browser, but going back to bundle browser the file name is still old".
-Reproduced against a live backend, then traced: `repoint_linked_rows` moved
-`relative_path` and left `display_title` — the field every bundle surface
-actually renders (`Inspector`, `BundleAlbum`, the viewer's file list). So the
-File Browser, which reads the listing, showed the new name while the bundle showed
-the old one. The title now follows a rename, but **only when it still is the old
-basename**: it is owner-editable via `PATCH …/files/{id}`, so a deliberately
-chosen title is not the filename's to overwrite. `original_filename` deliberately
-does not move — it records the name at import. The fix is in the helper the
-reconciler shares, so an externally detected rename gets the same treatment.
+in file browser, but going back to bundle browser the file name is still old",
+then reported **still wrong** after the first fix, naming a specific
+`SET-0251.webp`. The second report was right, and the first fix was incomplete:
+`display_title` — the field every bundle surface renders (`Inspector`,
+`BundleAlbum`, the viewer's file list) — is left behind by **three** different
+paths that repoint a row, and only one had been fixed.
 
-*Known gap:* rows renamed **before** this fix keep their stale title. Nothing
-backfills them — there is no migration chain (ADR-0008), and the field is
-cosmetic. Renaming such a file again corrects it.
+| Path | When it runs | First fix |
+| --- | --- | --- |
+| `file_ops.operations.repoint_linked_rows` | a rename or move Cairndex performs | covered |
+| `scanning.scanner` move-repair pass | a rename made **outside** Cairndex, found by a scan | missed |
+| `scanning.repair.repair_file` | a missing file the owner repairs by hand | missed |
+
+The rule now lives once, in `domain.file_names.display_title_after_move`, and all
+three call it: the shown name follows the file **only while it still is the old
+basename**, since it is owner-editable via `PATCH …/files/{file_id}` and a chosen
+title is not the filename's to overwrite. `original_filename` never moves in the
+first path — it records the name at import — though the scanner's repair pass has
+always updated it, which is left as it was.
+
+Lesson worth keeping: the first fix was made at the one call site the reported
+symptom pointed at, without asking what *else* writes that column. `grep` for
+every writer of the field, not for the path in the report.
+
+**Existing rows are healed by the next scan.** A forward fix cannot reach rows
+already wrong, and there is no migration chain (ADR-0008), so
+`_heal_titles_left_behind_by_an_old_rename` runs in the scan — already the pass
+that makes the database agree with the disk. It corrects only a **provably** stale
+title: one that still equals `original_filename` while the basename has moved on,
+which is the signature of the first path's bug, since a rename recorded the new
+name in neither field.
+
+It is deliberately narrower than "any title that differs from its basename". Once
+the *scanner's* repair path had left a title behind, `original_filename` was
+already the new name — which makes that row indistinguishable from a deliberately
+chosen title, so it is not guessed at. Those correct themselves the next time the
+file is renamed. Verified on real stale data: a row left by the actual pre-fix
+code went from `Alpha.Show.S01.part1.mp4` to `RENAMED.part1.mp4` on one scan,
+with `original_filename` and every other row untouched.
 
 **2. A drop onto a bundle landed in the library root.** `dropFilesOnBundle`
 passed `destDir: ''`, so the copy was linked into the bundle correctly but filed
@@ -113,25 +138,29 @@ cannot be driven from here, so this is a reasoned fix rather than a reproduced
 one.
 
 **Gates run:** backend `ruff format --check`, `ruff check`, `mypy src packaging`,
-`pytest` (863 passed, +3); web `lint`, `format:check`, `typecheck`, `test` (476
+`pytest` (867 passed, +7); web `lint`, `format:check`, `typecheck`, `test` (476
 passed, +7), `build`; `test:e2e:frontend` (93 passed, +2, and the same 1
 pre-existing HLS re-attach failure recorded under PR #40 — it fails on clean
 `main` and is untouched here). Desktop gates not run locally: no Rust or
 `apps/desktop` file changed.
 
 Each fix has a test that was **confirmed to fail without it**: the `display_title`
-carry, the pointer-capture guard, `isStageSurface` accepting the image stage, the
-toast column (measured in Playwright — same centre axis, 8px stack gap), the
-next-frame selection re-assert, and the drop picker's default folder. Two further
-tests pin boundaries rather than the bug: a chosen title is left alone, and a
-directory rename does not touch titles beneath it.
+carry in all three repoint paths, the scan-time healing of an old one, the
+pointer-capture guard, `isStageSurface` accepting the image stage, the toast
+column (measured in Playwright — same centre axis, 8px stack gap), the next-frame
+selection re-assert, and the drop picker's default folder. Four further tests pin
+boundaries rather than a bug: a chosen title survives a Cairndex rename, a
+scan-found rename and a scan's healing pass, and a directory rename does not touch
+the titles beneath it.
 
 **Verified against a live backend** on a generated library (`Studios/Alpha` with
-two parts, a cover and a subtitle; `Studios/Beta`; `Photos`): renaming through
-the API and reading both surfaces showed `SecondPart.mp4` in the bundle inspector
-and the File Browser together, with `original_filename` still
-`Alpha.Show.S01.part2.mp4` — and a row renamed before the fix visibly kept its
-stale title, which is the known gap above.
+two parts, a cover and a subtitle; `Studios/Beta`; `Photos`): renaming through the
+API and reading both surfaces showed `SecondPart.mp4` in the bundle inspector and
+the File Browser together, with `original_filename` still
+`Alpha.Show.S01.part2.mp4`. The healing pass was then verified on the row the
+*actual* pre-fix code had left stale in that same library — one scan took it from
+`Alpha.Show.S01.part1.mp4` to `RENAMED.part1.mp4`, leaving `original_filename` and
+the three other rows alone.
 
 ## Merged: grouping review state and collection conversion (PR #40, 2026-07-29)
 

@@ -18,6 +18,7 @@ from cairndex.core.errors import ConflictError, NotFoundError
 from cairndex.core.paths import PathSafetyError, resolve_within_root
 from cairndex.core.time import utcnow
 from cairndex.domain.enums import FileAvailability
+from cairndex.domain.file_names import display_title_after_move
 from cairndex.grouping.membership import reap_source_bundles
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import (
@@ -226,6 +227,13 @@ def repair_file(
     session.delete(replacement)
     session.flush()
 
+    # Same rule as every other repoint: the shown name follows the file unless it
+    # is a title someone chose (owner report, 2026-07-30).
+    missing.display_title = display_title_after_move(
+        display_title=missing.display_title,
+        old_path=missing.relative_path,
+        new_path=replacement.relative_path,
+    )
     missing.relative_path = replacement.relative_path
     missing.original_filename = replacement.original_filename
     missing.mime_type = replacement.mime_type or missing.mime_type
