@@ -10,6 +10,33 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A renamed file kept its old name inside its bundle.** Renaming in the File
+  Browser moved the file and re-pointed its row, but the name a bundle *shows*
+  is stored separately — so the File Browser showed the new name while the
+  bundle's file list, the inspector and the viewer all still showed the old one:
+  the same file under two names. The shown name now follows a rename, unless it
+  is a title someone chose deliberately rather than the filename. The name the
+  file had when it entered the library is still recorded, unchanged.
+- **Dropping files onto a bundle copied them into the library root.** They were
+  linked into the bundle correctly but filed nowhere near its own files, leaving
+  a manual move to put right. A drop now asks where to put them, opening in the
+  folder the bundle's first file lives in — the answer nearly every time, with
+  any other folder one click away.
+- **Double-clicking an image zoomed instead of closing the viewer.** Double-click
+  closes the viewer, as it already did for video; on an image it cycled the fit
+  and stayed open, because panning captures the pointer and that redirects the
+  double-click away from the picture. Cycling fit moved to the zoom readout,
+  which is now a button. The same capture was also swallowing clicks on the
+  image background toggle, so that button did nothing at all — fixed with it.
+- **Viewer messages appeared in two different places.** "Building contact
+  sheet…" sat 64px above where "Resumed at …" sits, in a different shape, so two
+  messages about the same playback looked unrelated. They now share one anchor
+  and one frame, and stack when both are up.
+- **A rename box could select the file's extension.** The extension is left out
+  of the selection, since renaming a file almost never means retyping its type —
+  but asserting that once, as the box opened, was not enough in the desktop
+  shell, whose engine can apply its own double-click selection afterwards. It is
+  now re-asserted on the next frame.
 - **Turning a single-item bundle into a collection nested forever.** It produced
   a collection wrapping one identical bundle — and because that child was itself
   convertible, each click added another layer of collections with the same name
