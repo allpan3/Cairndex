@@ -73,6 +73,7 @@ import {
   fetchDevices,
   fetchActiveJobs,
   fetchJob,
+  cancelJob,
   lockLibrary,
   unlockLibrary,
   fetchGroupingPlan,
@@ -180,12 +181,27 @@ async function watchOptionalJob(
   onProgress?: JobProgressFn,
   onSuccess?: () => void,
 ): Promise<void> {
+  // A holder rather than a plain binding: the assignment happens inside the
+  // callback, which control-flow analysis cannot see, so a `let` stays narrowed
+  // to `null` and reading `.status` from it below is a type error.
+  const latest: { job: JobRead | null } = { job: null }
+  const track: JobProgressFn = (snapshot) => {
+    if (snapshot !== null) latest.job = snapshot
+    onProgress?.(snapshot)
+  }
   try {
-    await waitForJob(await job, onProgress)
+    await waitForJob(await job, track)
     onSuccess?.()
     onProgress?.(null)
   } catch {
-    // waitForJob already emitted the terminal failed/cancelled snapshot
+    // waitForJob already emitted the terminal failed/cancelled snapshot, and a
+    // *failure* should stay on screen: nobody asked for it and the message is
+    // the only record of it. A cancellation is the opposite — it happened
+    // because someone pressed stop, so leaving the row up reads as the stop not
+    // having worked. The server agrees: a cancelled job is terminal and drops
+    // straight out of the active list, so this local snapshot was the only
+    // thing still holding it there.
+    if (latest.job?.status === 'cancelled') onProgress?.(null)
   }
 }
 
@@ -647,6 +663,30 @@ export function useActiveJobs(libraryId: string | null) {
     refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 1000 : false),
     // A settled job should disappear promptly rather than linger for a refetch.
     refetchOnWindowFocus: true,
+  })
+}
+
+/** Ask one job to stop, and reflect it in the sidebar without waiting for a poll.
+ *
+ * The optimistic write is what makes the button feel like it did something: a
+ * running job takes until its next checkpoint to actually stop, and until the
+ * next poll lands the row would otherwise look untouched.
+ */
+export function useCancelJob() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (jobId: string) => cancelJob(jobId),
+    onMutate: async (jobId: string) => {
+      await qc.cancelQueries({ queryKey: ['active-jobs'] })
+      qc.setQueriesData<JobRead[]>({ queryKey: ['active-jobs'] }, (rows) =>
+        Array.isArray(rows)
+          ? rows.map((job) => (job.id === jobId ? { ...job, cancel_requested: true } : job))
+          : rows,
+      )
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ['active-jobs'] })
+    },
   })
 }
 

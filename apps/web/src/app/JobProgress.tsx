@@ -19,9 +19,19 @@ const JOB_LABELS: Record<string, string> = {
   storyboard: 'Storyboards',
 }
 
+function jobLabel(job: JobRead): string {
+  return JOB_LABELS[job.job_type] ?? 'Job'
+}
+
 function headline(job: JobRead): string {
-  if (job.status === 'failed') return `${JOB_LABELS[job.job_type] ?? 'Job'} failed`
-  if (job.status === 'cancelled') return `${JOB_LABELS[job.job_type] ?? 'Job'} cancelled`
+  if (job.status === 'failed') return `${jobLabel(job)} failed`
+  if (job.status === 'cancelled') return `${jobLabel(job)} cancelled`
+  // Both of these outrank the phase label, which describes the work rather than
+  // what is happening to it. A queued job carries no phase anyway — it used to
+  // fall through to the job name beside a *moving* bar, which is how waiting
+  // came to look exactly like running.
+  if (job.cancel_requested) return `Stopping ${jobLabel(job).toLowerCase()}…`
+  if (job.status === 'queued') return `${jobLabel(job)} — waiting`
   const phaseLabel = job.phase ? PHASE_LABELS[job.phase] : undefined
   if (phaseLabel) return phaseLabel
   if (job.message) return job.message
@@ -34,11 +44,23 @@ function headline(job: JobRead): string {
  * count. Terminal job failures can stay visible when a caller runs a job in the
  * background instead of failing its own mutation.
  */
-export function JobProgress({ job }: { job: JobRead | null }) {
+export function JobProgress({
+  job,
+  onCancel,
+}: {
+  job: JobRead | null
+  onCancel?: (jobId: string) => void
+}) {
   if (job === null) return null
 
   const hasTotal = job.total !== null && job.total > 0
   const pct = hasTotal ? Math.min(100, Math.round((job.processed / job.total!) * 100)) : null
+  const waiting = job.status === 'queued'
+  const stoppable =
+    onCancel !== undefined && !job.cancel_requested && (waiting || job.status === 'running')
+  // A queued job is not working, so its bar does not move. Only a running job
+  // with no count of its own gets the indeterminate animation.
+  const indeterminate = pct === null && !waiting
 
   return (
     <div className="job-progress" role="status" aria-live="polite">
@@ -49,9 +71,22 @@ export function JobProgress({ job }: { job: JobRead | null }) {
             {job.processed}/{job.total}
           </span>
         )}
+        {stoppable && (
+          <button
+            type="button"
+            className="job-progress__cancel"
+            onClick={() => onCancel(job.id)}
+            title={`Stop ${jobLabel(job).toLowerCase()}`}
+            aria-label={`Stop ${jobLabel(job).toLowerCase()}`}
+          >
+            ×
+          </button>
+        )}
       </div>
       <div
-        className={`job-progress__track${pct === null ? ' job-progress__track--indeterminate' : ''}${
+        className={`job-progress__track${indeterminate ? ' job-progress__track--indeterminate' : ''}${
+          waiting ? ' job-progress__track--waiting' : ''
+        }${
           job.status === 'failed' || job.status === 'cancelled' ? ' job-progress__track--error' : ''
         }`}
         role="progressbar"
