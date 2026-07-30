@@ -143,6 +143,93 @@ def test_same_path_edit_is_update_not_move(session: Session, library_root: Path)
     assert f.id == original_id and f.relative_path == "clip.mp4"
 
 
+def test_a_rename_found_by_scan_carries_the_shown_name(
+    session: Session, library_root: Path
+) -> None:
+    """A rename Cairndex did not perform still has to update the shown name.
+
+    ``display_title`` is what every bundle surface renders, so leaving it behind
+    showed the file under its old name inside its bundle while the File Browser
+    showed the new one — the owner's report, reaching the repair pass rather than
+    the rename operation (2026-07-30).
+    """
+    src = library_root / "SET-0251.webp"
+    src.write_text("image bytes")
+    scan_library(session, library_root)
+    original_id = _only_file(session).id
+
+    src.rename(library_root / "Catalogue 0251.webp")
+    summary = scan_library(session, library_root)
+
+    assert summary.repaired == 1
+    f = _only_file(session)
+    assert f.id == original_id
+    assert f.relative_path == "Catalogue 0251.webp"
+    assert f.display_title == "Catalogue 0251.webp"
+
+
+def test_a_scan_heals_a_title_an_old_rename_left_behind(
+    session: Session, library_root: Path
+) -> None:
+    """Rows already wrong before the fix are corrected by the next scan.
+
+    The fix to the rename paths cannot reach history, and the owner's library has
+    rows in exactly this state (report, 2026-07-30). The signature is a title that
+    still equals ``original_filename`` while the path has moved on.
+    """
+    path = library_root / "SET-0251.webp"
+    path.write_text("image bytes")
+    scan_library(session, library_root)
+
+    # Reproduce a pre-fix rename: path moved, both names left behind.
+    row = _only_file(session)
+    path.rename(library_root / "Catalogue 0251.webp")
+    row.relative_path = "Catalogue 0251.webp"
+    session.commit()
+    assert row.display_title == "SET-0251.webp"
+
+    scan_library(session, library_root)
+
+    session.refresh(row)
+    assert row.display_title == "Catalogue 0251.webp"
+    # The import name is history and stays as it was.
+    assert row.original_filename == "SET-0251.webp"
+
+
+def test_a_scan_does_not_guess_at_a_title_someone_chose(
+    session: Session, library_root: Path
+) -> None:
+    """A chosen title differs from ``original_filename``, so healing skips it."""
+    (library_root / "clip.mp4").write_text("bytes")
+    scan_library(session, library_root)
+    row = _only_file(session)
+    row.display_title = "Opening titles"
+    session.commit()
+
+    scan_library(session, library_root)
+
+    session.refresh(row)
+    assert row.display_title == "Opening titles"
+
+
+def test_a_rename_found_by_scan_leaves_a_chosen_title_alone(
+    session: Session, library_root: Path
+) -> None:
+    src = library_root / "clip.mp4"
+    src.write_text("bytes")
+    scan_library(session, library_root)
+    chosen = _only_file(session)
+    chosen.display_title = "Opening titles"
+    session.commit()
+
+    src.rename(library_root / "renamed.mp4")
+    scan_library(session, library_root)
+
+    f = _only_file(session)
+    assert f.relative_path == "renamed.mp4"
+    assert f.display_title == "Opening titles"
+
+
 def test_copy_does_not_merge_or_repair(session: Session, library_root: Path) -> None:
     src = library_root / "orig.mp4"
     src.write_text("content")
@@ -246,6 +333,9 @@ def test_explicit_repair_collapses_a_renamed_network_duplicate(
 
     assert repaired.id == original_id
     assert repaired.relative_path == new_path.name
+    # The name a bundle shows follows the repair too, or the healed row keeps the
+    # name of the path it no longer points at (owner report, 2026-07-30).
+    assert repaired.display_title == new_path.name
     assert repaired.availability == FileAvailability.AVAILABLE
     assert session.scalar(select(func.count()).select_from(AssetFile)) == 1
     assert session.get(AssetBundle, replacement_bundle_id) is None
