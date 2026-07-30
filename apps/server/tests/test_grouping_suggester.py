@@ -166,7 +166,10 @@ def test_multi_subject_folder_pairs_images_by_complete_filename_stem() -> None:
         for proposal in plan.proposals
         if proposal.kind is ProposalKind.CONTAINER and proposal.directory == "Western/Ada Larson"
     )
-    assert anna.reason == "2 filename-matched bundle(s) from 4 files"
+    # Collection suggestions carry no reason: the row already shows the bundles it
+    # holds, and the three call sites had each grown their own phrasing for it
+    # (owner-reported, 2026-07-29). Bundle reasons are still asserted above.
+    assert anna.reason == ""
 
 
 # One settled bundle no longer claims every new video subject in its directory
@@ -472,3 +475,100 @@ def test_suggest_for_session_excludes_confirmed_bundles(
     # The confirmed file is excluded; only the provisional "keep.mp4" is open.
     assert relative_paths == {""}
     assert len(suggested_files) == 1
+
+
+# --- Bundle titles come from the shared filename part ------------------------
+def test_prefix_grouped_bundle_is_titled_by_the_shared_stem() -> None:
+    """A bundle formed by matching a prefix must not be named after one member.
+
+    Reported with a real group of four: the title was
+    "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes", carrying
+    the first file's tail and implying the rest were behind-the-scenes clips.
+    """
+    files = [
+        _f(f"Scenes/{name}", MediaKind.VIDEO)
+        for name in (
+            "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes.mp4",
+            "StudioAlpha.19.12.20.Lead.Player.#2.Session.mp4",
+            "StudioAlpha.19.12.27.Lead.Player.#2.Guest.Player.mp4",
+            "StudioAlpha.19.12.27.Lead.Player.#2.Session.Interview.mp4",
+            # A second subject, so the four above are one bundle *among several*
+            # rather than filling the folder — a bundle that owns its folder is
+            # titled by the folder, which is not the reported case.
+            "SomethingElse.21.05.09.Other.Title.mp4",
+        )
+    ]
+
+    plan = suggest_grouping(files, stem_modes={"Scenes": StemMode.WIDE})
+    bundle = next(p for p in _bundles(plan.proposals) if len(p.files) == 4)
+    # The shared part, trimmed to a delimiter so it never ends mid-token.
+    assert bundle.title == "StudioAlpha.19.12"
+
+
+def test_multipart_bundle_drops_the_part_marker_from_its_title() -> None:
+    """The old rule titled a three-part video "Trip.part1"."""
+    files = [_f(f"Box/Trip/Trip.part{index}.mp4", MediaKind.VIDEO) for index in (1, 2, 3)]
+    files.append(_f("Box/Trip/extra.jpg", MediaKind.IMAGE))
+
+    plan = suggest_grouping(files)
+    trip = next(p for p in _bundles(plan.proposals) if len(p.files) == 4)
+    # Not "Trip.part1": the parts share "Trip.part", trimmed back to "Trip".
+    assert trip.title == "Trip"
+
+
+def test_single_subject_bundle_keeps_its_own_filename() -> None:
+    """One video with sidecars is titled by the video, not a shared fragment."""
+    files = [
+        _f("Box/cosmos.mp4", MediaKind.VIDEO),
+        _f("Box/cosmos.en.srt", MediaKind.SUBTITLE),
+        _f("Box/other.mp4", MediaKind.VIDEO),
+    ]
+
+    plan = suggest_grouping(files)
+    cosmos = next(p for p in _bundles(plan.proposals) if len(p.files) == 2)
+    assert cosmos.title == "cosmos"
+
+
+def test_addition_sits_inside_the_collection_its_folder_becomes() -> None:
+    """An addition belongs where its files live, like any other suggestion.
+
+    Reported: an "Add to …" row sat at the top level, outside the very collection
+    its own folder was being proposed as, reading as unrelated to its siblings.
+    """
+    confirmed = _f(
+        "Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.mp4",
+        MediaKind.VIDEO,
+        confirmed=True,
+        bundle_id="bundle-1",
+        bundle_title="StudioAlpha - Lead Player - #1",
+    )
+    # A sidecar for the confirmed bundle -> an addition to it.
+    addition = _f(
+        "Studios/StudioAlpha/StudioAlpha.19.12.20.Lead.Player.srt", MediaKind.SUBTITLE
+    )
+    # Two unrelated subjects in the same folder, so the folder is a collection.
+    others = [
+        _f("Studios/StudioAlpha/Alpha.Title.mp4", MediaKind.VIDEO),
+        _f("Studios/StudioAlpha/Beta.Title.mp4", MediaKind.VIDEO),
+    ]
+
+    plan = suggest_grouping([confirmed, addition, *others])
+
+    container = next(
+        p for p in _containers(plan.proposals) if p.directory == "Studios/StudioAlpha"
+    )
+    added = next(p for p in plan.proposals if p.target_bundle_id == "bundle-1")
+    assert added.parent_directory == container.directory
+
+
+def test_addition_with_no_enclosing_collection_stays_at_the_top_level() -> None:
+    """Nothing to nest inside, so the previous behaviour is still right."""
+    confirmed = _f(
+        "Solo/movie.mp4", MediaKind.VIDEO, confirmed=True, bundle_id="b", bundle_title="Movie"
+    )
+    addition = _f("Solo/movie.en.srt", MediaKind.SUBTITLE)
+
+    plan = suggest_grouping([confirmed, addition])
+
+    added = next(p for p in plan.proposals if p.target_bundle_id == "b")
+    assert added.parent_directory is None

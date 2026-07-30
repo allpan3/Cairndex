@@ -248,7 +248,10 @@ def _bundle_reason(files: list[FileObservation]) -> tuple[float, str]:
     videos = [f for f in files if f.media_kind is MediaKind.VIDEO]
     sidecars = len(files) - len(videos)
     if len(files) == 1:
-        return 0.5, "single file on its own"
+        # No reason text: "single file on its own" restates what the row already
+        # shows (one file), and a library of loose files repeats it hundreds of
+        # times (owner-reported noise, 2026-07-29).
+        return 0.5, ""
     if len(videos) == 1:
         return 0.9, f"one video with {sidecars} sidecar file(s)"
     if _is_multipart(videos):
@@ -337,6 +340,56 @@ def _bundle_groups(
     return groups
 
 
+def split_for_collection(media: list[FileObservation]) -> list[list[FileObservation]]:
+    """Split one bundle's files into per-subject bundles for a collection.
+
+    Used when the owner overrides the suggester and says a folder is a
+    *collection* rather than one bundle. Deliberately **not**
+    ``_bundle_groups(..., NARROW)``: that returns the whole folder as a single
+    group whenever the videos look like parts of one title
+    (``_is_multipart`` short-circuits ahead of the mode check), and a folder of
+    parts is precisely the shape this override exists to reject. Asking it to
+    split would return the input unchanged.
+
+    One group per video, with each non-video file attached to the video whose
+    stem it matches, so covers and subtitles follow their video instead of
+    becoming bundles of their own. A file matching nothing becomes its own
+    bundle, as it would in a normal suggestion.
+
+    May return a single group, which means *this cannot become a collection* —
+    there would be nothing to divide. Callers must check
+    (``plan_store._bundle_to_container`` refuses it). A folder holding one video
+    is one subject however many sidecars it has; splitting per file there would
+    put a subtitle in a bundle of its own, and wrapping the lot in a collection
+    of one identical bundle is the shape that let the owner nest collections
+    forever (owner-reported, 2026-07-30).
+    """
+    if not media:
+        return []
+    videos = sorted((f for f in media if f.media_kind is MediaKind.VIDEO), key=_obs_sort_key)
+    others = sorted((f for f in media if f.media_kind is not MediaKind.VIDEO), key=_obs_sort_key)
+    if len(videos) == 1:
+        return [sorted(media, key=_obs_sort_key)]
+    if not videos:
+        # No subject to centre a bundle on — a photo dump divides per file.
+        return [[f] for f in sorted(media, key=_obs_sort_key)]
+
+    groups = [[video] for video in videos]
+    stems = [_comparison_stem(video.relative_path, StemMode.NARROW) for video in videos]
+    unassigned: list[FileObservation] = []
+    for f in others:
+        stem = _comparison_stem(f.relative_path, StemMode.NARROW)
+        exact = [i for i, video_stem in enumerate(stems) if stem == video_stem]
+        prefix = [i for i, video_stem in enumerate(stems) if stem.startswith(f"{video_stem} ")]
+        matched = exact[0] if len(exact) == 1 else prefix[0] if len(prefix) == 1 else None
+        if matched is None:
+            unassigned.append(f)
+        else:
+            groups[matched].append(f)
+    groups.extend([f] for f in unassigned)
+    return groups
+
+
 # Stable ordering helper for file observations
 def _obs_sort_key(f: FileObservation) -> list[object]:
     """Sort observations by natural relative path order."""
@@ -406,6 +459,42 @@ def _role_for(f: FileObservation, multipart: bool, cover_id: str | None) -> File
 # --- proposal builders -------------------------------------------------------
 
 
+def _shared_stem_title(files: list[FileObservation]) -> str | None:
+    """The filename part these files have in common, or ``None`` if they have none.
+
+    A bundle formed by matching a prefix was titled after its *first* file, which
+    carried that one file's tail — so a group of four became
+    "StudioAlpha.19.12.20.Lead.Player.#2.Session.Behind.The.Scenes", naming the
+    bundle after one member and implying the rest are behind-the-scenes clips
+    (owner-reported, 2026-07-30). The shared part is what actually grouped them,
+    so it is what the bundle is called.
+
+    Computed on the raw stems rather than the normalized comparison forms, so the
+    title keeps the owner's own delimiters and casing, then trimmed back to a
+    delimiter so it never ends mid-token ("…19.12.2" from a pair of dates becomes
+    "…19.12").
+    """
+    stems = [_stem(file.relative_path) for file in files]
+    if len(stems) < 2:
+        return None
+    shared = stems[0]
+    for stem in stems[1:]:
+        limit = min(len(shared), len(stem))
+        index = 0
+        while index < limit and shared[index] == stem[index]:
+            index += 1
+        shared = shared[:index]
+        if not shared:
+            return None
+    # Drop a trailing partial token, and the delimiter run before it.
+    boundaries = list(_SUBJECT_DELIMITER.finditer(shared))
+    if boundaries and boundaries[-1].end() == len(shared):
+        shared = shared[: boundaries[-1].start()]  # ends on a delimiter run
+    elif boundaries:
+        shared = shared[: boundaries[-1].start()]  # ends mid-token
+    return shared or None
+
+
 def _bundle_proposal(
     files: list[FileObservation],
     directory: str,
@@ -418,9 +507,15 @@ def _bundle_proposal(
     videos = [file for file in files if file.media_kind is MediaKind.VIDEO]
     if stem_mode is StemMode.WIDE and len(videos) > 1 and not _is_multipart(videos):
         confidence, reason = 0.55, f"{len(files)} files matched by a wider stem prefix"
-    # A bundle that fills its whole folder takes the folder's name; one of several
-    # bundles split out of a container reads better titled by its own file.
-    title = _basename(directory) if owns_directory and directory else _stem(files[0].relative_path)
+    # A bundle that fills its whole folder takes the folder's name. Otherwise:
+    # several files grouped together are titled by the part they share, and a
+    # single subject by its own filename.
+    subjects = videos if len(videos) > 1 else ([] if videos else files)
+    title = (
+        _basename(directory)
+        if owns_directory and directory
+        else (_shared_stem_title(subjects) or _stem(files[0].relative_path))
+    )
     source_bundle_ids = {file.bundle_id for file in files}
     base_bundle_id = next(iter(source_bundle_ids)) if len(source_bundle_ids) == 1 else None
     return GroupingProposal(
@@ -442,8 +537,17 @@ def _new_bundle_title(files: list[FileObservation], directory: str) -> str:
 
 
 def _container_proposal(
-    directory: str, parent: str | None, *, child_count: int, reason: str
+    directory: str, parent: str | None, *, child_count: int
 ) -> GroupingProposal:
+    """A collection suggestion for one folder.
+
+    Deliberately carries no ``reason``: the three call sites had each grown their
+    own phrasing for the same fact ("holds 2 sub-item(s)", "3 unrelated files",
+    "2 filename-matched bundle(s) from 5 files"), so the same kind of row read
+    differently depending on which branch produced it — and the row already shows
+    the bundles it holds (owner-reported, 2026-07-29). Bundle rows keep their
+    reason, which says something the row does not ("3 parts of one video").
+    """
     confidence = 0.85 if child_count > 1 else 0.6
     return GroupingProposal(
         kind=ProposalKind.CONTAINER,
@@ -451,7 +555,7 @@ def _container_proposal(
         parent_directory=parent,
         title=_basename(directory),
         confidence=confidence,
-        reason=reason,
+        reason="",
         files=(),
     )
 
@@ -485,14 +589,7 @@ def _classify(
         direct_count = len(_bundle_groups(media, stem_mode)) + len(
             {p.directory for p in child_proposals if p.parent_directory == node.path}
         )
-        proposals.append(
-            _container_proposal(
-                node.path,
-                parent,
-                child_count=direct_count,
-                reason=f"holds {direct_count} sub-item(s)",
-            )
-        )
+        proposals.append(_container_proposal(node.path, parent, child_count=direct_count))
         proposals.extend(
             _direct_media_proposals(
                 media, node.path, parent_for_children=node.path, stem_mode=stem_mode
@@ -524,19 +621,7 @@ def _classify(
         )
         return proposals
     # A container of unrelated items: one child bundle per subject or file
-    grouped_count = sum(len(group) > 1 for group in groups)
-    proposals.append(
-        _container_proposal(
-            node.path,
-            parent,
-            child_count=len(groups),
-            reason=(
-                f"{len(groups)} filename-matched bundle(s) from {len(media)} files"
-                if grouped_count
-                else f"{len(media)} unrelated files"
-            ),
-        )
-    )
+    proposals.append(_container_proposal(node.path, parent, child_count=len(groups)))
     proposals.extend(
         _direct_media_proposals(
             media, node.path, parent_for_children=node.path, stem_mode=stem_mode
@@ -668,12 +753,37 @@ def _addition_roles(files: list[FileObservation]) -> tuple[ProposedFile, ...]:
     return _addition_roles_in_order(_media_first(files))
 
 
-def _addition_proposal(owner: _Owner, files: list[FileObservation]) -> GroupingProposal:
+def _enclosing_container(directory: str, container_directories: set[str]) -> str | None:
+    """The collection suggestion an item in ``directory`` belongs inside.
+
+    Its own folder when that folder is being proposed as a collection, otherwise
+    the nearest ancestor that is. ``None`` when nothing encloses it, which is the
+    top level.
+    """
+    candidate = directory
+    while candidate:
+        if candidate in container_directories:
+            return candidate
+        parent = _dirname(candidate)
+        if parent == candidate:
+            break
+        candidate = parent
+    return None
+
+
+def _addition_proposal(
+    owner: _Owner, files: list[FileObservation], container_directories: set[str]
+) -> GroupingProposal:
     directory = _dirname(files[0].relative_path)
     return GroupingProposal(
         kind=ProposalKind.BUNDLE,
         directory=directory,
-        parent_directory=None,
+        # Where the files live decides where the suggestion sits, exactly as it
+        # does for a fresh bundle from the same folder. This was hardcoded to
+        # None, so an addition always sat at the top level — outside the very
+        # collection its folder was being proposed as, which reads as though it
+        # were unrelated to its siblings (owner-reported, 2026-07-30).
+        parent_directory=_enclosing_container(directory, container_directories),
         title=_new_bundle_title(files, directory),
         confidence=0.8,
         reason=f"add {len(files)} new file(s) to existing bundle",
@@ -724,8 +834,14 @@ def suggest_grouping(
             else:
                 additions.setdefault(owner.bundle_id, (owner, []))[1].extend(group)
 
-    addition_proposals = [_addition_proposal(owner, group) for owner, group in additions.values()]
+    # Classify first: an addition's parent is one of the collections this produces,
+    # so the set of proposed collection folders has to exist before they are built.
     proposals = _classify(_build_tree(fresh), parent=None, stem_modes=stem_modes)
+    container_directories = {p.directory for p in proposals if p.kind is ProposalKind.CONTAINER}
+    addition_proposals = [
+        _addition_proposal(owner, group, container_directories)
+        for owner, group in additions.values()
+    ]
     return GroupingPlan(
         rule_version=SUGGESTER_RULE_VERSION,
         proposals=(*addition_proposals, *proposals),

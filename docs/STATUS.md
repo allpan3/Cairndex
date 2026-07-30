@@ -1,5 +1,15 @@
 # Project status
 
+> **In progress (2026-07-29):** branch
+> `fix/grouping-review-state-and-collection-conversion` — owner-reported: Narrow
+> and Widen discarded the review dialog's selection, and a folder the suggester
+> called one bundle could not be made a collection. Both fixed; complete and
+> gate-green, not merged. See
+> [Grouping review](#in-progress-grouping-review-state-and-collection-conversion-2026-07-29)
+> below. Two other owner-requested branches are also open and unreviewed —
+> `feat/half-star-ratings` and `chore/docker-dev-and-deploy` — each with its own
+> status entry. All three edit this file and will conflict on merge.
+
 > **Current position:** plan 4 write mode is **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
 > app's real media viewer (PR #32) and the collection-creation affordances
@@ -24,6 +34,251 @@
 > cannot be automated here. One diagnosis is parked rather than queued:
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
+
+## In progress: grouping review state and collection conversion (2026-07-29)
+
+Branch `fix/grouping-review-state-and-collection-conversion`, off `main` at
+`d0dc125`. Two owner-reported problems in the Suggest-grouping dialog.
+
+**1. Narrow/Widen discarded the review state.** Reported as "it seems like it
+refreshes the page… it forgets my selections and reselects everything" — and on
+the second pass the owner confirmed the deeper version: it also reverted
+bundle↔collection conversions, "to me this is just a persistent state so long
+as the grouping window is open". Both had one cause: `setStemMode` called the
+same full-regeneration path as Suggest grouping, `generate_plan` superseded the
+open plan and wrote entirely new rows, and everything keyed to the old rows —
+the client's id-based selection *and every server-side owner edit* — was lost.
+
+Fixed structurally rather than by carry-forward matching:
+`PUT /plans/{id}/stem-modes` re-suggests **one directory in place**. The
+suggester still runs over the whole library (a directory's grouping is not
+computable in isolation), but only its output for that directory is spliced
+into the open plan. Rows outside the directory are never touched, so renames,
+destination switches, drag edits, conversions, and checkboxes survive because
+nothing happened to them — there is no cross-plan identity matching to get
+wrong. Three splice subtleties worth remembering: files the owner dragged *out*
+of the directory are not re-proposed (a fresh row claiming a file another row
+still holds would bundle it twice); subdirectory bundles hanging under a
+replaced container re-link to its successor; and a conversion made *inside* the
+adjusted directory is replaced — that is the folder the owner just asked to
+redo. An explicit **Suggest grouping** still resets everything; that is a fresh
+start, not an adjustment.
+
+Client-side, deselection is additionally keyed by *content* (`proposalKey`: a
+bundle is its sorted file-id set plus addition target, a collection its
+directory) rather than by row id — a second line of defense now that ids are
+mostly stable, and the thing that keeps behavior sane around conversions.
+
+The considered-and-rejected alternative, for the record: keep full regeneration
+and re-apply owner edits onto the fresh plan by content matching. Rejected
+because it must answer "which new row is the old row?" for every edit type
+separately, and has no good answer for conversions (a converted container's
+children exist in no fresh plan).
+
+**2. No way to say "this folder is a collection, not a bundle".** The real gap
+was narrower than "the suggester guessed wrong": `_bundle_groups` short-circuits
+on `_is_multipart` **ahead of the stem-mode check**, so a folder whose files
+carry part markers (`Trip.part1.mp4`, …) is one bundle at *every* sensitivity —
+Narrow cannot split it. That is precisely the folder an owner wants to override,
+and there was no control for it.
+
+New `PUT …/proposals/{id}/kind` converts in both directions and returns the whole
+plan, since a conversion adds or removes sibling rows. Bundle → collection splits
+via a new `suggester.split_for_collection` (one bundle per video, sidecars
+following their own video by stem — reusing `_bundle_groups` would have returned
+the input unchanged for the multipart case). Collection → bundle collapses every
+descendant back, so the override is reversible. Additions are refused in both
+directions: their files join a bundle that already exists.
+
+**Owner feedback rounds (2026-07-29), all applied.** First round: the conversion
+control became a compact split/merge icon button (matching the destination
+toggle) instead of "To collection"/"To bundle" text; Narrow/Widen became
+inward/outward chevron icon buttons; the "single file on its own" and
+"Split/Merged because you…" reason texts went (the first restated the visible
+row, the second explained the owner's own action back to them); and the in-place
+stem-modes endpoint above replaced full regeneration.
+
+Second round, on the review dialog's density and vocabulary:
+
+- **The mode word between the chevrons is gone.** The tooltips name the current
+  mode instead, and the buttons already disable at the ends of the scale.
+- **Collection rows carry no reason.** Three `_container_proposal` call sites
+  had each grown their own phrasing for the same fact — "holds 2 sub-item(s)",
+  "3 unrelated files", "2 filename-matched bundle(s) from 4 files" — so
+  identical-looking rows read differently depending on which branch produced
+  them, which is the inconsistency the owner spotted. Bundle reasons stay:
+  "3 parts of one video" says something the row does not.
+- **The intro is a one-line lead plus three short points**, down from a
+  nine-line paragraph that documented every affordance above the thing the owner
+  opened the dialog to read. Each control carries its own tooltip now, so only
+  the non-obvious remains: scope, what Accept does, and the disk guarantee.
+- **File rows show the media kind, not the guessed role.** They read
+  `video part` / `alt version` / `cover` / `derivative` — the suggester's
+  filename guesses, which `lib/format.ts` had already decided not to surface in
+  the inspector for exactly this reason ("showing a guess as a label invited it
+  to be read as a fact"). The review dialog now routes through `formatFileRole`
+  and speaks the same video / image / subtitle vocabulary.
+
+**Fourth round — presentation, plus one substantive naming fix.**
+
+- **Bundle titles now come from the shared filename part** (`_shared_stem_title`).
+  `_bundle_proposal` used `_stem(files[0])`, so a prefix-matched group of four was
+  titled after one member — with that member's tail attached, which read as a
+  claim about the whole bundle. Computed on the *raw* stems so the owner's
+  delimiters and casing survive, then trimmed back to a delimiter so it never
+  ends mid-token (a pair of dates yields `…19.12`, not `…19.12.2`). Multipart
+  gains too: `Trip.part1` → `Trip`. Folder-owning bundles and single subjects are
+  unchanged, which is what the `videos if len(videos) > 1 else …` guard protects.
+- **Panel widened to 1100px** and the wrap misalignment fixed: `.grp-row` was
+  `align-items: center`, so a wrapped row floated its checkbox, handle and glyph
+  to the vertical middle, detached from the title. Now `flex-start` with 1–2px
+  offsets to centre each in the title's 18px line box, and `.grp-row__content`
+  aligns to `baseline` so a wrapped second line lines up with its own text.
+- **Narrow/Widen tooltips rewritten** to name the folder and drop the "stem
+  matching" jargon. The owner asked what the control applies to — bundles or
+  collections — and the honest answer is *neither*: it belongs to a **folder**,
+  one pair per folder (`stemControlOwners`), attached to whichever row speaks for
+  it. That is a collection row when the folder became a collection and a bundle
+  row when it became one bundle, which is exactly why it looked like two
+  different controls. The aria-labels are unchanged, so the tests still pin them.
+
+**Eighth round.** A tooltip could stick on screen: `TipButton` hid only on
+`mouseleave` / `blur` / scroll, and clicking a control is precisely the case where
+the pointer never leaves it — the *row* moves instead. So the portal kept its
+stale coordinates while the button's label flipped underneath. Fixed twice over:
+dismiss on activation, and store the tip text alongside the position so a
+placement computed for a label that has since changed is not rendered. The second
+guard is derived during render rather than cleared in an effect, which the
+`react-hooks/set-state-in-effect` rule (rightly) rejected as a cascading render.
+Both guards have tests; the click one was confirmed to fail without the fix, and
+the behaviour was re-checked in a real browser with an actual hover-then-click,
+which is the gesture jsdom cannot reproduce.
+
+**Seventh round**, mostly presentation with one behaviour change.
+
+- **Caret on double-click.** `ProposalTitleEditor` called `select()`; it now takes
+  a character offset from `caretPositionFromPoint` (with the WebKit
+  `caretRangeFromPoint` fallback, which the desktop shell needs) captured on the
+  dblclick and applied via `setSelectionRange`. Captured into a ref, because
+  re-reading it would yank the caret back mid-edit. Keyboard entry passes `null`
+  and lands at the end.
+- **Single-subject conversion allowed again, bounded differently.** The previous
+  rule ("refuse unless it divides into 2+") left rows with no path to becoming a
+  collection, which the owner wanted. The bound is now *positional*: refuse only
+  when the row already sits in a collection for its own directory
+  (`_sits_in_a_collection_for_its_own_folder`). That still terminates, because the
+  child a conversion creates always lands in exactly that position — and it no
+  longer blocks the legitimate case.
+- **Neutral kind icons.** 🎬 → `IconLayers`, 📁 → `IconFolder`, and the clapper
+  dropped from the "Add to …" title. A bundle is not necessarily a video, and the
+  clapper asserted otherwise.
+- **Alignment made deterministic instead of tuned.** Fixed `--grp-check` /
+  `--grp-icon` / `--grp-lead-gap` custom properties give a known leading width, so
+  the checkbox centres in the title's 18px line box by calculation rather than a magic 2px,
+  `.grp-files` indents by `calc(var(--grp-lead) - 4px - 1px)` (padding and border
+  accounted for), and the icon buttons take `align-self: center` at 18px tall.
+  Verified in-browser: file indent and every icon button measure **0px** offset
+  from the title, and checkbox/icon/title share one mid-Y.
+
+**Sixth round.** The ⠿ drag handles are removed: the file `<li>` already carried
+`draggable` + `onDragStart` itself, so its handle had been decoration for a while;
+the bundle row gained the same and both handles went. `draggable` is suppressed
+while a row's title is being renamed, because `draggable` on an ancestor hijacks
+text selection inside the edit box. Four unit tests and two e2e locators targeted
+the handles by `aria-label` and now target the rows (`fileRow` / `bundleRow`
+helpers).
+
+**Fifth round.**
+
+- **Additions now nest where the bundle they join lives.** Took two passes, and
+  the second is the one that mattered — worth recording because the first looked
+  sufficient and was not.
+
+  Pass one: `_addition_proposal` hardcoded `parent_directory=None`, so an
+  "Add to …" row always sat at the top level. Fixed by resolving the nearest
+  enclosing proposed-collection folder (`_enclosing_container`), which required
+  building additions *after* `_classify`, since the set of proposed collections
+  is its output.
+
+  Pass two, after the owner reported it unchanged: the folder is not enough.
+  `grouping/service.py` is a second placement layer that nests suggestions under
+  *existing* collections, and it had two faults. Its `_proposal_collection`
+  docstring promised "prefer the target bundle's membership, then a matching
+  directory hierarchy", but the sort key re-ranked membership candidates by
+  whether the collection's name path also prefixed the proposal's directory — so
+  a shallow collection outranked the bundle's real one whenever the deeper name
+  did not happen to match a folder. And `_with_collection_context` skipped any
+  proposal that already had a parent, which pass one had just given every
+  addition. Membership is now ranked by depth alone and outranks a folder-derived
+  parent. In the reported layout the folder-derived parent really is the
+  *grandparent*: once the folder's remaining fresh files form one bundle they own
+  that folder, so no collection is proposed for it and walking up lands on
+  `Studios`. Both failure modes have tests that were confirmed to fail without
+  the fix.
+- **Tooltips no longer clip.** `.tip::after` is absolutely positioned inside
+  `.grp-body { overflow: auto }`, so the dialog's own scroll container cut it
+  off — worst for these controls, whose tooltips are the dialog's longest text.
+  A local `TipButton` portals the tooltip to `document.body` at
+  `position: fixed`, right-aligned via `right` so the width never needs
+  measuring, clamped into the viewport, and flipped below the control when there
+  is no room above. Hover handlers live on a wrapper rather than the button
+  because a *disabled* button fires no mouse events, and Narrow/Widen disable at
+  the ends of their scale — precisely when the tooltip is wanted. `data-tip`
+  stays on the button, which is what two existing tests read. Deliberately scoped
+  to this dialog rather than replacing `.tip` app-wide.
+- **Drag-handle gap tightened**: the handle's box was 18px around a ~8px glyph,
+  which read as a gap before the title. Now 12px, with the bundle row's gaps at
+  2px.
+
+**A third round found the nesting bug.** Owner screenshot: five collections deep,
+each named `StudioBeta.E003.Lead`, each holding one bundle of the same name. Cause
+was in `split_for_collection`'s `len(videos) < 2` branch, which returned one group
+*per file*. For a one-file bundle that is a single group, so converting wrapped it
+in a collection of one identical bundle — and the child was convertible in turn,
+so every click added a layer. It was also wrong for one video plus sidecars: it
+would have put a subtitle in a bundle of its own.
+
+Split into the two cases it was conflating. **No videos** divides per file (a
+photo dump — the one place per-file is right). **Exactly one video** is one
+subject however many sidecars it has, so it returns a single group. And
+`_bundle_to_container` now refuses any split of fewer than two groups: a
+collection of one identical bundle adds no structure. The client hides the
+control on such a row (`canBecomeCollection`, mirroring the server, which stays
+the authority), so the refusal is a backstop rather than the normal path.
+
+Verified against the reported shape: converting `Western/StudioBeta.E003.Lead`
+(one video) returns 422 "holds a single item, so there is nothing to divide";
+merging a two-video folder and dividing it again round-trips 200/200.
+
+**And one bug the first symptom was hiding.** The owner reported that a
+collection turned into a bundle "gets widening and narrowing buttons, and when
+you change it back they stay". Reproduced, then traced: `bundleDirectories` read
+`proposal.directory`, but merging a collection whose bundles live in subfolders
+(`Show/A`, `Show/B`) leaves one row whose `directory` is the *parent* `Show` — a
+folder with no direct media. So the row was offered a stem control, and
+**using it deleted the row while the suggester produced nothing for `Show`, so
+both files dropped out of the plan entirely** (verified against the API: rows
+went to `[]`, files unproposed). Two fixes: the client derives a row's folders
+from its *files' paths*, so a cross-folder row gets no control; and the server
+refuses any splice that would drop a file rather than performing it — the
+general invariant, which is what caught that the first guard ("refuse when the
+directory yields nothing") was too narrow, since the suggester *does* still
+propose a bare container for `Show`.
+
+**Gates run:** backend `ruff format --check`, `ruff check`, `mypy`, `pytest`
+(860 passed); web `lint`, `format:check`, `typecheck`, `test` (466 passed),
+`build`. Two existing tests needed correcting rather than the code: one asserted
+a container reason that is now deliberately absent, and one stem-control fixture
+had file paths that disagreed with its own `directory` — which the new
+file-derived rule correctly reads as a hand-merged row.
+
+**Verified in a browser against a real backend**, on a library seeded with
+`Trip/` (three parts + three subtitles), `Duo/` (two subjects Widen merges),
+and `Solo/`: unchecked `Solo`, converted `Trip` to a collection via the icon
+button, then clicked Widen on `Duo` — `Duo` regenerated into one wide bundle
+while `Solo` stayed unchecked and `Trip` stayed a converted collection with its
+three children. Earlier round additionally verified apply end-to-end
+(*3 bundles, 1 collection, 3 subtitles linked*) and the reverse conversion.
 
 ## Shipped: v0.1.0, the first public release (2026-07-28)
 

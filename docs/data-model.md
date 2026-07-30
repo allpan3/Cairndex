@@ -310,6 +310,47 @@ membership changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
 that snapshot; omitting a directory selects the balanced default.
 
+`PUT /grouping/plans/{id}/stem-modes` (body `{directory, mode}`) is how the
+review UI's Narrow/Widen works: it sets **one** directory's sensitivity and
+re-suggests only that directory **inside the open plan**. The suggester still
+runs over the whole library (a directory's grouping is not computable in
+isolation), but only its output for that directory is spliced in — every other
+proposal row keeps its id, so every owner edit elsewhere (renames, destination
+switches, drag edits, kind conversions) and the client's selection survive
+structurally rather than by carry-forward matching. Within the adjusted
+directory the rows genuinely are new suggestions, including any conversion the
+owner had made *there* — the folder they just asked to redo. Files the owner
+dragged out of the directory into surviving suggestions are not re-proposed
+(a fresh row claiming a file another row still holds would bundle it twice),
+and subdirectory bundles that hung under a replaced container are re-linked to
+its successor. `POST /grouping/plans` remains the full reset that supersedes
+the plan and rebuilds everything.
+
+`PUT /grouping/plans/{id}/proposals/{proposal_id}/kind` overrides the
+suggester's bundle-versus-collection decision for one suggestion, in either
+direction, and returns the **whole plan** because a conversion adds or removes
+sibling rows rather than editing one in place.
+
+- **BUNDLE → CONTAINER** splits the proposal's files into one child BUNDLE
+  proposal per video subject and empties the parent, which then holds only its
+  children. The split is `suggester.split_for_collection`, not the ordinary
+  grouping: `_bundle_groups` returns a folder of parts as one group at *every*
+  stem sensitivity (`_is_multipart` short-circuits ahead of the mode check), so
+  Narrow cannot break up precisely the folder this override exists to reject.
+  Sidecars follow the video whose stem they match, so covers and subtitles do
+  not become bundles of their own.
+- **CONTAINER → BUNDLE** collapses every descendant into one bundle and deletes
+  them, so the override is reversible rather than a one-way door.
+
+Both mark `owner_edited`. An **addition** proposal (`target_bundle_id` set and
+`create_new_bundle` false) is rejected in both directions: its files join a
+bundle that already exists and is not going to become a collection.
+
+A conversion lives in the open plan like every other owner edit, and like them
+it survives a Narrow/Widen on *other* directories (see `stem-modes` above).
+Re-suggesting the converted directory itself replaces it, and a full
+`POST /grouping/plans` resets everything.
+
 ### `file_operations`
 
 The guarded-write journal (ADR-0013 §3.1): `id`, `op`, `status`, `payload`

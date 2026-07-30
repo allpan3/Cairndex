@@ -2616,7 +2616,10 @@ code {
 
 /* --- Grouping review (ADR-0009 phase 4) ----------------------------------- */
 .grp-modal {
-  width: min(780px, 94vw);
+  /* Wide, because the rows are long release filenames and every wrap costs a
+     line of vertical space in a list the owner is scanning (owner-reported,
+     2026-07-30). Still capped by viewport width. */
+  width: min(1100px, 96vw);
 }
 .grp-body {
   overflow: auto;
@@ -2630,6 +2633,13 @@ code {
   color: var(--text-muted);
   margin: 0;
   line-height: 1.45;
+}
+.grp-intro-points {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 .grp-error {
   font-size: 12px;
@@ -2669,21 +2679,64 @@ code {
 }
 .grp-row {
   display: flex;
-  align-items: center;
+  /* Not `center`: a row whose content wraps to two lines would float the
+     checkbox, drag handle and kind glyph to the vertical middle, leaving them
+     visibly detached from the title they belong to (owner-reported,
+     2026-07-30). Aligning to the top pins them to the first line; the offsets
+     below centre each within that line's 18px box. */
+  align-items: flex-start;
   gap: 8px;
 }
+/* Fixed sizes so the leading run is deterministic: it decides both the vertical
+   centring below and the file list's indent, and a platform-default checkbox
+   width would make either a guess. --grp-lead is the width of everything before
+   the title. */
+.grp-node--bundle,
+.grp-node--container {
+  --grp-check: 14px;
+  --grp-icon: 16px;
+  --grp-lead-gap: 3px;
+  --grp-lead: calc(var(--grp-check) + var(--grp-icon) + 2 * var(--grp-lead-gap));
+}
+.grp-row > .grp-check {
+  flex: 0 0 auto;
+  width: var(--grp-check);
+  height: var(--grp-check);
+  /* Centre in the title's 18px line box (see .grp-title line-height). */
+  margin-top: calc((18px - var(--grp-check)) / 2);
+}
+.grp-row > .grp-kind {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--grp-icon);
+  height: 18px;
+  margin-top: 0;
+  color: var(--text-muted);
+}
+.grp-row > .grp-kind .icon {
+  width: 14px;
+  height: 14px;
+}
 .grp-row--bundle {
-  gap: 4px;
+  gap: var(--grp-lead-gap);
+  /* The row itself is the drag affordance now that the ⠿ handle is gone. */
+  cursor: grab;
 }
-.grp-row--bundle .grp-check {
-  margin-right: 4px;
+.grp-row--bundle:active {
+  cursor: grabbing;
 }
+
 .grp-row__content {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  align-items: center;
+  /* Baseline, so a wrapped row's controls line up with the text on their own
+     line rather than with the tallest item across both. */
+  align-items: baseline;
   gap: 8px;
+  row-gap: 2px;
   flex-wrap: wrap;
 }
 .grp-title-cluster {
@@ -2694,6 +2747,7 @@ code {
   gap: 4px;
 }
 .grp-row--collection {
+  gap: var(--grp-lead-gap);
   border-radius: 5px;
   padding: 2px 4px;
 }
@@ -2782,26 +2836,41 @@ code {
 .grp-stem {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  align-self: center;
+  gap: 2px;
   padding-left: 6px;
   border-left: 1px solid var(--border);
 }
-.grp-stem__button {
-  padding: 2px 6px;
-  line-height: 16px;
+/* Anchor for a portalled tooltip: hugs the button so the wrapper adds no
+   layout, and carries the hover handlers so a *disabled* button still explains
+   itself (a disabled button fires no mouse events of its own). */
+.grp-tip-anchor {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
 }
-.grp-stem__mode {
-  min-width: 48px;
-  color: var(--text-muted);
-  font-size: 10px;
-  text-align: center;
-  text-transform: capitalize;
+/* Fixed and portalled to <body>, so the dialog's scrolling body cannot clip it. */
+.grp-tip {
+  position: fixed;
+  z-index: 200;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 .grp-destination {
   display: inline-flex;
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  align-self: center;
+  width: 20px;
+  height: 18px;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -2834,7 +2903,10 @@ code {
 }
 .grp-files {
   min-height: 25px;
-  margin: 4px 0 6px 24px;
+  /* Indented to the title's first character — the leading run less this list's
+     own left padding and border — so a bundle's files read as belonging to its
+     name rather than to its checkbox (owner-reported, 2026-07-30). */
+  margin: 4px 0 6px calc(var(--grp-lead) - 4px - 1px);
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -2891,30 +2963,6 @@ code {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0 5px;
-}
-.grp-drag-handle {
-  width: 18px;
-  height: 20px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: grab;
-  font-size: 14px;
-  line-height: 20px;
-}
-.grp-drag-handle:hover,
-.grp-drag-handle:focus-visible {
-  color: var(--text-strong);
-}
-.grp-drag-handle:active {
-  cursor: grabbing;
-}
-.grp-drag-handle:disabled {
-  cursor: default;
-}
-.grp-drag-handle--file {
-  margin-left: -2px;
 }
 .grp-root-drop {
   margin: 2px 0;

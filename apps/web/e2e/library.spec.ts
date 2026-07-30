@@ -568,8 +568,8 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await page.getByRole('button', { name: 'Suggest grouping' }).click()
   const checkbox = page.getByRole('checkbox', { name: 'Accept Sex On The Beach - 4K' })
   await expect(checkbox).toBeChecked()
-  const additionTitle = page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })
-  const dragHandle = page.getByRole('button', { name: `Drag bundle Add to 🎬 ${targetTitle}` })
+  const additionTitle = page.getByText(`Add to ${targetTitle}`, { exact: true })
+  const dragHandle = page.locator('.grp-row--bundle', { has: additionTitle })
   const destinationButton = page.getByRole('button', {
     name: 'Create a new bundle from these files',
   })
@@ -654,7 +654,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
   await expect(addBackButton).toBeEnabled()
 
   await addBackButton.click()
-  await expect(page.getByText(`Add to 🎬 ${targetTitle}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Add to ${targetTitle}`, { exact: true })).toBeVisible()
   expect(destinationWrites).toEqual([true, false])
 })
 
@@ -812,7 +812,9 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   const collectionRow = page.locator('.grp-row--collection', {
     has: page.getByRole('button', { name: 'Rename collection suggestion Favorites' }),
   })
-  const bundleHandle = page.getByRole('button', { name: 'Drag bundle SRCV-005 - cut' })
+  const bundleHandle = page.locator('.grp-row--bundle', {
+    has: page.getByText('SRCV-005 - cut', { exact: true }),
+  })
   const collectionTransfer = await page.evaluateHandle(() => new DataTransfer())
   await bundleHandle.dispatchEvent('dragstart', { dataTransfer: collectionTransfer })
   await collectionRow.dispatchEvent('dragover', { dataTransfer: collectionTransfer })
