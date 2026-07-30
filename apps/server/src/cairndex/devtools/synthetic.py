@@ -68,7 +68,7 @@ def seed_synthetic_library(
         bundle = bundle_service.create_bundle(
             session,
             title=f"Synthetic Bundle {i:05d}",
-            rating=rng.choice([None, 1, 2, 3, 4, 5]),
+            rating=rng.choice([None, 1, 2, 2.5, 3, 3.5, 4, 4.5, 5]),
         )
         # 1–3 files per bundle (a primary video, optional part, optional cover).
         bundle_service.add_file(

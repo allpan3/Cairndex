@@ -12,6 +12,7 @@ import {
   ratingFilterActive,
   withoutCategory,
 } from './adHocFilters'
+import { formatRatingCompact } from './rating'
 import { StarRow } from './Stars'
 import { usePopover } from './usePopover'
 
@@ -26,7 +27,7 @@ const OP_GLYPH: Record<RatingOp, string> = { eq: '=', gte: '≥', lte: '≤' }
 function chipLabel(r: RatingFilter | null): string | null {
   if (r === null) return null
   if (r.mode === 'unrated') return 'Unrated'
-  return `${OP_GLYPH[r.op]}${r.value}`
+  return `${OP_GLYPH[r.op]}${formatRatingCompact(r.value)}`
 }
 
 /**
@@ -141,7 +142,15 @@ function RatingFilterPanel({
         </div>
       </div>
 
-      <StarRow value={starValue} onPick={clickStar} counts={counts} ariaLabel="Rating value" />
+      <StarRow
+        value={starValue}
+        onPick={clickStar}
+        // A sweep sets the value outright — the click path's clear-on-repeat
+        // toggle would silently drop the filter when a drag ends on it.
+        onSet={(n) => setRating({ mode: 'value', op, value: n })}
+        counts={counts}
+        ariaLabel="Rating value"
+      />
 
       <button
         className={`rating-filter__unrated${rating?.mode === 'unrated' ? ' is-active' : ''}`}
@@ -155,7 +164,7 @@ function RatingFilterPanel({
 
       {ratingFilterActive(rating) && (
         <div className="tag-filter__foot">
-          <span className="tag-filter__hint">Click the selected star again to clear</span>
+          <span className="tag-filter__hint">Click the current selection again to clear</span>
           <button
             className="add-btn"
             onClick={() => setRating(null)}

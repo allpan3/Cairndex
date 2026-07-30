@@ -571,35 +571,90 @@ button {
   padding: 3px 9px;
   font-size: 13px;
 }
+/* Half-star rating rows (Stars.tsx). A star is a muted ★ with a gold ★ clipped
+   over it to 0/50/100%, plus two transparent half-width buttons. Both layers are
+   the same glyph, so the 50% clip lands on the star's true midpoint in any font
+   — an outline ☆ base would depend on it sharing an advance width with ★. */
 .stars {
   display: flex;
-  gap: 4px;
+  gap: 1px;
+  cursor: pointer;
+  /* Drag-to-rate must beat scrolling/text selection for the gesture's life. */
+  touch-action: none;
+  user-select: none;
+}
+.stars--edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
 }
 .star {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  padding: 2px 1px;
+}
+.star__glyph {
+  position: relative;
+  display: block;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--border-strong);
+}
+.star__glyph-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--star);
+}
+.star__half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
-  padding: 2px 4px;
-  color: var(--border-strong);
 }
-.star__glyph {
-  font-size: 20px;
-  line-height: 1;
+.star__half--left {
+  left: 0;
 }
-.star--on .star__glyph {
-  color: var(--star);
+.star__half--right {
+  right: 0;
 }
-.star:hover .star__glyph {
-  color: var(--star);
-  opacity: 0.8;
+.star__half:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 .star__count {
   font-size: 10px;
   color: var(--text-muted);
+}
+/* Names the hovered/swept value ("3½ stars"). Width reserved so the row's
+   geometry never shifts while the pointer moves over it. */
+.stars__hint {
+  align-self: center;
+  min-width: 64px;
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.stars__hint--lead {
+  min-width: 56px;
+  margin: 0 6px 0 0;
+  text-align: right;
+}
+.stars--edit .star {
+  padding: 1px;
+}
+.stars--edit .star__glyph {
+  font-size: 18px;
 }
 .rating-filter__unrated {
   display: flex;
@@ -630,10 +685,13 @@ button {
 }
 /* Star row inside a Smart Collection filter row: smaller, inline. */
 .filter-row__val .stars .star {
-  padding: 0 2px;
+  padding: 0 1px;
 }
 .filter-row__val .star__glyph {
-  font-size: 17px;
+  font-size: 20px;
+}
+.filter-row__val .stars__hint {
+  min-width: 52px;
 }
 
 /* --- All Tags management page --------------------------------------------- */
@@ -1597,22 +1655,6 @@ button {
 .tip:hover::after,
 .tip:focus-visible::after {
   opacity: 1;
-}
-
-.stars {
-  color: var(--star);
-  letter-spacing: 2px;
-}
-.stars--empty {
-  color: var(--border-strong);
-}
-.star-btn {
-  border: 0;
-  background: transparent;
-  color: var(--star);
-  cursor: pointer;
-  padding: 0 1px;
-  font-size: 15px;
 }
 
 /* --- Inspector editable fields ------------------------------------------- */

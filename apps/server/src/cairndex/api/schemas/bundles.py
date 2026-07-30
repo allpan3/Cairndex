@@ -11,14 +11,29 @@ from cairndex.domain.enums import (
     GroupingState,
     MediaKind,
 )
+from cairndex.domain.rating import RATING_MAX, RATING_MIN, RATING_STEP, is_valid_rating
 from cairndex.media.image_support import is_openable_media
 
 
 # --- Bundles -----------------------------------------------------------------
+def _check_rating_step(value: float | None) -> float | None:
+    """Reject a rating that is in range but off the half-star grid (e.g. 3.3).
+
+    ``ge``/``le`` cover the range; nothing in Pydantic covers the step, and the
+    column's CHECK constraint cannot either (see ``domain/rating.py``), so this
+    is the boundary where an off-grid value is turned away.
+    """
+    if value is not None and not is_valid_rating(value):
+        raise ValueError(f"rating must be a multiple of {RATING_STEP:g}")
+    return value
+
+
 class BundleCreate(BaseModel):
     title: str | None = Field(default=None, max_length=1024)
     notes: list[str] | None = None
-    rating: int | None = Field(default=None, ge=0, le=5)
+    rating: float | None = Field(default=None, ge=RATING_MIN, le=RATING_MAX)
+
+    _rating_step = field_validator("rating")(_check_rating_step)
 
 
 class BundleUpdate(BaseModel):
@@ -26,8 +41,10 @@ class BundleUpdate(BaseModel):
     # null clears a field (e.g. unrate, untitle, deselect cover).
     title: str | None = Field(default=None, max_length=1024)
     notes: list[str] | None = None
-    rating: int | None = Field(default=None, ge=0, le=5)
+    rating: float | None = Field(default=None, ge=RATING_MIN, le=RATING_MAX)
     cover_file_id: str | None = None
+
+    _rating_step = field_validator("rating")(_check_rating_step)
 
 
 class BundleRead(BaseModel):
@@ -38,7 +55,7 @@ class BundleRead(BaseModel):
     # Ordered freeform notes (the inspector "NOTES" section). A pre-``notes`` row
     # (column NULL) reads back as an empty list.
     notes: list[str] = Field(default_factory=list)
-    rating: int | None
+    rating: float | None
     cover_file_id: str | None
     # Current ordered-media location; falls back to legacy progress/first openable file
     resume_file_id: str | None = None
