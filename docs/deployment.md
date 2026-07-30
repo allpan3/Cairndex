@@ -18,6 +18,29 @@ the app runs in production.
 
 One hardened container serves the API and the built frontend on port `8000`.
 
+**The server pulls a published image.**
+[`deploy/docker-compose.yml`](../deploy/docker-compose.yml) is the whole
+deployment — every setting carries a working default, so it needs no `.env`
+beside it and can be pasted straight into a NAS Docker UI's Project / Stack /
+Compose section, which is how most of these boxes are administered.
+[`deploy/README.md`](../deploy/README.md) is the runbook: install both ways,
+permissions, updating, backups. Nothing else goes on the box — no checkout, no
+build toolchain, no source.
+
+```bash
+docker compose up -d          # or start the project from the NAS UI
+```
+
+Note that the image will **not** appear in a NAS Docker app's image-search tab.
+Those search Docker Hub; this image is on GHCR. Pulling it by full name in a
+compose file is unaffected — the search index and the pull are unrelated
+mechanisms — and a Project created from the compose file is managed by the UI
+exactly like one created from a search result.
+
+**Building from source is the fallback**, for running an unreleased branch or a
+change you have not published. The compose file at the repository root builds
+the same image locally, and needs a checkout on the server:
+
 ```bash
 cp .env.example .env          # then edit MEDIA_HOST_PATH and bind addr/port
 docker compose -f docker-compose.prod.yml up --build -d
@@ -26,6 +49,31 @@ docker compose -f docker-compose.prod.yml up --build -d
 Building on the NAS gives you its architecture for free. To build elsewhere —
 an Apple Silicon Mac for an amd64 NAS — see
 [Building for the NAS from another machine](#building-for-the-nas-from-another-machine).
+
+### Publishing the image
+
+`.github/workflows/publish-image.yml` pushes to
+`ghcr.io/allpan3/cairndex`. It runs on a version tag (`v1.2.3` publishes `1.2.3`,
+`1.2`, and moves `latest` unless it is a prerelease) and on manual dispatch,
+which publishes exactly the tag you name and never touches `latest`. It does
+**not** run on pushes to `main`: publication should be a deliberate act, the same
+reason `release.yml` produces a *draft* release rather than a published one.
+
+The image is smoke-tested before it is pushed, not after — built to the runner's
+local daemon, put through `infra/docker/smoke.sh`, and only then pushed, with the
+second build reusing the layer cache. Publishing first and testing after would
+leave a broken image pullable in between, and `:latest` already moved.
+
+Two things to know about GHCR:
+
+- **The first push creates a private package.** GitHub does not inherit the
+  repository's visibility. Until you set it to public under *Packages → cairndex
+  → Package settings → Change visibility*, `docker pull` from the server needs
+  authentication. This is a one-time step.
+- **Only `linux/amd64` is published**, which is the deployment target. Adding
+  `linux/arm64` is a one-line change on the push step plus a QEMU setup action —
+  and it costs an emulated build of the whole Node and Python stack on every
+  release, which is why it is not on. The comment in the workflow says where.
 
 Then open the bound address (default `http://127.0.0.1:8000`), use the app's
 library manager to create or register the mounted path, and run **Update**. A

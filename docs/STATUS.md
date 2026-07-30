@@ -152,11 +152,36 @@ a library on a bind mount, scans a video into a bundle with a cover, and release
 its lease on a graceful stop with the WAL checkpointed. That is the closest thing
 to the NAS obtainable without one.
 
+**Registry publishing, added on owner request (2026-07-30).** The original branch
+assumed the server would build from a checkout. The owner asked instead for the
+path other self-hosted projects use — publish an image, ship a compose file —
+so `.github/workflows/publish-image.yml` pushes `ghcr.io/allpan3/cairndex` and
+`deploy/` holds what a NAS actually needs (compose file, env sample, runbook).
+Three decisions worth keeping:
+
+- **Publication is never automatic from `main`** — a version tag or a manual
+  dispatch, mirroring `release.yml`'s draft release. A registry has no draft
+  state, so the trigger is where that judgement has to live.
+- **The image is smoke-tested before the push, not after.** Built to the
+  runner's daemon, run through `smoke.sh`, then pushed with the layer cache
+  reused. Test-after would leave a broken image pullable in the gap with
+  `:latest` already moved — and this branch exists because a build-only gate
+  stayed green for a month.
+- **amd64 only.** arm64 would be an emulated build of the whole Node + Python
+  stack every release, serving nobody, and it could not go through the smoke
+  gate anyway (`load: true` takes one platform), so it would publish untested.
+
 **Not done, deliberately.** The amd64 cross-build (`just docker-build-nas`) is
 written and documented but **has not been run against a real NAS** — there is no
 amd64 host here to load the image onto, and an emulated build proving it
-compiles is not the same as proving it runs. That is the one owner-only
-verification this branch leaves open.
+compiles is not the same as proving it runs. It also matters less now that the
+NAS pulls a published image rather than building one. That, plus the deployment
+itself, is what this branch leaves to the owner.
+
+**Untested here: the publish workflow.** It parses and its actions are pinned,
+but it has never run — dispatching it publishes a real package under the owner's
+account, and the first push creates a **private** package that needs its
+visibility changed by hand before a server can pull without credentials.
 
 ## Merged: half-star ratings (2026-07-30)
 **Owner test, 2026-07-30 — a half star could not be set in the desktop shell.**
