@@ -644,7 +644,10 @@ def _default_ownership_lost(library_id: str) -> None:
     from cairndex.registry.engine import registry_session_scope
     from cairndex.registry.library_engine import dispose_library_engine
 
-    dispose_library_engine(library_id)
+    # No journal-mode revert (ADR-0021): that is a write, and §4 is categorical
+    # that a library we no longer own gets no more writes from us. Whoever took
+    # the lease sets the mode it wants when it opens.
+    dispose_library_engine(library_id, revert_journal_mode=False)
     try:
         with registry_session_scope() as session:
             job_service.request_cancel_for_library(session, library_id)

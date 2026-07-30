@@ -182,6 +182,33 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   subcollection, or running a scan all left the pane showing whatever it had said
   when it opened. They now move with the sidebar's count, immediately for a
   membership change and on a refetch for everything else.
+- **A library served from the container stopped opening from any machine using a
+  network share.** Opening it returned HTTP 500 with a traceback ending at a
+  SQLite pragma, on a library whose files read fine and whose folder was
+  writable. Cairndex was setting `journal_mode=WAL` on every database
+  connection, believing it a per-connection setting; it is not — WAL is recorded
+  in the database *file header* and travels with the library folder. A WAL
+  database cannot be opened over SMB or NFS **at all**, not even read-only,
+  because WAL needs a shared-memory index that network filesystems cannot
+  provide. Setting the pragma from a machine on the share had always failed
+  silently, so nothing looked wrong; the first server with local access to the
+  storage flipped the file for good, and only a machine with local access could
+  flip it back.
+
+  **A library now uses WAL while a server has it open and a rollback journal at
+  rest**, so a closed library is a single portable file that opens anywhere
+  (ADR-0021). A library on a filesystem that cannot host WAL is never put into
+  it, and one found in WAL where it should not be is converted back on open — so
+  a library left in the bad state repairs itself the first time a capable machine
+  opens it. The server's own `registry.db` keeps WAL: it never leaves the server's
+  disk.
+
+  **One case still needs care.** An *unclean* stop — `docker kill`, a power cut,
+  the OOM killer — never reaches the conversion, and leaves the library in WAL.
+  Stop containers with `docker stop`. If a library is locked out anyway, the
+  error now says so: HTTP 409 `library_database_unopenable`, distinguishing a
+  journal-mode problem from a permissions one and carrying the command that
+  fixes it. `docs/deployment.md` has the recovery procedure.
 - **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
   that said nothing about what was happening or how far along it was. Two causes,
   both in the reporting rather than the work: a phase change could not clear the

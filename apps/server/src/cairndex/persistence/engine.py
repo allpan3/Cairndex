@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
@@ -7,17 +8,27 @@ from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
+from cairndex.core.errors import LibraryDatabaseOpenError
+from cairndex.persistence import journal
+
+logger = logging.getLogger(__name__)
 
 
-def _apply_sqlite_pragmas(dbapi_connection: object, _connection_record: object) -> None:
-    """Set connection-scoped SQLite pragmas (ADR-0002).
+def _apply_connection_pragmas(dbapi_connection: object, _connection_record: object) -> None:
+    """Set the genuinely connection-scoped SQLite pragmas (ADR-0002).
 
-    These are per-connection in SQLite, so they must run on every new DBAPI
+    These three really are per-connection, so they must run on every new DBAPI
     connection rather than once at startup.
+
+    ``journal_mode`` is deliberately **not** here, and used to be. It is stored
+    in the database file header, not on the connection — so setting it here was
+    not "reapplying a connection setting" but rewriting the file, on every
+    connect, for every library. ADR-0021 has the incident that made the
+    difference matter; :mod:`cairndex.persistence.journal` owns it now, once per
+    engine, and differently for a library than for the server's own registry.
     """
     cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
     try:
-        cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA synchronous=NORMAL")
@@ -25,11 +36,41 @@ def _apply_sqlite_pragmas(dbapi_connection: object, _connection_record: object) 
         cursor.close()
 
 
+def _apply_registry_pragmas(dbapi_connection: object, connection_record: object) -> None:
+    """Connection pragmas plus unconditional WAL, for the server-local registry.
+
+    The registry is the one database that is never shared and never travels: it
+    lives under ``CAIRNDEX_DATA_DIR`` on the server's own disk and is
+    regenerable runtime state (ADR-0008 §3). None of ADR-0021's portability
+    concerns apply to it, so it keeps WAL at all times.
+    """
+    _apply_connection_pragmas(dbapi_connection, connection_record)
+    cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+    finally:
+        cursor.close()
+
+
+def _sqlite_file_path(url: str) -> Path | None:
+    """The on-disk path behind a SQLite URL, or ``None`` for in-memory/other."""
+    if not url.startswith("sqlite:///") or ":memory:" in url:
+        return None
+    return Path(url[len("sqlite:///") :])
+
+
 def create_app_engine(database_url: str | None = None) -> Engine:
-    """Create an Engine with Cairndex's SQLite configuration applied.
+    """Create an Engine for a **library** database, with Cairndex's SQLite setup.
 
     The data directory is created if needed so a fresh checkout/deploy can
     open the database without a manual mkdir.
+
+    Unlike the registry engine this one connects eagerly, to settle the file's
+    journal mode (ADR-0021) before anything else touches it — WAL while we hold
+    the library open, and a heal back to rollback if we find WAL on a filesystem
+    that cannot host it. That first connection is also where a library whose
+    file is unopenable announces itself, so the failure arrives as a domain
+    error naming the cause and its recovery command rather than as a traceback.
     """
     settings = get_settings()
     url = database_url or settings.resolved_database_url()
@@ -41,7 +82,22 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     # Pragmas apply to file and in-memory SQLite alike (FK enforcement matters
     # for the in-memory test database too).
     if engine.dialect.name == "sqlite":
-        event.listen(engine, "connect", _apply_sqlite_pragmas)
+        event.listen(engine, "connect", _apply_connection_pragmas)
+
+    db_path = _sqlite_file_path(url)
+    if db_path is not None:
+        try:
+            journal.apply_library_journal_mode(engine, db_path)
+        except Exception as error:
+            engine.dispose()
+            if journal.is_unable_to_open(error):
+                failure = journal.diagnose_open_failure(db_path)
+                logger.warning("library database at %s will not open (%s)", db_path, failure.reason)
+                raise LibraryDatabaseOpenError(
+                    failure.message,
+                    details={"reason": failure.reason, "filesystem": failure.filesystem},
+                ) from error
+            raise
     return engine
 
 

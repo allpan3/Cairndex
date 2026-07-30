@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.persistence.checkpoint import checkpoint_wal, snapshot_database, snapshot_path_for
 from cairndex.persistence.engine import create_app_engine, ensure_content_indexes
+from cairndex.persistence.journal import checkpoint_and_revert
 from cairndex.registry import library_package as pkg
 from cairndex.registry.models import RegisteredLibrary
 from cairndex.search import ensure_search_schema
@@ -143,17 +144,28 @@ def _sweep_expired_trash(maker: sessionmaker[Session], root: Path, retention_day
         logger.exception("trash retention sweep failed for %s", root)
 
 
-def dispose_library_engine(library_id: str) -> None:
+def dispose_library_engine(library_id: str, *, revert_journal_mode: bool = True) -> None:
     """Drop and dispose the cached engine for a library, if any.
 
     Disposing closes the last connection, which is what lets SQLite fold the WAL
     back in and delete the ``-wal``/``-shm`` pair — so a cleanly closed library
     is a single consistent file for a sync engine to pick up (ADR-0018 §6).
+    That leaves the *file* in WAL mode though, and a WAL file cannot be opened
+    over SMB or NFS at all, so a clean close also converts it back to a rollback
+    journal (ADR-0021) and the library at rest is portable again.
+
+    ``revert_journal_mode=False`` is for the one close that is not clean:
+    unmounting after another server took the lease. Converting the journal mode
+    is a write, and ADR-0018 §4 is categorical that we stop writing to a library
+    we no longer own — the new holder will set the mode it wants anyway.
     """
     with _lock:
         cached = _cache.pop(library_id, None)
-    if cached is not None:
-        cached.engine.dispose()
+    if cached is None:
+        return
+    if revert_journal_mode:
+        checkpoint_and_revert(cached.engine)
+    cached.engine.dispose()
 
 
 def maintain_library_engines(
@@ -208,19 +220,34 @@ def maintain_library_engines(
 
 
 def close_library_engines() -> None:
-    """Checkpoint and dispose every open library engine (clean shutdown).
+    """Checkpoint, revert to rollback, and dispose every open library engine.
 
-    The ADR-0018 §6 "clean close" path. Dispose alone already causes SQLite to
-    remove the WAL on last-connection close, but checkpointing first means the
-    fold-in happens while we are still deliberately in control rather than as a
-    side effect of teardown — and it keeps the behaviour explicit rather than
-    resting on interpreter shutdown happening to close connections in time.
+    The ADR-0018 §6 "clean close" path, extended by ADR-0021. Dispose alone
+    already causes SQLite to remove the WAL on last-connection close, but
+    checkpointing first means the fold-in happens while we are still
+    deliberately in control rather than as a side effect of teardown — and it
+    keeps the behaviour explicit rather than resting on interpreter shutdown
+    happening to close connections in time.
+
+    Reverting the journal mode is what makes the closed library *portable*
+    rather than merely tidy: the WAL flag lives in the file header, and a file
+    carrying it cannot be opened over SMB or NFS by any machine, however
+    read-only its intent. This is the only thing standing between a container on
+    a NAS and locking every other machine out of the library it serves, which is
+    why an unclean stop is a real, documented risk rather than a theoretical one.
     """
     with _lock:
         cached = list(_cache.values())
         _cache.clear()
     for entry in cached:
-        checkpoint_wal(entry.engine)
+        if not checkpoint_and_revert(entry.engine):
+            # Worth a line in the log: the library stays in WAL and therefore
+            # unopenable from a machine that reaches it over a share, until
+            # something with local access converts it back.
+            logger.warning(
+                "could not convert a library database back to a rollback journal on close; "
+                "it will not open over a network filesystem until it is converted"
+            )
         entry.engine.dispose()
 
 

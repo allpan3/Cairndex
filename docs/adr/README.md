@@ -39,3 +39,4 @@ design, subtitle modeling, and similar structural choices called out in
 | [0018](0018-library-ownership-lease-and-local-server.md) | Library ownership lease and desktop local-server sidecar | accepted |
 | [0019](0019-open-source-distribution-model.md) | Open-source distribution and desktop sidecar packaging | proposed |
 | [0020](0020-macos-private-api-startup-background.md) | macOS private API for the desktop webview background | accepted |
+| [0021](0021-library-journal-mode-lifecycle.md) | Library journal-mode lifecycle — WAL while served, rollback at rest | accepted |
