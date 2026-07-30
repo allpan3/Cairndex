@@ -17,7 +17,9 @@
 > reported 30-second stall; if it recurs, that entry records what was and was not
 > measured.
 
-> **Current position:** plan 4 write mode is **merged** (PR #30), as are the
+> **Current position:** PR numbers below refer to `allpan3/Cairndex-archive`; the
+> live repository has none (see the repository note above). Plan 4 write mode is
+> **merged** (PR #30), as are the
 > post-merge interaction fixes (PR #31) and the File Browser's move onto the
 > app's real media viewer (PR #32) and the collection-creation affordances
 > (owner-reported: the sidebar "+" nested instead of creating at the top level,
@@ -34,11 +36,20 @@
 > (2026-07-28) — tag `v0.1.0` at `2036cc2`, one Apple Silicon DMG with its
 > checksum and the third-party notices, verified by the owner on a genuinely
 > downloaded build. PR #39 (folder-as-bundle-member) is open and deliberately
-> *not* in this release. Ten owner-reported faults in the Suggest-grouping review
-> dialog are **merged** (PR #40), two of which could silently drop files from a
-> plan. **Next is phase I, the Android client** (plan 2 T1–T7). Two
-> owner-requested branches are open and unreviewed. Two things still need the
-> owner: a pass on a genuinely
+> *not* in this release; it lives on as branch `plan/folder-as-bundle-member`.
+> Ten owner-reported faults in the Suggest-grouping review dialog are **merged**
+> (PR #40), two of which could silently drop files from a plan.
+>
+> **Merged 2026-07-30, after the repository was recreated** (so with no PR
+> numbers): five more owner-reported faults found by using the app — a renamed file
+> keeping its old name inside its bundle, a drop onto a bundle landing in the
+> library root, an image double-click zooming instead of closing the viewer, the
+> viewer's two notices sitting apart, and a rename box selecting the extension;
+> the grouping review's per-suggestion round trips; and half-star ratings.
+>
+> **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
+> branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
+> need the owner: a pass on a genuinely
 > downloaded build (deferred from D7),
 > and a pass on the **native Finder drag gesture** on a packaged build, which
 > cannot be automated here. One diagnosis is parked rather than queued:
