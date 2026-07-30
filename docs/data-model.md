@@ -36,8 +36,9 @@ storage scope, and `asset_files.relative_path` is relative to the library root.
 
 ### `asset_bundles`
 
-`id`, `title` (nullable), `notes` (JSON), `rating` (nullable int, CHECK 0-5;
-NULL = unrated), `cover_file_id` (nullable FK to `asset_files`, `SET NULL`,
+`id`, `title` (nullable), `notes` (JSON), `rating` (nullable number of stars,
+CHECK 0-5, half-star steps; NULL = unrated — see
+[Rating scale](#rating-scale)), `cover_file_id` (nullable FK to `asset_files`, `SET NULL`,
 `use_alter` to break the FK cycle), `primary_file_id` (unused nullable legacy FK
 retained for existing databases), `extra_metadata`
 (JSON), `manual_order` (int, `server_default 0`), `grouping_state`,
@@ -61,6 +62,39 @@ library migrates on open.)
 `manual_order` is the global owner-defined ("custom") order used when browsing
 All/system views with the **Manual** sort (drag-reorder / "Clean up by…"). The
 per-collection order lives on `asset_bundle_collections.sort_order` instead.
+
+#### Rating scale
+
+`rating` holds a **number of stars** — 0 to 5 in half-star steps, so `3.5` is
+three and a half stars. It is deliberately not a count of half-star units
+(`7`), and that distinction is what let half stars arrive with **no migration**
+(`cairndex.domain.rating`). There is no migration chain: library DBs are
+bootstrapped by `create_all` and patched additively on open
+(`ensure_content_indexes`), so a scale change that reinterpreted stored values
+would have required rebuilding `asset_bundles` — the only way SQLite can alter
+its `CHECK (rating >= 0 AND rating <= 5)`, and a table with inbound FKs and an
+FK cycle through `cover_file_id`. Storing stars avoids all of it:
+
+- the existing range CHECK still holds, because 3.5 is still within 0–5;
+- every whole-star rating already stored keeps its meaning;
+- so does every rating literal inside a saved Smart Collection's `filter_json`
+  (`rating >= 4` still selects four stars and up).
+
+SQLite's dynamic typing does the rest: on a library created before half stars,
+the column is declared `INTEGER`, and INTEGER affinity converts a REAL only when
+the conversion is lossless — so `3.5` is stored as REAL, `4.0` as INTEGER `4`,
+and the two storage classes compare, sort, and group numerically. Half steps are
+exactly representable in binary floating point, so `rating = 3.5` never misses.
+
+Two consequences worth knowing:
+
+- **Facet keys are formatted, not stringified.** The same column hands back an
+  int for `4` and a float for `3.5`, so `domain.rating.rating_facet_key` renders
+  whole stars as `"4"` (the key clients already used) and half stars as `"3.5"`.
+- **The half-star *step* is enforced above the database**, in
+  `services/bundles.py` and the API schemas, because an existing library's CHECK
+  covers only the range and cannot be extended in place. An off-grid value such
+  as `3.3` is a 422, not a stored row.
 
 Grouping review state (ADR-0009): scan stages newly discovered files into
 `provisional` / `scan_suggestion` bundles that await user review. Explicit user

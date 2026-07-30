@@ -26,6 +26,7 @@ from cairndex.domain.enums import (
     GroupingState,
     MediaKind,
 )
+from cairndex.domain.rating import rating_facet_key
 from cairndex.filters.ast import FilterExpression
 from cairndex.filters.compiler import compile_expression
 from cairndex.persistence.models import (
@@ -75,7 +76,7 @@ class BundleSort(StrEnum):
 class BundleSummary:
     id: str
     title: str | None
-    rating: int | None
+    rating: float | None
     file_count: int
     total_size: int
     has_missing: bool
@@ -658,16 +659,14 @@ def tag_counts(session: Session) -> dict[str, int]:
     return counts
 
 
-# The "unrated" bucket key for rating facets (JSON keys are strings; None → this).
-UNRATED_KEY = "unrated"
-
-
 @dataclass(frozen=True)
 class FacetCounts:
     # Per tag id → count of matching bundles in the current browse scope. Present
     # only when tags were requested.
     tags: dict[str, int] | None
-    # Rating value ("0".."5") or "unrated" → count. Present only when requested.
+    # Rating value ("0", "0.5", … "5") or "unrated" → count. Whole stars key
+    # without a decimal part; see ``domain.rating.rating_facet_key``. Present
+    # only when requested.
     ratings: dict[str, int] | None
 
 
@@ -751,7 +750,11 @@ def _rating_facet(session: Session, scoped_ids: Any) -> dict[str, int]:
         .where(AssetBundle.id.in_(scoped_ids))
         .group_by(AssetBundle.rating)
     ).all()
+    # SQLite groups the two storage classes a half-star scale produces (INTEGER 4
+    # and REAL 3.5) numerically, so each distinct rating arrives once — but it
+    # arrives as an int or a float depending on the value, which is why the key
+    # is formatted rather than str()'d.
     counts: dict[str, int] = {}
     for rating, count in rows:
-        counts[UNRATED_KEY if rating is None else str(rating)] = count
+        counts[rating_facet_key(rating)] = count
     return counts

@@ -13,7 +13,7 @@ import {
   useTags,
 } from '../api/hooks'
 import { formatBytes } from '../lib/format'
-import { StarRating } from './Inspector'
+import { StarRating } from './Stars'
 import { usePinyinSearch } from './pinyin'
 import { flattenHierarchy, usePopover } from './usePopover'
 

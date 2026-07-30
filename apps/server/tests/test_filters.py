@@ -105,6 +105,44 @@ def test_text_and_rating(session: Session) -> None:
     assert got == {a.id}
 
 
+def test_half_star_rating_comparisons(session: Session) -> None:
+    """Half stars compare exactly, and a whole-star literal keeps its old meaning.
+
+    The second half matters most: ``rating >= 4`` is already baked into saved
+    Smart Collections, and widening the scale must not have moved what it selects.
+    """
+    three = bundle_service.create_bundle(session, title="three", rating=3)
+    three_half = bundle_service.create_bundle(session, title="three and a half", rating=3.5)
+    four = bundle_service.create_bundle(session, title="four", rating=4)
+    session.commit()
+
+    def matching(operator: str, value: float) -> set[str]:
+        return _matches(
+            session,
+            {"version": 1, "root": {"field": "rating", "operator": operator, "value": value}},
+        )
+
+    assert matching("eq", 3.5) == {three_half.id}
+    assert matching("gte", 3.5) == {three_half.id, four.id}
+    assert matching("lte", 3.5) == {three.id, three_half.id}
+    # Unchanged by the widening: a pre-existing saved filter still selects 4+.
+    assert matching("gte", 4) == {four.id}
+    assert matching("eq", 3) == {three.id}
+
+
+def test_rating_sort_orders_half_stars_between_whole_ones(session: Session) -> None:
+    """Sorting spans the mixed INTEGER/REAL storage classes half stars produce."""
+    two = bundle_service.create_bundle(session, title="two", rating=2)
+    four_half = bundle_service.create_bundle(session, title="four and a half", rating=4.5)
+    two_half = bundle_service.create_bundle(session, title="two and a half", rating=2.5)
+    session.commit()
+
+    ordered = session.execute(
+        select(AssetBundle.id).where(AssetBundle.rating.isnot(None)).order_by(AssetBundle.rating)
+    ).scalars()
+    assert list(ordered) == [two.id, two_half.id, four_half.id]
+
+
 def test_rating_is_null_matches_unrated(session: Session) -> None:
     rated = bundle_service.create_bundle(session, title="rated", rating=3)
     unrated = bundle_service.create_bundle(session, title="unrated", rating=None)

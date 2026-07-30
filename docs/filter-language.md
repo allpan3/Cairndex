@@ -62,7 +62,7 @@ product brief's "Filter expression contract")
 | `notes`, `source` (file origin), `filename` | `contains`, `not_contains` |
 | `tags` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
 | `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) |
-| `rating` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
+| `rating` (0–5 stars, 0.5 steps) | `eq`, `neq`, `gt`, `gte`, `lt`, `lte` |
 | `extension` / `container` / `codec` | `equals`, `in`, `not_in` |
 | `duration`, `size_bytes`, `file_count` | `eq`, `gt`, `gte`, `lt`, `lte`, `between` |
 | `date_added`, `date_modified`, `date_imported` | `gt`, `gte`, `lt`, `lte`, `between` |
@@ -84,11 +84,29 @@ exactly this set.
 | --- | --- | --- |
 | `title` / `name`, `notes`, `source`, `filename` | `contains`, `not_contains`, `equals`, `starts_with` (text fields; `notes`/`source`/`filename` use contains/not_contains in the UI) | string |
 | `extension` | `equals`, `in`, `not_in` | string / list |
-| `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` |
+| `rating`, `file_count`, `size_bytes` | `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `between` | number / `[lo, hi]` (`rating`: 0–5 in 0.5 steps) |
 | `rating` (also) | `is_null` | boolean (`true` = unrated, `rating IS NULL`) |
 | `date_added` | `gt`, `gte`, `lt`, `lte`, `between` | ISO-8601 string |
 | `tags`, `collections` | `contains_any`, `contains_all`, `contains_none` (+ `include_descendants`) | list of ids |
 | `has_cover`, `has_missing` | `equals` | boolean |
+
+### Rating values are stars, in half-star steps
+
+A `rating` value is a **number of stars** on a 0–5 scale with 0.5 granularity:
+`{"field": "rating", "operator": "gte", "value": 3.5}` selects three-and-a-half
+stars and up. See [Rating scale](data-model.md#rating-scale) for why the value
+counts stars rather than half-star units.
+
+The practical consequence for saved filters: **half stars did not reinterpret
+anything already written down**. A Smart Collection whose `filter_json` says
+`rating >= 4` selected four stars and up before half stars existed and still
+does. Nothing has to be rewritten, and a filter authored on either side of the
+change means the same thing on both.
+
+Values off the half-star grid (`3.3`) are rejected by the bundle write schemas.
+The filter compiler does **not** reject them — a filter is a comparison, not a
+stored rating, and `rating > 3.3` is a well-defined (if unusual) query that
+cannot corrupt anything.
 
 ### Rating "Unrated" (`is_null`)
 
@@ -128,7 +146,8 @@ matches everything.
 - `POST /api/v1/libraries/{library_id}/filters/facets` — faceted counts for the
   toolbar filter popovers. Request: `{ view, collection_id, include_descendants,
   q, filter, facets: ["tags"|"ratings"], tag_include_descendants }`. Response:
-  `{ tags: { <tag_id>: n }, ratings: { "0".."5"|"unrated": n } }`. Counts are
+  `{ tags: { <tag_id>: n }, ratings: { "0"|"0.5"|…|"5"|"unrated": n } }` —
+  whole stars key without a decimal part (`"4"`, never `"4.0"`). Counts are
   scoped to the current browse context (view/collection/search + the base
   `filter`), computed server-side (never by fetching bundles). The base `filter`
   must exclude the facet category being shown, so a category's own selections

@@ -184,6 +184,45 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   to be read as a fact. The rest of the app settled this already; the review
   dialog now speaks the same vocabulary (video / image / subtitle).
 
+### Changed
+
+- **Ratings now go in half stars.** The scale is 0–5 in 0.5 steps everywhere it
+  appears: the inspector, the multi-select batch bar, the toolbar Rating filter,
+  and the Smart Collection editor. Each star is two click targets — the left half
+  picks `n − ½`, the right half picks `n` — and clicking the current value still
+  clears the rating.
+
+  **Nothing you already rated or saved changed meaning.** A rating is stored as a
+  number of stars rather than a count of half-star units, so every whole-star
+  rating in an existing library still reads as itself, and every saved Smart
+  Collection keeps selecting what it selected — `rating >= 4` is still four stars
+  and up. No migration runs, and libraries move freely between this version and
+  the previous one.
+
+  The controls also grew up (owner feedback): the stars are larger with tighter
+  spacing, so each half is a real target; **press and drag across the row** to
+  sweep to a rating, committing on release; and a small text hint names the
+  value ("3½ stars") while hovering or dragging, so you never have to count
+  filled halves. A drag always sets the value it ends on — only a click on the
+  current value clears.
+
+  Two smaller visible effects: the rating filter's per-star count now follows
+  whichever half is under the pointer, so it always answers "how many would
+  clicking here match?", and the inspector's empty stars are muted solid rather
+  than hollow outlines, matching the filter popover. The facets API gained half
+  keys (`"3.5"`); whole stars keep the key they had (`"4"`, never `"4.0"`).
+
+### Internal
+
+- `cairndex.domain.rating` is the one definition of the rating scale — range,
+  step, and facet-key format — shared by the ORM model, the write schemas, the
+  bundle service, and the facet builder. `apps/web/src/app/rating.ts` mirrors it
+  on the client. `tests/test_rating_scale.py` pins the compatibility premise
+  against the pre-half-star column shape (declared `INTEGER`, with the range
+  CHECK that SQLite cannot alter in place).
+- The inspector's star editor moved out of `Inspector.tsx` into `Stars.tsx`, so
+  the half-star geometry exists once instead of in two components.
+
 ## [0.1.0] — 2026-07-28
 
 First public release: a macOS desktop app, and the server and web client behind

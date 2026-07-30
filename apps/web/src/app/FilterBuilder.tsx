@@ -135,7 +135,7 @@ function ValueEditor({
     )
   }
   if (def.kind === 'rating') {
-    // "is unrated" (is_null) needs no value; otherwise pick a star (1..5).
+    // "is unrated" (is_null) needs no value; otherwise pick a rating (0.5..5).
     if (row.operator === 'is_null') return <span className="filter-row__val" />
     return (
       <span className="filter-row__val">

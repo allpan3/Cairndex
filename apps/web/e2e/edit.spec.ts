@@ -163,10 +163,21 @@ test('editing the rating persists', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
   await page.locator('.card').first().click()
-  await page.getByRole('button', { name: '4 stars' }).click()
-  // After the PATCH + refetch the 4th star is filled.
-  await expect(page.getByRole('button', { name: '4 stars' })).toHaveText('★')
-  await expect(page.getByRole('button', { name: '5 stars' })).toHaveText('☆')
+  await page.getByRole('radio', { name: '4 stars' }).click()
+  // After the PATCH + refetch the picked rating is the checked option.
+  await expect(page.getByRole('radio', { name: '4 stars' })).toBeChecked()
+  await expect(page.getByRole('radio', { name: '5 stars' })).not.toBeChecked()
+})
+
+test('editing the rating to a half star persists', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('radio', { name: '3½ stars' }).click()
+  await expect(page.getByRole('radio', { name: '3½ stars' })).toBeChecked()
+  // The whole star either side of it must not read as selected.
+  await expect(page.getByRole('radio', { name: '3 stars' })).not.toBeChecked()
+  await expect(page.getByRole('radio', { name: '4 stars' })).not.toBeChecked()
 })
 
 test('the plus affordance adds a second note box and both persist', async ({ page }) => {

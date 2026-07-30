@@ -130,8 +130,13 @@ class AssetBundle(Base):
     # no predefined roles; each entry is just a separate text block. NULL on rows
     # created before this column existed reads back as an empty list.
     notes: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
-    # 0..5; NULL means unrated. Range enforced by a CHECK constraint and schema.
-    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 0..5 stars in half-star steps; NULL means unrated (see domain/rating.py).
+    # The CHECK below enforces the range. The *step* is enforced in the service
+    # and schema layers only: a library created before half stars has this table
+    # already built, and SQLite cannot add a constraint to an existing table
+    # without rebuilding it — which is exactly what storing stars rather than
+    # half-units lets us avoid.
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # The selected cover lives in this bundle. The FK forms a cycle with
     # asset_files.bundle_id, so it is created via ALTER and updated after the

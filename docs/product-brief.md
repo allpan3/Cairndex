@@ -457,7 +457,7 @@ Plan for directory list/tree navigation scoped to the active library root, file 
 
 A bundle card should communicate selected cover/thumbnail, title, media/file count when greater than one, current-media duration or image dimensions, rating, lightweight status indicators, missing/offline/stale state, grouping review state, and selection state.
 
-The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating, aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
+The inspector should expose bundle-level fields first: cover, title, note, tags, collections, rating (0–5 stars in half-star steps), aggregate properties, and files in the bundle. Selecting a file within the bundle reveals file-level technical metadata and, later, display title/note/source-link controls.
 
 ### Tag selector
 
