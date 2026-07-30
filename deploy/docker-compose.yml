@@ -1,0 +1,93 @@
+# Cairndex — server deployment (NAS / self-host).
+#
+# This directory is meant to be copied to the server on its own. It needs no
+# checkout of the repository and no build toolchain: the image is pulled from
+# GitHub Container Registry.
+#
+#   mkdir -p /volume1/docker/cairndex && cd /volume1/docker/cairndex
+#   curl -O https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/docker-compose.yml
+#   curl -o .env https://raw.githubusercontent.com/allpan3/Cairndex/main/deploy/.env.example
+#   $EDITOR .env                 # MEDIA_HOST_PATH is required
+#   docker compose up -d
+#
+# Updating is `docker compose pull && docker compose up -d`.
+#
+# To run from source instead — an unreleased branch, or a change you have not
+# published — use docker-compose.prod.yml at the repository root, which builds
+# the same image locally.
+#
+# SECURITY: Cairndex has no authentication yet (AGENTS.md §12). Do not expose
+# this to the public internet. Reach it over your LAN, a VPN, or Tailscale.
+
+services:
+  app:
+    # Pinning a version (…:0.1.0) rather than :latest means an update is
+    # something you decide, and a `docker compose pull` cannot change what runs
+    # under you. :latest is the convenient default; the choice is yours.
+    image: ghcr.io/allpan3/cairndex:${CAIRNDEX_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      # Bind to loopback by default. Change to 0.0.0.0 only on a network you
+      # trust, or leave it and front the app with a reverse proxy / Tailscale.
+      - "${CAIRNDEX_BIND_ADDR:-127.0.0.1}:${CAIRNDEX_PORT:-8000}:8000"
+    environment:
+      CAIRNDEX_ENVIRONMENT: production
+      # Baked into the image; override only if you remap the volumes below.
+      CAIRNDEX_STATIC_DIR: /app/web
+      CAIRNDEX_DATA_DIR: /data
+      # ADR-0018: recorded in each library's ownership lease, and shown to
+      # anyone whose other machine finds this server holding a library. Unset,
+      # it defaults to the container's hostname — a hex id naming nothing.
+      CAIRNDEX_MACHINE_NAME: ${CAIRNDEX_MACHINE_NAME:-cairndex-server}
+      # Where other machines can reach this server. Set it, and a machine that
+      # finds this one holding a library can offer "connect there instead"
+      # rather than only naming a host. Only non-loopback URLs are ever offered.
+      CAIRNDEX_ADVERTISED_URL: ${CAIRNDEX_ADVERTISED_URL:-}
+      # ADR-0013 deployment master switch for guarded file operations.
+      # `allowed` lets each library's own opt-in (off by default) decide;
+      # `disabled` forces every library read-only and makes the per-library
+      # toggle un-flippable.
+      CAIRNDEX_WRITE_MODE: ${CAIRNDEX_WRITE_MODE:-allowed}
+    volumes:
+      # Server-local runtime state: registry.db, transcode scratch, backups.
+      # Per-library content metadata lives in each library's own .cairndex/.
+      - cairndex-data:/data
+      # Your library root. Required — compose refuses to start without it
+      # rather than quietly inventing ./media and scanning an empty directory.
+      #
+      # It must be writable: Cairndex keeps each library's portable package at
+      # <root>/.cairndex/{manifest.json,library.db,cache/}. That is metadata.
+      # Your media files are not moved, renamed, deleted, or rewritten by any
+      # ordinary flow — only by an explicit write-mode operation (ADR-0013),
+      # which is off by default per library.
+      - "${MEDIA_HOST_PATH:?set MEDIA_HOST_PATH in .env}:/storage/media:rw"
+    # The app only needs its mounted volumes to be writable, so the rest of the
+    # container filesystem is not.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    # Shutdown releases each library's ownership lease and checkpoints its WAL
+    # back into library.db (ADR-0018 §6). A SIGKILL part-way through strands the
+    # lease until it ages out (5 minutes), during which nothing else — including
+    # your desktop app — opens that library without a confirmed takeover.
+    # Docker's default grace period is 10s; this buys room for a large or
+    # network-mounted library.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    # Unbounded json-file logs are a classic way to fill a NAS volume months
+    # after a deployment anyone has stopped thinking about.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  cairndex-data:
