@@ -10,16 +10,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
-- **A renamed file kept its old name inside its bundle.** The File Browser showed
-  the new name while the bundle's file list, the inspector and the viewer all
-  still showed the old one: the same file under two names. A file's path can
-  change in three places — a rename Cairndex performs, a rename it *discovers*
-  during a scan, and a missing file repaired by hand — and all three moved the
-  path while leaving the shown name behind. All three now carry it, under one
-  shared rule, unless it is a title chosen deliberately rather than the filename.
-  The name the file had when it entered the library is still recorded, unchanged.
-  **Files already showing a stale name are corrected by the next scan**, where
-  the old name is provably a leftover rather than someone's choice.
+- **A file showed one name in the File Browser and another inside its bundle.**
+  The bundle's file list, the inspector and the viewer render a *stored copy* of
+  the filename, and the copy could drift: three separate code paths move a file's
+  path — a rename Cairndex performs, a rename it discovers during a scan, and a
+  missing file repaired by hand — and each one that forgot to update the copy left
+  the file under its old name. **A bundle now shows the file's current filename**,
+  derived rather than stored, so no path can leave it behind and files that were
+  already showing a stale name are correct immediately — no scan, no repair step.
+  The three paths keep the stored copy in step as well, since search reads it, and
+  the name a file arrived under is still recorded separately, unchanged.
 - **Dropping files onto a bundle copied them into the library root.** They were
   linked into the bundle correctly but filed nowhere near its own files, leaving
   a manual move to put right. A drop now asks where to put them, opening in the
