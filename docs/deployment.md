@@ -891,6 +891,14 @@ Notes for when this is picked up:
 tag as input. It builds **Apple Silicon only**, then attaches the DMG to a
 **draft** release — publishing stays a human decision.
 
+The release body is `.github/release-preamble.md` (install and licensing, which
+do not change between releases) followed by that version's own section of
+`CHANGELOG.md`. GitHub's generated notes are **off**: they list merged pull
+requests, which describes a release only when every change arrived as one. For
+v0.1.1 most changes were merged directly onto `main` after the repository was
+recreated, so the generated notes named a single PR for a release carrying a
+feature, eleven fixes and a breaking change — and had to be rewritten by hand.
+
 The build job fetches the pinned ffmpeg, builds and smoke-tests the sidecar,
 builds the app and DMG, and refuses to continue on a bad bundle signature or a
 binary of the wrong architecture. The draft carries the `.dmg`, its `.sha256`,
@@ -906,7 +914,10 @@ is wrong is more annoying to undo than to get right.
   the version, and **the artifact names come from `tauri.conf.json`, not from
   the tag**. Nothing enforces that they agree, so a `v0.2.0` tag on a
   `0.1.0` config silently produces `Cairndex_0.1.0_*.dmg`. Bump both first.
-- `CHANGELOG.md` — move `Unreleased` entries under the new version.
+- `CHANGELOG.md` — move `Unreleased` entries under the new version. **This is
+  enforced**: the release body is that section, extracted by
+  `infra/release_notes.py`, and the job fails if `## [<version>]` is missing
+  rather than publishing a release with no notes.
 - Gates green on `main` (`AGENTS.md`), since the tag is what gets built.
 
 **2. Tag and push.** Annotated, so the tag carries its own description:
