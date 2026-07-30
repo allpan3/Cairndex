@@ -265,9 +265,10 @@ def _generate_sheets(
     sampling: SamplingMode = "keyframe",
 ) -> list[float] | None:
     # showinfo sits after selection and scaling but before `tile`, so it reports
-    # one line per tile — with the frame's own presentation time, since only
-    # `fps`/`tile` rewrite timestamps. The tile list and the cue list are then
-    # the same list, and cannot disagree about how many tiles a sheet holds.
+    # one line per tile, timed as that tile is timed: keyframe sampling passes
+    # the source timestamp through untouched, and `fps` has already rewritten
+    # its output onto the interval grid it sampled at. The tile list and the cue
+    # list are therefore the same list and cannot disagree about either.
     decode = ["-skip_frame", "nokey"] if sampling == "keyframe" else []
     # Keyframe sampling emits sheets at whatever irregular intervals the source's
     # keyframes fall on, and the image muxer's default rate sync answers that by
