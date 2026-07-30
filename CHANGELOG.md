@@ -49,7 +49,49 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bottom with the transfer indicator. It now sits with the job rows: the message
   outlives the button, since a storyboard pass reports long after Update says it
   is done.
-
+- **The Bundle Inspector docked beside a playing file is the shell's own.** It
+  was already the same component, and behaved like a different pane: a narrower
+  fixed width, its own border and background, a shorter right-click menu, and
+  tag edits that finished with no sign they had. It was not forked but starved —
+  the shell passed eleven handlers, the viewer passed a bundle id, so every
+  action gated on one of them had nothing to render from. Those handlers are no
+  longer props restated at two call sites; they are one object the shell
+  provides and the inspector reads wherever it appears, so an action added later
+  reaches both surfaces at once. The rail also takes its width from the same
+  variable as the shell's, so resizing one resizes both. Four actions genuinely
+  mean something different inside an open viewer and are resolved rather than
+  dropped: Play steps within the playlist instead of stacking a second viewer;
+  Locate, Add files and Filter by tag close the viewer first, because they take
+  you somewhere in the shell; and transient messages route to the viewer's own
+  notice anchor, which sits above it. Right-clicking inside the rail no longer
+  opens the playback menu on top of the menu you asked for.
+- **A bundle filed into a collection is there when you open it.** The count
+  moved immediately and the contents did not: opening the collection rendered
+  its cached listing — without the bundle — until a refetch came back, so the
+  number beside the name disagreed with what was under it, and a collection that
+  had been empty showed nothing at all. Only collections you had already visited
+  were affected, which is why it looked intermittent. The optimistic projection
+  already pulled moved bundles out of the listings they left; it now also puts
+  them into the ones they join, following the same subtree rule as the counts —
+  a listing showing subcollection contents gains a bundle filed into a child,
+  the same collection showing only its own does not. Filtered and searched
+  listings are left to the refetch rather than guessed at. The collection
+  picker's checkbox now projects the same way a drop does.
+- **Collection covers appear when there is one, and change when it does.** Two
+  faults, both ending in a folder glyph. The card remembered a failed cover
+  image forever, so the 404 every collection answers before its thumbnail exists
+  — or while it has no bundles — pinned the glyph in place through bundles being
+  filed in and through a cover being chosen. And the server never changed the
+  URL: a collection's auto-picked cover is derived from its membership, but
+  filing a bundle in touched no collection row, so the cache key stayed
+  identical and the browser kept serving what it had. Both sides of a move, and
+  their parent collections, now get a fresh key.
+- **Setting a cover frame for a video no longer re-covers the whole bundle.**
+  Choosing a nicer frame for one video also made that video represent the
+  bundle. Which member speaks for the bundle stays the separate, explicit choice
+  it already had an affordance for — the star beside each row in the inspector's
+  file list. The two compose: set a frame, then star the file. The viewer's menu
+  now says "Set Frame as Video Cover".
 - **Collection counts now move with the drop.** Dragging a bundle into a
   collection left every number beside the collections on its old value until a
   refetch came back — plainly visible on a library whose database lives on a
