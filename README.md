@@ -135,6 +135,7 @@ docs/
   reference/eagle/    # Eagle UI reference screenshots (not committed media)
 infra/
   docker/   # Dockerfiles for local/dev and NAS deployment
+deploy/     # What a server needs: compose file, env sample, runbook
 ```
 
 ## Quickstart (local development)
@@ -217,17 +218,24 @@ each build re-registers the build-directory bundle. See
 ## Quickstart (Docker)
 
 **Self-hosting on a NAS or server** — one hardened container serving the API and
-the built web app:
+the built web app, pulled from GitHub Container Registry.
+
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) is the whole
+deployment: every setting has a working default, so it runs as-is once you point
+it at your library. Paste it into your NAS's **Project** / **Stack** / **Compose**
+section (Synology, UGREEN, QNAP, TrueNAS all have one) and manage it from there
+with logs and stats, or run it from a shell:
 
 ```bash
-cp .env.example .env
-docker compose -f docker-compose.prod.yml up --build -d
+docker compose up -d
 ```
 
-Edit `MEDIA_HOST_PATH` in `.env` to point at your library first. Do not expose
-this directly to the public internet; reach it over a LAN or Tailscale. See
-[docs/deployment.md](docs/deployment.md) for volumes, permissions, backups, and
-building an amd64 image from an Apple Silicon Mac.
+The library directory must be writable by uid 10001, the container's non-root
+user. Do not expose this to the public internet — there is no authentication
+yet; reach it over your LAN or Tailscale.
+[deploy/README.md](deploy/README.md) is the runbook (permissions, updating,
+backups); [docs/deployment.md](docs/deployment.md) has the reasoning, the full
+environment table, and how to build the image yourself instead of pulling it.
 
 **Developing in containers instead of natively:**
 

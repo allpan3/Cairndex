@@ -116,6 +116,25 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Cairndex is published as a container image**, so deploying it no longer
+  means putting the source on the server. `ghcr.io/allpan3/cairndex` is built
+  and pushed by a workflow on a version tag (or a deliberate manual run — never
+  automatically from `main`), and the new `deploy/` directory holds the two
+  file a NAS needs. Every setting in `deploy/docker-compose.yml` carries a
+  working default, so it needs no `.env` beside it and can be pasted straight
+  into a NAS Docker UI's Project / Stack / Compose section — which is how most
+  of these boxes are administered, and a compose file that only works beside an
+  env file is one that only works from a shell. Updating is
+  `docker compose pull && up -d`, with no migration step. `deploy/README.md` is
+  the runbook — both install paths, permissions, updating, stopping, backups,
+  and the two refusals that look like failures but are not. Building from source
+  still works and is documented as the way to run an unreleased branch.
+
+  **The image is smoke-tested before it is pushed, not after.** It is built to
+  the runner's local daemon, put through the same `infra/docker/smoke.sh` that
+  CI runs, and only then pushed — the second build reuses the layer cache, so
+  the gate costs seconds. Publishing first would leave a broken image pullable
+  in the gap, with `:latest` already moved.
 - **Turn a suggested bundle into a collection, and back.** The suggester decides
   from filenames alone whether a folder holds one thing or several, and it gets
   it wrong in a way Narrow could not fix: a folder whose files carry explicit
