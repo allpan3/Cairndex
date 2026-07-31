@@ -182,6 +182,9 @@ section inside both Bundle Inspector surfaces now offers the same action when
 write mode is on and no deletion row at all while it is off. Trashed rows are
 now excluded from the bundle’s active files endpoint, playback manifest and
 cover fallback, so the operation removes the file from the bundle immediately.
+The client also removes that row from every active bundle-file cache as soon as
+the action starts, rather than exposing the journaled move and follow-up refetch
+latency on a network mount; a rejected operation restores the cached rows.
 The row keeps its bundle id under the trash operation: Put Back returns the
 same file, metadata and order to the same bundle instead of restoring loose
 bytes. Reordering the remaining visible members preserves hidden trash slots.
