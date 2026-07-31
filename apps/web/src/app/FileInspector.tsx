@@ -34,6 +34,8 @@ export function FileInspector({
   onOpenFile,
   onStartFileDrag,
   onRename,
+  locateLabel,
+  onLocate,
 }: {
   entry: FileFacts | null
   hostLabels: HostLabels
@@ -43,6 +45,9 @@ export function FileInspector({
   onStartFileDrag?: (relativePaths: string[]) => void
   // Rename this entry; undefined leaves the title read-only (no write mode).
   onRename?: (relativePath: string, newName: string) => void
+  // In-app navigation, available in both web and desktop builds.
+  locateLabel?: string
+  onLocate?: (relativePath: string) => void
 }) {
   const [editing, setEditing] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
@@ -178,10 +183,16 @@ export function FileInspector({
           </div>
         ))}
       </dl>
-      {/* Host actions below the facts: the metadata is what the pane is *for*,
-          and buttons above it pushed every fact down a row. */}
-      {entry.kind === 'file' && (onRevealFile || onOpenFile) && (
+      {/* Actions below the facts: the metadata is what the pane is *for*, and
+          buttons above it pushed every fact down a row. Locate stays available
+          on the web; Open/Reveal remain mapped-desktop capabilities. */}
+      {entry.kind === 'file' && (onLocate || onRevealFile || onOpenFile) && (
         <div className="file-inspector__actions">
+          {onLocate && (
+            <button className="btn" onClick={() => onLocate(entry.relativePath)}>
+              {locateLabel ?? 'Locate'}
+            </button>
+          )}
           {onOpenFile && (
             <button className="btn" onClick={() => onOpenFile(entry.relativePath)}>
               {hostLabels.openFile}

@@ -715,9 +715,11 @@ It returns directories first, then files, sorted case-insensitively. Each entry
 includes name, library-relative path, kind, size, modified time, extension, MIME
 guess, media classification, native support/openable state, and a cheap
 linked-to-bundle hint. Linked entries also carry nullable file id, container,
-video/audio codecs, and duration for card hover preview; SQLite extracts only
+video/audio codecs and their primary-stream bitrates, the primary audio sample
+rate, and duration for card hover preview and exports; SQLite extracts only
 those JSON keys in the existing batched membership query, while unlinked paths
-remain null. Image files are openable when they are browser-native or
+remain null. Image files are
+openable when they are browser-native or
 preview-capable through the preview pipeline, so HEIC/TIFF/BMP can now appear as
 supported even though the browser never receives the original bytes directly.
 Raw preview bytes for File Browser entries are served by

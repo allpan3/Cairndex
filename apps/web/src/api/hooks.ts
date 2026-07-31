@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import {
   type InfiniteData,
   type QueryClient,
+  type QueryKey,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -146,6 +147,7 @@ import {
   collectionCountDeltas,
   directMembershipDeltas,
   emptyMembershipDelta,
+  listingHoldsBundle,
   nextMembership,
 } from './counts'
 
@@ -154,6 +156,30 @@ export type BrowseQuery = Omit<BrowseParams, 'offset'>
 const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
 type JobProgressFn = (job: JobRead | null) => void
+
+/** Merge optimistically hidden files back into their cached bundle positions. */
+function restoreBundleFileSnapshots(
+  qc: QueryClient,
+  snapshots: [QueryKey, FileRead[] | undefined][],
+  relativePaths: readonly string[],
+) {
+  const restoredPaths = new Set(relativePaths)
+  for (const [key, previous] of snapshots) {
+    if (!previous) continue
+    qc.setQueryData<FileRead[]>(key, (current = []) => {
+      const currentById = new Map(current.map((file) => [file.id, file]))
+      const merged = previous.flatMap((file) => {
+        const currentFile = currentById.get(file.id)
+        if (currentFile) {
+          currentById.delete(file.id)
+          return [currentFile]
+        }
+        return restoredPaths.has(file.relative_path) ? [file] : []
+      })
+      return [...merged, ...currentById.values()]
+    })
+  }
+}
 
 // Wait for a queued/running job to finish so dependent queries refetch fresh
 // data. ``onProgress`` (when given) receives each polled snapshot so the UI can
@@ -215,6 +241,14 @@ async function watchOptionalJob(
 function invalidateCollectionCounts(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['collection-counts'] })
   qc.invalidateQueries({ queryKey: ['collection-stats'] })
+  // The collection rows themselves, because membership decides more than the
+  // counts: a collection's auto-picked cover is the earliest thumbnailable
+  // bundle in its subtree, and the tile is fetched with the row's `updated_at`
+  // as its cache key. Without this the server's freshly moved key never reaches
+  // the client and the browser keeps serving the old cover — or the folder
+  // glyph it fell back to when there was nothing to show yet (owner,
+  // 2026-07-30).
+  qc.invalidateQueries({ queryKey: ['collections'] })
 }
 
 // Invalidate all library surfaces whose content changes after a maintenance job
@@ -459,7 +493,26 @@ export function useFileOperations() {
     }),
     trash: useMutation({
       mutationFn: (paths: string[]) => trashEntries(paths),
-      onSuccess: refresh,
+      // A NAS can take seconds to settle the journaled move. Active bundle
+      // surfaces should reflect the owner's intent while that safe operation
+      // runs, then restore the rows if the server rejects it.
+      onMutate: async (paths: string[]) => {
+        const query = { queryKey: ['bundle-files'] }
+        await qc.cancelQueries(query)
+        const previous = qc.getQueriesData<FileRead[]>(query)
+        const requested = new Set(paths)
+        qc.setQueriesData<FileRead[]>(query, (files) =>
+          files?.filter((file) => !requested.has(file.relative_path)),
+        )
+        return { previous }
+      },
+      onError: (_error, _paths, context) => {
+        restoreBundleFileSnapshots(qc, context?.previous ?? [], _paths)
+      },
+      onSuccess: (result, _paths, context) => {
+        restoreBundleFileSnapshots(qc, context?.previous ?? [], result.failed_paths)
+        refresh()
+      },
     }),
     move: useMutation({
       mutationFn: ({
@@ -501,7 +554,14 @@ export function invalidateAfterFileOperation(qc: ReturnType<typeof useQueryClien
     'file-browser',
     'browse',
     'view-counts',
+    'collection-counts',
+    'collection-stats',
+    'tag-counts',
+    'collections',
+    'bundle',
     'bundle-files',
+    'playback',
+    'continue-watching',
     'unbundled-files',
     'file-ops',
     'trash',
@@ -1340,6 +1400,107 @@ function projectMemberships(
   return { changes, snapshots }
 }
 
+/** The moved bundles' summary rows, found in whatever listing already holds
+ *  them — the grid they were dragged from, most often. A bundle with no cached
+ *  row cannot be drawn into a listing it is arriving in, so it is left to the
+ *  refetch. */
+function cachedSummaries(
+  qc: QueryClient,
+  bundleIds: readonly string[],
+): Map<string, BundleSummary> {
+  const wanted = new Set(bundleIds)
+  const found = new Map<string, BundleSummary>()
+  for (const [, data] of qc.getQueriesData<InfiniteData<BundleBrowsePage>>({
+    queryKey: ['browse'],
+  })) {
+    for (const page of data?.pages ?? []) {
+      for (const item of page.items) {
+        if (wanted.has(item.id) && !found.has(item.id)) found.set(item.id, item)
+      }
+    }
+  }
+  return found
+}
+
+/**
+ * Bring every cached collection-scoped listing in line with these membership
+ * changes — both the bundles that just left it and the ones that just arrived.
+ *
+ * Only the leaving half existed before, and the missing half is what the owner
+ * saw: file a bundle into a collection, open it, and the grid renders the
+ * cached listing from last time — which does not contain the bundle — while the
+ * refetch is still in flight. The count beside it had already moved, so the two
+ * disagreed until the round trip landed, and on a library whose database sits
+ * on a network share that is long enough to read as "there's nothing in here"
+ * (owner, 2026-07-30). A collection opened for the first time was never
+ * affected: with nothing cached there is nothing stale to show.
+ *
+ * Listings carrying a filter or a search are skipped rather than guessed at —
+ * whether a bundle belongs in one is the server's judgement, not something
+ * membership alone answers. Their invalidation still refetches them.
+ */
+function projectCollectionListings(
+  qc: QueryClient,
+  bundleIds: readonly string[],
+  changes: MembershipChange[],
+): CacheSnapshot[] {
+  const collections = qc.getQueryData<CollectionRead[]>(['collections'])
+  // Without the tree, "does this listing show descendants' contents" is
+  // unanswerable, and a wrong guess would put a card in the wrong grid.
+  if (collections === undefined || changes.length === 0) return []
+  const summaries = cachedSummaries(qc, bundleIds)
+  const snapshots: CacheSnapshot[] = []
+
+  for (const [key, data] of qc.getQueriesData<InfiniteData<BundleBrowsePage>>({
+    queryKey: ['browse'],
+  })) {
+    const scope = key[1] as BrowseQuery | undefined
+    const scopeId = scope?.collectionId
+    if (!data || !scopeId || scope.filter || scope.search?.trim()) continue
+
+    const held = (memberships: readonly string[]) =>
+      listingHoldsBundle(collections, scopeId, scope.includeDescendants ?? false, memberships)
+    const leaving = new Set<string>()
+    const arriving: BundleSummary[] = []
+    bundleIds.forEach((bundleId, index) => {
+      const change = changes[index]
+      if (!change) return
+      const before = held(change.before)
+      const after = held(change.after)
+      if (before && !after) leaving.add(bundleId)
+      if (!before && after) {
+        const summary = summaries.get(bundleId)
+        if (summary) arriving.push(summary)
+      }
+    })
+    if (leaving.size === 0 && arriving.length === 0) continue
+
+    const present = new Set(data.pages.flatMap((page) => page.items.map((item) => item.id)))
+    const fresh = arriving.filter((summary) => !present.has(summary.id))
+    let departed = 0
+    const pages = data.pages.map((page, index) => {
+      const kept = page.items.filter((item) => !leaving.has(item.id))
+      departed += page.items.length - kept.length
+      // Arrivals go to the head of the first page. Their true position depends
+      // on the listing's sort — and under a manual order a new membership sorts
+      // first anyway — so this is a placement, not a claim; the refetch settles
+      // it either way. Anywhere else and a card would appear mid-grid, which
+      // reads as something moving rather than something arriving.
+      return { ...page, items: index === 0 ? [...fresh, ...kept] : kept }
+    })
+    const delta = fresh.length - departed
+    snapshots.push([key, data])
+    qc.setQueryData<InfiniteData<BundleBrowsePage>>(key, {
+      ...data,
+      // `total` is the size of the whole result set repeated on every page, so
+      // it moves by the same amount on each. It used to be decremented by the
+      // whole batch regardless of how many of them that listing actually held.
+      pages: pages.map((page) => ({ ...page, total: Math.max(0, page.total + delta) })),
+    })
+  }
+  return snapshots
+}
+
 /** Move the sidebar's per-collection counts, the open collection inspector's own
  *  figures, and the Uncategorized view count by what these membership changes
  *  imply. */
@@ -1543,7 +1704,13 @@ export function useSetBundleCollections(id: string) {
       qc.setQueryData(key, { ...previous, collection_ids: ids })
       // Same arithmetic as a drag — the picker's checkbox files a bundle just as
       // a drop does, and the sidebar should say so at the same moment.
-      const snapshots = applyCollectionCounts(qc, [{ before: previous.collection_ids, after: ids }])
+      const change = { before: previous.collection_ids, after: ids }
+      const snapshots = [
+        ...applyCollectionCounts(qc, [change]),
+        // …and so should the grids, or opening the collection just ticked shows
+        // last time's contents until the refetch lands.
+        ...projectCollectionListings(qc, [id], [change]),
+      ]
       return { previous, snapshots }
     },
     onError: (_error, _ids, context) => {
@@ -2024,27 +2191,6 @@ export function useBatchUpdate() {
     // the guess if it was wrong.
     onMutate: async (payload) => {
       const removed = payload.remove_collection_ids ?? []
-      if (removed.length > 0 && payload.bundle_ids.length > 0) {
-        const gone = new Set(payload.bundle_ids)
-        qc.setQueriesData<InfiniteData<BundleBrowsePage>>(
-          {
-            queryKey: ['browse'],
-            predicate: (query) => {
-              const scope = query.queryKey[1] as BrowseQuery | undefined
-              return scope?.collectionId != null && removed.includes(scope.collectionId)
-            },
-          },
-          (data) =>
-            data && {
-              ...data,
-              pages: data.pages.map((page) => ({
-                ...page,
-                items: page.items.filter((item) => !gone.has(item.id)),
-                total: page.total - payload.bundle_ids.length,
-              })),
-            },
-        )
-      }
       // Counts. Not a flat ±1 on the drop target: the server counts a
       // collection's subtree, so filing a bundle into a subcollection of the one
       // being viewed must leave that collection's number alone. `counts.ts`
@@ -2072,6 +2218,7 @@ export function useBatchUpdate() {
       )
       if (collections) {
         snapshots.push(...collections.snapshots, ...applyCollectionCounts(qc, collections.changes))
+        snapshots.push(...projectCollectionListings(qc, payload.bundle_ids, collections.changes))
       }
       const tags = projectMemberships(
         qc,

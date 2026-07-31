@@ -107,7 +107,17 @@ function CollectionCard({
   onDragOver?: (e: React.DragEvent) => void
   onDrop?: (e: React.DragEvent) => void
 }) {
-  const [hasCover, setHasCover] = useState(true)
+  // Keyed by the URL, not merely initialized once. A collection with no
+  // thumbnailable bundle — or one whose cover thumbnail has not been generated
+  // yet, which is every collection during the first scan — answers 404, and a
+  // plain `useState(true)` latched that failure for the life of the card: the
+  // folder glyph stayed put through filing bundles in, through the cover being
+  // chosen, until something unrelated forced a remount (owner: "collection
+  // covers are not displaying correctly", 2026-07-30). A new URL is a new
+  // question, so it gets asked again.
+  const src = collectionThumbnailUrl(collection.id, collection.updated_at)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const hasCover = failedSrc !== src
   return (
     <button
       className={`collcard${selected ? ' collcard--selected' : ''}${
@@ -138,13 +148,13 @@ function CollectionCard({
         {hasCover && (
           <img
             className="collcard__thumb-img"
-            src={collectionThumbnailUrl(collection.id, collection.updated_at)}
+            src={src}
             alt=""
             loading="lazy"
             // The card owns the drag; a draggable cover would start a native
             // image drag instead (see the inert-media rule in index.css).
             draggable={false}
-            onError={() => setHasCover(false)}
+            onError={() => setFailedSrc(src)}
           />
         )}
         <span className="collcard__chip">

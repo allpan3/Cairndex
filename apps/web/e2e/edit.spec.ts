@@ -51,6 +51,7 @@ async function mockApi(page: Page, initialTitle = 'Movie 0') {
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 2, recent: 2, uncategorized: 2, untagged: 2, missing: 0 } }),
   )
@@ -191,7 +192,12 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
 
   // "+" appends a second note box below the first.
   await page.getByRole('button', { name: 'Add note' }).click()
-  await expect(page.locator('.note-row')).toHaveCount(2)
+  const noteRows = page.locator('.note-row')
+  await expect(noteRows).toHaveCount(2)
+  const gap = await noteRows.evaluateAll(([first, second]) => {
+    return second.getBoundingClientRect().top - first.getBoundingClientRect().bottom
+  })
+  expect(gap).toBe(4)
 
   // Fill the second box and blur to commit the whole list. Match the PATCH that
   // carries the second block specifically — clicking "+" already fired a PATCH
@@ -206,6 +212,31 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
   await second.blur()
   const body = (await patched).request().postDataJSON() as { notes: string[] }
   expect(body.notes).toEqual(['First block', 'Second block'])
+})
+
+test('a note starts at one line and auto-expands for overflow', async ({ page }) => {
+  await mockApi(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('cairndex.noteHeights', JSON.stringify({ b0: [88] }))
+  })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const note = page.locator('.note-row textarea').first()
+  await expect(note).toHaveAttribute('rows', '1')
+  await expect(note).toHaveValue('')
+  const initialHeight = await note.evaluate((element) => element.getBoundingClientRect().height)
+  expect(initialHeight).toBeLessThanOrEqual(36)
+
+  await note.fill('One line')
+  await expect
+    .poll(() => note.evaluate((element) => element.getBoundingClientRect().height))
+    .toBe(initialHeight)
+
+  await note.fill('First line\nSecond line\nThird line')
+  await expect
+    .poll(() => note.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThan(initialHeight)
 })
 
 test('assigning a tag adds a chip', async ({ page }) => {
@@ -298,6 +329,34 @@ test('the collection picker assigns, surfaces recent, and filters to selected', 
   await page.getByRole('button', { name: 'Show only selected' }).click()
   await expect(panel.locator('.pick-row')).toHaveCount(1)
   await expect(panel.locator('.pick-row')).toContainText('Docs')
+})
+
+test('clicking a collection pill navigates without removing the bundle', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
+    }),
+  )
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: { c1: 1 } } }))
+  await page.route('**/collections/c1/stats', (r) =>
+    r.fulfill({ json: { direct_bundles: 1, total_bundles: 1, subcollections: 0 } }),
+  )
+  let membershipWrites = 0
+  await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'PUT') membershipWrites += 1
+    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: ['c1'] } })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: 'Open collection Movies' }).click()
+
+  await expect(page.locator('.toolbar__title')).toHaveText('Movies')
+  await expect(page.locator('.inspector input[aria-label="Collection title"]')).toHaveValue(
+    'Movies',
+  )
+  expect(membershipWrites).toBe(0)
 })
 
 test('typing an unmatched search offers to create a new tag', async ({ page }) => {

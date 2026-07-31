@@ -61,6 +61,9 @@ export interface ViewerItem {
   /** How the media is encoded, when probed. Printed on exports. */
   videoCodec: string | null
   audioCodec: string | null
+  videoBitrate: number | null
+  audioBitrate: number | null
+  audioSampleRate: number | null
   /** Container bitrate (bits/second), HDR signalling, and colour bit depth,
    *  when probed — the rest of what the info panel says about encoding. */
   bitrate: number | null
@@ -70,11 +73,11 @@ export interface ViewerItem {
   typeLabel: string
   /** Whether the browser can decode this image without a server derivative. */
   nativeImage: boolean
-  /** Bundle cover frame offset; null when this item has no cover to reset. */
+  /** This file's chosen cover-frame offset; null when it has none to reset. */
   coverTime: number | null
   /**
-   * Whether the bundle-cover affordance applies. A cover belongs to a bundle, so
-   * an unindexed path cannot set one.
+   * Whether the cover-frame affordance applies. A chosen frame is stored on the
+   * file's row, so an unindexed path cannot have one.
    */
   canSetCover: boolean
 }
@@ -121,6 +124,9 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
     fps: numberOrNull(meta.fps),
     videoCodec: textOrNull(meta.video_codec),
     audioCodec: textOrNull(meta.audio_codec),
+    videoBitrate: numberOrNull(meta.video_bitrate),
+    audioBitrate: numberOrNull(meta.audio_bitrate),
+    audioSampleRate: numberOrNull(meta.audio_sample_rate),
     bitrate: numberOrNull(meta.bitrate),
     hdr: textOrNull(meta.hdr),
     bitDepth: numberOrNull(meta.bit_depth),
@@ -178,6 +184,9 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     fps: null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
+    videoBitrate: entry.video_bitrate ?? null,
+    audioBitrate: entry.audio_bitrate ?? null,
+    audioSampleRate: entry.audio_sample_rate ?? null,
     // The browser listing carries only what its cards need; an indexed path
     // still reaches the full facts through its bundle row.
     bitrate: null,
