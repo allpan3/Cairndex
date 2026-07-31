@@ -48,6 +48,7 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
   )
@@ -114,6 +115,32 @@ test('renders the shell and browses bundles', async ({ page }) => {
   // Grid renders cards from the mocked browse response.
   await expect(page.getByText('Movie 0')).toBeVisible()
   await expect(page.getByText('40 items')).toBeVisible()
+})
+
+test('cold start waits for ownership before browsing the library', async ({ page }) => {
+  await mockApi(page)
+  let releaseOwnership: () => void = () => undefined
+  const ownershipReady = new Promise<void>((resolve) => {
+    releaseOwnership = resolve
+  })
+  await page.route('**/ownership', async (route) => {
+    await ownershipReady
+    await route.fulfill({ json: { state: 'own', mountable: true } })
+  })
+  let browseRequests = 0
+  page.on('request', (request) => {
+    if (request.url().includes('/bundles/browse')) browseRequests += 1
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByText('Checking library ownership…')).toBeVisible()
+  expect(browseRequests).toBe(0)
+
+  releaseOwnership()
+
+  await expect(page.getByText('Movie 0')).toBeVisible()
+  expect(browseRequests).toBeGreaterThan(0)
 })
 
 test('persisted hidden sidebar leaves the content pane usable', async ({ page }) => {

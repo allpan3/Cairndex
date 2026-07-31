@@ -438,6 +438,22 @@ export default function App() {
     )
   }
 
+  // Do not fan out content queries before the mount decision is known. On a
+  // cold desktop start that race mounted Workspace, then cancelled its entire
+  // query burst when the ownership result arrived; WebKit could leave the
+  // browser sitting at "Loading library…" until another action caused a retry.
+  // An errored or malformed ownership response still fails open below, as the
+  // server's content-route gate remains authoritative.
+  if (ownership.isPending) {
+    return (
+      <>
+        <div className="app-loading">Checking library ownership…</div>
+        {settingsDialog}
+        {libraryDialog}
+      </>
+    )
+  }
+
   if (auth.isPending) {
     return (
       <>
