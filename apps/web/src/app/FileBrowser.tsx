@@ -69,6 +69,8 @@ interface FileBrowserProps {
   onPlayerPrefs: React.Dispatch<React.SetStateAction<PlayerPrefs>>
   onRevealFile?: (relativePath: string) => void
   onOpenFile?: (relativePath: string) => void
+  // Jump to this file's owning confirmed bundle in Bundle Browser
+  onLocateBundle?: (bundleId: string) => void
   // Drag file(s) out to Finder/other apps (plan 3 §6); undefined disables it.
   onStartFileDrag?: (relativePaths: string[]) => void
   // Whether guarded write operations are permitted for this library right now
@@ -339,6 +341,7 @@ function FileList({
   hostLabels,
   onRevealFile,
   onOpenFile,
+  onLocateBundle,
   onStartFileDrag,
   scope,
   path: currentPath,
@@ -519,6 +522,13 @@ function FileList({
         targets[0] as string,
       )
       if (hostItems.length > 0) items.push(null, ...hostItems)
+      const owningBundleId = entry.bundle_id
+      if (onLocateBundle && owningBundleId && !entry.unbundled) {
+        items.push(null, {
+          label: 'Locate in Bundle Browser',
+          onClick: () => onLocateBundle(owningBundleId),
+        })
+      }
     }
     if (writeMode) {
       const writeItems: MenuEntry[] = []
