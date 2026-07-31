@@ -1015,6 +1015,15 @@ function Workspace({
   )
   const onStartFileDrag = platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
 
+  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
+  // per-library opt-in and the deployment master switch. A guarded action is
+  // passed to file surfaces only while both are on.
+  const writeModeAllowed = useDeploymentWriteMode()
+  const writeMode =
+    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
+  const fileOperations = useFileOperations()
+  const trashFiles = fileOperations.trash.mutate
+
   // Everything the Bundle Inspector can do, defined once and provided to the
   // whole shell. Both places the inspector appears read it from context, so
   // neither has a prop list of its own to fall behind the other's — see
@@ -1028,6 +1037,7 @@ function Workspace({
       onOpenFile: onOpenHostFile,
       onRevealFile: onRevealHostFile,
       onLocateFile: locateFileInBrowser,
+      onTrashFiles: writeMode ? trashFiles : undefined,
       onStartFileDrag,
       onFlash: showFlash,
       onOpenCollection: (collectionId) => {
@@ -1048,7 +1058,16 @@ function Workspace({
         setOpenBundleId(null)
       },
     }),
-    [hostLabels, locateFileInBrowser, onOpenHostFile, onRevealHostFile, onStartFileDrag, showFlash],
+    [
+      hostLabels,
+      locateFileInBrowser,
+      onOpenHostFile,
+      onRevealHostFile,
+      onStartFileDrag,
+      showFlash,
+      trashFiles,
+      writeMode,
+    ],
   )
 
   useDesktopMenu((action) => {
@@ -1113,12 +1132,6 @@ function Workspace({
   const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
-  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
-  // per-library opt-in and the deployment master switch. Either one off means
-  // the File Browser looks exactly as it did before write mode existed.
-  const writeModeAllowed = useDeploymentWriteMode()
-  const writeMode =
-    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
   // The sidebar's Trash entry outlives the capability: with write mode off, a
   // non-empty trash still lists (read-only), because files an owner deleted must
   // never *look* permanently gone. The peek query runs only when write mode is
@@ -1621,7 +1634,6 @@ function Workspace({
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const queryClient = useQueryClient()
-  const fileOperations = useFileOperations()
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
   // the landed paths into that bundle. Only offered with write mode on — without

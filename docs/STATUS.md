@@ -176,6 +176,11 @@ interface later is supplied in one place and arrives on every surface, where two
 call sites left the next one free to go missing. A surface needing an action to
 *mean* something different overrides those entries and inherits the rest.
 
+That shared action set now includes the write-gated **Move to Trash** callback.
+The bundle album already offered the journaled, recoverable deletion; the file
+section inside both Bundle Inspector surfaces now offers the same action when
+write mode is on and no deletion row at all while it is off.
+
 Four do differ inside an open viewer, resolved deliberately: Play steps within
 the playlist (falling back to the shell's retarget when the file is not in it);
 Locate, Add files and Filter by tag close the viewer first, because each
@@ -248,12 +253,13 @@ file already *is* the cover, where its picture genuinely changed. That left
 `AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
 with nothing to do, so it is removed along with its repair-time rewrite.
 
-Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (529 pass) and
+Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (541 pass) and
 `build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass)
 in `apps/server`. Browser e2e: 99 pass; the only excluded case is the recorded
 pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
 which still fails on clean `main` and is outside this branch. The collection
-cover geometry regression is included in that pass. Verified by hand
+cover geometry regression is included in that pass. The new write-gated trash
+entry also passed its focused Chromium request-path test. Verified by hand
 in a browser against a synthetic fixture library (six generated clips, invented
 names): inspector width 300 px matching `--inspector-w` with the shell's border,
 background and padding; a tag created and applied from inside the player; a
