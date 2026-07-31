@@ -178,6 +178,7 @@ def test_normalize_metadata_reduces_ffprobe_json() -> None:
                 "width": 1920,
                 "height": 1080,
                 "avg_frame_rate": "24000/1001",
+                "bit_rate": "650000",
                 "bits_per_raw_sample": "10",
                 "color_transfer": "smpte2084",
                 "index": 0,
@@ -186,6 +187,8 @@ def test_normalize_metadata_reduces_ffprobe_json() -> None:
                 "codec_type": "audio",
                 "codec_name": "aac",
                 "channels": 6,
+                "bit_rate": "150000",
+                "sample_rate": "48000",
                 "index": 1,
                 "disposition": {"default": 1},
                 "tags": {"language": "eng", "title": "Surround"},
@@ -207,6 +210,8 @@ def test_normalize_metadata_reduces_ffprobe_json() -> None:
     assert meta["width"] == 1920 and meta["height"] == 1080
     assert meta["video_codec"] == "h264" and meta["audio_codec"] == "aac"
     assert meta["duration"] == 12.5 and meta["bitrate"] == 800000
+    assert meta["video_bitrate"] == 650000 and meta["audio_bitrate"] == 150000
+    assert meta["audio_sample_rate"] == 48000
     assert meta["fps"] == 23.976
     assert meta["embedded_subtitles"] == [{"index": 2, "codec": "subrip", "language": "eng"}]
     assert meta["audio_streams"] == [

@@ -40,7 +40,7 @@ from cairndex.registry import library_package
 MIN_COLS, MAX_COLS = 2, 6
 MIN_ROWS, MAX_ROWS = 2, 10
 # Sheet pixel widths a client may ask for (the height follows the aspect).
-SHEET_WIDTHS = (1280, 1600, 2048)
+SHEET_WIDTHS = (1600, 2048, 2560)
 
 CACHE_CONTROL = derived_cache.IMMUTABLE_CACHE_CONTROL
 
@@ -97,7 +97,7 @@ def frame_times(duration: float, cols: int, rows: int) -> list[float]:
 
 
 def sheet_for_file(
-    session: Session, file_id: str, *, cols: int = 4, rows: int = 4, width: int = 1600
+    session: Session, file_id: str, *, cols: int = 4, rows: int = 4, width: int = 2048
 ) -> tuple[Path, list[float]]:
     """The cached contact sheet for one video file, and each cell's timestamp."""
     cols, rows, width = _validated(cols, rows, width)

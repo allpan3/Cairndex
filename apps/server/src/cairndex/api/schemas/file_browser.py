@@ -31,6 +31,9 @@ class FileBrowserEntryRead(BaseModel):
     # Container codec tag (hvc1/hev1); null on rows probed before v3.
     video_codec_tag: str | None
     audio_codec: str | None
+    video_bitrate: int | None = None
+    audio_bitrate: int | None = None
+    audio_sample_rate: int | None = None
     duration: float | None
     resume_position: float | None
     # True when linked into a scan-staged provisional bundle (not yet confirmed).

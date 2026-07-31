@@ -9,6 +9,12 @@ import { ContactSheetDialog } from '../ContactSheetDialog'
 import { ContextMenu } from '../ContextMenu'
 import { IconAlert, IconFile, IconFilm, IconImage, IconMusic, IconSidebar } from '../icons'
 import { Inspector } from '../Inspector'
+import {
+  BundleInspectorActionsContext,
+  useBundleInspectorActions,
+  useMergedBundleInspectorActions,
+  type BundleInspectorActions,
+} from '../bundleInspectorActions'
 import { type MenuEntry, useContextMenu } from '../useContextMenu'
 import {
   formatBitrate,
@@ -51,10 +57,13 @@ const MAX_NATIVE_RECOVER = 3
 // retryable "Playback interrupted" card instead of a dead player.
 const LOAD_WATCHDOG_MS = 15_000
 
-/** Bundle-cover actions the owning surface supplies, when it has a bundle. */
+/** Cover-frame actions the owning surface supplies, when the item is indexed. */
 export interface ShellCoverActions {
-  /** Set the bundle cover to the frame at this playhead offset. */
+  /** Use the frame at this playhead offset as *this file's* cover thumbnail.
+   *  It does not decide which member represents the bundle — that is the file
+   *  list's own affordance (owner, 2026-07-30). */
   onUseFrame: (time: number) => void
+  /** Return this file's thumbnail to an automatically extracted frame. */
   onClear: () => void
 }
 
@@ -375,6 +384,65 @@ export function ViewerShell({
     endedContextRef.current = { fileLoop, player, step }
   }, [fileLoop, player, step])
 
+  // What the docked Bundle Inspector's actions mean *here*. Everything not
+  // listed is inherited from the shell unchanged — the whole point of the
+  // context (see `bundleInspectorActions.tsx`). The actions below genuinely
+  // differ inside an open viewer, and each is resolved rather than dropped:
+  const {
+    onPlayFile: shellPlayFile,
+    onLocateFile: shellLocateFile,
+    onAddFiles: shellAddFiles,
+    onDropFilesOnBundle: shellDropFilesOnBundle,
+    onFilterByTags: shellFilterByTags,
+    onOpenCollection: shellOpenCollection,
+  } = useBundleInspectorActions()
+  const inspectorOverrides = useMemo<BundleInspectorActions>(
+    () => ({
+      // Play, from a viewer that is already open on this bundle, is a step
+      // within the playlist rather than a second viewer stacked on the first.
+      onPlayBundle: () => onIndex(0),
+      onPlayFile: (targetBundleId, fileId) => {
+        const at = items.findIndex((item) => item.fileId === fileId)
+        if (at >= 0) {
+          onIndex(at)
+          return
+        }
+        // Not in this playlist (another bundle, or a file the playlist skips):
+        // fall back to the shell, which retargets this same viewer rather than
+        // opening another one.
+        shellPlayFile?.(targetBundleId, fileId)
+      },
+      // These five open something in the shell — a File Browser directory, the
+      // add-files/drop-destination dialog, a tag-filtered grid, or a collection
+      // — all of which are behind a full-screen viewer. Close it first.
+      onLocateFile: shellLocateFile && ((path) => (onClose(), shellLocateFile(path))),
+      onAddFiles: shellAddFiles && ((id) => (onClose(), shellAddFiles(id))),
+      onDropFilesOnBundle:
+        shellDropFilesOnBundle &&
+        ((bundleId, files) => (onClose(), shellDropFilesOnBundle(bundleId, files))),
+      onFilterByTags: shellFilterByTags && ((ids) => (onClose(), shellFilterByTags(ids))),
+      onOpenCollection:
+        shellOpenCollection && ((collectionId) => (onClose(), shellOpenCollection(collectionId))),
+      // The shell's flash toast sits below the viewer's z-index, so reporting
+      // through it is the same as not reporting at all — which is why a tag
+      // edit in here finished with no sign it had (owner, 2026-07-30). The
+      // viewer already owns a notice anchor above its own chrome; use that.
+      onFlash: setExportNotice,
+    }),
+    [
+      items,
+      onClose,
+      onIndex,
+      shellAddFiles,
+      shellDropFilesOnBundle,
+      shellFilterByTags,
+      shellLocateFile,
+      shellOpenCollection,
+      shellPlayFile,
+    ],
+  )
+  const mergedInspectorActions = useMergedBundleInspectorActions(inspectorOverrides)
+
   // Consume each ended transition once; live refs keep identity/settings
   // changes from re-firing it while the media remains ended
   useEffect(() => {
@@ -445,6 +513,9 @@ export function ViewerShell({
             mimeType: current.mimeType,
             videoCodec: current.videoCodec,
             audioCodec: current.audioCodec,
+            videoBitrate: current.videoBitrate,
+            audioBitrate: current.audioBitrate,
+            audioSampleRate: current.audioSampleRate,
           }
         : null,
     [current, isVideo],
@@ -500,13 +571,18 @@ export function ViewerShell({
     // Text fields keep their native menu (copy/paste); everything else is ours.
     const target = e.target as HTMLElement
     if (target.closest('input, textarea, select')) return
+    // The docked inspector brings its own menus — for a tag pill, for a file
+    // row — exactly as it does in the shell. This handler sits on the viewer
+    // root, so without this those gestures opened the playback menu *as well*,
+    // stacked on top of the menu the click was actually asking for (owner:
+    // "different right-click context menus", 2026-07-30). The rail is the
+    // inspector's surface; the viewer's menu belongs to the media.
+    if (target.closest('.inspector')) return
     e.preventDefault()
     const entries: MenuEntry[] = []
     if (videoActive) {
       entries.push(
         { label: player.status === 'playing' ? 'Pause' : 'Play', onClick: player.playPause },
-        { label: 'Frame Back', onClick: () => player.frameStep(-1) },
-        { label: 'Frame Forward', onClick: () => player.frameStep(1) },
         null,
         {
           label: player.subtitlesOn ? 'Hide Subtitles' : 'Show Subtitles',
@@ -518,6 +594,26 @@ export function ViewerShell({
           onClick: () => setFileLoop(!fileLoop),
         },
         null,
+      )
+      if (coverActions) {
+        entries.push(
+          // "Video", not "cover", because this sets the thumbnail of the file
+          // being watched and nothing else. It used to promote that file to the
+          // bundle's cover as well, which made choosing a nicer frame for one
+          // video quietly re-pick what represented the whole bundle (owner,
+          // 2026-07-30). That promotion is its own step — the star beside each
+          // row in the inspector's file list, which is docked right here.
+          { label: 'Set Frame as Video Cover', onClick: coverActions.onUse },
+          {
+            // Its only home now that the settings menu dropped the cover group —
+            // without it, a chosen frame could be set but never undone.
+            label: 'Reset Video Cover to Default',
+            disabled: !coverActions.hasCoverFrame,
+            onClick: coverActions.onClear,
+          },
+        )
+      }
+      entries.push(
         { label: 'Save Snapshot', onClick: snapshot },
         // A bare path has no file row, and the grid is cut server-side from the
         // indexed file — so unindexed videos show the row disabled rather than
@@ -526,18 +622,6 @@ export function ViewerShell({
           ? contactSheetMenuItem(contactSheetTarget, setSheetTarget)
           : { label: 'Save Contact Sheet', disabled: true, onClick: () => {} },
       )
-      if (coverActions) {
-        entries.push(
-          { label: 'Set Frame as Cover', onClick: coverActions.onUse },
-          {
-            // Its only home now that the settings menu dropped the cover group —
-            // without it, a chosen cover could be set but never undone.
-            label: 'Reset Cover to Default',
-            disabled: !coverActions.hasCoverFrame,
-            onClick: coverActions.onClear,
-          },
-        )
-      }
       entries.push(null)
     }
     entries.push(
@@ -685,10 +769,15 @@ export function ViewerShell({
         />
       )}
 
+      {/* The shell's inspector, not a copy of it: same component, same actions,
+          and — through `--inspector-w` — the same width as the rail it mirrors,
+          so resizing one is resizing both (owner, 2026-07-30). It is placed
+          straight into the viewer's grid rather than wrapped in a rail element
+          of its own; the wrapper was the second, divergent style contract. */}
       {inspectorOpen && current?.bundleId && (
-        <aside className="mv-inspector">
+        <BundleInspectorActionsContext value={mergedInspectorActions}>
           <Inspector bundleId={current.bundleId} />
-        </aside>
+        </BundleInspectorActionsContext>
       )}
 
       <ContextMenu state={contextMenu.state} onClose={contextMenu.close} />

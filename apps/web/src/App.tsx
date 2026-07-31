@@ -84,6 +84,10 @@ import {
 } from './app/adHocFilters'
 import { Inspector } from './app/Inspector'
 import {
+  BundleInspectorActionsContext,
+  type BundleInspectorActions,
+} from './app/bundleInspectorActions'
+import {
   AddFilesToBundleDialog,
   AddToBundleDialog,
   CreateBundleDialog,
@@ -428,6 +432,22 @@ export default function App() {
               : (ownership.data.takeover?.error_message ?? null)
           }
         />
+        {settingsDialog}
+        {libraryDialog}
+      </>
+    )
+  }
+
+  // Do not fan out content queries before the mount decision is known. On a
+  // cold desktop start that race mounted Workspace, then cancelled its entire
+  // query burst when the ownership result arrived; WebKit could leave the
+  // browser sitting at "Loading library…" until another action caused a retry.
+  // An errored or malformed ownership response still fails open below, as the
+  // server's content-route gate remains authoritative.
+  if (ownership.isPending) {
+    return (
+      <>
+        <div className="app-loading">Checking library ownership…</div>
         {settingsDialog}
         {libraryDialog}
       </>
@@ -995,6 +1015,73 @@ function Workspace({
   )
   const onStartFileDrag = platform.canDragOutFiles && libraryMapped ? startFilesDrag : undefined
 
+  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
+  // per-library opt-in and the deployment master switch. A guarded action is
+  // passed to file surfaces only while both are on.
+  const writeModeAllowed = useDeploymentWriteMode()
+  const writeMode =
+    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
+  const fileOperations = useFileOperations()
+  const trashFiles = fileOperations.trash.mutate
+  // One pending import target serves bundle cards and every Bundle Inspector
+  const [pendingBundleDrop, setPendingBundleDrop] = useState<{
+    bundleId: string
+    files: File[]
+  } | null>(null)
+  const [bundleDropBusy, setBundleDropBusy] = useState(false)
+  const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
+    if (files.length === 0) return
+    setPendingBundleDrop({ bundleId, files })
+  }, [])
+
+  // Everything the Bundle Inspector can do, defined once and provided to the
+  // whole shell. Both places the inspector appears read it from context, so
+  // neither has a prop list of its own to fall behind the other's — see
+  // `bundleInspectorActions.ts` for why that is the shape.
+  const inspectorActions = useMemo<BundleInspectorActions>(
+    () => ({
+      hostLabels,
+      onAddFiles: (id) => setAddFilesBundleId(id),
+      onPlayBundle: (id) => setViewerTarget({ bundleId: id }),
+      onPlayFile: (bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId }),
+      onOpenFile: onOpenHostFile,
+      onRevealFile: onRevealHostFile,
+      onLocateFile: locateFileInBrowser,
+      onTrashFiles: writeMode ? trashFiles : undefined,
+      onDropFilesOnBundle: writeMode ? dropFilesOnBundle : undefined,
+      onStartFileDrag,
+      onFlash: showFlash,
+      onOpenCollection: (collectionId) => {
+        setMode('collection')
+        setSelection({ view: 'all', collectionId })
+        setSelectedIds(new Set())
+        setActiveId(null)
+        setSelectedCollectionIds(new Set())
+        setOpenBundleId(null)
+      },
+      onFilterByTags: (tagIds) => {
+        // Replace the tag filter with exactly these, and leave any bundle
+        // open — the point is to see everything sharing the tag.
+        setAdHocFilters((previous) => ({
+          ...previous,
+          tags: { ...emptyTagFilter(), include: tagIds },
+        }))
+        setOpenBundleId(null)
+      },
+    }),
+    [
+      hostLabels,
+      locateFileInBrowser,
+      dropFilesOnBundle,
+      onOpenHostFile,
+      onRevealHostFile,
+      onStartFileDrag,
+      showFlash,
+      trashFiles,
+      writeMode,
+    ],
+  )
+
   useDesktopMenu((action) => {
     if (action === 'new-bundle') setCreatingEmpty(true)
     else if (action === 'new-collection') setNewCollectionRequest({ parentId: null })
@@ -1057,12 +1144,6 @@ function Workspace({
   const menu = useContextMenu()
 
   const libraryName = libraries.find((l) => l.id === libraryId)?.name ?? 'Library'
-  // Write mode needs *both* gates to agree (ADR-0013 §1): the owner's
-  // per-library opt-in and the deployment master switch. Either one off means
-  // the File Browser looks exactly as it did before write mode existed.
-  const writeModeAllowed = useDeploymentWriteMode()
-  const writeMode =
-    writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
   // The sidebar's Trash entry outlives the capability: with write mode off, a
   // non-empty trash still lists (read-only), because files an owner deleted must
   // never *look* permanently gone. The peek query runs only when write mode is
@@ -1096,6 +1177,23 @@ function Workspace({
   // several. Mutually exclusive with the bundle selection — selecting either
   // clears the other, since acting on both at once is meaningless.
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<string>>(new Set())
+  // Open the one bundle an indexed file belongs to. This is app navigation,
+  // unlike native Open/Reveal, so it is available in the browser too.
+  const locateBundleInBrowser = useCallback(
+    (bundleId: string) => {
+      setMode('collection')
+      setSelection({ view: 'all', collectionId: null })
+      setFileEntry(null)
+      setLocatedPath(null)
+      setSelectedIds(new Set([bundleId]))
+      setActiveId(bundleId)
+      setSelectedCollectionIds(new Set())
+      setAlbumFile(null)
+      setOpenBundleId(bundleId)
+      markOpened(bundleId)
+    },
+    [markOpened],
+  )
   // Which surface the collection selection was made on. The sidebar's highlight
   // already means "this is where you are"; lighting the same row up because its
   // card was clicked in the grid says the app navigated when it didn't. So the
@@ -1548,7 +1646,6 @@ function Workspace({
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const queryClient = useQueryClient()
-  const fileOperations = useFileOperations()
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
   // the landed paths into that bundle. Only offered with write mode on — without
@@ -1559,15 +1656,6 @@ function Workspace({
   // root, which is almost never where the bundle's own files live, so a drop
   // filed the copy in the wrong folder and left the owner to move it (owner
   // report, 2026-07-30). The picker defaults to the bundle's own folder.
-  const [pendingBundleDrop, setPendingBundleDrop] = useState<{
-    bundleId: string
-    files: File[]
-  } | null>(null)
-  const [bundleDropBusy, setBundleDropBusy] = useState(false)
-  const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
-    if (files.length === 0) return
-    setPendingBundleDrop({ bundleId, files })
-  }, [])
   const importDroppedFiles = useCallback(
     (destDir: string) => {
       const pending = pendingBundleDrop
@@ -1988,7 +2076,7 @@ function Workspace({
     return () => window.removeEventListener('keydown', onKey)
   }, [moveSelection, clearSelection, openBundleId, copySelectedTags, pasteTagsOntoSelection])
 
-  return (
+  const shell = (
     <div
       className={`app${mode === 'tags' || !inspectorVisible ? ' app--no-inspector' : ''}`}
       style={
@@ -2141,6 +2229,7 @@ function Workspace({
             hostLabels={hostLabels}
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
+            onLocateBundle={locateBundleInBrowser}
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
@@ -2315,6 +2404,12 @@ function Workspace({
         <FileInspector
           entry={fileEntry ? factsFromEntry(fileEntry) : null}
           hostLabels={hostLabels}
+          locateLabel="Locate in Bundle Browser"
+          onLocate={
+            fileEntry?.kind === 'file' && fileEntry.bundle_id && !fileEntry.unbundled
+              ? () => locateBundleInBrowser(fileEntry.bundle_id!)
+              : undefined
+          }
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
@@ -2324,6 +2419,8 @@ function Workspace({
         <FileInspector
           entry={factsFromBundleFile(albumFile)}
           hostLabels={hostLabels}
+          locateLabel="Locate in File Browser"
+          onLocate={locateFileInBrowser}
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
@@ -2342,27 +2439,7 @@ function Workspace({
           onClear={clearSelection}
         />
       ) : (
-        <Inspector
-          bundleId={activeId}
-          hostLabels={hostLabels}
-          onAddFiles={(id) => setAddFilesBundleId(id)}
-          onPlayBundle={(id) => setViewerTarget({ bundleId: id })}
-          onPlayFile={(bundleId, fileId) => setViewerTarget({ bundleId, initialFileId: fileId })}
-          onOpenFile={onOpenHostFile}
-          onRevealFile={onRevealHostFile}
-          onLocateFile={locateFileInBrowser}
-          onStartFileDrag={onStartFileDrag}
-          onFlash={showFlash}
-          onFilterByTags={(tagIds) => {
-            // Replace the tag filter with exactly these, and leave any bundle
-            // open — the point is to see everything sharing the tag.
-            setAdHocFilters((previous) => ({
-              ...previous,
-              tags: { ...emptyTagFilter(), include: tagIds },
-            }))
-            setOpenBundleId(null)
-          }}
-        />
+        <Inspector bundleId={activeId} />
       )}
 
       {sidebarVisible && (
@@ -2605,5 +2682,12 @@ function Workspace({
         </div>
       )}
     </div>
+  )
+
+  // Provided here rather than wrapped around the JSX above so the shell's tree
+  // keeps its indentation: this is a context boundary, not a layout one, and a
+  // whole-file re-indent would bury every real change in whitespace.
+  return (
+    <BundleInspectorActionsContext value={inspectorActions}>{shell}</BundleInspectorActionsContext>
   )
 }

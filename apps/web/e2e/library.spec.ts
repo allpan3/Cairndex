@@ -48,6 +48,7 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({ json: { all: 40, recent: 40, uncategorized: 5, untagged: 3, missing: 0 } }),
   )
@@ -103,6 +104,58 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
       r.fulfill({ json: bundleDetail(coverFileId) })
     }
   })
+  await page.route('**/file-browser/entries**', (r) =>
+    r.fulfill({
+      json: {
+        path: '',
+        missing_files_updated: 0,
+        entries: [
+          {
+            name: 'movie.mp4',
+            relative_path: 'movie.mp4',
+            kind: 'file',
+            size_bytes: 1000,
+            created_at: '2026-06-25T00:00:00Z',
+            modified_at: '2026-06-25T00:00:00Z',
+            extension: 'mp4',
+            container: 'mp4',
+            mime_type: 'video/mp4',
+            media_kind: 'video',
+            duration: 60,
+            video_codec: 'h264',
+            video_codec_tag: 'avc1',
+            audio_codec: null,
+            supported: true,
+            linked: true,
+            file_id: 'f0',
+            bundle_id: 'b0',
+            unbundled: false,
+            resume_position: 0,
+          },
+        ],
+      },
+    }),
+  )
+}
+
+/** Enable both gates required for write-mode-only browser affordances */
+async function mockWriteMode(page: Page) {
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
+  )
+  await page.route('**/api/v1/libraries', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'lib1',
+          name: 'Test Library',
+          root_path: '/srv/lib',
+          status: 'available',
+          write_mode_enabled: true,
+        },
+      ],
+    }),
+  )
 }
 
 test('renders the shell and browses bundles', async ({ page }) => {
@@ -114,6 +167,32 @@ test('renders the shell and browses bundles', async ({ page }) => {
   // Grid renders cards from the mocked browse response.
   await expect(page.getByText('Movie 0')).toBeVisible()
   await expect(page.getByText('40 items')).toBeVisible()
+})
+
+test('cold start waits for ownership before browsing the library', async ({ page }) => {
+  await mockApi(page)
+  let releaseOwnership: () => void = () => undefined
+  const ownershipReady = new Promise<void>((resolve) => {
+    releaseOwnership = resolve
+  })
+  await page.route('**/ownership', async (route) => {
+    await ownershipReady
+    await route.fulfill({ json: { state: 'own', mountable: true } })
+  })
+  let browseRequests = 0
+  page.on('request', (request) => {
+    if (request.url().includes('/bundles/browse')) browseRequests += 1
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByText('Checking library ownership…')).toBeVisible()
+  expect(browseRequests).toBe(0)
+
+  releaseOwnership()
+
+  await expect(page.getByText('Movie 0')).toBeVisible()
+  expect(browseRequests).toBeGreaterThan(0)
 })
 
 test('persisted hidden sidebar leaves the content pane usable', async ({ page }) => {
@@ -854,6 +933,30 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(missingFile.getByText('missing')).toBeVisible()
 })
 
+test('locates files and their owning bundles in either browser on the web', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open Bundle' }).click()
+  await page.locator('[data-file-id="f0"]').click()
+
+  await expect(page.getByRole('button', { name: 'Open in Default App' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reveal in Finder' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Locate in File Browser' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+  const fileRow = page.locator('.file-row', { hasText: 'movie.mp4' })
+  await expect(fileRow).toHaveClass(/file-row--selected/)
+  await fileRow.click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: 'Open in Default App' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: 'Reveal in Finder' })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: 'Locate in Bundle Browser' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Bundles' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.album')).toBeVisible()
+  await expect(page.locator('[data-file-id="f0"]')).toBeVisible()
+})
 test('highlights the current cover action instead of prefixing its filename', async ({ page }) => {
   await mockApi(page, 'f0')
   await page.goto('/')
@@ -954,6 +1057,73 @@ test('opens the selected inspector file from the play action after cover', async
 
   await expect(page.getByRole('dialog', { name: 'Movie 0' })).toBeVisible()
   await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4 · 1 / 1')
+})
+
+test('moves a Bundle Inspector file to trash only when write mode supplies the action', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockWriteMode(page)
+  let trashedPaths: string[] | null = null
+  let fileTrashed = false
+  await page.route('**/bundles/b0/files', async (route) => {
+    if (!fileTrashed) {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({ json: [] })
+  })
+  await page.route('**/file-ops/trash', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { operations: [], size_bytes: 0 } })
+      return
+    }
+    trashedPaths = (route.request().postDataJSON() as { paths: string[] }).paths
+    await new Promise((resolve) => setTimeout(resolve, 2_000))
+    fileTrashed = true
+    await route.fulfill({ json: {} })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.locator('.files .file-row', { hasText: 'movie.mp4' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
+
+  await expect.poll(() => trashedPaths).toEqual(['movie.mp4'])
+  // The journaled move can be slow on a NAS; the active row should not wait
+  // for that request and the following refetch before it leaves the inspector
+  await expect(page.locator('.files .file-row', { hasText: 'movie.mp4' })).toHaveCount(0, {
+    timeout: 750,
+  })
+})
+
+test('dropping an OS file on the Bundle Inspector opens the bundle destination flow', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockWriteMode(page)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  const inspector = page.locator('aside.inspector')
+
+  await inspector.evaluate((element) => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['video'], 'new-clip.mp4', { type: 'video/mp4' }))
+    element.dispatchEvent(
+      new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    )
+  })
+  await expect(inspector).toHaveAttribute('data-file-drop', 'true')
+
+  await inspector.evaluate((element) => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['video'], 'new-clip.mp4', { type: 'video/mp4' }))
+    element.dispatchEvent(
+      new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    )
+  })
+
+  await expect(page.getByRole('heading', { name: 'Copy the file into…' })).toBeVisible()
 })
 
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {
@@ -1091,22 +1261,7 @@ test('with write mode on, the delete dialog offers the files checkbox, off by de
   await mockApi(page)
   // Write mode is both gates agreeing (ADR-0013 §1): the deployment's /health
   // flag and the library row's own opt-in — so the mock patches both.
-  await page.route('**/api/v1/health', (r) =>
-    r.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
-  )
-  await page.route('**/api/v1/libraries', (r) =>
-    r.fulfill({
-      json: [
-        {
-          id: 'lib1',
-          name: 'Test Library',
-          root_path: '/srv/lib',
-          status: 'available',
-          write_mode_enabled: true,
-        },
-      ],
-    }),
-  )
+  await mockWriteMode(page)
 
   await page.goto('/')
   await page.locator('.card').first().click({ button: 'right' })
@@ -1274,6 +1429,62 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
   await page.locator('.collcard', { hasText: 'Docs' }).dblclick()
   await expect(page.locator('.toolbar__title')).toHaveText('Docs')
   await expect(page.locator('.collhead')).toHaveCount(0)
+})
+
+test('collection cover thumbnails fill the card at the intended aspect ratio', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: 'Movies', parent_id: null },
+          { id: 'c2', name: 'Docs', parent_id: 'c1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 1, c2: 2 } } }),
+  )
+  await page.route('**/collections/c2/thumbnail**', (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="10" />',
+    }),
+  )
+  await page.route('**/bundles/browse**', (r) => {
+    const cid = new URL(r.request().url()).searchParams.get('collection_id')
+    if (cid === 'c1') {
+      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+
+  await page.goto('/')
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click()
+
+  const card = page.locator('.collcard').first()
+  await expect(card).toBeVisible()
+  const geometry = await card.evaluate((element) => {
+    const thumb = element.querySelector<HTMLElement>('.collcard__thumb')
+    if (!thumb) throw new Error('missing collection thumbnail')
+    const cardRect = element.getBoundingClientRect()
+    const thumbRect = thumb.getBoundingClientRect()
+    return {
+      cardWidth: cardRect.width,
+      thumbWidth: thumbRect.width,
+      thumbHeight: thumbRect.height,
+      thumbFlexShrink: getComputedStyle(thumb).flexShrink,
+    }
+  })
+
+  expect(geometry.thumbWidth).toBeGreaterThan(geometry.cardWidth - 4)
+  expect(geometry.thumbHeight / geometry.thumbWidth).toBeGreaterThan(0.55)
+  expect(geometry.thumbHeight / geometry.thumbWidth).toBeLessThan(0.7)
+  expect(geometry.thumbFlexShrink).toBe('0')
 })
 
 test('drag-selects subcollection cards with a marquee, and empty space deselects', async ({

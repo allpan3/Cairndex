@@ -29,7 +29,7 @@ export function ContactSheetDialog({
   onReport: (message: string | null) => void
 }) {
   const [grid, setGrid] = useState<ContactSheetGrid>(4)
-  const [width, setWidth] = useState<ContactSheetWidth>(1600)
+  const [width, setWidth] = useState<ContactSheetWidth>(2048)
 
   const cell = Math.round(width / grid)
   const frames = grid * grid
@@ -82,7 +82,7 @@ export function ContactSheetDialog({
         </div>
 
         {/* What the two choices actually produce, since neither number means
-            much alone: a 6x6 at 1280 has smaller frames than a 4x4 at 1280. */}
+            much alone: a 6x6 at 1600 has smaller frames than a 4x4 at 1600. */}
         <p className="modal__note">
           {frames} frames at {cell}px wide
           {every ? `, roughly one every ${every}` : ''}.

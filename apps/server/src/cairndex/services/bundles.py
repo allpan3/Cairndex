@@ -21,7 +21,13 @@ from cairndex.core.paths import (
     resolve_within_root,
 )
 from cairndex.core.time import utcnow
-from cairndex.domain.enums import FileRole, GroupingSource, GroupingState, MediaKind
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileRole,
+    GroupingSource,
+    GroupingState,
+    MediaKind,
+)
 from cairndex.domain.rating import RATING_MAX, RATING_MIN, RATING_STEP, is_valid_rating
 from cairndex.persistence.concurrency import guard_and_bump_version
 from cairndex.persistence.engine import library_root_for_session
@@ -31,6 +37,7 @@ from cairndex.persistence.models import (
     Collection,
     Tag,
 )
+from cairndex.services import collections as collection_service
 from cairndex.services.pagination import keyset_page
 
 _BUNDLE_SCALAR_FIELDS = {"title"}
@@ -196,10 +203,25 @@ def delete_bundle(session: Session, bundle_id: str) -> None:
 
 # --- Files within a bundle ---------------------------------------------------
 def list_files(session: Session, bundle_id: str) -> list[AssetFile]:
+    """Every member, including recoverable rows currently in the trash."""
     get_bundle(session, bundle_id)
     stmt = (
         select(AssetFile)
         .where(AssetFile.bundle_id == bundle_id)
+        .order_by(AssetFile.sequence, AssetFile.id)
+    )
+    return list(session.scalars(stmt))
+
+
+def list_active_files(session: Session, bundle_id: str) -> list[AssetFile]:
+    """Members that still participate in the bundle's visible and playable state."""
+    get_bundle(session, bundle_id)
+    stmt = (
+        select(AssetFile)
+        .where(
+            AssetFile.bundle_id == bundle_id,
+            AssetFile.availability != FileAvailability.TRASHED,
+        )
         .order_by(AssetFile.sequence, AssetFile.id)
     )
     return list(session.scalars(stmt))
@@ -284,17 +306,26 @@ def update_file(
 
 
 def reorder_files(session: Session, bundle_id: str, ordered_ids: list[str]) -> list[AssetFile]:
-    """Set each file's ``sequence`` from its position in ``ordered_ids``.
+    """Reorder active members while retaining a trashed member's saved slot.
 
-    ``ordered_ids`` must be exactly the bundle's current files."""
+    ``ordered_ids`` must be exactly the bundle's active files. Hidden trashed
+    rows keep their position in the full order so Put Back restores the member
+    where it was instead of appending it or colliding on a sequence.
+    """
     files = list_files(session, bundle_id)
-    by_id = {f.id: f for f in files}
+    active = [f for f in files if f.availability is not FileAvailability.TRASHED]
+    by_id = {f.id: f for f in active}
     if set(ordered_ids) != set(by_id):
-        raise ValidationError("ordered ids must be exactly the bundle's current files")
-    for sequence, file_id in enumerate(ordered_ids):
-        by_id[file_id].sequence = sequence
+        raise ValidationError("ordered ids must be exactly the bundle's active files")
+    ordered = [by_id[file_id] for file_id in ordered_ids]
+    active_iter = iter(ordered)
+    full_order = [
+        f if f.availability is FileAvailability.TRASHED else next(active_iter) for f in files
+    ]
+    for sequence, asset_file in enumerate(full_order):
+        asset_file.sequence = sequence
     session.flush()
-    return [by_id[file_id] for file_id in ordered_ids]
+    return ordered
 
 
 def remove_file(session: Session, bundle_id: str, file_id: str) -> None:
@@ -331,9 +362,13 @@ def set_bundle_collections(
     session: Session, bundle_id: str, collection_ids: list[str]
 ) -> AssetBundle:
     bundle = get_bundle(session, bundle_id)
+    # Both sides of the move: a collection losing this bundle can lose the cover
+    # it was showing, exactly as one gaining it can acquire a new one.
+    touched = {collection.id for collection in bundle.collections} | set(collection_ids)
     bundle.collections = _resolve_all(session, Collection, collection_ids, label="collection")
     bundle.updated_at = utcnow()
     session.flush()
+    collection_service.touch_membership_collections(session, touched)
     return bundle
 
 
@@ -357,6 +392,8 @@ def batch_update_bundles(
     )
     remove_tag_set = set(remove_tag_ids or [])
     remove_collection_set = set(remove_collection_ids or [])
+    # Every collection a bundle leaves or joins, gathered as the loop goes.
+    touched_collections: set[str] = set(add_collection_ids or []) | remove_collection_set
 
     for bundle in bundles:
         tags = {t.id: t for t in bundle.tags if t.id not in remove_tag_set}
@@ -365,11 +402,15 @@ def batch_update_bundles(
 
         collections = {c.id: c for c in bundle.collections if c.id not in remove_collection_set}
         collections.update({c.id: c for c in add_collections})
+        touched_collections.update(collections)
         bundle.collections = list(collections.values())
 
         bundle.updated_at = utcnow()
 
     session.flush()
+    # A collection's auto-picked cover is derived from its membership, so the
+    # tiles for everything on both sides of this move need a fresh cache key.
+    collection_service.touch_membership_collections(session, touched_collections)
     return len(bundles)
 
 

@@ -34,6 +34,7 @@ async function mockApi(page: Page) {
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
   // Collection-View endpoints the shell loads on mount.
   await page.route('**/bundles/counts**', (r) =>
     r.fulfill({

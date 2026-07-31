@@ -135,6 +135,16 @@ export function formatBitrate(bitsPerSecond: number | null | undefined): string 
   return `${Math.round(bitsPerSecond)} bps`
 }
 
+/** Audio sampling frequency in its conventional compact unit. */
+export function formatSampleRate(hertz: number | null | undefined): string {
+  if (!hertz || hertz <= 0) return '—'
+  if (hertz >= 1_000) {
+    const kilohertz = hertz / 1_000
+    return `${Number.isInteger(kilohertz) ? kilohertz : kilohertz.toFixed(1)} kHz`
+  }
+  return `${Math.round(hertz)} Hz`
+}
+
 /** HDR signalling as a badge — `hdr10` → `HDR10`, `dv` → `Dolby Vision`. */
 export function formatHdr(hdr: string | null | undefined): string | null {
   if (!hdr) return null

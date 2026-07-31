@@ -40,7 +40,7 @@ from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
-from cairndex.services.bundles import get_bundle, list_files
+from cairndex.services.bundles import get_bundle, list_active_files
 from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
@@ -103,7 +103,7 @@ def _track_read(session: Session, library_id: str, track: SubtitleTrack) -> Subt
 def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> PlaybackManifest:
     get_bundle(db, bundle_id)  # 404 if the bundle doesn't exist
     videos: list[PlayableVideo] = []
-    files = list_files(db, bundle_id)
+    files = list_active_files(db, bundle_id)
     playback.reconcile_missing_files(db, files)
     video_files = [f for f in files if f.media_kind == MediaKind.VIDEO]
     progress_by_file = progress_service.progress_for_files(db, [f.id for f in video_files])
@@ -175,9 +175,33 @@ def beacon_progress(
     return update_progress(file_id, payload, db)
 
 
+def _touch_bundle_if_cover(db: LibrarySession, asset_file: AssetFile) -> None:
+    """Refresh cover cache keys, but only where the picture actually changed.
+
+    A file's cover frame is that file's own; it reaches the bundle's tile (and
+    the collection tiles resolving through it) only when this file is already
+    the bundle's cover. ``updated_at`` is the cache-busting key those tiles are
+    fetched with, so bumping it for a file that is *not* the cover would
+    re-fetch every one of them to show the same image.
+    """
+    bundle = db.get(AssetBundle, asset_file.bundle_id)
+    if bundle is None or bundle.cover_file_id != asset_file.id:
+        return
+    bundle.updated_at = utcnow()
+    collection_service.touch_cover_collections_for_bundle(db, bundle.id)
+
+
 @router.post("/files/{file_id}/cover-frame", response_model=FileRead)
 def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession) -> FileRead:
-    """Persist a video cover timestamp and regenerate only its cached thumbnail."""
+    """Persist a video cover timestamp and regenerate only its cached thumbnail.
+
+    Scoped to *this file's* cover. Choosing which member represents the bundle
+    is a separate decision with its own affordance (the star beside each row in
+    the inspector's file list), and folding the two together meant picking a
+    nicer frame for one video silently reassigned the whole bundle's cover
+    (owner, 2026-07-30). A bundle whose cover already *is* this file naturally
+    changes image, and only that case touches the bundle.
+    """
     asset_file = db.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
@@ -195,16 +219,8 @@ def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession)
     # Browser duration and ffprobe format duration can differ by milliseconds;
     # seek just before EOF so ffmpeg always has a decodable frame to extract
     cover_time = max(0.0, min(payload.time, max(0.0, duration - 0.1)))
-    bundle = db.get(AssetBundle, asset_file.bundle_id)
-    if bundle is not None:
-        if asset_file.cover_time is None or bundle.cover_file_id != asset_file.id:
-            asset_file.cover_previous_file_id = bundle.cover_file_id
-        asset_file.cover_time = cover_time
-        bundle.cover_file_id = asset_file.id
-        bundle.updated_at = utcnow()
-        collection_service.touch_cover_collections_for_bundle(db, bundle.id)
-    else:
-        asset_file.cover_time = cover_time
+    asset_file.cover_time = cover_time
+    _touch_bundle_if_cover(db, asset_file)
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:
@@ -215,7 +231,12 @@ def set_cover_frame(file_id: str, payload: CoverFrameUpdate, db: LibrarySession)
 
 @router.delete("/files/{file_id}/cover-frame", response_model=FileRead)
 def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
-    """Clear a selected video cover timestamp and restore automatic extraction."""
+    """Clear a selected video cover timestamp and restore automatic extraction.
+
+    The mirror of ``set_cover_frame``: it returns this file's thumbnail to an
+    automatically extracted frame and leaves the bundle's choice of cover file
+    alone, because setting a frame no longer changed it.
+    """
     asset_file = db.get(AssetFile, file_id)
     if asset_file is None:
         raise NotFoundError(f"file {file_id!r} not found")
@@ -226,14 +247,7 @@ def clear_cover_frame(file_id: str, db: LibrarySession) -> FileRead:
     except PathSafetyError as exc:
         raise ValidationError(str(exc)) from exc
     asset_file.cover_time = None
-    bundle = db.get(AssetBundle, asset_file.bundle_id)
-    if bundle is not None:
-        # Preserve a newer manual cover choice made after the frame was set
-        if bundle.cover_file_id == asset_file.id:
-            bundle.cover_file_id = asset_file.cover_previous_file_id
-        bundle.updated_at = utcnow()
-        collection_service.touch_cover_collections_for_bundle(db, bundle.id)
-    asset_file.cover_previous_file_id = None
+    _touch_bundle_if_cover(db, asset_file)
     try:
         thumbnails.generate_for_file(db, file_id, force=True)
     except thumbnails.ThumbnailError as exc:
@@ -336,7 +350,7 @@ def get_contact_sheet(
     rows: Annotated[int, Query(ge=contact_sheets.MIN_ROWS, le=contact_sheets.MAX_ROWS)] = 4,
     width: Annotated[
         int, Query(json_schema_extra={"enum": list(contact_sheets.SHEET_WIDTHS)})
-    ] = 1600,
+    ] = 2048,
 ) -> FileResponse:
     """The frame grid for a contact-sheet export (plan 1 §10, first M11 slice).
 

@@ -14,12 +14,10 @@ from typing import Any
 
 from cairndex.media.tool_paths import ffprobe_path as resolve_ffprobe
 
-# 3 adds ``video_codec_tag``. The bump is what re-probes existing rows: a stored
-# codec name alone cannot tell ``hvc1``-tagged HEVC from ``hev1``-tagged HEVC,
-# and Apple engines play only the former, so without the tag the playback
-# decision sends an unplayable source down the direct path (see
-# ``media/playback.py``).
-PROBE_VERSION = 3
+# 3 added ``video_codec_tag``; 4 added primary stream bitrates; 5 adds the
+# primary audio sample rate. A bump re-probes existing rows once, then normal
+# incremental skips resume.
+PROBE_VERSION = 5
 
 
 class ProbeError(RuntimeError):
@@ -265,11 +263,14 @@ def normalize_metadata(raw: dict[str, Any]) -> dict[str, Any]:
         "width": video.get("width") if video else None,
         "height": video.get("height") if video else None,
         "video_codec": video.get("codec_name") if video else None,
+        "video_bitrate": _int(video.get("bit_rate")) if video else None,
         # The container's four-character codec label, kept alongside the codec
         # name because it is not cosmetic: HEVC rides as either ``hvc1`` or
         # ``hev1``, and AVFoundation refuses ``hev1`` outright.
         "video_codec_tag": _codec_tag(video),
         "audio_codec": audio.get("codec_name") if audio else None,
+        "audio_bitrate": _int(audio.get("bit_rate")) if audio else None,
+        "audio_sample_rate": _int(audio.get("sample_rate")) if audio else None,
         "fps": _parse_fps(video.get("avg_frame_rate")) if video else None,
         "stream_count": len(streams),
         "embedded_subtitles": [_embedded_subtitle(s) for s in subtitles],

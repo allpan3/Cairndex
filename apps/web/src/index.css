@@ -1117,6 +1117,8 @@ button {
 }
 .collcard__thumb {
   position: relative;
+  width: 100%;
+  flex: none;
   aspect-ratio: 16 / 10;
   background: var(--bg-2);
   display: flex;
@@ -1439,6 +1441,10 @@ button {
   overflow-y: auto;
   padding: 14px;
 }
+/* The whole Bundle Inspector is the same import-and-link target as its card */
+.inspector--file-drop {
+  box-shadow: inset 0 0 0 2px var(--accent, #7aa2ff);
+}
 .inspector__cover {
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -1735,15 +1741,15 @@ button {
   position: relative;
 }
 .note-row + .note-row {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 /* Leave room for the remove affordance (right) and the resize grip (bottom) so
    neither overlaps the text. The JS auto-grow / fixed-height controls the box
    height, so no native resizer/scroll-corner box is drawn. */
 .note-row .edit--note {
   padding-right: 26px;
-  padding-bottom: 10px;
-  min-height: 44px;
+  padding-bottom: 6px;
+  min-height: 34px;
 }
 .note-remove {
   position: absolute;
@@ -1951,6 +1957,19 @@ button {
   color: var(--text-muted);
   cursor: pointer;
   padding: 0;
+}
+.chip--collection {
+  gap: 0;
+  padding: 0;
+}
+.chip .chip__open {
+  align-self: stretch;
+  padding: 1px 2px 1px 8px;
+  color: var(--text-strong);
+}
+.chip .chip__remove {
+  align-self: stretch;
+  padding: 1px 8px 1px 2px;
 }
 .add-btn {
   border: 1px dashed var(--border-strong);
@@ -3523,11 +3542,16 @@ code {
 .mv-zoom:hover {
   border-color: var(--accent);
 }
+/* Absolutely positioned chrome still resolves its right inset against the
+   whole viewer, so grid-column alone does not keep it out of the docked rail. */
+.media-viewer--railed .mv-topbar {
+  right: var(--inspector-w, 300px);
+}
 /* With the inspector docked, "next" belongs at the media's edge — the rail is
    not part of the picture, and an arrow floating over the tag list is aiming at
    the wrong thing (owner, 2026-07-27). */
 .media-viewer--railed .mv-nav--next {
-  right: calc(min(360px, 40vw) + 16px);
+  right: calc(var(--inspector-w, 300px) + 16px);
 }
 
 .mv-nav {
@@ -3948,18 +3972,20 @@ code {
 }
 /* Everything else in the viewer spans the media column only, so the rail docks
    beside the stage rather than under it. */
-.media-viewer--railed > *:not(.mv-inspector) {
+.media-viewer--railed > *:not(.inspector) {
   grid-column: 1;
 }
-.mv-inspector {
+/* Placement only. Width, border, background and padding all come from
+   `.inspector` above, which is the point: the viewer used to declare its own
+   rail in parallel — a hard-coded `min(360px, 40vw)`, a literal white border,
+   a different background — so the same pane was a different pane on the two
+   surfaces (owner, 2026-07-30). `--inspector-w` is set by the app shell, so
+   this rail is the width of the one it mirrors, and resizing that resizes
+   this. */
+.media-viewer--railed .inspector {
   grid-row: 1 / -1;
   grid-column: 2;
-  width: min(360px, 40vw);
-  overflow-y: auto;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  /* Same undefined-variable bug as the submenu had: the viewer sits on near
-     black, so a transparent rail is not obvious, but it was one. */
-  background: var(--surface);
+  width: var(--inspector-w, 300px);
   color: var(--text);
   min-width: 0;
 }

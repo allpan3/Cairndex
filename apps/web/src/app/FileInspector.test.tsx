@@ -34,6 +34,24 @@ test('hides FileInspector host actions for an unmapped library', () => {
   expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
 })
 
+test('keeps in-app location available without desktop host actions', () => {
+  const onLocate = vi.fn()
+  render(
+    <FileInspector
+      entry={factsFromEntry(entry)}
+      hostLabels={labels}
+      locateLabel="Locate in Bundle Browser"
+      onLocate={onLocate}
+    />,
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Locate in Bundle Browser' }))
+
+  expect(onLocate).toHaveBeenCalledWith('Movies/movie.mp4')
+  expect(screen.queryByRole('button', { name: 'Open in Default App' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
+})
+
 test('drags the selected file out by its relative path when drag-out is enabled', () => {
   const onStartFileDrag = vi.fn()
   const { container } = render(

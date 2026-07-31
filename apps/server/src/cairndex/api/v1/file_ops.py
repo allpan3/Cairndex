@@ -14,7 +14,6 @@ Rename, New Folder, move, import, delete-to-trash, restore, Empty Trash, and
 Undo are here.
 """
 
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Request, status
@@ -35,7 +34,7 @@ from cairndex.api.schemas.file_ops import (
     TrashRead,
     TrashRequest,
 )
-from cairndex.file_ops import imports, journal, operations, trash
+from cairndex.file_ops import imports, journal, operations
 from cairndex.file_ops.conflicts import ConflictPolicy
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.services.pagination import DEFAULT_LIMIT, MAX_LIMIT
@@ -177,7 +176,9 @@ def read_trash(db: LibrarySession) -> TrashRead:
     part of the library's state, and hiding it when the capability is off would
     make files look permanently gone when they are not.
     """
-    root = library_root_for_session(db)
+    listed = operations.list_trash(db)
+    entries = [entry for _operation, operation_entries in listed for entry in operation_entries]
+    exact_size = all(not entry.is_directory and entry.size_bytes is not None for entry in entries)
     return TrashRead(
         operations=[
             TrashedOperationRead(
@@ -189,14 +190,14 @@ def read_trash(db: LibrarySession) -> TrashRead:
                         name=entry.original_path.rsplit("/", 1)[-1],
                         file_id=entry.file_id,
                         is_directory=entry.is_directory,
-                        size_bytes=_size_of(root / entry.stored_path),
+                        size_bytes=entry.size_bytes,
                     )
                     for entry in entries
                 ],
             )
-            for operation, entries in operations.list_trash(db)
+            for operation, entries in listed
         ],
-        size_bytes=trash.size_on_disk(root),
+        size_bytes=sum(entry.size_bytes or 0 for entry in entries) if exact_size else None,
     )
 
 
@@ -225,13 +226,6 @@ def empty_trash(
         db, library_root_for_session(db), older_than_days=payload.older_than_days
     )
     return EmptyTrashResult(operations_emptied=emptied)
-
-
-def _size_of(path: Path) -> int | None:
-    try:
-        return path.stat().st_size if path.is_file() else None
-    except OSError:
-        return None
 
 
 @router.post("/{operation_id}/undo", response_model=FileOperationResult)
