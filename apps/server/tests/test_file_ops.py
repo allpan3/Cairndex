@@ -600,6 +600,30 @@ def test_trashing_writes_a_readable_note_beside_the_files(
 
     assert meta["operation_id"] == result.operation.id
     assert [entry["original_path"] for entry in meta["entries"]] == ["a.mkv"]
+    assert meta["entries"][0]["size_bytes"] == 1
+
+
+def test_trash_listing_uses_linked_metadata_for_legacy_entries(
+    session: Session, library_root: Path
+) -> None:
+    """Trash rows written before sizes were journaled remain filesystem-free."""
+    _touch(library_root, "a.mkv", b"payload")
+    file = _link(session, "a.mkv")
+    file.size_bytes = len(b"payload")
+    session.commit()
+    result = operations.trash_paths(session, library_root, paths=["a.mkv"])
+    result.operation.payload = {
+        **result.operation.payload,
+        "entries": [
+            {key: value for key, value in entry.items() if key != "size_bytes"}
+            for entry in result.operation.payload["entries"]
+        ],
+    }
+    session.commit()
+
+    listed = operations.list_trash(session)
+
+    assert listed[0][1][0].size_bytes == len(b"payload")
 
 
 def test_trashing_a_directory_takes_its_subtree_as_one_operation(

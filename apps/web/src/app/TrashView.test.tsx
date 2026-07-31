@@ -101,6 +101,15 @@ test('emptying asks first, and says it cannot be undone', async () => {
   await waitFor(() => expect(flashes).toEqual(['Emptied 1 deletion.']))
 })
 
+test('an unknown legacy trash size never understates permanent deletion', () => {
+  trash = { data: { ...FULL, size_bytes: null }, isLoading: false, isError: false }
+  renderTrash()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Empty Trash…' }))
+
+  expect(screen.getByText(/cannot be undone/)).toHaveTextContent('Delete everything permanently?')
+})
+
 test('cancelling the empty confirmation deletes nothing', () => {
   renderTrash()
 

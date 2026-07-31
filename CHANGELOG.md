@@ -25,6 +25,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The Trash listing no longer waits on a recursive SMB filesystem walk.**
+  Loading Trash previously statted every displayed entry and then walked and
+  statted the entire trash tree again before returning any rows. File sizes are
+  now captured in the operation journal and older linked entries use database
+  metadata, so the listing itself performs no trash-filesystem reads. An exact
+  total is omitted for legacy or directory deletions whose size was never
+  recorded rather than delaying the screen or understating permanent deletion.
 - **Moving a Bundle Inspector file to Trash now removes its row immediately.**
   The UI previously waited for the journaled move to finish and then for a
   second bundle-file request, exposing the full latency of a network-mounted
