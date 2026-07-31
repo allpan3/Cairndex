@@ -122,7 +122,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   File Browser offers **Locate in Bundle Browser** in both its inspector and
   right-click menu, which opens its one owning bundle. Both are ordinary
   Cairndex navigation and work in the web build;
-  **Open in Default App** and **Reveal in Finder** remain desktop-only.
+  **Open in Default App** and **Reveal in Finder** remain desktop-only. The File
+  Browser menu starts with its desktop Open/Reveal section, followed by write
+  actions when enabled, and finishes with separate **Copy Path** and
+  **Save Contact Sheet…** sections when that video export is available. The
+  matching in-bundle file menu now follows the same native, write,
+  bundle-navigation, and export grouping.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice

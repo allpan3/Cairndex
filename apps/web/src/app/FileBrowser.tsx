@@ -477,58 +477,14 @@ function FileList({
       onSelectEntry(entry)
     }
     const n = targets.length
-    const items: MenuEntry[] = [
-      // First, and independent of write mode: the inspector no longer prints the
-      // path, so copying it must always be reachable.
-      {
-        label: 'Copy Path',
-        disabled: n > 1,
-        onClick: () => copyPath(entry.relative_path),
-      },
-      null,
-      {
-        label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
-        onClick: () => onAddToBundle(targets),
-      },
-      {
-        label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
-        onClick: () => onCreateBundle(targets),
-      },
-    ]
-    // An indexed video can export a contact sheet from here too (owner,
-    // 2026-07-27). An unindexed one has no file row for the server to cut the
-    // grid from, so the row is simply absent rather than present and failing.
-    if (n === 1 && entry.media_kind === 'video' && entry.file_id) {
-      items.push(
-        null,
-        contactSheetMenuItem(
-          {
-            fileId: entry.file_id,
-            title: entry.name,
-            sizeBytes: entry.size_bytes,
-            duration: entry.duration,
-            mimeType: entry.mime_type,
-            videoCodec: entry.video_codec,
-            audioCodec: entry.audio_codec,
-          },
-          setSheetTarget,
-        ),
-      )
-    }
+    const items: MenuEntry[] = []
     if (n === 1) {
       const hostItems = hostFileMenuEntries(
         hostLabels,
         { onOpenFile, onRevealFile },
         targets[0] as string,
       )
-      if (hostItems.length > 0) items.push(null, ...hostItems)
-      const owningBundleId = entry.bundle_id
-      if (onLocateBundle && owningBundleId && !entry.unbundled) {
-        items.push(null, {
-          label: 'Locate in Bundle Browser',
-          onClick: () => onLocateBundle(owningBundleId),
-        })
-      }
+      if (hostItems.length > 0) items.push(...hostItems)
     }
     if (writeMode) {
       const writeItems: MenuEntry[] = []
@@ -550,7 +506,53 @@ function FileList({
         onClick: () => write.askToDelete(targets, linkedCount(targets)),
       })
       if (canCreateFolder) writeItems.push({ label: 'New Folder', onClick: write.startNewFolder })
-      if (writeItems.length > 0) items.push(null, ...writeItems)
+      if (writeItems.length > 0) {
+        if (items.length > 0) items.push(null)
+        items.push(...writeItems)
+      }
+    }
+    if (items.length > 0) items.push(null)
+    items.push(
+      {
+        label: n > 1 ? `Create Bundle from ${n} Files…` : 'Create Bundle…',
+        onClick: () => onCreateBundle(targets),
+      },
+      {
+        label: n > 1 ? `Add ${n} Files to Bundle…` : 'Add to Bundle…',
+        onClick: () => onAddToBundle(targets),
+      },
+    )
+    if (n === 1) {
+      const owningBundleId = entry.bundle_id
+      if (onLocateBundle && owningBundleId && !entry.unbundled) {
+        items.push({
+          label: 'Locate in Bundle Browser',
+          onClick: () => onLocateBundle(owningBundleId),
+        })
+      }
+    }
+    items.push(null, {
+      label: 'Copy Path',
+      disabled: n > 1,
+      onClick: () => copyPath(entry.relative_path),
+    })
+    // An unindexed video has no file row for the server to cut a sheet from
+    if (n === 1 && entry.media_kind === 'video' && entry.file_id) {
+      items.push(
+        null,
+        contactSheetMenuItem(
+          {
+            fileId: entry.file_id,
+            title: entry.name,
+            sizeBytes: entry.size_bytes,
+            duration: entry.duration,
+            mimeType: entry.mime_type,
+            videoCodec: entry.video_codec,
+            audioCodec: entry.audio_codec,
+          },
+          setSheetTarget,
+        ),
+      )
     }
     menu.open(e, items)
   }
