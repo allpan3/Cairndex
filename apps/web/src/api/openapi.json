@@ -5775,8 +5775,15 @@
             "type": "array"
           },
           "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           }
         },
         "required": [

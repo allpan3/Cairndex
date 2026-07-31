@@ -114,8 +114,9 @@ class TrashRead(BaseModel):
     """Everything currently recoverable, newest deletion first."""
 
     operations: list[TrashedOperationRead]
-    # Bytes the trash occupies — what emptying it gives back.
-    size_bytes: int
+    # Bytes the trash occupies when every entry has recorded metadata. Null for
+    # legacy/unlinked directory deletions rather than walking a network mount.
+    size_bytes: int | None
 
 
 class EmptyTrashResult(BaseModel):

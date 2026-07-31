@@ -14,7 +14,7 @@ path *segments*, and ``LIKE 'Show%'`` would happily also match ``Showcase/``.
 """
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from pathlib import Path, PurePosixPath
 
@@ -442,6 +442,7 @@ def mark_rows_trashed(
                 stored_path=row.relative_path,
                 file_id=row.id,
                 is_directory=False,
+                size_bytes=row.size_bytes if row.size_bytes is not None else entry.size_bytes,
             )
         )
     session.flush()
@@ -635,10 +636,38 @@ def _drop_bundles_emptied_of_files(session: Session, bundle_ids: set[str]) -> No
 
 
 def list_trash(session: Session) -> list[tuple[FileOperation, list[trash.TrashedEntry]]]:
-    """Everything currently recoverable, newest deletion first."""
-    return [
+    """Everything recoverable, with sizes from journal or linked metadata only."""
+    listed = [
         (operation, [trash.entry_from_payload(e) for e in operation.payload.get("entries", [])])
         for operation in journal.trashed_operations(session)
+    ]
+    legacy_file_ids = {
+        entry.file_id
+        for _operation, entries in listed
+        for entry in entries
+        if entry.size_bytes is None and entry.file_id is not None
+    }
+    legacy_sizes: dict[str, int | None] = (
+        {
+            file_id: size_bytes
+            for file_id, size_bytes in session.execute(
+                select(AssetFile.id, AssetFile.size_bytes).where(AssetFile.id.in_(legacy_file_ids))
+            )
+        }
+        if legacy_file_ids
+        else {}
+    )
+    return [
+        (
+            operation,
+            [
+                replace(entry, size_bytes=legacy_sizes.get(entry.file_id))
+                if entry.size_bytes is None and entry.file_id is not None
+                else entry
+                for entry in entries
+            ],
+        )
+        for operation, entries in listed
     ]
 
 

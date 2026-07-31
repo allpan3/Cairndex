@@ -185,6 +185,12 @@ cover fallback, so the operation removes the file from the bundle immediately.
 The client also removes that row from every active bundle-file cache as soon as
 the action starts, rather than exposing the journaled move and follow-up refetch
 latency on a network mount; a rejected operation restores the cached rows.
+Opening Trash had a separate delay: its listing statted every entry and then
+recursively walked the entire trash tree for a total before returning anything.
+Trash entries now carry their captured file size in the journal, legacy linked
+entries fall back to database metadata, and the listing performs no filesystem
+reads. Exact totals are nullable for old or directory deletions whose full size
+was never recorded, keeping Empty Trash honest without blocking the rows.
 The row keeps its bundle id under the trash operation: Put Back returns the
 same file, metadata and order to the same bundle instead of restoring loose
 bytes. Reordering the remaining visible members preserves hidden trash slots.

@@ -235,11 +235,16 @@ def _settle_trash(session: Session, root: Path, operation: FileOperation) -> boo
         stored_full = root / stored
         if not os.path.lexists(stored_full):
             continue  # never made it; the file is still in place
+        try:
+            is_directory, size_bytes = trash.path_metadata(stored_full)
+        except OSError:
+            continue  # vanished between the existence check and metadata read
         entry = trash.TrashedEntry(
             original_path=original,
             stored_path=stored,
             file_id=None,
-            is_directory=stored_full.is_dir() and not stored_full.is_symlink(),
+            is_directory=is_directory,
+            size_bytes=size_bytes,
         )
         moved.extend(mark_rows_trashed(session, operation.id, entry))
 

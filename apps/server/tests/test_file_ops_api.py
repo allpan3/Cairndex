@@ -6,6 +6,7 @@ reaches the client as something it can act on, and that the history stays
 readable after write mode is turned back off.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -233,6 +234,29 @@ def test_delete_moves_to_the_trash_and_restores(
     assert restored.status_code == 200
     assert (library_root / "a.mkv").read_bytes() == b"payload"
     assert client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()["operations"] == []
+
+
+def test_reading_trash_uses_recorded_sizes_without_touching_stored_files(
+    client: TestClient, writable: str, library_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The listing stays metadata-only instead of serially statting an SMB trash tree."""
+    (library_root / "a.mkv").write_bytes(b"payload")
+    assert _trash(client, writable, "a.mkv").status_code == 200
+    trash_root = library_root / ".cairndex" / "trash"
+    original_stat = Path.stat
+
+    def reject_trash_stat(path: Path, *args: object, **kwargs: object) -> os.stat_result:
+        if path.is_relative_to(trash_root):
+            raise AssertionError("Trash listing touched the filesystem")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", reject_trash_stat)
+
+    listing = client.get(f"/api/v1/libraries/{writable}/file-ops/trash")
+
+    assert listing.status_code == 200, listing.text
+    assert listing.json()["operations"][0]["entries"][0]["size_bytes"] == len(b"payload")
+    assert listing.json()["size_bytes"] == len(b"payload")
 
 
 def test_trashed_file_leaves_its_active_bundle_until_put_back(

@@ -4250,7 +4250,7 @@ export interface components {
             /** Operations */
             operations: components["schemas"]["TrashedOperationRead"][];
             /** Size Bytes */
-            size_bytes: number;
+            size_bytes: number | null;
         };
         /**
          * TrashRequest
