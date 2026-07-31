@@ -1779,7 +1779,15 @@ test('polishes click play, off-track scrub, seek step, and current-frame cover',
     return element.dispatchEvent(event)
   })
   expect(nativeMenuAllowed).toBe(false)
-  await expect(page.getByRole('menuitem', { name: 'Frame Forward' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Frame Back' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: 'Frame Forward' })).toHaveCount(0)
+  const playerMenuLabels = await page.getByRole('menuitem').allTextContents()
+  expect(playerMenuLabels.indexOf('Set Frame as Video Cover')).toBeLessThan(
+    playerMenuLabels.indexOf('Save Snapshot'),
+  )
+  expect(playerMenuLabels.indexOf('Reset Video Cover to Default')).toBeLessThan(
+    playerMenuLabels.indexOf('Save Snapshot'),
+  )
   await page.keyboard.press('Escape')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).paused)).toBe(false)
 
