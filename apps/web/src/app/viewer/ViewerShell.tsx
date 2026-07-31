@@ -386,12 +386,13 @@ export function ViewerShell({
 
   // What the docked Bundle Inspector's actions mean *here*. Everything not
   // listed is inherited from the shell unchanged — the whole point of the
-  // context (see `bundleInspectorActions.tsx`). Five actions genuinely differ
-  // inside an open viewer, and each is resolved rather than dropped:
+  // context (see `bundleInspectorActions.tsx`). The actions below genuinely
+  // differ inside an open viewer, and each is resolved rather than dropped:
   const {
     onPlayFile: shellPlayFile,
     onLocateFile: shellLocateFile,
     onAddFiles: shellAddFiles,
+    onDropFilesOnBundle: shellDropFilesOnBundle,
     onFilterByTags: shellFilterByTags,
     onOpenCollection: shellOpenCollection,
   } = useBundleInspectorActions()
@@ -411,12 +412,14 @@ export function ViewerShell({
         // opening another one.
         shellPlayFile?.(targetBundleId, fileId)
       },
-      // These four take the owner somewhere in the shell — a File Browser
-      // directory, the "Add files" dialog, a tag-filtered grid, or a collection — all of which
-      // are behind a full-screen viewer. Close it first: navigating the shell
-      // underneath an opaque overlay is what "nothing happened" looks like.
+      // These five open something in the shell — a File Browser directory, the
+      // add-files/drop-destination dialog, a tag-filtered grid, or a collection
+      // — all of which are behind a full-screen viewer. Close it first.
       onLocateFile: shellLocateFile && ((path) => (onClose(), shellLocateFile(path))),
       onAddFiles: shellAddFiles && ((id) => (onClose(), shellAddFiles(id))),
+      onDropFilesOnBundle:
+        shellDropFilesOnBundle &&
+        ((bundleId, files) => (onClose(), shellDropFilesOnBundle(bundleId, files))),
       onFilterByTags: shellFilterByTags && ((ids) => (onClose(), shellFilterByTags(ids))),
       onOpenCollection:
         shellOpenCollection && ((collectionId) => (onClose(), shellOpenCollection(collectionId))),
@@ -431,6 +434,7 @@ export function ViewerShell({
       onClose,
       onIndex,
       shellAddFiles,
+      shellDropFilesOnBundle,
       shellFilterByTags,
       shellLocateFile,
       shellOpenCollection,
