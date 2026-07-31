@@ -1079,6 +1079,7 @@ test('moves a Bundle Inspector file to trash only when write mode supplies the a
       return
     }
     trashedPaths = (route.request().postDataJSON() as { paths: string[] }).paths
+    await new Promise((resolve) => setTimeout(resolve, 2_000))
     fileTrashed = true
     await route.fulfill({ json: {} })
   })
@@ -1089,7 +1090,11 @@ test('moves a Bundle Inspector file to trash only when write mode supplies the a
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
 
   await expect.poll(() => trashedPaths).toEqual(['movie.mp4'])
-  await expect(page.locator('.files .file-row', { hasText: 'movie.mp4' })).toHaveCount(0)
+  // The journaled move can be slow on a NAS; the active row should not wait
+  // for that request and the following refetch before it leaves the inspector
+  await expect(page.locator('.files .file-row', { hasText: 'movie.mp4' })).toHaveCount(0, {
+    timeout: 750,
+  })
 })
 
 test('dropping an OS file on the Bundle Inspector opens the bundle destination flow', async ({

@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import {
   type InfiniteData,
   type QueryClient,
+  type QueryKey,
   useInfiniteQuery,
   useMutation,
   useQueries,
@@ -155,6 +156,30 @@ export type BrowseQuery = Omit<BrowseParams, 'offset'>
 const TERMINAL_JOB_STATUSES = new Set(['succeeded', 'failed', 'cancelled'])
 
 type JobProgressFn = (job: JobRead | null) => void
+
+/** Merge optimistically hidden files back into their cached bundle positions. */
+function restoreBundleFileSnapshots(
+  qc: QueryClient,
+  snapshots: [QueryKey, FileRead[] | undefined][],
+  relativePaths: readonly string[],
+) {
+  const restoredPaths = new Set(relativePaths)
+  for (const [key, previous] of snapshots) {
+    if (!previous) continue
+    qc.setQueryData<FileRead[]>(key, (current = []) => {
+      const currentById = new Map(current.map((file) => [file.id, file]))
+      const merged = previous.flatMap((file) => {
+        const currentFile = currentById.get(file.id)
+        if (currentFile) {
+          currentById.delete(file.id)
+          return [currentFile]
+        }
+        return restoredPaths.has(file.relative_path) ? [file] : []
+      })
+      return [...merged, ...currentById.values()]
+    })
+  }
+}
 
 // Wait for a queued/running job to finish so dependent queries refetch fresh
 // data. ``onProgress`` (when given) receives each polled snapshot so the UI can
@@ -468,7 +493,26 @@ export function useFileOperations() {
     }),
     trash: useMutation({
       mutationFn: (paths: string[]) => trashEntries(paths),
-      onSuccess: refresh,
+      // A NAS can take seconds to settle the journaled move. Active bundle
+      // surfaces should reflect the owner's intent while that safe operation
+      // runs, then restore the rows if the server rejects it.
+      onMutate: async (paths: string[]) => {
+        const query = { queryKey: ['bundle-files'] }
+        await qc.cancelQueries(query)
+        const previous = qc.getQueriesData<FileRead[]>(query)
+        const requested = new Set(paths)
+        qc.setQueriesData<FileRead[]>(query, (files) =>
+          files?.filter((file) => !requested.has(file.relative_path)),
+        )
+        return { previous }
+      },
+      onError: (_error, _paths, context) => {
+        restoreBundleFileSnapshots(qc, context?.previous ?? [], _paths)
+      },
+      onSuccess: (result, _paths, context) => {
+        restoreBundleFileSnapshots(qc, context?.previous ?? [], result.failed_paths)
+        refresh()
+      },
     }),
     move: useMutation({
       mutationFn: ({
