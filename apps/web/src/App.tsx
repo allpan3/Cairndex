@@ -1023,6 +1023,16 @@ function Workspace({
     writeModeAllowed && (libraries.find((l) => l.id === libraryId)?.write_mode_enabled ?? false)
   const fileOperations = useFileOperations()
   const trashFiles = fileOperations.trash.mutate
+  // One pending import target serves bundle cards and every Bundle Inspector
+  const [pendingBundleDrop, setPendingBundleDrop] = useState<{
+    bundleId: string
+    files: File[]
+  } | null>(null)
+  const [bundleDropBusy, setBundleDropBusy] = useState(false)
+  const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
+    if (files.length === 0) return
+    setPendingBundleDrop({ bundleId, files })
+  }, [])
 
   // Everything the Bundle Inspector can do, defined once and provided to the
   // whole shell. Both places the inspector appears read it from context, so
@@ -1038,6 +1048,7 @@ function Workspace({
       onRevealFile: onRevealHostFile,
       onLocateFile: locateFileInBrowser,
       onTrashFiles: writeMode ? trashFiles : undefined,
+      onDropFilesOnBundle: writeMode ? dropFilesOnBundle : undefined,
       onStartFileDrag,
       onFlash: showFlash,
       onOpenCollection: (collectionId) => {
@@ -1061,6 +1072,7 @@ function Workspace({
     [
       hostLabels,
       locateFileInBrowser,
+      dropFilesOnBundle,
       onOpenHostFile,
       onRevealHostFile,
       onStartFileDrag,
@@ -1644,15 +1656,6 @@ function Workspace({
   // root, which is almost never where the bundle's own files live, so a drop
   // filed the copy in the wrong folder and left the owner to move it (owner
   // report, 2026-07-30). The picker defaults to the bundle's own folder.
-  const [pendingBundleDrop, setPendingBundleDrop] = useState<{
-    bundleId: string
-    files: File[]
-  } | null>(null)
-  const [bundleDropBusy, setBundleDropBusy] = useState(false)
-  const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
-    if (files.length === 0) return
-    setPendingBundleDrop({ bundleId, files })
-  }, [])
   const importDroppedFiles = useCallback(
     (destDir: string) => {
       const pending = pendingBundleDrop

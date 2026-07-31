@@ -138,6 +138,26 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
   )
 }
 
+/** Enable both gates required for write-mode-only browser affordances */
+async function mockWriteMode(page: Page) {
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
+  )
+  await page.route('**/api/v1/libraries', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'lib1',
+          name: 'Test Library',
+          root_path: '/srv/lib',
+          status: 'available',
+          write_mode_enabled: true,
+        },
+      ],
+    }),
+  )
+}
+
 test('renders the shell and browses bundles', async ({ page }) => {
   await mockApi(page)
   await page.goto('/')
@@ -1043,29 +1063,23 @@ test('moves a Bundle Inspector file to trash only when write mode supplies the a
   page,
 }) => {
   await mockApi(page)
-  await page.route('**/api/v1/health', (route) =>
-    route.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
-  )
-  await page.route('**/api/v1/libraries', (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: 'lib1',
-          name: 'Test Library',
-          root_path: '/srv/lib',
-          status: 'available',
-          write_mode_enabled: true,
-        },
-      ],
-    }),
-  )
+  await mockWriteMode(page)
   let trashedPaths: string[] | null = null
+  let fileTrashed = false
+  await page.route('**/bundles/b0/files', async (route) => {
+    if (!fileTrashed) {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({ json: [] })
+  })
   await page.route('**/file-ops/trash', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ json: { operations: [], size_bytes: 0 } })
       return
     }
     trashedPaths = (route.request().postDataJSON() as { paths: string[] }).paths
+    fileTrashed = true
     await route.fulfill({ json: {} })
   })
 
@@ -1075,6 +1089,36 @@ test('moves a Bundle Inspector file to trash only when write mode supplies the a
   await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
 
   await expect.poll(() => trashedPaths).toEqual(['movie.mp4'])
+  await expect(page.locator('.files .file-row', { hasText: 'movie.mp4' })).toHaveCount(0)
+})
+
+test('dropping an OS file on the Bundle Inspector opens the bundle destination flow', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await mockWriteMode(page)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  const inspector = page.locator('aside.inspector')
+
+  await inspector.evaluate((element) => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['video'], 'new-clip.mp4', { type: 'video/mp4' }))
+    element.dispatchEvent(
+      new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    )
+  })
+  await expect(inspector).toHaveAttribute('data-file-drop', 'true')
+
+  await inspector.evaluate((element) => {
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['video'], 'new-clip.mp4', { type: 'video/mp4' }))
+    element.dispatchEvent(
+      new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }),
+    )
+  })
+
+  await expect(page.getByRole('heading', { name: 'Copy the file into…' })).toBeVisible()
 })
 
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {
@@ -1212,22 +1256,7 @@ test('with write mode on, the delete dialog offers the files checkbox, off by de
   await mockApi(page)
   // Write mode is both gates agreeing (ADR-0013 §1): the deployment's /health
   // flag and the library row's own opt-in — so the mock patches both.
-  await page.route('**/api/v1/health', (r) =>
-    r.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
-  )
-  await page.route('**/api/v1/libraries', (r) =>
-    r.fulfill({
-      json: [
-        {
-          id: 'lib1',
-          name: 'Test Library',
-          root_path: '/srv/lib',
-          status: 'available',
-          write_mode_enabled: true,
-        },
-      ],
-    }),
-  )
+  await mockWriteMode(page)
 
   await page.goto('/')
   await page.locator('.card').first().click({ button: 'right' })

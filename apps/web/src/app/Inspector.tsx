@@ -16,6 +16,7 @@ import type { ContactSheetTarget } from './contactSheetExport'
 import { ContextMenu } from './ContextMenu'
 import { collapsePrefixLengths } from './distinctNames'
 import { useContextMenu } from './useContextMenu'
+import { useBundleFileDropTarget } from './useBundleFileDropTarget'
 import {
   useBundle,
   useBundleFiles,
@@ -129,6 +130,7 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
     onRevealFile,
     onLocateFile,
     onTrashFiles,
+    onDropFilesOnBundle,
     onStartFileDrag,
     onFlash,
     onFilterByTags,
@@ -163,6 +165,7 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
       onRevealFile={onRevealFile}
       onLocateFile={onLocateFile}
       onTrashFiles={onTrashFiles}
+      onDropFilesOnBundle={onDropFilesOnBundle}
       onStartFileDrag={onStartFileDrag}
       onFlash={onFlash}
       onFilterByTags={onFilterByTags}
@@ -180,6 +183,7 @@ function BundleEditor({
   onRevealFile,
   onLocateFile,
   onTrashFiles,
+  onDropFilesOnBundle,
   onStartFileDrag,
   onFlash,
   onFilterByTags,
@@ -193,6 +197,7 @@ function BundleEditor({
   onRevealFile?: (relativePath: string) => void
   onLocateFile?: (relativePath: string) => void
   onTrashFiles?: (relativePaths: string[]) => void
+  onDropFilesOnBundle?: (bundleId: string, files: File[]) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
   onFilterByTags?: (tagIds: string[]) => void
@@ -200,6 +205,7 @@ function BundleEditor({
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundle.version)
+  const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
 
   const [title, setTitle] = useState(bundle.title ?? '')
   // Multiple freeform notes; always keep at least one (empty) box so there is
@@ -282,12 +288,28 @@ function BundleEditor({
   const coverDrag = fileDragProps(files.length > 0 ? onStartFileDrag : undefined, () =>
     files.map((f) => f.relative_path),
   )
+  const effectiveCover =
+    files.find(
+      (file) =>
+        file.id === bundle.cover_file_id &&
+        (file.media_kind === 'image' || file.media_kind === 'video'),
+    ) ??
+    files.find((file) => file.media_kind === 'image') ??
+    files.find((file) => file.media_kind === 'video')
+  // The file id changes when the selected cover goes to Trash, even though the
+  // preserved bundle relationship and bundle timestamp deliberately do not
+  const coverKey = `${bundle.updated_at}:${effectiveCover?.id ?? 'empty'}`
 
   return (
-    <aside className="inspector" data-tauri-drag-region>
+    <aside
+      className={`inspector${fileDropOver ? ' inspector--file-drop' : ''}`}
+      data-file-drop={fileDropOver || undefined}
+      data-tauri-drag-region
+      {...dropProps}
+    >
       <div
         className="inspector__cover"
-        style={{ backgroundImage: `url(${thumbnailUrl(bundleId, bundle.updated_at)})` }}
+        style={{ backgroundImage: `url(${thumbnailUrl(bundleId, coverKey)})` }}
         {...coverDrag}
         title={coverDrag.draggable ? 'Drag to copy this bundle’s files out' : undefined}
       >

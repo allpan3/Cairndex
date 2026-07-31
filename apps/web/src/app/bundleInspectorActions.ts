@@ -40,6 +40,8 @@ export interface BundleInspectorActions {
   onLocateFile?: (relativePath: string) => void
   /** Move files to the library trash (present only while write mode is on). */
   onTrashFiles?: (relativePaths: string[]) => void
+  /** Import dropped OS files and link them into this bundle (write mode only) */
+  onDropFilesOnBundle?: (bundleId: string, files: File[]) => void
   /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
   onStartFileDrag?: (relativePaths: string[]) => void
   /** Report a transient message (export progress, results) to the surface. */
@@ -65,6 +67,7 @@ export const BUNDLE_INSPECTOR_ACTION_KEYS = [
   'onRevealFile',
   'onLocateFile',
   'onTrashFiles',
+  'onDropFilesOnBundle',
   'onStartFileDrag',
   'onFlash',
   'onFilterByTags',

@@ -235,6 +235,81 @@ def test_delete_moves_to_the_trash_and_restores(
     assert client.get(f"/api/v1/libraries/{writable}/file-ops/trash").json()["operations"] == []
 
 
+def test_trashed_file_leaves_its_active_bundle_until_put_back(
+    client: TestClient, writable: str, library_root: Path, session: Session
+) -> None:
+    """Move to Trash removes the member from bundle UI/playback without losing identity."""
+    (library_root / "a.mkv").write_bytes(b"a")
+    (library_root / "b.mkv").write_bytes(b"b")
+    bundle = AssetBundle(title="Bundle", grouping_state=GroupingState.CONFIRMED)
+    session.add(bundle)
+    session.flush()
+    a = AssetFile(
+        bundle_id=bundle.id,
+        relative_path="a.mkv",
+        original_filename="a.mkv",
+        display_title="a.mkv",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+        sequence=0,
+        size_bytes=1,
+    )
+    b = AssetFile(
+        bundle_id=bundle.id,
+        relative_path="b.mkv",
+        original_filename="b.mkv",
+        display_title="b.mkv",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+        sequence=1,
+        size_bytes=1,
+    )
+    session.add_all([a, b])
+    session.flush()
+    bundle.cover_file_id = a.id
+    session.commit()
+    bundle_id, a_id, b_id = bundle.id, a.id, b.id
+
+    deleted = _trash(client, writable, "a.mkv")
+
+    assert deleted.status_code == 200, deleted.text
+    listed = client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/files")
+    assert [item["id"] for item in listed.json()] == [b_id]
+    manifest = client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/playback")
+    assert [item["file_id"] for item in manifest.json()["videos"]] == [b_id]
+    browse = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()
+    assert len(browse["items"]) == 1
+    summary = browse["items"][0]
+    assert summary["file_count"] == 1
+    assert summary["total_size"] == 1
+    assert summary["cover_key"] == b_id
+    assert summary["resume_file_id"] == b_id
+    # Reordering the visible list must not require the hidden trash member
+    reordered = client.put(
+        f"/api/v1/libraries/{writable}/bundles/{bundle_id}/files/order",
+        json={"ordered_ids": [b_id]},
+    )
+    assert reordered.status_code == 200, reordered.text
+    session.expire_all()
+    hidden = session.get(AssetFile, a_id)
+    assert hidden is not None
+    assert hidden.bundle_id == bundle_id
+    assert hidden.availability is FileAvailability.TRASHED
+
+    restored = client.post(
+        f"/api/v1/libraries/{writable}/file-ops/trash/restore/{deleted.json()['operation']['id']}"
+    )
+
+    assert restored.status_code == 200, restored.text
+    listed = client.get(f"/api/v1/libraries/{writable}/bundles/{bundle_id}/files")
+    assert [item["id"] for item in listed.json()] == [a_id, b_id]
+    restored_summary = client.post(f"/api/v1/libraries/{writable}/bundles/browse", json={}).json()[
+        "items"
+    ][0]
+    assert restored_summary["file_count"] == 2
+    assert restored_summary["cover_key"] == a_id
+
+
 def test_trash_routes_are_gated_but_reading_the_trash_is_not(
     client: TestClient, registry_session: Session, writable: str, library_root: Path
 ) -> None:

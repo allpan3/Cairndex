@@ -40,7 +40,7 @@ from cairndex.persistence.models import AssetBundle, AssetFile, SubtitleTrack
 from cairndex.services import collections as collection_service
 from cairndex.services import playback_progress as progress_service
 from cairndex.services import subtitles as sub_service
-from cairndex.services.bundles import get_bundle, list_files
+from cairndex.services.bundles import get_bundle, list_active_files
 from cairndex.services.pagination import MAX_LIMIT
 
 router = APIRouter(prefix="/libraries/{library_id}", tags=["playback"])
@@ -103,7 +103,7 @@ def _track_read(session: Session, library_id: str, track: SubtitleTrack) -> Subt
 def playback_manifest(library_id: str, bundle_id: str, db: LibrarySession) -> PlaybackManifest:
     get_bundle(db, bundle_id)  # 404 if the bundle doesn't exist
     videos: list[PlayableVideo] = []
-    files = list_files(db, bundle_id)
+    files = list_active_files(db, bundle_id)
     playback.reconcile_missing_files(db, files)
     video_files = [f for f in files if f.media_kind == MediaKind.VIDEO]
     progress_by_file = progress_service.progress_for_files(db, [f.id for f in video_files])

@@ -9,6 +9,7 @@ import {
   useMergedBundleInspectorActions,
   type BundleInspectorActions,
 } from './bundleInspectorActions'
+import { consumeHtmlFileDropHandled } from './htmlFileDrop'
 import { Inspector } from './Inspector'
 
 const hooks = vi.hoisted(() => ({
@@ -68,6 +69,7 @@ const shellActions: BundleInspectorActions = {
   onRevealFile: vi.fn(),
   onLocateFile: vi.fn(),
   onTrashFiles: vi.fn(),
+  onDropFilesOnBundle: vi.fn(),
   onStartFileDrag: vi.fn(),
   onFlash: vi.fn(),
   onFilterByTags: vi.fn(),
@@ -192,6 +194,31 @@ test('the write-mode menu action trashes the clicked inspector file', () => {
   fireEvent.click(screen.getByRole('menuitem', { name: 'Move to Trash' }))
 
   expect(onTrashFiles).toHaveBeenCalledWith(['folder/clip.mp4'])
+})
+
+test('the inspector is the same import-and-link drop target as a bundle card', () => {
+  const onDropFilesOnBundle = vi.fn()
+  render(
+    <BundleInspectorActionsContext value={{ ...shellActions, onDropFilesOnBundle }}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+  const inspector = document.querySelector<HTMLElement>('aside.inspector')
+  if (!inspector) throw new Error('expected the Bundle Inspector')
+  const dropped = new File(['video'], 'new-clip.mp4', { type: 'video/mp4' })
+  const dataTransfer = {
+    types: ['Files'],
+    files: [dropped],
+    dropEffect: 'none',
+  }
+
+  fireEvent.dragOver(inspector, { dataTransfer })
+  expect(inspector).toHaveClass('inspector--file-drop')
+  fireEvent.drop(inspector, { dataTransfer })
+
+  expect(onDropFilesOnBundle).toHaveBeenCalledWith('bundle', [dropped])
+  expect(consumeHtmlFileDropHandled()).toBe(true)
+  expect(inspector).not.toHaveClass('inspector--file-drop')
 })
 
 test('an inspector with no actions in scope loses the handler-gated entries', () => {

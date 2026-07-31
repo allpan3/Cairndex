@@ -1441,6 +1441,10 @@ button {
   overflow-y: auto;
   padding: 14px;
 }
+/* The whole Bundle Inspector is the same import-and-link target as its card */
+.inspector--file-drop {
+  box-shadow: inset 0 0 0 2px var(--accent, #7aa2ff);
+}
 .inspector__cover {
   width: 100%;
   aspect-ratio: 16 / 10;

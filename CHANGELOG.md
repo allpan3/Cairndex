@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Files can be dropped onto the Bundle Inspector to add them to that bundle.**
+  The whole sidebar is now the same write-gated import-and-link target as the
+  bundle card, with the same hover treatment and the same destination picker
+  defaulting to the bundle’s folder. The docked inspector in the media viewer
+  closes the viewer before opening that picker so the next step is visible.
 - **Any running job can now be stopped from the sidebar.** Scan, metadata,
   thumbnails and storyboards all show a stop control on the row they are running
   on. The server could already cancel a job; nothing in the app ever asked it
@@ -25,7 +30,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   same file's inspector menu omitted it. The write-gated action now travels
   through the shared inspector action context, so it is available in both the
   shell rail and the inspector docked beside the media viewer, and absent when
-  write mode is off.
+  write mode is off. A trashed member now immediately leaves the bundle’s file
+  list, cover fallback and playback playlist; its hidden relationship remains
+  intact so Put Back restores that same file to the same bundle.
 - **A job whose server stopped mid-run stayed "running" forever.** Restarting
   the server — or a dev-mode reload — left the row in the sidebar as work in
   progress that had died an hour earlier, and it could not be dismissed:

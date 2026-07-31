@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import type { BundleSummary } from '../api/client'
 import { fileThumbnailUrl, thumbnailUrl } from '../api/client'
 import { formatDimensions, formatDuration } from '../lib/format'
 import { HoverPreview } from './HoverPreview'
-import { markHtmlFileDropHandled } from './htmlFileDrop'
 import type { HoverPreviewSource } from './hoverPreviewState'
+import { useBundleFileDropTarget, type BundleFileDropHandler } from './useBundleFileDropTarget'
 
 interface BundleCardProps {
   item: BundleSummary
@@ -20,7 +20,7 @@ interface BundleCardProps {
    * into this bundle. Absent when the library cannot be written (the drop then
    * falls through to the window net's guidance rather than half-working).
    */
-  onDropFiles?: (id: string, files: File[]) => void
+  onDropFiles?: BundleFileDropHandler
 }
 
 export function BundleCard({
@@ -33,7 +33,7 @@ export function BundleCard({
   previewDisabled = false,
   onDropFiles,
 }: BundleCardProps) {
-  const [fileDropOver, setFileDropOver] = useState(false)
+  const { fileDropOver, dropProps } = useBundleFileDropTarget(item.id, onDropFiles)
   // Duration only makes sense for a video-backed card; an image bundle whose
   // current file happens to carry a stray "duration" in its metadata shouldn't
   // show a runtime badge next to a JPG type badge.
@@ -100,29 +100,7 @@ export function BundleCard({
       // Internal card drags carry custom types, never Files, so reorder is
       // untouched; without a handler the webview's default was to navigate to
       // the dropped file (owner report, 2026-07-27).
-      onDragOver={
-        onDropFiles
-          ? (e) => {
-              if (!e.dataTransfer.types.includes('Files')) return
-              e.preventDefault()
-              e.stopPropagation()
-              e.dataTransfer.dropEffect = 'copy'
-              setFileDropOver(true)
-            }
-          : undefined
-      }
-      onDragLeave={onDropFiles ? () => setFileDropOver(false) : undefined}
-      onDrop={
-        onDropFiles
-          ? (e) => {
-              if (!e.dataTransfer.types.includes('Files')) return
-              e.preventDefault()
-              markHtmlFileDropHandled()
-              setFileDropOver(false)
-              onDropFiles(item.id, [...e.dataTransfer.files])
-            }
-          : undefined
-      }
+      {...dropProps}
       role="option"
       aria-selected={selected}
       data-bundle-id={item.id}
