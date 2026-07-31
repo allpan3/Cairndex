@@ -434,13 +434,17 @@ rather than guessed at.
 and this table must not grow a column per operation. For `rename` it carries
 `source`, `destination`, and — once finished — `files_updated`; for `mkdir`,
 `destination`; for `trash`, the requested `paths` and the resulting `entries`
-(each with `original_path`, `stored_path`, `file_id`, `is_directory`); for
-`import`, the `destination`, `filename` and `size_bytes` written. It is also
-what Undo reads to apply the inverse.
+(each with `original_path`, `stored_path`, `file_id`, `is_directory`, and a
+captured `size_bytes` for files); for `import`, the `destination`, `filename`
+and `size_bytes` written. It is also what Undo reads to apply the inverse.
 
 **The journal is the trash's index.** A `trash` row still in `done` has not been
 restored (`undone`) or permanently deleted (`emptied`), so listing the trash is
 one query against this table and no second table has to be kept in step with it.
+A listing never stats or walks `.cairndex/trash`: older linked entries can take
+their size from `asset_files`, while an exact total stays unknown for legacy or
+directory entries whose full size was not recorded. This keeps a network mount
+off the response path and avoids understating what Empty Trash will remove.
 A Replace records `replaced_operation_id` pointing at the `trash` row for the
 file it displaced — so the displaced file appears in the Trash view like any
 other deletion, and undoing the rename restores it.
