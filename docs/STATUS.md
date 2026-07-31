@@ -57,7 +57,7 @@
 > the sidebar, and a job whose server died no longer claims to be running.
 >
 > **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
-> — six more owner reports from using the app. The Bundle Inspector shown during
+> — seven more owner reports from using the app. The Bundle Inspector shown during
 > playback is now the shell's own pane rather than a starved copy of it; a bundle
 > filed into a collection is in that collection's listing when you open it;
 > collection covers appear, refresh with membership, and keep their full cover
@@ -68,7 +68,11 @@
 > that default. The native `just dev` stack now shuts Uvicorn down gracefully
 > too; its old process-group kill could stop the worker before FastAPI released
 > the library lease, making the bundled desktop wait through stale-lease
-> recovery after an ordinary Ctrl-C. Independent of the WAL
+> recovery after an ordinary Ctrl-C. File navigation now works in both directions
+> between a file's physical File Browser location and its one owning bundle,
+> including from the File Browser inspector and right-click menu; unlike native
+> Open/Reveal, both location actions work on the web.
+> Independent of the WAL
 > journal-mode work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested

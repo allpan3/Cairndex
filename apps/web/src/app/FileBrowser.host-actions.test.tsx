@@ -49,6 +49,7 @@ const labels = hostLabelsFor('macos')
 function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: string[]) => void) {
   const onRevealFile = vi.fn()
   const onOpenFile = vi.fn()
+  const onLocateBundle = vi.fn()
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
@@ -66,11 +67,12 @@ function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: strin
         hostLabels={labels}
         onRevealFile={hostActions ? onRevealFile : undefined}
         onOpenFile={hostActions ? onOpenFile : undefined}
+        onLocateBundle={onLocateBundle}
         onStartFileDrag={onStartFileDrag}
       />
     </QueryClientProvider>,
   )
-  return { onOpenFile, onRevealFile }
+  return { onLocateBundle, onOpenFile, onRevealFile }
 }
 
 test('shows mapped file context actions and passes only the relative path', async () => {
@@ -100,10 +102,12 @@ test('makes a list row a drag-out source only once it is selected (keeps marquee
   expect(onStartFileDrag).toHaveBeenCalledWith(['Movies/movie.mp4'])
 })
 
-test('hides file context host actions without a mapping', () => {
-  renderFileBrowser(false)
+test('locates the owning bundle without exposing unmapped host actions', async () => {
+  const actions = renderFileBrowser(false)
   fireEvent.contextMenu(screen.getByText('movie.mp4').closest('[role="row"]') as HTMLElement)
 
   expect(screen.queryByRole('menuitem', { name: 'Open in Default App' })).not.toBeInTheDocument()
   expect(screen.queryByRole('menuitem', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Locate in Bundle Browser' }))
+  expect(actions.onLocateBundle).toHaveBeenCalledWith('bundle-one')
 })
