@@ -67,6 +67,7 @@ const shellActions: BundleInspectorActions = {
   onOpenFile: vi.fn(),
   onRevealFile: vi.fn(),
   onLocateFile: vi.fn(),
+  onTrashFiles: vi.fn(),
   onStartFileDrag: vi.fn(),
   onFlash: vi.fn(),
   onFilterByTags: vi.fn(),
@@ -176,6 +177,21 @@ test('the docked inspector offers the same file menu as the shell inspector', ()
   // exactly what the viewer used to show.
   expect(shellLabels).toContain('Locate in File Browser')
   expect(shellLabels).toContain('Reveal in Finder')
+  expect(shellLabels).toContain('Move to Trash')
+})
+
+test('the write-mode menu action trashes the clicked inspector file', () => {
+  const onTrashFiles = vi.fn()
+  render(
+    <BundleInspectorActionsContext value={{ ...shellActions, onTrashFiles }}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+
+  fileRowMenuLabels()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Move to Trash' }))
+
+  expect(onTrashFiles).toHaveBeenCalledWith(['folder/clip.mp4'])
 })
 
 test('an inspector with no actions in scope loses the handler-gated entries', () => {
@@ -187,4 +203,5 @@ test('an inspector with no actions in scope loses the handler-gated entries', ()
 
   expect(labels).not.toContain('Locate in File Browser')
   expect(labels).not.toContain('Reveal in Finder')
+  expect(labels).not.toContain('Move to Trash')
 })
