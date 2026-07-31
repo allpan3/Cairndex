@@ -70,6 +70,7 @@ const shellActions: BundleInspectorActions = {
   onStartFileDrag: vi.fn(),
   onFlash: vi.fn(),
   onFilterByTags: vi.fn(),
+  onOpenCollection: vi.fn(),
 }
 
 /**
@@ -83,6 +84,7 @@ function ViewerOverrides({ children }: { children: ReactNode }) {
     onLocateFile: vi.fn(),
     onAddFiles: vi.fn(),
     onFilterByTags: vi.fn(),
+    onOpenCollection: vi.fn(),
     onFlash: vi.fn(),
   })
   return <BundleInspectorActionsContext value={merged}>{children}</BundleInspectorActionsContext>

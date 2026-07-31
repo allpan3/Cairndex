@@ -9,6 +9,7 @@ import {
   useSetBundleCollections,
 } from '../api/hooks'
 import { usePersistentState } from '../state/usePersistentState'
+import { useBundleInspectorActions } from './bundleInspectorActions'
 import { IconCheckSquare } from './icons'
 import { PickGuides } from './PickGuides'
 import { usePinyinSearch } from './pinyin'
@@ -46,6 +47,7 @@ function visibleCollectionRows(
 }
 
 export function CollectionPicker({ bundleId }: { bundleId: string }) {
+  const { onOpenCollection } = useBundleInspectorActions()
   const { data: bundleCollections } = useBundleCollections(bundleId)
   const { data: collections = [] } = useCollections()
   const setCollections = useSetBundleCollections(bundleId)
@@ -210,9 +212,21 @@ export function CollectionPicker({ bundleId }: { bundleId: string }) {
           .map((id) => byId.get(id))
           .filter((c) => c !== undefined)
           .map((c) => (
-            <span className="chip" key={c.id}>
-              {c.name}
-              <button onClick={() => toggle(c.id)} aria-label={`Remove from ${c.name}`}>
+            <span className="chip chip--collection" key={c.id}>
+              <button
+                className="chip__open"
+                onClick={() => onOpenCollection?.(c.id)}
+                disabled={!onOpenCollection}
+                aria-label={`Open collection ${c.name}`}
+                title={`Open ${c.name}`}
+              >
+                {c.name}
+              </button>
+              <button
+                className="chip__remove"
+                onClick={() => toggle(c.id)}
+                aria-label={`Remove from ${c.name}`}
+              >
                 ×
               </button>
             </span>

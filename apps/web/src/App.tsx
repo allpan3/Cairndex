@@ -1014,6 +1014,14 @@ function Workspace({
       onLocateFile: locateFileInBrowser,
       onStartFileDrag,
       onFlash: showFlash,
+      onOpenCollection: (collectionId) => {
+        setMode('collection')
+        setSelection({ view: 'all', collectionId })
+        setSelectedIds(new Set())
+        setActiveId(null)
+        setSelectedCollectionIds(new Set())
+        setOpenBundleId(null)
+      },
       onFilterByTags: (tagIds) => {
         // Replace the tag filter with exactly these, and leave any bundle
         // open — the point is to see everything sharing the tag.

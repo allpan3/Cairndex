@@ -44,6 +44,8 @@ export interface BundleInspectorActions {
   onFlash?: (message: string) => void
   /** Filter the library by these tags, from a tag pill's menu. */
   onFilterByTags?: (tagIds: string[]) => void
+  /** Navigate the shell to one collection from its inspector pill. */
+  onOpenCollection?: (collectionId: string) => void
 }
 
 /** Every key of `BundleInspectorActions`, as data.
@@ -63,6 +65,7 @@ export const BUNDLE_INSPECTOR_ACTION_KEYS = [
   'onStartFileDrag',
   'onFlash',
   'onFilterByTags',
+  'onOpenCollection',
 ] as const satisfies readonly (keyof BundleInspectorActions)[]
 
 /**

@@ -99,6 +99,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   The earlier saved height preference is reset, so notes already held open by a
   stale fixed size adopt the compact default too; new explicit resizes persist.
   Stacked note boxes now sit 4 px apart instead of 6 px.
+- **Collection pills in the Bundle Inspector now open their collection.** The
+  name side navigates to that collection without changing bundle membership;
+  the × remains a separate removal action. From the docked player inspector,
+  navigation closes the viewer first so the destination is visible.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice
