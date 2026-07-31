@@ -31,6 +31,7 @@ async function mockApi(page: Page) {
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
   await page.route('**/bundles/counts', (r) =>
     r.fulfill({
       json: { all: 0, recent: 0, uncategorized: 0, untagged: 0, missing: 0, unbundled: 2 },

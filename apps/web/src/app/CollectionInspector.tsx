@@ -16,7 +16,11 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
   const update = useUpdateCollection()
   const [name, setName] = useState(collection.name)
   const [note, setNote] = useState(collection.note ?? '')
-  const [hasCover, setHasCover] = useState(true)
+  // Tracked against the URL rather than latched once — see `CollectionCard` for
+  // why a plain boolean left the cover missing for good after one 404.
+  const coverSrc = collectionThumbnailUrl(collection.id, collection.updated_at)
+  const [failedCoverSrc, setFailedCoverSrc] = useState<string | null>(null)
+  const hasCover = failedCoverSrc !== coverSrc
 
   const commitName = () => {
     const trimmed = name.trim()
@@ -40,10 +44,10 @@ export function CollectionInspector({ collection }: { collection: CollectionRead
       {hasCover && (
         <div className="inspector__cover">
           <img
-            src={collectionThumbnailUrl(collection.id, collection.updated_at)}
+            src={coverSrc}
             alt=""
             draggable={false}
-            onError={() => setHasCover(false)}
+            onError={() => setFailedCoverSrc(coverSrc)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         </div>

@@ -44,6 +44,7 @@ async function mockApi(
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route('**/ownership', (r) => r.fulfill({ json: { state: 'own', mountable: true } }))
 
   // Directory autocomplete, with one entry already marked as a library.
   await page.route('**/path-suggestions**', (r) =>
@@ -328,6 +329,9 @@ test('switching libraries replaces the browser shell without a reload', async ({
   await page.route('**/api/v1/libraries', (route) => route.fulfill({ json: libraries }))
   await page.route('**/auth/status', (route) =>
     route.fulfill({ json: { protected: false, unlocked: true } }),
+  )
+  await page.route('**/ownership', (route) =>
+    route.fulfill({ json: { state: 'own', mountable: true } }),
   )
   await page.route('**/bundles/counts**', (route) =>
     route.fulfill({ json: { all: 1, recent: 1, uncategorized: 1, untagged: 1, missing: 0 } }),

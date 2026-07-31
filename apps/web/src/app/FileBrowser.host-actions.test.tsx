@@ -46,9 +46,14 @@ setActiveLibraryId('lib1')
 const labels = hostLabelsFor('macos')
 
 // Renders the file surface with isolated query state
-function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: string[]) => void) {
+function renderFileBrowser(
+  hostActions: boolean,
+  onStartFileDrag?: (paths: string[]) => void,
+  writeMode = false,
+) {
   const onRevealFile = vi.fn()
   const onOpenFile = vi.fn()
+  const onLocateBundle = vi.fn()
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={queryClient}>
@@ -66,11 +71,13 @@ function renderFileBrowser(hostActions: boolean, onStartFileDrag?: (paths: strin
         hostLabels={labels}
         onRevealFile={hostActions ? onRevealFile : undefined}
         onOpenFile={hostActions ? onOpenFile : undefined}
+        onLocateBundle={onLocateBundle}
         onStartFileDrag={onStartFileDrag}
+        writeMode={writeMode}
       />
     </QueryClientProvider>,
   )
-  return { onOpenFile, onRevealFile }
+  return { onLocateBundle, onOpenFile, onRevealFile }
 }
 
 test('shows mapped file context actions and passes only the relative path', async () => {
@@ -100,10 +107,40 @@ test('makes a list row a drag-out source only once it is selected (keeps marquee
   expect(onStartFileDrag).toHaveBeenCalledWith(['Movies/movie.mp4'])
 })
 
-test('hides file context host actions without a mapping', () => {
-  renderFileBrowser(false)
+test('orders host, write, browse, and separated utility sections', () => {
+  renderFileBrowser(true, undefined, true)
+  fireEvent.contextMenu(screen.getByText('movie.mp4').closest('[role="row"]') as HTMLElement)
+
+  expect(
+    [...screen.getByRole('menu').children].map((item) =>
+      item.getAttribute('role') === 'separator' ? null : item.textContent,
+    ),
+  ).toEqual([
+    'Open in Default App',
+    'Reveal in Finder',
+    null,
+    'Rename…',
+    'Move to…',
+    'Move to Trash',
+    'New Folder',
+    null,
+    'Create Bundle…',
+    'Add to Bundle…',
+    'Locate in Bundle Browser',
+    null,
+    'Copy Path',
+    null,
+    'Save Contact Sheet…',
+  ])
+})
+
+test('locates the owning bundle without exposing unmapped host actions', async () => {
+  const actions = renderFileBrowser(false)
   fireEvent.contextMenu(screen.getByText('movie.mp4').closest('[role="row"]') as HTMLElement)
 
   expect(screen.queryByRole('menuitem', { name: 'Open in Default App' })).not.toBeInTheDocument()
   expect(screen.queryByRole('menuitem', { name: 'Reveal in Finder' })).not.toBeInTheDocument()
+  expect(screen.getAllByRole('separator')).toHaveLength(2)
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Locate in Bundle Browser' }))
+  expect(actions.onLocateBundle).toHaveBeenCalledWith('bundle-one')
 })

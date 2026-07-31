@@ -33,7 +33,7 @@ export function TrashView({
   const [confirmingEmpty, setConfirmingEmpty] = useState(false)
 
   const operations = trash.data?.operations ?? []
-  const size = trash.data?.size_bytes ?? 0
+  const size = trash.data?.size_bytes ?? null
   const busy = restore.isPending || empty.isPending
   const readOnlyHint = writeMode
     ? undefined
@@ -64,7 +64,7 @@ export function TrashView({
         <span className="toolbar__title">Trash</span>
         <span className="toolbar__count">
           {operations.length.toLocaleString()} {operations.length === 1 ? 'deletion' : 'deletions'}
-          {size > 0 && ` · ${formatBytes(size)}`}
+          {size !== null && size > 0 && ` · ${formatBytes(size)}`}
         </span>
         {!writeMode && operations.length > 0 && (
           <span className="toolbar__count">
@@ -87,8 +87,8 @@ export function TrashView({
             {/* The one action in write mode with no way back, so it says so
                 in those words rather than "are you sure?". */}
             <span className="trash__warning">
-              Delete {size > 0 ? formatBytes(size) : 'everything'} permanently? This cannot be
-              undone.
+              Delete {size !== null && size > 0 ? formatBytes(size) : 'everything'} permanently?
+              This cannot be undone.
             </span>
             <button
               className="btn btn--sm"

@@ -22,6 +22,15 @@ uv sync                 # creates .venv, installs locked deps + Python 3.12
 uv run uvicorn cairndex.main:app --reload --port 8000
 ```
 
+`just dev` starts this server and Vite together. Stop it with Ctrl-C: the
+recipe signals the Uvicorn reloader itself and waits for FastAPI's lifespan
+shutdown before returning, so every mounted library's ownership lease is
+released. Do not replace that targeted shutdown with a process-group kill;
+terminating the reloader and its worker simultaneously can skip lifespan
+shutdown and leave the next server waiting for a stale-lease takeover.
+`just dev-smoke` exercises that exact shutdown against a generated scratch
+library and fails if Ctrl-C leaves its lease active.
+
 Checks (run from `apps/server`):
 
 ```bash

@@ -9,8 +9,14 @@
  */
 
 import { fileContactSheetUrl } from '../api/client'
-import { composeContactSheet } from './viewer/contactSheet'
-import { formatBytes, formatDuration } from '../lib/format'
+import { composeContactSheet, type ContactSheetRow } from './viewer/contactSheet'
+import {
+  formatBitrate,
+  formatBytes,
+  formatCodec,
+  formatDuration,
+  formatSampleRate,
+} from '../lib/format'
 import { getHostPlatform, isDesktopHost } from '../platform'
 
 /** The grids offered. Square, and within the server's bounds. */
@@ -18,7 +24,7 @@ export const CONTACT_SHEET_GRIDS = [4, 5, 6] as const
 export type ContactSheetGrid = (typeof CONTACT_SHEET_GRIDS)[number]
 
 /** Sheet widths the server accepts (`contact_sheets.SHEET_WIDTHS`). */
-export const CONTACT_SHEET_WIDTHS = [1280, 1600, 2048] as const
+export const CONTACT_SHEET_WIDTHS = [1600, 2048, 2560] as const
 export type ContactSheetWidth = (typeof CONTACT_SHEET_WIDTHS)[number]
 
 export interface ContactSheetTarget {
@@ -32,6 +38,47 @@ export interface ContactSheetTarget {
   mimeType?: string | null
   videoCodec?: string | null
   audioCodec?: string | null
+  videoBitrate?: number | null
+  audioBitrate?: number | null
+  audioSampleRate?: number | null
+}
+
+/** One codec paired with its own stream bitrate. */
+function codecSummary(
+  codec: string | null | undefined,
+  bitrate: number | null | undefined,
+): string {
+  const parts = [codec ? formatCodec(codec) : null, bitrate ? formatBitrate(bitrate) : null].filter(
+    (part): part is string => part !== null,
+  )
+  return parts.join(' / ') || '—'
+}
+
+/** Primary audio encoding, bitrate, and sampling frequency. */
+function audioCodecSummary(target: ContactSheetTarget): string {
+  const parts = [
+    target.audioCodec ? formatCodec(target.audioCodec) : null,
+    target.audioBitrate ? formatBitrate(target.audioBitrate) : null,
+    target.audioSampleRate ? formatSampleRate(target.audioSampleRate) : null,
+  ].filter((part): part is string => part !== null)
+  return parts.join(' / ') || '—'
+}
+
+/** The three metadata rows printed above every exported grid. */
+export function contactSheetRows(target: ContactSheetTarget): ContactSheetRow[] {
+  const dimensions = target.width && target.height ? `${target.width}×${target.height}` : '—'
+  const frameRate = target.fps ? `${Math.round(target.fps * 100) / 100} fps` : '—'
+  return [
+    { label: 'File Name', value: target.title || '—' },
+    {
+      label: 'Details',
+      value: `${formatBytes(target.sizeBytes)} · ${formatDuration(target.duration)} · ${dimensions} / ${frameRate}`,
+    },
+    {
+      label: 'Codec',
+      value: `${codecSummary(target.videoCodec, target.videoBitrate)} · ${audioCodecSummary(target)}`,
+    },
+  ]
 }
 
 /** Strip what a filename cannot hold, keeping the title readable. */
@@ -55,19 +102,9 @@ export async function saveContactSheet(
   try {
     const blob = await composeContactSheet({
       sheetUrl: fileContactSheetUrl(target.fileId, grid, grid, width),
-      title: target.title,
+      metadataRows: contactSheetRows(target),
       cols: grid,
       rows: grid,
-      facts: [
-        formatBytes(target.sizeBytes ?? null),
-        target.duration != null ? formatDuration(target.duration) : null,
-        target.width && target.height ? `${target.width}×${target.height}` : null,
-        target.fps ? `${Math.round(target.fps * 100) / 100} fps` : null,
-        // How it is encoded, which is the fact a sheet is most often consulted
-        // for after the frames themselves (owner, 2026-07-27).
-        [target.videoCodec, target.audioCodec].filter(Boolean).join(' / ') || null,
-        target.mimeType,
-      ],
     })
     const name = `${safeName(target.title)} — contact sheet.jpg`
     if (isDesktopHost()) {

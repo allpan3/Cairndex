@@ -5,6 +5,7 @@ many-to-many and never moves files on disk — it is independent of the physical
 File Browser, which browses the active library root directly.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from sqlalchemy import delete, func, select, update
@@ -319,6 +320,24 @@ def resolve_cover_bundle_id(session: Session, collection_id: str) -> str | None:
     return session.scalar(stmt)
 
 
+def _with_ancestors(session: Session, collection_ids: set[str]) -> set[str]:
+    """``collection_ids`` plus every ancestor — an auto cover resolves through
+    the whole subtree, so a change below reaches each collection above it."""
+    reached = set(collection_ids)
+    frontier = set(collection_ids)
+    while frontier:
+        parents = {
+            parent_id
+            for parent_id in session.scalars(
+                select(Collection.parent_id).where(Collection.id.in_(frontier))
+            )
+            if parent_id is not None
+        }
+        frontier = parents - reached
+        reached.update(parents)
+    return reached
+
+
 def touch_cover_collections_for_bundle(session: Session, bundle_id: str) -> None:
     """Refresh collection cover versions when their effective bundle changes image.
 
@@ -334,20 +353,9 @@ def touch_cover_collections_for_bundle(session: Session, bundle_id: str) -> None
             )
         )
     )
-    candidates = direct | set(
+    candidates = _with_ancestors(session, direct) | set(
         session.scalars(select(Collection.id).where(Collection.cover_bundle_id == bundle_id))
     )
-    frontier = direct
-    while frontier:
-        parents = {
-            parent_id
-            for parent_id in session.scalars(
-                select(Collection.parent_id).where(Collection.id.in_(frontier))
-            )
-            if parent_id is not None
-        }
-        frontier = parents - candidates
-        candidates.update(parents)
 
     now = utcnow()
     for collection_id in candidates:
@@ -355,4 +363,38 @@ def touch_cover_collections_for_bundle(session: Session, bundle_id: str) -> None
             collection = session.get(Collection, collection_id)
             if collection is not None:
                 collection.updated_at = now
+    session.flush()
+
+
+def touch_membership_collections(session: Session, collection_ids: Iterable[str]) -> None:
+    """Mark collections whose membership just changed, and their ancestors.
+
+    A collection's cover thumbnail is fetched with its ``updated_at`` as the
+    cache-busting key, and its auto-picked cover is *derived from membership* —
+    the earliest bundle in the subtree with a thumbnailable file. So filing a
+    bundle in, or taking one out, can change the picture without anything
+    touching the collection row, and the browser goes on serving what it
+    already has. That is what left collection covers stale, and what left a
+    collection that had just received its first bundle still showing the folder
+    glyph it 404'd into (owner, 2026-07-30).
+
+    Unlike ``touch_cover_collections_for_bundle`` this cannot ask "does the
+    cover still resolve to *this* bundle": on a removal the answer is a
+    different bundle, or none, which is precisely the case that needs
+    refreshing. It marks every affected collection instead. The cost is one
+    re-fetch of a tile that may be unchanged; the alternative is a tile that is
+    wrong until something unrelated moves it.
+
+    Membership is also the collection's own content, so bumping ``updated_at``
+    here is what the column means — unlike a sibling reorder, which deliberately
+    leaves it alone (see ``_write_sibling_order``).
+    """
+    affected = {collection_id for collection_id in collection_ids}
+    if not affected:
+        return
+    now = utcnow()
+    for collection_id in _with_ancestors(session, affected):
+        collection = session.get(Collection, collection_id)
+        if collection is not None:
+            collection.updated_at = now
     session.flush()

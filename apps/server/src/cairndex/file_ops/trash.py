@@ -32,8 +32,8 @@ it — which is exactly what Replace needs.
 
 import contextlib
 import json
-import os
 import shutil
+import stat
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -58,6 +58,8 @@ class TrashedEntry:
     # The linked row that moved with it, if any. Unlinked files are trashed too.
     file_id: str | None
     is_directory: bool
+    # Captured before the move so listing Trash never has to stat SMB paths
+    size_bytes: int | None
 
     def as_payload(self) -> dict[str, Any]:
         return {
@@ -65,6 +67,7 @@ class TrashedEntry:
             "stored_path": self.stored_path,
             "file_id": self.file_id,
             "is_directory": self.is_directory,
+            "size_bytes": self.size_bytes,
         }
 
 
@@ -74,6 +77,7 @@ def entry_from_payload(data: dict[str, Any]) -> TrashedEntry:
         stored_path=str(data["stored_path"]),
         file_id=data.get("file_id"),
         is_directory=bool(data.get("is_directory", False)),
+        size_bytes=int(data["size_bytes"]) if data.get("size_bytes") is not None else None,
     )
 
 
@@ -86,6 +90,13 @@ def stored_relative_path(operation_id: str, original_path: str) -> str:
     return f"{pkg.MARKER_DIR}/{pkg.TRASH_DIR}/{operation_id}/{FILES_DIR}/{original_path}"
 
 
+def path_metadata(path: Path) -> tuple[bool, int | None]:
+    """Whether a path is a real directory and its cheap file size, in one stat."""
+    metadata = path.lstat()
+    is_directory = stat.S_ISDIR(metadata.st_mode)
+    return is_directory, None if is_directory else metadata.st_size
+
+
 def move_into_trash(root: Path, *, operation_id: str, original_path: str) -> TrashedEntry:
     """Rename one file or directory into this operation's trash directory.
 
@@ -94,7 +105,7 @@ def move_into_trash(root: Path, *, operation_id: str, original_path: str) -> Tra
     it; this function never decides what a failure means.
     """
     source = root / original_path
-    is_directory = source.is_dir() and not source.is_symlink()
+    is_directory, size_bytes = path_metadata(source)
     destination = operation_dir(root, operation_id) / FILES_DIR / original_path
     destination.parent.mkdir(parents=True, exist_ok=True)
     # The trash lives under the library package, which can sit on a different
@@ -106,6 +117,7 @@ def move_into_trash(root: Path, *, operation_id: str, original_path: str) -> Tra
         stored_path=stored_relative_path(operation_id, original_path),
         file_id=None,
         is_directory=is_directory,
+        size_bytes=size_bytes,
     )
 
 
@@ -170,25 +182,6 @@ def write_meta(
         )
     except OSError:
         pass
-
-
-def size_on_disk(root: Path) -> int:
-    """Total bytes the trash occupies, for the "Empty Trash" confirmation.
-
-    Walks the trash rather than summing recorded sizes: what the owner wants to
-    know before emptying is how much space comes back, and that is a property of
-    the filesystem, not of the metadata.
-    """
-    total = 0
-    for directory, _sub, files in os.walk(pkg.trash_dir(root)):
-        for name in files:
-            if name == META_NAME:
-                continue  # bookkeeping, not the owner's data
-            try:
-                total += (Path(directory) / name).stat().st_size
-            except OSError:
-                continue  # vanished mid-walk, or unreadable; not worth failing over
-    return total
 
 
 def is_trash_path(relative_path: str) -> bool:
