@@ -88,6 +88,10 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   filing a bundle in touched no collection row, so the cache key stayed
   identical and the browser kept serving what it had. Both sides of a move, and
   their parent collections, now get a fresh key.
+- **Collection cover art fills the folder card.** The cover slot could collapse
+  to the height of the metadata footer even while the card stayed wide, leaving
+  only a shallow strip of artwork. Its width is now explicit and it cannot
+  flex-shrink, so the 16:10 cover frame stays visible at the card's full width.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice
