@@ -214,6 +214,13 @@ wrapped or multiline text. The browser test asserts the rendered height, not
 only the textarea attribute. Multiple note boxes use a compact 4 px gap, also
 held by rendered-geometry coverage.
 
+**Collection pills in the Bundle Inspector navigate.** Each pill is two
+independent controls: its name opens the collection, while × removes the bundle
+from it. Opening clears the bundle selection and presents the collection's own
+inspector; no membership write occurs. The action uses the shared inspector
+context, and the docked player override closes the viewer before navigating so
+the destination is not hidden behind it.
+
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
 the bundle. It now touches that file only; the bundle is touched solely when the

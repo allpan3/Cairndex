@@ -386,13 +386,14 @@ export function ViewerShell({
 
   // What the docked Bundle Inspector's actions mean *here*. Everything not
   // listed is inherited from the shell unchanged — the whole point of the
-  // context (see `bundleInspectorActions.tsx`). Four actions genuinely differ
+  // context (see `bundleInspectorActions.tsx`). Five actions genuinely differ
   // inside an open viewer, and each is resolved rather than dropped:
   const {
     onPlayFile: shellPlayFile,
     onLocateFile: shellLocateFile,
     onAddFiles: shellAddFiles,
     onFilterByTags: shellFilterByTags,
+    onOpenCollection: shellOpenCollection,
   } = useBundleInspectorActions()
   const inspectorOverrides = useMemo<BundleInspectorActions>(
     () => ({
@@ -410,20 +411,31 @@ export function ViewerShell({
         // opening another one.
         shellPlayFile?.(targetBundleId, fileId)
       },
-      // These three take the owner somewhere in the shell — a File Browser
-      // directory, the "Add files" dialog, a tag-filtered grid — all of which
+      // These four take the owner somewhere in the shell — a File Browser
+      // directory, the "Add files" dialog, a tag-filtered grid, or a collection — all of which
       // are behind a full-screen viewer. Close it first: navigating the shell
       // underneath an opaque overlay is what "nothing happened" looks like.
       onLocateFile: shellLocateFile && ((path) => (onClose(), shellLocateFile(path))),
       onAddFiles: shellAddFiles && ((id) => (onClose(), shellAddFiles(id))),
       onFilterByTags: shellFilterByTags && ((ids) => (onClose(), shellFilterByTags(ids))),
+      onOpenCollection:
+        shellOpenCollection && ((collectionId) => (onClose(), shellOpenCollection(collectionId))),
       // The shell's flash toast sits below the viewer's z-index, so reporting
       // through it is the same as not reporting at all — which is why a tag
       // edit in here finished with no sign it had (owner, 2026-07-30). The
       // viewer already owns a notice anchor above its own chrome; use that.
       onFlash: setExportNotice,
     }),
-    [items, onClose, onIndex, shellAddFiles, shellFilterByTags, shellLocateFile, shellPlayFile],
+    [
+      items,
+      onClose,
+      onIndex,
+      shellAddFiles,
+      shellFilterByTags,
+      shellLocateFile,
+      shellOpenCollection,
+      shellPlayFile,
+    ],
   )
   const mergedInspectorActions = useMergedBundleInspectorActions(inspectorOverrides)
 

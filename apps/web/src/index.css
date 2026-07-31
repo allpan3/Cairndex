@@ -1954,6 +1954,19 @@ button {
   cursor: pointer;
   padding: 0;
 }
+.chip--collection {
+  gap: 0;
+  padding: 0;
+}
+.chip .chip__open {
+  align-self: stretch;
+  padding: 1px 2px 1px 8px;
+  color: var(--text-strong);
+}
+.chip .chip__remove {
+  align-self: stretch;
+  padding: 1px 8px 1px 2px;
+}
 .add-btn {
   border: 1px dashed var(--border-strong);
   background: transparent;
