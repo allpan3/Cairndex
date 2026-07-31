@@ -191,7 +191,12 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
 
   // "+" appends a second note box below the first.
   await page.getByRole('button', { name: 'Add note' }).click()
-  await expect(page.locator('.note-row')).toHaveCount(2)
+  const noteRows = page.locator('.note-row')
+  await expect(noteRows).toHaveCount(2)
+  const gap = await noteRows.evaluateAll(([first, second]) => {
+    return second.getBoundingClientRect().top - first.getBoundingClientRect().bottom
+  })
+  expect(gap).toBe(4)
 
   // Fill the second box and blur to commit the whole list. Match the PATCH that
   // carries the second block specifically — clicking "+" already fired a PATCH
@@ -206,6 +211,31 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
   await second.blur()
   const body = (await patched).request().postDataJSON() as { notes: string[] }
   expect(body.notes).toEqual(['First block', 'Second block'])
+})
+
+test('a note starts at one line and auto-expands for overflow', async ({ page }) => {
+  await mockApi(page)
+  await page.addInitScript(() => {
+    localStorage.setItem('cairndex.noteHeights', JSON.stringify({ b0: [88] }))
+  })
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const note = page.locator('.note-row textarea').first()
+  await expect(note).toHaveAttribute('rows', '1')
+  await expect(note).toHaveValue('')
+  const initialHeight = await note.evaluate((element) => element.getBoundingClientRect().height)
+  expect(initialHeight).toBeLessThanOrEqual(36)
+
+  await note.fill('One line')
+  await expect
+    .poll(() => note.evaluate((element) => element.getBoundingClientRect().height))
+    .toBe(initialHeight)
+
+  await note.fill('First line\nSecond line\nThird line')
+  await expect
+    .poll(() => note.evaluate((element) => element.getBoundingClientRect().height))
+    .toBeGreaterThan(initialHeight)
 })
 
 test('assigning a tag adds a chip', async ({ page }) => {

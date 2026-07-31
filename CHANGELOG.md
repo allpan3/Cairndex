@@ -92,6 +92,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   to the height of the metadata footer even while the card stayed wide, leaving
   only a shallow strip of artwork. Its width is now explicit and it cannot
   flex-shrink, so the 16:10 cover frame stays visible at the card's full width.
+- **Empty bundle notes start at one line.** The note editor now begins with a
+  single-row box instead of the browser's default multi-row textarea. Its CSS
+  minimum is 34 px rather than the former 44 px, with one line's padding; the
+  existing auto-grow still expands the box when the text wraps or overflows.
+  The earlier saved height preference is reset, so notes already held open by a
+  stale fixed size adopt the compact default too; new explicit resizes persist.
+  Stacked note boxes now sit 4 px apart instead of 6 px.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice
