@@ -1345,11 +1345,22 @@ export interface paths {
         /**
          * Set Cover Frame
          * @description Persist a video cover timestamp and regenerate only its cached thumbnail.
+         *
+         *     Scoped to *this file's* cover. Choosing which member represents the bundle
+         *     is a separate decision with its own affordance (the star beside each row in
+         *     the inspector's file list), and folding the two together meant picking a
+         *     nicer frame for one video silently reassigned the whole bundle's cover
+         *     (owner, 2026-07-30). A bundle whose cover already *is* this file naturally
+         *     changes image, and only that case touches the bundle.
          */
         post: operations["set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post"];
         /**
          * Clear Cover Frame
          * @description Clear a selected video cover timestamp and restore automatic extraction.
+         *
+         *     The mirror of ``set_cover_frame``: it returns this file's thumbnail to an
+         *     automatically extracted frame and leaves the bundle's choice of cover file
+         *     alone, because setting a frame no longer changed it.
          */
         delete: operations["clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete"];
         options?: never;
@@ -2989,8 +3000,12 @@ export interface components {
         FileAvailability: "available" | "missing" | "trashed";
         /** FileBrowserEntryRead */
         FileBrowserEntryRead: {
+            /** Audio Bitrate */
+            audio_bitrate?: number | null;
             /** Audio Codec */
             audio_codec: string | null;
+            /** Audio Sample Rate */
+            audio_sample_rate?: number | null;
             /** Bundle Id */
             bundle_id: string | null;
             /** Container */
@@ -3025,6 +3040,8 @@ export interface components {
             supported: boolean;
             /** Unbundled */
             unbundled: boolean;
+            /** Video Bitrate */
+            video_bitrate?: number | null;
             /** Video Codec */
             video_codec: string | null;
             /** Video Codec Tag */
@@ -6985,7 +7002,7 @@ export interface operations {
             query?: {
                 cols?: number;
                 rows?: number;
-                width?: 1280 | 1600 | 2048;
+                width?: 1600 | 2048 | 2560;
             };
             header?: {
                 authorization?: string | null;

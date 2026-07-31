@@ -7,6 +7,7 @@ import {
   formatFileType,
   formatHdr,
   formatResolution,
+  formatSampleRate,
   formatVideoEncoding,
   resolutionClass,
 } from './format'
@@ -54,6 +55,13 @@ test('bitrates use the decimal units they are quoted in', () => {
   expect(formatBitrate(500)).toBe('500 bps')
   expect(formatBitrate(0)).toBe('—')
   expect(formatBitrate(null)).toBe('—')
+})
+
+test('audio sample rates use conventional hertz units', () => {
+  expect(formatSampleRate(48_000)).toBe('48 kHz')
+  expect(formatSampleRate(44_100)).toBe('44.1 kHz')
+  expect(formatSampleRate(800)).toBe('800 Hz')
+  expect(formatSampleRate(null)).toBe('—')
 })
 
 test('HDR signalling is spelled out, and SDR says nothing', () => {
