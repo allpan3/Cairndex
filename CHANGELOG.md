@@ -64,7 +64,9 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   Locate, Add files and Filter by tag close the viewer first, because they take
   you somewhere in the shell; and transient messages route to the viewer's own
   notice anchor, which sits above it. Right-clicking inside the rail no longer
-  opens the playback menu on top of the menu you asked for.
+  opens the playback menu on top of the menu you asked for. When the rail is
+  open, the viewer's three top-right buttons now stay inset on the media side
+  instead of sitting over the inspector.
 - **A bundle filed into a collection is there when you open it.** The count
   moved immediately and the contents did not: opening the collection rendered
   its cached listing — without the bundle — until a refetch came back, so the
