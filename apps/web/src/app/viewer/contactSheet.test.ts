@@ -35,7 +35,7 @@ test('draws three metadata rows at left and the Cairndex brand at right', async 
   )
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(new Blob(['grid']))),
+    vi.fn(async () => new Response(new Uint8Array([1]))),
   )
 
   await composeContactSheet({
