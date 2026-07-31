@@ -179,14 +179,26 @@ call sites left the next one free to go missing. A surface needing an action to
 That shared action set now includes the write-gated **Move to Trash** callback.
 The bundle album already offered the journaled, recoverable deletion; the file
 section inside both Bundle Inspector surfaces now offers the same action when
-write mode is on and no deletion row at all while it is off.
+write mode is on and no deletion row at all while it is off. Trashed rows are
+now excluded from the bundle’s active files endpoint, playback manifest and
+cover fallback, so the operation removes the file from the bundle immediately.
+The row keeps its bundle id under the trash operation: Put Back returns the
+same file, metadata and order to the same bundle instead of restoring loose
+bytes. Reordering the remaining visible members preserves hidden trash slots.
 
-Four do differ inside an open viewer, resolved deliberately: Play steps within
-the playlist (falling back to the shell's retarget when the file is not in it);
-Locate, Add files and Filter by tag close the viewer first, because each
-navigates the shell and doing that under an opaque overlay is what "nothing
-happened" looks like; and flash routes to the viewer's own notice anchor, since
-the shell's toast sits below the viewer's z-index. The rail element is gone —
+The **whole Bundle Inspector is also an import-and-link drop target** while
+write mode is on. It shares the bundle card’s HTML file-drop behavior and the
+shell’s one pending-drop path, so dropping in either place opens the same
+destination picker in the bundle’s existing folder. The viewer-docked inspector
+closes the viewer first, keeping the picker from opening under the overlay.
+
+Actions that mean something different inside an open viewer are resolved
+deliberately: Play steps within the playlist (falling back to the shell's
+retarget when the file is not in it); Locate, Add files, Drop files, Filter by
+tag and Open Collection close the viewer first, because each opens or navigates
+the shell and doing that under an opaque overlay is what "nothing happened"
+looks like; and flash routes to the viewer's own notice anchor, since the
+shell's toast sits below the viewer's z-index. The rail element is gone —
 the inspector is placed straight into the viewer's grid and takes
 `--inspector-w`, so the two are the same width by construction. The viewer's
 root context-menu handler also fired for right-clicks inside the rail, stacking
@@ -253,13 +265,13 @@ file already *is* the cover, where its picture genuinely changed. That left
 `AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
 with nothing to do, so it is removed along with its repair-time rewrite.
 
-Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (541 pass) and
-`build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass)
+Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (542 pass) and
+`build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (926 pass)
 in `apps/server`. Browser e2e: 99 pass; the only excluded case is the recorded
 pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
 which still fails on clean `main` and is outside this branch. The collection
 cover geometry regression is included in that pass. The new write-gated trash
-entry also passed its focused Chromium request-path test. Verified by hand
+and inspector-drop paths also passed their focused Chromium tests. Verified by hand
 in a browser against a synthetic fixture library (six generated clips, invented
 names): inspector width 300 px matching `--inspector-w` with the shell's border,
 background and padding; a tag created and applied from inside the player; a
