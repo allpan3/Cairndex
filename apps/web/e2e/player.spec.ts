@@ -1812,7 +1812,7 @@ test('polishes click play, off-track scrub, seek step, and current-frame cover',
   await video.evaluate((el) => ((el as HTMLVideoElement).currentTime = 42))
   await page.mouse.move(400, 400)
   await video.click({ button: 'right' })
-  await page.getByRole('menuitem', { name: 'Set Frame as Cover' }).click()
+  await page.getByRole('menuitem', { name: 'Set Frame as Video Cover' }).click()
   await expect.poll(() => coverWrites.at(-1)).toBe(42)
 })
 
@@ -2447,6 +2447,30 @@ test('the video stage fills the viewer, letterboxing in one direction only', asy
   expect(Math.round(v!.height)).toBe(Math.round(box!.height))
   expect(Math.round(v!.x)).toBe(Math.round(box!.x))
   expect(Math.round(v!.y)).toBe(Math.round(box!.y))
+})
+
+test('viewer top-right buttons stay with the media when the inspector is docked', async ({
+  page,
+}) => {
+  await mockMedia(page)
+  await mockApi(page)
+  await page.goto('/')
+
+  await openMovie(page)
+  await page.getByRole('button', { name: 'Show bundle inspector' }).click()
+
+  const actions = page.locator('.mv-topbar__actions')
+  const inspector = page.locator('.media-viewer > .inspector')
+  await expect(inspector).toBeVisible()
+  const [actionsBox, inspectorBox] = await Promise.all([
+    actions.boundingBox(),
+    inspector.boundingBox(),
+  ])
+  expect(actionsBox).not.toBeNull()
+  expect(inspectorBox).not.toBeNull()
+
+  // Keep the same 18px inset the actions use at the edge of the full viewer
+  expect(Math.round(actionsBox!.x + actionsBox!.width)).toBe(Math.round(inspectorBox!.x - 18))
 })
 
 test('viewer chrome overlays the video and autohides when idle', async ({ page }) => {
