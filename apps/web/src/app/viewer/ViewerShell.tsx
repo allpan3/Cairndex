@@ -509,6 +509,9 @@ export function ViewerShell({
             mimeType: current.mimeType,
             videoCodec: current.videoCodec,
             audioCodec: current.audioCodec,
+            videoBitrate: current.videoBitrate,
+            audioBitrate: current.audioBitrate,
+            audioSampleRate: current.audioSampleRate,
           }
         : null,
     [current, isVideo],

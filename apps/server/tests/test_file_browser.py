@@ -194,7 +194,7 @@ def test_unbundled_flag_tracks_provisional_bundles(session: Session, library_roo
     assert show["notes.txt"].unbundled is False  # unlinked
 
 
-# Linked videos expose only the stored probe fields needed by card hover preview
+# Linked videos expose the stored probe fields needed by preview and exports
 def test_linked_video_carries_hover_preview_metadata(session: Session, library_root: Path) -> None:
     _make_media(library_root)
     file = _stage_unbundled(session, "top.mp4")
@@ -202,6 +202,9 @@ def test_linked_video_carries_hover_preview_metadata(session: Session, library_r
         "container": "mov,mp4,m4a,3gp,3g2,mj2",
         "video_codec": "h264",
         "audio_codec": "aac",
+        "video_bitrate": 4_000_000,
+        "audio_bitrate": 192_000,
+        "audio_sample_rate": 48_000,
         "duration": 3.5,
     }
     progress_service.upsert_progress(session, file.id, position_s=1.0, duration_s=3.5)
@@ -212,6 +215,9 @@ def test_linked_video_carries_hover_preview_metadata(session: Session, library_r
     assert top.container == "mov,mp4,m4a,3gp,3g2,mj2"
     assert top.video_codec == "h264"
     assert top.audio_codec == "aac"
+    assert top.video_bitrate == 4_000_000
+    assert top.audio_bitrate == 192_000
+    assert top.audio_sample_rate == 48_000
     assert top.duration == 3.5
     assert top.resume_position == 1.0
 

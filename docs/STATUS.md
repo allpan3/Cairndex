@@ -72,6 +72,10 @@
 > between a file's physical File Browser location and its one owning bundle,
 > including from the File Browser inspector and right-click menu; unlike native
 > Open/Reveal, both location actions work on the web.
+> Contact-sheet exports now use a three-row metadata header and a larger branded
+> Cairndex mark; the middle row is labelled Details, and probe format v5 supplies
+> separate primary video/audio bitrates plus the audio sample rate. Their width
+> presets are now 1600, 2048, and 2560 px, with 2048 selected by default.
 > Independent of the WAL
 > journal-mode work.
 >
@@ -1579,7 +1583,8 @@ Eight items. Two were the same undefined CSS variable.
   files can come from anywhere and that is the thing worth reading.
 - **The contact sheet's grid and width are chosen in a dialog**, which also
   prints the resulting cell size — neither number means much alone, and a 6×6 at
-  1280 has smaller frames than a 4×4 at the same width.
+  1600 has smaller frames than a 4×4 at the same width. Width presets are 1600,
+  2048, and 2560 px, with 2048 selected by default.
 - **The submenu machinery came back out.** Its only caller was the grid list,
   now a dialog. The cut-off it suffered at the window edge is moot, and an
   unexercised code path is worth less than the lines it costs.

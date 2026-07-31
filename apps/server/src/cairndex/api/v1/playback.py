@@ -350,7 +350,7 @@ def get_contact_sheet(
     rows: Annotated[int, Query(ge=contact_sheets.MIN_ROWS, le=contact_sheets.MAX_ROWS)] = 4,
     width: Annotated[
         int, Query(json_schema_extra={"enum": list(contact_sheets.SHEET_WIDTHS)})
-    ] = 1600,
+    ] = 2048,
 ) -> FileResponse:
     """The frame grid for a contact-sheet export (plan 1 §10, first M11 slice).
 

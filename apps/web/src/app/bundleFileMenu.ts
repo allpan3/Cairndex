@@ -49,6 +49,9 @@ function contactSheetTargetFor(file: FileRead): ContactSheetTarget {
     mimeType: facts.mimeType,
     videoCodec: facts.videoCodec,
     audioCodec: facts.audioCodec,
+    videoBitrate: facts.videoBitrate,
+    audioBitrate: facts.audioBitrate,
+    audioSampleRate: facts.audioSampleRate,
   }
 }
 

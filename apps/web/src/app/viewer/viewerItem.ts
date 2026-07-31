@@ -61,6 +61,9 @@ export interface ViewerItem {
   /** How the media is encoded, when probed. Printed on exports. */
   videoCodec: string | null
   audioCodec: string | null
+  videoBitrate: number | null
+  audioBitrate: number | null
+  audioSampleRate: number | null
   /** Container bitrate (bits/second), HDR signalling, and colour bit depth,
    *  when probed — the rest of what the info panel says about encoding. */
   bitrate: number | null
@@ -121,6 +124,9 @@ export function viewerItemFromFile(file: FileRead): ViewerItem {
     fps: numberOrNull(meta.fps),
     videoCodec: textOrNull(meta.video_codec),
     audioCodec: textOrNull(meta.audio_codec),
+    videoBitrate: numberOrNull(meta.video_bitrate),
+    audioBitrate: numberOrNull(meta.audio_bitrate),
+    audioSampleRate: numberOrNull(meta.audio_sample_rate),
     bitrate: numberOrNull(meta.bitrate),
     hdr: textOrNull(meta.hdr),
     bitDepth: numberOrNull(meta.bit_depth),
@@ -178,6 +184,9 @@ export function viewerItemFromEntry(entry: FileBrowserEntry): ViewerItem {
     fps: null,
     videoCodec: entry.video_codec ?? null,
     audioCodec: entry.audio_codec ?? null,
+    videoBitrate: entry.video_bitrate ?? null,
+    audioBitrate: entry.audio_bitrate ?? null,
+    audioSampleRate: entry.audio_sample_rate ?? null,
     // The browser listing carries only what its cards need; an indexed path
     // still reaches the full facts through its bundle row.
     bitrate: null,

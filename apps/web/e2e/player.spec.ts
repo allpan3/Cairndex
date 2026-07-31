@@ -1717,7 +1717,10 @@ test('every viewer notice shares one anchor and stacks', async ({ page }) => {
   await mockMedia(page)
   await mockApi(page, { progress: { position_s: 45, duration_s: 120, completed: false } })
   // Hang the sheet request so "Building contact sheet…" stays up to be measured.
-  await page.route('**/contact-sheet**', () => {})
+  const sheetRequests: string[] = []
+  await page.route('**/contact-sheet**', (route) => {
+    sheetRequests.push(route.request().url())
+  })
   await page.goto('/')
 
   const video = await openMovie(page)
@@ -1725,8 +1728,18 @@ test('every viewer notice shares one anchor and stacks', async ({ page }) => {
 
   await video.click({ button: 'right' })
   await page.getByText('Save Contact Sheet…').click()
+  await expect(page.getByRole('button', { name: '1600px' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
+  await expect(page.getByRole('button', { name: '2048px' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: '2560px' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  )
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.locator('.mv-export-notice')).toContainText('Building contact sheet')
+  await expect.poll(() => sheetRequests[0]).toContain('width=2048')
 
   const [resume, exporting] = await Promise.all([
     page.locator('.mv-resume').boundingBox(),

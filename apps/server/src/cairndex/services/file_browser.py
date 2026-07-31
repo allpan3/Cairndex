@@ -80,6 +80,9 @@ class FileBrowserEntry:
     # not (see media/playback.py). Null on rows probed before v3.
     video_codec_tag: str | None
     audio_codec: str | None
+    video_bitrate: int | None
+    audio_bitrate: int | None
+    audio_sample_rate: int | None
     duration: float | None
     resume_position: float | None
     # True when linked into a scan-staged *provisional* bundle — i.e. the file is
@@ -98,6 +101,9 @@ class _Link:
     video_codec: str | None
     video_codec_tag: str | None
     audio_codec: str | None
+    video_bitrate: int | None
+    audio_bitrate: int | None
+    audio_sample_rate: int | None
     duration: float | None
     resume_position: float | None
     unbundled: bool  # in a provisional/scan_suggestion bundle (not yet confirmed)
@@ -208,6 +214,11 @@ def list_unbundled_files(
                 "video_codec_tag"
             ),
             func.json_extract(AssetFile.tech_metadata, "$.audio_codec").label("audio_codec"),
+            func.json_extract(AssetFile.tech_metadata, "$.video_bitrate").label("video_bitrate"),
+            func.json_extract(AssetFile.tech_metadata, "$.audio_bitrate").label("audio_bitrate"),
+            func.json_extract(AssetFile.tech_metadata, "$.audio_sample_rate").label(
+                "audio_sample_rate"
+            ),
             func.json_extract(AssetFile.tech_metadata, "$.duration").label("duration"),
             PlaybackProgress.position_s.label("resume_position"),
             PlaybackProgress.completed.label("progress_completed"),
@@ -232,6 +243,9 @@ def list_unbundled_files(
             row.video_codec,
             row.video_codec_tag,
             row.audio_codec,
+            row.video_bitrate,
+            row.audio_bitrate,
+            row.audio_sample_rate,
             row.duration,
             progress_resume_position(row.resume_position, row.progress_completed),
         )
@@ -251,6 +265,9 @@ def _unbundled_entry(
     video_codec: str | None,
     video_codec_tag: str | None,
     audio_codec: str | None,
+    video_bitrate: int | None,
+    audio_bitrate: int | None,
+    audio_sample_rate: int | None,
     duration: float | None,
     resume_position: float | None,
 ) -> FileBrowserEntry:
@@ -276,6 +293,9 @@ def _unbundled_entry(
         video_codec=video_codec,
         video_codec_tag=video_codec_tag,
         audio_codec=audio_codec,
+        video_bitrate=video_bitrate,
+        audio_bitrate=audio_bitrate,
+        audio_sample_rate=audio_sample_rate,
         duration=duration,
         resume_position=resume_position,
         unbundled=True,
@@ -354,6 +374,9 @@ def _build_entry(
             video_codec=None,
             video_codec_tag=None,
             audio_codec=None,
+            video_bitrate=None,
+            audio_bitrate=None,
+            audio_sample_rate=None,
             duration=None,
             resume_position=None,
             unbundled=False,
@@ -381,6 +404,9 @@ def _build_entry(
         video_codec=link.video_codec if link is not None else None,
         video_codec_tag=link.video_codec_tag if link is not None else None,
         audio_codec=link.audio_codec if link is not None else None,
+        video_bitrate=link.video_bitrate if link is not None else None,
+        audio_bitrate=link.audio_bitrate if link is not None else None,
+        audio_sample_rate=link.audio_sample_rate if link is not None else None,
         duration=link.duration if link is not None else None,
         resume_position=link.resume_position if link is not None else None,
         unbundled=link.unbundled if link is not None else False,
@@ -426,6 +452,9 @@ def _linked_paths(session: Session, parent_rel: str) -> tuple[dict[str, _Link], 
             video_codec=meta.get("video_codec"),
             video_codec_tag=meta.get("video_codec_tag"),
             audio_codec=meta.get("audio_codec"),
+            video_bitrate=meta.get("video_bitrate"),
+            audio_bitrate=meta.get("audio_bitrate"),
+            audio_sample_rate=meta.get("audio_sample_rate"),
             duration=meta.get("duration"),
             resume_position=progress_resume_position(resume_position, progress_completed),
             unbundled=unbundled,

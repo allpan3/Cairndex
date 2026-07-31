@@ -605,12 +605,17 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Save a contact sheet from anywhere a video is** — the File Browser, a
   bundle's album grid, and the bundle inspector's file list, not just the open
-  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1280, 1600,
-  2048) together, and says what the two add up to: the cell size, which is what
-  actually decides whether a frame is legible. The header prints the frame rate and the
-  encoding, and every cell is labelled with the instant it was taken from. Generation
-  reports progress through the same toast as file operations, which holds while
-  the work is in flight.
+  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1600, 2048,
+  2560) together, and says what the two add up to: the cell size, which is what
+  actually decides whether a frame is legible. The black header now prints three
+  compact rows: File Name; Details with size · duration · resolution / frame
+  rate; and Codec with video codec / bitrate · audio codec / bitrate / sample
+  rate. A larger blue-accented **EXPORTED FROM CAIRNDEX** brand lockup anchors
+  the right side. Probe metadata now keeps the primary video and audio stream
+  bitrates separately, plus the primary audio sample rate; the normal metadata
+  job refreshes older rows once under probe format v5. Every cell is labelled
+  with the instant it was taken from. Generation reports progress through the
+  same toast as file operations, which holds while the work is in flight.
 
 - **The in-bundle view works like the File Browser.** It switches between grid
   and list with the same control and the same rows, and selecting one file puts

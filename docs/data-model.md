@@ -141,6 +141,11 @@ root relative), indexed derived `directory_path`, `original_filename`,
 `filesystem_inode`, `identity_available`, `availability`, `version`, timestamps.
 `relative_path` is unique within a library.
 
+`tech_metadata` is versioned probe output. Probe format v5 carries primary
+`video_bitrate`, `audio_bitrate`, and `audio_sample_rate` alongside the existing
+container-level `bitrate`; older rows refresh once through the normal metadata
+job.
+
 Three of those columns are names, and they are not interchangeable.
 `relative_path` is where the file is; `original_filename` is what it was called
 when it entered the library and never changes; `display_title` is the name every

@@ -1060,7 +1060,7 @@ export function fileBrowserContentUrl(path: string): string {
 }
 
 /** The server-generated contact-sheet frame grid for one video file. */
-export function fileContactSheetUrl(fileId: string, cols = 4, rows = 4, width = 1600): string {
+export function fileContactSheetUrl(fileId: string, cols = 4, rows = 4, width = 2048): string {
   return resolveAssetUrl(
     `${lib()}/files/${fileId}/contact-sheet?cols=${cols}&rows=${rows}&width=${width}`,
   )
