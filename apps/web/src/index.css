@@ -3523,6 +3523,11 @@ code {
 .mv-zoom:hover {
   border-color: var(--accent);
 }
+/* Absolutely positioned chrome still resolves its right inset against the
+   whole viewer, so grid-column alone does not keep it out of the docked rail. */
+.media-viewer--railed .mv-topbar {
+  right: var(--inspector-w, 300px);
+}
 /* With the inspector docked, "next" belongs at the media's edge — the rail is
    not part of the picture, and an arrow floating over the tag list is aiming at
    the wrong thing (owner, 2026-07-27). */

@@ -57,12 +57,13 @@
 > the sidebar, and a job whose server died no longer claims to be running.
 >
 > **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
-> — four more owner reports from using the app. The Bundle Inspector shown during
+> — five more owner reports from using the app. The Bundle Inspector shown during
 > playback is now the shell's own pane rather than a starved copy of it; a bundle
 > filed into a collection is in that collection's listing when you open it;
 > collection covers appear and refresh with membership; and a video's cover frame
-> no longer reassigns the bundle's cover. Independent of the WAL journal-mode
-> work.
+> no longer reassigns the bundle's cover. The viewer's top-right buttons also
+> stay with the media when that inspector is docked. Independent of the WAL
+> journal-mode work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -143,7 +144,7 @@ failure's register for something the owner asked for.
 ## In progress: one inspector, collection consistency, cover scope (2026-07-30)
 
 Branch `fix/inspector-parity-and-collection-covers`, rebased onto `main` at
-`48b447d` (the job-control merge). Four owner reports from using the app, three
+`48b447d` (the job-control merge). Five owner reports from using the app, three
 of them about collections. **Not yet reviewed; no PR opened** (owner-triggered).
 
 **The Bundle Inspector shown during playback was starved, not forked.** It has
@@ -172,6 +173,12 @@ the inspector is placed straight into the viewer's grid and takes
 root context-menu handler also fired for right-clicks inside the rail, stacking
 the playback menu on the one being asked for; it now defers to the rail.
 
+The top bar was absolutely positioned against the whole viewer, so grid
+placement did not move its Info, Bundle Inspector and Close buttons with the
+media column: all three stayed over the open rail. Its right inset now follows
+the same `--inspector-w`, preserving the ordinary 18 px edge inset on the media
+side. A browser geometry regression fixes that boundary in place.
+
 **Collection listings lagged their counts.** Filing a bundle in moved the count
 at once and left the contents behind: the destination's *cached* listing
 rendered first, without the bundle, while the refetch was in flight. Only
@@ -199,15 +206,19 @@ file already *is* the cover, where its picture genuinely changed. That left
 `AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
 with nothing to do, so it is removed along with its repair-time rewrite.
 
-Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (523 pass) in
-`apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass) in
-`apps/server`. Verified by hand in a browser against a synthetic fixture library
-(six generated clips, invented names): inspector width 300 px matching
-`--inspector-w` with the shell's border, background and padding; a tag created
-and applied from inside the player; a single context menu on a file row; a
-collection created empty gaining its cover the moment a bundle was filed in,
-cache key stamped at the drop; and a previously-visited collection showing the
-right contents on the first frame where it had shown the stale listing.
+Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (529 pass) and
+`build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass)
+in `apps/server`. Browser e2e: 97 pass; the only excluded case is the recorded
+pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
+which still fails on clean `main` and is outside this branch. Verified by hand
+in a browser against a synthetic fixture library (six generated clips, invented
+names): inspector width 300 px matching `--inspector-w` with the shell's border,
+background and padding; a tag created and applied from inside the player; a
+single context menu on a file row; a collection created empty gaining its cover
+the moment a bundle was filed in, cache key stamped at the drop; and a
+previously-visited collection showing the right contents on the first frame
+where it had shown the stale listing. The topbar follow-up was also checked in
+the live app: the three controls ended 18 px before the 300 px rail.
 
 Not done, and deliberately: no "Set as Bundle Cover" entry was added to the
 viewer's own menu — the inspector's file list already carries that affordance
