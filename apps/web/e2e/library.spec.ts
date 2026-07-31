@@ -104,6 +104,38 @@ async function mockApi(page: Page, coverFileId: string | null = null) {
       r.fulfill({ json: bundleDetail(coverFileId) })
     }
   })
+  await page.route('**/file-browser/entries**', (r) =>
+    r.fulfill({
+      json: {
+        path: '',
+        missing_files_updated: 0,
+        entries: [
+          {
+            name: 'movie.mp4',
+            relative_path: 'movie.mp4',
+            kind: 'file',
+            size_bytes: 1000,
+            created_at: '2026-06-25T00:00:00Z',
+            modified_at: '2026-06-25T00:00:00Z',
+            extension: 'mp4',
+            container: 'mp4',
+            mime_type: 'video/mp4',
+            media_kind: 'video',
+            duration: 60,
+            video_codec: 'h264',
+            video_codec_tag: 'avc1',
+            audio_codec: null,
+            supported: true,
+            linked: true,
+            file_id: 'f0',
+            bundle_id: 'b0',
+            unbundled: false,
+            resume_position: 0,
+          },
+        ],
+      },
+    }),
+  )
 }
 
 test('renders the shell and browses bundles', async ({ page }) => {
@@ -881,6 +913,30 @@ test('selecting a bundle opens the inspector', async ({ page }) => {
   await expect(missingFile.getByText('missing')).toBeVisible()
 })
 
+test('locates files and their owning bundles in either browser on the web', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+
+  await page.locator('[data-bundle-id="b0"]').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Open Bundle' }).click()
+  await page.locator('[data-file-id="f0"]').click()
+
+  await expect(page.getByRole('button', { name: 'Open in Default App' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reveal in Finder' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Locate in File Browser' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
+  const fileRow = page.locator('.file-row', { hasText: 'movie.mp4' })
+  await expect(fileRow).toHaveClass(/file-row--selected/)
+  await fileRow.click({ button: 'right' })
+  await expect(page.getByRole('menuitem', { name: 'Open in Default App' })).toHaveCount(0)
+  await expect(page.getByRole('menuitem', { name: 'Reveal in Finder' })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: 'Locate in Bundle Browser' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Bundles' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.album')).toBeVisible()
+  await expect(page.locator('[data-file-id="f0"]')).toBeVisible()
+})
 test('highlights the current cover action instead of prefixing its filename', async ({ page }) => {
   await mockApi(page, 'f0')
   await page.goto('/')

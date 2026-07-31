@@ -1152,6 +1152,23 @@ function Workspace({
   // several. Mutually exclusive with the bundle selection — selecting either
   // clears the other, since acting on both at once is meaningless.
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<Set<string>>(new Set())
+  // Open the one bundle an indexed file belongs to. This is app navigation,
+  // unlike native Open/Reveal, so it is available in the browser too.
+  const locateBundleInBrowser = useCallback(
+    (bundleId: string) => {
+      setMode('collection')
+      setSelection({ view: 'all', collectionId: null })
+      setFileEntry(null)
+      setLocatedPath(null)
+      setSelectedIds(new Set([bundleId]))
+      setActiveId(bundleId)
+      setSelectedCollectionIds(new Set())
+      setAlbumFile(null)
+      setOpenBundleId(bundleId)
+      markOpened(bundleId)
+    },
+    [markOpened],
+  )
   // Which surface the collection selection was made on. The sidebar's highlight
   // already means "this is where you are"; lighting the same row up because its
   // card was clicked in the grid says the app navigated when it didn't. So the
@@ -2197,6 +2214,7 @@ function Workspace({
             hostLabels={hostLabels}
             onRevealFile={onRevealHostFile}
             onOpenFile={onOpenHostFile}
+            onLocateBundle={locateBundleInBrowser}
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
@@ -2371,6 +2389,12 @@ function Workspace({
         <FileInspector
           entry={fileEntry ? factsFromEntry(fileEntry) : null}
           hostLabels={hostLabels}
+          locateLabel="Locate in Bundle Browser"
+          onLocate={
+            fileEntry?.kind === 'file' && fileEntry.bundle_id && !fileEntry.unbundled
+              ? () => locateBundleInBrowser(fileEntry.bundle_id!)
+              : undefined
+          }
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}
@@ -2380,6 +2404,8 @@ function Workspace({
         <FileInspector
           entry={factsFromBundleFile(albumFile)}
           hostLabels={hostLabels}
+          locateLabel="Locate in File Browser"
+          onLocate={locateFileInBrowser}
           onRevealFile={onRevealHostFile}
           onOpenFile={onOpenHostFile}
           onStartFileDrag={onStartFileDrag}

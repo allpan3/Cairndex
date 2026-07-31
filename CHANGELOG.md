@@ -116,6 +116,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   to become stale, and still required the normal confirmed takeover. The recipe
   now signals only its two direct children and waits for Uvicorn to release the
   lease before returning; a scratch-library smoke test covers the full command.
+- **Files now locate their counterpart in either browser.** Selecting a file
+  inside an open bundle offers **Locate in File Browser**, which opens its
+  physical directory and highlights it. Selecting an indexed, bundled file in
+  File Browser offers **Locate in Bundle Browser** in both its inspector and
+  right-click menu, which opens its one owning bundle. Both are ordinary
+  Cairndex navigation and work in the web build;
+  **Open in Default App** and **Reveal in Finder** remain desktop-only.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice
