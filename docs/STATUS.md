@@ -60,8 +60,9 @@
 > — five more owner reports from using the app. The Bundle Inspector shown during
 > playback is now the shell's own pane rather than a starved copy of it; a bundle
 > filed into a collection is in that collection's listing when you open it;
-> collection covers appear and refresh with membership; and a video's cover frame
-> no longer reassigns the bundle's cover. The viewer's top-right buttons also
+> collection covers appear, refresh with membership, and keep their full cover
+> frame; and a video's cover frame no longer reassigns the bundle's cover. The
+> viewer's top-right buttons also
 > stay with the media when that inspector is docked. Independent of the WAL
 > journal-mode work.
 >
@@ -198,6 +199,10 @@ cache-busting key — so filing a bundle into an empty collection changed what i
 auto cover *should* be while the URL stayed identical and the browser served its
 cached 404. Both sides of a move and their ancestors are now touched;
 `invalidateCollectionCounts` refetches the collection rows as well as the counts.
+The card's flex thumbnail could also collapse to the metadata footer's height,
+leaving cover art as a shallow strip on a wide card. Its width is now explicit,
+and flex shrinking is disabled; a browser geometry regression holds the 16:10
+cover frame at the full card width.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
@@ -208,9 +213,10 @@ with nothing to do, so it is removed along with its repair-time rewrite.
 
 Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (529 pass) and
 `build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass)
-in `apps/server`. Browser e2e: 97 pass; the only excluded case is the recorded
+in `apps/server`. Browser e2e: 98 pass; the only excluded case is the recorded
 pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
-which still fails on clean `main` and is outside this branch. Verified by hand
+which still fails on clean `main` and is outside this branch. The collection
+cover geometry regression is included in that pass. Verified by hand
 in a browser against a synthetic fixture library (six generated clips, invented
 names): inspector width 300 px matching `--inspector-w` with the shell's border,
 background and padding; a tag created and applied from inside the player; a
