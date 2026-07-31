@@ -576,8 +576,6 @@ export function ViewerShell({
     if (videoActive) {
       entries.push(
         { label: player.status === 'playing' ? 'Pause' : 'Play', onClick: player.playPause },
-        { label: 'Frame Back', onClick: () => player.frameStep(-1) },
-        { label: 'Frame Forward', onClick: () => player.frameStep(1) },
         null,
         {
           label: player.subtitlesOn ? 'Hide Subtitles' : 'Show Subtitles',
@@ -589,13 +587,6 @@ export function ViewerShell({
           onClick: () => setFileLoop(!fileLoop),
         },
         null,
-        { label: 'Save Snapshot', onClick: snapshot },
-        // A bare path has no file row, and the grid is cut server-side from the
-        // indexed file — so unindexed videos show the row disabled rather than
-        // a submenu that cannot do anything.
-        contactSheetTarget
-          ? contactSheetMenuItem(contactSheetTarget, setSheetTarget)
-          : { label: 'Save Contact Sheet', disabled: true, onClick: () => {} },
       )
       if (coverActions) {
         entries.push(
@@ -615,6 +606,15 @@ export function ViewerShell({
           },
         )
       }
+      entries.push(
+        { label: 'Save Snapshot', onClick: snapshot },
+        // A bare path has no file row, and the grid is cut server-side from the
+        // indexed file — so unindexed videos show the row disabled rather than
+        // a submenu that cannot do anything.
+        contactSheetTarget
+          ? contactSheetMenuItem(contactSheetTarget, setSheetTarget)
+          : { label: 'Save Contact Sheet', disabled: true, onClick: () => {} },
+      )
       entries.push(null)
     }
     entries.push(
