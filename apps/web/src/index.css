@@ -1737,15 +1737,15 @@ button {
   position: relative;
 }
 .note-row + .note-row {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 /* Leave room for the remove affordance (right) and the resize grip (bottom) so
    neither overlaps the text. The JS auto-grow / fixed-height controls the box
    height, so no native resizer/scroll-corner box is drawn. */
 .note-row .edit--note {
   padding-right: 26px;
-  padding-bottom: 10px;
-  min-height: 44px;
+  padding-bottom: 6px;
+  min-height: 34px;
 }
 .note-remove {
   position: absolute;

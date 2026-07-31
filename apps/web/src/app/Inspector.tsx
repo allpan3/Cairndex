@@ -216,8 +216,10 @@ function BundleEditor({
   // A missing entry means auto-grow to fit content; a number is a fixed height
   // set by dragging that box's grip. Trailing auto entries are trimmed so the
   // stored arrays stay small.
+  // V2 leaves prior fixed heights behind so one-line notes regain the compact
+  // default rather than a stale manual value
   const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
-    'cairndex.noteHeights',
+    'cairndex.noteHeights.v2',
     {},
   )
   const heights = noteHeights[bundleId] ?? []
@@ -369,7 +371,7 @@ function BundleEditor({
   )
 }
 
-const MIN_NOTE_HEIGHT = 44
+const MIN_NOTE_HEIGHT = 34
 
 /** One note textarea. Auto-grows to fit its content until the owner drags the
  * resize grip; once a manual height is set (shared across all note boxes and
@@ -462,6 +464,7 @@ function NoteBox({
       <textarea
         ref={ref}
         className="edit edit--note"
+        rows={1}
         style={{ resize: 'none', overflowY: height != null ? 'auto' : 'hidden' }}
         value={value}
         placeholder="Add a note…"

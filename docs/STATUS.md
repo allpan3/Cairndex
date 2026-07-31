@@ -62,8 +62,10 @@
 > filed into a collection is in that collection's listing when you open it;
 > collection covers appear, refresh with membership, and keep their full cover
 > frame; and a video's cover frame no longer reassigns the bundle's cover. The
-> viewer's top-right buttons also
-> stay with the media when that inspector is docked. Independent of the WAL
+> viewer's top-right buttons also stay with the media when that inspector is
+> docked, and bundle note boxes now start at one line before auto-growing for
+> overflow; the old saved-height preference is reset so existing notes follow
+> that default. Independent of the WAL
 > journal-mode work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
@@ -204,6 +206,14 @@ leaving cover art as a shallow strip on a wide card. Its width is now explicit,
 and flex shrinking is disabled; a browser geometry regression holds the 16:10
 cover frame at the full card width.
 
+**Bundle notes now start at one rendered text line.** Setting `rows={1}` alone
+did not change the visible box because its CSS still imposed a 44 px minimum and
+extra bottom padding for the resize grip. The minimum is now 34 px with ordinary
+single-line padding; the existing `scrollHeight` fit still grows the box for
+wrapped or multiline text. The browser test asserts the rendered height, not
+only the textarea attribute. Multiple note boxes use a compact 4 px gap, also
+held by rendered-geometry coverage.
+
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
 the bundle. It now touches that file only; the bundle is touched solely when the
@@ -213,7 +223,7 @@ with nothing to do, so it is removed along with its repair-time rewrite.
 
 Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (529 pass) and
 `build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (918 pass)
-in `apps/server`. Browser e2e: 98 pass; the only excluded case is the recorded
+in `apps/server`. Browser e2e: 99 pass; the only excluded case is the recorded
 pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
 which still fails on clean `main` and is outside this branch. The collection
 cover geometry regression is included in that pass. Verified by hand
