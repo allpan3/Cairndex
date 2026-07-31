@@ -128,6 +128,7 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
     onOpenFile,
     onRevealFile,
     onLocateFile,
+    onTrashFiles,
     onStartFileDrag,
     onFlash,
     onFilterByTags,
@@ -161,6 +162,7 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
       onOpenFile={onOpenFile}
       onRevealFile={onRevealFile}
       onLocateFile={onLocateFile}
+      onTrashFiles={onTrashFiles}
       onStartFileDrag={onStartFileDrag}
       onFlash={onFlash}
       onFilterByTags={onFilterByTags}
@@ -177,6 +179,7 @@ function BundleEditor({
   onOpenFile,
   onRevealFile,
   onLocateFile,
+  onTrashFiles,
   onStartFileDrag,
   onFlash,
   onFilterByTags,
@@ -189,6 +192,7 @@ function BundleEditor({
   onOpenFile?: (relativePath: string) => void
   onRevealFile?: (relativePath: string) => void
   onLocateFile?: (relativePath: string) => void
+  onTrashFiles?: (relativePaths: string[]) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
   onFilterByTags?: (tagIds: string[]) => void
@@ -364,6 +368,7 @@ function BundleEditor({
         onOpenFile={onOpenFile}
         onRevealFile={onRevealFile}
         onLocateFile={onLocateFile}
+        onTrashFiles={onTrashFiles}
         onStartFileDrag={onStartFileDrag}
         onFlash={onFlash}
       />
@@ -504,6 +509,7 @@ export function FileList({
   onOpenFile,
   onRevealFile,
   onLocateFile,
+  onTrashFiles,
   onStartFileDrag,
   onFlash,
 }: {
@@ -518,6 +524,8 @@ export function FileList({
   onRevealFile?: (relativePath: string) => void
   /** Jump to this file's directory in the File Browser. */
   onLocateFile?: (relativePath: string) => void
+  /** Move files to trash; omitted while write mode is off. */
+  onTrashFiles?: (relativePaths: string[]) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
 }) {
@@ -650,6 +658,9 @@ export function FileList({
                     onOpenFile,
                     onRevealFile,
                     onLocateFile,
+                    onTrash: onTrashFiles
+                      ? (files) => onTrashFiles(files.map((file) => file.relative_path))
+                      : undefined,
                     onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
                     onContactSheet: setSheetTarget,
                   }),

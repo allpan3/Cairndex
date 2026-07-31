@@ -1039,6 +1039,44 @@ test('opens the selected inspector file from the play action after cover', async
   await expect(page.locator('.mv-subtitle')).toContainText('movie.mp4 · 1 / 1')
 })
 
+test('moves a Bundle Inspector file to trash only when write mode supplies the action', async ({
+  page,
+}) => {
+  await mockApi(page)
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({ json: { status: 'ok', write_mode: 'allowed' } }),
+  )
+  await page.route('**/api/v1/libraries', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'lib1',
+          name: 'Test Library',
+          root_path: '/srv/lib',
+          status: 'available',
+          write_mode_enabled: true,
+        },
+      ],
+    }),
+  )
+  let trashedPaths: string[] | null = null
+  await page.route('**/file-ops/trash', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { operations: [], size_bytes: 0 } })
+      return
+    }
+    trashedPaths = (route.request().postDataJSON() as { paths: string[] }).paths
+    await route.fulfill({ json: {} })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.locator('.files .file-row', { hasText: 'movie.mp4' }).click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Move to Trash' }).click()
+
+  await expect.poll(() => trashedPaths).toEqual(['movie.mp4'])
+})
+
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {
   await mockApi(page)
   let orderedIds: string[] | null = null

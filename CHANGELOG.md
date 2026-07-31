@@ -20,6 +20,12 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Bundle Inspector file rows now offer Move to Trash in write mode.** The
+  bundle album already exposed the journaled, recoverable deletion, but the
+  same file's inspector menu omitted it. The write-gated action now travels
+  through the shared inspector action context, so it is available in both the
+  shell rail and the inspector docked beside the media viewer, and absent when
+  write mode is off.
 - **A job whose server stopped mid-run stayed "running" forever.** Restarting
   the server — or a dev-mode reload — left the row in the sidebar as work in
   progress that had died an hour earlier, and it could not be dismissed:
