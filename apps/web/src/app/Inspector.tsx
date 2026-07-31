@@ -8,6 +8,7 @@ import {
 } from 'react'
 
 import { ConflictError, type BundleRead, type FileRead, thumbnailUrl } from '../api/client'
+import { useBundleInspectorActions } from './bundleInspectorActions'
 import { bundleFileMenuEntries } from './bundleFileMenu'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { ConfirmDialog } from './PromptDialog'
@@ -15,6 +16,7 @@ import type { ContactSheetTarget } from './contactSheetExport'
 import { ContextMenu } from './ContextMenu'
 import { collapsePrefixLengths } from './distinctNames'
 import { useContextMenu } from './useContextMenu'
+import { useBundleFileDropTarget } from './useBundleFileDropTarget'
 import {
   useBundle,
   useBundleFiles,
@@ -113,41 +115,26 @@ function BundleTitleEditor({
 // `currentTime` re-renders the viewer several times a second, and without a
 // bail-out here every one of those walks the whole library's tags and
 // collections below (2026-07-27).
-export const Inspector = memo(function Inspector({
-  bundleId,
-  hostLabels,
-  onAddFiles,
-  onPlayBundle,
-  onPlayFile,
-  onOpenFile,
-  onRevealFile,
-  onLocateFile,
-  onStartFileDrag,
-  onFlash,
-  onFilterByTags,
-}: {
-  bundleId: string | null
-  /** Open/Reveal wording for this host; omitted where those are not wired. */
-  hostLabels?: HostLabels
-  /** Open the "Add files" manual bundling dialog for this bundle. */
-  onAddFiles?: (bundleId: string) => void
-  /** Open the unified media viewer for this bundle. */
-  onPlayBundle?: (bundleId: string) => void
-  /** Open one supported file directly in the unified media viewer. */
-  onPlayFile?: (bundleId: string, fileId: string) => void
-  /** Open this file with the OS default app (mapped desktop library only). */
-  onOpenFile?: (relativePath: string) => void
-  /** Reveal this file in Finder (mapped desktop library only). */
-  onRevealFile?: (relativePath: string) => void
-  /** Jump to this file's directory in the File Browser. */
-  onLocateFile?: (relativePath: string) => void
-  /** Drag this bundle's files out to Finder/other apps (plan 3 §6). */
-  onStartFileDrag?: (relativePaths: string[]) => void
-  /** Report a transient message (export progress, results) to the shell. */
-  onFlash?: (message: string) => void
-  /** Filter the library by these tags, from a tag pill's menu. */
-  onFilterByTags?: (tagIds: string[]) => void
-}) {
+//
+// `bundleId` is the only prop: everything this pane can *do* comes from
+// `BundleInspectorActions` context, so the shell's rail and the viewer's docked
+// rail are the same component with the same abilities by construction rather
+// than by two call sites being kept in step (owner, 2026-07-30).
+export const Inspector = memo(function Inspector({ bundleId }: { bundleId: string | null }) {
+  const {
+    hostLabels,
+    onAddFiles,
+    onPlayBundle,
+    onPlayFile,
+    onOpenFile,
+    onRevealFile,
+    onLocateFile,
+    onTrashFiles,
+    onDropFilesOnBundle,
+    onStartFileDrag,
+    onFlash,
+    onFilterByTags,
+  } = useBundleInspectorActions()
   const { data: bundle } = useBundle(bundleId)
 
   if (bundleId === null) {
@@ -177,6 +164,8 @@ export const Inspector = memo(function Inspector({
       onOpenFile={onOpenFile}
       onRevealFile={onRevealFile}
       onLocateFile={onLocateFile}
+      onTrashFiles={onTrashFiles}
+      onDropFilesOnBundle={onDropFilesOnBundle}
       onStartFileDrag={onStartFileDrag}
       onFlash={onFlash}
       onFilterByTags={onFilterByTags}
@@ -193,6 +182,8 @@ function BundleEditor({
   onOpenFile,
   onRevealFile,
   onLocateFile,
+  onTrashFiles,
+  onDropFilesOnBundle,
   onStartFileDrag,
   onFlash,
   onFilterByTags,
@@ -205,6 +196,8 @@ function BundleEditor({
   onOpenFile?: (relativePath: string) => void
   onRevealFile?: (relativePath: string) => void
   onLocateFile?: (relativePath: string) => void
+  onTrashFiles?: (relativePaths: string[]) => void
+  onDropFilesOnBundle?: (bundleId: string, files: File[]) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
   onFilterByTags?: (tagIds: string[]) => void
@@ -212,6 +205,7 @@ function BundleEditor({
   const bundleId = bundle.id
   const { data: files = [] } = useBundleFiles(bundleId)
   const update = useUpdateBundle(bundleId, bundle.version)
+  const { fileDropOver, dropProps } = useBundleFileDropTarget(bundleId, onDropFilesOnBundle)
 
   const [title, setTitle] = useState(bundle.title ?? '')
   // Multiple freeform notes; always keep at least one (empty) box so there is
@@ -232,8 +226,10 @@ function BundleEditor({
   // A missing entry means auto-grow to fit content; a number is a fixed height
   // set by dragging that box's grip. Trailing auto entries are trimmed so the
   // stored arrays stay small.
+  // V2 leaves prior fixed heights behind so one-line notes regain the compact
+  // default rather than a stale manual value
   const [noteHeights, setNoteHeights] = usePersistentState<Record<string, (number | null)[]>>(
-    'cairndex.noteHeights',
+    'cairndex.noteHeights.v2',
     {},
   )
   const heights = noteHeights[bundleId] ?? []
@@ -292,12 +288,28 @@ function BundleEditor({
   const coverDrag = fileDragProps(files.length > 0 ? onStartFileDrag : undefined, () =>
     files.map((f) => f.relative_path),
   )
+  const effectiveCover =
+    files.find(
+      (file) =>
+        file.id === bundle.cover_file_id &&
+        (file.media_kind === 'image' || file.media_kind === 'video'),
+    ) ??
+    files.find((file) => file.media_kind === 'image') ??
+    files.find((file) => file.media_kind === 'video')
+  // The file id changes when the selected cover goes to Trash, even though the
+  // preserved bundle relationship and bundle timestamp deliberately do not
+  const coverKey = `${bundle.updated_at}:${effectiveCover?.id ?? 'empty'}`
 
   return (
-    <aside className="inspector" data-tauri-drag-region>
+    <aside
+      className={`inspector${fileDropOver ? ' inspector--file-drop' : ''}`}
+      data-file-drop={fileDropOver || undefined}
+      data-tauri-drag-region
+      {...dropProps}
+    >
       <div
         className="inspector__cover"
-        style={{ backgroundImage: `url(${thumbnailUrl(bundleId, bundle.updated_at)})` }}
+        style={{ backgroundImage: `url(${thumbnailUrl(bundleId, coverKey)})` }}
         {...coverDrag}
         title={coverDrag.draggable ? 'Drag to copy this bundle’s files out' : undefined}
       >
@@ -378,6 +390,7 @@ function BundleEditor({
         onOpenFile={onOpenFile}
         onRevealFile={onRevealFile}
         onLocateFile={onLocateFile}
+        onTrashFiles={onTrashFiles}
         onStartFileDrag={onStartFileDrag}
         onFlash={onFlash}
       />
@@ -385,7 +398,7 @@ function BundleEditor({
   )
 }
 
-const MIN_NOTE_HEIGHT = 44
+const MIN_NOTE_HEIGHT = 34
 
 /** One note textarea. Auto-grows to fit its content until the owner drags the
  * resize grip; once a manual height is set (shared across all note boxes and
@@ -478,6 +491,7 @@ function NoteBox({
       <textarea
         ref={ref}
         className="edit edit--note"
+        rows={1}
         style={{ resize: 'none', overflowY: height != null ? 'auto' : 'hidden' }}
         value={value}
         placeholder="Add a note…"
@@ -517,6 +531,7 @@ export function FileList({
   onOpenFile,
   onRevealFile,
   onLocateFile,
+  onTrashFiles,
   onStartFileDrag,
   onFlash,
 }: {
@@ -531,6 +546,8 @@ export function FileList({
   onRevealFile?: (relativePath: string) => void
   /** Jump to this file's directory in the File Browser. */
   onLocateFile?: (relativePath: string) => void
+  /** Move files to trash; omitted while write mode is off. */
+  onTrashFiles?: (relativePaths: string[]) => void
   onStartFileDrag?: (relativePaths: string[]) => void
   onFlash?: (message: string) => void
 }) {
@@ -663,6 +680,9 @@ export function FileList({
                     onOpenFile,
                     onRevealFile,
                     onLocateFile,
+                    onTrash: onTrashFiles
+                      ? (files) => onTrashFiles(files.map((file) => file.relative_path))
+                      : undefined,
                     onRemoveFromBundle: (files) => files.forEach((file) => remove.mutate(file.id)),
                     onContactSheet: setSheetTarget,
                   }),

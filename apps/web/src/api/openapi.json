@@ -2147,6 +2147,17 @@
       },
       "FileBrowserEntryRead": {
         "properties": {
+          "audio_bitrate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Bitrate"
+          },
           "audio_codec": {
             "anyOf": [
               {
@@ -2157,6 +2168,17 @@
               }
             ],
             "title": "Audio Codec"
+          },
+          "audio_sample_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Sample Rate"
           },
           "bundle_id": {
             "anyOf": [
@@ -2304,6 +2326,17 @@
           "unbundled": {
             "title": "Unbundled",
             "type": "boolean"
+          },
+          "video_bitrate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Bitrate"
           },
           "video_codec": {
             "anyOf": [
@@ -5742,8 +5775,15 @@
             "type": "array"
           },
           "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           }
         },
         "required": [
@@ -11819,11 +11859,11 @@
             "name": "width",
             "required": false,
             "schema": {
-              "default": 1600,
+              "default": 2048,
               "enum": [
-                1280,
                 1600,
-                2048
+                2048,
+                2560
               ],
               "title": "Width",
               "type": "integer"
@@ -11972,7 +12012,7 @@
     },
     "/api/v1/libraries/{library_id}/files/{file_id}/cover-frame": {
       "delete": {
-        "description": "Clear a selected video cover timestamp and restore automatic extraction.",
+        "description": "Clear a selected video cover timestamp and restore automatic extraction.\n\nThe mirror of ``set_cover_frame``: it returns this file's thumbnail to an\nautomatically extracted frame and leaves the bundle's choice of cover file\nalone, because setting a frame no longer changed it.",
         "operationId": "clear_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_delete",
         "parameters": [
           {
@@ -12054,7 +12094,7 @@
         ]
       },
       "post": {
-        "description": "Persist a video cover timestamp and regenerate only its cached thumbnail.",
+        "description": "Persist a video cover timestamp and regenerate only its cached thumbnail.\n\nScoped to *this file's* cover. Choosing which member represents the bundle\nis a separate decision with its own affordance (the star beside each row in\nthe inspector's file list), and folding the two together meant picking a\nnicer frame for one video silently reassigned the whole bundle's cover\n(owner, 2026-07-30). A bundle whose cover already *is* this file naturally\nchanges image, and only that case touches the bundle.",
         "operationId": "set_cover_frame_api_v1_libraries__library_id__files__file_id__cover_frame_post",
         "parameters": [
           {

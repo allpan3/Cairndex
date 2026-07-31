@@ -52,8 +52,32 @@
 > the owner's "why is storyboard generation so slow" — it was decoding every
 > frame of every video. Running it against a network-mounted library then showed
 > the remaining cost is the read, not the decode; the section below records both
-> the fixture numbers and what the share actually did. **Next up is job
-> control** — no running job can be stopped from the UI today.
+> the fixture numbers and what the share actually did. **Job control followed
+> and is merged** (PR #5, `48b447d`): every running job can now be stopped from
+> the sidebar, and a job whose server died no longer claims to be running.
+>
+> **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
+> — seven more owner reports from using the app. The Bundle Inspector shown during
+> playback is now the shell's own pane rather than a starved copy of it; a bundle
+> filed into a collection is in that collection's listing when you open it;
+> collection covers appear, refresh with membership, and keep their full cover
+> frame; and a video's cover frame no longer reassigns the bundle's cover. The
+> viewer's top-right buttons also stay with the media when that inspector is
+> docked, and bundle note boxes now start at one line before auto-growing for
+> overflow; the old saved-height preference is reset so existing notes follow
+> that default. The native `just dev` stack now shuts Uvicorn down gracefully
+> too; its old process-group kill could stop the worker before FastAPI released
+> the library lease, making the bundled desktop wait through stale-lease
+> recovery after an ordinary Ctrl-C. File navigation now works in both directions
+> between a file's physical File Browser location and its one owning bundle,
+> including from the File Browser inspector and right-click menu; unlike native
+> Open/Reveal, both location actions work on the web.
+> Contact-sheet exports now use a three-row metadata header and a larger branded
+> Cairndex mark; the middle row is labelled Details, and probe format v5 supplies
+> separate primary video/audio bitrates plus the audio sample rate. Their width
+> presets are now 1600, 2048, and 2560 px, with 2048 selected by default.
+> Independent of the WAL
+> journal-mode work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
 > branch is open and unreviewed (`chore/docker-dev-and-deploy`). Two things still
@@ -64,11 +88,12 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
-## In progress: job control (2026-07-30)
+## Merged: job control (2026-07-30)
 
-Branch `fix/job-control` off `main` at `d9b53a3`. Everything here came out of
-using the app while testing the storyboard change — including one fault an agent
-caused, by switching branches under a running dev server.
+Branch `fix/job-control` off `main` at `d9b53a3`, **merged as PR #5**
+(`48b447d`). Everything here came out of using the app while testing the
+storyboard change — including one fault an agent caused, by switching branches
+under a running dev server.
 
 **Nothing in the UI could stop a job.** The backend had cancellation end to end
 — `POST /jobs/{id}/cancel` → `checkpoint()` → CANCELLED, with a test — and the
@@ -130,10 +155,154 @@ long scan. And whether a cancellation should raise a red alert at all: it
 currently reports "Background job was cancelled" as an error, which is a
 failure's register for something the owner asked for.
 
-## In progress: collection counts refresh late, or never (2026-07-30)
+## In progress: one inspector, collection consistency, cover scope (2026-07-30)
+
+Branch `fix/inspector-parity-and-collection-covers`, rebased onto `main` at
+`48b447d` (the job-control merge). Five owner reports from using the app, three
+of them about collections. **Not yet reviewed; no PR opened** (owner-triggered).
+
+**The Bundle Inspector shown during playback was starved, not forked.** It has
+always been the same `Inspector` the shell's rail renders. The shell passed
+eleven handlers; `ViewerShell` passed `bundleId`. Every menu entry gated on an
+optional handler was therefore absent in the viewer, and `onFlash` was missing
+so a tag edit completed with nothing to report it — the owner's "unresponsive
+when adding new tags". The width differed because the viewer wrapped the pane in
+a rail element declaring its own `min(360px, 40vw)`, border and background.
+
+The handlers are now `BundleInspectorActions`: one object the shell provides
+once and the inspector reads from context, with `bundleId` its only prop. That
+is the point of the change rather than parity today — an action added to the
+interface later is supplied in one place and arrives on every surface, where two
+call sites left the next one free to go missing. A surface needing an action to
+*mean* something different overrides those entries and inherits the rest.
+
+That shared action set now includes the write-gated **Move to Trash** callback.
+The bundle album already offered the journaled, recoverable deletion; the file
+section inside both Bundle Inspector surfaces now offers the same action when
+write mode is on and no deletion row at all while it is off. Trashed rows are
+now excluded from the bundle’s active files endpoint, playback manifest and
+cover fallback, so the operation removes the file from the bundle immediately.
+The client also removes that row from every active bundle-file cache as soon as
+the action starts, rather than exposing the journaled move and follow-up refetch
+latency on a network mount; a rejected operation restores the cached rows.
+Opening Trash had a separate delay: its listing statted every entry and then
+recursively walked the entire trash tree for a total before returning anything.
+Trash entries now carry their captured file size in the journal, legacy linked
+entries fall back to database metadata, and the listing performs no filesystem
+reads. Exact totals are nullable for old or directory deletions whose full size
+was never recorded, keeping Empty Trash honest without blocking the rows.
+The row keeps its bundle id under the trash operation: Put Back returns the
+same file, metadata and order to the same bundle instead of restoring loose
+bytes. Reordering the remaining visible members preserves hidden trash slots.
+
+The **whole Bundle Inspector is also an import-and-link drop target** while
+write mode is on. It shares the bundle card’s HTML file-drop behavior and the
+shell’s one pending-drop path, so dropping in either place opens the same
+destination picker in the bundle’s existing folder. The viewer-docked inspector
+closes the viewer first, keeping the picker from opening under the overlay.
+
+Actions that mean something different inside an open viewer are resolved
+deliberately: Play steps within the playlist (falling back to the shell's
+retarget when the file is not in it); Locate, Add files, Drop files, Filter by
+tag and Open Collection close the viewer first, because each opens or navigates
+the shell and doing that under an opaque overlay is what "nothing happened"
+looks like; and flash routes to the viewer's own notice anchor, since the
+shell's toast sits below the viewer's z-index. The rail element is gone —
+the inspector is placed straight into the viewer's grid and takes
+`--inspector-w`, so the two are the same width by construction. The viewer's
+root context-menu handler also fired for right-clicks inside the rail, stacking
+the playback menu on the one being asked for; it now defers to the rail.
+
+The top bar was absolutely positioned against the whole viewer, so grid
+placement did not move its Info, Bundle Inspector and Close buttons with the
+media column: all three stayed over the open rail. Its right inset now follows
+the same `--inspector-w`, preserving the ordinary 18 px edge inset on the media
+side. A browser geometry regression fixes that boundary in place.
+
+**Collection listings lagged their counts.** Filing a bundle in moved the count
+at once and left the contents behind: the destination's *cached* listing
+rendered first, without the bundle, while the refetch was in flight. Only
+previously-visited collections showed it, which is why it read as intermittent.
+Measured here at ~60 ms against a local SQLite; on the owner's network-mounted
+library that is the beat they described. The optimistic projection already
+pruned the listings a bundle left, so the missing half — inserting into the ones
+it joins — now runs off the same membership change, reusing
+`countingCollectionIds` for the subtree rule. Filtered and searched listings are
+skipped rather than guessed at.
+
+**Collection covers had two independent faults.** The card latched a failed
+cover image in `useState`, so the 404 answered before a thumbnail exists (or
+while the collection is empty) pinned the folder glyph for the life of the
+component. And membership changes never moved `updated_at`, which is the cover's
+cache-busting key — so filing a bundle into an empty collection changed what its
+auto cover *should* be while the URL stayed identical and the browser served its
+cached 404. Both sides of a move and their ancestors are now touched;
+`invalidateCollectionCounts` refetches the collection rows as well as the counts.
+The card's flex thumbnail could also collapse to the metadata footer's height,
+leaving cover art as a shallow strip on a wide card. Its width is now explicit,
+and flex shrinking is disabled; a browser geometry regression holds the 16:10
+cover frame at the full card width.
+
+**Bundle notes now start at one rendered text line.** Setting `rows={1}` alone
+did not change the visible box because its CSS still imposed a 44 px minimum and
+extra bottom padding for the resize grip. The minimum is now 34 px with ordinary
+single-line padding; the existing `scrollHeight` fit still grows the box for
+wrapped or multiline text. The browser test asserts the rendered height, not
+only the textarea attribute. Multiple note boxes use a compact 4 px gap, also
+held by rendered-geometry coverage.
+
+**Collection pills in the Bundle Inspector navigate.** Each pill is two
+independent controls: its name opens the collection, while × removes the bundle
+from it. Opening clears the bundle selection and presents the collection's own
+inspector; no membership write occurs. The action uses the shared inspector
+context, and the docked player override closes the viewer before navigating so
+the destination is not hidden behind it.
+
+**Bundled-desktop cold start waits for library ownership.** `App` used to await
+authorization but fail open while the ownership query was still pending. That
+mounted every workspace query before the server had made its mount decision,
+then cancelled the whole burst when the ownership result arrived; in the Vite
+WebKit development path this could leave Bundle Browser at “Loading library…”
+until an unrelated mutation caused another request. The workspace now mounts
+only after the ownership query settles. An errored or malformed ownership
+response still fails open to the server's authoritative content-route gate.
+
+**A video's cover frame is the video's.** `set_cover_frame` also wrote
+`bundle.cover_file_id`, so picking a frame silently reassigned what represented
+the bundle. It now touches that file only; the bundle is touched solely when the
+file already *is* the cover, where its picture genuinely changed. That left
+`AssetFile.cover_previous_file_id` — which existed only to undo the promotion —
+with nothing to do, so it is removed along with its repair-time rewrite.
+
+Gates run: `npm run lint`, `typecheck`, `format:check`, `test` (542 pass) and
+`build` in `apps/web`; `ruff check`, `ruff format`, `mypy`, `pytest` (926 pass)
+in `apps/server`. Browser e2e: 99 pass; the only excluded case is the recorded
+pre-existing `transparently re-attaches a fresh session when HLS segments fail`,
+which still fails on clean `main` and is outside this branch. The collection
+cover geometry regression is included in that pass. The new write-gated trash
+and inspector-drop paths also passed their focused Chromium tests. Verified by hand
+in a browser against a synthetic fixture library (six generated clips, invented
+names): inspector width 300 px matching `--inspector-w` with the shell's border,
+background and padding; a tag created and applied from inside the player; a
+single context menu on a file row; a collection created empty gaining its cover
+the moment a bundle was filed in, cache key stamped at the drop; and a
+previously-visited collection showing the right contents on the first frame
+where it had shown the stale listing. The topbar follow-up was also checked in
+the live app: the three controls ended 18 px before the 300 px rail.
+
+Not done, and deliberately: no "Set as Bundle Cover" entry was added to the
+viewer's own menu — the inspector's file list already carries that affordance
+and it is now docked in the viewer, so the step is reachable. No resizer was
+added inside the viewer either; the widths are shared, but changing one is done
+from the shell. Playwright was not run for this branch (the checks above were
+made against a live app instead).
+
+## Merged: collection counts refresh late, or never (2026-07-30)
 
 Branch `fix/collection-count-refresh`, rebased onto `main` at `9a4a24a` (the
-storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`.
+storyboard keyframe-sampling merge); commits `4ddf294` and `193c138`, **merged
+as PR #4** (`d9b53a3`). The section above continues this work: the counts moved
+with the drop, and the listings under them did not.
 Owner-reported: dragging a bundle from one collection to another
 does not immediately update the count in the sidebar; after related work landed,
 "visibly faster … but still not instant".
@@ -1441,7 +1610,8 @@ Eight items. Two were the same undefined CSS variable.
   files can come from anywhere and that is the thing worth reading.
 - **The contact sheet's grid and width are chosen in a dialog**, which also
   prints the resulting cell size — neither number means much alone, and a 6×6 at
-  1280 has smaller frames than a 4×4 at the same width.
+  1600 has smaller frames than a 4×4 at the same width. Width presets are 1600,
+  2048, and 2560 px, with 2048 selected by default.
 - **The submenu machinery came back out.** Its only caller was the grid list,
   now a dialog. The cut-off it suffered at the window edge is moot, and an
   unexercised code path is worth less than the lines it costs.

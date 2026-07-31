@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.media import thumbnails
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package as pkg
@@ -134,6 +134,11 @@ def test_cover_fallback_prefers_selected_then_image_then_video(
     bundle_service.update_bundle(session, bundle.id, {"cover_file_id": video.id})
     session.commit()
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
+
+    # A selected file in Trash is no longer an active cover candidate
+    video.availability = FileAvailability.TRASHED
+    session.commit()
+    assert thumbnails.effective_cover_file(session, bundle.id).id == image.id
 
 
 # Video-only bundles use their first ordered video for cover thumbnails
@@ -296,9 +301,15 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     assert just_past_end.json()["cover_time"] == pytest.approx(19.9)
     session.expire_all()
     assert session.get(AssetFile, video.id).cover_time == pytest.approx(19.9)
-    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == video.id
+    # A frame is chosen for *this video*, and stops there. Which member
+    # represents the bundle stays the owner's separate, explicit choice — the
+    # image is still the cover (owner, 2026-07-30).
+    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == image.id
+    # And because the bundle's picture did not change, nothing above it was
+    # invalidated: bumping the collection's ``updated_at`` would re-fetch every
+    # tile resolving through this bundle to show the same image.
     session.refresh(collection)
-    assert collection.updated_at > collection_updated_at
+    assert collection.updated_at == collection_updated_at
     assert seen == [pytest.approx(19.9), pytest.approx(19.9)]
 
     # Future forced regeneration continues to honor the persisted timestamp
@@ -311,6 +322,52 @@ def test_cover_frame_endpoints_validate_persist_regenerate_and_clear(
     session.expire_all()
     assert bundle_service.get_bundle(session, bundle.id).cover_file_id == image.id
     assert seen[-1] is None
+
+
+def test_cover_frame_on_the_bundle_cover_refreshes_the_tiles_above_it(
+    monkeypatch: pytest.MonkeyPatch,
+    client: TestClient,
+    library_id: str,
+    library_root: Path,
+    session: Session,
+) -> None:
+    """The one case where a file's cover frame *is* the bundle's picture.
+
+    Setting a frame does not reassign the cover, but when the file already is
+    the cover the bundle's image really does change — so its cache key, and
+    those of the collections whose cover resolves through it, must move.
+    """
+    (library_root / "movie.mp4").write_bytes(b"video")
+    bundle = bundle_service.create_bundle(session, title="b")
+    collection = collection_service.create_collection(session, name="only")
+    bundle_service.set_bundle_collections(session, bundle.id, [collection.id])
+    collection_updated_at = collection.updated_at
+    video = bundle_service.add_file(
+        session,
+        bundle.id,
+        relative_path="movie.mp4",
+        role=FileRole.PRIMARY_VIDEO,
+        media_kind=MediaKind.VIDEO,
+    )
+    bundle_service.update_bundle(session, bundle.id, {"cover_file_id": video.id})
+    video.tech_metadata = {"duration": 20.0}
+    session.commit()
+
+    def fake_generate(
+        _source: Path, dest: Path, _kind: MediaKind, _cover_time: float | None
+    ) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"jpg")
+
+    monkeypatch.setattr(thumbnails, "_generate", fake_generate)
+    base = f"/api/v1/libraries/{library_id}/files/{video.id}/cover-frame"
+
+    assert client.post(base, json={"time": 5}).status_code == 200
+    session.expire_all()
+    session.refresh(collection)
+    assert collection.updated_at > collection_updated_at
+    # Still the cover it already was; the frame changed, not the choice.
+    assert bundle_service.get_bundle(session, bundle.id).cover_file_id == video.id
 
 
 def test_cover_frame_endpoint_rejects_symlink_escape(

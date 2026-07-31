@@ -58,6 +58,27 @@ export function countingCollectionIds(
 }
 
 /**
+ * Whether a collection-scoped bundle listing would contain a bundle holding
+ * these memberships.
+ *
+ * The same subtree rule the counts use, asked of one listing: a collection
+ * showing only its own bundles holds the bundle when it is a direct
+ * membership, while one showing its subcollections' contents too holds it
+ * whenever the collection is among those *counting* it — the membership or any
+ * ancestor of one. That equivalence is why this reuses `countingCollectionIds`
+ * rather than re-deriving the walk.
+ */
+export function listingHoldsBundle(
+  collections: readonly CollectionRead[],
+  scopeCollectionId: string,
+  includeDescendants: boolean,
+  memberships: readonly string[],
+): boolean {
+  if (!includeDescendants) return memberships.includes(scopeCollectionId)
+  return countingCollectionIds(collections, memberships).has(scopeCollectionId)
+}
+
+/**
  * Per-collection change in the sidebar count for a batch of bundles. Deltas are
  * computed per bundle (a bundle is counted once per collection however many of
  * its descendants hold it) and summed, so a multi-select move adds up correctly.

@@ -10,6 +10,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **Files can be dropped onto the Bundle Inspector to add them to that bundle.**
+  The whole sidebar is now the same write-gated import-and-link target as the
+  bundle card, with the same hover treatment and the same destination picker
+  defaulting to the bundle’s folder. The docked inspector in the media viewer
+  closes the viewer before opening that picker so the next step is visible.
 - **Any running job can now be stopped from the sidebar.** Scan, metadata,
   thumbnails and storyboards all show a stop control on the row they are running
   on. The server could already cancel a job; nothing in the app ever asked it
@@ -20,6 +25,26 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **The Trash listing no longer waits on a recursive SMB filesystem walk.**
+  Loading Trash previously statted every displayed entry and then walked and
+  statted the entire trash tree again before returning any rows. File sizes are
+  now captured in the operation journal and older linked entries use database
+  metadata, so the listing itself performs no trash-filesystem reads. An exact
+  total is omitted for legacy or directory deletions whose size was never
+  recorded rather than delaying the screen or understating permanent deletion.
+- **Moving a Bundle Inspector file to Trash now removes its row immediately.**
+  The UI previously waited for the journaled move to finish and then for a
+  second bundle-file request, exposing the full latency of a network-mounted
+  library. Active bundle-file caches now update optimistically while the same
+  recoverable server operation runs, and roll back if that operation fails.
+- **Bundle Inspector file rows now offer Move to Trash in write mode.** The
+  bundle album already exposed the journaled, recoverable deletion, but the
+  same file's inspector menu omitted it. The write-gated action now travels
+  through the shared inspector action context, so it is available in both the
+  shell rail and the inspector docked beside the media viewer, and absent when
+  write mode is off. A trashed member now immediately leaves the bundle’s file
+  list, cover fallback and playback playlist; its hidden relationship remains
+  intact so Put Back restores that same file to the same bundle.
 - **A job whose server stopped mid-run stayed "running" forever.** Restarting
   the server — or a dev-mode reload — left the row in the sidebar as work in
   progress that had died an hour earlier, and it could not be dismissed:
@@ -49,7 +74,92 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bottom with the transfer indicator. It now sits with the job rows: the message
   outlives the button, since a storyboard pass reports long after Update says it
   is done.
-
+- **The Bundle Inspector docked beside a playing file is the shell's own.** It
+  was already the same component, and behaved like a different pane: a narrower
+  fixed width, its own border and background, a shorter right-click menu, and
+  tag edits that finished with no sign they had. It was not forked but starved —
+  the shell passed eleven handlers, the viewer passed a bundle id, so every
+  action gated on one of them had nothing to render from. Those handlers are no
+  longer props restated at two call sites; they are one object the shell
+  provides and the inspector reads wherever it appears, so an action added later
+  reaches both surfaces at once. The rail also takes its width from the same
+  variable as the shell's, so resizing one resizes both. Four actions genuinely
+  mean something different inside an open viewer and are resolved rather than
+  dropped: Play steps within the playlist instead of stacking a second viewer;
+  Locate, Add files and Filter by tag close the viewer first, because they take
+  you somewhere in the shell; and transient messages route to the viewer's own
+  notice anchor, which sits above it. Right-clicking inside the rail no longer
+  opens the playback menu on top of the menu you asked for. When the rail is
+  open, the viewer's three top-right buttons now stay inset on the media side
+  instead of sitting over the inspector.
+- **A bundle filed into a collection is there when you open it.** The count
+  moved immediately and the contents did not: opening the collection rendered
+  its cached listing — without the bundle — until a refetch came back, so the
+  number beside the name disagreed with what was under it, and a collection that
+  had been empty showed nothing at all. Only collections you had already visited
+  were affected, which is why it looked intermittent. The optimistic projection
+  already pulled moved bundles out of the listings they left; it now also puts
+  them into the ones they join, following the same subtree rule as the counts —
+  a listing showing subcollection contents gains a bundle filed into a child,
+  the same collection showing only its own does not. Filtered and searched
+  listings are left to the refetch rather than guessed at. The collection
+  picker's checkbox now projects the same way a drop does.
+- **Collection covers appear when there is one, and change when it does.** Two
+  faults, both ending in a folder glyph. The card remembered a failed cover
+  image forever, so the 404 every collection answers before its thumbnail exists
+  — or while it has no bundles — pinned the glyph in place through bundles being
+  filed in and through a cover being chosen. And the server never changed the
+  URL: a collection's auto-picked cover is derived from its membership, but
+  filing a bundle in touched no collection row, so the cache key stayed
+  identical and the browser kept serving what it had. Both sides of a move, and
+  their parent collections, now get a fresh key.
+- **Collection cover art fills the folder card.** The cover slot could collapse
+  to the height of the metadata footer even while the card stayed wide, leaving
+  only a shallow strip of artwork. Its width is now explicit and it cannot
+  flex-shrink, so the 16:10 cover frame stays visible at the card's full width.
+- **Empty bundle notes start at one line.** The note editor now begins with a
+  single-row box instead of the browser's default multi-row textarea. Its CSS
+  minimum is 34 px rather than the former 44 px, with one line's padding; the
+  existing auto-grow still expands the box when the text wraps or overflows.
+  The earlier saved height preference is reset, so notes already held open by a
+  stale fixed size adopt the compact default too; new explicit resizes persist.
+  Stacked note boxes now sit 4 px apart instead of 6 px.
+- **Collection pills in the Bundle Inspector now open their collection.** The
+  name side navigates to that collection without changing bundle membership;
+  the × remains a separate removal action. From the docked player inspector,
+  navigation closes the viewer first so the destination is visible.
+- **The bundled desktop no longer starts library queries before ownership is
+  known.** Cold starts now hold at a dedicated ownership check instead of
+  mounting and cancelling the whole workspace query burst, which could leave
+  the bundle browser stuck at “Loading library…” until an unrelated action
+  caused another request.
+- **Stopping `just dev` no longer strands a library ownership lease.** Its
+  Ctrl-C trap killed the whole process group, including Uvicorn's reloader and
+  worker at once, so FastAPI did not always reach the lifespan shutdown that
+  marks mounted libraries released. The next bundled desktop then treated the
+  dead source server as a fresh foreign owner, waited five minutes for the lease
+  to become stale, and still required the normal confirmed takeover. The recipe
+  now signals only its two direct children and waits for Uvicorn to release the
+  lease before returning; a scratch-library smoke test covers the full command.
+- **Files now locate their counterpart in either browser.** Selecting a file
+  inside an open bundle offers **Locate in File Browser**, which opens its
+  physical directory and highlights it. Selecting an indexed, bundled file in
+  File Browser offers **Locate in Bundle Browser** in both its inspector and
+  right-click menu, which opens its one owning bundle. Both are ordinary
+  Cairndex navigation and work in the web build;
+  **Open in Default App** and **Reveal in Finder** remain desktop-only. The File
+  Browser menu starts with its desktop Open/Reveal section, followed by write
+  actions when enabled, and finishes with separate **Copy Path** and
+  **Save Contact Sheet…** sections when that video export is available. The
+  matching in-bundle file menu now follows the same native, write,
+  bundle-navigation, and export grouping.
+- **Setting a cover frame for a video no longer re-covers the whole bundle.**
+  Choosing a nicer frame for one video also made that video represent the
+  bundle. Which member speaks for the bundle stays the separate, explicit choice
+  it already had an affordance for — the star beside each row in the inspector's
+  file list. The two compose: set a frame, then star the file. The viewer's menu
+  now says "Set Frame as Video Cover". Its cover actions lead their section, and
+  the redundant Frame Back/Forward context-menu rows are gone.
 - **Collection counts now move with the drop.** Dragging a bundle into a
   collection left every number beside the collections on its old value until a
   refetch came back — plainly visible on a library whose database lives on a
@@ -520,12 +630,17 @@ library is served by one machine at a time, enforced by a lease.
 
 - **Save a contact sheet from anywhere a video is** — the File Browser, a
   bundle's album grid, and the bundle inspector's file list, not just the open
-  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1280, 1600,
-  2048) together, and says what the two add up to: the cell size, which is what
-  actually decides whether a frame is legible. The header prints the frame rate and the
-  encoding, and every cell is labelled with the instant it was taken from. Generation
-  reports progress through the same toast as file operations, which holds while
-  the work is in flight.
+  player. A dialog asks for the grid (4×4, 5×5, 6×6) and the width (1600, 2048,
+  2560) together, and says what the two add up to: the cell size, which is what
+  actually decides whether a frame is legible. The black header now prints three
+  compact rows: File Name; Details with size · duration · resolution / frame
+  rate; and Codec with video codec / bitrate · audio codec / bitrate / sample
+  rate. A larger blue-accented **EXPORTED FROM CAIRNDEX** brand lockup anchors
+  the right side. Probe metadata now keeps the primary video and audio stream
+  bitrates separately, plus the primary audio sample rate; the normal metadata
+  job refreshes older rows once under probe format v5. Every cell is labelled
+  with the instant it was taken from. Generation reports progress through the
+  same toast as file operations, which holds while the work is in flight.
 
 - **The in-bundle view works like the File Browser.** It switches between grid
   and list with the same control and the same rows, and selecting one file puts
