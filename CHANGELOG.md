@@ -133,7 +133,8 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   bundle. Which member speaks for the bundle stays the separate, explicit choice
   it already had an affordance for — the star beside each row in the inspector's
   file list. The two compose: set a frame, then star the file. The viewer's menu
-  now says "Set Frame as Video Cover".
+  now says "Set Frame as Video Cover". Its cover actions lead their section, and
+  the redundant Frame Back/Forward context-menu rows are gone.
 - **Collection counts now move with the drop.** Dragging a bundle into a
   collection left every number beside the collections on its old value until a
   refetch came back — plainly visible on a library whose database lives on a
