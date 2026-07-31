@@ -23,7 +23,7 @@ from cairndex.media.ffmpeg_exec import FfmpegError, ffmpeg_exe, run_ffmpeg
 from cairndex.persistence.engine import library_root_for_session
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package
-from cairndex.services.bundles import get_bundle, list_files
+from cairndex.services.bundles import get_bundle, list_active_files
 
 THUMBNAIL_WIDTH = 480
 _THUMBNAILABLE = (MediaKind.VIDEO, MediaKind.IMAGE)
@@ -109,9 +109,13 @@ def effective_cover_file(session: Session, bundle_id: str) -> AssetFile | None:
     bundle = get_bundle(session, bundle_id)
     if bundle.cover_file_id is not None:
         cover = session.get(AssetFile, bundle.cover_file_id)
-        if cover is not None and _can_thumbnail(cover):
+        if (
+            cover is not None
+            and cover.availability is not FileAvailability.TRASHED
+            and _can_thumbnail(cover)
+        ):
             return cover
-    files = list_files(session, bundle_id)
+    files = list_active_files(session, bundle_id)
     image = next((f for f in files if f.media_kind is MediaKind.IMAGE and _can_thumbnail(f)), None)
     if image is not None:
         return image

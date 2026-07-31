@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileAvailability, FileRole, MediaKind
 from cairndex.media import thumbnails
 from cairndex.persistence.models import AssetFile
 from cairndex.registry import library_package as pkg
@@ -134,6 +134,11 @@ def test_cover_fallback_prefers_selected_then_image_then_video(
     bundle_service.update_bundle(session, bundle.id, {"cover_file_id": video.id})
     session.commit()
     assert thumbnails.effective_cover_file(session, bundle.id).id == video.id
+
+    # A selected file in Trash is no longer an active cover candidate
+    video.availability = FileAvailability.TRASHED
+    session.commit()
+    assert thumbnails.effective_cover_file(session, bundle.id).id == image.id
 
 
 # Video-only bundles use their first ordered video for cover thumbnails

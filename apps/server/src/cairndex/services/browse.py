@@ -133,7 +133,10 @@ def _file_count_sq() -> Any:
     return (
         select(func.count())
         .select_from(AssetFile)
-        .where(AssetFile.bundle_id == AssetBundle.id)
+        .where(
+            AssetFile.bundle_id == AssetBundle.id,
+            AssetFile.availability != FileAvailability.TRASHED,
+        )
         .scalar_subquery()
     )
 
@@ -150,7 +153,10 @@ def _visible_file_exists() -> Any:
 def _size_sq() -> Any:
     return (
         select(func.coalesce(func.sum(AssetFile.size_bytes), 0))
-        .where(AssetFile.bundle_id == AssetBundle.id)
+        .where(
+            AssetFile.bundle_id == AssetBundle.id,
+            AssetFile.availability != FileAvailability.TRASHED,
+        )
         .scalar_subquery()
     )
 
@@ -526,7 +532,10 @@ def _summarize(session: Session, bundle: AssetBundle) -> BundleSummary:
             select(AssetFile, PlaybackProgress, BundleCursor.file_id)
             .outerjoin(PlaybackProgress, PlaybackProgress.file_id == AssetFile.id)
             .outerjoin(BundleCursor, BundleCursor.bundle_id == AssetFile.bundle_id)
-            .where(AssetFile.bundle_id == bundle.id)
+            .where(
+                AssetFile.bundle_id == bundle.id,
+                AssetFile.availability != FileAvailability.TRASHED,
+            )
             .order_by(AssetFile.sequence, AssetFile.id)
         )
     )

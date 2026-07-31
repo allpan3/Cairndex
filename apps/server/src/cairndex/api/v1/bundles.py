@@ -342,7 +342,7 @@ def update_bundle_cursor(
 # --- Files -------------------------------------------------------------------
 @router.get("/{bundle_id}/files", response_model=list[FileRead])
 def list_files(bundle_id: str, db: LibrarySession) -> list[FileRead]:
-    files = list(service.list_files(db, bundle_id))
+    files = list(service.list_active_files(db, bundle_id))
     playback.reconcile_missing_files(db, files)
     return _file_reads(db, files)
 
