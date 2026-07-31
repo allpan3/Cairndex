@@ -88,12 +88,23 @@ test('an unindexed path has no row, so nothing keyed on one applies', () => {
 
 test('a linked path streams through its file row', () => {
   const item = viewerItemFromEntry(
-    entry({ linked: true, file_id: 'f9', bundle_id: 'b9', duration: 42 }),
+    entry({
+      linked: true,
+      file_id: 'f9',
+      bundle_id: 'b9',
+      duration: 42,
+      video_bitrate: 4_000_000,
+      audio_bitrate: 192_000,
+      audio_sample_rate: 48_000,
+    }),
   )
 
   expect(item.fileId).toBe('f9')
   expect(item.bundleId).toBe('b9')
   expect(item.duration).toBe(42)
+  expect(item.videoBitrate).toBe(4_000_000)
+  expect(item.audioBitrate).toBe(192_000)
+  expect(item.audioSampleRate).toBe(48_000)
   expect(item.contentUrl).toContain('/files/f9/stream')
   // Identity for the playlist is still the path — that is what the folder listed.
   expect(item.key).toBe('Show/clip.mp4')
