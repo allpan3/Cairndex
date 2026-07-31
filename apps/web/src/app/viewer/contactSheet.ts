@@ -1,19 +1,25 @@
 /**
  * Client-side composition of a contact sheet: the server supplies the frame
- * grid (`/files/{id}/contact-sheet`), and the header — title plus a metadata
- * line — is drawn here on a canvas. The split keeps font rendering out of the
- * server (ffmpeg `drawtext` needs font discovery and a freetype build) while
- * the browser draws text natively.
+ * grid (`/files/{id}/contact-sheet`), and the three-row metadata header is drawn
+ * here on a canvas. The split keeps font rendering out of the server (ffmpeg
+ * `drawtext` needs font discovery and a freetype build) while the browser draws
+ * text natively.
  */
 
-const HEADER_HEIGHT = 96
-const MARGIN = 18
+const HEADER_BACKGROUND = '#070809'
+const HEADER_TEXT = '#e8eaed'
+const WATERMARK_ACCENT = '#5b8cff'
+const WATERMARK_MUTED = '#a6afbf'
+export const CONTACT_SHEET_WATERMARK = ['EXPORTED FROM', 'CAIRNDEX'] as const
+
+export interface ContactSheetRow {
+  label: string
+  value: string
+}
 
 export interface ContactSheetSource {
   sheetUrl: string
-  title: string
-  /** Short facts for the second line, joined with separators; empties dropped. */
-  facts: (string | null | undefined)[]
+  metadataRows: readonly ContactSheetRow[]
   /** Grid shape, so each cell can be found and labelled. */
   cols: number
   rows: number
@@ -64,22 +70,50 @@ export async function composeContactSheet(source: ContactSheetSource): Promise<B
   const grid = await createImageBitmap(await response.blob())
 
   const canvas = document.createElement('canvas')
+  const fontSize = Math.max(14, Math.round(grid.width / 95))
+  const lineHeight = Math.round(fontSize * 1.35)
+  const margin = Math.round(fontSize * 1.15)
+  const headerHeight = margin * 2 + lineHeight * source.metadataRows.length
   canvas.width = grid.width
-  canvas.height = grid.height + HEADER_HEIGHT
+  canvas.height = grid.height + headerHeight
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('This browser cannot compose images.')
 
-  ctx.fillStyle = '#101216'
+  ctx.fillStyle = HEADER_BACKGROUND
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#f2f4f8'
-  ctx.font = '600 24px system-ui, sans-serif'
+  ctx.fillStyle = HEADER_TEXT
+  ctx.font = `400 ${fontSize}px system-ui, sans-serif`
   ctx.textBaseline = 'alphabetic'
-  ctx.fillText(source.title, MARGIN, 40, canvas.width - 2 * MARGIN)
-  ctx.fillStyle = '#9aa3b2'
-  ctx.font = '14px system-ui, sans-serif'
-  const facts = source.facts.filter((fact): fact is string => Boolean(fact)).join('   ·   ')
-  ctx.fillText(facts, MARGIN, 70, canvas.width - 2 * MARGIN)
-  ctx.drawImage(grid, 0, HEADER_HEIGHT)
+  const brandSize = Math.max(26, Math.round(fontSize * 1.75))
+  const eyebrowSize = Math.max(10, Math.round(fontSize * 0.68))
+  ctx.font = `750 ${brandSize}px system-ui, sans-serif`
+  const brandWidth = ctx.measureText(CONTACT_SHEET_WATERMARK[1]).width
+  const brandRight = canvas.width - margin
+  const brandMiddle = headerHeight / 2
+  const accentX = brandRight - brandWidth - fontSize
+  ctx.fillStyle = WATERMARK_ACCENT
+  ctx.fillRect(accentX, margin, Math.max(3, Math.round(fontSize / 4)), headerHeight - margin * 2)
+  ctx.textAlign = 'right'
+  ctx.font = `600 ${eyebrowSize}px system-ui, sans-serif`
+  ctx.fillStyle = WATERMARK_MUTED
+  ctx.fillText(CONTACT_SHEET_WATERMARK[0], brandRight, brandMiddle - brandSize * 0.3)
+  ctx.font = `750 ${brandSize}px system-ui, sans-serif`
+  ctx.fillStyle = HEADER_TEXT
+  ctx.fillText(CONTACT_SHEET_WATERMARK[1], brandRight, brandMiddle + brandSize * 0.65)
+
+  ctx.fillStyle = HEADER_TEXT
+  ctx.font = `400 ${fontSize}px system-ui, sans-serif`
+  ctx.textAlign = 'left'
+  const rowWidth = accentX - margin * 2
+  for (const [index, row] of source.metadataRows.entries()) {
+    ctx.fillText(
+      `${row.label}: ${row.value}`,
+      margin,
+      margin + fontSize + index * lineHeight,
+      rowWidth,
+    )
+  }
+  ctx.drawImage(grid, 0, headerHeight)
 
   // Label each cell with the instant it was taken from. The grid divides
   // exactly into `cols x rows` because the server keeps every gutter inside a
@@ -98,7 +132,7 @@ export async function composeContactSheet(source: ContactSheetSource): Promise<B
       const col = index % source.cols
       const row = Math.floor(index / source.cols)
       const right = (col + 1) * cellWidth - 6
-      const bottom = HEADER_HEIGHT + (row + 1) * cellHeight - 7
+      const bottom = headerHeight + (row + 1) * cellHeight - 7
       const width = ctx.measureText(label).width
       // A dark plate under the text: a timestamp over a bright frame is
       // otherwise unreadable, and these frames are arbitrary.

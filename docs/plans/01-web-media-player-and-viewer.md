@@ -441,7 +441,7 @@ running scan must not queue-block a ten-second export:
 - `POST /libraries/{lib}/files/{id}/exports` with
   `{kind: "gif", start_s, end_s, width?, fps?}` (caps: duration ≤ 30 s,
   width ≤ 720, fps ≤ 15; defaults 480 px / 12 fps) or
-  `{kind: "contact_sheet", grid?, width?}` (default 4×4, 1600 px sheet)
+  `{kind: "contact_sheet", grid?, width?}` (default 4×4, 2048 px sheet)
   → `{export_id}`. Video files only; range validated against duration.
 - `GET .../exports/{id}` → `{status, progress}`;
   `GET .../exports/{id}/download` → artifact with a Content-Disposition

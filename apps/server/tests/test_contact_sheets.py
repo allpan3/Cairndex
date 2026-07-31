@@ -84,7 +84,7 @@ def test_generates_a_grid_of_the_requested_shape(session: Session, library_root:
     _make_video(library_root / "movie.mp4")
     asset_file = _video_file(session, library_root)
 
-    path, times = contact_sheets.sheet_for_file(session, asset_file.id, cols=4, rows=4, width=1280)
+    path, times = contact_sheets.sheet_for_file(session, asset_file.id, cols=4, rows=4, width=1600)
 
     assert path.is_relative_to(pkg.cache_dir(library_root) / "contact-sheets")
     # One timestamp per cell, in reading order, inside the trimmed span.
@@ -92,9 +92,9 @@ def test_generates_a_grid_of_the_requested_shape(session: Session, library_root:
     assert times == sorted(times)
     assert 0 < times[0] < times[-1] < 20.0
     width, height = _jpeg_size(path)
-    # 4 columns of 320px cells plus the tile padding; height follows 16:9 cells.
-    assert 1280 <= width <= 1280 + 3 * 2 + 4
-    assert height >= 4 * (180 - 4)
+    # 4 columns of 400px cells plus the tile padding; height follows 16:9 cells.
+    assert 1600 <= width <= 1600 + 3 * 2 + 4
+    assert height >= 4 * (225 - 4)
     assert derived_cache.read_fingerprint(path) == asset_file.quick_fingerprint
 
 
@@ -148,7 +148,7 @@ def test_endpoint_serves_the_sheet(
 
     response = client.get(
         f"/api/v1/libraries/{library_id}/files/{asset_file.id}/contact-sheet",
-        params={"cols": 3, "rows": 2, "width": 1280},
+        params={"cols": 3, "rows": 2, "width": 1600},
     )
 
     assert response.status_code == 200, response.text
@@ -213,11 +213,11 @@ def test_a_grid_costs_the_same_however_long_the_video_is(
     long_file = _video_file(session, library_root, name="long.mp4", duration=32.0)
 
     started = time.perf_counter()
-    contact_sheets.sheet_for_file(session, short_file.id, cols=3, rows=3, width=1280)
+    contact_sheets.sheet_for_file(session, short_file.id, cols=3, rows=3, width=1600)
     short_seconds = time.perf_counter() - started
 
     started = time.perf_counter()
-    contact_sheets.sheet_for_file(session, long_file.id, cols=3, rows=3, width=1280)
+    contact_sheets.sheet_for_file(session, long_file.id, cols=3, rows=3, width=1600)
     long_seconds = time.perf_counter() - started
 
     # Generous bound: this asserts the *shape* of the cost, not a benchmark.
