@@ -25,6 +25,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Moving a Bundle Inspector file to Trash now removes its row immediately.**
+  The UI previously waited for the journaled move to finish and then for a
+  second bundle-file request, exposing the full latency of a network-mounted
+  library. Active bundle-file caches now update optimistically while the same
+  recoverable server operation runs, and roll back if that operation fails.
 - **Bundle Inspector file rows now offer Move to Trash in write mode.** The
   bundle album already exposed the journaled, recoverable deletion, but the
   same file's inspector menu omitted it. The write-gated action now travels
