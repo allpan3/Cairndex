@@ -66,32 +66,8 @@ export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry
       )
     : []
 
-  if (options.onLocateFile && n === 1) {
-    if (items.length > 0) items.push(null)
-    items.push({
-      label: 'Locate in File Browser',
-      onClick: () => options.onLocateFile?.(first.relative_path),
-    })
-  }
-
-  // Only for a single video: a sheet is built from one file, and the dialog
-  // asks about that file's duration.
-  if (onContactSheet && n === 1 && first.media_kind === 'video') {
-    if (items.length > 0) items.push(null)
-    items.push(contactSheetMenuItem(contactSheetTargetFor(first), onContactSheet))
-  }
-
-  if (onRemoveFromBundle) {
-    if (items.length > 0) items.push(null)
-    items.push({
-      // Metadata-only: the file falls back into Unbundled as its own provisional
-      // bundle, exactly as deleting the whole bundle would have staged it.
-      label: n > 1 ? `Remove ${n} Files from Bundle` : 'Remove from Bundle',
-      onClick: () => onRemoveFromBundle(targets),
-    })
-  }
-
   if (onTrash) {
+    if (items.length > 0) items.push(null)
     items.push({
       // The guarded deletion, same gate and same trash-first shape as the File
       // Browser's: recoverable until the trash is emptied.
@@ -99,6 +75,33 @@ export function bundleFileMenuEntries(options: BundleFileMenuOptions): MenuEntry
       danger: true,
       onClick: () => onTrash(targets),
     })
+  }
+
+  const bundleItems: MenuEntry[] = []
+  if (onRemoveFromBundle) {
+    bundleItems.push({
+      // Metadata-only: the file falls back into Unbundled as its own provisional
+      // bundle, exactly as deleting the whole bundle would have staged it.
+      label: n > 1 ? `Remove ${n} Files from Bundle` : 'Remove from Bundle',
+      onClick: () => onRemoveFromBundle(targets),
+    })
+  }
+  if (options.onLocateFile && n === 1) {
+    bundleItems.push({
+      label: 'Locate in File Browser',
+      onClick: () => options.onLocateFile?.(first.relative_path),
+    })
+  }
+  if (bundleItems.length > 0) {
+    if (items.length > 0) items.push(null)
+    items.push(...bundleItems)
+  }
+
+  // Only for a single video: a sheet is built from one file, and the dialog
+  // asks about that file's duration.
+  if (onContactSheet && n === 1 && first.media_kind === 'video') {
+    if (items.length > 0) items.push(null)
+    items.push(contactSheetMenuItem(contactSheetTargetFor(first), onContactSheet))
   }
 
   return items
