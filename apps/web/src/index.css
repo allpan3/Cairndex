@@ -1117,6 +1117,8 @@ button {
 }
 .collcard__thumb {
   position: relative;
+  width: 100%;
+  flex: none;
   aspect-ratio: 16 / 10;
   background: var(--bg-2);
   display: flex;

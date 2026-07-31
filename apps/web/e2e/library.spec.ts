@@ -1276,6 +1276,62 @@ test('a collection shows a subcollections strip and a direct/descendant toggle',
   await expect(page.locator('.collhead')).toHaveCount(0)
 })
 
+test('collection cover thumbnails fill the card at the intended aspect ratio', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { id: 'c1', name: 'Movies', parent_id: null },
+          { id: 'c2', name: 'Docs', parent_id: 'c1' },
+        ],
+        next_cursor: null,
+      },
+    }),
+  )
+  await page.route('**/collections/counts', (r) =>
+    r.fulfill({ json: { counts: { c1: 1, c2: 2 } } }),
+  )
+  await page.route('**/collections/c2/thumbnail**', (r) =>
+    r.fulfill({
+      status: 200,
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="10" />',
+    }),
+  )
+  await page.route('**/bundles/browse**', (r) => {
+    const cid = new URL(r.request().url()).searchParams.get('collection_id')
+    if (cid === 'c1') {
+      return r.fulfill({ json: { items: [bundle(0)], total: 1, offset: 0, limit: 100 } })
+    }
+    const items = Array.from({ length: 40 }, (_, i) => bundle(i))
+    return r.fulfill({ json: { items, total: items.length, offset: 0, limit: 100 } })
+  })
+
+  await page.goto('/')
+  await page.locator('.sidebar .collection-row', { hasText: 'Movies' }).click()
+
+  const card = page.locator('.collcard').first()
+  await expect(card).toBeVisible()
+  const geometry = await card.evaluate((element) => {
+    const thumb = element.querySelector<HTMLElement>('.collcard__thumb')
+    if (!thumb) throw new Error('missing collection thumbnail')
+    const cardRect = element.getBoundingClientRect()
+    const thumbRect = thumb.getBoundingClientRect()
+    return {
+      cardWidth: cardRect.width,
+      thumbWidth: thumbRect.width,
+      thumbHeight: thumbRect.height,
+      thumbFlexShrink: getComputedStyle(thumb).flexShrink,
+    }
+  })
+
+  expect(geometry.thumbWidth).toBeGreaterThan(geometry.cardWidth - 4)
+  expect(geometry.thumbHeight / geometry.thumbWidth).toBeGreaterThan(0.55)
+  expect(geometry.thumbHeight / geometry.thumbWidth).toBeLessThan(0.7)
+  expect(geometry.thumbFlexShrink).toBe('0')
+})
+
 test('drag-selects subcollection cards with a marquee, and empty space deselects', async ({
   page,
 }) => {
