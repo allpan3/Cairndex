@@ -537,6 +537,9 @@ async function mockApi(page: Page, options: MockApiOptions = {}) {
   await page.route(/\/api\/v1\/libraries\/lib1\/auth\/status$/, (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
+  await page.route(/\/api\/v1\/libraries\/lib1\/ownership$/, (r) =>
+    r.fulfill({ json: { state: 'own', mountable: true } }),
+  )
   await page.route(/\/api\/v1\/libraries\/lib1\/bundles\/counts$/, (r) => {
     const missing = missingReconciled ? 1 : 0
     options.onViewCounts?.(missing)

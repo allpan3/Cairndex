@@ -103,6 +103,19 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   name side navigates to that collection without changing bundle membership;
   the × remains a separate removal action. From the docked player inspector,
   navigation closes the viewer first so the destination is visible.
+- **The bundled desktop no longer starts library queries before ownership is
+  known.** Cold starts now hold at a dedicated ownership check instead of
+  mounting and cancelling the whole workspace query burst, which could leave
+  the bundle browser stuck at “Loading library…” until an unrelated action
+  caused another request.
+- **Stopping `just dev` no longer strands a library ownership lease.** Its
+  Ctrl-C trap killed the whole process group, including Uvicorn's reloader and
+  worker at once, so FastAPI did not always reach the lifespan shutdown that
+  marks mounted libraries released. The next bundled desktop then treated the
+  dead source server as a fresh foreign owner, waited five minutes for the lease
+  to become stale, and still required the normal confirmed takeover. The recipe
+  now signals only its two direct children and waits for Uvicorn to release the
+  lease before returning; a scratch-library smoke test covers the full command.
 - **Setting a cover frame for a video no longer re-covers the whole bundle.**
   Choosing a nicer frame for one video also made that video represent the
   bundle. Which member speaks for the bundle stays the separate, explicit choice

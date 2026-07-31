@@ -57,7 +57,7 @@
 > the sidebar, and a job whose server died no longer claims to be running.
 >
 > **Open, unreviewed (2026-07-30):** `fix/inspector-parity-and-collection-covers`
-> — five more owner reports from using the app. The Bundle Inspector shown during
+> — six more owner reports from using the app. The Bundle Inspector shown during
 > playback is now the shell's own pane rather than a starved copy of it; a bundle
 > filed into a collection is in that collection's listing when you open it;
 > collection covers appear, refresh with membership, and keep their full cover
@@ -65,7 +65,10 @@
 > viewer's top-right buttons also stay with the media when that inspector is
 > docked, and bundle note boxes now start at one line before auto-growing for
 > overflow; the old saved-height preference is reset so existing notes follow
-> that default. Independent of the WAL
+> that default. The native `just dev` stack now shuts Uvicorn down gracefully
+> too; its old process-group kill could stop the worker before FastAPI released
+> the library lease, making the bundled desktop wait through stale-lease
+> recovery after an ordinary Ctrl-C. Independent of the WAL
 > journal-mode work.
 >
 > **Next is phase I, the Android client** (plan 2 T1–T7). One owner-requested
@@ -220,6 +223,15 @@ from it. Opening clears the bundle selection and presents the collection's own
 inspector; no membership write occurs. The action uses the shared inspector
 context, and the docked player override closes the viewer before navigating so
 the destination is not hidden behind it.
+
+**Bundled-desktop cold start waits for library ownership.** `App` used to await
+authorization but fail open while the ownership query was still pending. That
+mounted every workspace query before the server had made its mount decision,
+then cancelled the whole burst when the ownership result arrived; in the Vite
+WebKit development path this could leave Bundle Browser at “Loading library…”
+until an unrelated mutation caused another request. The workspace now mounts
+only after the ownership query settles. An errored or malformed ownership
+response still fails open to the server's authoritative content-route gate.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented

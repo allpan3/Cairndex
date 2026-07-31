@@ -49,6 +49,8 @@ function mockApi(
     trashOperations?: unknown[]
     /** Collections in the library (sidebar tree + folder cards). */
     collections?: unknown[]
+    /** Deferred mount decision for cold-start ownership ordering coverage. */
+    ownership?: Promise<unknown>
   } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
@@ -67,6 +69,12 @@ function mockApi(
         })
       else if (url.endsWith('/auth/status'))
         body = { protected: Boolean(options.locked), unlocked: !options.locked }
+      else if (url.endsWith('/ownership') && options.ownership)
+        return options.ownership.then((ownership) => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(ownership),
+        }))
       else if (url.endsWith('/api/v1/auth/devices')) body = []
       else if (url.includes('/bundles/browse'))
         body = { items: [], total: 0, offset: 0, limit: 100 }
@@ -331,6 +339,27 @@ test('fails closed when library authorization cannot be verified', async () => {
   expect(screen.queryByText('Nothing here yet.')).not.toBeInTheDocument()
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
     false,
+  )
+})
+
+test('waits for library ownership before starting content queries', async () => {
+  let resolveOwnership: (ownership: unknown) => void = () => undefined
+  const ownership = new Promise<unknown>((resolve) => {
+    resolveOwnership = resolve
+  })
+  mockApi([LIBRARY], { ownership })
+  renderApp()
+
+  expect(await screen.findByText('Checking library ownership…')).toBeInTheDocument()
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
+    false,
+  )
+
+  resolveOwnership({ mountable: true, state: 'own' })
+
+  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
+    true,
   )
 })
 

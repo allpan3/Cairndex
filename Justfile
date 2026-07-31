@@ -36,9 +36,27 @@ web:
 dev:
     #!/usr/bin/env bash
     set -uo pipefail
-    trap 'kill 0' EXIT INT TERM
-    (cd {{server_dir}} && uv run uvicorn cairndex.main:app --reload --port 8000) &
-    (cd {{web_dir}} && npm run dev) &
+    server_port="${CAIRNDEX_DEV_SERVER_PORT:-8000}"
+    web_port="${CAIRNDEX_DEV_WEB_PORT:-5173}"
+    server_pid=""
+    web_pid=""
+    # Gracefully stop direct children without killing Uvicorn's worker
+    shutdown() {
+      status="$1"
+      trap - EXIT INT TERM
+      [[ -z "$server_pid" ]] || kill -TERM "$server_pid" 2>/dev/null || true
+      [[ -z "$web_pid" ]] || kill -TERM "$web_pid" 2>/dev/null || true
+      [[ -z "$server_pid" ]] || wait "$server_pid" 2>/dev/null || true
+      [[ -z "$web_pid" ]] || wait "$web_pid" 2>/dev/null || true
+      exit "$status"
+    }
+    trap 'shutdown 130' INT
+    trap 'shutdown 143' TERM
+    trap 'shutdown $?' EXIT
+    (cd {{ server_dir }} && exec uv run uvicorn cairndex.main:app --reload --port "$server_port") &
+    server_pid=$!
+    (cd {{ web_dir }} && PORT="$web_port" VITE_API_PROXY_TARGET="http://localhost:$server_port" exec npm run dev -- --host 127.0.0.1 --strictPort) &
+    web_pid=$!
     wait
 
 # Desktop shell against a live source server (run `just server-desktop` first).
@@ -138,6 +156,10 @@ check-desktop:
 # ---------------------------------------------------------------------- tests --
 
 test: test-server test-web test-desktop
+
+# Exercise `just dev` itself and prove Ctrl-C releases an acquired lease.
+dev-smoke:
+    cd {{ server_dir }} && uv run python ../../infra/dev_smoke.py
 
 test-server *ARGS:
     cd {{server_dir}} && uv run pytest {{ARGS}}
