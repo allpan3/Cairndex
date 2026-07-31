@@ -330,6 +330,34 @@ test('the collection picker assigns, surfaces recent, and filters to selected', 
   await expect(panel.locator('.pick-row')).toContainText('Docs')
 })
 
+test('clicking a collection pill navigates without removing the bundle', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/collections?*', (r) =>
+    r.fulfill({
+      json: { items: [{ id: 'c1', name: 'Movies', parent_id: null }], next_cursor: null },
+    }),
+  )
+  await page.route('**/collections/counts', (r) => r.fulfill({ json: { counts: { c1: 1 } } }))
+  await page.route('**/collections/c1/stats', (r) =>
+    r.fulfill({ json: { direct_bundles: 1, total_bundles: 1, subcollections: 0 } }),
+  )
+  let membershipWrites = 0
+  await page.route('**/bundles/b0/collections', async (r) => {
+    if (r.request().method() === 'PUT') membershipWrites += 1
+    await r.fulfill({ json: { bundle_id: 'b0', collection_ids: ['c1'] } })
+  })
+
+  await page.goto('/')
+  await page.locator('.card').first().click()
+  await page.getByRole('button', { name: 'Open collection Movies' }).click()
+
+  await expect(page.locator('.toolbar__title')).toHaveText('Movies')
+  await expect(page.locator('.inspector input[aria-label="Collection title"]')).toHaveValue(
+    'Movies',
+  )
+  expect(membershipWrites).toBe(0)
+})
+
 test('typing an unmatched search offers to create a new tag', async ({ page }) => {
   await mockApi(page)
   const tags = [
