@@ -17,7 +17,7 @@ const mkdir = vi.fn()
 const undo = vi.fn()
 const trashMutate = vi.fn()
 const moveMutate = vi.fn()
-const importOne = vi.fn()
+const importFiles = vi.fn()
 
 const FOLDER: FileBrowserEntry = {
   name: 'Season 1',
@@ -75,7 +75,6 @@ vi.mock('../api/hooks', () => ({
     undo: { mutate: undo, isPending: false },
     trash: { mutate: trashMutate, isPending: false },
     move: { mutate: moveMutate, isPending: false },
-    importOne: { mutateAsync: importOne, isPending: false },
   }),
 }))
 
@@ -100,6 +99,7 @@ function renderBrowser(writeMode = true) {
         hostLabels={hostLabelsFor('macos')}
         writeMode={writeMode}
         onFlash={(message, undoAction) => flashes.push({ message, undo: undoAction })}
+        onImportFiles={importFiles}
       />
     </QueryClientProvider>,
   )
@@ -392,94 +392,15 @@ const dropFiles = (...files: File[]) => {
 }
 
 test('dropping files copies them into the folder being browsed', async () => {
-  importOne.mockResolvedValue({
-    path: 'Show/clip.mkv',
-    operation: { id: 'op-imp' },
-    files_updated: 1,
-    skipped: false,
-    size_bytes: 4,
-  })
   renderBrowser()
 
   dropFiles(new File(['data'], 'clip.mkv'))
 
-  await waitFor(() => expect(importOne).toHaveBeenCalled())
-  const call = importOne.mock.calls[0]?.[0] as { file: File; destDir: string }
-  expect(call.file.name).toBe('clip.mkv')
+  await waitFor(() => expect(importFiles).toHaveBeenCalled())
+  const call = importFiles.mock.calls[0] as [File[], string]
+  expect(call[0][0]?.name).toBe('clip.mkv')
   // The destination is the directory on screen, not the library root.
-  expect(call.destDir).toBe('Show')
-
-  await waitFor(() => expect(flashes).toHaveLength(1))
-  expect(flashes[0]?.message).toBe('Copied “clip.mkv” into the library.')
-  // An import is undoable like everything else.
-  flashes[0]?.undo?.()
-  expect(undo).toHaveBeenCalledWith('op-imp', expect.anything())
-})
-
-test('files are uploaded one at a time, not six at once', async () => {
-  let resolveFirst: ((value: unknown) => void) | undefined
-  importOne
-    .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
-    .mockResolvedValue({
-      path: 'Show/b.mkv',
-      operation: { id: 'op-2' },
-      files_updated: 1,
-      skipped: false,
-      size_bytes: 1,
-    })
-  renderBrowser()
-
-  dropFiles(new File(['a'], 'a.mkv'), new File(['b'], 'b.mkv'))
-
-  // The second has not started while the first is still in flight — otherwise
-  // they split the same bandwidth and everything finishes late.
-  await waitFor(() => expect(importOne).toHaveBeenCalledTimes(1))
-  // The copy-in indicator names the current file and its place in the batch.
-  expect(await screen.findByText(/a\.mkv/)).toBeInTheDocument()
-  expect(screen.getByText('1 of 2')).toBeInTheDocument()
-
-  resolveFirst?.({
-    path: 'Show/a.mkv',
-    operation: { id: 'op-1' },
-    files_updated: 1,
-    skipped: false,
-    size_bytes: 1,
-  })
-
-  await waitFor(() => expect(importOne).toHaveBeenCalledTimes(2))
-})
-
-test('a collision during an import asks, then resumes the rest of the batch', async () => {
-  importOne
-    .mockRejectedValueOnce(new PathConflictError('exists', 'a.mkv', 'Show/a.mkv'))
-    .mockResolvedValue({
-      path: 'Show/a (2).mkv',
-      operation: { id: 'op-1' },
-      files_updated: 1,
-      skipped: false,
-      size_bytes: 1,
-    })
-  renderBrowser()
-
-  dropFiles(new File(['a'], 'a.mkv'), new File(['b'], 'b.mkv'))
-
-  const dialog = await screen.findByRole('dialog', { name: 'Name already in use' })
-  expect(dialog).toHaveTextContent('“a.mkv” already exists here')
-  // The second file has not been sent — answering resumes the batch rather
-  // than abandoning everything after the collision.
-  expect(importOne).toHaveBeenCalledTimes(1)
-
-  fireEvent.click(screen.getByRole('button', { name: 'Keep both' }))
-
-  await waitFor(() => expect(importOne).toHaveBeenCalledTimes(3))
-  const retried = importOne.mock.calls[1]?.[0] as { file: File; onConflict?: string }
-  expect(retried.file.name).toBe('a.mkv')
-  expect(retried.onConflict).toBe('suffix')
-  // …and the untouched remainder goes back to asking, rather than inheriting
-  // an answer that was about a different file.
-  const resumed = importOne.mock.calls[2]?.[0] as { file: File; onConflict?: string }
-  expect(resumed.file.name).toBe('b.mkv')
-  expect(resumed.onConflict).toBeUndefined()
+  expect(call[1]).toBe('Show')
 })
 
 test('a read-only library has no way to copy files in', () => {
@@ -487,7 +408,7 @@ test('a read-only library has no way to copy files in', () => {
 
   expect(screen.queryByRole('button', { name: 'Add Files…' })).toBeNull()
   dropFiles(new File(['x'], 'x.mkv'))
-  expect(importOne).not.toHaveBeenCalled()
+  expect(importFiles).not.toHaveBeenCalled()
 })
 
 test('a partly failed delete reports what it could not take', async () => {

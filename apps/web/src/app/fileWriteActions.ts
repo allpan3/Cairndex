@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { PathConflictError, type ConflictPolicy } from '../api/client'
+import { PathConflictError } from '../api/client'
 import { useFileOperations } from '../api/hooks'
 
 /**
@@ -28,9 +28,6 @@ import { useFileOperations } from '../api/hooks'
  */
 type PendingConflict =
   | { kind: 'rename'; path: string; newName: string; conflictingName: string }
-  // An import carries the files it had not reached yet, so answering resumes
-  // the batch rather than abandoning everything after the collision.
-  | { kind: 'import'; file: File; remaining: File[]; conflictingName: string }
   // A move is one request for the whole selection, so the answer applies to the
   // batch (the Eagle/Finder "apply to all") and re-issues it in one call.
   | { kind: 'move'; paths: string[]; destDir: string; conflictingName: string }
@@ -66,11 +63,6 @@ export interface FileWriteActions {
   dismissConflict: () => void
   /** Copy external files into the directory being browsed. */
   importFiles: (files: File[]) => void
-  /** Names still uploading, in order — the progress the UI renders. */
-  importing: string[]
-  /** The current file and its place in the batch, for the copy-in indicator.
-   * No byte progress: a `fetch` upload cannot report it (the desktop path can). */
-  importProgress: { name: string; index: number; total: number } | null
   /** The delete confirmation, or null. Render with `<DeleteDialog />`. */
   pendingDelete: PendingDelete | null
   askToDelete: (paths: string[], linkedCount: number) => void
@@ -86,24 +78,21 @@ export interface FileWriteActions {
 export function useFileWriteActions({
   currentPath,
   onFlash,
+  onImportFiles,
 }: {
   /** The directory being browsed; New Folder is created inside it. */
   currentPath: string
   /** Show a message, with an Undo action when the operation has an inverse. */
   onFlash: (message: string, undo?: () => void) => void
+  /** The app-level batch owns progress and cancellation across navigation */
+  onImportFiles?: (files: File[], destDir: string) => void
 }): FileWriteActions {
-  const { rename, mkdir, undo, trash, move, importOne } = useFileOperations()
+  const { rename, mkdir, undo, trash, move } = useFileOperations()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [conflict, setConflict] = useState<PendingConflict | null>(null)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
-  const [importing, setImporting] = useState<string[]>([])
-  const [importProgress, setImportProgress] = useState<{
-    name: string
-    index: number
-    total: number
-  } | null>(null)
 
   const undoLater = (operationId: string) => () => {
     undo.mutate(operationId, {
@@ -225,12 +214,7 @@ export function useFileWriteActions({
       })
     },
     busy:
-      rename.isPending ||
-      mkdir.isPending ||
-      undo.isPending ||
-      trash.isPending ||
-      move.isPending ||
-      importOne.isPending,
+      rename.isPending || mkdir.isPending || undo.isPending || trash.isPending || move.isPending,
     conflict,
     keepBoth: () => answerConflict('suffix'),
     replace: () => answerConflict('replace'),
@@ -281,10 +265,8 @@ export function useFileWriteActions({
       runMove(target.paths, destDir)
     },
     dismissMove: () => setPendingMove(null),
-    importing,
-    importProgress,
     importFiles: (files) => {
-      if (files.length > 0) void runImports(files)
+      if (files.length > 0) onImportFiles?.(files, currentPath)
     },
   }
 
@@ -300,53 +282,6 @@ export function useFileWriteActions({
       runMove(conflict.paths, conflict.destDir, policy)
       return
     }
-    void runImports([conflict.file, ...conflict.remaining], policy)
-  }
-
-  /**
-   * Copy files in, one request at a time.
-   *
-   * Sequential on purpose: six parallel uploads split the same bandwidth six
-   * ways, so everything finishes late instead of the first files finishing
-   * early — and a collision prompt arriving mid-flight would be about a file
-   * the owner has already stopped thinking about. `policy` applies to the file
-   * that collided; the rest carry on with the default so a later collision
-   * still asks.
-   */
-  async function runImports(files: File[], policy?: ConflictPolicy): Promise<void> {
-    const total = files.length
-    for (const [index, file] of files.entries()) {
-      setImporting((current) => [...current, file.name])
-      setImportProgress({ name: file.name, index: index + 1, total })
-      try {
-        const result = await importOne.mutateAsync({
-          file,
-          destDir: currentPath,
-          onConflict: index === 0 ? policy : undefined,
-        })
-        onFlash(
-          result.skipped
-            ? `Skipped “${file.name}” — something with that name is already here.`
-            : `Copied “${nameOf(result.path)}” into the library.`,
-          result.skipped ? undefined : undoLater(result.operation.id),
-        )
-      } catch (failure) {
-        if (failure instanceof PathConflictError) {
-          setConflict({
-            kind: 'import',
-            file,
-            remaining: files.slice(index + 1),
-            conflictingName: failure.entryName || file.name,
-          })
-          setImportProgress(null) // paused on a question until it is answered
-          return
-        }
-        onFlash(messageOf(failure))
-      } finally {
-        setImporting((current) => current.filter((name) => name !== file.name))
-      }
-    }
-    setImportProgress(null)
   }
 }
 

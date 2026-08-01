@@ -193,10 +193,14 @@ interface PlatformRuntime {
    */
   importDroppedFile?(request: {
     libraryId: string
+    batchId: string
     path: string
     destDir: string
     onConflict?: string
   }): Promise<HostImportOutcome>
+  startImportBatch?(batchId: string): Promise<void>
+  cancelImportBatch?(batchId: string): Promise<boolean>
+  finishImportBatch?(batchId: string): Promise<void>
   // True while a shell-initiated drag-out is still on the pasteboard, so the drop
   // listener ignores the app's own files dragged back onto the window (P1-4).
   isDragOutActive(): boolean
@@ -504,12 +508,31 @@ export const canImportDroppedFiles = (): boolean => runtime.importDroppedFile !=
 /** Copy one dropped file into a library through the shell. */
 export const importHostDroppedFile = (request: {
   libraryId: string
+  batchId: string
   path: string
   destDir: string
   onConflict?: string
 }): Promise<HostImportOutcome> => {
   if (!runtime.importDroppedFile) throw new Error('This host cannot copy files in.')
   return runtime.importDroppedFile(request)
+}
+
+/** Register a desktop import batch before streaming its first file */
+export const startHostImportBatch = (batchId: string): Promise<void> => {
+  if (!runtime.startImportBatch) throw new Error('This host cannot start an import batch.')
+  return runtime.startImportBatch(batchId)
+}
+
+/** Interrupt the current desktop upload instead of waiting for that file */
+export const cancelHostImportBatch = (batchId: string): Promise<boolean> => {
+  if (!runtime.cancelImportBatch) throw new Error('This host cannot stop an import batch.')
+  return runtime.cancelImportBatch(batchId)
+}
+
+/** Release the desktop stop token after a batch settles */
+export const finishHostImportBatch = (batchId: string): Promise<void> => {
+  if (!runtime.finishImportBatch) return Promise.resolve()
+  return runtime.finishImportBatch(batchId)
 }
 
 // Reports whether a shell-initiated drag-out is still in flight (always false on web)

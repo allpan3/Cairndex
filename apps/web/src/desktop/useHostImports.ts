@@ -1,61 +1,47 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { importHostDroppedFile, listenHostImportProgress } from '../platform'
+import {
+  cancelHostImportBatch,
+  finishHostImportBatch,
+  importHostDroppedFile,
+  listenHostImportProgress,
+  startHostImportBatch,
+} from '../platform'
+import { importStoppedSummary, type ImportActivity } from '../app/importActivity'
 
-/**
- * Copying files dropped from Finder into the active library (plan 4 W5).
- *
- * The desktop counterpart to the File Browser's own upload flow, and separate
- * from it for a reason the shell imposes: Tauri intercepts an OS drop before
- * the webview sees it, so these arrive as absolute paths rather than `File`
- * objects, and only the shell can read them. What the two flows *share* is
- * every rule that matters — one file at a time, a collision asks rather than
- * failing, the answer applies to the file it was about, and each import is
- * undoable on its own.
- *
- * A drop is not scoped to the File Browser, so this lives at the app level: the
- * files land in the folder currently being browsed when the Files surface is
- * open, and in the library root otherwise.
- */
-
-/** An import paused on a name that is already taken. */
+/** An import paused on a name that is already taken */
 export interface HostImportConflict {
-  path: string
-  /** The name in the way, as the server reported it. */
   conflictingName: string
-  /** The files after this one, so answering resumes rather than abandons. */
-  remaining: string[]
 }
 
-/** Live progress for the file currently uploading, within its batch. */
-export interface ImportProgress {
-  name: string
-  /** 1-based position in the current batch. */
+/** Mutable state for the desktop batch currently in progress */
+interface HostImportBatch {
+  id: string
+  paths: string[]
   index: number
-  /** How many files this copy-in is transferring in total. */
-  total: number
-  /** Bytes uploaded for the current file. */
-  sent: number
-  /** The current file's size in bytes (0 until the first tick). */
-  size: number
-  /** Smoothed upload rate in bytes/second. */
-  rate: number
+  imported: number
+  skipped: number
+  failed: number
+  stopping: boolean
+  inFlight: boolean
+  prepared: boolean
 }
 
+/** Desktop import state and controls exposed to the app shell */
 export interface HostImports {
-  /** Names currently uploading, in order. */
-  importing: string[]
-  /** The current file's transfer progress, or null when idle. */
-  progress: ImportProgress | null
+  activity: ImportActivity | null
   conflict: HostImportConflict | null
   copyIn: (paths: string[]) => void
   keepBoth: () => void
   replace: () => void
   dismiss: () => void
+  stop: () => void
 }
 
+/** Return the basename of a dropped macOS, Windows, or POSIX path */
 const nameOf = (path: string): string => path.split(/[\\/]/).pop() ?? path
 
+/** Copy Finder-dropped paths through the shell's cancellable streaming bridge */
 export function useHostImports({
   libraryId,
   destDir,
@@ -63,24 +49,29 @@ export function useHostImports({
   onImported,
 }: {
   libraryId: string | null
-  /** The folder being browsed, or '' for the library root. */
+  /** The folder being browsed, or '' for the library root */
   destDir: string
   onFlash: (message: string, undo?: () => void) => void
-  /** Refresh whatever is on screen, and undo one completed import. */
+  /** Refresh whatever is on screen, and undo one completed import */
   onImported: (operationId: string) => { undo: () => void }
 }): HostImports {
-  const [importing, setImporting] = useState<string[]>([])
-  const [progress, setProgress] = useState<ImportProgress | null>(null)
+  const [activity, setActivity] = useState<ImportActivity | null>(null)
   const [conflict, setConflict] = useState<HostImportConflict | null>(null)
-  // The file currently uploading, so a progress tick (which only knows a path)
-  // can be matched to it, and the previous byte/time sample for rate.
-  const current = useRef<{ path: string; name: string; index: number; total: number } | null>(null)
+  const batchRef = useRef<HostImportBatch | null>(null)
+  // The file currently uploading, so a global progress tick can be matched to
+  // it, plus the previous byte/time sample for the smoothed rate
+  const current = useRef<{
+    batchId: string
+    path: string
+    name: string
+    index: number
+    total: number
+  } | null>(null)
   const sample = useRef<{ sent: number; at: number; rate: number }>({ sent: 0, at: 0, rate: 0 })
+  const mountedRef = useRef(true)
 
-  // Bytes-sent ticks arrive on a global event; translate each into progress for
-  // the file we are on. Set up once — the refs carry the moving target.
   useEffect(() => {
-    let stop = () => {}
+    let unsubscribe = () => {}
     let active = true
     void listenHostImportProgress((tick) => {
       const now = current.current
@@ -89,97 +80,225 @@ export function useHostImports({
       const previous = sample.current
       const seconds = (at - previous.at) / 1000
       const raw = seconds > 0 ? (tick.sent - previous.sent) / seconds : previous.rate
-      // Light smoothing so the rate reads steadily rather than jittering.
       const rate = previous.rate === 0 ? raw : previous.rate * 0.6 + raw * 0.4
       sample.current = { sent: tick.sent, at, rate }
-      setProgress({
+      setActivity((shown) => ({
+        id: now.batchId,
         name: now.name,
         index: now.index,
         total: now.total,
+        status: shown?.status === 'stopping' ? 'stopping' : 'running',
         sent: tick.sent,
         size: tick.total,
         rate: Math.max(0, rate),
-      })
-    }).then((unsubscribe) => (active ? (stop = unsubscribe) : unsubscribe()))
+      }))
+    }).then((stop) => (active ? (unsubscribe = stop) : stop()))
     return () => {
       active = false
-      stop()
+      unsubscribe()
     }
   }, [])
 
-  async function run(paths: string[], onConflict?: 'suffix' | 'replace'): Promise<void> {
-    if (!libraryId) return
-    const total = paths.length
-    for (const [index, path] of paths.entries()) {
-      const name = nameOf(path)
-      setImporting((currentNames) => [...currentNames, name])
-      current.current = { path, name, index: index + 1, total }
-      sample.current = { sent: 0, at: performance.now(), rate: 0 }
-      setProgress({ name, index: index + 1, total, sent: 0, size: 0, rate: 0 })
-      try {
-        const outcome = await importHostDroppedFile({
-          libraryId,
-          path,
-          destDir,
-          // The answer belongs to the file it was about; the rest go back to
-          // asking, so a second collision is a second question.
-          onConflict: index === 0 ? onConflict : undefined,
-        })
-        const { undo } = onImported(outcome.operationId)
-        onFlash(
-          outcome.skipped
-            ? `Skipped “${name}” — something with that name is already here.`
-            : `Copied “${nameOf(outcome.path)}” into the library.`,
-          outcome.skipped ? undefined : undo,
-        )
-      } catch (failure) {
-        const conflicting = conflictName(failure)
-        if (conflicting !== null) {
-          setConflict({
-            path,
-            conflictingName: conflicting || name,
-            remaining: paths.slice(index + 1),
-          })
-          // Paused on a question: stop showing progress until the answer resumes.
-          current.current = null
-          setProgress(null)
-          return
-        }
-        onFlash(hostImportMessage(failure, name))
-      } finally {
-        setImporting((names) => names.filter((entry) => entry !== name))
-      }
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      const batch = batchRef.current
+      if (!batch) return
+      batch.stopping = true
+      if (batch.prepared) void cancelHostImportBatch(batch.id).catch(() => undefined)
     }
-    current.current = null
-    setProgress(null)
+  }, [])
+
+  const copyIn = (paths: string[]) => {
+    if (!libraryId || paths.length === 0) return
+    if (batchRef.current) {
+      onFlash('An import is already in progress.')
+      return
+    }
+    const batch: HostImportBatch = {
+      id: newBatchId(),
+      paths,
+      index: 0,
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      stopping: false,
+      inFlight: false,
+      prepared: false,
+    }
+    batchRef.current = batch
+    setActivity({
+      id: batch.id,
+      name: nameOf(paths[0] as string),
+      index: 1,
+      total: paths.length,
+      status: 'waiting',
+    })
+    void start(batch)
   }
 
   const answer = (policy: 'suffix' | 'replace') => {
-    if (!conflict) return
-    const { path, remaining } = conflict
+    const batch = batchRef.current
+    if (!batch || !conflict || batch.stopping || batch.inFlight) return
     setConflict(null)
-    void run([path, ...remaining], policy)
+    void run(batch, policy)
+  }
+
+  const stop = () => {
+    const batch = batchRef.current
+    if (!batch || batch.stopping) return
+    batch.stopping = true
+    setConflict(null)
+    setActivity((shown) => (shown ? { ...shown, status: 'stopping' } : shown))
+    if (batch.prepared && batch.inFlight) {
+      void cancelHostImportBatch(batch.id).catch((failure) => {
+        if (mountedRef.current) onFlash(hostImportMessage(failure, 'this import'))
+      })
+    } else if (batch.prepared) void settle(batch, true, 0)
   }
 
   return {
-    importing,
-    progress,
+    activity,
     conflict,
-    copyIn: (paths) => {
-      if (paths.length > 0) void run(paths)
-    },
+    copyIn,
     keepBoth: () => answer('suffix'),
     replace: () => answer('replace'),
-    dismiss: () => setConflict(null),
+    dismiss: stop,
+    stop,
+  }
+
+  /** Open the native cancellation scope before streaming the first file */
+  async function start(batch: HostImportBatch): Promise<void> {
+    try {
+      await startHostImportBatch(batch.id)
+      batch.prepared = true
+      if (batch.stopping) {
+        await cancelHostImportBatch(batch.id)
+        await settle(batch, true, 0)
+        return
+      }
+      await run(batch)
+    } catch (failure) {
+      if (batch.prepared) await finishHostImportBatch(batch.id).catch(() => undefined)
+      batchRef.current = null
+      if (mountedRef.current) {
+        setActivity(null)
+        onFlash(hostImportMessage(failure, nameOf(batch.paths[0] as string)))
+      }
+    }
+  }
+
+  /** Continue sequential uploads until completion, stop, or a collision */
+  async function run(batch: HostImportBatch, oneShotPolicy?: 'suffix' | 'replace'): Promise<void> {
+    if (!libraryId) return
+    while (batch.index < batch.paths.length) {
+      if (batch.stopping) {
+        await settle(batch, true, 0)
+        return
+      }
+      const path = batch.paths[batch.index] as string
+      const name = nameOf(path)
+      current.current = {
+        batchId: batch.id,
+        path,
+        name,
+        index: batch.index + 1,
+        total: batch.paths.length,
+      }
+      sample.current = { sent: 0, at: performance.now(), rate: 0 }
+      batch.inFlight = true
+      setActivity({
+        id: batch.id,
+        name,
+        index: batch.index + 1,
+        total: batch.paths.length,
+        status: 'running',
+        sent: 0,
+        size: 0,
+        rate: 0,
+      })
+      try {
+        const outcome = await importHostDroppedFile({
+          libraryId,
+          batchId: batch.id,
+          path,
+          destDir,
+          onConflict: oneShotPolicy,
+        })
+        oneShotPolicy = undefined
+        if (outcome.skipped) {
+          batch.skipped += 1
+          onFlash(`Skipped “${name}” — something with that name is already here.`)
+        } else {
+          batch.imported += 1
+          const { undo } = onImported(outcome.operationId)
+          onFlash(`Copied “${nameOf(outcome.path)}” into the library.`, undo)
+        }
+        batch.index += 1
+        batch.inFlight = false
+        if (batch.stopping) {
+          await settle(batch, true, 0)
+          return
+        }
+      } catch (failure) {
+        if (batch.stopping || isHostImportCancelled(failure)) {
+          await settle(batch, true, 1)
+          return
+        }
+        const conflicting = conflictName(failure)
+        if (conflicting !== null) {
+          batch.inFlight = false
+          current.current = null
+          setConflict({ conflictingName: conflicting || name })
+          setActivity({
+            id: batch.id,
+            name,
+            index: batch.index + 1,
+            total: batch.paths.length,
+            status: 'waiting',
+          })
+          return
+        }
+        batch.failed += 1
+        batch.index += 1
+        batch.inFlight = false
+        onFlash(hostImportMessage(failure, name))
+      } finally {
+        current.current = null
+      }
+    }
+    await settle(batch, false, 0)
+  }
+
+  /** Close the native cancellation scope and publish a partial-batch summary */
+  async function settle(
+    batch: HostImportBatch,
+    stopped: boolean,
+    interrupted: number,
+  ): Promise<void> {
+    if (batchRef.current !== batch) return
+    batchRef.current = null
+    current.current = null
+    setConflict(null)
+    await finishHostImportBatch(batch.id).catch(() => undefined)
+    if (!mountedRef.current) return
+    setActivity(null)
+    if (stopped) {
+      onFlash(
+        importStoppedSummary({
+          imported: batch.imported,
+          skipped: batch.skipped,
+          failed: batch.failed,
+          interrupted,
+          notAttempted: Math.max(0, batch.paths.length - batch.index - interrupted),
+        }),
+      )
+    }
   }
 }
 
-/**
- * The conflicting name if this failure is a path collision, else null.
- *
- * Tauri rejects a command with the serialized error value, not an `Error`, so
- * the shape is checked rather than the type.
- */
+/** The conflicting name if this serialized Tauri error is a path collision */
 export function conflictName(failure: unknown): string | null {
   if (!failure || typeof failure !== 'object') return null
   const error = failure as { code?: unknown; conflictingName?: unknown }
@@ -187,7 +306,16 @@ export function conflictName(failure: unknown): string | null {
   return typeof error.conflictingName === 'string' ? error.conflictingName : ''
 }
 
-/** A readable reason for a failed host import. */
+/** Whether the shell stopped the request body on purpose */
+export function isHostImportCancelled(failure: unknown): boolean {
+  return Boolean(
+    failure &&
+    typeof failure === 'object' &&
+    (failure as { code?: unknown }).code === 'import_cancelled',
+  )
+}
+
+/** A readable reason for a failed host import */
 export function hostImportMessage(failure: unknown, name: string): string {
   if (failure && typeof failure === 'object') {
     const error = failure as { message?: unknown }
@@ -195,4 +323,9 @@ export function hostImportMessage(failure: unknown, name: string): string {
   }
   if (failure instanceof Error) return failure.message
   return `Could not copy “${name}” into the library.`
+}
+
+/** Create one inert identifier for the shell's cancellation-token map */
+function newBatchId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `import-${Date.now()}`
 }

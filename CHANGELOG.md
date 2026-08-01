@@ -10,6 +10,17 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Added
 
+- **A multi-file import can now be stopped from the sidebar.** Browser uploads
+  abort their in-flight request, while the desktop shell carries the same stop
+  across IPC into the Rust reader streaming the current file; both stop the
+  large file already underway instead of only suppressing the next one. Import
+  rows share the background-job area and its waiting/stopping language without
+  hiding simultaneous jobs, show the current filename and batch count, and
+  finish with an honest partial summary. Files whose requests already completed
+  stay imported and individually undoable; skipped and never-attempted files are
+  counted separately. A server-side disconnect regression test fixes the safety
+  premise in place: Starlette's mid-body disconnect removes the staging `.part`
+  and fails that file's journal entry.
 - **Files can be dropped onto the Bundle Inspector to add them to that bundle.**
   The whole sidebar is now the same write-gated import-and-link target as the
   bundle card, with the same hover treatment and the same destination picker
