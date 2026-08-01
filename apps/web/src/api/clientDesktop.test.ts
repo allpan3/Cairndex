@@ -27,6 +27,18 @@ test('resolves API and media paths only when a server base is configured', () =>
   )
 })
 
+// Vite replaces this module without rerunning desktop connection activation
+test('keeps the active desktop API base across a module reload', async () => {
+  setApiBaseUrl('http://127.0.0.1:54321')
+
+  vi.resetModules()
+  const reloaded = await import('./client')
+
+  expect(reloaded.resolveApiUrl('/api/v1/libraries')).toBe(
+    'http://127.0.0.1:54321/api/v1/libraries',
+  )
+})
+
 // Server-provided playback URLs are made usable by a custom-protocol webview
 test('resolves nested playback URLs from the configured server', async () => {
   setApiBaseUrl('http://127.0.0.1:8000')

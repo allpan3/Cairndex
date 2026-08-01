@@ -91,6 +91,71 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: desktop Add Library refresh recovery (2026-07-31)
+
+Branch `codex/fix-desktop-library-refresh` off current `main` at `b5c4572`.
+Frontend-only: no host command, server contract, migration, or native Rust code
+changed.
+
+**The native mutation and the following query were one apparent operation.**
+`confirmPickedLibrary(...)` could successfully register or create the library,
+then `LibraryManager` awaited `libraries.refetch()` and unconditionally cleared
+the confirmation. TanStack Query does not throw for a failed `refetch()` by
+default; it resolves a query result with `isError`. The component never inspected
+that result, so a committed registration disappeared behind the old or empty
+list and the same Add control came back. The list renderer independently treated
+missing query data as an empty array, making a failed initial load say “No
+libraries yet.”
+
+The states are separate now. Once native confirmation returns, registration is
+recorded as committed before the list read starts. Only a successful refresh
+clears that confirmation. A failed refresh says the library was added, retains
+its display name, removes Add and Cancel, and offers **Retry refresh**;
+retry never calls the native mutation. If the dialog is reopened while the list
+query is still failed, the stale Add/Browse path remains disabled until the
+separate list retry succeeds. Initial list failure has an explicit load error
+and **Retry**, while “No libraries yet” is reserved for a successful empty
+response.
+
+**The bundled transport reproduction found one narrower HMR defect too.** With
+no process listening on port 8000, a fresh `just bundled` activation loaded the
+existing library through the local sidecar. Replacing `api/client.ts` through
+Vite then reset its module-local API base. The next list request was exactly
+`http://127.0.0.1:5173/api/v1/libraries`; Vite forwarded `/api` to its default
+`http://localhost:8000` and logged `ECONNREFUSED`. This proves ordinary local
+activation was already correct and that the base was lost specifically across
+module replacement. The base now lives on the page runtime, which survives HMR
+but resets with the page/process; repeating the same replacement kept the
+library on the sidecar and produced no proxy request or port-8000 error.
+
+Disproved older hypotheses: the remaining Add failure is not the already-fixed
+cold-start ownership ordering race; ordinary local and remote connection
+activation do set the correct API base; and the native registration itself is
+not the failure represented by the cleared dialog. In the reproduced HMR case,
+the first initiating failure was loss of the module-local API base, followed by
+the list GET reaching Vite’s fallback. Independently, any list-read failure was
+misreported because the `refetch()` result was ignored.
+
+Regression coverage added: successful native confirmation plus list refresh
+shows the library and restores the ordinary Add row; failed refresh calls native
+registration once, preserves the committed state, reports the split outcome,
+and exposes only Retry refresh; later retry shows the library without a second
+registration; initial list failure is distinct from an empty list and retryable;
+and a module reload preserves the active desktop API base. The existing
+cold-start ownership and local/remote activation suites remain in the focused
+gate.
+
+Verification: the focused LibraryManager, App/App-open-folder ownership,
+QueryScope, API-client, and connection suites pass (**8 files, 89 tests**).
+Frontend ESLint, Prettier check, TypeScript, all **77 Vitest files / 549 tests**,
+and the production Vite build pass. The two relevant Playwright files pass all
+**42 browser tests**, including the cold-start assertion that no browse request
+starts before ownership resolves and content appears afterward without
+navigation. A live bundled run rebuilt the sidecar, proved port 8000 was closed,
+captured the fallback URL before the fix, and repeated the same HMR lifecycle
+without a proxy request afterward. Desktop Rust gates were not run because no
+host-side code changed.
+
 ## Merged: job control (2026-07-30)
 
 Branch `fix/job-control` off `main` at `d9b53a3`, **merged as PR #5**
