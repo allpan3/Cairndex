@@ -6,6 +6,7 @@ reaches the client as something it can act on, and that the history stays
 readable after write mode is turned back off.
 """
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -14,10 +15,17 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.requests import ClientDisconnect, Request
 
-from cairndex.domain.enums import FileAvailability, FileRole, GroupingState, MediaKind
-from cairndex.file_ops import gate
-from cairndex.persistence.models import AssetBundle, AssetFile
+from cairndex.domain.enums import (
+    FileAvailability,
+    FileOpStatus,
+    FileRole,
+    GroupingState,
+    MediaKind,
+)
+from cairndex.file_ops import gate, imports
+from cairndex.persistence.models import AssetBundle, AssetFile, FileOperation
 
 
 @pytest.fixture
@@ -546,6 +554,42 @@ def test_an_empty_upload_is_refused_and_leaves_nothing(
     history = client.get(f"/api/v1/libraries/{writable}/file-ops").json()["operations"]
     assert history[0]["op"] == "import"
     assert history[0]["status"] == "failed"
+
+
+def test_client_disconnect_discards_the_partial_upload_and_fails_its_journal(
+    session: Session, library_root: Path
+) -> None:
+    """Starlette's mid-body disconnect must reach the import failure path."""
+    messages = iter(
+        [
+            {"type": "http.request", "body": b"partial bytes", "more_body": True},
+            {"type": "http.disconnect"},
+        ]
+    )
+
+    # Yield one partial request frame and then the transport disconnect
+    async def receive() -> dict[str, object]:
+        return next(messages)
+
+    # Drive the same Starlette body iterator that the route passes to imports
+    async def interrupted_import() -> None:
+        request = Request({"type": "http", "method": "POST", "headers": []}, receive)
+        await imports.import_stream(
+            session,
+            library_root,
+            dest_dir="",
+            filename="interrupted.mkv",
+            body=request.stream(),
+        )
+
+    with pytest.raises(ClientDisconnect):
+        asyncio.run(interrupted_import())
+
+    assert not (library_root / "interrupted.mkv").exists()
+    assert list(imports.staging_dir(library_root).iterdir()) == []
+    operation = session.scalars(select(FileOperation)).one()
+    assert operation.status is FileOpStatus.FAILED
+    assert operation.error == "ClientDisconnect"
 
 
 def _move(client: TestClient, library_id: str, **payload: object) -> Response:

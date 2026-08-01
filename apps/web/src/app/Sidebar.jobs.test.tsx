@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 
 import type { JobRead } from '../api/client'
+import type { ImportActivity } from './importActivity'
 import { Sidebar } from './Sidebar'
 
 function job(overrides: Partial<JobRead> = {}): JobRead {
@@ -25,7 +26,23 @@ function job(overrides: Partial<JobRead> = {}): JobRead {
   } as JobRead
 }
 
-function renderSidebar(activeJobs: JobRead[], onCancelJob?: (jobId: string) => void) {
+function importActivity(overrides: Partial<ImportActivity> = {}): ImportActivity {
+  return {
+    id: 'import1',
+    name: 'clip.mkv',
+    index: 2,
+    total: 5,
+    status: 'running',
+    ...overrides,
+  }
+}
+
+function renderSidebar(
+  activeJobs: JobRead[],
+  onCancelJob?: (jobId: string) => void,
+  activeImports: ImportActivity[] = [],
+  onCancelImport?: (batchId: string) => void,
+) {
   render(
     <Sidebar
       mode="collection"
@@ -55,6 +72,8 @@ function renderSidebar(activeJobs: JobRead[], onCancelJob?: (jobId: string) => v
       onDeleteSmartCollection={() => undefined}
       activeJobs={activeJobs}
       onCancelJob={onCancelJob}
+      activeImports={activeImports}
+      onCancelImport={onCancelImport}
     />,
   )
 }
@@ -127,4 +146,39 @@ test('a job already asked to stop says so and cannot be asked twice', () => {
 test('no stop control appears when the caller cannot cancel', () => {
   renderSidebar([job()])
   expect(screen.queryByRole('button', { name: /^Stop/ })).toBeNull()
+})
+
+test('an import row names the current file, count, and stop action', () => {
+  const onCancel = vi.fn()
+  renderSidebar([], undefined, [importActivity()], onCancel)
+
+  expect(screen.getByText('Importing “clip.mkv”')).toBeInTheDocument()
+  expect(screen.getByText('2/5')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Stop import' }))
+  expect(onCancel).toHaveBeenCalledWith('import1')
+})
+
+test('an import waiting on a collision says it is waiting', () => {
+  renderSidebar([], undefined, [importActivity({ status: 'waiting' })], () => undefined)
+
+  expect(screen.getByText('Import — waiting')).toBeInTheDocument()
+  expect(screen.getByText('clip.mkv')).toBeInTheDocument()
+  expect(screen.getByRole('progressbar')).toHaveClass('job-progress__track--waiting')
+})
+
+test('an import already asked to stop keeps a disabled control', () => {
+  renderSidebar([], undefined, [importActivity({ status: 'stopping' })], () => undefined)
+
+  expect(screen.getByText('Stopping import…')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Stop import' })).toBeDisabled()
+  expect(screen.getByRole('progressbar')).not.toHaveClass('job-progress__track--indeterminate')
+  expect(screen.getByRole('progressbar').firstElementChild).toHaveStyle({ width: '0%' })
+})
+
+test('an import and a background job have independent rows', () => {
+  renderSidebar([job()], undefined, [importActivity()])
+
+  expect(screen.getByText('Importing “clip.mkv”')).toBeInTheDocument()
+  expect(screen.getByText('Discovering files')).toBeInTheDocument()
+  expect(screen.getAllByRole('progressbar')).toHaveLength(2)
 })

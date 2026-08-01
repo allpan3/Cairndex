@@ -342,9 +342,13 @@ export async function createDesktopRuntime(): Promise<PlatformRuntime> {
     },
     reverseMapPaths: (libraryId, paths) =>
       invoke<ReverseMapResult>('reverse_map_paths', { libraryId, paths }),
-    importDroppedFile: ({ libraryId, path, destDir, onConflict }) =>
+    startImportBatch: (batchId) => invoke('start_import_batch', { batchId }),
+    cancelImportBatch: (batchId) => invoke<boolean>('cancel_import_batch', { batchId }),
+    finishImportBatch: (batchId) => invoke('finish_import_batch', { batchId }),
+    importDroppedFile: ({ libraryId, batchId, path, destDir, onConflict }) =>
       invoke<HostImportOutcome>('import_dropped_file', {
         libraryId,
+        batchId,
         path,
         destDir,
         onConflict: onConflict ?? null,
