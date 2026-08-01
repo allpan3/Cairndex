@@ -332,21 +332,20 @@ def main() -> None:
     if pkg.detect(root) is None:
         pkg.create_package(root, args.name)
 
-    from cairndex.persistence.engine import create_app_engine
+    from cairndex.persistence.engine import library_engine_scope
 
-    engine = create_app_engine(database_url=f"sqlite:///{pkg.db_path(root).as_posix()}")
-    try:
-        with Session(engine) as session:
-            summary = generate_synthetic_library(
-                session,
-                n_bundles=args.bundles,
-                files_per_bundle=parse_range(args.files_per_bundle),
-                n_collections=args.collections,
-                n_tags=args.tags,
-                seed=args.seed,
-            )
-    finally:
-        engine.dispose()
+    with (
+        library_engine_scope(f"sqlite:///{pkg.db_path(root).as_posix()}") as engine,
+        Session(engine) as session,
+    ):
+        summary = generate_synthetic_library(
+            session,
+            n_bundles=args.bundles,
+            files_per_bundle=parse_range(args.files_per_bundle),
+            n_collections=args.collections,
+            n_tags=args.tags,
+            seed=args.seed,
+        )
 
     print(
         f"Generated {summary.bundles} bundles / {summary.files} files, "

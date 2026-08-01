@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from cairndex.persistence.engine import create_app_engine
+from cairndex.persistence.engine import library_engine_scope
 from cairndex.registry import library_package as pkg
 from cairndex.registry import services as registry_service
 from cairndex.registry.engine import registry_session_scope
@@ -41,14 +41,11 @@ def main() -> None:
     if pkg.detect(root) is None:
         raise SystemExit(f"no Cairndex library at {root}")
 
-    engine = create_app_engine(database_url=f"sqlite:///{pkg.db_path(root).as_posix()}")
-    try:
+    with library_engine_scope(f"sqlite:///{pkg.db_path(root).as_posix()}") as engine:
         ensure_search_schema(engine)
         with Session(engine) as session:
             count = rebuild(session)
             session.commit()
-    finally:
-        engine.dispose()
     print(f"Rebuilt search index for {root}: {count} bundles indexed.")
 
 

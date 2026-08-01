@@ -127,8 +127,25 @@ relocating derived cache under `.cairndex/cache`; optimistic-concurrency
 versions for server-mediated multi-client edits. These are sequenced across PRs
 so no single change is unreviewable.
 
+## Amendment (2026-07-30): the journal mode is part of portability
+
+Decision 1 says a library is a directory you can move, copy, sync or mount, and
+decision 6 says the server opens `library.db` on the user's behalf. Neither was
+enough on its own: the server was setting `PRAGMA journal_mode=WAL` on every
+connection, and WAL is recorded in the *file header*, not on the connection — so
+serving a library from a machine with local access left the file in a state that
+**no** machine reaching the same folder over SMB or NFS can open at all. A
+library that only opens from one machine is not portable, whatever the folder
+contains.
+
+ADR-0021 restores the invariant: a library uses WAL while a server holds it open
+and a rollback journal at rest. Read it alongside decision 1 — "everything a
+user would miss lives in `.cairndex/`" now carries the corollary that the
+package must stay *openable* wherever it lands.
+
 ## References
 
 - ADR-0001 (stack and database choice), ADR-0002 (core schema/identity),
-  ADR-0007 (File Browser host integration).
+  ADR-0007 (File Browser host integration), ADR-0021 (journal-mode lifecycle —
+  see the amendment above).
 - AGENTS.md §2 (product principles), §3 (fixed decisions), §12 (safety rules).

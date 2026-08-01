@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from cairndex.filters.ast import FilterExpression, PredicateNode
 from cairndex.media.thumbnails import effective_cover_file
-from cairndex.persistence.engine import create_app_engine
+from cairndex.persistence.engine import library_engine_scope
 from cairndex.persistence.models import AssetBundle, Collection, Tag
 from cairndex.registry import library_package as pkg
 from cairndex.services import browse as browse_service
@@ -199,15 +199,14 @@ def explain_paths(
 def run(library_root: Path, *, iterations: int, explain: bool) -> dict[str, Any]:
     if pkg.detect(library_root) is None:
         raise SystemExit(f"no Cairndex library at {library_root}")
-    engine = create_app_engine(database_url=f"sqlite:///{pkg.db_path(library_root).as_posix()}")
-    try:
-        with Session(engine) as session:
-            total = session.scalar(select(func.count()).select_from(AssetBundle)) or 0
-            benches = build_benchmarks(session, total)
-            results = [_time(name, fn, iterations) for name, fn in benches]
-            plans = explain_paths(engine, benches) if explain else {}
-    finally:
-        engine.dispose()
+    with (
+        library_engine_scope(f"sqlite:///{pkg.db_path(library_root).as_posix()}") as engine,
+        Session(engine) as session,
+    ):
+        total = session.scalar(select(func.count()).select_from(AssetBundle)) or 0
+        benches = build_benchmarks(session, total)
+        results = [_time(name, fn, iterations) for name, fn in benches]
+        plans = explain_paths(engine, benches) if explain else {}
     return {
         "library_root": str(library_root),
         "total_bundles": total,
