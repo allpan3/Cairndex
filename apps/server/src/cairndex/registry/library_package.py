@@ -16,7 +16,7 @@ from cairndex.core.ids import new_id
 from cairndex.core.time import utcnow
 from cairndex.persistence import models  # noqa: F401  (populate content metadata)
 from cairndex.persistence.base import Base
-from cairndex.persistence.engine import create_app_engine
+from cairndex.persistence.engine import library_engine_scope
 
 MARKER_DIR = ".cairndex"
 MANIFEST_NAME = "manifest.json"
@@ -131,12 +131,9 @@ def _init_library_db(target: Path) -> None:
     """Create a library.db with the current content schema + FTS search index."""
     from cairndex.search import ensure_search_schema
 
-    engine = create_app_engine(database_url=f"sqlite:///{target.as_posix()}")
-    try:
+    with library_engine_scope(f"sqlite:///{target.as_posix()}") as engine:
         Base.metadata.create_all(engine)
         ensure_search_schema(engine)
-    finally:
-        engine.dispose()
 
 
 def create_package(root: Path, display_name: str) -> LibraryManifest:
