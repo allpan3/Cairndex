@@ -25,6 +25,15 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Desktop Add Library no longer turns a successful registration into an
+  apparent failure when the library list cannot refresh.** The confirmation now
+  remains visible with an explicit “library was added” result, the committed Add
+  action is replaced by Retry refresh, and a successful retry shows the new
+  library without registering it again. A failed initial library-list request
+  is reported as a load error with its own retry instead of “No libraries yet.”
+  The active desktop API base also survives Vite hot-module replacement, so a
+  development refresh continues to target the local sidecar or selected remote
+  server instead of falling through Vite’s port-8000 proxy.
 - **The Trash listing no longer waits on a recursive SMB filesystem walk.**
   Loading Trash previously statted every displayed entry and then walked and
   statted the entire trash tree again before returning any rows. File sizes are

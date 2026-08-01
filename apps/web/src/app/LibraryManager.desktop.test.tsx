@@ -36,6 +36,14 @@ const MOVIES: LibraryRead = {
   last_opened_at: null,
 }
 
+const TRIPS: LibraryRead = {
+  ...MOVIES,
+  id: 'lib-trips',
+  library_uuid: '01J11111111111111111111111',
+  name: 'Trips',
+  root_path: '/synthetic/trips',
+}
+
 const NEEDS_NAME: OpenedLibrary = {
   needsConfirmation: true,
   token: 'pick-token-1',
@@ -47,16 +55,31 @@ const NEEDS_NAME: OpenedLibrary = {
   displayName: null,
 }
 
+let listedLibraries: LibraryRead[]
+let listFailures: number
+
 beforeEach(() => {
+  listedLibraries = [MOVIES]
+  listFailures = 0
   vi.clearAllMocks()
   vi.stubGlobal(
     'fetch',
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input)
-      const reply = (body: unknown) =>
-        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response)
+      const reply = (body: unknown, status = 200) =>
+        Promise.resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          json: () => Promise.resolve(body),
+        } as Response)
       if (url.startsWith('/api/v1/libraries/path-suggestions')) return reply({ suggestions: [] })
-      if (url === '/api/v1/libraries') return reply([MOVIES])
+      if (url === '/api/v1/libraries') {
+        if (listFailures > 0) {
+          listFailures -= 1
+          return reply({ message: 'Synthetic library-list failure' }, 502)
+        }
+        return reply(listedLibraries)
+      }
       throw new Error(`unexpected request: ${url}`)
     }),
   )
@@ -80,9 +103,12 @@ function renderManager(handlers: { onClose?: () => void; onSelect?: (id: string)
   )
 }
 
-test('a picked plain folder is named through the same confirmation, prefilled', async () => {
+test('native confirmation refreshes the list, shows the library, and restores Add', async () => {
   openHostFolder.mockResolvedValue({ opened: NEEDS_NAME })
-  confirmHostPick.mockResolvedValue({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  confirmHostPick.mockImplementation(() => {
+    listedLibraries = [MOVIES, TRIPS]
+    return Promise.resolve({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  })
   const onClose = vi.fn()
   renderManager({ onClose })
 
@@ -99,7 +125,9 @@ test('a picked plain folder is named through the same confirmation, prefilled', 
   await waitFor(() => expect(confirmHostPick).toHaveBeenCalledWith('pick-token-1', 'Trips'))
   // On the local connection an add is not a switch: the library joins the list
   // and the dialog stays open on the add form, rather than closing.
+  expect(await screen.findByText('Trips')).toBeInTheDocument()
   await screen.findByLabelText('Library path')
+  expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
   expect(onClose).not.toHaveBeenCalled()
 })
 
@@ -119,7 +147,10 @@ test('picking an existing library folder stages it, and Add registers without sw
       displayName: 'Trips',
     } satisfies OpenedLibrary,
   })
-  confirmHostPick.mockResolvedValue({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  confirmHostPick.mockImplementation(() => {
+    listedLibraries = [MOVIES, TRIPS]
+    return Promise.resolve({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  })
   const onClose = vi.fn()
   const onSelect = vi.fn()
   renderManager({ onClose, onSelect })
@@ -139,6 +170,83 @@ test('picking an existing library folder stages it, and Add registers without sw
   await screen.findByLabelText('Library path')
   expect(onSelect).not.toHaveBeenCalled()
   expect(onClose).not.toHaveBeenCalled()
+})
+
+test('a failed post-registration refresh cannot repeat the native add', async () => {
+  openHostFolder.mockResolvedValue({
+    opened: {
+      ...NEEDS_NAME,
+      token: 'pick-token-lib',
+      folderName: 'Trips',
+      isLibrary: true,
+      libraryUuid: TRIPS.library_uuid,
+    },
+  })
+  confirmHostPick.mockImplementation(() => {
+    listedLibraries = [MOVIES, TRIPS]
+    listFailures = 1
+    return Promise.resolve({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  })
+  renderManager()
+  await screen.findByText('Movies')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+  await screen.findByLabelText('Library name')
+  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+
+  expect(
+    await screen.findByText('The library was added, but the library list could not be refreshed.'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('“Trips” was added. Refresh the list to finish.')).toBeInTheDocument()
+  expect(confirmHostPick).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole('button', { name: 'Add library' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Retry refresh' })).toBeEnabled()
+  expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
+})
+
+test('Retry refresh shows the added library without registering it again', async () => {
+  openHostFolder.mockResolvedValue({
+    opened: {
+      ...NEEDS_NAME,
+      token: 'pick-token-lib',
+      folderName: 'Trips',
+      isLibrary: true,
+      libraryUuid: TRIPS.library_uuid,
+    },
+  })
+  confirmHostPick.mockImplementation(() => {
+    listedLibraries = [MOVIES, TRIPS]
+    listFailures = 1
+    return Promise.resolve({ opened: { ...NEEDS_NAME, needsConfirmation: false } })
+  })
+  renderManager()
+  await screen.findByText('Movies')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Browse…' }))
+  await screen.findByLabelText('Library name')
+  fireEvent.click(screen.getByRole('button', { name: 'Add library' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry refresh' }))
+
+  expect(await screen.findByText('Trips')).toBeInTheDocument()
+  expect(screen.getByLabelText('Library path')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
+  expect(confirmHostPick).toHaveBeenCalledTimes(1)
+})
+
+test('an initial library-list failure is explicit and retryable', async () => {
+  listFailures = 1
+  renderManager()
+
+  expect(await screen.findByText('The library list could not be loaded.')).toBeInTheDocument()
+  expect(screen.queryByText(/No libraries yet/)).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Library path'), { target: { value: '/synthetic/new' } })
+  expect(screen.getByRole('button', { name: 'Add library' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Browse…' })).toBeDisabled()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+  expect(await screen.findByText('Movies')).toBeInTheDocument()
+  expect(screen.queryByText('The library list could not be loaded.')).not.toBeInTheDocument()
 })
 
 test('cancelling the name step creates nothing', async () => {

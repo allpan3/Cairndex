@@ -54,12 +54,14 @@ export function LibraryManager({
   // that asked for it — one row up, and deliberately unmoved.
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [addedLibrary, setAddedLibrary] = useState<AddedLibrary | null>(null)
   const pathFieldRef = useRef<HTMLInputElement>(null)
   // Covers the actions that are not plain mutations — the native picker and the
   // confirm step — which have no `isPending` of their own.
   const [hostBusy, setHostBusy] = useState(false)
 
   const rows = libraries.data ?? []
+  const listUnavailable = libraries.isError && !addedLibrary
   const busy =
     hostBusy || create.isPending || register.isPending || probe.isPending || remove.isPending
   // A staged pick of an existing library: confirming *registers* it (its own
@@ -76,6 +78,7 @@ export function LibraryManager({
   // Leave it, putting the caret back where the flow started.
   const cancelConfirm = () => {
     setConfirming(null)
+    setAddedLibrary(null)
     setError(null)
     // The path field is remounted by this state change, so focus it afterwards
     // rather than relying on an `autoFocus` that also fires when the dialog
@@ -83,10 +86,29 @@ export function LibraryManager({
     requestAnimationFrame(() => pathFieldRef.current?.focus())
   }
 
+  // Refresh a committed native add without ever offering its mutation again.
+  const refreshAddedLibrary = async (added: AddedLibrary) => {
+    setAddedLibrary(added)
+    setError(null)
+    setHostBusy(true)
+    try {
+      const refreshed = await libraries.refetch()
+      if (!refreshed.isSuccess) {
+        setError('The library was added, but the library list could not be refreshed.')
+        return
+      }
+      cancelConfirm()
+    } catch {
+      setError('The library was added, but the library list could not be refreshed.')
+    } finally {
+      setHostBusy(false)
+    }
+  }
+
   // Resolve one typed path into the single action it implies.
   const submitPath = async () => {
     const trimmed = path.trim()
-    if (!trimmed || busy) return
+    if (!trimmed || busy || listUnavailable) return
     setError(null)
     try {
       const found = await probe.mutateAsync(trimmed)
@@ -125,7 +147,7 @@ export function LibraryManager({
   // (switch to the local server), because the folder cannot otherwise join the
   // list being shown; that path keeps the old switch-and-close behaviour.
   const browse = async () => {
-    if (busy) return
+    if (busy || listUnavailable) return
     setError(null)
     setHostBusy(true)
     try {
@@ -165,31 +187,39 @@ export function LibraryManager({
     const chosen = raw.trim()
     if (!confirming || !chosen || busy) return
     setError(null)
-    setHostBusy(true)
-    try {
-      if (confirming.kind === 'pick') {
-        // The shell holds the folder against this token; it never crossed into
-        // this layer, and a token a later pick superseded is refused.
-        const adopt = getActiveConnection()?.kind === 'remote'
+    if (confirming.kind === 'pick') {
+      // The shell holds the folder against this token; it never crossed into
+      // this layer, and a token a later pick superseded is refused.
+      const adopt = getActiveConnection()?.kind === 'remote'
+      setHostBusy(true)
+      try {
         await confirmPickedLibrary(confirming.token, chosen, { adopt })
-        if (!adopt) {
-          // Added to the local server: show it in the list and return to the
-          // add row so another can follow, rather than switching and closing.
-          await libraries.refetch()
-          cancelConfirm()
-          return
-        }
-      } else {
-        const added = await create.mutateAsync({
-          root_path: confirming.path,
-          display_name: chosen,
-          create_if_missing: confirming.createFolder,
-        })
-        onSelect?.(added.id)
+      } catch (failure) {
+        setError(hostOperationErrorMessage(failure))
+        return
+      } finally {
+        setHostBusy(false)
+      }
+      if (!adopt) {
+        // Registration is already committed. Only the list read is retryable.
+        await refreshAddedLibrary({ name: chosen })
+        return
       }
       onClose()
+      return
+    }
+
+    setHostBusy(true)
+    try {
+      const added = await create.mutateAsync({
+        root_path: confirming.path,
+        display_name: chosen,
+        create_if_missing: confirming.createFolder,
+      })
+      onSelect?.(added.id)
+      onClose()
     } catch (failure) {
-      setError(confirming.kind === 'pick' ? hostOperationErrorMessage(failure) : messageOf(failure))
+      setError(messageOf(failure))
     } finally {
       setHostBusy(false)
     }
@@ -220,7 +250,15 @@ export function LibraryManager({
         </div>
 
         <div className="lib-list">
-          {rows.length === 0 && (
+          {libraries.isPending && <div className="inspector__empty">Loading libraries…</div>}
+          {libraries.isError && libraries.data === undefined && (
+            <LibraryListError
+              message="The library list could not be loaded."
+              retrying={libraries.isFetching}
+              onRetry={() => void libraries.refetch()}
+            />
+          )}
+          {libraries.isSuccess && rows.length === 0 && (
             <div className="inspector__empty">No libraries yet. Add one below.</div>
           )}
           {rows.map((library) => (
@@ -232,6 +270,13 @@ export function LibraryManager({
               onRemove={() => removeLibrary(library.id)}
             />
           ))}
+          {libraries.isError && libraries.data !== undefined && !addedLibrary && (
+            <LibraryListError
+              message="The library list could not be refreshed."
+              retrying={libraries.isFetching}
+              onRetry={() => void libraries.refetch()}
+            />
+          )}
         </div>
 
         {/* The confirmation swaps this row's *contents* rather than replacing
@@ -243,7 +288,11 @@ export function LibraryManager({
           className="lib-add"
           onSubmit={(event) => {
             event.preventDefault()
-            void (confirming ? confirmNewLibrary(name) : submitPath())
+            void (addedLibrary
+              ? refreshAddedLibrary(addedLibrary)
+              : confirming
+                ? confirmNewLibrary(name)
+                : submitPath())
           }}
         >
           <label className="field-label" htmlFor={confirming ? 'new-library-name' : 'library-path'}>
@@ -263,7 +312,7 @@ export function LibraryManager({
                 // An existing library keeps the name from its own manifest, so
                 // the field is read-only there — it shows what will be added
                 // rather than inviting an edit that registration would ignore.
-                readOnly={addingLibrary}
+                readOnly={addingLibrary || Boolean(addedLibrary)}
                 // Focused and selected, so the prefilled folder name is one
                 // keystroke away from being replaced and Enter confirms it.
                 autoFocus
@@ -278,28 +327,47 @@ export function LibraryManager({
                 onSubmit={() => void submitPath()}
               />
             )}
-            {confirming ? (
+            {confirming && !addedLibrary ? (
               <button type="button" className="btn" onClick={cancelConfirm} disabled={busy}>
                 Cancel
               </button>
-            ) : (
+            ) : !confirming ? (
               isDesktopHost() && (
-                <button type="button" className="btn" onClick={() => void browse()} disabled={busy}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void browse()}
+                  disabled={busy || listUnavailable}
+                >
                   Browse…
                 </button>
               )
-            )}
+            ) : null}
             <button
               className="btn btn--primary"
-              disabled={busy || !(confirming ? name.trim() : path.trim())}
+              disabled={
+                busy ||
+                listUnavailable ||
+                (!addedLibrary && !(confirming ? name.trim() : path.trim()))
+              }
             >
-              {confirming ? (addingLibrary ? 'Add library' : 'Create library') : 'Add library'}
+              {addedLibrary
+                ? hostBusy
+                  ? 'Refreshing…'
+                  : 'Retry refresh'
+                : confirming
+                  ? addingLibrary
+                    ? 'Add library'
+                    : 'Create library'
+                  : 'Add library'}
             </button>
           </div>
           <p className="lib-add__hint">
-            {confirming
-              ? newLibraryAsk(confirming)
-              : 'An absolute path on the server. An existing library is added as it is; any other folder is offered as a new one.'}
+            {addedLibrary
+              ? `“${addedLibrary.name}” was added. Refresh the list to finish.`
+              : confirming
+                ? newLibraryAsk(confirming)
+                : 'An absolute path on the server. An existing library is added as it is; any other folder is offered as a new one.'}
           </p>
 
           {error && <div className="modal__error">{error}</div>}
@@ -316,6 +384,29 @@ type ConfirmState =
   // itself never enters this layer (see `mappings::PickedFolder`). `isLibrary`
   // decides whether confirming registers an existing library or creates one.
   | { kind: 'pick'; token: string; folderName: string; isLibrary: boolean }
+
+/** A native add that is committed while its list refresh remains pending. */
+type AddedLibrary = { name: string }
+
+/** Distinguishes a failed library read from a successful empty list. */
+function LibraryListError({
+  message,
+  retrying,
+  onRetry,
+}: {
+  message: string
+  retrying: boolean
+  onRetry: () => void
+}) {
+  return (
+    <div className="inspector__empty" role="alert">
+      <div>{message}</div>
+      <button type="button" className="btn" onClick={onRetry} disabled={retrying}>
+        {retrying ? 'Retrying…' : 'Retry'}
+      </button>
+    </div>
+  )
+}
 
 /** What confirming will actually do, in one sentence. */
 function newLibraryAsk(target: ConfirmState): string {
