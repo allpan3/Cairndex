@@ -75,6 +75,22 @@ journal at rest.** Concretely:
    mode is a write, and ADR-0018 §4 is categorical that a library we no longer
    own gets no more writes from us. The new holder sets what it wants.
 
+   **Bootstrapping a new library is a clean close too, and was missed on the
+   first pass.** `create_package`'s schema bootstrap opens a library engine to
+   run `create_all`, puts the file into WAL doing so, and used to dispose that
+   engine directly rather than through the per-library cache in
+   `registry/library_engine.py`. A library nobody has browsed or scanned yet is
+   therefore never in that cache, so `close_library_engines()` — which only
+   iterates it — had nothing to convert back. A real deployment hit this
+   exactly: `POST /libraries/create`, then a clean `docker compose stop`, and
+   the header byte still read WAL, despite the shutdown log showing nothing but
+   an orderly `Application shutdown complete`. Every one-shot engine open
+   outside the serving lifecycle — library creation, and the `devtools`
+   scripts that open a library engine directly (`reindex_search`,
+   `synthetic_library`, `benchmark_queries`) — now goes through
+   `persistence.engine.library_engine_scope`, which checkpoints and reverts on
+   exit regardless of whether the caller ever touched the per-library cache.
+
 4. **WAL is not attempted where it cannot work.** The filesystem holding the
    database is identified (`/proc/self/mountinfo` on Linux, `statfs`'s
    `f_fstypename` and `MNT_LOCAL` on macOS); a positively-identified network

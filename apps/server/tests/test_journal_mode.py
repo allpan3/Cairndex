@@ -106,6 +106,52 @@ def test_the_registry_database_stays_in_wal(tmp_path: Path) -> None:
     assert journal_mode_in_file(db) == WAL
 
 
+# --- the bootstrap gap that reached production ------------------------------
+#
+# A real deployment did exactly this — POST /libraries/create, then a clean
+# `docker compose stop`, nothing else in between — and the file was still WAL
+# afterwards. `create_package` bootstraps the schema through a one-shot engine
+# that is disposed directly, never entering the per-library cache in
+# `registry/library_engine.py`; `close_library_engines` only reverts engines it
+# knows about, so a library nobody ever browsed or scanned was orphaned in WAL
+# by a shutdown that was, from every other angle, entirely clean.
+#
+# Every other test in this file uses the `library_root` fixture and then
+# immediately calls `get_library_sessionmaker`, which re-opens the file, adds
+# it to the cache, and so happens to make the eventual `close_library_engines`
+# call work — masking exactly this gap. These two tests deliberately do not.
+
+
+def test_a_freshly_created_library_is_never_left_in_wal(library_root: Path) -> None:
+    """No ``get_library_sessionmaker`` call here — that omission is the test.
+
+    ``library_root`` only calls ``pkg.create_package`` and returns; if creation
+    alone leaves the file in WAL, this is the only test that would catch it.
+    """
+    assert journal_mode_in_file(pkg.db_path(library_root)) == ROLLBACK
+
+
+def test_creating_a_library_through_the_api_survives_an_immediate_clean_stop(
+    isolated_client: TestClient, tmp_path: Path
+) -> None:
+    """The production repro, end to end: create, then stop — no scan, no
+    browse, nothing that would open the per-library engine cache in between."""
+    root = tmp_path / "fresh"
+    root.mkdir()
+
+    response = isolated_client.post(
+        "/api/v1/libraries/create", json={"root_path": str(root), "display_name": "Fresh"}
+    )
+    assert response.status_code == 201
+    assert journal_mode_in_file(pkg.db_path(root)) == ROLLBACK
+
+    # A clean shutdown immediately afterwards must find nothing left to fix —
+    # confirming the assertion above isn't passing only because shutdown will
+    # paper over it.
+    close_library_engines()
+    assert journal_mode_in_file(pkg.db_path(root)) == ROLLBACK
+
+
 # --- a library uses WAL while it is open ------------------------------------
 
 
