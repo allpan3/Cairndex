@@ -514,13 +514,35 @@ library in WAL. The owner was shown this and took it for WAL's performance while
 a library is in use, so the design minimises and explains it (the legible 409,
 the heal-on-open, the runbook) rather than pretending it away.
 
+**A second, real bug was found only by deploying this, not by the test suite**:
+creating a library was its own instance of the exact incident this branch
+fixes. `POST /libraries/create` bootstraps `library.db` through a one-shot
+engine (`create_package` → `_init_library_db`) that used to dispose itself
+directly rather than through the per-library cache in `library_engine.py` —
+so a library nobody had opened yet was never in the cache that
+`close_library_engines()` reverts on shutdown. Deployed via
+`docker-compose.prod.yml` on this Mac: created a library, ran nothing else,
+`docker compose stop`, and the header byte still read WAL despite a shutdown
+log with nothing but an orderly `Application shutdown complete` in it — no
+lease conflict, no exception, no hint anything was wrong. Fixed with a shared
+`persistence.engine.library_engine_scope` context manager that checkpoints and
+reverts on exit regardless of the cache; every one-shot library-engine open in
+the codebase (creation, and the three `devtools` maintenance scripts) now goes
+through it. Two new tests reproduce this exactly — one bypasses
+`get_library_sessionmaker` entirely (every other test in the file calls it,
+which is what hid the bug from 29 passing tests), the other drives the real
+`POST /libraries/create` endpoint and a clean-shutdown call with nothing in
+between — and both were confirmed to fail against the pre-fix code before the
+fix was restored. Then reconfirmed against a real rebuilt image: `201
+Created`, header byte `1` immediately after create, `1` again after
+`docker compose stop`.
+
 **Tests run** (all from `apps/server`): `ruff check`, `ruff format --check`,
-`mypy src packaging`, `pytest` — **957 passed** (re-run clean after the rebase
-onto `2589ea3`), 29 of them new in `tests/test_journal_mode.py`. Assertions are
-on the file header bytes wherever
+`mypy src packaging`, `pytest` — **959 passed**, 31 of them in
+`tests/test_journal_mode.py`. Assertions are on the file header bytes wherever
 the claim is about the file, because a `PRAGMA journal_mode` answer would pass
-just as happily against a mode nobody achieved — which is the shape of the
-original bug.
+just as happily against a mode nobody achieved — which is the shape of both
+bugs this branch found.
 
 **Verified beyond the suite**, not just built:
 
@@ -529,7 +551,10 @@ original bug.
 - `just docker-smoke` (Docker 29.5.3, arm64) — the production image now asserts
   the header byte after `docker stop`, not only the absence of a `-wal` file.
   Confirmed the new assertion has teeth by running it against a deliberately-WAL
-  file, where it exits 1.
+  file, where it exits 1;
+- a full `docker-compose.prod.yml` deploy against a scratch library on this
+  Mac (not just the smoke image) — the round trip that surfaced the
+  library-creation bug above, and that confirmed its fix.
 
 Linux mount-table parsing (`/proc/self/mountinfo`) is unit-tested from a
 synthetic table, including the nearest-enclosing-mount rule and `mountinfo`'s

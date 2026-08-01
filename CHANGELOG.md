@@ -210,6 +210,16 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   409 `library_database_unopenable`, distinguishing a journal-mode problem from a
   permissions one and carrying the command that fixes it, where before it was a
   bare 500. `docs/deployment.md` has the full procedure.
+
+  **Creating a library was its own version of the same bug**, caught deploying
+  this fix against a real container rather than only the test suite: a fresh
+  `POST /libraries/create` followed by nothing but a clean `docker compose
+  stop` still left the file in WAL. Creating a library bootstraps its schema
+  through a one-shot database connection that the shutdown path never knew
+  about, so a library nobody had opened yet was orphaned in WAL by a shutdown
+  that was, in every other respect, clean. Every one-shot open of a library
+  database — creation, and each of the offline `devtools` maintenance
+  scripts — now converts back on its own before disposing its connection.
 - **The scan progress bar never moved.** Clicking Update showed "Scan" and a bar
   that said nothing about what was happening or how far along it was. Two causes,
   both in the reporting rather than the work: a phase change could not clear the

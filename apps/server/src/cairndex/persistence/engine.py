@@ -101,6 +101,31 @@ def create_app_engine(database_url: str | None = None) -> Engine:
     return engine
 
 
+@contextmanager
+def library_engine_scope(database_url: str) -> Iterator[Engine]:
+    """Open a library engine for one bootstrap/maintenance operation, and leave
+    the file portable afterwards (ADR-0021).
+
+    ``close_library_engines`` reverts a library's journal mode back to rollback
+    on shutdown, but it only knows about engines that passed through the
+    per-library cache in :mod:`cairndex.registry.library_engine`. A one-shot
+    open — creating a fresh library, a devtools maintenance script, a benchmark
+    — never enters that cache, so nothing would otherwise convert it back. A
+    library created via this function and never opened again before the server
+    stops was found in production left in WAL despite an entirely clean
+    shutdown: the bootstrap engine had put it there and nothing was watching it.
+
+    Every caller that opens a library engine outside the server's serving
+    lifecycle should use this instead of ``create_app_engine`` directly.
+    """
+    engine = create_app_engine(database_url=database_url)
+    try:
+        yield engine
+    finally:
+        journal.checkpoint_and_revert(engine)
+        engine.dispose()
+
+
 # Nullable columns added to long-lived content tables after their first
 # release. ``create_all`` never alters an existing table, and there is no
 # migration chain, so a library created before a column existed is patched
