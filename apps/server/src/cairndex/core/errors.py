@@ -109,6 +109,25 @@ class WriteModeDisabledError(DomainError):
     code = "write_mode_disabled"
 
 
+class LibraryDatabaseOpenError(ConflictError):
+    """This server cannot open a library's ``library.db`` (ADR-0021). Maps to 409.
+
+    A conflict rather than a 500 for the same reason the lease refusals are: the
+    request is well formed and the library exists, but its *state on disk* is one
+    this machine cannot serve, and the fix is an operator action rather than a
+    retry. Without this the commonest instance — a database left in WAL journal
+    mode that a machine reaching it over SMB or NFS cannot open at all — arrived
+    as a bare 500 with a traceback and no attribution.
+
+    ``details`` carries ``reason`` (``wal_on_network_filesystem``, ``unreadable``,
+    ``missing``) and the filesystem kind, so a client can tell a fixable state
+    apart from a permissions problem without parsing prose. Deliberately no path:
+    the recovery command in ``message`` carries the one path an operator needs.
+    """
+
+    code = "library_database_unopenable"
+
+
 class LibraryLeaseError(ConflictError):
     """Base for ownership-lease refusals (ADR-0018). Maps to 409.
 
