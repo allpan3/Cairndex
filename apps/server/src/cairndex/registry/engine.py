@@ -16,7 +16,7 @@ from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.config import get_settings
-from cairndex.persistence.engine import _apply_sqlite_pragmas
+from cairndex.persistence.engine import _apply_registry_pragmas
 from cairndex.registry import models  # noqa: F401  (populate registry metadata)
 from cairndex.registry.base import RegistryBase
 
@@ -58,8 +58,10 @@ def create_registry_engine(database_url: str | None = None) -> Engine:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
 
     engine = create_engine(url, future=True)
+    # WAL unconditionally, unlike a library DB (ADR-0021): the registry lives on
+    # the server's own disk, is never reached over a share, and never travels.
     if engine.dialect.name == "sqlite":
-        event.listen(engine, "connect", _apply_sqlite_pragmas)
+        event.listen(engine, "connect", _apply_registry_pragmas)
     RegistryBase.metadata.create_all(engine)
     _apply_additive_columns(engine)
     return engine
