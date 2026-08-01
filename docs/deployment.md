@@ -429,6 +429,85 @@ Tuning knobs: `CAIRNDEX_SQLITE_MAINTENANCE_ENABLED` (default `true`),
 The snapshot is a convenience, **not a backup** — it lives inside the library it
 copies, so it is lost with the folder. Keep the real backups below.
 
+### Journal mode and network filesystems
+
+Read this if a library is served by the container **and** also reached from
+another machine over SMB, NFS or a cloud-synced folder. It is the one
+configuration where a hard stop of the container can lock the other machine out
+of the library.
+
+**A SQLite database in WAL mode cannot be opened over a network filesystem at
+all.** WAL needs a `-shm` index that every connection memory-maps, and mmap
+coherence is not available over SMB or NFS. SQLite refuses with `unable to open
+database file` — even for a read-only connection, on a file that reads fine, in
+a writable directory. And WAL is recorded in the *file header*, not on a
+connection, so it travels with the library folder like everything else in it.
+
+Cairndex therefore uses WAL only while it has a library open, and converts it
+back on a clean close (ADR-0021):
+
+- **Starting to serve a library** puts it into WAL, unless it sits on a
+  filesystem that cannot host WAL, in which case it is left in rollback mode.
+- **A clean shutdown converts it back** — `wal_checkpoint(TRUNCATE)` then
+  `journal_mode=DELETE` — so a library at rest is a single `library.db` that any
+  machine can open. `docker stop` reaches this path; so does unregistering a
+  library.
+- **An unclean stop does not.** `docker kill`, a power cut, the OOM killer, or a
+  `docker stop` that exceeds its timeout and is escalated to `SIGKILL` all leave
+  the file flagged WAL. This is the residual risk, accepted deliberately for the
+  performance WAL buys while a library is in use. **Stop the container with
+  `docker stop`, and give it a timeout it can meet** — the compose files already
+  do.
+**It is always recoverable, and no data is at risk** — the committed contents of
+an abandoned `-wal` are replayed by the next server that opens the library, which
+is ordinary SQLite crash recovery. What is lost is only the ability to open the
+library from a machine that reaches it over a share, and only until one of these
+runs. Both must happen on a machine with **local** access to the storage; the
+locked-out machine cannot repair it, because it cannot open the file at all.
+
+- **Restart the crashed server and stop it cleanly.** `docker start` then
+  `docker stop` is the whole procedure: the restart replays the WAL, and the
+  clean stop converts the file back. This is the easy path and it is usually
+  available, since the machine that crashed is by definition one with local
+  access.
+- **Or convert it by hand**, with nothing holding the library open — the command
+  is below.
+
+There is also an automatic heal, but it is narrower than it sounds and should
+not be relied on: a server converts a library it finds in WAL only when it has
+*decided that library should not be in WAL*, i.e. when the library is on a
+network filesystem and the open nevertheless succeeded. That covers a mount that
+tolerates WAL, or one Cairndex identifies as network conservatively. It does not
+rescue the ordinary SMB lockout, where the open never gets that far.
+
+**If a library is already locked out**, the symptom is HTTP 409 with code
+`library_database_unopenable` and reason `wal_on_network_filesystem`; the error
+message carries the command. Run it from a machine with **local** access to the
+storage — by definition not the machine that cannot open it:
+
+```bash
+sqlite3 /libraries/main/.cairndex/library.db 'PRAGMA journal_mode=DELETE;'
+```
+
+Nothing may have the library open while this runs; stop the server first. If
+there is no `sqlite3` on the box, the Cairndex image has Python:
+
+```bash
+docker run --rm -v /path/to/library:/lib ghcr.io/allpan3/cairndex \
+    python3 -c "import sqlite3; sqlite3.connect('/lib/.cairndex/library.db').execute('PRAGMA journal_mode=DELETE')"
+```
+
+To check a library without opening it, read byte 18 of the header — `2` is WAL,
+`1` is a rollback journal:
+
+```bash
+python3 -c "print(open('/libraries/main/.cairndex/library.db','rb').read(19)[18])"
+```
+
+The server's own `registry.db` is deliberately exempt from all of this and stays
+in WAL: it lives on the server's disk under `CAIRNDEX_DATA_DIR`, is never
+reached over a share, and never travels with a library.
+
 ### Libraries that span more than one filesystem
 
 A library root can contain a mount point — a NAS share or external drive mounted
