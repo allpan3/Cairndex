@@ -1,53 +1,79 @@
 import { formatBytes } from '../lib/format'
+import type { ImportActivity } from './importActivity'
 
-/**
- * The copy-in progress indicator, shared by the desktop drag-in and the web
- * "Add Files…" flow. Both import one file at a time, so this shows the current
- * file, its place in the batch ("2 of 5"), and — when byte progress is available
- * (the desktop path streams it) — a bar plus the transfer rate.
- */
+/** A stoppable client import row with the same states as a background job */
 export function ImportProgress({
-  name,
-  index,
-  total,
-  sent,
-  size,
-  rate,
+  activity,
+  onCancel,
 }: {
-  name: string
-  index: number
-  total: number
-  sent?: number
-  size?: number
-  rate?: number
+  activity: ImportActivity
+  onCancel?: (batchId: string) => void
 }) {
+  const { id, name, index, total, status, sent, size, rate } = activity
   const hasBytes = size !== undefined && size > 0 && sent !== undefined
   const percent = hasBytes ? Math.min(100, Math.round((sent / size) * 100)) : null
+  const waiting = status === 'waiting'
+  const stopping = status === 'stopping'
+  const indeterminate = percent === null && !waiting && !stopping
+  const headline = stopping
+    ? 'Stopping import…'
+    : waiting
+      ? 'Import — waiting'
+      : `Importing “${name}”`
 
   return (
-    <div className="import-progress" role="status" aria-live="polite">
-      <div className="import-progress__head">
-        <span className="import-progress__name" title={name}>
-          Copying “{name}”
+    <div className="job-progress import-progress" role="status" aria-live="polite">
+      <div className="job-progress__row">
+        <span className="job-progress__label" title={headline}>
+          {headline}
         </span>
-        {total > 1 && (
-          <span className="import-progress__count">
-            {index} of {total}
-          </span>
+        <span className="job-progress__count">
+          {index}/{total}
+        </span>
+        {onCancel && (
+          <button
+            type="button"
+            className="job-progress__cancel"
+            onClick={() => onCancel(id)}
+            title="Stop import"
+            aria-label="Stop import"
+            disabled={stopping}
+          >
+            ×
+          </button>
         )}
       </div>
+      {(waiting || stopping) && (
+        <div className="import-progress__name" title={name}>
+          {name}
+        </div>
+      )}
       <div
-        className={`import-progress__bar${percent === null ? ' import-progress__bar--indeterminate' : ''}`}
+        className={`job-progress__track${indeterminate ? ' job-progress__track--indeterminate' : ''}${
+          waiting ? ' job-progress__track--waiting' : ''
+        }`}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent ?? undefined}
       >
         <div
-          className="import-progress__fill"
-          style={percent === null ? undefined : { width: `${percent}%` }}
+          className="job-progress__bar"
+          style={
+            percent === null
+              ? indeterminate
+                ? undefined
+                : { width: '0%' }
+              : { width: `${percent}%` }
+          }
         />
       </div>
-      <div className="import-progress__meta">
-        {hasBytes ? `${formatBytes(sent)} / ${formatBytes(size)}` : 'Copying…'}
-        {rate !== undefined && rate > 0 ? ` · ${formatBytes(rate)}/s` : ''}
-      </div>
+      {hasBytes && (
+        <div className="import-progress__meta">
+          {formatBytes(sent)} / {formatBytes(size)}
+          {rate !== undefined && rate > 0 ? ` · ${formatBytes(rate)}/s` : ''}
+        </div>
+      )}
     </div>
   )
 }

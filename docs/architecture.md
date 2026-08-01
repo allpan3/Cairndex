@@ -84,6 +84,17 @@ refusing any path the shell did not itself record from the OS drop event — the
 web layer may name a dropped path, never invent one. A read-only library still
 gets the in-place-linking explanation, and a dropped folder gets its own message.
 
+An import selection remains a **client-owned sequential batch**, not a registry
+job: the bytes live in a browser `File` or a desktop file handle, so putting an
+entry in `job_queue` would move neither the upload nor its cancellation to the
+server. Browser uploads carry an `AbortSignal`. Desktop uploads cross IPC inside
+a batch-scoped cancellation token; stopping makes the Rust reader feeding
+`reqwest` return `Interrupted`, which closes the in-flight HTTP request body.
+Starlette then raises `ClientDisconnect` from `Request.stream()`, and the normal
+ADR-0013 failure path removes `.cairndex/tmp/<operation-id>.part` and marks that
+file's journal operation failed. Files whose individual requests already
+finished stay imported, with their own journal entries and Undo operations.
+
 Media-element, HLS, subtitle, thumbnail, storyboard, and preview URLs for approved libraries
 use the ADR-0017 loopback Rust relay. The relay rotates an unguessable capability
 path on configuration, fixes its upstream, permits only scoped read-only media
@@ -771,6 +782,16 @@ them out as FAILED ("interrupted"). That is what stops a dead job occupying the
 sidebar forever, absorbing cancels no one observes, and blocking the dedupe that
 matches QUEUED. Recovery is a rerun: the library-wide jobs all skip work that is
 already current, so it costs only what was lost.
+
+Client import batches reuse the **presentation**, not the execution model: each
+active batch is another stoppable row in `sidebar__foot` beside every active job.
+The row names the current file and its position in the original selection;
+collision resolution is a waiting state, and a stop becomes a disabled
+"Stopping import…" control while the in-flight request unwinds. Imports and jobs
+render as one list, so an upload never replaces or hides concurrent maintenance
+work. A stopped batch is reported as a partial success — completed imports,
+skips, the interrupted file, and files never attempted — rather than as a failed
+job or an implied rollback of the files already copied.
 
 The worker is intentionally single-process/single-worker for the SQLite MVP.
 Scaling should start with profiling, better scheduling, and bounded concurrency,

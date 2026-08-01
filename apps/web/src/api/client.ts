@@ -614,6 +614,7 @@ export async function importFile(
     filename?: string
     onConflict?: ConflictPolicy
     link?: boolean
+    signal?: AbortSignal
   } = {},
 ): Promise<ImportResult> {
   const query = new URLSearchParams({
@@ -628,6 +629,7 @@ export async function importFile(
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: file,
+    signal: options.signal,
   })
   if (!response.ok) {
     let payload: unknown = null

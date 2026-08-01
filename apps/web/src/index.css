@@ -4298,6 +4298,14 @@ code {
   background: var(--surface-2);
   color: var(--text);
 }
+.job-progress__cancel:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.job-progress__cancel:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
 .job-progress__cancel:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -5212,65 +5220,18 @@ code {
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
 }
-.file-importing {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
-  color: var(--text-muted);
-  font-size: 12px;
-}
 
-/* --- Copy-in progress (plan 4 W5): batch position + per-file bar/rate ------ */
-.import-progress {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
-  font-size: 12px;
-}
-.import-progress__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--text);
-}
+/* Import-only detail inside the shared background-work row. */
 .import-progress__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.import-progress__count {
-  flex: none;
   color: var(--text-muted);
-}
-.import-progress__bar {
-  height: 4px;
-  margin: 6px 0 4px;
-  border-radius: 2px;
-  background: var(--bg);
-  overflow: hidden;
-}
-.import-progress__fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 2px;
-  transition: width 120ms linear;
-}
-/* No byte counts (the web upload cannot report them): a sliding sweep instead. */
-.import-progress__bar--indeterminate .import-progress__fill {
-  width: 35%;
-  animation: import-progress-sweep 1.1s ease-in-out infinite;
-}
-@keyframes import-progress-sweep {
-  0% {
-    margin-left: -35%;
-  }
-  100% {
-    margin-left: 100%;
-  }
+  font-size: 11px;
 }
 .import-progress__meta {
   color: var(--text-muted);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

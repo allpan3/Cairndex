@@ -1102,6 +1102,23 @@ test('dropping an OS file on the Bundle Inspector opens the bundle destination f
 }) => {
   await mockApi(page)
   await mockWriteMode(page)
+  let finishImport: () => void = () => undefined
+  const importFinished = new Promise<void>((resolve) => {
+    finishImport = resolve
+  })
+  await page.route('**/file-ops/import?*', async (route) => {
+    await importFinished
+    await route.fulfill({
+      json: {
+        path: 'new-clip.mp4',
+        operation: { id: 'op-import' },
+        files_updated: 0,
+        failed_paths: [],
+        skipped: false,
+        size_bytes: 5,
+      },
+    })
+  })
   await page.goto('/')
   await page.locator('.card').first().click()
   const inspector = page.locator('aside.inspector')
@@ -1124,6 +1141,15 @@ test('dropping an OS file on the Bundle Inspector opens the bundle destination f
   })
 
   await expect(page.getByRole('heading', { name: 'Copy the file into…' })).toBeVisible()
+  await page.getByRole('button', { name: 'Copy into Library root' }).click()
+
+  // The picker must not cover the sidebar control for the batch it just started
+  await expect(page.getByRole('heading', { name: 'Copy the file into…' })).toHaveCount(0)
+  await expect(page.getByText('Importing “new-clip.mp4”')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop import' })).toBeVisible()
+
+  finishImport()
+  await expect(page.getByText('Importing “new-clip.mp4”')).toHaveCount(0)
 })
 
 test('reorders bundle files by dragging the inspector cards', async ({ page }) => {

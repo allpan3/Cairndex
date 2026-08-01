@@ -24,11 +24,12 @@
 //! The upload streams from the file handle rather than reading it into memory:
 //! a 60 GB video imports with a constant footprint on both ends.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
@@ -61,12 +62,30 @@ struct ImportProgress {
 /// the counter, and a throttled tick is emitted so the UI can draw a bar and a
 /// rate. Errors emitting are ignored — a missed tick must never fail an upload.
 struct ProgressReader<R: Runtime> {
-    inner: File,
+    inner: CancellableFile,
     app: AppHandle<R>,
     path: String,
     sent: u64,
     total: u64,
     last_emit: Instant,
+}
+
+/// A file reader that turns a batch stop into a broken request body
+struct CancellableFile {
+    inner: File,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Read for CancellableFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.cancelled.load(Ordering::Acquire) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "import cancelled",
+            ));
+        }
+        self.inner.read(buf)
+    }
 }
 
 impl<R: Runtime> Read for ProgressReader<R> {
@@ -104,6 +123,60 @@ const UPLOAD_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 #[derive(Default)]
 pub(crate) struct DroppedFiles {
     inner: Mutex<HashSet<PathBuf>>,
+}
+
+/// Batch-scoped stop signals shared by the IPC command and blocking uploader
+#[derive(Default)]
+pub(crate) struct ImportBatches {
+    inner: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl ImportBatches {
+    /// Register one batch before its first file starts
+    fn start(&self, batch_id: &str) -> Result<(), ImportError> {
+        if !batch_id_is_safe(batch_id) {
+            return Err(ImportError::new(
+                "invalid_batch",
+                "The import batch identifier was invalid.",
+            ));
+        }
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| ImportError::new("batch_state_failed", "The import could not start."))?;
+        if guard.contains_key(batch_id) {
+            return Err(ImportError::new(
+                "batch_already_started",
+                "That import batch is already running.",
+            ));
+        }
+        guard.insert(batch_id.to_string(), Arc::new(AtomicBool::new(false)));
+        Ok(())
+    }
+
+    /// Return the stop signal for an already-started batch
+    fn token(&self, batch_id: &str) -> Option<Arc<AtomicBool>> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(batch_id).cloned())
+    }
+
+    /// Ask the current upload in a batch to break its request body
+    fn cancel(&self, batch_id: &str) -> bool {
+        let Some(token) = self.token(batch_id) else {
+            return false;
+        };
+        token.store(true, Ordering::Release);
+        true
+    }
+
+    /// Forget a settled batch and its stop signal
+    fn finish(&self, batch_id: &str) {
+        if let Ok(mut guard) = self.inner.lock() {
+            guard.remove(batch_id);
+        }
+    }
 }
 
 impl DroppedFiles {
@@ -185,16 +258,40 @@ pub(crate) fn remember_drop(dropped: &DroppedFiles, paths: &[PathBuf]) {
     dropped.remember(paths);
 }
 
+/// Register a client import batch before any file command is issued
+#[tauri::command]
+pub(crate) fn start_import_batch(
+    batches: State<'_, ImportBatches>,
+    batch_id: String,
+) -> Result<(), ImportError> {
+    batches.start(&batch_id)
+}
+
+/// Interrupt the in-flight request body for one client import batch
+#[tauri::command]
+pub(crate) fn cancel_import_batch(batches: State<'_, ImportBatches>, batch_id: String) -> bool {
+    batches.cancel(&batch_id)
+}
+
+/// Release a client import batch after it reaches a terminal outcome
+#[tauri::command]
+pub(crate) fn finish_import_batch(batches: State<'_, ImportBatches>, batch_id: String) {
+    batches.finish(&batch_id);
+}
+
 /// Stream one dropped file into a library through the server's import endpoint.
 ///
 /// One file per call, mirroring the endpoint: each import gets its own
 /// collision answer and its own undo, which a batched call could not offer.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub(crate) async fn import_dropped_file<R: Runtime>(
     app: AppHandle<R>,
     proxy: State<'_, MediaProxy>,
     dropped: State<'_, DroppedFiles>,
+    batches: State<'_, ImportBatches>,
     library_id: String,
+    batch_id: String,
     path: String,
     dest_dir: String,
     on_conflict: Option<String>,
@@ -220,6 +317,12 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
             "This window is not connected to a Cairndex server yet.",
         ));
     };
+    let Some(cancelled) = batches.token(&batch_id) else {
+        return Err(ImportError::new(
+            "batch_not_started",
+            "The import batch was not started.",
+        ));
+    };
     let name = source
         .file_name()
         .and_then(|value| value.to_str())
@@ -238,6 +341,7 @@ pub(crate) async fn import_dropped_file<R: Runtime>(
             &name,
             &dest_dir,
             on_conflict,
+            cancelled,
         )
     })
     .await
@@ -254,6 +358,7 @@ fn upload<R: Runtime>(
     name: &str,
     dest_dir: &str,
     on_conflict: Option<String>,
+    cancelled: Arc<AtomicBool>,
 ) -> Result<ImportOutcome, ImportError> {
     let handle = File::open(source)
         .map_err(|error| ImportError::new("unreadable_file", readable(&error)))?;
@@ -287,7 +392,10 @@ fn upload<R: Runtime>(
         },
     );
     let reader = ProgressReader {
-        inner: handle,
+        inner: CancellableFile {
+            inner: handle,
+            cancelled: Arc::clone(&cancelled),
+        },
         app,
         path,
         sent: 0,
@@ -305,9 +413,18 @@ fn upload<R: Runtime>(
         request = request.header(AUTHORIZATION, format!("Bearer {token}"));
     }
 
-    let response = request
-        .send()
-        .map_err(|error| ImportError::new("upload_failed", readable_request(&error)))?;
+    let response = match request.send() {
+        Ok(response) => response,
+        Err(_) if cancelled.load(Ordering::Acquire) => {
+            return Err(ImportError::new(
+                "import_cancelled",
+                "The import was stopped.",
+            ));
+        }
+        Err(error) => {
+            return Err(ImportError::new("upload_failed", readable_request(&error)));
+        }
+    };
     let status = response.status();
     let body: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
 
@@ -392,6 +509,15 @@ fn string_at(body: &serde_json::Value, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Keep batch ids inert when they cross into the shell's state map
+fn batch_id_is_safe(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
 // Never echoes the absolute path back — the message reaches the web layer.
 fn readable(error: &std::io::Error) -> String {
     error.kind().to_string()
@@ -454,6 +580,35 @@ mod tests {
         dropped.remember(std::slice::from_ref(&missing));
 
         assert!(!dropped.contains(&missing));
+    }
+
+    #[test]
+    fn cancelling_a_batch_interrupts_the_streaming_reader() {
+        let batches = ImportBatches::default();
+        batches.start("batch-1").unwrap();
+        let token = batches.token("batch-1").unwrap();
+        let path = temp_file("cancelled-reader.mkv");
+        let mut reader = CancellableFile {
+            inner: File::open(path).unwrap(),
+            cancelled: token,
+        };
+
+        assert!(batches.cancel("batch-1"));
+        let error = reader.read(&mut [0; 8]).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        batches.finish("batch-1");
+        assert!(batches.token("batch-1").is_none());
+    }
+
+    #[test]
+    fn batch_ids_cannot_be_used_as_unbounded_state_keys() {
+        let batches = ImportBatches::default();
+
+        for invalid in ["", "has space", "../batch", "batch:one"] {
+            assert!(batches.start(invalid).is_err());
+        }
+        assert!(batches.start(&"a".repeat(65)).is_err());
     }
 
     #[test]

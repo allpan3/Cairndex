@@ -15,7 +15,6 @@ import {
   addUnbundledFilesToBundle,
   fetchBundleTags,
   type FileRead,
-  importFile,
   setActiveLibraryId,
   setBundleTags,
 } from './api/client'
@@ -65,7 +64,6 @@ import { FileInspector } from './app/FileInspector'
 import { ConfirmDialog } from './app/PromptDialog'
 import { getCopiedTags, setCopiedTags } from './app/tagClipboard'
 import { factsFromBundleFile, factsFromEntry } from './app/fileFacts'
-import { ImportProgress } from './app/ImportProgress'
 import { FileBrowser } from './app/FileBrowser'
 import { GroupingReview } from './app/GroupingReview'
 import { buildDeepLinkUri, copyText } from './app/deepLinkUri'
@@ -111,6 +109,7 @@ import { MediaViewer } from './app/viewer/MediaViewer'
 import { type DropMappingState, useDesktopFileDrop } from './desktop/fileDrop'
 import { consumeHtmlFileDropHandled } from './app/htmlFileDrop'
 import { useHostImports } from './desktop/useHostImports'
+import { useWebImports } from './app/useWebImports'
 import {
   connectToServer,
   getConnections,
@@ -1028,7 +1027,6 @@ function Workspace({
     bundleId: string
     files: File[]
   } | null>(null)
-  const [bundleDropBusy, setBundleDropBusy] = useState(false)
   const dropFilesOnBundle = useCallback((bundleId: string, files: File[]) => {
     if (files.length === 0) return
     setPendingBundleDrop({ bundleId, files })
@@ -1646,6 +1644,7 @@ function Workspace({
   // from *outside* it are copied in, which is what write mode made possible.
   // The hook ignores drops while any modal/viewer is open (P0-3).
   const queryClient = useQueryClient()
+  const webImports = useWebImports({ onFlash: showFlash })
   // OS files dropped onto a bundle card: ask where on disk they should land,
   // then import each there (journaled, keep-both on a name collision) and link
   // the landed paths into that bundle. Only offered with write mode on — without
@@ -1660,35 +1659,31 @@ function Workspace({
     (destDir: string) => {
       const pending = pendingBundleDrop
       if (!pending) return
-      setBundleDropBusy(true)
-      void (async () => {
-        try {
-          const landed: string[] = []
-          for (const file of pending.files) {
-            const result = await importFile(file, { destDir, onConflict: 'suffix' })
-            if (!result.skipped) landed.push(result.path)
-          }
+      const accepted = webImports.copyIn(pending.files, destDir, {
+        onConflict: 'suffix',
+        announceEach: false,
+        onSettled: async (result) => {
+          const landed = result.imported.map((item) => item.path)
           if (landed.length > 0) {
             await addUnbundledFilesToBundle(pending.bundleId, { relativePaths: landed })
           }
           invalidateAfterFileOperation(queryClient)
           queryClient.invalidateQueries({ queryKey: ['bundle', pending.bundleId] })
-          const where = destDir ? (destDir.split('/').pop() as string) : 'the library root'
-          const n = landed.length
-          showFlash(
-            n === 1
-              ? `Added 1 file to the bundle, in ${where}.`
-              : `Added ${n} files to the bundle, in ${where}.`,
-          )
-        } catch (error) {
-          showFlash(error instanceof Error ? error.message : 'The files could not be added.')
-        } finally {
-          setBundleDropBusy(false)
-          setPendingBundleDrop(null)
-        }
-      })()
+          if (!result.stopped) {
+            const where = destDir ? (destDir.split('/').pop() as string) : 'the library root'
+            const n = landed.length
+            showFlash(
+              n === 1
+                ? `Added 1 file to the bundle, in ${where}.`
+                : `Added ${n} files to the bundle, in ${where}.`,
+            )
+          }
+        },
+      })
+      // Leave the sidebar reachable while the client-owned batch is running
+      if (accepted) setPendingBundleDrop(null)
     },
-    [pendingBundleDrop, queryClient, showFlash],
+    [pendingBundleDrop, queryClient, showFlash, webImports],
   )
 
   const hostImports = useHostImports({
@@ -2138,10 +2133,14 @@ function Workspace({
           onChangeLibrary={onChangeLibrary}
           onManageLibraries={onManage}
           onOpenSettings={onSettings}
-          // A copy-in from a Finder drop is not scoped to any one pane, so its
-          // progress is docked in the sidebar above Settings rather than injected
-          // into whatever surface happens to be on screen.
-          footer={hostImports.progress ? <ImportProgress {...hostImports.progress} /> : undefined}
+          activeImports={[
+            ...(webImports.activity ? [webImports.activity] : []),
+            ...(hostImports.activity ? [hostImports.activity] : []),
+          ]}
+          onCancelImport={(batchId) => {
+            if (webImports.activity?.id === batchId) webImports.stop()
+            if (hostImports.activity?.id === batchId) hostImports.stop()
+          }}
           canLock={canLock}
           onLock={onLock}
           onUpdateLibrary={() => updateLibrary.mutate()}
@@ -2233,6 +2232,7 @@ function Workspace({
             onStartFileDrag={onStartFileDrag}
             writeMode={writeMode}
             onFlash={showFlash}
+            onImportFiles={webImports.copyIn}
             playerPrefs={prefs.player}
             onPlayerPrefs={setPlayerPrefs}
           />
@@ -2603,6 +2603,16 @@ function Workspace({
         />
       )}
 
+      {webImports.conflict && (
+        <ConflictDialog
+          name={webImports.conflict.conflictingName}
+          onKeepBoth={webImports.keepBoth}
+          onReplace={webImports.replace}
+          onCancel={webImports.dismiss}
+          busy={false}
+        />
+      )}
+
       {hostImports.conflict && (
         <ConflictDialog
           name={hostImports.conflict.conflictingName}
@@ -2619,7 +2629,7 @@ function Workspace({
           fileCount={pendingBundleDrop.files.length}
           onChoose={importDroppedFiles}
           onCancel={() => setPendingBundleDrop(null)}
-          busy={bundleDropBusy}
+          busy={false}
         />
       )}
 

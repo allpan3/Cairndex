@@ -91,6 +91,56 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## In progress: stoppable multi-file imports (2026-08-01)
+
+Branch `codex/stoppable-import-batches` off current `main` at `ba76475`. Imports
+remain client-owned, sequential one-file requests rather than registry jobs:
+the browser owns an `AbortController`, while the desktop shell registers a
+batch-scoped cancellation token and carries Stop across IPC into the Rust file
+reader feeding the current `reqwest` body. Both paths keep completed per-file
+journal operations intact and stop before starting the untouched remainder.
+
+The sidebar foot now renders every active client import beside every active
+background job instead of making them compete for one slot. An import row names
+the current file, shows its original batch position, uses the job-control
+waiting and stopping language, and retains a disabled Stop control after the
+stop request. Bundle-target imports close their destination picker once
+accepted so that row remains reachable. Stopped summaries distinguish imports, skips,
+ordinary failures, the interrupted request, and files never attempted; they
+also state that completed imports remain individually undoable. Files completed
+before a stopped bundle-target batch are still linked into that bundle.
+
+The ADR-0013 boundary is unchanged: both write-mode gates still decide whether
+the import affordance exists, every file remains its own intent-before-action
+journal entry, and the server still receives bytes rather than a client-named
+path. A regression test drives an actual Starlette `Request.stream()` through a
+partial `http.request` followed by `http.disconnect`; `ClientDisconnect` reaches
+the existing exception path, the `.part` file is removed, and the file's journal
+entry becomes failed. Browser and desktop hook tests cover sequential batches,
+collision resume, partial-result accounting, and stopping the request already
+in flight; Rust tests cover the IPC token interrupting the streaming reader.
+Sidebar tests cover running, waiting, stopping/disabled, and simultaneous import
+and job rows, and Playwright verifies that a bundle destination picker yields to
+the reachable sidebar row while its request is in flight.
+
+Verification: all backend gates pass — Ruff check and
+format, mypy (**167 source files**), and **960 pytest tests**. All frontend gates
+pass — ESLint, Prettier, TypeScript, **78 Vitest files / 556 tests**, and the
+production build (with the existing chunk-size warning). Desktop formatting,
+Clippy with warnings denied, and all **104 Rust tests** pass; `npm run tauri
+build` produces the macOS app and DMG. The Rust tests and packaged build needed
+host execution because sandboxed socket binding and DMG tooling are unavailable.
+The relevant library Playwright file passes all **33 tests**. A full Playwright
+run passes **104 tests** and repeatedly fails one unrelated pre-existing HLS
+session test at `e2e/player.spec.ts:2331`: the mock records one decision where
+the assertion expects more than one; an isolated rerun fails identically. The
+focused bundle-import Playwright regression was rerun after the final UI audit
+and passes.
+
+Next: review the focused branch and, when convenient, manually stop a large
+Finder import in a packaged build over a throttled or network link. There is no
+unresolved architecture decision and no PR has been opened.
+
 ## In progress: desktop Add Library refresh recovery (2026-07-31)
 
 Branch `codex/fix-desktop-library-refresh` off current `main` at `b5c4572`.

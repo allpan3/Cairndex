@@ -534,14 +534,16 @@ export function useFileOperations() {
         file,
         destDir,
         onConflict,
+        signal,
       }: {
         file: File
         destDir: string
         onConflict?: ConflictPolicy
+        signal?: AbortSignal
         // No `link`: an imported file is copied into the folder, not fast-added
         // into a one-file bundle. It shows in the File Browser; bundling stays a
         // separate, deliberate action.
-      }) => importFile(file, { destDir, onConflict }),
+      }) => importFile(file, { destDir, onConflict, signal }),
       onSuccess: refresh,
     }),
   }
