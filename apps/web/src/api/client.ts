@@ -100,15 +100,22 @@ export type ManualBundleResult = components['schemas']['ManualBundleResultRead']
 
 // --- Active library (one per tab) --------------------------------------------
 let activeLibraryId: string | null = null
-let apiBaseUrl: string | null = null
+
+type CairndexRuntime = typeof globalThis & {
+  __cairndexApiBaseUrl?: string | null
+}
+
+// Survives Vite module replacement while a desktop connection remains active
+const runtime = globalThis as CairndexRuntime
 
 // Selects the remote server used by the desktop host while browsers stay same-origin
 export function setApiBaseUrl(value: string | null): void {
-  apiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
+  runtime.__cairndexApiBaseUrl = value ? value.trim().replace(/\/+$/, '') : null
 }
 
 // Resolves API and media paths without rewriting already absolute URLs
 export function resolveApiUrl(value: string): string {
+  const apiBaseUrl = runtime.__cairndexApiBaseUrl
   if (!apiBaseUrl || /^[a-z][a-z\d+.-]*:/i.test(value)) return value
   return `${apiBaseUrl}/${value.replace(/^\/+/, '')}`
 }
