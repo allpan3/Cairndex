@@ -376,14 +376,29 @@ inspector; no membership write occurs. The action uses the shared inspector
 context, and the docked player override closes the viewer before navigating so
 the destination is not hidden behind it.
 
-**Bundled-desktop cold start waits for library ownership.** `App` used to await
-authorization but fail open while the ownership query was still pending. That
-mounted every workspace query before the server had made its mount decision,
-then cancelled the whole burst when the ownership result arrived; in the Vite
-WebKit development path this could leave Bundle Browser at “Loading library…”
-until an unrelated mutation caused another request. The workspace now mounts
-only after the ownership query settles. An errored or malformed ownership
-response still fails open to the server's authoritative content-route gate.
+**Bundled-desktop cold start no longer strands its first content requests.**
+`App` used to await authorization but fail open while the ownership query was
+still pending. The workspace now mounts only after ownership settles; an
+errored or malformed response still fails open to the server's authoritative
+content-route gate.
+
+That gate was necessary but did not fully fix the reported stall. A reproduced
+`just bundled` start showed React StrictMode replay abort all eight initial
+content requests, then WKWebView strand all eight immediate replacements before
+they reached the network. Changing folders recovered only because it created a
+new query key and a fresh request. The Tauri root now omits development replay,
+while the browser root remains under StrictMode. A root-policy regression uses
+a signal-consuming TanStack query to prove desktop starts it once without an
+abort, plus a component-shape assertion that keeps StrictMode around web; the
+existing unit and browser regressions keep proving that no content query starts
+before ownership settles.
+
+Follow-up verification: frontend lint, format, typecheck, 558 unit tests, and
+production build pass; desktop formatting, Clippy, 104 Rust tests, and packaged
+app/DMG build pass. Playwright passes 104/105 including the cold-start ordering
+case; the sole failure is the recorded unrelated HLS session re-attach case at
+`player.spec.ts:2331`. A cold `just bundled` trace left the window untouched and
+showed zero WebKit request aborts while the first request set completed.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
