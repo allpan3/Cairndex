@@ -183,6 +183,15 @@ mounted), not as a flash defense: `macos-private-api` plus the window
 first composited frame is dark regardless of reveal timing (ADR-0020). The
 inline document background and CSS background remain matching dark fallbacks.
 
+`tauri dev` uses React's development build, but its root deliberately omits
+StrictMode replay. TanStack Query's library requests consume cancellation
+signals, and WKWebView can strand the immediate replacements when replay cleanup
+aborts the first startup burst; the visible result is “Loading library…” until
+navigation changes the query key. The ordinary browser root remains wrapped in
+StrictMode, so shared frontend components still receive the development checks.
+This policy does not change production behavior, where StrictMode does not
+replay effects.
+
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit
 library scope. The shell stores the one-time token beside its issuing server in
