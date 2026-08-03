@@ -8,8 +8,14 @@ import { conflictName, hostImportMessage, useHostImports } from './useHostImport
 // has to match the browser upload flow rule for rule.
 
 const importDroppedFile = vi.fn()
+const startImportBatch = vi.fn()
+const cancelImportBatch = vi.fn()
+const finishImportBatch = vi.fn()
 vi.mock('../platform', () => ({
   importHostDroppedFile: (request: unknown) => importDroppedFile(request),
+  startHostImportBatch: (batchId: string) => startImportBatch(batchId),
+  cancelHostImportBatch: (batchId: string) => cancelImportBatch(batchId),
+  finishHostImportBatch: (batchId: string) => finishImportBatch(batchId),
   // No byte ticks in the test; the progress subscription is a no-op.
   listenHostImportProgress: () => Promise.resolve(() => undefined),
 }))
@@ -39,6 +45,9 @@ const outcome = (path: string, id = 'op-1') => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  startImportBatch.mockResolvedValue(undefined)
+  cancelImportBatch.mockResolvedValue(true)
+  finishImportBatch.mockResolvedValue(undefined)
 })
 
 test('copies a dropped file into the folder being browsed', async () => {
@@ -50,6 +59,7 @@ test('copies a dropped file into the folder being browsed', async () => {
   await waitFor(() => expect(importDroppedFile).toHaveBeenCalled())
   expect(importDroppedFile).toHaveBeenCalledWith({
     libraryId: 'lib-1',
+    batchId: expect.any(String),
     path: '/Users/me/Movies/clip.mkv',
     destDir: 'Show',
     onConflict: undefined,
@@ -71,7 +81,7 @@ test('uploads one file at a time', async () => {
   act(() => result.current.copyIn(['/tmp/a.mkv', '/tmp/b.mkv']))
 
   await waitFor(() => expect(importDroppedFile).toHaveBeenCalledTimes(1))
-  expect(result.current.importing).toEqual(['a.mkv'])
+  expect(result.current.activity).toMatchObject({ name: 'a.mkv', index: 1, total: 2 })
 
   act(() => releaseFirst?.(outcome('Show/a.mkv')))
 
@@ -90,7 +100,6 @@ test('a collision asks, then resumes the rest of the drop', async () => {
   await waitFor(() => expect(result.current.conflict?.conflictingName).toBe('a.mkv'))
   // Nothing after the collision has been sent yet.
   expect(importDroppedFile).toHaveBeenCalledTimes(1)
-  expect(result.current.conflict?.remaining).toEqual(['/tmp/b.mkv'])
 
   act(() => result.current.replace())
 
@@ -116,6 +125,31 @@ test('dismissing a collision abandons the rest without sending anything', async 
 
   expect(result.current.conflict).toBeNull()
   expect(importDroppedFile).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(result.current.activity).toBeNull())
+  expect(flashes.at(-1)?.message).toContain('2 not attempted')
+})
+
+test('stop crosses IPC and interrupts the file already streaming', async () => {
+  let rejectUpload: ((reason: unknown) => void) | undefined
+  importDroppedFile.mockImplementation(() => new Promise((_, reject) => (rejectUpload = reject)))
+  cancelImportBatch.mockImplementation(async () => {
+    rejectUpload?.({ code: 'import_cancelled', message: 'The import was stopped.' })
+    return true
+  })
+  const { result } = setup()
+
+  act(() => result.current.copyIn(['/tmp/a.mkv', '/tmp/b.mkv']))
+  await waitFor(() => expect(importDroppedFile).toHaveBeenCalledTimes(1))
+  const batchId = importDroppedFile.mock.calls[0]?.[0].batchId as string
+
+  act(() => result.current.stop())
+
+  expect(result.current.activity?.status).toBe('stopping')
+  expect(cancelImportBatch).toHaveBeenCalledWith(batchId)
+  await waitFor(() => expect(result.current.activity).toBeNull())
+  expect(importDroppedFile).toHaveBeenCalledTimes(1)
+  expect(finishImportBatch).toHaveBeenCalledWith(batchId)
+  expect(flashes.at(-1)?.message).toContain('1 stopped mid-upload, 1 not attempted')
 })
 
 test('a refused import reports the shell’s reason and offers no undo', async () => {

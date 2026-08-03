@@ -15,7 +15,6 @@ import { FileEntryViewer } from './FileEntryViewer'
 import { contactSheetMenuItem, type ContactSheetTarget } from './contactSheetExport'
 import { ContactSheetDialog } from './ContactSheetDialog'
 import { useFileWriteActions } from './fileWriteActions'
-import { ImportProgress } from './ImportProgress'
 import { ConflictDialog, DeleteDialog, DirectoryPicker, NameEditor } from './FileWriteDialogs'
 import { hostFileMenuEntries } from './hostActions'
 import { HoverPreview } from './HoverPreview'
@@ -79,6 +78,8 @@ interface FileBrowserProps {
   writeMode?: boolean
   // Transient message, with an Undo action when the operation has an inverse.
   onFlash?: (message: string, undo?: () => void) => void
+  // App-owned so an upload survives navigation and reports in the sidebar
+  onImportFiles?: (files: File[], destDir: string) => void
 }
 
 /** Breadcrumb segments for a library-root-relative POSIX path. */
@@ -347,6 +348,7 @@ function FileList({
   path: currentPath,
   writeMode = false,
   onFlash,
+  onImportFiles,
   libraryName,
   playerPrefs,
   onPlayerPrefs,
@@ -357,6 +359,7 @@ function FileList({
   const write = useFileWriteActions({
     currentPath,
     onFlash: onFlash ?? (() => undefined),
+    onImportFiles,
   })
   // New Folder needs a directory to create *in*, which the flat unbundled queue
   // does not have. Renaming works in both scopes — a path is a path.
@@ -806,7 +809,6 @@ function FileList({
         // from the toolbar controls above it.
         tabIndex={-1}
       >
-        {write.importProgress && <ImportProgress {...write.importProgress} />}
         {/* Above the listing rather than inside it: the new folder has no
             position in the current sort until it has a name. */}
         {write.creatingFolder && (
