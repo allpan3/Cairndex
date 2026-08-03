@@ -10,6 +10,8 @@ import type {
 import { ContextMenu } from './ContextMenu'
 import { dragBadgeLabel, setDragBadge } from './dragBadge'
 import { suppressShiftSelection } from './selection'
+import { ImportProgress } from './ImportProgress'
+import type { ImportActivity } from './importActivity'
 import { JobProgress } from './JobProgress'
 import { type MenuEntry, useContextMenu } from './useContextMenu'
 import {
@@ -66,8 +68,9 @@ export interface SidebarProps {
   onChangeLibrary: (libraryId: string) => void
   onManageLibraries: () => void
   onOpenSettings: () => void
-  /** Docked just above Settings — the transfer indicator's fixed home. */
-  footer?: ReactNode
+  /** Client-owned imports share the background-work area with server jobs */
+  activeImports?: ImportActivity[]
+  onCancelImport?: (batchId: string) => void
   canLock?: boolean
   onLock?: () => void
   onUpdateLibrary: () => void
@@ -179,7 +182,8 @@ export function Sidebar({
   onChangeLibrary,
   onManageLibraries,
   onOpenSettings,
-  footer,
+  activeImports = [],
+  onCancelImport,
   canLock,
   onLock,
   onUpdateLibrary,
@@ -753,18 +757,20 @@ export function Sidebar({
       </div>
 
       {/* Pinned to the bottom (margin-top:auto) so Settings is where it is
-          expected rather than trailing whatever the nav happens to end at, and
-          so a transfer indicator has a fixed home directly above it. */}
+          expected rather than trailing whatever the nav happens to end at. */}
       <div className="sidebar__foot">
-        {/* Maintenance jobs sit with the transfer indicator rather than under
+        {/* Maintenance jobs sit with client-owned imports rather than under
             the Update button that started them. They outlive that button — a
             storyboard pass keeps running after Update reports done — and one
             place for "something is happening" beats two.
 
-            A list, not a slot: scan, probe, thumbnail and storyboard jobs
-            overlap, and showing only the newest hid the rest. */}
-        {activeJobs.length > 0 && (
+            A list, not a slot: an import and several jobs can overlap, and
+            showing only one would hide real work. */}
+        {(activeImports.length > 0 || activeJobs.length > 0) && (
           <div className="sidebar__job-progress">
+            {activeImports.map((activity) => (
+              <ImportProgress key={activity.id} activity={activity} onCancel={onCancelImport} />
+            ))}
             {activeJobs.map((job) => (
               <JobProgress key={job.id} job={job} onCancel={onCancelJob} />
             ))}
@@ -774,12 +780,11 @@ export function Sidebar({
             work: the message outlives the button (a storyboard pass reports
             long after Update is done), and "what is happening" and "what went
             wrong" reading as one place beats two. */}
-        {activeJobs.length === 0 && maintenanceError && (
+        {activeImports.length === 0 && activeJobs.length === 0 && maintenanceError && (
           <div className="sidebar__job-error" role="alert">
             {maintenanceError}
           </div>
         )}
-        {footer}
         <button className="nav-item sidebar__settings" onClick={onOpenSettings}>
           <span className="nav-item__icon">
             <IconSettings />
