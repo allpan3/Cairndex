@@ -47,6 +47,12 @@ persistence, device-token storage, and per-library local path mappings.
 Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
 capabilities, per-OS labels, a browser pass-through implementation, and
 a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
+The shared frontend has one deliberate root-policy difference in development:
+the browser root uses React StrictMode replay, while the Tauri root does not.
+TanStack Query consumes cancellation signals for library requests; WKWebView can
+strand the immediate replacements after StrictMode cleanup aborts the first
+startup burst. Production StrictMode has no replay, and browser development
+continues to exercise the shared components under it.
 The paired token is stored with its normalized issuing server and immutable
 approved library ids. Programmatic requests attach it only to those
 library-scoped URLs; global and unscoped requests stay anonymous. An unscoped
