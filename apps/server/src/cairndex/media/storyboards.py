@@ -551,7 +551,7 @@ def _candidate_count(session: Session) -> int:
     )
 
 
-# Generate storyboards for eligible videos in one streaming pass over file ids
+# Generate storyboards for eligible videos in bounded keyset-paged batches
 def generate_for_library(
     session: Session,
     *,
@@ -563,37 +563,44 @@ def generate_for_library(
     sweep_orphaned_artifacts(library_root)
     total = _candidate_count(session)
     generated = skipped = failed = 0
-    stmt = (
-        select(AssetFile.id, AssetFile.quick_fingerprint, AssetFile.tech_metadata)
-        .where(
+    last_id: str | None = None
+    processed = 0
+    while True:
+        stmt = select(AssetFile.id, AssetFile.quick_fingerprint, AssetFile.tech_metadata).where(
             AssetFile.media_kind == MediaKind.VIDEO,
             AssetFile.availability == FileAvailability.AVAILABLE,
         )
-        .order_by(AssetFile.id)
-    )
-
-    rows = session.execute(stmt).yield_per(20)
-    for index, row in enumerate(rows, start=1):
-        if on_progress is not None:
-            on_progress(index - 1, total)  # cancellation check before each file
-        duration = _metadata_duration(row.tech_metadata or {})
-        if (
-            not settings.storyboards
-            or duration is None
-            or duration < settings.storyboard_min_duration
-            or (not force and is_current_index(library_root, row.id, row.quick_fingerprint))
-        ):
-            skipped += 1
-        else:
-            result = generate_for_file(session, row.id, force=force)
-            if result.status == "generated":
-                generated += 1
-            elif result.status == "failed":
-                failed += 1
-            else:
+        if last_id is not None:
+            stmt = stmt.where(AssetFile.id > last_id)
+        # Fully buffer one small page before any ffmpeg work or progress
+        # checkpoint. A streaming SQLite cursor cannot safely live across the
+        # content-session commits those checkpoints perform.
+        rows = session.execute(stmt.order_by(AssetFile.id).limit(20)).all()
+        if not rows:
+            break
+        for row in rows:
+            last_id = row.id
+            if on_progress is not None:
+                on_progress(processed, total)  # cancellation check before each file
+            duration = _metadata_duration(row.tech_metadata or {})
+            if (
+                not settings.storyboards
+                or duration is None
+                or duration < settings.storyboard_min_duration
+                or (not force and is_current_index(library_root, row.id, row.quick_fingerprint))
+            ):
                 skipped += 1
-        if on_progress is not None:
-            on_progress(index, total)
+            else:
+                result = generate_for_file(session, row.id, force=force)
+                if result.status == "generated":
+                    generated += 1
+                elif result.status == "failed":
+                    failed += 1
+                else:
+                    skipped += 1
+            processed += 1
+            if on_progress is not None:
+                on_progress(processed, total)
 
     if on_progress is not None:
         on_progress(total, total)

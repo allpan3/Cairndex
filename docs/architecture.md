@@ -506,9 +506,15 @@ Grouping behavior:
 - applying a plan is the only step that confirms scan-staged bundles, creates
   suggested collections, assigns roles, selects a cover, and links external
   subtitles;
+- a bundle-to-collection conversion response is a durability boundary: it
+  commits the new child proposal IDs and reloads the complete plan before those
+  IDs reach the client, so an immediate apply request cannot outrun request
+  teardown or inherit a stale ORM proposal collection;
 - the apply API supports selected proposal ids. Applying selected proposals marks
   the plan applied; unchecked proposals are intentionally left unapplied for that
   plan and can be re-suggested by regenerating against current library state.
+  Apply commits before responding because the client immediately refreshes
+  bundle and collection queries from that response.
 
 ## 8. Media processing, thumbnails, playback, and subtitles
 
@@ -563,6 +569,11 @@ Clients should resolve that relative to the VTT URL using normal URL rules. The
 VTT is an application index for trickplay loaders, not a browser `<track>`.
 After a storyboard format change, existing libraries require an explicit
 Update/storyboards run; request handlers never generate derivatives on demand.
+The library-wide job enumerates candidates in bounded keyset-paged batches and
+fully buffers each page before starting ffmpeg. Its per-file progress callback
+is also a content-session commit/cancellation checkpoint, so a streaming SQLite
+cursor must never survive across that callback; this matters most when a slow
+network file keeps one page active for minutes.
 
 Thumbnail cover fallback is:
 

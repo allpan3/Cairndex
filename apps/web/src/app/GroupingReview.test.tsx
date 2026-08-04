@@ -322,6 +322,16 @@ function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
           : proposal,
       )
       body = proposals.find((proposal) => proposal.id === proposalId)
+    } else if (url.endsWith(`/grouping/plans/${planId}/apply`) && init?.method === 'POST') {
+      body = {
+        bundles_confirmed: 2,
+        bundles_removed: 0,
+        collections_created: 1,
+        bundles_added_to_collections: 2,
+        files_added_to_bundles: 0,
+        subtitles_linked: 0,
+        conflicts: [],
+      }
     } else {
       body = {}
     }
@@ -959,6 +969,36 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
       name: 'Make this one bundle instead',
     }),
   ).toBeInTheDocument()
+})
+
+test('accepts only the collection and child ids returned by a conversion', async () => {
+  const fetchMock = mockGroupingApi([DIVISIBLE])
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const bundleRow = (await screen.findByText('Two Subjects')).closest('.grp-row')!
+  fireEvent.click(
+    within(bundleRow as HTMLElement).getByRole('button', {
+      name: 'Make this a collection of bundles instead',
+    }),
+  )
+  await screen.findByText('“Two Subjects” is now a collection of bundles.')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url.endsWith('/grouping/plans/plan1/apply') && init?.method === 'POST',
+      ),
+    ).toBe(true),
+  )
+  const applyCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/grouping/plans/plan1/apply') && init?.method === 'POST',
+  )
+  const payload = JSON.parse(applyCall?.[1]?.body as string) as { proposal_ids: string[] }
+  expect(new Set(payload.proposal_ids)).toEqual(
+    new Set(['divisible1', 'divisible1-child0', 'divisible1-child1']),
+  )
 })
 
 test('a single-subject bundle may still become a collection', async () => {
