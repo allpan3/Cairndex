@@ -1,12 +1,14 @@
 """Storyboards: generation math, cache invalidation, endpoints, and jobs."""
 
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session, sessionmaker
 
 from cairndex.core.abort import OperationAborted
@@ -340,6 +342,64 @@ def test_job_idempotence_and_fingerprint_invalidation(
     assert second.skipped == 1
     assert third.generated == 1
     assert calls["count"] == 2
+
+
+def test_library_pass_survives_progress_commits_between_cursor_batches(
+    monkeypatch: pytest.MonkeyPatch, session: Session, library_root: Path
+) -> None:
+    """Job checkpoints commit the content session after every file, so a
+    library pass must not keep a streaming SQLite cursor across those commits."""
+    for index in range(2):
+        _video_file(session, library_root, name=f"synthetic-{index:02d}.mp4")
+    monkeypatch.setattr(storyboards, "_generate_sheets", _fake_generate_sheets)
+
+    invalidated = False
+    original_execute = session.execute
+
+    class CommitSensitiveRows:
+        """Model a SQLite result whose cursor was closed by a checkpoint."""
+
+        def __init__(self, rows: object) -> None:
+            self.rows = rows
+
+        def yield_per(self, _count: int) -> "CommitSensitiveRows":
+            return self
+
+        def __iter__(self):  # noqa: ANN204
+            for row in self.rows:  # type: ignore[union-attr]
+                if invalidated:
+                    raise ProgrammingError(
+                        "fetch next row",
+                        {},
+                        sqlite3.ProgrammingError("Cannot operate on a closed database"),
+                    )
+                yield row
+
+        def all(self):  # noqa: ANN204
+            return self.rows.all()  # type: ignore[union-attr]
+
+    def guarded_execute(statement: object, *args: object, **kwargs: object):  # noqa: ANN202
+        rows = original_execute(statement, *args, **kwargs)
+        columns = getattr(statement, "selected_columns", ())
+        keys = list(columns.keys()) if hasattr(columns, "keys") else []
+        if keys == ["id", "quick_fingerprint", "tech_metadata"]:
+            return CommitSensitiveRows(rows)
+        return rows
+
+    monkeypatch.setattr(session, "execute", guarded_execute)
+
+    def checkpoint(_processed: int, _total: int) -> None:
+        nonlocal invalidated
+        session.commit()
+        invalidated = True
+
+    summary = storyboards.generate_for_library(
+        session,
+        on_progress=checkpoint,
+    )
+
+    assert summary.generated == 2
+    assert summary.failed == 0
 
 
 def test_generate_for_file_truncates_cues_to_emitted_sheets(

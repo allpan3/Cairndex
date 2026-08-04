@@ -36,6 +36,18 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **A bundle converted into a collection could fail when immediately accepted.**
+  The conversion response could expose its new child proposal IDs before the
+  request-finalizer commit made them visible to the next database session, and
+  its ORM snapshot could reuse the pre-conversion proposal list. Conversion now
+  commits and reloads the complete plan before responding; applying also commits
+  before the client refreshes bundle and collection views.
+- **Large storyboard runs no longer fail partway through with “Cannot operate on
+  a closed database.”** The library pass held a streaming SQLite result open
+  while each file could spend minutes in ffmpeg and each progress checkpoint
+  committed the same session. Candidate rows are now fully buffered in bounded,
+  keyset-paged batches, so no database cursor crosses an ffmpeg or checkpoint
+  boundary.
 - **Grouping suggestions no longer wait behind media metadata collection.** The
   scan job had already generated and persisted its plan, but Update withheld the
   review until every file finished ffprobe. Review now opens as soon as scan
