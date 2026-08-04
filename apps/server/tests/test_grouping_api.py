@@ -5,9 +5,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.domain.enums import GroupingState
+from cairndex.api.schemas.grouping import ProposalKindUpdate
+from cairndex.api.v1 import grouping as grouping_api
+from cairndex.domain.enums import GroupingState, ProposalKind
 from cairndex.grouping import plan_store
 from cairndex.grouping.service import gather_observations
 from cairndex.grouping.suggester import suggest_grouping
@@ -721,6 +723,82 @@ def test_single_item_bundle_converts_once_then_stops(
         json={"kind": "container"},
     )
     assert again.status_code == 422, again.text
+
+
+def test_converted_bundle_and_collection_apply_immediately(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    """The conversion response's collection and child ids must be accepted by
+    the very next request, without a plan refresh in between."""
+    folder = library_root / "Synthetic Set"
+    folder.mkdir()
+    (folder / "Synthetic Clip.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    source = next(p for p in plan["proposals"] if p["kind"] == "bundle")
+    converted = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{source['id']}/kind",
+        json={"kind": "container"},
+    )
+    assert converted.status_code == 200, converted.text
+    proposals = converted.json()["proposals"]
+    selected = [
+        p["id"]
+        for p in proposals
+        if p["id"] == source["id"] or p["parent_proposal_id"] == source["id"]
+    ]
+    assert len(selected) == 2
+
+    applied = client.post(
+        f"{base}/plans/{plan['id']}/apply",
+        json={"proposal_ids": selected},
+    )
+
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["collections_created"] == 1
+    assert applied.json()["bundles_confirmed"] == 1
+    assert applied.json()["bundles_added_to_collections"] == 1
+
+
+def test_conversion_response_ids_are_durable_before_the_response_returns(
+    library_root: Path,
+    session: Session,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """A second request can start as soon as the client receives the response.
+
+    On a slow library database, relying on the request dependency's teardown to
+    commit leaves a window where the response names new child proposals that a
+    concurrent apply session cannot see yet.
+    """
+    folder = library_root / "Durable Set"
+    folder.mkdir()
+    (folder / "Durable Clip.mp4").write_text("v")
+    scan_library(session, library_root)
+    session.commit()
+
+    with session_factory() as writer:
+        plan = plan_store.generate_plan(writer)
+        writer.commit()
+        source = next(p for p in plan.proposals if p.kind is ProposalKind.BUNDLE)
+        response = grouping_api.convert_proposal_kind(
+            plan.id,
+            source.id,
+            ProposalKindUpdate(kind=ProposalKind.CONTAINER),
+            writer,
+        )
+        selected = {
+            p.id
+            for p in response.proposals
+            if p.id == source.id or p.parent_proposal_id == source.id
+        }
+        assert len(selected) == 2
+
+        with session_factory() as reader:
+            persisted = plan_store.get_plan(reader, plan.id)
+            assert selected <= {p.id for p in persisted.proposals}
 
 
 def test_one_video_with_sidecars_stays_one_bundle_when_divided(

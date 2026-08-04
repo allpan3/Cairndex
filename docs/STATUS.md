@@ -141,6 +141,47 @@ Next: review the focused branch and, when convenient, manually stop a large
 Finder import in a packaged build over a throttled or network link. There is no
 unresolved architecture decision and no PR has been opened.
 
+## Completed: grouping conversion and storyboard connection regressions (2026-08-04)
+
+Integrated directly into `main` at the owner's request. Both reports are
+reproduced with generated fixtures; no owner library names, paths, filenames,
+or screenshot contents enter the change.
+
+**Convert then Accept crossed a transaction boundary.** The conversion endpoint
+returned IDs for newly inserted child proposals while the library-session
+dependency still owned the commit. On a slow library DB, a following apply
+request could start from another session before that teardown finished and
+correctly reject those not-yet-visible IDs as nonexistent. The endpoint also
+re-read the plan through the same SQLAlchemy identity map, where an already
+loaded `plan.proposals` collection could retain its pre-conversion contents.
+Conversion now commits, expires that identity map and reloads the complete plan
+before responding. Apply commits before returning too, so the bundle/collection
+queries the client immediately invalidates observe what the result says it
+accepted. A two-session regression asserts every ID in the conversion response
+is durable before the endpoint returns; API and UI regressions cover immediate
+selected apply and its exact request payload.
+
+**Storyboard generation held a live SQLite result across slow external work and
+commits.** `generate_for_library()` used `yield_per(20)`, then spent up to minutes
+inside ffmpeg and called `JobContext.checkpoint()` before and after each file;
+that checkpoint commits the same content session. Fetching the next row from an
+invalidated result produces the reported SQLAlchemy `ProgrammingError` wrapping
+SQLite's `Cannot operate on a closed database`. Candidate enumeration now uses
+bounded 20-row keyset pages, fully buffered before any ffmpeg/checkpoint boundary,
+so memory remains bounded without retaining a cursor. The regression invalidates
+a result at the checkpoint and reproduces the exact exception against the old
+loop.
+
+Verification: all backend gates pass — Ruff check and format, mypy (**167 source
+files**), and **963 pytest tests**. All frontend gates pass — ESLint, Prettier,
+TypeScript, **79 Vitest files / 564 tests**, and the production build (with the
+existing chunk-size warning). The full `e2e/library.spec.ts` Playwright file
+passes all **34 tests**, including its grouping-review flows. The complete
+Playwright suite passes **106 tests** and fails only the unchanged HLS session
+re-attach baseline at `e2e/player.spec.ts:2331`; the mock records one playback
+decision where the assertion expects a replacement. No desktop host code
+changed, so the Rust/packaging gates are unaffected.
+
 ## In progress: desktop Add Library refresh recovery (2026-07-31)
 
 Branch `codex/fix-desktop-library-refresh` off current `main` at `b5c4572`.

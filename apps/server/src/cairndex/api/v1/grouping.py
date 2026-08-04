@@ -155,7 +155,13 @@ def convert_proposal_kind(
     Returns the whole plan rather than the one proposal: a conversion adds or
     removes sibling rows, so the client's tree has changed shape.
     """
-    plan = plan_store.convert_proposal_kind(db, plan_id, proposal_id, payload.kind)
+    plan_store.convert_proposal_kind(db, plan_id, proposal_id, payload.kind)
+    # The response names newly created proposal ids, so it is a durability
+    # boundary: a client may apply them before this request's dependency teardown
+    # runs, especially when the library DB is on a slow share.
+    db.commit()
+    db.expire_all()
+    plan = plan_store.get_plan(db, plan_id)
     return PlanRead.model_validate(plan)
 
 
@@ -168,6 +174,9 @@ def apply_plan(
         set(payload.proposal_ids) if payload and payload.proposal_ids is not None else None
     )
     result = apply_service.apply_plan(db, plan, proposal_ids=proposal_ids)
+    # The client refreshes browse and collection queries as soon as this response
+    # arrives; make those reads observe the grouping it says was accepted.
+    db.commit()
     return ApplyResultRead(
         bundles_confirmed=result.bundles_confirmed,
         bundles_removed=result.bundles_removed,
