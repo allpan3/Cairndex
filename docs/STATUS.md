@@ -376,14 +376,56 @@ inspector; no membership write occurs. The action uses the shared inspector
 context, and the docked player override closes the viewer before navigating so
 the destination is not hidden behind it.
 
-**Bundled-desktop cold start waits for library ownership.** `App` used to await
-authorization but fail open while the ownership query was still pending. That
-mounted every workspace query before the server had made its mount decision,
-then cancelled the whole burst when the ownership result arrived; in the Vite
-WebKit development path this could leave Bundle Browser at “Loading library…”
-until an unrelated mutation caused another request. The workspace now mounts
-only after the ownership query settles. An errored or malformed ownership
-response still fails open to the server's authoritative content-route gate.
+**Bundled-desktop cold start no longer strands its first content requests.**
+`App` used to await authorization but fail open while the ownership query was
+still pending. The workspace now mounts only after ownership settles; an
+errored or malformed response still fails open to the server's authoritative
+content-route gate.
+
+That gate was necessary but did not fully fix the reported stall. A reproduced
+`just bundled` start showed React StrictMode replay abort all eight initial
+content requests, then WKWebView strand all eight immediate replacements before
+they reached the network. Changing folders recovered only because it created a
+new query key and a fresh request. The Tauri root now omits development replay,
+while the browser root remains under StrictMode. A root-policy regression uses
+a signal-consuming TanStack query to prove desktop starts it once without an
+abort, plus a component-shape assertion that keeps StrictMode around web; the
+existing unit and browser regressions keep proving that no content query starts
+before ownership settles.
+
+A later startup report exposed a separate boundary: `App` treated every
+registered row as selectable even when the registry had already classified it
+`unavailable`. It then issued ownership and authorization requests, mounted the
+workspace after their errors failed open, and let the browser surface the
+server's raw id-based availability error. Registry status now gates before all
+three layers. A remembered offline choice falls back to a reachable sibling;
+when every row is offline, a dedicated recovery card offers Retry and Manage
+Libraries, polls every five seconds only while the app is visible and stranded,
+and mounts the workspace in place if the registered root returns. It does not
+search the filesystem for a moved root. Generated component and Chromium
+fixtures cover fallback selection, zero pre-recovery library-scoped requests,
+the checking/disabled state, and unavailable-to-available recovery without
+navigation.
+
+**Grouping review no longer waits for media probing.** The scan job already
+generates and persists its grouping plan from paths and scan-classified media
+kinds; ffprobe metadata was never an input. The combined Update mutation still
+waited for the entire probe pass before delivering that existing plan to the UI.
+Update now completes and opens review as soon as scan does, while metadata stays
+visible and stoppable in the shared background-job area. Storyboards remain
+ordered after a successful probe because their eligibility and sampling require
+duration. A probe failure leaves grouping review usable, keeps the failed job row
+as the report, and does not enqueue storyboards.
+
+Follow-up verification: frontend lint, format, typecheck, 563 unit tests, and
+production build pass. The new grouping/probe browser regression passes; the
+full browser run is 106/107 because the unchanged HLS re-attach case also fails
+when run from `origin/main`, so it remains outside this branch. Desktop
+formatting, Clippy, 104 Rust tests, and the packaged app/DMG build pass. No
+backend source or API changed in the recovery or grouping follow-up, so its gate
+was not rerun. A cold `just bundled` trace for the root policy fix left the
+window untouched and showed zero WebKit request aborts while the first request
+set completed.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
@@ -7011,8 +7053,8 @@ path matches the intended product model:
 2. repair high-confidence moves without changing original files;
 3. stage new files in provisional bundles;
 4. generate and persist a reviewable grouping plan;
-5. collect technical metadata;
-6. let the user accept selected grouping proposals.
+5. open review so the user can accept selected grouping proposals;
+6. collect technical metadata in the background, then generate storyboards.
 
 Applying a grouping plan is the only operation that confirms scan-staged
 bundles, creates suggested logical collections, assigns roles, selects
@@ -7023,8 +7065,9 @@ original files.
 ## Current implementation notes
 
 - **Primary maintenance flow:** **Update** is the main sidebar action. It runs
-  scan + grouping-plan generation first, then probe. The overflow menu keeps
-  scan-only, probe-only, and review-only actions for exception cases.
+  scan + grouping-plan generation, opens review, then hands probe and storyboard
+  generation to the background-job area. The overflow menu keeps scan-only,
+  probe-only, and review-only actions for exception cases.
 - **Grouping review:** The modal shows the persisted plan, explains that
   regeneration reruns the same heuristic against current library state, and
   supports checkboxes, cascading parent toggles, **Select all**, **Deselect all**,

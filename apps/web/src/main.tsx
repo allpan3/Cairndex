@@ -1,10 +1,11 @@
-import { StrictMode, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { initializeHostPlatform, isDesktopHost, revealHostWindow } from './platform'
 import { QueryScope } from './QueryScope'
+import { RuntimeRoot, type RuntimeSurface } from './RuntimeRoot'
 import { markOverlayTitleBar } from './desktop/titleBar'
 
 const root = createRoot(document.getElementById('root')!)
@@ -13,8 +14,8 @@ const root = createRoot(document.getElementById('root')!)
 // has one server and so one scope forever, while the desktop shell remounts it
 // per connection (plan 3 §7.1) — which is why the provider lives below this
 // point rather than here.
-function renderApp(content: ReactNode): void {
-  root.render(<StrictMode>{content}</StrictMode>)
+function renderApp(content: ReactNode, surface: RuntimeSurface): void {
+  root.render(<RuntimeRoot surface={surface}>{content}</RuntimeRoot>)
 }
 
 // Replaces a blank webview with an actionable shell-load failure
@@ -56,7 +57,7 @@ async function renderDesktopApp(): Promise<void> {
   } catch (error) {
     content = renderDesktopLoadError(error)
   }
-  flushSync(() => renderApp(content))
+  flushSync(() => renderApp(content, 'desktop'))
   revealDesktopWindowAfterMount()
 }
 
@@ -67,5 +68,6 @@ if (isDesktopHost()) {
     <QueryScope>
       <App />
     </QueryScope>,
+    'web',
   )
 }

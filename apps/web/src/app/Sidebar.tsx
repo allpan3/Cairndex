@@ -454,8 +454,9 @@ export function Sidebar({
         >
           {libraries.length === 0 && <option value="">No libraries</option>}
           {libraries.map((l) => (
-            <option key={l.id} value={l.id}>
+            <option key={l.id} value={l.id} disabled={l.status !== 'available'}>
               {l.name}
+              {l.status !== 'available' ? ' (unavailable)' : ''}
             </option>
           ))}
         </select>
@@ -485,7 +486,7 @@ export function Sidebar({
         <button
           className="sidebar__job"
           onClick={onUpdateLibrary}
-          title="Scan files, prepare grouping suggestions, collect media metadata, and generate storyboards"
+          title="Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background"
           disabled={updating || libraryId === null}
         >
           {updating ? '⟳ Updating…' : '⟳ Update'}
