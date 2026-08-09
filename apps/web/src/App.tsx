@@ -219,7 +219,7 @@ function Resizer({
  */
 export default function App() {
   const queryClient = useQueryClient()
-  const librariesQuery = useLibraries()
+  const librariesQuery = useLibraries({ pollWhileUnavailable: true })
   // Keyed per connection: library ids are per-server and not globally unique,
   // so one shared key could carry a NAS id into the local server (plan 3 §7.1).
   // In the browser there is one connection forever and the key is the original.
@@ -236,10 +236,14 @@ export default function App() {
   const [deepLink, setDeepLink] = useState<PendingDeepLink | null>(null)
 
   const libraries = useMemo(() => librariesQuery.data ?? [], [librariesQuery.data])
-  const libraryId = useMemo(() => {
-    if (chosenId && libraries.some((l) => l.id === chosenId)) return chosenId
-    return libraries[0]?.id ?? null
-  }, [libraries, chosenId])
+  const chosenLibrary = chosenId ? libraries.find((library) => library.id === chosenId) : undefined
+  const defaultLibrary = libraries.find((library) => library.status === 'available') ?? libraries[0]
+  const libraryId = chosenLibrary?.id ?? defaultLibrary?.id ?? null
+  const library = libraries.find((candidate) => candidate.id === libraryId)
+  const fallbackLibrary =
+    library?.status === 'unavailable'
+      ? libraries.find((candidate) => candidate.status === 'available')
+      : undefined
 
   const changeLibrary = useCallback(
     (nextId: string) => {
@@ -252,6 +256,13 @@ export default function App() {
     },
     [libraryId, queryClient, setChosenId],
   )
+
+  // A remembered library can be offline at the next launch. Move to a usable
+  // sibling through the normal switch path so the previous library's unscoped
+  // content cache is cleared before the replacement workspace can mount
+  useEffect(() => {
+    if (fallbackLibrary) changeLibrary(fallbackLibrary.id)
+  }, [changeLibrary, fallbackLibrary])
 
   // A library was deregistered. Content query keys are not library-scoped — the
   // active library is module-global and the cache is cleared on every switch —
@@ -332,23 +343,25 @@ export default function App() {
   )
 
   // Set the module-global active library during render so content queries (which
-  // run after commit) target the right library.
-  if (libraryId) setActiveLibraryId(libraryId)
+  // run after commit) target the right library. An unavailable row is registry
+  // information, not a mountable content scope
+  const mountableLibraryId = library?.status === 'available' ? libraryId : null
+  setActiveLibraryId(mountableLibraryId)
 
   // Per-library lock (ADR-0010): resolve lock state before mounting the
   // workspace, so a protected+locked library shows its passphrase screen and
   // never fires content queries while locked.
-  const auth = useLibraryAuth(libraryId)
-  const lock = useLibraryLock(libraryId)
+  const auth = useLibraryAuth(mountableLibraryId)
+  const lock = useLibraryLock(mountableLibraryId)
   // Ownership is checked at the mount gate, not by reacting to 409s from
   // content queries: a lease refusal would otherwise arrive once per query as a
   // scatter of identical errors instead of one explainable state (ADR-0018).
-  const ownership = useLibraryOwnership(libraryId)
-  const takeover = useStartTakeover(libraryId)
+  const ownership = useLibraryOwnership(mountableLibraryId)
+  const takeover = useStartTakeover(mountableLibraryId)
   const locked = auth.data?.protected === true && auth.data.unlocked === false
   const desktop = getHostPlatform().kind === 'desktop'
-  const deviceHasAccess = libraryId ? hasHostDeviceAccess(libraryId) : false
-  useDesktopMenuAvailability(libraryId !== null && auth.isSuccess && !locked)
+  const deviceHasAccess = mountableLibraryId ? hasHostDeviceAccess(mountableLibraryId) : false
+  useDesktopMenuAvailability(mountableLibraryId !== null && auth.isSuccess && !locked)
 
   // The one surface for adding, opening, and removing libraries. Rendered in
   // every state the menu item is enabled in — including the ones that replace
@@ -404,6 +417,51 @@ export default function App() {
       onClose={() => setSettingsPage(null)}
     />
   )
+
+  if (fallbackLibrary) {
+    return (
+      <>
+        <div className="app-loading">Opening an available library…</div>
+        {settingsDialog}
+        {libraryDialog}
+      </>
+    )
+  }
+
+  // Do not ask a row that already failed the registry probe for ownership,
+  // authentication, or content. Besides producing redundant I/O, doing so used
+  // to mount the browser and replace its spinner with the server's raw id-based
+  // availability error. A returning volume is picked up by Retry or the bounded
+  // foreground poll in useLibraries.
+  if (library?.status === 'unavailable') {
+    return (
+      <>
+        <LibraryAccessNotice
+          libraries={libraries}
+          libraryId={library.id}
+          onChangeLibrary={changeLibrary}
+          title="Library unavailable"
+          message={`${library.name} cannot be reached at its registered location. Reconnect its drive or network share, or use Manage Libraries if the folder moved.`}
+        >
+          <button
+            className="lockscreen__submit"
+            onClick={() => void librariesQuery.refetch()}
+            disabled={librariesQuery.isFetching}
+          >
+            {librariesQuery.isFetching ? 'Checking…' : 'Retry'}
+          </button>
+          <button className="btn" onClick={() => setManaging(true)}>
+            Manage Libraries
+          </button>
+          {librariesQuery.isError && (
+            <span className="lockscreen__error">Could not refresh the library list.</span>
+          )}
+        </LibraryAccessNotice>
+        {settingsDialog}
+        {libraryDialog}
+      </>
+    )
+  }
 
   // Placed before the auth gate: a library this server may not serve cannot be
   // unlocked either, so the passphrase screen would be a dead end.

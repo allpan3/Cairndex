@@ -183,6 +183,24 @@ mounted), not as a flash defense: `macos-private-api` plus the window
 first composited frame is dark regardless of reveal timing (ADR-0020). The
 inline document background and CSS background remain matching dark fallbacks.
 
+`tauri dev` uses React's development build, but its root deliberately omits
+StrictMode replay. TanStack Query's library requests consume cancellation
+signals, and WKWebView can strand the immediate replacements when replay cleanup
+aborts the first startup burst; the visible result is “Loading library…” until
+navigation changes the query key. The ordinary browser root remains wrapped in
+StrictMode, so shared frontend components still receive the development checks.
+This policy does not change production behavior, where StrictMode does not
+replay effects.
+
+An unavailable registered root is handled before either of those startup
+requests. The app shows **Library unavailable**, keeps Retry disabled as
+**Checking…** while the registry refresh is running, and offers **Manage
+Libraries** if the root moved. It also retries the registry every five seconds
+while the visible connection has no available library, then proceeds through
+ownership and authorization without requiring navigation when the root returns.
+No library-scoped request should appear before that transition; seeing one is a
+startup-gate regression, not an expected availability probe.
+
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit
 library scope. The shell stores the one-time token beside its issuing server in
@@ -537,11 +555,11 @@ path on the server.
 
 For local manual testing, start the backend and frontend, open the app, use the
 sidebar `+` to add a library directory, then run **Update**.
-Update scans files, persists a grouping plan, collects ffprobe metadata,
-refreshes the UI, opens grouping review when suggestions exist, and starts
-missing/stale storyboard generation in the background. The maintenance overflow
-menu exposes standalone **Scan new files**, **Suggest grouping**, **Collect
-metadata**, and **Generate storyboards** actions.
+Update scans files, persists a grouping plan, refreshes the UI, and opens
+grouping review when suggestions exist. It then collects ffprobe metadata in the
+background and starts missing/stale storyboard generation only after that probe
+succeeds. The maintenance overflow menu exposes standalone **Scan new files**,
+**Suggest grouping**, **Collect metadata**, and **Generate storyboards** actions.
 In grouping review, double-click a new-bundle or collection suggestion title to
 edit it; Enter or blur saves the open-plan edit, while Escape cancels it. A
 re-scan addition can be switched from its recommended existing bundle to

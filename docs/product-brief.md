@@ -380,7 +380,10 @@ confirms or creates a bundle, then adds that bundle to the collection.
 Current workflow details:
 
 - scan jobs persist an open grouping plan without applying it;
-- the primary **Update** flow runs scan/grouping-plan generation, then metadata probe, refreshes affected queries, and opens grouping review when suggestions exist;
+- the primary **Update** flow runs scan/grouping-plan generation, refreshes
+  affected queries, and opens grouping review immediately when suggestions
+  exist; metadata probe continues in the background, followed by storyboard
+  generation after probe supplies duration metadata;
 - manual **Suggest grouping** and Update use the same candidate boundary:
   confirmed bundles stay settled regardless of collection membership, while
   still-unbundled files and new additions remain eligible;

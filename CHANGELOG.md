@@ -36,6 +36,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Grouping suggestions no longer wait behind media metadata collection.** The
+  scan job had already generated and persisted its plan, but Update withheld the
+  review until every file finished ffprobe. Review now opens as soon as scan
+  completes while metadata continues in the sidebar job area. Storyboards remain
+  chained after a successful probe because they need duration metadata; a probe
+  failure leaves grouping usable and does not start an ineligible storyboard
+  pass.
 - **Desktop Add Library no longer turns a successful registration into an
   apparent failure when the library list cannot refresh.** The confirmation now
   remains visible with an explicit “library was added” result, the committed Add
@@ -148,11 +155,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   name side navigates to that collection without changing bundle membership;
   the × remains a separate removal action. From the docked player inspector,
   navigation closes the viewer first so the destination is visible.
-- **The bundled desktop no longer starts library queries before ownership is
-  known.** Cold starts now hold at a dedicated ownership check instead of
-  mounting and cancelling the whole workspace query burst, which could leave
-  the bundle browser stuck at “Loading library…” until an unrelated action
-  caused another request.
+- **The bundled desktop no longer strands its first library queries or mounts
+  an unavailable library.** Cold starts hold at registry-availability and
+  ownership checks, then mount the workspace once.
+  The Tauri development root also skips React StrictMode replay: TanStack Query
+  correctly aborted the replayed first request burst, but WKWebView could strand
+  its immediate replacements at “Loading library…” until navigation issued a
+  fresh query. Browser development stays under StrictMode, so the shared
+  frontend keeps those checks without making `just bundled` unreliable. If a
+  remembered library is offline, the app now opens another available library;
+  if none is available, it shows Retry and Manage Libraries without issuing
+  ownership, authorization, or content requests against the offline row. A
+  foreground-only five-second probe also recovers automatically when its drive
+  or network share returns, and the recovery screen does not expose the raw
+  registry id or path.
 - **Stopping `just dev` no longer strands a library ownership lease.** Its
   Ctrl-C trap killed the whole process group, including Uvicorn's reloader and
   worker at once, so FastAPI did not always reach the lifespan shutdown that
