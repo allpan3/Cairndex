@@ -133,10 +133,10 @@ export function getActiveLibraryId(): string | null {
   return activeLibraryId
 }
 
-/** Base path for content endpoints scoped to the active library. */
-function lib(): string {
-  if (!activeLibraryId) throw new Error('no active library selected')
-  return `/api/v1/libraries/${activeLibraryId}`
+/** Base path for content endpoints scoped to an explicit or active library */
+function lib(libraryId: string | null = activeLibraryId): string {
+  if (!libraryId) throw new Error('no active library selected')
+  return `/api/v1/libraries/${libraryId}`
 }
 
 /** Extract a useful message from structured API and FastAPI validation errors. */
@@ -733,11 +733,13 @@ export async function setLibraryWriteMode(
 // --- Background jobs ----------------------------------------------------------
 export const enqueueScan = () => send<JobRead>(`${lib()}/jobs/scan`, 'POST')
 
-export const enqueueProbe = () => send<JobRead>(`${lib()}/jobs/probe`, 'POST')
+export const enqueueProbe = (libraryId?: string) =>
+  send<JobRead>(`${lib(libraryId)}/jobs/probe`, 'POST')
 
 export const enqueueThumbnails = () => send<JobRead>(`${lib()}/jobs/thumbnails`, 'POST')
 
-export const enqueueStoryboards = () => send<JobRead>(`${lib()}/jobs/storyboards`, 'POST')
+export const enqueueStoryboards = (libraryId?: string) =>
+  send<JobRead>(`${lib(libraryId)}/jobs/storyboards`, 'POST')
 
 /** Fetch the current status/result for a background job. */
 export const fetchJob = (id: string, signal?: AbortSignal) =>

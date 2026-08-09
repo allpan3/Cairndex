@@ -296,6 +296,89 @@ test('Update surfaces live job progress with phase and counts', async ({ page })
   await expect(page.getByText('Scan complete: 2 linked files are missing.')).toBeVisible()
 })
 
+test('Update opens grouping review while metadata keeps running', async ({ page }) => {
+  await mockApi(page)
+  const proposal = {
+    id: 'new-bundle',
+    kind: 'bundle',
+    title: 'New grouped item',
+    directory: 'Incoming',
+    parent_proposal_id: null,
+    target_bundle_id: null,
+    target_bundle_title: null,
+    create_new_bundle: true,
+    confidence: 0.9,
+    reason: 'matching synthetic filenames',
+    files: [
+      {
+        asset_file_id: 'new-file',
+        relative_path: 'Incoming/item.mp4',
+        proposed_role: 'primary_video',
+        sequence: 0,
+      },
+    ],
+  }
+  await page.route('**/jobs/scan', (route) =>
+    route.fulfill({
+      json: jobRead({
+        id: 'job-scan',
+        status: 'succeeded',
+        result: {
+          grouping_plan_id: 'plan-update',
+          grouping_proposal_count: 1,
+          missing_total: 0,
+        },
+        finished_at: '2026-06-25T00:01:00Z',
+      }),
+    }),
+  )
+  const runningProbe = jobRead({
+    id: 'job-probe',
+    job_type: 'probe',
+    phase: 'probing',
+    processed: 1,
+    total: 10,
+  })
+  await page.route('**/jobs/probe', (route) => route.fulfill({ json: runningProbe }))
+  await page.route('**/api/v1/jobs/job-probe', (route) => route.fulfill({ json: runningProbe }))
+  await page.route('**/grouping/plans', (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 'plan-update',
+          status: 'open',
+          rule_version: 5,
+          generated_at: '2026-06-25T00:01:00Z',
+          applied_at: null,
+          proposal_count: 1,
+        },
+      ],
+    }),
+  )
+  await page.route('**/grouping/plans/plan-update', (route) =>
+    route.fulfill({
+      json: {
+        id: 'plan-update',
+        status: 'open',
+        rule_version: 5,
+        scan_job_id: 'job-scan',
+        stem_modes: {},
+        generated_at: '2026-06-25T00:01:00Z',
+        applied_at: null,
+        proposals: [proposal],
+      },
+    }),
+  )
+
+  await page.goto('/')
+  await page.getByRole('button', { name: /Update/ }).click()
+
+  await expect(page.getByRole('heading', { name: 'Suggest grouping' })).toBeVisible()
+  await expect(page.getByText('New grouped item')).toBeVisible()
+  await expect(page.getByText('Reading media metadata')).toBeVisible()
+  await expect(page.getByText('1/10')).toBeVisible()
+})
+
 test('standalone Scan reports the linked missing-file total', async ({ page }) => {
   await mockApi(page)
   await page.route('**/jobs/scan', (route) =>
