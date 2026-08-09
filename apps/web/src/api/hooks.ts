@@ -370,10 +370,25 @@ export function useSmartCollectionMutations() {
 }
 
 // --- Libraries (registry) + File Browser ----------------------------------------
-export function useLibraries() {
+/** Lists registered libraries and optionally watches an all-offline registry for recovery. */
+export function useLibraries({
+  pollWhileUnavailable = false,
+}: { pollWhileUnavailable?: boolean } = {}) {
   return useQuery({
     queryKey: ['libraries'],
     queryFn: ({ signal }) => fetchLibraries(signal),
+    // A removable drive or network mount can return without an app reload. Keep
+    // the recovery loop limited to the otherwise-stranded state: once any
+    // library is usable, ordinary focus/invalidation refreshes are sufficient
+    refetchInterval: (query) => {
+      const libraries = query.state.data
+      return pollWhileUnavailable &&
+        libraries !== undefined &&
+        libraries.length > 0 &&
+        libraries.every((library) => library.status === 'unavailable')
+        ? 5000
+        : false
+    },
   })
 }
 

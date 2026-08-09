@@ -454,8 +454,9 @@ export function Sidebar({
         >
           {libraries.length === 0 && <option value="">No libraries</option>}
           {libraries.map((l) => (
-            <option key={l.id} value={l.id}>
+            <option key={l.id} value={l.id} disabled={l.status !== 'available'}>
               {l.name}
+              {l.status !== 'available' ? ' (unavailable)' : ''}
             </option>
           ))}
         </select>

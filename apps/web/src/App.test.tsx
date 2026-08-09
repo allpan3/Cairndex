@@ -39,8 +39,35 @@ const LIBRARY = {
   last_opened_at: null,
 }
 
+const UNAVAILABLE_LIBRARY = {
+  ...LIBRARY,
+  id: 'lib-offline',
+  library_uuid: '01J00000000000000000000000',
+  name: 'Offline Test Library',
+  root_path: '/fixtures/offline-library',
+  status: 'unavailable',
+}
+
+type LibrarySource = unknown[] | (() => unknown[] | Promise<unknown[]>)
+
+/** Installs deterministic storage for tests that exercise remembered shell state. */
+function mockLocalStorage(initial: Record<string, string>) {
+  const values = new Map(Object.entries(initial))
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+    clear: () => values.clear(),
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() {
+      return values.size
+    },
+  })
+  return values
+}
+
 function mockApi(
-  libraries: unknown[] = [LIBRARY],
+  libraries: LibrarySource = [LIBRARY],
   options: {
     storyboardStatus?: 'succeeded' | 'failed'
     locked?: boolean
@@ -58,7 +85,8 @@ function mockApi(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       let body: unknown = {}
-      if (url.endsWith('/api/v1/libraries')) body = libraries
+      if (url.endsWith('/api/v1/libraries'))
+        body = typeof libraries === 'function' ? libraries() : libraries
       else if (url.includes('/file-ops/trash'))
         body = { operations: options.trashOperations ?? [], size_bytes: 0 }
       else if (url.endsWith('/auth/status') && options.authError)
@@ -220,6 +248,7 @@ afterEach(() => {
   desktopMenu.handler = null
   openFolder.run.mockReset()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 function renderApp() {
@@ -296,6 +325,67 @@ test('shows the empty shell (not a forced dialog) when no library exists', async
   // Empty shell with a hint, not the forced "Libraries" manager modal.
   await waitFor(() => expect(screen.getByText(/No library yet/i)).toBeInTheDocument())
   expect(screen.queryByRole('heading', { name: 'Libraries' })).not.toBeInTheDocument()
+})
+
+test('prefers an available library over a remembered unavailable one', async () => {
+  const available = { ...LIBRARY, id: 'lib-available', name: 'Available Test Library' }
+  const storage = mockLocalStorage({
+    'cairndex.libraryId': JSON.stringify(UNAVAILABLE_LIBRARY.id),
+  })
+  mockApi([UNAVAILABLE_LIBRARY, available])
+  renderApp()
+
+  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'Offline Test Library (unavailable)' })).toBeDisabled()
+  await waitFor(() => expect(storage.get('cairndex.libraryId')).toBe(JSON.stringify(available.id)))
+  const requestedUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+  expect(requestedUrls.some((url) => url.includes(`/${UNAVAILABLE_LIBRARY.id}/`))).toBe(false)
+  expect(requestedUrls.some((url) => url.includes(`/${available.id}/auth/status`))).toBe(true)
+})
+
+test('shows recovery actions without querying an unavailable library', async () => {
+  mockApi([UNAVAILABLE_LIBRARY])
+  renderApp()
+
+  expect(await screen.findByText('Library unavailable')).toBeInTheDocument()
+  expect(screen.getByText(/Reconnect its drive or network share/)).toBeInTheDocument()
+  expect(screen.queryByText(UNAVAILABLE_LIBRARY.id)).not.toBeInTheDocument()
+  expect(screen.queryByText(UNAVAILABLE_LIBRARY.root_path)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled()
+
+  const requestedUrls = vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+  expect(requestedUrls.some((url) => url.includes(`/${UNAVAILABLE_LIBRARY.id}/`))).toBe(false)
+  expect(requestedUrls.some((url) => url.includes('/bundles/browse'))).toBe(false)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Manage Libraries' }))
+  expect(await screen.findByRole('heading', { name: 'Libraries' })).toBeInTheDocument()
+})
+
+test('retry recovers an unavailable library without navigation', async () => {
+  let resolveRefresh: (libraries: unknown[]) => void = () => undefined
+  let requestCount = 0
+  const available = { ...UNAVAILABLE_LIBRARY, status: 'available' }
+  mockApi(() => {
+    requestCount += 1
+    if (requestCount === 1) return [UNAVAILABLE_LIBRARY]
+    return new Promise<unknown[]>((resolve) => {
+      resolveRefresh = resolve
+    })
+  })
+  renderApp()
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+  expect(await screen.findByRole('button', { name: 'Checking…' })).toBeDisabled()
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
+    false,
+  )
+
+  act(() => resolveRefresh([available]))
+
+  expect(await screen.findByText('Nothing here yet.')).toBeInTheDocument()
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/bundles/browse'))).toBe(
+    true,
+  )
 })
 
 test('opens native settings over a locked library', async () => {

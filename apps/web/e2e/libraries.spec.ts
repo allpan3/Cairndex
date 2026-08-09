@@ -41,6 +41,21 @@ async function mockApi(
   await page.route('**/bundles/browse**', (r) =>
     r.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
   )
+  await page.route('**/api/v1/jobs/active?*', (r) => r.fulfill({ json: [] }))
+  await page.route('**/file-ops/trash', (r) =>
+    r.fulfill({ json: { operations: [], size_bytes: 0 } }),
+  )
+  await page.route('**/api/v1/health', (r) =>
+    r.fulfill({
+      json: {
+        status: 'ok',
+        app_name: 'cairndex',
+        environment: 'test',
+        api_features: [],
+        write_mode: 'disabled',
+      },
+    }),
+  )
   await page.route('**/auth/status', (r) =>
     r.fulfill({ json: { protected: false, unlocked: true } }),
   )
@@ -108,6 +123,7 @@ async function mockApi(
 
   // Libraries list (mutable).
   await page.route('**/api/v1/libraries', (r) => r.fulfill({ json: libraries }))
+  return { libraries }
 }
 
 test('adds a plain folder as a new library through one confirmation', async ({ page }) => {
@@ -302,6 +318,34 @@ test('removes a library after confirming, and says files are untouched', async (
 
   // Back to the empty shell, which is the no-library state the app already has.
   await expect(page.locator('.center')).toContainText('No library yet')
+})
+
+test('an unavailable library recovers in place without mounting content early', async ({
+  page,
+}) => {
+  const offline = {
+    ...registered('lib-offline', 'Offline Test Library', '/fixtures/offline-library'),
+    status: 'unavailable',
+  }
+  let scopedRequests = 0
+  page.on('request', (request) => {
+    if (request.url().includes(`/api/v1/libraries/${offline.id}/`)) scopedRequests += 1
+  })
+  const api = await mockApi(page, { startingLibraries: [offline] })
+
+  await page.goto('/')
+
+  await expect(page.getByText('Library unavailable')).toBeVisible()
+  await expect(page.getByText(/Reconnect its drive or network share/)).toBeVisible()
+  await expect(page.getByText(offline.id)).toHaveCount(0)
+  await expect(page.getByText(offline.root_path)).toHaveCount(0)
+  expect(scopedRequests).toBe(0)
+
+  api.libraries[0].status = 'available'
+  await page.getByRole('button', { name: 'Retry' }).click()
+
+  await expect(page.getByText('Nothing here yet.')).toBeVisible()
+  expect(scopedRequests).toBeGreaterThan(0)
 })
 
 test('switching libraries replaces the browser shell without a reload', async ({ page }) => {
