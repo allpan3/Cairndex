@@ -148,13 +148,20 @@ onward. Entries under `Unreleased` ship in the next tagged release.
   name side navigates to that collection without changing bundle membership;
   the × remains a separate removal action. From the docked player inspector,
   navigation closes the viewer first so the destination is visible.
-- **The bundled desktop no longer strands its first library queries.** Cold
-  starts hold at a dedicated ownership check, then mount the workspace once.
+- **The bundled desktop no longer strands its first library queries or mounts
+  an unavailable library.** Cold starts hold at registry-availability and
+  ownership checks, then mount the workspace once.
   The Tauri development root also skips React StrictMode replay: TanStack Query
   correctly aborted the replayed first request burst, but WKWebView could strand
   its immediate replacements at “Loading library…” until navigation issued a
   fresh query. Browser development stays under StrictMode, so the shared
-  frontend keeps those checks without making `just bundled` unreliable.
+  frontend keeps those checks without making `just bundled` unreliable. If a
+  remembered library is offline, the app now opens another available library;
+  if none is available, it shows Retry and Manage Libraries without issuing
+  ownership, authorization, or content requests against the offline row. A
+  foreground-only five-second probe also recovers automatically when its drive
+  or network share returns, and the recovery screen does not expose the raw
+  registry id or path.
 - **Stopping `just dev` no longer strands a library ownership lease.** Its
   Ctrl-C trap killed the whole process group, including Uvicorn's reloader and
   worker at once, so FastAPI did not always reach the lifespan shutdown that

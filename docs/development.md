@@ -192,6 +192,15 @@ StrictMode, so shared frontend components still receive the development checks.
 This policy does not change production behavior, where StrictMode does not
 replay effects.
 
+An unavailable registered root is handled before either of those startup
+requests. The app shows **Library unavailable**, keeps Retry disabled as
+**Checking…** while the registry refresh is running, and offers **Manage
+Libraries** if the root moved. It also retries the registry every five seconds
+while the visible connection has no available library, then proceeds through
+ownership and authorization without requiring navigation when the root returns.
+No library-scoped request should appear before that transition; seeing one is a
+startup-gate regression, not an expected availability probe.
+
 Settings → Pair this device starts the anonymous ADR-0015 flow and polls until
 an unlocked same-origin web session approves the displayed code and explicit
 library scope. The shell stores the one-time token beside its issuing server in
