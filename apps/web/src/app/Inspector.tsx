@@ -173,6 +173,14 @@ export const Inspector = memo(function Inspector({ bundleId }: { bundleId: strin
   )
 })
 
+/** Commit and unfocus an active note when the inspector is pressed elsewhere */
+function blurActiveNoteOnPointerDown(event: ReactPointerEvent<HTMLElement>) {
+  const active = event.currentTarget.ownerDocument.activeElement
+  if (!(active instanceof HTMLTextAreaElement) || !active.classList.contains('edit--note')) return
+  if (event.target === active) return
+  active.blur()
+}
+
 function BundleEditor({
   bundle,
   hostLabels,
@@ -305,6 +313,7 @@ function BundleEditor({
       className={`inspector${fileDropOver ? ' inspector--file-drop' : ''}`}
       data-file-drop={fileDropOver || undefined}
       data-tauri-drag-region
+      onPointerDownCapture={blurActiveNoteOnPointerDown}
       {...dropProps}
     >
       <div
