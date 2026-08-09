@@ -28,6 +28,8 @@ class ProposalRead(BaseModel):
     target_bundle_id: str | None
     target_bundle_title: str | None
     create_new_bundle: bool
+    # Existing collection represented by this structural placement node
+    target_collection_id: str | None
     confidence: float
     reason: str | None
     files: list[ProposalFileRead]
@@ -49,7 +51,7 @@ class ProposalFileMove(BaseModel):
     target_index: int = Field(ge=0)
 
 
-# Validate a bundle suggestion's collection parent edit
+# Validate a bundle or new-collection suggestion's parent edit
 class ProposalReparent(BaseModel):
     parent_proposal_id: str | None
 

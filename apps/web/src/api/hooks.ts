@@ -996,7 +996,7 @@ export function useMoveGroupingProposalFile(planId: string | null) {
   })
 }
 
-/** Reparent one reviewed bundle and update the open plan in-place. */
+/** Reparent reviewed bundle or new collection work in the open plan */
 export function useReparentGroupingProposal(planId: string | null) {
   const qc = useQueryClient()
   return useMutation({

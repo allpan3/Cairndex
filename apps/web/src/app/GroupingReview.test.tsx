@@ -15,6 +15,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_id: null,
     target_bundle_title: null,
     create_new_bundle: false,
+    target_collection_id: null,
     confidence: 0.9,
     reason: 'holds related bundles',
     files: [],
@@ -28,6 +29,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_id: null,
     target_bundle_title: null,
     create_new_bundle: false,
+    target_collection_id: null,
     confidence: 0.95,
     reason: 'same filename stem',
     files: [
@@ -60,6 +62,7 @@ const PROPOSALS: GroupingProposal[] = [
     target_bundle_id: null,
     target_bundle_title: null,
     create_new_bundle: false,
+    target_collection_id: null,
     confidence: 0.8,
     reason: 'same folder',
     files: [
@@ -82,6 +85,7 @@ const ADDITION: GroupingProposal = {
   target_bundle_id: 'existing1',
   target_bundle_title: 'Sky, Sand, Sea & Salt - 4K',
   create_new_bundle: false,
+  target_collection_id: null,
   confidence: 0.8,
   reason: 'add 3 new file(s) to existing bundle',
   files: [
@@ -123,6 +127,7 @@ const DIVISIBLE: GroupingProposal = {
   target_bundle_id: null,
   target_bundle_title: null,
   create_new_bundle: false,
+  target_collection_id: null,
   confidence: 0.7,
   reason: '2 unrelated files',
   files: [
@@ -140,6 +145,67 @@ const DIVISIBLE: GroupingProposal = {
     },
   ],
 }
+
+const NESTED_PROPOSALS: GroupingProposal[] = [
+  {
+    ...PROPOSALS[0]!,
+    id: 'outer-collection',
+    title: 'Library',
+    directory: 'Library',
+  },
+  {
+    ...PROPOSALS[0]!,
+    id: 'inner-collection',
+    title: 'Series',
+    directory: 'Library/Series',
+    parent_proposal_id: 'outer-collection',
+  },
+  {
+    ...PROPOSALS[1]!,
+    id: 'nested-one',
+    title: 'Episode One',
+    directory: 'Library/Series/Episode One',
+    parent_proposal_id: 'inner-collection',
+    files: [
+      {
+        asset_file_id: 'episode-one-file',
+        relative_path: 'Library/Series/Episode One/video.mp4',
+        proposed_role: 'video_part',
+        sequence: 0,
+      },
+    ],
+  },
+  {
+    ...PROPOSALS[1]!,
+    id: 'nested-two',
+    title: 'Episode Two',
+    directory: 'Library/Series/Episode Two',
+    parent_proposal_id: 'inner-collection',
+    files: [
+      {
+        asset_file_id: 'episode-two-file',
+        relative_path: 'Library/Series/Episode Two/video.mp4',
+        proposed_role: 'video_part',
+        sequence: 0,
+      },
+    ],
+  },
+  {
+    ...PROPOSALS[2]!,
+    id: 'outer-sibling',
+    title: 'Feature',
+    directory: 'Library/Feature',
+    parent_proposal_id: 'outer-collection',
+    files: [
+      {
+        asset_file_id: 'feature-file',
+        relative_path: 'Library/Feature/video.mp4',
+        proposed_role: 'video_part',
+        sequence: 0,
+      },
+    ],
+  },
+]
 
 /** Install a mutable grouping-plan API mock and return its fetch spy. */
 function mockGroupingApi(initialProposals: GroupingProposal[] = PROPOSALS) {
@@ -753,7 +819,7 @@ test('drags a bundle suggestion into a collection suggestion', async () => {
   fireEvent.dragOver(collectionRow, { dataTransfer })
   fireEvent.drop(collectionRow, { dataTransfer })
 
-  await screen.findByText('Bundle moved into the collection suggestion.')
+  await screen.findByText('Bundle moved into “Movies”.')
   const reparentCall = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/proposals/proposal1/parent') && init?.method === 'PUT',
   )
@@ -771,7 +837,9 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   const review = renderReview()
   const dataTransfer = dragData()
 
-  const collectionCheckbox = await screen.findByRole('checkbox', { name: 'Accept Movies' })
+  const collectionCheckbox = await screen.findByRole('checkbox', {
+    name: 'Select bundles in Movies',
+  })
   expect(collectionCheckbox).toBeChecked()
   expect(review.container.querySelector('.grp-root-drop')).not.toBeInTheDocument()
   fireEvent.dragStart(bundleRow('SRCV-005 - cut'), { dataTransfer })
@@ -786,6 +854,143 @@ test('auto-deselects a collection after its last bundle is dragged out', async (
   })
   const reparentCall = fetchMock.mock.calls.find(
     ([url, init]) => url.endsWith('/proposals/proposal1/parent') && init?.method === 'PUT',
+  )
+  expect(reparentCall?.[1]).toMatchObject({
+    body: JSON.stringify({ parent_proposal_id: null }),
+  })
+})
+
+test('selecting one nested bundle leaves its collection ancestors indeterminate', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const outer = await screen.findByRole('checkbox', { name: 'Select bundles in Library' })
+  const inner = screen.getByRole('checkbox', { name: 'Select bundles in Series' })
+  const first = screen.getByRole('checkbox', { name: 'Accept Episode One' })
+  const second = screen.getByRole('checkbox', { name: 'Accept Episode Two' })
+  const sibling = screen.getByRole('checkbox', { name: 'Accept Feature' })
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
+  await waitFor(() => expect(first).not.toBeChecked())
+
+  fireEvent.click(first)
+
+  await waitFor(() => {
+    expect(first).toBeChecked()
+    expect(second).not.toBeChecked()
+    expect(sibling).not.toBeChecked()
+    expect(inner).toBePartiallyChecked()
+    expect(outer).toBePartiallyChecked()
+  })
+  expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Accept selected' }))
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url.endsWith('/grouping/plans/plan1/apply') && init?.method === 'POST',
+      ),
+    ).toBe(true),
+  )
+  const applyCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/grouping/plans/plan1/apply') && init?.method === 'POST',
+  )
+  expect(JSON.parse(applyCall?.[1]?.body as string)).toEqual({ proposal_ids: ['nested-one'] })
+})
+
+test('a nested collection checkbox selects only its descendant bundles', async () => {
+  vi.stubGlobal('fetch', mockGroupingApi(NESTED_PROPOSALS))
+  renderReview()
+
+  const inner = await screen.findByRole('checkbox', { name: 'Select bundles in Series' })
+  const outer = screen.getByRole('checkbox', { name: 'Select bundles in Library' })
+  const first = screen.getByRole('checkbox', { name: 'Accept Episode One' })
+  const second = screen.getByRole('checkbox', { name: 'Accept Episode Two' })
+  const sibling = screen.getByRole('checkbox', { name: 'Accept Feature' })
+  fireEvent.click(screen.getByRole('button', { name: 'Deselect all' }))
+  await waitFor(() => expect(inner).not.toBeChecked())
+
+  fireEvent.click(inner)
+
+  await waitFor(() => {
+    expect(inner).toBeChecked()
+    expect(first).toBeChecked()
+    expect(second).toBeChecked()
+    expect(sibling).not.toBeChecked()
+    expect(outer).toBePartiallyChecked()
+  })
+  expect(screen.getByText('2 bundles selected')).toBeInTheDocument()
+})
+
+test('existing collection context is labeled and cannot be edited or moved', async () => {
+  const proposals = NESTED_PROPOSALS.map((proposal) =>
+    proposal.kind === 'container'
+      ? { ...proposal, target_collection_id: `target-${proposal.id}` }
+      : proposal,
+  )
+  vi.stubGlobal('fetch', mockGroupingApi(proposals))
+  renderReview()
+
+  const title = await screen.findByText('Series', { selector: '.grp-title' })
+  const row = title.closest('.grp-row--collection')
+  if (!row) throw new Error('missing existing collection row')
+  expect(within(row as HTMLElement).getByText('Existing')).toBeInTheDocument()
+  expect(row).toHaveAttribute('draggable', 'false')
+  expect(
+    within(row as HTMLElement).queryByRole('button', {
+      name: 'Rename collection suggestion Series',
+    }),
+  ).toBeNull()
+  expect(within(row as HTMLElement).queryByRole('combobox')).toBeNull()
+  expect(
+    within(row as HTMLElement).queryByRole('button', { name: 'Make this one bundle instead' }),
+  ).toBeNull()
+})
+
+test('a proposed collection placement control moves between parent and top level', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  renderReview()
+
+  const label = 'Placement for collection suggestion Series'
+  fireEvent.change(await screen.findByRole('combobox', { name: label }), {
+    target: { value: '' },
+  })
+  await screen.findByText('Collection moved to the top level.')
+
+  fireEvent.change(screen.getByRole('combobox', { name: label }), {
+    target: { value: 'outer-collection' },
+  })
+  await screen.findByText('Collection moved into “Library”.')
+
+  const bodies = fetchMock.mock.calls
+    .filter(
+      ([url, init]) => url.endsWith('/proposals/inner-collection/parent') && init?.method === 'PUT',
+    )
+    .map(([, init]) => JSON.parse(init?.body as string))
+  expect(bodies).toEqual([{ parent_proposal_id: null }, { parent_proposal_id: 'outer-collection' }])
+})
+
+test('drags a proposed collection to the top level', async () => {
+  const fetchMock = mockGroupingApi(NESTED_PROPOSALS)
+  vi.stubGlobal('fetch', fetchMock)
+  const review = renderReview()
+  const dataTransfer = dragData()
+
+  const title = await screen.findByRole('button', {
+    name: 'Rename collection suggestion Series',
+  })
+  const row = title.closest('.grp-row--collection')
+  if (!row) throw new Error('missing proposed collection row')
+  fireEvent.dragStart(row, { dataTransfer })
+  const rootTarget = review.container.querySelector('.grp-root-drop')
+  if (!rootTarget) throw new Error('missing root drop target')
+  fireEvent.dragOver(rootTarget, { dataTransfer })
+  fireEvent.drop(rootTarget, { dataTransfer })
+
+  await screen.findByText('Collection moved to the top level.')
+  const reparentCall = fetchMock.mock.calls.find(
+    ([url, init]) => url.endsWith('/proposals/inner-collection/parent') && init?.method === 'PUT',
   )
   expect(reparentCall?.[1]).toMatchObject({
     body: JSON.stringify({ parent_proposal_id: null }),
@@ -878,10 +1083,10 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
   // The "Movies" container has no children, so it is empty and never selectable:
   // two of the three fixture proposals count.
   const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
-  await screen.findByText('2 selected')
+  await screen.findByText('2 bundles selected')
   fireEvent.click(second)
   expect(second).not.toBeChecked()
-  await screen.findByText('1 selected')
+  await screen.findByText('1 bundle selected')
 
   fireEvent.click(await screen.findByRole('button', { name: 'Widen stem matching in SRCV-005' }))
   await screen.findByText('SRCV-005 now uses wide stem matching.')
@@ -892,7 +1097,7 @@ test('Widen keeps the suggestions the owner had already unchecked', async () => 
     expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).not.toBeChecked(),
   )
   expect(screen.getByRole('checkbox', { name: 'Accept SRCV-005 - cut' })).toBeChecked()
-  expect(screen.getByText('1 selected')).toBeInTheDocument()
+  expect(screen.getByText('1 bundle selected')).toBeInTheDocument()
 })
 
 test('a conversion elsewhere survives Widen', async () => {
@@ -927,7 +1132,7 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
 
   const second = await screen.findByRole('checkbox', { name: 'Accept Second bundle' })
   fireEvent.click(second)
-  await screen.findByText('1 selected')
+  await screen.findByText('1 bundle selected')
 
   fireEvent.click(screen.getByRole('button', { name: 'Suggest grouping' }))
   await screen.findByText('Suggestions generated from the current library state.')
@@ -937,7 +1142,7 @@ test('an explicit Suggest grouping starts from a clean selection', async () => {
   await waitFor(() =>
     expect(screen.getByRole('checkbox', { name: 'Accept Second bundle' })).toBeChecked(),
   )
-  expect(screen.getByText('2 selected')).toBeInTheDocument()
+  expect(screen.getByText('2 bundles selected')).toBeInTheDocument()
 })
 
 // --- Bundle <-> collection override ------------------------------------------
@@ -971,7 +1176,7 @@ test('turns a bundle suggestion into a collection of bundles', async () => {
   ).toBeInTheDocument()
 })
 
-test('accepts only the collection and child ids returned by a conversion', async () => {
+test('accepts only file-backed child bundles returned by a conversion', async () => {
   const fetchMock = mockGroupingApi([DIVISIBLE])
   vi.stubGlobal('fetch', fetchMock)
   renderReview()
@@ -996,9 +1201,7 @@ test('accepts only the collection and child ids returned by a conversion', async
     ([url, init]) => url.endsWith('/grouping/plans/plan1/apply') && init?.method === 'POST',
   )
   const payload = JSON.parse(applyCall?.[1]?.body as string) as { proposal_ids: string[] }
-  expect(new Set(payload.proposal_ids)).toEqual(
-    new Set(['divisible1', 'divisible1-child0', 'divisible1-child1']),
-  )
+  expect(new Set(payload.proposal_ids)).toEqual(new Set(['divisible1-child0', 'divisible1-child1']))
 })
 
 test('a single-subject bundle may still become a collection', async () => {

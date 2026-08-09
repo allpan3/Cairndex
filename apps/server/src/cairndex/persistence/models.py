@@ -528,8 +528,9 @@ class GroupingProposal(Base):
 
     ``parent_proposal_id`` links a child bundle/container to the container that
     would contain it (the collection is created at apply time). ``directory`` and
-    proposed title/reason are display/context; the durable apply target is the
-    set of ``asset_file_id`` rows in ``files``.
+    proposed title/reason are display context; durable apply targets are the
+    ``asset_file_id`` rows in ``files`` and an optional
+    ``target_collection_id`` for existing collection context.
     """
 
     __tablename__ = "grouping_proposals"
@@ -544,6 +545,8 @@ class GroupingProposal(Base):
     target_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     target_bundle_title: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     create_new_bundle: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Stable identity for an existing collection shown as placement context
+    target_collection_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     # Preserve a proposal's original bundle identity through an explicit edit
     base_bundle_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     owner_edited: Mapped[bool] = mapped_column(default=False, server_default="0")

@@ -91,6 +91,37 @@
 > **[plan 5](plans/05-network-library-latency.md)** — why a NAS-mounted library's
 > inspector takes ~500 ms, deferred post-v0.1.0.
 
+## Completed on branch: grouping selection and placement (2026-08-09)
+
+Branch `codex/fix-grouping-selection-placement` off `main` at `406cf72`.
+
+Grouping review now separates **what is accepted** from **where it is filed**.
+Only file-backed bundle proposals are accepted. Collection checkboxes are
+tri-state bulk selectors for descendant bundles, so selecting one nested bundle
+makes each ancestor indeterminate, leaves siblings unchecked, and sends only
+that bundle id. Apply computes the selected bundle's full structural ancestor
+path and creates or reuses only that path.
+
+Existing collection context now carries a stable `target_collection_id`, is
+labeled **Existing**, and cannot be renamed, moved, or reclassified. Matching
+new suggestions reuse that exact nested collection even when another collection
+has the same name elsewhere; a target removed or reparented after plan generation
+conflicts before its bundle is confirmed instead of creating a top-level
+lookalike. Existing libraries gain the nullable field through additive bootstrap,
+including a legacy marker backfill for open plans.
+
+New bundle and collection proposals have a keyboard-accessible placement
+selector alongside drag-and-drop, including an explicit top-level destination.
+Collection moves reject cycles. Grouping remains metadata-only: apply changes
+bundle/collection records and never touches source files.
+
+Verification: backend Ruff check/format, mypy (**167 source files**), and all
+**966 pytest tests** pass. Frontend ESLint, Prettier, TypeScript, all **79 Vitest
+files / 570 tests**, and the production build pass; the existing large-chunk
+warning remains. The complete frontend `e2e/library.spec.ts` Playwright file
+passes all **34 tests**. OpenAPI and generated frontend types are current. No
+desktop host code changed, so Rust and packaging gates are unaffected.
+
 ## In progress: stoppable multi-file imports (2026-08-01)
 
 Branch `codex/stoppable-import-batches` off current `main` at `ba76475`. Imports

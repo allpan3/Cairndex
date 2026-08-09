@@ -4923,6 +4923,17 @@
             ],
             "title": "Target Bundle Title"
           },
+          "target_collection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Collection Id"
+          },
           "title": {
             "anyOf": [
               {
@@ -4944,6 +4955,7 @@
           "target_bundle_id",
           "target_bundle_title",
           "create_new_bundle",
+          "target_collection_id",
           "confidence",
           "reason",
           "files"
@@ -14130,7 +14142,7 @@
     },
     "/api/v1/libraries/{library_id}/grouping/plans/{plan_id}/proposals/{proposal_id}/parent": {
       "put": {
-        "description": "Move a bundle suggestion into a collection suggestion or to top level.",
+        "description": "Move a bundle or new collection suggestion, including to top level.",
         "operationId": "reparent_proposal_api_v1_libraries__library_id__grouping_plans__plan_id__proposals__proposal_id__parent_put",
         "parameters": [
           {

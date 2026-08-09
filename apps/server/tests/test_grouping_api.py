@@ -393,6 +393,56 @@ def test_bundle_converts_to_a_collection_of_bundles(
         assert any(p.endswith(".mp4") for p in paths), paths
 
 
+# New collection suggestions can be placed explicitly without allowing cycles
+def test_new_collection_proposal_can_move_between_parent_and_top_level(
+    client: TestClient, library_id: str, library_root: Path, session: Session
+) -> None:
+    _seed_mixed_folder(session, library_root)
+    for name in ("Alpha", "Beta"):
+        folder = library_root / "Shelf" / name
+        folder.mkdir(parents=True)
+        (folder / f"{name}.mp4").write_text("v")
+    scan_library(session, library_root)
+
+    base = f"/api/v1/libraries/{library_id}/grouping"
+    plan = client.post(f"{base}/plans").json()
+    shelf = next(
+        proposal
+        for proposal in plan["proposals"]
+        if proposal["kind"] == "container" and proposal["title"] == "Shelf"
+    )
+    trip = max(
+        (proposal for proposal in plan["proposals"] if proposal["kind"] == "bundle"),
+        key=lambda proposal: len(proposal["files"]),
+    )
+    converted = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/kind",
+        json={"kind": "container"},
+    ).json()
+    trip = next(proposal for proposal in converted["proposals"] if proposal["id"] == trip["id"])
+
+    nested = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/parent",
+        json={"parent_proposal_id": shelf["id"]},
+    )
+    assert nested.status_code == 200, nested.text
+    assert nested.json()["parent_proposal_id"] == shelf["id"]
+
+    cycle = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{shelf['id']}/parent",
+        json={"parent_proposal_id": trip["id"]},
+    )
+    assert cycle.status_code == 422
+    assert cycle.json()["code"] == "validation_error"
+
+    root = client.put(
+        f"{base}/plans/{plan['id']}/proposals/{trip['id']}/parent",
+        json={"parent_proposal_id": None},
+    )
+    assert root.status_code == 200, root.text
+    assert root.json()["parent_proposal_id"] is None
+
+
 def test_converted_collection_applies_as_a_real_collection(
     client: TestClient, library_id: str, library_root: Path, session: Session
 ) -> None:
