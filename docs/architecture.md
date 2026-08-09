@@ -47,6 +47,22 @@ persistence, device-token storage, and per-library local path mappings.
 Tauri import boundary: it supplies the exact OS-neutral `HostPlatform`
 capabilities, per-OS labels, a browser pass-through implementation, and
 a lazily loaded desktop implementation selected by `window.__TAURI_INTERNALS__`.
+The shared frontend has one deliberate root-policy difference in development:
+the browser root uses React StrictMode replay, while the Tauri root does not.
+TanStack Query consumes cancellation signals for library requests; WKWebView can
+strand the immediate replacements after StrictMode cleanup aborts the first
+startup burst. Production StrictMode has no replay, and browser development
+continues to exercise the shared components under it.
+
+The app resolves registry availability before the authorization and ownership
+mount gates. A row already marked `unavailable` never becomes the active content
+request scope, so it cannot fan out requests that the server must reject. A
+remembered offline choice yields to the first available library; when every row
+is offline, the shell shows a recovery card with manual Retry and Manage
+Libraries actions. The visible shell polls the registry every five seconds only
+in that all-unavailable state, stopping as soon as any library is reachable.
+This is detection, not path discovery: a moved root still requires the owner to
+register its actual location.
 The paired token is stored with its normalized issuing server and immutable
 approved library ids. Programmatic requests attach it only to those
 library-scoped URLs; global and unscoped requests stay anonymous. An unscoped
@@ -233,8 +249,10 @@ outside this low-cost picker enhancement.
 The current sidebar maintenance flow exposes one primary **Update** button plus a
 small overflow menu for **Scan new files**, **Collect metadata**, **Suggest
 grouping**, and **Generate storyboards**. Update waits for scan/grouping-plan
-generation and metadata probe, then starts storyboard generation in the
-background.
+generation, refreshes the UI, and opens grouping review immediately. Metadata
+probe continues in the shared background-job area; storyboard generation is
+chained for the same library after successful probe because eligibility and
+sampling need duration.
 
 ## 4. Library package and registry
 

@@ -227,7 +227,8 @@ async function watchOptionalJob(
     // having worked. The server agrees: a cancelled job is terminal and drops
     // straight out of the active list, so this local snapshot was the only
     // thing still holding it there.
-    if (latest.job?.status === 'cancelled') onProgress?.(null)
+    // An enqueue failure has no job row to preserve; clear the completed prior stage
+    if (latest.job === null || latest.job.status === 'cancelled') onProgress?.(null)
   }
 }
 
@@ -269,6 +270,13 @@ function invalidateLibraryContent(qc: ReturnType<typeof useQueryClient>) {
     'continue-watching',
   ])
     qc.invalidateQueries({ queryKey: [key] })
+}
+
+/** Refreshes surfaces whose displayed or playback facts come from ffprobe */
+function invalidateProbeContent(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of ['bundle', 'bundle-files', 'browse', 'file-browser', 'playback']) {
+    qc.invalidateQueries({ queryKey: [key] })
+  }
 }
 
 // Drop active-library data while preserving registry and library-keyed auth state
@@ -370,10 +378,25 @@ export function useSmartCollectionMutations() {
 }
 
 // --- Libraries (registry) + File Browser ----------------------------------------
-export function useLibraries() {
+/** Lists registered libraries and optionally watches an all-offline registry for recovery. */
+export function useLibraries({
+  pollWhileUnavailable = false,
+}: { pollWhileUnavailable?: boolean } = {}) {
   return useQuery({
     queryKey: ['libraries'],
     queryFn: ({ signal }) => fetchLibraries(signal),
+    // A removable drive or network mount can return without an app reload. Keep
+    // the recovery loop limited to the otherwise-stranded state: once any
+    // library is usable, ordinary focus/invalidation refreshes are sufficient
+    refetchInterval: (query) => {
+      const libraries = query.state.data
+      return pollWhileUnavailable &&
+        libraries !== undefined &&
+        libraries.length > 0 &&
+        libraries.every((library) => library.status === 'unavailable')
+        ? 5000
+        : false
+    },
   })
 }
 
@@ -752,12 +775,28 @@ export function useCancelJob() {
   })
 }
 
+/** Callbacks shared by the scan and combined Update maintenance flows */
 interface MaintenanceOptions {
   onGroupingPlan?: (planId: string) => void
   onScanComplete?: (missingTotal: number) => void
   // Receives each polled job snapshot (and null when the run settles) so the
   // sidebar can render a live progress bar with phase/message.
   onProgress?: JobProgressFn
+}
+
+/** Runs metadata then storyboard work without holding the grouping-review mutation open */
+function watchPostScanJobs(
+  qc: ReturnType<typeof useQueryClient>,
+  options: MaintenanceOptions,
+  libraryId: string,
+): void {
+  void watchOptionalJob(enqueueProbe(libraryId), options.onProgress, () => {
+    invalidateProbeContent(qc)
+    // Storyboard eligibility and sampling need the duration populated by probe
+    void watchOptionalJob(enqueueStoryboards(libraryId), options.onProgress, () =>
+      qc.invalidateQueries({ queryKey: ['playback'] }),
+    )
+  })
 }
 
 /** Enqueue scan-only discovery/repair and grouping suggestion preparation */
@@ -777,22 +816,19 @@ export function useScan(options: MaintenanceOptions = {}) {
   })
 }
 
-/** Enqueue the primary library update flow: scan, grouping suggestions, then probe */
+/** Enqueue scan/grouping, then hand metadata and storyboards to background progress */
 export function useUpdateLibrary(options: MaintenanceOptions = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
       const scanJob = await waitForJob(await enqueueScan(), options.onProgress)
       options.onScanComplete?.(scanMissingTotal(scanJob))
-      await waitForJob(await enqueueProbe(), options.onProgress)
       return scanJob
     },
     onSuccess: (job) => {
       invalidateLibraryContent(qc)
       notifyGroupingPlan(job, options.onGroupingPlan)
-      void watchOptionalJob(enqueueStoryboards(), options.onProgress, () =>
-        qc.invalidateQueries({ queryKey: ['playback'] }),
-      )
+      watchPostScanJobs(qc, options, job.library_id)
     },
     onSettled: (_data, error) => {
       if (error) options.onProgress?.(null)
@@ -807,11 +843,7 @@ export function useProbe(options: { onProgress?: JobProgressFn } = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => waitForJob(await enqueueProbe(), options.onProgress),
-    onSuccess: () => {
-      for (const key of ['bundle', 'bundle-files', 'browse']) {
-        qc.invalidateQueries({ queryKey: [key] })
-      }
-    },
+    onSuccess: () => invalidateProbeContent(qc),
     onSettled: () => options.onProgress?.(null),
   })
 }

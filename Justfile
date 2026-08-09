@@ -63,10 +63,10 @@ dev:
 desktop:
     cd {{desktop_dir}} && npm run tauri dev
 
-# `tauri dev` — both desktop recipes below — serves the web app from Vite, which
-# means React's development build and StrictMode's double render. That is fine
-# for exercising behaviour, but it is not shipped performance: judge speed with
-# `just release`.
+# `tauri dev` — both desktop recipes below — serves React's development build
+# from Vite. The Tauri root omits StrictMode replay because abort/reissue can
+# strand WKWebView startup requests; browser development still exercises it.
+# Judge shipped performance with `just release`.
 
 # Desktop shell on its bundled sidecar, rebuilt if stale (dev frontend).
 bundled:
