@@ -214,6 +214,28 @@ test('the plus affordance adds a second note box and both persist', async ({ pag
   expect(body.notes).toEqual(['First block', 'Second block'])
 })
 
+test('clicking elsewhere in the inspector unfocuses and commits a note', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/')
+  await page.locator('.card').first().click()
+
+  const note = page.getByRole('textbox', { name: 'Note' })
+  await note.fill('A note ready to save')
+  await expect(note).toBeFocused()
+
+  const patched = page.waitForResponse((response) => {
+    if (!response.url().includes('/bundles/b0') || response.request().method() !== 'PATCH') {
+      return false
+    }
+    const notes = (response.request().postDataJSON() as { notes?: string[] }).notes ?? []
+    return notes.includes('A note ready to save')
+  })
+  await page.locator('.inspector .prop', { hasText: 'Files' }).click()
+
+  await patched
+  await expect(note).not.toBeFocused()
+})
+
 test('a note starts at one line and auto-expands for overflow', async ({ page }) => {
   await mockApi(page)
   await page.addInitScript(() => {
