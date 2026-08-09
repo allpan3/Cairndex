@@ -78,6 +78,8 @@ function mockApi(
     collections?: unknown[]
     /** Deferred mount decision for cold-start ownership ordering coverage. */
     ownership?: Promise<unknown>
+    /** Deferred probe enqueue for scan-to-grouping ordering coverage */
+    probeEnqueue?: Promise<unknown>
   } = {},
 ) {
   const storyboardStatus = options.storyboardStatus ?? 'succeeded'
@@ -197,6 +199,12 @@ function mockApi(
           started_at: null,
           finished_at: null,
         }
+      else if (url.endsWith('/jobs/probe') && init?.method === 'POST' && options.probeEnqueue)
+        return options.probeEnqueue.then((probe) => ({
+          ok: true,
+          status: 202,
+          json: () => Promise.resolve(probe),
+        }))
       else if (url.endsWith('/jobs/probe') && init?.method === 'POST')
         body = {
           id: 'job2',
@@ -453,13 +461,21 @@ test('waits for library ownership before starting content queries', async () => 
   )
 })
 
-test('opens grouping review after a successful library update with suggestions', async () => {
-  mockApi()
+test('opens grouping review after scan while metadata continues in the background', async () => {
+  const probeEnqueue = new Promise<unknown>(() => undefined)
+  mockApi([LIBRARY], { probeEnqueue })
   renderApp()
   fireEvent.click(await screen.findByRole('button', { name: /Update/i }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Suggest grouping' })), {
     timeout: 2500,
   })
+  expect(
+    vi
+      .mocked(fetch)
+      .mock.calls.some(
+        ([url, init]) => String(url).endsWith('/jobs/probe') && init?.method === 'POST',
+      ),
+  ).toBe(true)
 })
 
 test('does not fail update when the background storyboard job fails', async () => {

@@ -407,13 +407,25 @@ fixtures cover fallback selection, zero pre-recovery library-scoped requests,
 the checking/disabled state, and unavailable-to-available recovery without
 navigation.
 
-Follow-up verification: frontend lint, format, typecheck, 561 unit tests, and
-production build pass; all 106 browser tests pass, including the cold-start and
-unavailable-recovery cases. Desktop formatting, Clippy, 104 Rust tests, and the
-packaged app/DMG build pass. No backend source or API changed in the recovery
-follow-up, so its gate was not rerun. A cold `just bundled` trace for the root
-policy fix left the window untouched and showed zero WebKit request aborts while
-the first request set completed.
+**Grouping review no longer waits for media probing.** The scan job already
+generates and persists its grouping plan from paths and scan-classified media
+kinds; ffprobe metadata was never an input. The combined Update mutation still
+waited for the entire probe pass before delivering that existing plan to the UI.
+Update now completes and opens review as soon as scan does, while metadata stays
+visible and stoppable in the shared background-job area. Storyboards remain
+ordered after a successful probe because their eligibility and sampling require
+duration. A probe failure leaves grouping review usable, keeps the failed job row
+as the report, and does not enqueue storyboards.
+
+Follow-up verification: frontend lint, format, typecheck, 563 unit tests, and
+production build pass. The new grouping/probe browser regression passes; the
+full browser run is 106/107 because the unchanged HLS re-attach case also fails
+when run from `origin/main`, so it remains outside this branch. Desktop
+formatting, Clippy, 104 Rust tests, and the packaged app/DMG build pass. No
+backend source or API changed in the recovery or grouping follow-up, so its gate
+was not rerun. A cold `just bundled` trace for the root policy fix left the
+window untouched and showed zero WebKit request aborts while the first request
+set completed.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
@@ -7041,8 +7053,8 @@ path matches the intended product model:
 2. repair high-confidence moves without changing original files;
 3. stage new files in provisional bundles;
 4. generate and persist a reviewable grouping plan;
-5. collect technical metadata;
-6. let the user accept selected grouping proposals.
+5. open review so the user can accept selected grouping proposals;
+6. collect technical metadata in the background, then generate storyboards.
 
 Applying a grouping plan is the only operation that confirms scan-staged
 bundles, creates suggested logical collections, assigns roles, selects
@@ -7053,8 +7065,9 @@ original files.
 ## Current implementation notes
 
 - **Primary maintenance flow:** **Update** is the main sidebar action. It runs
-  scan + grouping-plan generation first, then probe. The overflow menu keeps
-  scan-only, probe-only, and review-only actions for exception cases.
+  scan + grouping-plan generation, opens review, then hands probe and storyboard
+  generation to the background-job area. The overflow menu keeps scan-only,
+  probe-only, and review-only actions for exception cases.
 - **Grouping review:** The modal shows the persisted plan, explains that
   regeneration reruns the same heuristic against current library state, and
   supports checkboxes, cascading parent toggles, **Select all**, **Deselect all**,

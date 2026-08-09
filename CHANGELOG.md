@@ -36,6 +36,13 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Grouping suggestions no longer wait behind media metadata collection.** The
+  scan job had already generated and persisted its plan, but Update withheld the
+  review until every file finished ffprobe. Review now opens as soon as scan
+  completes while metadata continues in the sidebar job area. Storyboards remain
+  chained after a successful probe because they need duration metadata; a probe
+  failure leaves grouping usable and does not start an ineligible storyboard
+  pass.
 - **Desktop Add Library no longer turns a successful registration into an
   apparent failure when the library list cannot refresh.** The confirmation now
   remains visible with an explicit “library was added” result, the committed Add

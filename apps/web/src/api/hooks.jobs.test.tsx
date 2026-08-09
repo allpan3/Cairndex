@@ -49,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.enqueueScan.mockResolvedValue(job({ id: 'scan', job_type: 'scan' }))
   api.enqueueProbe.mockResolvedValue(job({ id: 'probe', job_type: 'probe' }))
+  api.enqueueStoryboards.mockResolvedValue(job({ id: 'storyboard', job_type: 'storyboard' }))
 })
 
 async function runUpdate(onProgress: (snapshot: JobRead | null) => void) {
@@ -82,4 +83,64 @@ test('a failed background job stays on screen', async () => {
   await waitFor(() =>
     expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'failed' })),
   )
+})
+
+test('grouping opens while metadata continues, then storyboards follow metadata', async () => {
+  let finishProbe: (value: JobRead) => void = () => undefined
+  api.enqueueScan.mockResolvedValue(
+    job({
+      id: 'scan',
+      job_type: 'scan',
+      result: { grouping_plan_id: 'plan1', grouping_proposal_count: 2 },
+    }),
+  )
+  api.enqueueProbe.mockReturnValue(
+    new Promise<JobRead>((resolve) => {
+      finishProbe = resolve
+    }),
+  )
+  const onGroupingPlan = vi.fn()
+  const onProgress = vi.fn()
+  const { result } = renderHook(() => useUpdateLibrary({ onGroupingPlan, onProgress }), { wrapper })
+
+  await act(async () => {
+    await result.current.mutateAsync()
+  })
+
+  expect(onGroupingPlan).toHaveBeenCalledWith('plan1')
+  expect(api.enqueueProbe).toHaveBeenCalledWith('lib1')
+  expect(api.enqueueStoryboards).not.toHaveBeenCalled()
+
+  await act(async () => {
+    finishProbe(job({ id: 'probe', job_type: 'probe' }))
+  })
+
+  await waitFor(() => expect(api.enqueueStoryboards).toHaveBeenCalledWith('lib1'))
+})
+
+test('metadata failure does not close grouping or start storyboards', async () => {
+  api.enqueueScan.mockResolvedValue(
+    job({
+      id: 'scan',
+      job_type: 'scan',
+      result: { grouping_plan_id: 'plan1', grouping_proposal_count: 1 },
+    }),
+  )
+  api.enqueueProbe.mockResolvedValue(
+    job({ id: 'probe', job_type: 'probe', status: 'failed', error: 'probe failed' }),
+  )
+  const onGroupingPlan = vi.fn()
+  const onProgress = vi.fn()
+  const { result } = renderHook(() => useUpdateLibrary({ onGroupingPlan, onProgress }), { wrapper })
+
+  await act(async () => {
+    await result.current.mutateAsync()
+  })
+
+  expect(onGroupingPlan).toHaveBeenCalledWith('plan1')
+  await waitFor(() =>
+    expect(onProgress).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'failed' })),
+  )
+  expect(api.enqueueStoryboards).not.toHaveBeenCalled()
+  expect(result.current.isError).toBe(false)
 })

@@ -486,7 +486,7 @@ export function Sidebar({
         <button
           className="sidebar__job"
           onClick={onUpdateLibrary}
-          title="Scan files, prepare grouping suggestions, collect media metadata, and generate storyboards"
+          title="Scan files and prepare grouping suggestions; collect metadata and generate storyboards in the background"
           disabled={updating || libraryId === null}
         >
           {updating ? '⟳ Updating…' : '⟳ Update'}
