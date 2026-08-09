@@ -36,6 +36,11 @@ onward. Entries under `Unreleased` ship in the next tagged release.
 
 ### Fixed
 
+- **Clicking elsewhere in the Bundle Inspector now leaves the active note.**
+  The desktop webview could keep a note textarea focused when a pointer press
+  landed on non-interactive inspector content. The inspector now blurs that
+  editor explicitly, which removes its text selection and commits the latest
+  note through the existing blur-save path.
 - **A bundle converted into a collection could fail when immediately accepted.**
   The conversion response could expose its new child proposal IDs before the
   request-finalizer commit made them visible to the next database session, and

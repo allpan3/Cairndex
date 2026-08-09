@@ -122,6 +122,7 @@ beforeEach(() => {
   setActiveLibraryId('library-one')
   hooks.bundle = bundle
   hooks.files = [file('clip')]
+  hooks.update.mutate.mockReset()
 })
 
 /** Reports which actions are in scope, and whether each is the shell's own. */
@@ -219,6 +220,25 @@ test('the inspector is the same import-and-link drop target as a bundle card', (
   expect(onDropFilesOnBundle).toHaveBeenCalledWith('bundle', [dropped])
   expect(consumeHtmlFileDropHandled()).toBe(true)
   expect(inspector).not.toHaveClass('inspector--file-drop')
+})
+
+test('a pointer press elsewhere in the inspector blurs and commits the active note', () => {
+  render(
+    <BundleInspectorActionsContext value={shellActions}>
+      <Inspector bundleId="bundle" />
+    </BundleInspectorActionsContext>,
+  )
+  const note = screen.getByRole('textbox', { name: 'Note' })
+  note.focus()
+  fireEvent.change(note, { target: { value: 'Ready to save' } })
+  expect(note).toHaveFocus()
+
+  const filesProperty = screen.getByText('Files').closest('.prop')
+  if (!filesProperty) throw new Error('expected the Files property')
+  fireEvent.pointerDown(filesProperty)
+
+  expect(note).not.toHaveFocus()
+  expect(hooks.update.mutate).toHaveBeenCalledWith({ notes: ['Ready to save'] })
 })
 
 test('an inspector with no actions in scope loses the handler-gated entries', () => {
