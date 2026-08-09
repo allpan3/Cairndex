@@ -387,11 +387,15 @@ Current workflow details:
 - manual **Suggest grouping** and Update use the same candidate boundary:
   confirmed bundles stay settled regardless of collection membership, while
   still-unbundled files and new additions remain eligible;
-- the grouping review UI supports checkbox selection, parent/child cascading,
-  Select all / Deselect all, double-click rename for bundle and collection
-  suggestions, whole-row file drag-and-drop within or across bundle suggestions
-  (onto either a bundle heading or its file list), bundle drag-and-drop into any
-  suggested collection or back to the top level, and **Accept selected**;
+- the grouping review UI accepts file-backed bundle proposals only. Collection
+  checkboxes are checked, empty, or indeterminate bulk controls for their
+  descendant bundles; selecting one nested bundle automatically carries its
+  complete collection ancestor path into apply without selecting siblings;
+- selection and placement are separate: file rows can move within or across
+  bundle suggestions, while bundle and new-collection proposals can be placed
+  by drag-and-drop or a keyboard-accessible placement selector. New suggestions
+  remain renameable/reclassifiable; an existing collection context is labeled
+  and read-only;
 - a re-scan addition recommends its existing confirmed bundle by default, with
   a compact, tooltip-described destination icon converting that same proposal
   in place to a new bundle; the owner can switch back without losing selection,
@@ -400,8 +404,8 @@ Current workflow details:
   file, preserving natural path order within each group; review can override the
   sequence, which becomes the bundle playlist order on apply;
 - a drag that empties a bundle suggestion auto-deselects it; a collection with
-  no file-backed descendants is likewise auto-deselected and cannot be accepted
-  until it contains an item again;
+  no file-backed descendants has a disabled bulk-selection checkbox because the
+  collection row itself is structural rather than accepted work;
 - in a flat multi-video directory, sidecars first match a unique normalized full
   video stem (including suffix variants such as subtitles/posters); trailing
   rendition labels such as `720p` are folded by default, and fresh stem groups
@@ -418,15 +422,20 @@ Current workflow details:
   Update or Scan new files after filesystem changes before regenerating;
 - explicit cross-bundle review edits revise provisional suggestions while
   preserving stable file identities and cleaning up an emptied source bundle;
-- applying selected proposals marks the plan applied, so unchecked proposals are intentionally left unapplied for that plan; regenerate suggestions after library changes when a fresh plan is needed;
+- applying selected bundle proposals marks the plan applied, so unchecked
+  bundles are intentionally left unapplied for that plan. Apply resolves only
+  the required collection paths, reuses existing context by stable collection
+  id, and reports a localized conflict if that target was removed or reparented
+  after the plan was generated instead of creating a same-name lookalike;
 - confirmed groupings are durable and win over heuristics on re-scan: a confirmed bundle is never silently re-split or merged, and a newly discovered matching stem in its directory is suggested as an addition, not auto-applied;
 - a CONTAINER is a logical-collection suggestion, not an ongoing path-to-collection sync;
 - fast-add and manual creation confirm immediately because the user already chose the grouping.
 
-Bundle/container reclassification remains a follow-up. An addition proposal is
-not renameable while it targets its existing confirmed bundle. Switching it to
-new-bundle mode enables the same title editor as other new bundles and applies
-without changing the suggested existing bundle.
+Bundle/container reclassification is available for new suggestions. Existing
+collection context cannot be renamed, moved, or reclassified, and an addition
+proposal is not renameable while it targets its existing confirmed bundle.
+Switching the addition to new-bundle mode enables the same title editor as other
+new bundles and applies without changing the suggested existing bundle.
 
 ## UI and interaction direction
 

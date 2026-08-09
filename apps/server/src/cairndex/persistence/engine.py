@@ -148,6 +148,8 @@ _ADDITIVE_CONTENT_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Reversible destination for new files suggested into a confirmed bundle
     ("grouping_proposals", "target_bundle_title", "VARCHAR(1024)"),
     ("grouping_proposals", "create_new_bundle", "BOOLEAN NOT NULL DEFAULT 0"),
+    # Existing collection context is identity-based, not inferred from its title
+    ("grouping_proposals", "target_collection_id", "VARCHAR(26)"),
     # Per-directory heuristic overrides retained by each durable grouping snapshot
     ("grouping_plans", "stem_modes", "JSON NOT NULL DEFAULT '{}'"),
     # Recent view "Date Opened" ordering. NULL in an existing library means
@@ -191,6 +193,16 @@ def ensure_content_indexes(engine: Engine) -> None:
             columns = {col["name"] for col in inspector.get_columns(table_name)}
             if column not in columns:
                 conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column} {sql_type}"))
+        if "grouping_proposals" in existing:
+            # Preserve exact existing-collection identity for pre-upgrade open plans
+            conn.execute(
+                text(
+                    """UPDATE grouping_proposals
+                       SET target_collection_id = substr(directory, 22)
+                       WHERE target_collection_id IS NULL
+                         AND directory LIKE '@existing-collection/%'"""
+                )
+            )
         if "asset_files" in existing:
             # rtrim stops at the final slash; the second rtrim removes that slash
             conn.execute(

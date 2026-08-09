@@ -10,9 +10,15 @@ from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
-from cairndex.domain.enums import FileRole, MediaKind
+from cairndex.domain.enums import FileRole, MediaKind, ProposalKind
 from cairndex.persistence.engine import ensure_content_indexes
-from cairndex.persistence.models import AssetBundle, AssetFile, Tag
+from cairndex.persistence.models import (
+    AssetBundle,
+    AssetFile,
+    GroupingPlan,
+    GroupingProposal,
+    Tag,
+)
 
 
 def _make_file(session: Session, bundle: AssetBundle, path: str) -> AssetFile:
@@ -151,11 +157,24 @@ def test_ensure_content_indexes_adds_nullable_cover_frame_columns(engine: Engine
 
 # Existing libraries gain grouping-review edit metadata on open
 def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engine) -> None:
+    target_id = "01K00000000000000000000000"
+    with Session(engine) as db:
+        plan = GroupingPlan()
+        proposal = GroupingProposal(
+            plan=plan,
+            kind=ProposalKind.CONTAINER,
+            directory=f"@existing-collection/{target_id}",
+        )
+        db.add(proposal)
+        db.commit()
+        proposal_id = proposal.id
+
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN base_bundle_id"))
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN owner_edited"))
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_bundle_title"))
         conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN create_new_bundle"))
+        conn.execute(text("ALTER TABLE grouping_proposals DROP COLUMN target_collection_id"))
 
     ensure_content_indexes(engine)
 
@@ -165,7 +184,14 @@ def test_ensure_content_indexes_adds_grouping_proposal_edit_columns(engine: Engi
         "owner_edited",
         "target_bundle_title",
         "create_new_bundle",
+        "target_collection_id",
     } <= columns
+    with engine.connect() as conn:
+        restored_target = conn.scalar(
+            text("SELECT target_collection_id FROM grouping_proposals WHERE id = :proposal_id"),
+            {"proposal_id": proposal_id},
+        )
+    assert restored_target == target_id
 
 
 # Existing libraries gain durable per-directory grouping sensitivity on open

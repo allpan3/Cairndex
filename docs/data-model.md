@@ -340,6 +340,8 @@ Durable, reviewable snapshots of the grouping suggester output.
   FK, SET NULL), `target_bundle_id` (plain id for addition proposals),
   `target_bundle_title` (nullable display snapshot), `create_new_bundle`
   (additive destination override, default false),
+  `target_collection_id` (nullable plain id, not an FK, for a read-only existing
+  collection context node so stale targets remain detectable),
   `base_bundle_id` (the stable original identity used by explicitly edited
   bundle proposals), `owner_edited`, `kind` (`bundle` | `container`), `title`,
   `directory`, `confidence`, `reason`, `sort_order`.
@@ -350,11 +352,16 @@ Durable, reviewable snapshots of the grouping suggester output.
 Apply is idempotent and conflict-aware: it merges/splits provisional bundles
 preserving `AssetFile.id`, assigns roles, selects a cover, links external
 subtitles, creates suggested collections, and never touches the filesystem.
-`POST /grouping/plans/{id}/apply` may include `proposal_ids`; when supplied, only
-that selected subset is accepted and the plan is marked applied, so unchecked
-proposals are not retained as pending work for the same plan.
+`POST /grouping/plans/{id}/apply` may include `proposal_ids`; only file-backed
+BUNDLE rows are accepted work. CONTAINER rows are structural: apply computes the
+complete ancestor path for each selected bundle, creates or reuses only those
+paths, and marks the plan applied, so unchecked bundles are not retained as
+pending work for the same plan. Existing collection context resolves by
+`target_collection_id`; a missing or reparented target conflicts before its
+descendant bundle is confirmed rather than creating a same-name replacement.
 `PATCH /grouping/plans/{id}/proposals/{proposal_id}` can retitle a BUNDLE or
-CONTAINER proposal while the plan is open. `PUT
+new CONTAINER proposal while the plan is open; existing collection context is
+read-only. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/destination` switches an addition
 between its existing target and a separate new bundle while retaining the target
 id as a reversible alternative. Existing mode uses addition roles; new mode uses
@@ -365,8 +372,9 @@ and derive their fresh-bundle title on first switch. `PUT
 /grouping/plans/{id}/proposals/{proposal_id}/files/{asset_file_id}/move` moves a
 stable file id to an exact position within any BUNDLE proposal and rewrites dense
 sequence/derived-role values for every affected proposal. `PUT
-/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE proposal
-into a CONTAINER proposal or back to the top level. These owner edits are marked
+/grouping/plans/{id}/proposals/{proposal_id}/parent` reparents a BUNDLE or new
+CONTAINER proposal into a CONTAINER proposal or back to the top level, rejecting
+cycles and moves of existing collection context. These owner edits are marked
 explicitly so apply can preserve `base_bundle_id` across reviewed provisional
 membership changes. Confirmed bundles remain outside regenerated plans.
 `POST /grouping/plans` accepts the bounded `stem_modes` map used to regenerate
@@ -390,8 +398,9 @@ the plan and rebuilds everything.
 
 `PUT /grouping/plans/{id}/proposals/{proposal_id}/kind` overrides the
 suggester's bundle-versus-collection decision for one suggestion, in either
-direction, and returns the **whole plan** because a conversion adds or removes
-sibling rows rather than editing one in place.
+direction, except for read-only existing collection context, and returns the
+**whole plan** because a conversion adds or removes sibling rows rather than
+editing one in place.
 
 - **BUNDLE → CONTAINER** splits the proposal's files into one child BUNDLE
   proposal per video subject and empties the parent, which then holds only its

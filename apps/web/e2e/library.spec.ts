@@ -307,6 +307,7 @@ test('Update opens grouping review while metadata keeps running', async ({ page 
     target_bundle_id: null,
     target_bundle_title: null,
     create_new_bundle: true,
+    target_collection_id: null,
     confidence: 0.9,
     reason: 'matching synthetic filenames',
     files: [
@@ -435,6 +436,7 @@ test('repeated Suggest grouping leaves confirmed bundles out of the new plan', a
     directory: 'Settled',
     parent_proposal_id: null,
     target_bundle_id: null,
+    target_collection_id: null,
     confidence: 0.9,
     reason: 'old plan',
     files: [
@@ -551,6 +553,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_id: null,
       target_bundle_title: null,
       create_new_bundle: false,
+      target_collection_id: null,
       confidence: 0.9,
       reason: 'holds related bundles',
       files: [],
@@ -565,6 +568,7 @@ test('grouping title editors preserve wrapped geometry and grow while typing', a
       target_bundle_id: null,
       target_bundle_title: null,
       create_new_bundle: false,
+      target_collection_id: null,
       confidence: 0.9,
       reason: 'same filename stem',
       files: [
@@ -670,6 +674,7 @@ test('switches one addition row between an existing and a new bundle', async ({ 
     target_bundle_id: 'existing-ui',
     target_bundle_title: targetTitle,
     create_new_bundle: createNewBundle,
+    target_collection_id: null,
     confidence: 0.8,
     reason: 'add 2 new file(s) to existing bundle',
     files: [
@@ -830,6 +835,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: '',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
       confidence: 0.9,
       reason: 'shared directory',
       files: [],
@@ -841,6 +847,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: 'SRCV-005',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
       confidence: 0.95,
       reason: 'same filename stem',
       files: [
@@ -871,6 +878,7 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
       directory: 'Extras',
       parent_proposal_id: null as string | null,
       target_bundle_id: null,
+      target_collection_id: null,
       confidence: 0.8,
       reason: 'same directory',
       files: [
@@ -984,7 +992,9 @@ test('edits grouping suggestions with drag and drop before accepting them', asyn
   await bundleHandle.dispatchEvent('dragend', { dataTransfer: collectionTransfer })
   await collectionTransfer.dispose()
   await expect.poll(() => bundleParents).toEqual(['collection1'])
-  const collectionCheckbox = page.getByRole('checkbox', { name: 'Accept Favorites' })
+  const collectionCheckbox = page.getByRole('checkbox', {
+    name: 'Select bundles in Favorites',
+  })
   await expect(collectionCheckbox).toBeChecked()
   await expect(
     collectionRow.locator('..').getByText('SRCV-005 - cut', { exact: true }),

@@ -172,14 +172,92 @@ def test_new_bundle_override_reuses_the_target_collection(
     addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
     parent = session.get(type(addition), addition.parent_proposal_id)
     assert parent is not None and parent.title == "Movies"
+    assert parent.target_collection_id == movies.id
 
     plan_store.set_proposal_destination(session, plan.id, addition.id, True)
     plan_store.rename_proposal(session, plan.id, addition.id, "Sequel")
-    result = apply_service.apply_plan(session, plan)
+    result = apply_service.apply_plan(session, plan, proposal_ids={addition.id})
 
     assert result.collections_created == 0
     created = session.scalars(select(AssetBundle).where(AssetBundle.title == "Sequel")).one()
     assert movies in created.collections
+
+
+# Partial selection keeps the exact nested existing collection branch
+def test_selected_bundle_reuses_nested_existing_collection_by_id(
+    session: Session, library_root: Path
+) -> None:
+    bundle_id = _confirm_movie_folder(session, library_root)
+    outer = Collection(name="Archive")
+    leaf = Collection(name="Series", parent=outer)
+    same_name_at_root = Collection(name="Series")
+    session.add_all([outer, leaf, same_name_at_root])
+    session.flush()
+    target = session.get(AssetBundle, bundle_id)
+    assert target is not None
+    target.collections.append(leaf)
+
+    _scan_sequel(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+    inner_context = session.get(type(addition), addition.parent_proposal_id)
+    assert inner_context is not None
+    outer_context = session.get(type(addition), inner_context.parent_proposal_id)
+    assert outer_context is not None
+    assert inner_context.target_collection_id == leaf.id
+    assert outer_context.target_collection_id == outer.id
+    with pytest.raises(ValidationError, match="existing collection context"):
+        plan_store.rename_proposal(session, plan.id, inner_context.id, "Other")
+    with pytest.raises(ValidationError, match="existing collection context"):
+        plan_store.reparent_proposal(session, plan.id, inner_context.id, None)
+    with pytest.raises(ValidationError, match="existing collection context"):
+        plan_store.convert_proposal_kind(session, plan.id, inner_context.id, ProposalKind.BUNDLE)
+
+    plan_store.set_proposal_destination(session, plan.id, addition.id, True)
+    plan_store.rename_proposal(session, plan.id, addition.id, "New Episode")
+    result = apply_service.apply_plan(
+        session,
+        plan,
+        # Mirrors an older client selecting the inner row and bundle but not the outer row
+        proposal_ids={inner_context.id, addition.id},
+    )
+
+    assert result.collections_created == 0
+    assert not result.conflicts
+    created = session.scalars(select(AssetBundle).where(AssetBundle.title == "New Episode")).one()
+    assert leaf in created.collections
+    assert same_name_at_root not in created.collections
+
+
+# A stale stable destination conflicts instead of creating a same-name lookalike
+def test_missing_existing_collection_target_does_not_confirm_or_duplicate(
+    session: Session, library_root: Path
+) -> None:
+    bundle_id = _confirm_movie_folder(session, library_root)
+    collection = Collection(name="Archive")
+    session.add(collection)
+    session.flush()
+    target = session.get(AssetBundle, bundle_id)
+    assert target is not None
+    target.collections.append(collection)
+
+    new_file_ids = _scan_sequel(session, library_root)
+    plan = plan_store.generate_plan(session)
+    addition = next(proposal for proposal in plan.proposals if proposal.target_bundle_id)
+    plan_store.set_proposal_destination(session, plan.id, addition.id, True)
+    session.delete(collection)
+    session.flush()
+
+    result = apply_service.apply_plan(session, plan, proposal_ids={addition.id})
+
+    assert result.bundles_confirmed == 0
+    assert result.collections_created == 0
+    assert [conflict.reason for conflict in result.conflicts] == [
+        "the existing collection no longer exists"
+    ]
+    assert session.scalar(select(func.count()).select_from(Collection)) == 0
+    staged = session.scalars(select(AssetFile).where(AssetFile.id.in_(new_file_ids))).all()
+    assert all(file.bundle.grouping_state is GroupingState.PROVISIONAL for file in staged)
 
 
 # A direct fresh file reuses a matching collection hidden by confirmed siblings
@@ -199,6 +277,8 @@ def test_fresh_bundle_reuses_an_existing_same_path_collection(
     gamma = next(proposal for proposal in plan.proposals if proposal.kind is ProposalKind.BUNDLE)
     parent = session.get(type(gamma), gamma.parent_proposal_id)
     assert parent is not None and parent.title == "Series"
+    assert parent.target_collection_id == series.id
+    assert gamma.target_collection_id is None
 
     result = apply_service.apply_plan(session, plan)
 

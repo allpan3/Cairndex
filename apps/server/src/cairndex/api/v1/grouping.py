@@ -123,15 +123,13 @@ def move_proposal_file(
     return [ProposalRead.model_validate(proposal) for proposal in proposals]
 
 
-# Move one reviewed bundle into a collection suggestion
+# Move reviewed bundle or new-collection work into a collection suggestion
 @router.put("/plans/{plan_id}/proposals/{proposal_id}/parent", response_model=ProposalRead)
 def reparent_proposal(
     plan_id: str, proposal_id: str, payload: ProposalReparent, db: LibrarySession
 ) -> ProposalRead:
-    """Move a bundle suggestion into a collection suggestion or to top level."""
-    proposal = plan_store.reparent_bundle_proposal(
-        db, plan_id, proposal_id, payload.parent_proposal_id
-    )
+    """Move a bundle or new collection suggestion, including to top level."""
+    proposal = plan_store.reparent_proposal(db, plan_id, proposal_id, payload.parent_proposal_id)
     return ProposalRead.model_validate(proposal)
 
 

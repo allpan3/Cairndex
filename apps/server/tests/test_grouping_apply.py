@@ -123,9 +123,10 @@ def test_apply_selected_proposals_only(session: Session, library_root: Path) -> 
     scan_library(session, library_root)
 
     plan = plan_store.generate_plan(session)
-    movies = next(p for p in plan.proposals if p.kind.value == "container")
     cosmos = next(p for p in plan.proposals if p.title == "Cosmos")
-    result = apply_service.apply_plan(session, plan, proposal_ids={movies.id, cosmos.id})
+    # Collection rows are structural context: accepting one child creates only
+    # its required parent path, without accepting the sibling bundle
+    result = apply_service.apply_plan(session, plan, proposal_ids={cosmos.id})
 
     assert result.bundles_confirmed == 1
     assert result.collections_created == 1
