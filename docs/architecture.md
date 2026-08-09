@@ -249,8 +249,10 @@ outside this low-cost picker enhancement.
 The current sidebar maintenance flow exposes one primary **Update** button plus a
 small overflow menu for **Scan new files**, **Collect metadata**, **Suggest
 grouping**, and **Generate storyboards**. Update waits for scan/grouping-plan
-generation and metadata probe, then starts storyboard generation in the
-background.
+generation, refreshes the UI, and opens grouping review immediately. Metadata
+probe continues in the shared background-job area; storyboard generation is
+chained for the same library after successful probe because eligibility and
+sampling need duration.
 
 ## 4. Library package and registry
 

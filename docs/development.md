@@ -555,11 +555,11 @@ path on the server.
 
 For local manual testing, start the backend and frontend, open the app, use the
 sidebar `+` to add a library directory, then run **Update**.
-Update scans files, persists a grouping plan, collects ffprobe metadata,
-refreshes the UI, opens grouping review when suggestions exist, and starts
-missing/stale storyboard generation in the background. The maintenance overflow
-menu exposes standalone **Scan new files**, **Suggest grouping**, **Collect
-metadata**, and **Generate storyboards** actions.
+Update scans files, persists a grouping plan, refreshes the UI, and opens
+grouping review when suggestions exist. It then collects ffprobe metadata in the
+background and starts missing/stale storyboard generation only after that probe
+succeeds. The maintenance overflow menu exposes standalone **Scan new files**,
+**Suggest grouping**, **Collect metadata**, and **Generate storyboards** actions.
 In grouping review, double-click a new-bundle or collection suggestion title to
 edit it; Enter or blur saves the open-plan edit, while Escape cancels it. A
 re-scan addition can be switched from its recommended existing bundle to

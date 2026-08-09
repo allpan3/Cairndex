@@ -39,10 +39,11 @@ each library is a directory carrying its own `.cairndex/` metadata
 **registry** tracks registered libraries and the job queue. All content APIs are
 scoped to one library (`/api/v1/libraries/{id}/…`); the desktop app picks an
 active library per tab. The normal maintenance flow is **Update**: scan the
-library, persist a reviewable grouping plan, collect technical metadata, refresh
-the UI, open grouping review when suggestions exist, and generate missing or
-stale storyboards in the background. Individual scan, grouping suggestion,
-metadata collection, and storyboard-generation actions remain available in the
+library, persist a reviewable grouping plan, refresh the UI, and open grouping
+review when suggestions exist. Technical metadata continues in the background;
+missing or stale storyboard generation follows it because storyboard eligibility
+uses the probed duration. Individual scan, grouping suggestion, metadata
+collection, and storyboard-generation actions remain available in the
 maintenance menu. There are no global storage-root content APIs in the current
 model.
 
