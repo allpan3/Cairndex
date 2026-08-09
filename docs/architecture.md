@@ -53,6 +53,16 @@ TanStack Query consumes cancellation signals for library requests; WKWebView can
 strand the immediate replacements after StrictMode cleanup aborts the first
 startup burst. Production StrictMode has no replay, and browser development
 continues to exercise the shared components under it.
+
+The app resolves registry availability before the authorization and ownership
+mount gates. A row already marked `unavailable` never becomes the active content
+request scope, so it cannot fan out requests that the server must reject. A
+remembered offline choice yields to the first available library; when every row
+is offline, the shell shows a recovery card with manual Retry and Manage
+Libraries actions. The visible shell polls the registry every five seconds only
+in that all-unavailable state, stopping as soon as any library is reachable.
+This is detection, not path discovery: a moved root still requires the owner to
+register its actual location.
 The paired token is stored with its normalized issuing server and immutable
 approved library ids. Programmatic requests attach it only to those
 library-scoped URLs; global and unscoped requests stay anonymous. An unscoped

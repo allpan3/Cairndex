@@ -393,12 +393,27 @@ abort, plus a component-shape assertion that keeps StrictMode around web; the
 existing unit and browser regressions keep proving that no content query starts
 before ownership settles.
 
-Follow-up verification: frontend lint, format, typecheck, 558 unit tests, and
-production build pass; desktop formatting, Clippy, 104 Rust tests, and packaged
-app/DMG build pass. Playwright passes 104/105 including the cold-start ordering
-case; the sole failure is the recorded unrelated HLS session re-attach case at
-`player.spec.ts:2331`. A cold `just bundled` trace left the window untouched and
-showed zero WebKit request aborts while the first request set completed.
+A later startup report exposed a separate boundary: `App` treated every
+registered row as selectable even when the registry had already classified it
+`unavailable`. It then issued ownership and authorization requests, mounted the
+workspace after their errors failed open, and let the browser surface the
+server's raw id-based availability error. Registry status now gates before all
+three layers. A remembered offline choice falls back to a reachable sibling;
+when every row is offline, a dedicated recovery card offers Retry and Manage
+Libraries, polls every five seconds only while the app is visible and stranded,
+and mounts the workspace in place if the registered root returns. It does not
+search the filesystem for a moved root. Generated component and Chromium
+fixtures cover fallback selection, zero pre-recovery library-scoped requests,
+the checking/disabled state, and unavailable-to-available recovery without
+navigation.
+
+Follow-up verification: frontend lint, format, typecheck, 561 unit tests, and
+production build pass; all 106 browser tests pass, including the cold-start and
+unavailable-recovery cases. Desktop formatting, Clippy, 104 Rust tests, and the
+packaged app/DMG build pass. No backend source or API changed in the recovery
+follow-up, so its gate was not rerun. A cold `just bundled` trace for the root
+policy fix left the window untouched and showed zero WebKit request aborts while
+the first request set completed.
 
 **A video's cover frame is the video's.** `set_cover_frame` also wrote
 `bundle.cover_file_id`, so picking a frame silently reassigned what represented
